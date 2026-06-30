@@ -5,6 +5,15 @@ export {
   OpenAIChatRequestSchema,
   parseOpenAIChat,
 } from "./ingress/openai-chat";
+export {
+  modelMessagesToOpenAIChat,
+  type OpenAIChatFromModelMessages,
+  type OpenAIChatModelMessages,
+  OpenAIChatTransformError,
+  type OpenAIChatTransformSettings,
+  type OpenAIChatTransformTool,
+  openaiChatToModelMessages,
+} from "./transform/openai-chat";
 
 export type ProviderSummary = {
   readonly id: string;
