@@ -1,0 +1,16 @@
+{
+  "name": "@aio-proxy/types",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "biome check . && tsc -b --pretty false",
+    "test": "bun run test:unit",
+    "test:unit": "bun -e \"process.exit(0)\""
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

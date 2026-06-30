@@ -1,0 +1,9 @@
+node_modules
+dist
+.omo/evidence/*
+!.omo/evidence/.gitkeep
+bun-debug.log
+packages/i18n/src/paraglide/
+packages/dashboard/src/route-tree.gen.ts
+packages/dashboard/dist
+*.tsbuildinfo

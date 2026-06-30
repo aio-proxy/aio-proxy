@@ -1,0 +1,2 @@
+$ biome check . && tsc -b --pretty false
+Checked 3 files in 35ms. No fixes applied.

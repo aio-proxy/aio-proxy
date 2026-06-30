@@ -1,0 +1,49 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "compile": {
+      "inputs": [
+        "messages/**/*.json",
+        "project.inlang/**",
+        "scripts/compile.ts"
+      ],
+      "outputs": ["src/paraglide/**"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "package.json", "tsconfig.json"],
+      "outputs": [
+        "dist/**",
+        "src/route-tree.gen.ts",
+        "src/paraglide/**",
+        "src/db/migrations.manifest.ts"
+      ]
+    },
+    "check": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "preflight": {
+      "dependsOn": ["check", "test:unit"],
+      "outputs": []
+    },
+    "e2e": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "dev": {
+      "persistent": true,
+      "cache": false,
+      "outputs": []
+    }
+  }
+}

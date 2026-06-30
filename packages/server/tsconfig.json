@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../types"
+    },
+    {
+      "path": "../i18n"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../auth-flows"
+    }
+  ]
+}
