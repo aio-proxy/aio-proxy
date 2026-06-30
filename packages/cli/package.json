@@ -11,6 +11,7 @@
     "test": "bun run test:unit",
     "test:unit": "bun -e \"process.exit(0)\"",
     "e2e": "bun -e \"process.exit(0)\"",
+    "start": "bun src/main.ts serve",
     "dev": "bun -e \"process.exit(0)\""
   },
   "dependencies": {

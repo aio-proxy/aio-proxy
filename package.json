@@ -31,9 +31,11 @@
   "scripts": {
     "check": "turbo run check",
     "test:unit": "turbo run test:unit",
+    "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test",
     "e2e": "turbo run e2e",
     "build": "turbo run build",
+    "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "i18n:compile": "bun run --filter @aio-proxy/i18n compile",
     "dev": "turbo run dev --filter=@aio-proxy/cli",
     "preflight": "bun run i18n:compile && turbo run check test:unit"
