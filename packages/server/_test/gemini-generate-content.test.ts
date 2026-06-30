@@ -173,6 +173,64 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(invoked).toBe(false);
   });
 
+  test("Given 9MiB inlineData with large Content-Length When generateContent is posted Then provider receives it", async () => {
+    // Given
+    let messagesSeen: readonly ModelMessage[] | undefined;
+    const provider = aiSdkProvider((messages) => {
+      messagesSeen = messages;
+      return textStream([
+        { type: "text-start", id: "text-1" },
+        { type: "text-delta", id: "text-1", text: "accepted" },
+        { type: "text-end", id: "text-1" },
+      ]);
+    });
+    const app = appWith(provider);
+    const data = "A".repeat(12_582_912);
+    const body = JSON.stringify({
+      contents: [
+        {
+          parts: [{ inlineData: { mimeType: "image/png", data } }],
+        },
+      ],
+    });
+
+    // When
+    const response = await app.request(
+      "/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        body,
+        headers: {
+          ...jsonHeaders,
+          "content-length": String(body.length),
+        },
+        method: "POST",
+      },
+    );
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      candidates: [
+        {
+          content: { role: "model", parts: [{ text: "accepted" }] },
+          finishReason: "OTHER",
+        },
+      ],
+    });
+    expect(messagesSeen).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "file",
+            mediaType: "image/png",
+            data: { type: "data", data },
+          },
+        ],
+      },
+    ]);
+  });
+
   test("Given oversized inlineData When generateContent is posted Then returns 413 Gemini error envelope", async () => {
     // Given
     let invoked = false;

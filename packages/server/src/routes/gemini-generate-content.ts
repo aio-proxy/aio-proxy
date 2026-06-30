@@ -13,7 +13,6 @@ import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import type { RuntimeProviderInstance } from "./openai-chat";
 
-const maxBodyBytes = 8 * 1_024 * 1_024;
 const routePrefix = "/v1beta/models/";
 const generateSuffix = ":generateContent";
 const streamSuffix = ":streamGenerateContent";
@@ -37,14 +36,6 @@ export function createGeminiGenerateContentRoutes(
     const target = routeTarget(new URL(context.req.url).pathname);
     if (target === undefined) {
       return context.text("404 Not Found", 404);
-    }
-
-    const contentLength = context.req.header("content-length");
-    if (
-      contentLength !== undefined &&
-      Number.parseInt(contentLength, 10) > maxBodyBytes
-    ) {
-      return geminiError(413, "RESOURCE_EXHAUSTED", "Request body too large");
     }
 
     const route = resolveRoute(router, target.model);

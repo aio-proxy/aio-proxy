@@ -41,7 +41,7 @@ describe("Gemini generateContent transform", () => {
         ...converted,
       });
 
-      expect(roundTrip).toEqual(request);
+      expect(JSON.stringify(roundTrip)).toBe(JSON.stringify(request));
     });
   }
 
