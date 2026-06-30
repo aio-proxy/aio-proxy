@@ -1,8 +1,10 @@
 export {
   AliasCollisionError,
   AppError,
+  ConfigWriteError,
   type FormattedUserError,
   formatUserError,
+  PortOutOfRangeError,
   ProviderNotInstalledError,
   StaleProviderGenerationError,
 } from "./format-error";

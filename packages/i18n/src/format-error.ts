@@ -7,9 +7,11 @@ const ERROR_CODES = {
   aliasCollision: "alias_collision",
   configInvalid: "config_invalid",
   configNotFound: "config_not_found",
+  configWriteFailed: "config_write_failed",
   httpException: "http_exception",
   internalUnexpected: "internal_unexpected",
   invalidLocale: "invalid_locale",
+  portOutOfRange: "port_out_of_range",
   providerNotInstalled: "provider_not_installed",
   staleProviderGeneration: "stale_provider_generation",
   validationFailed: "validation_failed",
@@ -20,6 +22,8 @@ type AppErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 type AppErrorMessageKey =
   | "cli_error_config_invalid"
   | "cli_error_config_not_found"
+  | "cli_error_config_write_failed"
+  | "cli_error_port_out_of_range"
   | "error_invalid_locale";
 
 export type FormattedUserError = {
@@ -43,6 +47,22 @@ export class ProviderNotInstalledError extends AppError {
 
   constructor(readonly pkg: string) {
     super(ERROR_CODES.providerNotInstalled, "error_invalid_locale");
+  }
+}
+
+export class PortOutOfRangeError extends AppError {
+  override readonly name = "PortOutOfRangeError";
+
+  constructor(readonly port: string) {
+    super(ERROR_CODES.portOutOfRange, "cli_error_port_out_of_range");
+  }
+}
+
+export class ConfigWriteError extends AppError {
+  override readonly name = "ConfigWriteError";
+
+  constructor(readonly path: string) {
+    super(ERROR_CODES.configWriteFailed, "cli_error_config_write_failed");
   }
 }
 
@@ -77,6 +97,34 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       return {
         code: err.code,
         message: m.cli_error_config_not_found({}, { locale }),
+      };
+    case "cli_error_config_write_failed":
+      if (err instanceof ConfigWriteError) {
+        return {
+          code: err.code,
+          message: m.cli_error_config_write_failed(
+            { path: err.path },
+            { locale },
+          ),
+        };
+      }
+      return {
+        code: err.code,
+        message: m.cli_error_config_write_failed({ path: "" }, { locale }),
+      };
+    case "cli_error_port_out_of_range":
+      if (err instanceof PortOutOfRangeError) {
+        return {
+          code: err.code,
+          message: m.cli_error_port_out_of_range(
+            { port: err.port },
+            { locale },
+          ),
+        };
+      }
+      return {
+        code: err.code,
+        message: m.cli_error_port_out_of_range({ port: "" }, { locale }),
       };
     case "error_invalid_locale":
       return {

@@ -1,5 +1,6 @@
 {
   "name": "@aio-proxy/cli",
+  "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -15,9 +16,12 @@
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
-    "@aio-proxy/server": "workspace:*"
+    "@aio-proxy/server": "workspace:*",
+    "@inquirer/prompts": "^8.5.2",
+    "commander": "15"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.14",
     "typescript": "catalog:"
   }
 }

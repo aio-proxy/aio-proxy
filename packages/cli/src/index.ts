@@ -1,1 +1,1 @@
-export const cliName = "aio-proxy";
+export { buildProgram } from "./main";
