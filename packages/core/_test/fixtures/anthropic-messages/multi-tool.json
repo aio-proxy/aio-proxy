@@ -1,0 +1,60 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 512,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Check weather and time."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_weather",
+          "name": "weather",
+          "input": {
+            "city": "Paris"
+          }
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_time",
+          "name": "clock",
+          "input": {
+            "zone": "Europe/Paris"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_weather",
+          "content": [
+            {
+              "type": "text",
+              "text": "Sunny"
+            }
+          ]
+        },
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_time",
+          "content": "14:05"
+        },
+        {
+          "type": "text",
+          "text": "Summarize both."
+        }
+      ]
+    }
+  ]
+}

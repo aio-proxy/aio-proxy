@@ -12,6 +12,15 @@ export {
   writeOpenAIChatSSE,
 } from "./egress/openai-chat";
 export {
+  type AnthropicCacheControl,
+  type AnthropicMessagesRequest,
+  AnthropicMessagesRequestSchema,
+  type AnthropicTextBlock,
+  type AnthropicToolResultBlock,
+  type AnthropicToolUseBlock,
+  parseAnthropicMessages,
+} from "./ingress/anthropic-messages";
+export {
   type OpenAIChatRequest,
   OpenAIChatRequestSchema,
   parseOpenAIChat,
@@ -30,6 +39,14 @@ export {
   type ApiProviderTraceSink,
   createApiProvider,
 } from "./provider/api";
+export {
+  type AnthropicMessagesFromModelMessages,
+  type AnthropicMessagesModelMessages,
+  AnthropicMessagesTransformError,
+  type AnthropicModelMessage,
+  anthropicMessagesToModelMessages,
+  modelMessagesToAnthropicMessages,
+} from "./transform/anthropic-messages";
 export {
   modelMessagesToOpenAIChat,
   type OpenAIChatFromModelMessages,

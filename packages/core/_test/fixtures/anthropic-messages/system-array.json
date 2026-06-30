@@ -1,0 +1,28 @@
+{
+  "model": "claude-sonnet-4-5",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are concise.",
+      "cache_control": {
+        "type": "ephemeral"
+      }
+    },
+    {
+      "type": "text",
+      "text": "Prefer JSON."
+    }
+  ],
+  "max_tokens": 128,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Return status."
+        }
+      ]
+    }
+  ]
+}
