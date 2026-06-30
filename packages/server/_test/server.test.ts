@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { AppType } from "@aio-proxy/server";
-import { createServer, serverDefaults } from "@aio-proxy/server";
+import serverEntrypoint, {
+  createServer,
+  serverDefaults,
+} from "@aio-proxy/server";
 import { hc } from "hono/client";
 
 const config = {
@@ -84,6 +87,15 @@ describe("server routes", () => {
   test("server defaults bind to localhost dashboard port when inspected", () => {
     // Given / When / Then
     expect(serverDefaults).toEqual({ host: "127.0.0.1", port: 22_078 });
+  });
+
+  test("Bun entrypoint binds localhost dashboard port when inspected", () => {
+    // Given / When / Then
+    expect(serverEntrypoint).toMatchObject({
+      hostname: serverDefaults.host,
+      port: serverDefaults.port,
+    });
+    expect(typeof serverEntrypoint.fetch).toBe("function");
   });
 
   test("RPC client exposes typed dashboard config get when constructed", () => {

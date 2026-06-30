@@ -54,5 +54,13 @@ const routes = createRoutes(defaultConfig);
 export const app = routes;
 export type AppType = typeof routes;
 
+export const bunServer = {
+  hostname: serverDefaults.host,
+  port: serverDefaults.port,
+  fetch: app.fetch,
+};
+
 export const createServer = (options: CreateServerOptions): AppType =>
   createRoutes(ConfigSchema.parse(options.config));
+
+export default bunServer;
