@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { TextStreamPart, ToolSet } from "ai";
 import { writeOpenAIChatSSE } from "../../src/index";
 
 const doneFrame = "data: [DONE]\n\n";
@@ -29,6 +30,19 @@ function partStream(
   });
 }
 
+function aiSdkPartStream(
+  parts: readonly TextStreamPart<ToolSet>[],
+): ReadableStream<TextStreamPart<ToolSet>> {
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) {
+        controller.enqueue(part);
+      }
+      controller.close();
+    },
+  });
+}
+
 function runtimePartStream(parts: readonly object[]) {
   return new ReadableStream({
     start(controller) {
@@ -41,6 +55,26 @@ function runtimePartStream(parts: readonly object[]) {
 }
 
 describe("writeOpenAIChatSSE", () => {
+  test("Given AI SDK text stream When encoded Then uses text and total usage", async () => {
+    const stream = aiSdkPartStream([
+      { type: "text-start", id: "text-1" },
+      { type: "text-delta", id: "text-1", text: "pong" },
+      { type: "text-end", id: "text-1" },
+      {
+        type: "finish",
+        finishReason: "stop",
+        rawFinishReason: "stop",
+        totalUsage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+      },
+    ]);
+
+    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+      'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"pong"},"index":0}]}\n\n' +
+        'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}\n\n' +
+        doneFrame,
+    );
+  });
+
   test("Given text-only stream When encoded Then emits exact Chat SSE", async () => {
     const stream = partStream([
       { type: "text-start", id: "text-1" },

@@ -1,8 +1,8 @@
 import type {
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
-  LanguageModelV2Usage,
 } from "@ai-sdk/provider";
+import type { TextStreamPart, ToolSet } from "ai";
 
 const chunkId = "chatcmpl-aio-proxy";
 const encoder = new TextEncoder();
@@ -57,8 +57,19 @@ type ToolState = {
   arguments: string;
 };
 
+type OpenAIChatStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
+
+type TextDeltaPart = Extract<OpenAIChatStreamPart, { type: "text-delta" }>;
+type FinishPart = Extract<OpenAIChatStreamPart, { type: "finish" }>;
+type FinishReason = FinishPart["finishReason"] | LanguageModelV2FinishReason;
+type TokenUsage = {
+  readonly inputTokens?: number | undefined;
+  readonly outputTokens?: number | undefined;
+  readonly totalTokens?: number | undefined;
+};
+
 export function writeOpenAIChatSSE(
-  stream: ReadableStream<LanguageModelV2StreamPart>,
+  stream: ReadableStream<OpenAIChatStreamPart>,
 ): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
@@ -67,7 +78,7 @@ export function writeOpenAIChatSSE(
       for await (const part of stream) {
         switch (part.type) {
           case "text-delta":
-            controller.enqueue(frame({ content: part.delta }));
+            controller.enqueue(frame({ content: textDelta(part) }));
             break;
           case "tool-input-start": {
             const tool = {
@@ -100,7 +111,7 @@ export function writeOpenAIChatSSE(
               frame(
                 {},
                 openAIFinishReason(part.finishReason),
-                openAIUsage(part.usage),
+                openAIUsage(finishUsage(part)),
               ),
             );
             break;
@@ -113,6 +124,14 @@ export function writeOpenAIChatSSE(
       controller.close();
     },
   });
+}
+
+function textDelta(part: TextDeltaPart): string {
+  return "delta" in part ? part.delta : part.text;
+}
+
+function finishUsage(part: FinishPart): TokenUsage {
+  return "usage" in part ? part.usage : part.totalUsage;
 }
 
 function frame(
@@ -148,7 +167,7 @@ function toolDelta(tool: ToolState): OpenAIChatToolCallDelta {
 }
 
 function openAIFinishReason(
-  finishReason: LanguageModelV2FinishReason,
+  finishReason: FinishReason,
 ): OpenAIChatFinishReason {
   switch (finishReason) {
     case "content-filter":
@@ -164,7 +183,7 @@ function openAIFinishReason(
   }
 }
 
-function openAIUsage(usage: LanguageModelV2Usage): OpenAIChatUsage | undefined {
+function openAIUsage(usage: TokenUsage): OpenAIChatUsage | undefined {
   const openAIUsage = {
     ...(usage.inputTokens === undefined
       ? {}

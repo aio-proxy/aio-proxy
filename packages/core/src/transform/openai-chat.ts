@@ -4,6 +4,7 @@ import type { OpenAIChatRequest } from "../ingress/openai-chat";
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
 type TextPart = Extract<AssistantPart, { type: "text" }>;
+const textKey = "text";
 
 export type OpenAIChatTransformTool = {
   readonly type: "function";
@@ -211,7 +212,7 @@ function textContent(
   return content
     .filter((part) => part.type === "text")
     .map((part) =>
-      "text" in part && typeof part["text"] === "string" ? part["text"] : "",
+      textKey in part && typeof part[textKey] === "string" ? part[textKey] : "",
     )
     .join("");
 }
@@ -236,8 +237,8 @@ function textParts(
   }
 
   return content.flatMap((part) =>
-    part.type === "text" && "text" in part && typeof part["text"] === "string"
-      ? [{ type: "text", text: part["text"] }]
+    part.type === "text" && textKey in part && typeof part[textKey] === "string"
+      ? [{ type: "text", text: part[textKey] }]
       : [],
   );
 }
