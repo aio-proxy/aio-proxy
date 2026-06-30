@@ -102,6 +102,9 @@
     },
     "packages/types": {
       "name": "@aio-proxy/types",
+      "dependencies": {
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "typescript": "catalog:",
       },
