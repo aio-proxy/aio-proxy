@@ -1,0 +1,26 @@
+{
+  "model": "gemini-2.5-flash",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Weather in Tokyo?"
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "functionCall": {
+            "name": "get_weather",
+            "args": {
+              "city": "Tokyo"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

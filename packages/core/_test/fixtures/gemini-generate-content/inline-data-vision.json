@@ -1,0 +1,19 @@
+{
+  "model": "gemini-2.5-flash",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Describe this image."
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "iVBORw0KGgo="
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,10 @@ import type { ApiProviderInstance } from "./provider/api";
 export { writeAnthropicMessagesSSE } from "./egress/anthropic-messages";
 export { type IngressError, toIngressError } from "./egress/error";
 export {
+  writeGeminiGenerateContentResponse,
+  writeGeminiGenerateContentSSE,
+} from "./egress/gemini-generate-content";
+export {
   writeOpenAIChatCompletion,
   writeOpenAIChatSSE,
 } from "./egress/openai-chat";
@@ -21,6 +25,15 @@ export {
   type AnthropicToolUseBlock,
   parseAnthropicMessages,
 } from "./ingress/anthropic-messages";
+export {
+  type GeminiGenerateContentParseResult,
+  type GeminiGenerateContentPart,
+  type GeminiGenerateContentRequest,
+  GeminiGenerateContentRequestSchema,
+  GeminiInlineDataTooLargeError,
+  parseGeminiGenerateContent,
+  safeParseGeminiGenerateContent,
+} from "./ingress/gemini-generate-content";
 export {
   type OpenAIChatRequest,
   OpenAIChatRequestSchema,
@@ -48,6 +61,15 @@ export {
   anthropicMessagesToModelMessages,
   modelMessagesToAnthropicMessages,
 } from "./transform/anthropic-messages";
+export {
+  type GeminiGenerateContentFromModelMessages,
+  type GeminiGenerateContentModelMessages,
+  type GeminiGenerateContentSettings,
+  type GeminiGenerateContentTool,
+  GeminiGenerateContentTransformError,
+  geminiGenerateContentToModelMessages,
+  modelMessagesToGeminiGenerateContent,
+} from "./transform/gemini-generate-content";
 export {
   modelMessagesToOpenAIChat,
   type OpenAIChatFromModelMessages,

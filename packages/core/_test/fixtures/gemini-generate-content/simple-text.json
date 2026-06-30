@@ -1,0 +1,21 @@
+{
+  "model": "gemini-2.5-flash",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Hello"
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "Hi there."
+        }
+      ]
+    }
+  ]
+}

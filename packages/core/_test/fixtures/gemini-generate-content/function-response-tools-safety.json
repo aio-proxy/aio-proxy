@@ -1,0 +1,44 @@
+{
+  "model": "gemini-2.5-flash",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "get_weather",
+            "response": {
+              "temperature": "18C",
+              "condition": "rain"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "get_weather",
+          "description": "Returns weather for a city.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  ],
+  "safetySettings": [
+    {
+      "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+      "threshold": "BLOCK_ONLY_HIGH"
+    }
+  ]
+}

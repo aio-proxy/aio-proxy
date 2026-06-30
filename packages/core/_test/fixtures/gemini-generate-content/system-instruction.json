@@ -1,0 +1,24 @@
+{
+  "model": "gemini-2.5-flash",
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "Answer tersely."
+      }
+    ]
+  },
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "What is 2+2?"
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "temperature": 0.2,
+    "maxOutputTokens": 64
+  }
+}
