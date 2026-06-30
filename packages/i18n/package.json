@@ -6,14 +6,16 @@
     "./paraglide/*": "./src/paraglide/*"
   },
   "scripts": {
-    "compile": "mkdir -p src/paraglide && touch src/paraglide/.gitkeep",
+    "compile": "bun scripts/compile.ts",
     "build": "tsc -b",
     "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
-    "test:unit": "bun -e \"process.exit(0)\""
+    "test:unit": "bun test _test/*.test.ts"
   },
   "dependencies": {
-    "@inlang/paraglide-js": "catalog:"
+    "@inlang/paraglide-js": "catalog:",
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:"
