@@ -1,4 +1,10 @@
-import type { ModelEntry, Provider, ProviderProtocol } from "@aio-proxy/types";
+import type {
+  Provider as ConfigProvider,
+  ModelEntry,
+  ProviderProtocol,
+} from "@aio-proxy/types";
+import type { AiSdkProviderInstance } from "./provider/ai-sdk";
+import type { ApiProviderInstance } from "./provider/api";
 
 export { writeOpenAIChatSSE } from "./egress/openai-chat";
 export {
@@ -35,12 +41,15 @@ export type ProviderSummary = {
   readonly protocol: ProviderProtocol;
 };
 
-export type ProviderInstance = Provider & {
-  readonly id: string;
-};
+export type ProviderInstance =
+  | (ConfigProvider & { readonly id: string })
+  | ApiProviderInstance
+  | AiSdkProviderInstance;
 
-export type RouterResolution = {
-  readonly provider: ProviderInstance;
+export type RouterResolution<
+  TProvider extends ProviderInstance = ProviderInstance,
+> = {
+  readonly provider: TProvider;
   readonly modelId: string;
 };
 
@@ -72,11 +81,14 @@ export class RouterModelCollisionError extends Error {
   }
 }
 
-export class Router {
-  private readonly aliases = new Map<string, RouterResolution>();
-  private readonly providerAliases = new Map<string, RouterResolution>();
+export class Router<TProvider extends ProviderInstance = ProviderInstance> {
+  private readonly aliases = new Map<string, RouterResolution<TProvider>>();
+  private readonly providerAliases = new Map<
+    string,
+    RouterResolution<TProvider>
+  >();
 
-  constructor(providers: readonly ProviderInstance[]) {
+  constructor(providers: readonly TProvider[]) {
     for (const provider of providers) {
       for (const model of provider.models ?? []) {
         this.addRoute(provider, modelRoute(model));
@@ -84,7 +96,7 @@ export class Router {
     }
   }
 
-  resolve(model: string): RouterResolution {
+  resolve(model: string): RouterResolution<TProvider> {
     const route =
       model.indexOf("/") > 0
         ? this.providerAliases.get(model)
@@ -97,7 +109,7 @@ export class Router {
     return route;
   }
 
-  private addRoute(provider: ProviderInstance, model: ModelRoute): void {
+  private addRoute(provider: TProvider, model: ModelRoute): void {
     const route = { provider, modelId: model.modelId };
     const providerAlias = `${provider.id}/${model.alias}`;
     const existingProviderRoute = this.providerAliases.get(providerAlias);

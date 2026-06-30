@@ -1,6 +1,10 @@
 import { type Config, ConfigSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { createDashboardRoutes } from "./dashboard-routes/config";
+import {
+  createOpenAIChatRoutes,
+  type RuntimeProviderInstance,
+} from "./routes/openai-chat";
 
 export const serverDefaults = {
   host: "127.0.0.1",
@@ -17,11 +21,15 @@ const defaultConfig = ConfigSchema.parse({ providers: [] });
 
 export type CreateServerOptions = {
   readonly config: unknown;
+  readonly providerInstances?: readonly RuntimeProviderInstance[];
   readonly port?: number;
   readonly host?: string;
 };
 
-const createRoutes = (config: Config) => {
+const createRoutes = (
+  config: Config,
+  providerInstances: readonly RuntimeProviderInstance[] = [],
+) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
       status: "ok",
@@ -45,7 +53,10 @@ const createRoutes = (config: Config) => {
   });
 
   const dashboardRoutes = createDashboardRoutes(config);
-  const routes = app.route("/dashboard", dashboardRoutes);
+  const openAIChatRoutes = createOpenAIChatRoutes(providerInstances);
+  const routes = app
+    .route("/", openAIChatRoutes)
+    .route("/dashboard", dashboardRoutes);
   return routes;
 };
 
@@ -61,6 +72,6 @@ export const bunServer = {
 };
 
 export const createServer = (options: CreateServerOptions): AppType =>
-  createRoutes(ConfigSchema.parse(options.config));
+  createRoutes(ConfigSchema.parse(options.config), options.providerInstances);
 
 export default bunServer;
