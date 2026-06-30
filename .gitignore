@@ -1,5 +1,7 @@
 node_modules
 dist
+.turbo/
+packages/*/.turbo/
 .omo/evidence/*
 !.omo/evidence/.gitkeep
 bun-debug.log
