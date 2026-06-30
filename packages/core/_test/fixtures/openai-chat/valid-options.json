@@ -1,0 +1,16 @@
+{
+  "model": "o3-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Think carefully."
+    }
+  ],
+  "stream": true,
+  "temperature": 1,
+  "max_completion_tokens": 256,
+  "response_format": {
+    "type": "json_object"
+  },
+  "reasoning_effort": "medium"
+}

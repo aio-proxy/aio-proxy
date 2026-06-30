@@ -1,0 +1,17 @@
+{
+  "model": "gpt-5-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": ""
+      }
+    }
+  ]
+}

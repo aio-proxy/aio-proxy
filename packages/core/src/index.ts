@@ -1,5 +1,11 @@
 import type { ModelEntry, Provider, ProviderProtocol } from "@aio-proxy/types";
 
+export {
+  type OpenAIChatRequest,
+  OpenAIChatRequestSchema,
+  parseOpenAIChat,
+} from "./ingress/openai-chat";
+
 export type ProviderSummary = {
   readonly id: string;
   readonly protocol: ProviderProtocol;

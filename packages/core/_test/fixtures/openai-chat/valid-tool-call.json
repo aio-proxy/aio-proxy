@@ -1,0 +1,41 @@
+{
+  "model": "gpt-5-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is the weather?"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_weather",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"city\":\"Shanghai\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Fetch weather by city",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}

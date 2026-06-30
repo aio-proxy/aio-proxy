@@ -1,0 +1,15 @@
+{
+  "model": "gpt-5",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Be brief."
+    },
+    {
+      "role": "user",
+      "content": "Summarize this."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 128
+}

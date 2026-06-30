@@ -1,0 +1,30 @@
+{
+  "model": "gpt-5-mini",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "{\"ok\":true}"
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "lookup"
+    }
+  }
+}
