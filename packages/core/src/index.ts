@@ -1,5 +1,6 @@
 import type { ModelEntry, Provider, ProviderProtocol } from "@aio-proxy/types";
 
+export { writeOpenAIChatSSE } from "./egress/openai-chat";
 export {
   type OpenAIChatRequest,
   OpenAIChatRequestSchema,
