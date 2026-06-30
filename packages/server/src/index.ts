@@ -1,4 +1,2 @@
-import { Hono } from "hono";
-
-export const app = new Hono();
-export type AppType = typeof app;
+export type { AppType, CreateServerOptions } from "./server";
+export { app, createServer, serverDefaults } from "./server";
