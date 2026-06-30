@@ -6,6 +6,12 @@ export {
   parseOpenAIChat,
 } from "./ingress/openai-chat";
 export {
+  AiSdkProviderError,
+  type AiSdkProviderFactoryOptions,
+  type AiSdkProviderInstance,
+  createAiSdkProvider,
+} from "./provider/ai-sdk";
+export {
   type ApiProviderConfig,
   type ApiProviderFactoryOptions,
   type ApiProviderInstance,
