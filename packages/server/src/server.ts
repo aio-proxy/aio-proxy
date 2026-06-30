@@ -2,6 +2,7 @@ import { type Config, ConfigSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { createDashboardRoutes } from "./dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
+import { createGeminiGenerateContentRoutes } from "./routes/gemini-generate-content";
 import {
   createOpenAIChatRoutes,
   type RuntimeProviderInstance,
@@ -56,9 +57,12 @@ const createRoutes = (
   const dashboardRoutes = createDashboardRoutes(config);
   const anthropicMessagesRoutes =
     createAnthropicMessagesRoutes(providerInstances);
+  const geminiGenerateContentRoutes =
+    createGeminiGenerateContentRoutes(providerInstances);
   const openAIChatRoutes = createOpenAIChatRoutes(providerInstances);
   const routes = app
     .route("/", anthropicMessagesRoutes)
+    .route("/", geminiGenerateContentRoutes)
     .route("/", openAIChatRoutes)
     .route("/dashboard", dashboardRoutes);
   return routes;
