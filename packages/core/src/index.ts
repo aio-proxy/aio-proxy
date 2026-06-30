@@ -6,6 +6,7 @@ import type {
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
+export { writeAnthropicMessagesSSE } from "./egress/anthropic-messages";
 export { type IngressError, toIngressError } from "./egress/error";
 export {
   writeOpenAIChatCompletion,

@@ -1,6 +1,7 @@
 import { type Config, ConfigSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { createDashboardRoutes } from "./dashboard-routes/config";
+import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
 import {
   createOpenAIChatRoutes,
   type RuntimeProviderInstance,
@@ -53,8 +54,11 @@ const createRoutes = (
   });
 
   const dashboardRoutes = createDashboardRoutes(config);
+  const anthropicMessagesRoutes =
+    createAnthropicMessagesRoutes(providerInstances);
   const openAIChatRoutes = createOpenAIChatRoutes(providerInstances);
   const routes = app
+    .route("/", anthropicMessagesRoutes)
     .route("/", openAIChatRoutes)
     .route("/dashboard", dashboardRoutes);
   return routes;
