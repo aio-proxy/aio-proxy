@@ -6,6 +6,14 @@ export {
   parseOpenAIChat,
 } from "./ingress/openai-chat";
 export {
+  type ApiProviderConfig,
+  type ApiProviderFactoryOptions,
+  type ApiProviderInstance,
+  type ApiProviderTrace,
+  type ApiProviderTraceSink,
+  createApiProvider,
+} from "./provider/api";
+export {
   modelMessagesToOpenAIChat,
   type OpenAIChatFromModelMessages,
   type OpenAIChatModelMessages,
