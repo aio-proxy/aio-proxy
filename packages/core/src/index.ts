@@ -6,7 +6,11 @@ import type {
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
-export { writeOpenAIChatSSE } from "./egress/openai-chat";
+export { type IngressError, toIngressError } from "./egress/error";
+export {
+  writeOpenAIChatCompletion,
+  writeOpenAIChatSSE,
+} from "./egress/openai-chat";
 export {
   type OpenAIChatRequest,
   OpenAIChatRequestSchema,

@@ -28,6 +28,22 @@ type OpenAIChatChoice = {
   readonly finish_reason?: OpenAIChatFinishReason;
 };
 
+type OpenAIChatCompletionChoice = {
+  readonly finish_reason: OpenAIChatFinishReason;
+  readonly index: 0;
+  readonly message: {
+    readonly role: "assistant";
+    readonly content: string;
+  };
+};
+
+type OpenAIChatCompletion = {
+  readonly id: typeof chunkId;
+  readonly object: "chat.completion";
+  readonly choices: readonly [OpenAIChatCompletionChoice];
+  readonly usage?: OpenAIChatUsage;
+};
+
 type OpenAIChatChunk = {
   readonly id: typeof chunkId;
   readonly object: "chat.completion.chunk";
@@ -124,6 +140,41 @@ export function writeOpenAIChatSSE(
       controller.close();
     },
   });
+}
+
+export async function writeOpenAIChatCompletion(
+  stream: ReadableStream<OpenAIChatStreamPart>,
+): Promise<OpenAIChatCompletion> {
+  const text: string[] = [];
+  let finishReason: OpenAIChatFinishReason = "unknown";
+  let usage: OpenAIChatUsage | undefined;
+
+  for await (const part of stream) {
+    switch (part.type) {
+      case "text-delta":
+        text.push(textDelta(part));
+        break;
+      case "finish":
+        finishReason = openAIFinishReason(part.finishReason);
+        usage = openAIUsage(finishUsage(part));
+        break;
+      default:
+        break;
+    }
+  }
+
+  return {
+    id: chunkId,
+    object: "chat.completion",
+    choices: [
+      {
+        finish_reason: finishReason,
+        index: 0,
+        message: { role: "assistant", content: text.join("") },
+      },
+    ],
+    ...(usage === undefined ? {} : { usage }),
+  };
 }
 
 function textDelta(part: TextDeltaPart): string {

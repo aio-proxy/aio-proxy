@@ -5,6 +5,8 @@ import {
   parseOpenAIChat,
   Router,
   RouterModelNotFoundError,
+  toIngressError,
+  writeOpenAIChatCompletion,
   writeOpenAIChatSSE,
 } from "@aio-proxy/core";
 import { Hono } from "hono";
@@ -49,14 +51,6 @@ export function createOpenAIChatRoutes(
       return provider.passthrough(context.req.raw);
     }
 
-    if (request.stream === false) {
-      return openAIError(
-        501,
-        "not_implemented",
-        "Non-streaming chat completions are not implemented",
-      );
-    }
-
     if (provider.kind !== "ai-sdk") {
       return openAIError(
         501,
@@ -66,6 +60,25 @@ export function createOpenAIChatRoutes(
     }
 
     const transformed = openaiChatToModelMessages(request);
+
+    if (request.stream === false) {
+      try {
+        const stream = provider.invoke(
+          transformed.messages,
+          transformed.settings,
+          undefined,
+          context.req.raw.signal,
+        );
+        return Response.json(await writeOpenAIChatCompletion(stream));
+      } catch (error) {
+        // no-excuse-ok: catch - HTTP boundary converts provider failures.
+        const ingressError = toIngressError(error, "openai-chat");
+        return Response.json(ingressError.body, {
+          status: ingressError.status,
+        });
+      }
+    }
+
     const stream = provider.invoke(
       transformed.messages,
       transformed.settings,
