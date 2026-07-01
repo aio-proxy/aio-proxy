@@ -1,5 +1,6 @@
 import {
   type GeminiGenerateContentSettings,
+  type GeminiGenerateContentTool,
   GeminiInlineDataTooLargeError,
   geminiGenerateContentToModelMessages,
   parseGeminiGenerateContent,
@@ -8,7 +9,8 @@ import {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
 } from "@aio-proxy/core";
-import type { CallSettings } from "ai";
+import type { CallSettings, JSONValue, ToolSet } from "ai";
+import { jsonSchema } from "ai";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import type { RuntimeProviderInstance } from "./openai-chat";
@@ -16,6 +18,14 @@ import type { RuntimeProviderInstance } from "./openai-chat";
 const routePrefix = "/v1beta/models/";
 const generateSuffix = ":generateContent";
 const streamSuffix = ":streamGenerateContent";
+const jsonValueSchema = z.json();
+type GeminiAiSdkSettings = CallSettings & {
+  readonly providerOptions?: {
+    readonly google: {
+      readonly safetySettings: JSONValue;
+    };
+  };
+};
 const aiSdkGenerationConfigSchema = z
   .object({
     maxOutputTokens: z.number().int().positive().optional(),
@@ -69,7 +79,7 @@ export function createGeminiGenerateContentRoutes(
     const stream = provider.invoke(
       transformed.messages,
       aiSdkSettings(transformed.settings),
-      undefined,
+      aiSdkTools(transformed.tools),
       context.req.raw.signal,
     );
 
@@ -143,16 +153,19 @@ function routeTarget(
   return undefined;
 }
 
-function aiSdkSettings(settings: GeminiGenerateContentSettings): CallSettings {
+function aiSdkSettings(
+  settings: GeminiGenerateContentSettings,
+): GeminiAiSdkSettings {
   const parsed = aiSdkGenerationConfigSchema.safeParse(
     settings.generationConfig ?? {},
   );
   if (!parsed.success) {
-    return {};
+    return aiSdkProviderOptions(settings);
   }
 
   const config = parsed.data;
   return {
+    ...aiSdkProviderOptions(settings),
     ...(config.maxOutputTokens === undefined
       ? {}
       : { maxOutputTokens: config.maxOutputTokens }),
@@ -166,6 +179,64 @@ function aiSdkSettings(settings: GeminiGenerateContentSettings): CallSettings {
       : { stopSequences: config.stopSequences }),
     ...(config.seed === undefined ? {} : { seed: config.seed }),
   };
+}
+
+function aiSdkProviderOptions(
+  settings: GeminiGenerateContentSettings,
+): GeminiAiSdkSettings {
+  const safetySettings = jsonValue(
+    settings.providerOptions?.google.safetySettings,
+  );
+
+  if (safetySettings === undefined) {
+    return {};
+  }
+
+  return {
+    providerOptions: {
+      google: { safetySettings },
+    },
+  };
+}
+
+function aiSdkTools(
+  tools: readonly GeminiGenerateContentTool[] | undefined,
+): ToolSet | undefined {
+  if (tools === undefined) {
+    return undefined;
+  }
+
+  const result: ToolSet = {};
+  for (const tool of tools) {
+    result[tool.name] = {
+      type: "function",
+      ...(tool.description === undefined
+        ? {}
+        : { description: tool.description }),
+      inputSchema: jsonSchema(jsonSchemaObject(tool.inputSchema)),
+      outputSchema: jsonSchema({}),
+    };
+  }
+
+  return result;
+}
+
+function jsonSchemaObject(value: unknown): Parameters<typeof jsonSchema>[0] {
+  const json = jsonValue(value);
+  if (json === undefined || json === null || Array.isArray(json)) {
+    return {};
+  }
+
+  if (typeof json === "object") {
+    return json;
+  }
+
+  return {};
+}
+
+function jsonValue(value: unknown): JSONValue | undefined {
+  const parsed = jsonValueSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function geminiError(

@@ -4,12 +4,26 @@ import type {
   ApiProviderInstance,
 } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
-import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
+import type {
+  CallSettings,
+  JSONValue,
+  ModelMessage,
+  TextStreamPart,
+  ToolSet,
+} from "ai";
+import { asSchema } from "ai";
 
 const generateRequest = {
   contents: [{ role: "user", parts: [{ text: "Hello proxy" }] }],
 };
 const jsonHeaders = { "content-type": "application/json" } as const;
+type ProviderSeenSettings = CallSettings & {
+  readonly providerOptions?: {
+    readonly google: {
+      readonly safetySettings: JSONValue;
+    };
+  };
+};
 
 function textStream(
   parts: readonly TextStreamPart<ToolSet>[],
@@ -104,7 +118,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
   test("Given ai-sdk provider When generateContent is posted Then Gemini JSON is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
-    let settingsSeen: CallSettings | undefined;
+    let settingsSeen: ProviderSeenSettings | undefined;
     const provider = aiSdkProvider((messages, settings) => {
       messagesSeen = messages;
       settingsSeen = settings;
@@ -146,6 +160,68 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         totalTokenCount: 5,
       },
     });
+  });
+
+  test("Given tools and safetySettings When generateContent is posted Then provider receives them", async () => {
+    // Given
+    const parameters = {
+      type: "object",
+      properties: { city: { type: "string" } },
+      required: ["city"],
+    };
+    const safetySettings = [
+      {
+        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+        threshold: "BLOCK_ONLY_HIGH",
+      },
+    ];
+    let settingsSeen: ProviderSeenSettings | undefined;
+    let toolsSeen: ToolSet | undefined;
+    const provider = aiSdkProvider((_messages, settings, tools) => {
+      settingsSeen = settings;
+      toolsSeen = tools;
+      return textStream([
+        { type: "text-start", id: "text-1" },
+        { type: "text-delta", id: "text-1", text: "ok" },
+        { type: "text-end", id: "text-1" },
+      ]);
+    });
+    const app = appWith(provider);
+
+    // When
+    const response = await postGenerate(app, {
+      contents: [{ role: "user", parts: [{ text: "Weather?" }] }],
+      generationConfig: { temperature: 0.2 },
+      safetySettings,
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "get_weather",
+              description: "Returns weather for a city.",
+              parameters,
+            },
+          ],
+        },
+      ],
+    });
+
+    // Then
+    const weatherTool = toolsSeen?.get_weather;
+    if (weatherTool === undefined) {
+      throw new Error("Expected provider to receive get_weather tool");
+    }
+
+    expect(response.status).toBe(200);
+    expect(settingsSeen).toEqual({
+      temperature: 0.2,
+      providerOptions: { google: { safetySettings } },
+    });
+    expect(weatherTool.type).toBe("function");
+    expect(weatherTool.description).toBe("Returns weather for a city.");
+    expect(await asSchema(weatherTool.inputSchema).jsonSchema).toEqual(
+      parameters,
+    );
   });
 
   test("Given no matching alias When generateContent is posted Then returns 404 Gemini error envelope", async () => {
