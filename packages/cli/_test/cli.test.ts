@@ -1,120 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
-
-const cli = [process.execPath, "run", "packages/cli/src/main.ts"] as const;
-
-const runCli = (
-  args: readonly string[],
-  env: Record<string, string | undefined> = {},
-) =>
-  Bun.spawnSync([...cli, ...args], {
-    cwd: join(import.meta.dir, "../../.."),
-    env: {
-      ...process.env,
-      AIO_PROXY_LANG: undefined,
-      LANG: "en_US.UTF-8",
-      LANGUAGE: undefined,
-      LC_ALL: undefined,
-      LC_MESSAGES: undefined,
-      ...env,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-
-const runCliAsync = async (
-  args: readonly string[],
-  env: Record<string, string | undefined> = {},
-) => {
-  const subprocess = Bun.spawn([...cli, ...args], {
-    cwd: join(import.meta.dir, "../../.."),
-    env: {
-      ...process.env,
-      AIO_PROXY_LANG: undefined,
-      LANG: "en_US.UTF-8",
-      LANGUAGE: undefined,
-      LC_ALL: undefined,
-      LC_MESSAGES: undefined,
-      ...env,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(subprocess.stdout).text(),
-    new Response(subprocess.stderr).text(),
-    subprocess.exited,
-  ]);
-  return { exitCode, stderr, stdout };
-};
-
-const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
-  `${result.stdout.toString()}${result.stderr.toString()}`;
-
-const jsonHeaders = { "content-type": "application/json" } as const;
-
-const freePort = () => {
-  const server = Bun.listen({
-    hostname: "127.0.0.1",
-    port: 0,
-    socket: { data() {} },
-  });
-  const { port } = server;
-  server.stop(true);
-  return port;
-};
-
-type FakeDashboardProvider = {
-  readonly id: string;
-  readonly kind: string;
-  readonly enabled: boolean;
-  readonly passthrough: boolean;
-  readonly last_status: string;
-  readonly last_latency: number | null;
-  readonly probe?: "OK" | "FAIL";
-};
-
-const withFakeDashboard = async (
-  providers: readonly FakeDashboardProvider[],
-  run: (url: string) => Promise<void>,
-) => {
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname !== "/dashboard/providers") {
-        return new Response("not found", { status: 404 });
-      }
-
-      const filter = url.searchParams.get("filter");
-      const probe = url.searchParams.get("probe") === "true";
-      const rows = providers
-        .filter((provider) => filter === null || provider.id === filter)
-        .map((provider) => ({
-          ...provider,
-          ...(probe ? { probe: provider.probe ?? "OK" } : {}),
-        }));
-      return Response.json({ providers: rows }, { headers: jsonHeaders });
-    },
-  });
-
-  try {
-    await run(`http://127.0.0.1:${server.port}`);
-  } finally {
-    await server.stop(true);
-  }
-};
+import {
+  cliServeArgs,
+  freePort,
+  output,
+  repoCwd,
+  runCli,
+  waitForOk,
+} from "./cli-test-helpers";
 
 describe("cli", () => {
   test("prints package version when requested", () => {
@@ -154,192 +51,27 @@ describe("cli", () => {
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-"));
     const configPath = join(dir, "nested", "config.jsonc");
     const port = freePort();
-    const server = Bun.spawn(
-      [...cli, "serve", "--config", configPath, "--port", String(port)],
-      {
-        cwd: join(import.meta.dir, "../../.."),
-        env: process.env,
-        stderr: "pipe",
-        stdout: "pipe",
-      },
-    );
+    const server = Bun.spawn(cliServeArgs(configPath, port), {
+      cwd: repoCwd,
+      env: process.env,
+      stderr: "pipe",
+      stdout: "pipe",
+    });
 
     try {
       // When
-      let response: Response | undefined;
-      for (let attempt = 0; attempt < 25; attempt += 1) {
-        try {
-          response = await fetch(`http://127.0.0.1:${port}/health`);
-          break;
-        } catch (err) {
-          if (!(err instanceof Error)) {
-            throw err;
-          }
-          await Bun.sleep(40);
-        }
-      }
+      const response = await waitForOk(
+        `http://127.0.0.1:${port}/health`,
+        1_000,
+      );
 
       // Then
-      expect(response?.status).toBe(200);
+      expect(response.status).toBe(200);
       expect(existsSync(configPath)).toBe(true);
       expect(await readFile(configPath, "utf8")).toContain("providers");
     } finally {
       server.kill();
       await server.exited;
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("provider list prints packages installed in the runtime cache", () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
-    const packageDir = join(
-      dir,
-      ".config",
-      "aio-proxy",
-      "cache",
-      "packages",
-      "aio-proxy-cli-provider",
-      "node_modules",
-      "aio-proxy-cli-provider",
-    );
-    mkdirSync(packageDir, { recursive: true });
-    writeFileSync(
-      join(packageDir, "package.json"),
-      JSON.stringify({
-        name: "aio-proxy-cli-provider",
-        version: "1.0.0",
-        main: "index.js",
-      }),
-    );
-    writeFileSync(join(packageDir, "index.js"), "export const ok = true;\n");
-
-    try {
-      // When
-      const result = runCli(["provider", "list", "--installed"], { HOME: dir });
-
-      // Then
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.toString()).toContain(
-        "aio-proxy-cli-provider 1.0.0",
-      );
-      expect(result.stdout.toString()).toContain(packageDir);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("provider list reads dashboard providers and probes filtered provider", async () => {
-    // Given
-    await withFakeDashboard(
-      [
-        {
-          id: "openai",
-          kind: "api",
-          enabled: true,
-          passthrough: true,
-          last_status: "unknown",
-          last_latency: null,
-          probe: "OK",
-        },
-        {
-          id: "slow-ai",
-          kind: "ai-sdk",
-          enabled: true,
-          passthrough: false,
-          last_status: "unknown",
-          last_latency: null,
-          probe: "FAIL",
-        },
-      ],
-      async (url) => {
-        // When
-        const list = await runCliAsync(["provider", "list", "--url", url]);
-        const testProvider = await runCliAsync([
-          "provider",
-          "test",
-          "openai",
-          "--url",
-          url,
-        ]);
-        const failedProvider = await runCliAsync([
-          "provider",
-          "test",
-          "slow-ai",
-          "--url",
-          url,
-        ]);
-
-        // Then
-        expect(list.exitCode).toBe(0);
-        expect(list.stdout).toContain(
-          "id | kind | enabled | passthrough | last_status | last_latency",
-        );
-        expect(list.stdout).toContain(
-          "openai | api | true | true | unknown | -",
-        );
-        expect(testProvider.exitCode).toBe(0);
-        expect(testProvider.stdout).toContain("openai");
-        expect(testProvider.stdout).toContain("OK");
-        expect(testProvider.stdout).not.toContain("slow-ai");
-        expect(failedProvider.exitCode).toBe(0);
-        expect(failedProvider.stdout).toContain("slow-ai");
-        expect(failedProvider.stdout).toContain("FAIL");
-        expect(failedProvider.stdout).not.toContain("openai");
-      },
-    );
-  });
-
-  test("provider install reports a failed explicit install", () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
-
-    try {
-      // When
-      const result = runCli(
-        [
-          "provider",
-          "install",
-          "aio-proxy-missing-package",
-          "--yes",
-          "--registry",
-          "http://127.0.0.1:9",
-        ],
-        { HOME: dir },
-      );
-
-      // Then
-      expect(result.exitCode).toBe(1);
-      expect(output(result)).toContain("aio-proxy-missing-package");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("provider install requires explicit confirmation before installing", () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
-
-    try {
-      // When
-      const result = runCli(
-        [
-          "provider",
-          "install",
-          "aio-proxy-missing-package",
-          "--registry",
-          "http://127.0.0.1:9",
-        ],
-        { HOME: dir },
-      );
-
-      // Then
-      expect(result.exitCode).toBe(1);
-      expect(output(result)).toContain("requires --yes");
-      expect(existsSync(join(dir, ".config", "aio-proxy", "cache"))).toBe(
-        false,
-      );
-    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
