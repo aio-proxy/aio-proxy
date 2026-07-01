@@ -7,7 +7,6 @@ import {
   type JSONValue,
   jsonSchema,
   parseGeminiGenerateContent,
-  Router,
   RouterModelNotFoundError,
   type ToolSet,
   writeGeminiGenerateContentResponse,
@@ -15,7 +14,7 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
-import type { RuntimeProviderInstance } from "./openai-chat";
+import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
 const generateSuffix = ":generateContent";
@@ -39,18 +38,14 @@ const aiSdkGenerationConfigSchema = z
   })
   .strip();
 
-export function createGeminiGenerateContentRoutes(
-  providers: readonly RuntimeProviderInstance[],
-) {
-  const router = new Router(providers);
-
+export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
   return new Hono().post("/v1beta/models/*", async (context) => {
     const target = routeTarget(new URL(context.req.url).pathname);
     if (target === undefined) {
       return context.text("404 Not Found", 404);
     }
 
-    const route = resolveRoute(router, target.model);
+    const route = resolveRoute(source, target.model);
     if (route instanceof Response) {
       return route;
     }
@@ -129,9 +124,9 @@ async function parseRequest(
   }
 }
 
-function resolveRoute(router: Router<RuntimeProviderInstance>, model: string) {
+function resolveRoute(source: ProviderRouteSource, model: string) {
   try {
-    return router.resolve(model);
+    return source.currentProviderSnapshot().router.resolve(model);
   } catch (error) {
     if (error instanceof RouterModelNotFoundError) {
       return geminiError(404, "NOT_FOUND", error.message);

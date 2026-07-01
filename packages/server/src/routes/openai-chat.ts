@@ -1,9 +1,6 @@
 import {
-  type AiSdkProviderInstance,
-  type ApiProviderInstance,
   openaiChatToModelMessages,
   parseOpenAIChat,
-  Router,
   RouterModelNotFoundError,
   toIngressError,
   writeOpenAIChatCompletion,
@@ -11,18 +8,11 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError } from "zod";
-
-export type RuntimeProviderInstance =
-  | ApiProviderInstance
-  | AiSdkProviderInstance;
+import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 
-export function createOpenAIChatRoutes(
-  providers: readonly RuntimeProviderInstance[],
-) {
-  const router = new Router(providers);
-
+export function createOpenAIChatRoutes(source: ProviderRouteSource) {
   return new Hono().post("/v1/chat/completions", async (context) => {
     const contentLength = context.req.header("content-length");
     if (
@@ -37,7 +27,7 @@ export function createOpenAIChatRoutes(
       return request;
     }
 
-    const route = resolveRoute(router, request.model);
+    const route = resolveRoute(source, request.model);
     if (route instanceof Response) {
       return route;
     }
@@ -123,9 +113,9 @@ async function parseRequest(
   }
 }
 
-function resolveRoute(router: Router<RuntimeProviderInstance>, model: string) {
+function resolveRoute(source: ProviderRouteSource, model: string) {
   try {
-    return router.resolve(model);
+    return source.currentProviderSnapshot().router.resolve(model);
   } catch (error) {
     if (error instanceof RouterModelNotFoundError) {
       return openAIError(404, "model_not_found", error.message);

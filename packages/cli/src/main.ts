@@ -3,14 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  listInstalledNpmPackages,
-  NpmInstallError,
-  NpmPackageEntrypointError,
-  NpmPackageJsonError,
-  NpmPackageNameError,
-  npmAdd,
-} from "@aio-proxy/core";
-import {
   ConfigWriteError,
   formatUserError,
   getLocale,
@@ -22,6 +14,12 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import {
+  providerErrors,
+  providerInstall,
+  providerList,
+  providerTest,
+} from "./provider-commands";
 
 setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
@@ -36,11 +34,6 @@ type ServeOptions = {
   readonly port?: string;
   readonly dashboard?: boolean;
   readonly config?: string;
-};
-
-type ProviderInstallOptions = {
-  readonly yes?: boolean;
-  readonly registry?: string;
 };
 
 const parsePort = (value: string | undefined, fallback: number) => {
@@ -113,33 +106,11 @@ const serve = (options: ServeOptions) => {
   const config = readOrBootstrapConfig(configPath);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
-  const app = createServer({ config, host, port });
+  const app = createServer({ config, configPath, host, port });
   Bun.serve({ hostname: host, port, fetch: app.fetch });
 };
 
 const runStub = () => {};
-
-const providerInstall = async (
-  pkg: string,
-  options: ProviderInstallOptions,
-) => {
-  if (options.yes !== true) {
-    console.error(`provider install ${pkg} requires --yes`);
-    process.exitCode = 1;
-    return;
-  }
-  const installed = await npmAdd(pkg, options.registry);
-  console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
-};
-
-const providerList = async () => {
-  const installed = await listInstalledNpmPackages();
-  for (const item of installed) {
-    console.log(
-      `${item.packageName} ${item.version} ${dirname(item.entrypoint)}`,
-    );
-  }
-};
 
 export const buildProgram = () => {
   const program = new Command()
@@ -169,7 +140,17 @@ export const buildProgram = () => {
     .option("--yes", "Confirm runtime package installation.")
     .option("--registry <url>", "Registry URL.")
     .action(providerInstall);
-  provider.command("list").action(providerList);
+  provider
+    .command("list")
+    .option("--url <url>", "Dashboard URL.")
+    .option("--filter <id>", "Only list one provider id.")
+    .option("--probe", "Probe listed providers.")
+    .option("--installed", "List packages installed in the runtime cache.")
+    .action(providerList);
+  provider
+    .command("test <id>")
+    .option("--url <url>", "Dashboard URL.")
+    .action(providerTest);
   program
     .command("model")
     .description(m.cli_model_description())
@@ -188,10 +169,8 @@ export const main = async () => {
     await buildProgram().parseAsync(process.argv);
   } catch (err) {
     if (
-      err instanceof NpmInstallError ||
-      err instanceof NpmPackageNameError ||
-      err instanceof NpmPackageJsonError ||
-      err instanceof NpmPackageEntrypointError
+      err instanceof Error &&
+      providerErrors.some((errorType) => err instanceof errorType)
     ) {
       console.error(err.message);
       process.exitCode = 1;

@@ -1,13 +1,13 @@
-import { type Config, ConfigSchema } from "@aio-proxy/types";
+import { ConfigSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
+import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
 import { createGeminiGenerateContentRoutes } from "./routes/gemini-generate-content";
-import {
-  createOpenAIChatRoutes,
-  type RuntimeProviderInstance,
-} from "./routes/openai-chat";
+import { createOpenAIChatRoutes } from "./routes/openai-chat";
 import { createOpenAIResponsesRoutes } from "./routes/openai-responses";
+import type { RuntimeProviderInstance } from "./runtime";
+import { createServerState, type ServerState } from "./server-state";
 
 export const serverDefaults = {
   host: "127.0.0.1",
@@ -24,15 +24,15 @@ const defaultConfig = ConfigSchema.parse({ providers: [] });
 
 export type CreateServerOptions = {
   readonly config: unknown;
+  readonly configPath?: string;
+  readonly eventLimits?: DashboardEventLimits;
   readonly providerInstances?: readonly RuntimeProviderInstance[];
   readonly port?: number;
   readonly host?: string;
+  readonly watchConfig?: boolean;
 };
 
-const createRoutes = (
-  config: Config,
-  providerInstances: readonly RuntimeProviderInstance[] = [],
-) => {
+const createRoutes = (state: ServerState) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
       status: "ok",
@@ -55,13 +55,11 @@ const createRoutes = (
     await next();
   });
 
-  const dashboardRoutes = createDashboardRoutes(config);
-  const anthropicMessagesRoutes =
-    createAnthropicMessagesRoutes(providerInstances);
-  const geminiGenerateContentRoutes =
-    createGeminiGenerateContentRoutes(providerInstances);
-  const openAIChatRoutes = createOpenAIChatRoutes(providerInstances);
-  const openAIResponsesRoutes = createOpenAIResponsesRoutes(providerInstances);
+  const dashboardRoutes = createDashboardRoutes(state);
+  const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
+  const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
+  const openAIChatRoutes = createOpenAIChatRoutes(state);
+  const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const routes = app
     .route("/", anthropicMessagesRoutes)
     .route("/", geminiGenerateContentRoutes)
@@ -71,7 +69,7 @@ const createRoutes = (
   return routes;
 };
 
-const routes = createRoutes(defaultConfig);
+const routes = createRoutes(createServerState({ config: defaultConfig }));
 
 export const app = routes;
 export type AppType = typeof routes;
@@ -83,6 +81,22 @@ export const bunServer = {
 };
 
 export const createServer = (options: CreateServerOptions): AppType =>
-  createRoutes(ConfigSchema.parse(options.config), options.providerInstances);
+  createRoutes(
+    createServerState({
+      config: ConfigSchema.parse(options.config),
+      ...(options.configPath === undefined
+        ? {}
+        : { configPath: options.configPath }),
+      ...(options.eventLimits === undefined
+        ? {}
+        : { eventLimits: options.eventLimits }),
+      ...(options.providerInstances === undefined
+        ? {}
+        : { providerInstances: options.providerInstances }),
+      ...(options.watchConfig === undefined
+        ? {}
+        : { watchConfig: options.watchConfig }),
+    }),
+  );
 
 export default bunServer;

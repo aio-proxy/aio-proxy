@@ -107,6 +107,48 @@ export const TraceEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
+
+export const DashboardProviderSummarySchema = z.object({
+  id: IdSchema,
+  kind: z.enum(["api", "ai-sdk", "subscription"]),
+  enabled: z.boolean(),
+  passthrough: z.boolean(),
+  last_status: z.string(),
+  last_latency: z.number().int().min(0).nullable(),
+  probe: DashboardProviderProbeSchema.optional(),
+});
+
+export const DashboardProvidersResponseSchema = z.object({
+  providers: z.array(DashboardProviderSummarySchema),
+});
+
+export const DashboardEventSchema = z.discriminatedUnion("event", [
+  z.object({
+    event: z.literal("config.changed"),
+    data: z.object({
+      providerIds: z.object({
+        added: z.array(IdSchema),
+        removed: z.array(IdSchema),
+      }),
+    }),
+  }),
+  z.object({
+    event: z.literal("events.dropped"),
+    data: z.object({
+      queuedBytes: z.number().int().min(0),
+      queuedEvents: z.number().int().min(0),
+    }),
+  }),
+  z.object({
+    event: z.literal("trace.delta"),
+    data: z.object({
+      trace_id: IdSchema,
+      textDelta: z.string(),
+    }),
+  }),
+]);
+
 const AioContentPartSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("text"),
@@ -167,6 +209,16 @@ export type Provider = z.infer<typeof ProviderSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
 export type UsageRow = z.infer<typeof UsageRowSchema>;
 export type TraceEvent = z.infer<typeof TraceEventSchema>;
+export type DashboardProviderProbe = z.infer<
+  typeof DashboardProviderProbeSchema
+>;
+export type DashboardProviderSummary = z.infer<
+  typeof DashboardProviderSummarySchema
+>;
+export type DashboardProvidersResponse = z.infer<
+  typeof DashboardProvidersResponseSchema
+>;
+export type DashboardEvent = z.infer<typeof DashboardEventSchema>;
 export type AioModelMessage = z.infer<typeof AioModelMessageSchema>;
 export type AioStreamPart = z.infer<typeof AioStreamPartSchema>;
 export type ProviderProtocol = z.infer<typeof ProviderProtocolSchema>;

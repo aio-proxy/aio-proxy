@@ -5,7 +5,6 @@ import {
   OpenAIResponsesUnsupportedFeatureError,
   openAIResponsesToModelMessages,
   parseOpenAIResponses,
-  Router,
   RouterModelNotFoundError,
   type ToolSet,
   toIngressError,
@@ -14,16 +13,12 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
-import type { RuntimeProviderInstance } from "./openai-chat";
+import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 const jsonValueSchema = z.json();
 
-export function createOpenAIResponsesRoutes(
-  providers: readonly RuntimeProviderInstance[],
-) {
-  const router = new Router(providers);
-
+export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
   return new Hono()
     .post("/v1/responses", async (context) => {
       const contentLength = context.req.header("content-length");
@@ -39,7 +34,7 @@ export function createOpenAIResponsesRoutes(
         return request;
       }
 
-      const route = resolveRoute(router, request.model);
+      const route = resolveRoute(source, request.model);
       if (route instanceof Response) {
         return route;
       }
@@ -122,9 +117,9 @@ async function parseRequest(
   }
 }
 
-function resolveRoute(router: Router<RuntimeProviderInstance>, model: string) {
+function resolveRoute(source: ProviderRouteSource, model: string) {
   try {
-    return router.resolve(model);
+    return source.currentProviderSnapshot().router.resolve(model);
   } catch (error) {
     if (error instanceof RouterModelNotFoundError) {
       return openAIError(404, "model_not_found", error.message);

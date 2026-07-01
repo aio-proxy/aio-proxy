@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 
-const cli = ["bun", "run", "packages/cli/src/main.ts"] as const;
+const cli = [process.execPath, "run", "packages/cli/src/main.ts"] as const;
 
 const runCli = (
   args: readonly string[],
@@ -32,8 +32,36 @@ const runCli = (
     stdout: "pipe",
   });
 
+const runCliAsync = async (
+  args: readonly string[],
+  env: Record<string, string | undefined> = {},
+) => {
+  const subprocess = Bun.spawn([...cli, ...args], {
+    cwd: join(import.meta.dir, "../../.."),
+    env: {
+      ...process.env,
+      AIO_PROXY_LANG: undefined,
+      LANG: "en_US.UTF-8",
+      LANGUAGE: undefined,
+      LC_ALL: undefined,
+      LC_MESSAGES: undefined,
+      ...env,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(subprocess.stdout).text(),
+    new Response(subprocess.stderr).text(),
+    subprocess.exited,
+  ]);
+  return { exitCode, stderr, stdout };
+};
+
 const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
   `${result.stdout.toString()}${result.stderr.toString()}`;
+
+const jsonHeaders = { "content-type": "application/json" } as const;
 
 const freePort = () => {
   const server = Bun.listen({
@@ -44,6 +72,48 @@ const freePort = () => {
   const { port } = server;
   server.stop(true);
   return port;
+};
+
+type FakeDashboardProvider = {
+  readonly id: string;
+  readonly kind: string;
+  readonly enabled: boolean;
+  readonly passthrough: boolean;
+  readonly last_status: string;
+  readonly last_latency: number | null;
+  readonly probe?: "OK" | "FAIL";
+};
+
+const withFakeDashboard = async (
+  providers: readonly FakeDashboardProvider[],
+  run: (url: string) => Promise<void>,
+) => {
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname !== "/dashboard/providers") {
+        return new Response("not found", { status: 404 });
+      }
+
+      const filter = url.searchParams.get("filter");
+      const probe = url.searchParams.get("probe") === "true";
+      const rows = providers
+        .filter((provider) => filter === null || provider.id === filter)
+        .map((provider) => ({
+          ...provider,
+          ...(probe ? { probe: provider.probe ?? "OK" } : {}),
+        }));
+      return Response.json({ providers: rows }, { headers: jsonHeaders });
+    },
+  });
+
+  try {
+    await run(`http://127.0.0.1:${server.port}`);
+  } finally {
+    await server.stop(true);
+  }
 };
 
 describe("cli", () => {
@@ -146,7 +216,7 @@ describe("cli", () => {
 
     try {
       // When
-      const result = runCli(["provider", "list"], { HOME: dir });
+      const result = runCli(["provider", "list", "--installed"], { HOME: dir });
 
       // Then
       expect(result.exitCode).toBe(0);
@@ -157,6 +227,56 @@ describe("cli", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("provider list reads dashboard providers and probes filtered provider", async () => {
+    // Given
+    await withFakeDashboard(
+      [
+        {
+          id: "openai",
+          kind: "api",
+          enabled: true,
+          passthrough: true,
+          last_status: "unknown",
+          last_latency: null,
+          probe: "OK",
+        },
+        {
+          id: "slow-ai",
+          kind: "ai-sdk",
+          enabled: true,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          probe: "FAIL",
+        },
+      ],
+      async (url) => {
+        // When
+        const list = await runCliAsync(["provider", "list", "--url", url]);
+        const testProvider = await runCliAsync([
+          "provider",
+          "test",
+          "openai",
+          "--url",
+          url,
+        ]);
+
+        // Then
+        expect(list.exitCode).toBe(0);
+        expect(list.stdout).toContain(
+          "id | kind | enabled | passthrough | last_status | last_latency",
+        );
+        expect(list.stdout).toContain(
+          "openai | api | true | true | unknown | -",
+        );
+        expect(testProvider.exitCode).toBe(0);
+        expect(testProvider.stdout).toContain("openai");
+        expect(testProvider.stdout).toContain("OK");
+        expect(testProvider.stdout).not.toContain("slow-ai");
+      },
+    );
   });
 
   test("provider install reports a failed explicit install", () => {

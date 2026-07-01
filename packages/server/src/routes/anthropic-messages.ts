@@ -3,7 +3,6 @@ import {
   anthropicMessagesToModelMessages,
   type ModelMessage,
   parseAnthropicMessages,
-  Router,
   RouterModelNotFoundError,
   type TextStreamPart,
   type ToolSet,
@@ -11,7 +10,7 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError } from "zod";
-import type { RuntimeProviderInstance } from "./openai-chat";
+import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
 declare module "@aio-proxy/core" {
   export function writeAnthropicMessagesSSE(
@@ -21,11 +20,7 @@ declare module "@aio-proxy/core" {
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 
-export function createAnthropicMessagesRoutes(
-  providers: readonly RuntimeProviderInstance[],
-) {
-  const router = new Router(providers);
-
+export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
   return new Hono()
     .post("/v1/messages", async (context) => {
       const contentLength = context.req.header("content-length");
@@ -45,7 +40,7 @@ export function createAnthropicMessagesRoutes(
         return request;
       }
 
-      const route = resolveRoute(router, request.model);
+      const route = resolveRoute(source, request.model);
       if (route instanceof Response) {
         return route;
       }
@@ -114,9 +109,9 @@ async function parseRequest(
   }
 }
 
-function resolveRoute(router: Router<RuntimeProviderInstance>, model: string) {
+function resolveRoute(source: ProviderRouteSource, model: string) {
   try {
-    return router.resolve(model);
+    return source.currentProviderSnapshot().router.resolve(model);
   } catch (error) {
     if (error instanceof RouterModelNotFoundError) {
       return anthropicError(404, "not_found_error", error.message);

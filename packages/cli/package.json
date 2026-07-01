@@ -18,6 +18,7 @@
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/server": "workspace:*",
+    "@aio-proxy/types": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
     "commander": "15"
   },
