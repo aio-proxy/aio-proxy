@@ -1,4 +1,5 @@
-import { readFileSync, watch } from "node:fs";
+import { watch } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { Router } from "@aio-proxy/core";
 import {
   type Config,
@@ -105,7 +106,10 @@ export function createServerState(options: ServerStateOptions): ServerState {
       : undefined;
 
   async function reload(): Promise<ConfigReloadResult> {
-    const result = buildReloadSnapshot(options.configPath, snapshot.config);
+    const result = await buildReloadSnapshot(
+      options.configPath,
+      snapshot.config,
+    );
     if (!result.ok) {
       logger({
         error: result.error,
@@ -165,16 +169,17 @@ export function createServerState(options: ServerStateOptions): ServerState {
   };
 }
 
-function buildReloadSnapshot(
+async function buildReloadSnapshot(
   configPath: string | undefined,
   fallback: Config,
-): { readonly ok: true; readonly snapshot: Snapshot } | ReloadFailure {
+): Promise<{ readonly ok: true; readonly snapshot: Snapshot } | ReloadFailure> {
   try {
     const raw =
       configPath === undefined
         ? fallback
-        : JSON.parse(readFileSync(configPath, "utf8"));
+        : JSON.parse(await readFile(configPath, "utf8"));
     const config = ConfigSchema.parse(raw);
+    // Provider and router construction is CPU-only and completes before the atomic swap.
     return { ok: true, snapshot: buildSnapshotFromConfig(config) };
   } catch (error) {
     return reloadError(error);

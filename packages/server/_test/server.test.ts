@@ -270,6 +270,47 @@ describe("server routes", () => {
     }
   });
 
+  test("Given upstream HTTP 500 When provider is probed Then dashboard reports failure", async () => {
+    // Given
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        return Response.json({ error: "upstream failed" }, { status: 500 });
+      },
+    });
+    const app = createServer({
+      config: {
+        providers: [
+          {
+            kind: "api",
+            id: "bad",
+            vendor: "openai-native",
+            protocol: "openai-chat",
+            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            models: ["gpt-test"],
+          },
+        ],
+      },
+    });
+
+    try {
+      // When
+      const probe = await app.request(
+        "/dashboard/providers?probe=true&filter=bad",
+      );
+      const body = await probe.json();
+
+      // Then
+      expect(probe.status).toBe(200);
+      expect(body.providers[0].probe).toBe("FAIL");
+      expect(body.providers[0].last_status).toBe("FAIL");
+      expect(typeof body.providers[0].last_latency).toBe("number");
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test("Given many trace deltas for one trace When events flush Then only latest delta is emitted", async () => {
     // Given
     const hub = createDashboardEventHub();

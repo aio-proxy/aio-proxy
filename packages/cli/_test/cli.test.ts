@@ -262,6 +262,13 @@ describe("cli", () => {
           "--url",
           url,
         ]);
+        const failedProvider = await runCliAsync([
+          "provider",
+          "test",
+          "slow-ai",
+          "--url",
+          url,
+        ]);
 
         // Then
         expect(list.exitCode).toBe(0);
@@ -275,6 +282,10 @@ describe("cli", () => {
         expect(testProvider.stdout).toContain("openai");
         expect(testProvider.stdout).toContain("OK");
         expect(testProvider.stdout).not.toContain("slow-ai");
+        expect(failedProvider.exitCode).toBe(0);
+        expect(failedProvider.stdout).toContain("slow-ai");
+        expect(failedProvider.stdout).toContain("FAIL");
+        expect(failedProvider.stdout).not.toContain("openai");
       },
     );
   });

@@ -115,11 +115,19 @@ function providerId(provider: Provider): string {
 async function probeApi(baseUrl: string): Promise<DashboardProviderProbe> {
   const started = performance.now();
   try {
-    await fetch(baseUrl, {
-      method: "HEAD",
+    const response = await fetch(baseUrl, {
+      body: JSON.stringify({
+        messages: [{ role: "user", content: "ping" }],
+        model: "aio-proxy-probe",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
       signal: AbortSignal.timeout(1_000),
     });
-    return performance.now() - started >= 0 ? "OK" : "FAIL";
+    if (response.body !== null) {
+      await response.body.cancel();
+    }
+    return response.ok && performance.now() - started >= 0 ? "OK" : "FAIL";
   } catch (error) {
     if (error instanceof Error) {
       return "FAIL";
