@@ -40,6 +40,7 @@ export type AiSdkProviderInstance = {
   readonly id: string;
   readonly kind: "ai-sdk";
   readonly models?: readonly ModelEntry[];
+  readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (
     request: AiSdkProviderInvokeRequest,
   ) => ReadableStream<TextStreamPart<ToolSet>>;
@@ -99,6 +100,19 @@ export function createAiSdkProvider(
     id: config.id,
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),
+    async ensureAvailable() {
+      try {
+        if ((await providerTask()) === null) {
+          throw new ProviderNotInstalledError(config.id, config.packageName);
+        }
+      } catch (error) {
+        if (error instanceof ProviderNotInstalledError) {
+          throw error;
+        }
+
+        throw new AiSdkProviderError(config.id, error);
+      }
+    },
     invoke(request) {
       return new ReadableStream({
         async start(controller) {

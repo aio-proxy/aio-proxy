@@ -79,19 +79,33 @@ export function createOpenAIChatRoutes(
       }
     }
 
-    const stream = provider.invoke({
-      messages: transformed.messages,
-      modelId: route.modelId,
-      settings: transformed.settings,
-      signal: context.req.raw.signal,
-    });
+    try {
+      if (
+        "ensureAvailable" in provider &&
+        typeof provider.ensureAvailable === "function"
+      ) {
+        await provider.ensureAvailable();
+      }
+      const stream = provider.invoke({
+        messages: transformed.messages,
+        modelId: route.modelId,
+        settings: transformed.settings,
+        signal: context.req.raw.signal,
+      });
 
-    return new Response(writeOpenAIChatSSE(stream), {
-      headers: {
-        "cache-control": "no-cache",
-        "content-type": "text/event-stream; charset=utf-8",
-      },
-    });
+      return new Response(writeOpenAIChatSSE(stream), {
+        headers: {
+          "cache-control": "no-cache",
+          "content-type": "text/event-stream; charset=utf-8",
+        },
+      });
+    } catch (error) {
+      // no-excuse-ok: catch - HTTP boundary converts provider failures.
+      const ingressError = toIngressError(error, "openai-chat");
+      return Response.json(ingressError.body, {
+        status: ingressError.status,
+      });
+    }
   });
 }
 
