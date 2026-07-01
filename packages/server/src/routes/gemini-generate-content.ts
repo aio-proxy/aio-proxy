@@ -59,6 +59,11 @@ export function createGeminiGenerateContentRoutes(
       provider.protocol === "gemini-generate-content" &&
       provider.vendor === "google-native"
     ) {
+      const request = await parseRequest(context.req.raw, target.model);
+      if (request instanceof Response) {
+        return request;
+      }
+
       return provider.passthrough(context.req.raw);
     }
 

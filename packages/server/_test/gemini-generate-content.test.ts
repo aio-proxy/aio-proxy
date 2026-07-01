@@ -115,6 +115,39 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(bodySeen).toBe(requestBody);
   });
 
+  test("Given google-native oversized inlineData When generateContent is posted Then returns 413 without passthrough", async () => {
+    // Given
+    let invoked = false;
+    const provider = googleNativeProvider(async () => {
+      invoked = true;
+      return new Response("provider-invoked", { status: 202 });
+    });
+    const app = appWith(provider);
+    const data = `${"A".repeat(27_962_028)}====`;
+
+    // When
+    const response = await postGenerate(app, {
+      contents: [
+        {
+          parts: [{ inlineData: { mimeType: "image/png", data } }],
+        },
+      ],
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(413);
+    expect(body).toEqual({
+      error: {
+        code: 413,
+        message:
+          "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    });
+    expect(invoked).toBe(false);
+  });
+
   test("Given ai-sdk provider When generateContent is posted Then Gemini JSON is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
@@ -359,6 +392,46 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(await response.text()).toBe('data: {"upstream":true}\n\n');
+  });
+
+  test("Given google-native oversized inlineData When streamGenerateContent is posted Then returns 413 without passthrough", async () => {
+    // Given
+    let invoked = false;
+    const provider = googleNativeProvider(async () => {
+      invoked = true;
+      return new Response('data: {"upstream":true}\n\n', { status: 200 });
+    });
+    const app = appWith(provider);
+    const data = `${"A".repeat(27_962_028)}====`;
+
+    // When
+    const response = await app.request(
+      "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+      {
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ inlineData: { mimeType: "image/png", data } }],
+            },
+          ],
+        }),
+        headers: jsonHeaders,
+        method: "POST",
+      },
+    );
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(413);
+    expect(body).toEqual({
+      error: {
+        code: 413,
+        message:
+          "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    });
+    expect(invoked).toBe(false);
   });
 
   test("Given ai-sdk provider When streamGenerateContent is posted Then exact Gemini SSE frames are returned", async () => {
