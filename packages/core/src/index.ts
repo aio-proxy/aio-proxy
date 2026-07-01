@@ -64,6 +64,15 @@ export {
   createAiSdkProvider,
 } from "./provider/ai-sdk";
 export {
+  AiSdkProviderLoaderError,
+  type AiSdkProviderLoadOptions,
+  BUNDLED_PROVIDER_PACKAGES,
+  BUNDLED_PROVIDERS,
+  type BundledAiSdkProviderPackage,
+  type LoadedAiSdkProvider,
+  loadAiSdkProvider,
+} from "./provider/ai-sdk-loader";
+export {
   type ApiProviderConfig,
   type ApiProviderFactoryOptions,
   type ApiProviderInstance,
