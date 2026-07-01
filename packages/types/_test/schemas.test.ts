@@ -60,6 +60,30 @@ describe("ConfigSchema", () => {
     });
   });
 
+  test("Given openai-compatible ai-sdk config without packageName When parsed Then default package and options are preserved", () => {
+    // Given
+    const provider = {
+      kind: "ai-sdk",
+      id: "compatible",
+      baseURL: "https://api.example.test/v1",
+      apiKey: "sk-test",
+      headers: { "x-test": "yes" },
+      parseReasoningContent: true,
+      models: ["custom-reasoner"],
+    };
+
+    // When
+    const config = ConfigSchema.parse({ providers: [provider] });
+
+    // Then
+    expect(config.providers).toEqual([
+      {
+        ...provider,
+        packageName: "@ai-sdk/openai-compatible",
+      },
+    ]);
+  });
+
   test("accepts mixed provider config", () => {
     const providers = [
       apiProvider,

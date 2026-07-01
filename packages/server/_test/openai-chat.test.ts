@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  AiSdkProviderInstance,
-  ApiProviderInstance,
+import {
+  type AiSdkProviderInstance,
+  type ApiProviderInstance,
+  createAiSdkProvider,
 } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
@@ -289,6 +290,46 @@ describe("POST /v1/chat/completions", () => {
       error: {
         code: "aborted",
         message: "client closed request",
+        type: "invalid_request_error",
+      },
+    });
+  });
+
+  test("Given ai-sdk provider package is missing When non-stream chat completion is posted Then OpenAI error is actionable 503", async () => {
+    // Given
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "missing-ai",
+        packageName: "@vendor/missing-provider",
+        models: ["gpt-4o-mini"],
+      },
+      {
+        async loadProvider() {
+          return null;
+        },
+      },
+    );
+    const app = createServer({
+      config: { providers: [] },
+      providerInstances: [provider],
+    });
+
+    // When
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ ...chatRequest, stream: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: {
+        code: "provider_not_installed",
+        message:
+          'missing-ai: ai-sdk provider package "@vendor/missing-provider" is not installed; run aio-proxy provider install @vendor/missing-provider',
         type: "invalid_request_error",
       },
     });

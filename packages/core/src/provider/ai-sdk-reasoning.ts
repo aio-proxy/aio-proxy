@@ -5,6 +5,11 @@ type ReasoningContentShape = {
   readonly reasoning_content?: unknown;
 };
 
+type ReasoningDeltaPart = Extract<
+  TextStreamPart<ToolSet>,
+  { readonly type: "reasoning-delta" }
+>;
+
 export type AiSdkReasoningAdapter = {
   readonly push: (
     part: TextStreamPart<ToolSet>,
@@ -28,9 +33,16 @@ export function createAiSdkReasoningAdapter(
   }
 
   let pendingReasoning = "";
+  let pendingNative: ReasoningDeltaPart[] = [];
   const nativeReasoning = new Set<string>();
 
-  function flush(): readonly TextStreamPart<ToolSet>[] {
+  function takeNative(): readonly TextStreamPart<ToolSet>[] {
+    const native = pendingNative;
+    pendingNative = [];
+    return native;
+  }
+
+  function flushRaw(): readonly TextStreamPart<ToolSet>[] {
     if (pendingReasoning === "") {
       return [];
     }
@@ -38,6 +50,10 @@ export function createAiSdkReasoningAdapter(
     const text = pendingReasoning;
     pendingReasoning = "";
     return [{ type: "reasoning-delta", id: "reasoning-aio-proxy", text }];
+  }
+
+  function flush(): readonly TextStreamPart<ToolSet>[] {
+    return [...flushRaw(), ...takeNative()];
   }
 
   return {
@@ -52,15 +68,32 @@ export function createAiSdkReasoningAdapter(
           return [part];
         }
         case "reasoning-start":
-        case "reasoning-end":
           return [part];
-        case "reasoning-delta":
+        case "reasoning-end":
+          return [...flush(), part];
+        case "reasoning-delta": {
           nativeReasoning.add(part.text);
-          if (pendingReasoning === part.text) {
-            pendingReasoning = "";
+          if (pendingReasoning === "") {
             return [part];
           }
-          return [...flush(), part];
+
+          pendingNative = [...pendingNative, part];
+          const nativeText = pendingNative.map((item) => item.text).join("");
+
+          if (
+            pendingReasoning === nativeText ||
+            nativeText.startsWith(pendingReasoning)
+          ) {
+            pendingReasoning = "";
+            return takeNative();
+          }
+
+          if (pendingReasoning.startsWith(nativeText)) {
+            return [];
+          }
+
+          return flush();
+        }
         default:
           return [...flush(), part];
       }
@@ -75,7 +108,9 @@ export function parsesDeepSeekReasoning(
 ): boolean {
   return (
     config.packageName === "@ai-sdk/openai-compatible" &&
-    (modelId === "deepseek-reasoner" || modelId.startsWith("deepseek-r1"))
+    (config.parseReasoningContent === true ||
+      modelId === "deepseek-reasoner" ||
+      modelId.startsWith("deepseek-r1"))
   );
 }
 

@@ -1,4 +1,7 @@
-import { AiSdkProviderError } from "../provider/ai-sdk";
+import {
+  AiSdkProviderError,
+  ProviderNotInstalledError,
+} from "../provider/ai-sdk";
 
 type IngressProtocol = "openai-chat";
 
@@ -31,6 +34,10 @@ function toOpenAIChatError(error: unknown): IngressError {
 
   if (isAbortError(cause)) {
     return envelope(499, "aborted", errorMessage(cause));
+  }
+
+  if (cause instanceof ProviderNotInstalledError) {
+    return envelope(503, "provider_not_installed", cause.message);
   }
 
   const upstreamStatus = statusCode(cause);

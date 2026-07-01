@@ -51,11 +51,12 @@ export const SubscriptionProviderSchema = z.object({
 export const AiSdkProviderSchema = z.object({
   kind: z.literal("ai-sdk"),
   id: z.string(),
-  packageName: z.string(),
+  packageName: z.string().default("@ai-sdk/openai-compatible"),
   providerName: z.string().optional(),
   apiKey: z.string().optional(),
   baseURL: z.string().url().optional(),
   headers: z.record(z.string(), z.string()).optional(),
+  parseReasoningContent: z.boolean().optional(),
   models: z.array(ModelEntrySchema).optional(),
 });
 

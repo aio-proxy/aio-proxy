@@ -89,6 +89,7 @@ export {
   type AiSdkProviderFactoryOptions,
   type AiSdkProviderInstance,
   createAiSdkProvider,
+  ProviderNotInstalledError,
 } from "./provider/ai-sdk";
 export {
   AiSdkProviderLoaderError,
