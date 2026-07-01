@@ -2,7 +2,9 @@
   "name": "@aio-proxy/core",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./db": "./src/db/index.ts",
+    "./db/schema/auth": "./src/db/schema/auth.ts"
   },
   "scripts": {
     "build": "tsc -b",

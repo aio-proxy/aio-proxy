@@ -8,11 +8,12 @@
     "build": "tsc -b",
     "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
-    "test:unit": "bun -e \"process.exit(0)\""
+    "test:unit": "bun test _test/store.test.ts"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/types": "workspace:*",
+    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
