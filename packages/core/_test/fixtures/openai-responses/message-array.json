@@ -1,0 +1,27 @@
+{
+  "model": "gpt-5-mini",
+  "input": [
+    {
+      "role": "system",
+      "content": "Be concise."
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Ping?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Pong."
+        }
+      ]
+    }
+  ]
+}

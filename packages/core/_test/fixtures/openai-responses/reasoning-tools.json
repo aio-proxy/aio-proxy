@@ -1,0 +1,35 @@
+{
+  "model": "gpt-5-mini",
+  "input": "Lookup weather.",
+  "stream": true,
+  "reasoning": {
+    "effort": "medium",
+    "summary": "auto"
+  },
+  "tools": [
+    {
+      "type": "function",
+      "name": "lookup",
+      "description": "Lookup a value",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "type": "custom",
+      "name": "emit_raw",
+      "description": "Emit raw data",
+      "format": {
+        "type": "text"
+      }
+    }
+  ],
+  "temperature": 0.2,
+  "max_output_tokens": 64
+}

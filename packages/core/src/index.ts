@@ -17,6 +17,11 @@ export {
   writeOpenAIChatSSE,
 } from "./egress/openai-chat";
 export {
+  type OpenAIResponsesResponse,
+  writeOpenAIResponsesResponse,
+  writeOpenAIResponsesSSE,
+} from "./egress/openai-responses";
+export {
   type AnthropicCacheControl,
   type AnthropicMessagesRequest,
   AnthropicMessagesRequestSchema,
@@ -39,6 +44,19 @@ export {
   OpenAIChatRequestSchema,
   parseOpenAIChat,
 } from "./ingress/openai-chat";
+export {
+  type OpenAIResponsesCustomTool,
+  type OpenAIResponsesFunctionTool,
+  type OpenAIResponsesInputMessage,
+  type OpenAIResponsesParseResult,
+  type OpenAIResponsesRequest,
+  OpenAIResponsesRequestSchema,
+  type OpenAIResponsesTextPart,
+  type OpenAIResponsesTool,
+  OpenAIResponsesUnsupportedFeatureError,
+  parseOpenAIResponses,
+  safeParseOpenAIResponses,
+} from "./ingress/openai-responses";
 export {
   AiSdkProviderError,
   type AiSdkProviderFactoryOptions,
@@ -79,6 +97,18 @@ export {
   type OpenAIChatTransformTool,
   openaiChatToModelMessages,
 } from "./transform/openai-chat";
+export {
+  modelMessagesToOpenAIResponses,
+  type OpenAIResponsesFromModelMessages,
+  type OpenAIResponsesModelMessages,
+  type OpenAIResponsesProviderOptions,
+  type OpenAIResponsesReasoningEffort,
+  type OpenAIResponsesReasoningSummary,
+  OpenAIResponsesTransformError,
+  type OpenAIResponsesTransformSettings,
+  type OpenAIResponsesTransformTool,
+  openAIResponsesToModelMessages,
+} from "./transform/openai-responses";
 
 export type ProviderSummary = {
   readonly id: string;
