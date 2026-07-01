@@ -113,7 +113,6 @@ function providerId(provider: Provider): string {
 }
 
 async function probeApi(baseUrl: string): Promise<DashboardProviderProbe> {
-  const started = performance.now();
   try {
     const response = await fetch(baseUrl, {
       body: JSON.stringify({
@@ -127,7 +126,7 @@ async function probeApi(baseUrl: string): Promise<DashboardProviderProbe> {
     if (response.body !== null) {
       await response.body.cancel();
     }
-    return response.ok && performance.now() - started >= 0 ? "OK" : "FAIL";
+    return response.ok ? "OK" : "FAIL";
   } catch (error) {
     if (error instanceof Error) {
       return "FAIL";

@@ -3,10 +3,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
@@ -182,7 +182,7 @@ describe("cli", () => {
       // Then
       expect(response?.status).toBe(200);
       expect(existsSync(configPath)).toBe(true);
-      expect(readFileSync(configPath, "utf8")).toContain("providers");
+      expect(await readFile(configPath, "utf8")).toContain("providers");
     } finally {
       server.kill();
       await server.exited;

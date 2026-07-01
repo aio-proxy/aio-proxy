@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -74,7 +75,7 @@ const resolveConfigPath = (optionPath: string | undefined) =>
   // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
   optionPath ?? process.env["AIO_PROXY_CONFIG"] ?? defaultConfigPath();
 
-const readOrBootstrapConfig = (path: string) => {
+const readOrBootstrapConfig = async (path: string) => {
   if (!existsSync(path)) {
     try {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -97,13 +98,13 @@ const readOrBootstrapConfig = (path: string) => {
     }
   }
 
-  const config: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const config: unknown = JSON.parse(await readFile(path, "utf8"));
   return config;
 };
 
-const serve = (options: ServeOptions) => {
+const serve = async (options: ServeOptions) => {
   const configPath = resolveConfigPath(options.config);
-  const config = readOrBootstrapConfig(configPath);
+  const config = await readOrBootstrapConfig(configPath);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
   const app = createServer({ config, configPath, host, port });

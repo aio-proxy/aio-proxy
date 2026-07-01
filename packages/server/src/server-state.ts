@@ -1,4 +1,3 @@
-import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Router } from "@aio-proxy/core";
 import {
@@ -9,6 +8,7 @@ import {
   type DashboardProviderSummary,
 } from "@aio-proxy/types";
 import { ZodError } from "zod";
+import { watchConfigFile } from "./config-watcher";
 import {
   createDashboardEventHub,
   type DashboardEventHub,
@@ -100,9 +100,7 @@ export function createServerState(options: ServerStateOptions): ServerState {
   const logger = options.logger ?? defaultLogger;
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
-      ? watch(options.configPath, () => {
-          void reload();
-        })
+      ? watchConfigFile(options.configPath, reload)
       : undefined;
 
   async function reload(): Promise<ConfigReloadResult> {
