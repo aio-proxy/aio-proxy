@@ -46,6 +46,24 @@ function unsupportedEnvelope(feature: string) {
   };
 }
 
+const unsupportedBeforeProviderInvocationCases = [
+  {
+    body: { ...responsesRequest, previous_response_id: "resp-old" },
+    feature: "previous_response_id",
+    name: "previous_response_id",
+  },
+  {
+    body: { ...responsesRequest, store: true },
+    feature: "store",
+    name: "store true",
+  },
+  {
+    body: { ...responsesRequest, background: true },
+    feature: "background",
+    name: "background true",
+  },
+] as const;
+
 describe("OpenAI Responses routes", () => {
   test("Given openai-responses native provider When POST is valid Then raw request and response bytes pass through", async () => {
     // Given
@@ -209,67 +227,34 @@ describe("OpenAI Responses routes", () => {
     });
   });
 
-  test("Given previous_response_id When POST is requested Then unsupported feature is returned before provider invocation", async () => {
-    // Given
-    let invoked = false;
-    const provider = aiSdkProvider(() => {
-      invoked = true;
-      return textStream([]);
+  for (const scenario of unsupportedBeforeProviderInvocationCases) {
+    test(`Given ${scenario.name} When POST is requested Then unsupported feature is returned before provider invocation`, async () => {
+      // Given
+      let invoked = false;
+      const provider = aiSdkProvider(() => {
+        invoked = true;
+        return textStream([]);
+      });
+      const app = createServer({
+        config: { providers: [] },
+        providerInstances: [provider],
+      });
+
+      // When
+      const response = await app.request("/v1/responses", {
+        body: JSON.stringify(scenario.body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+
+      // Then
+      expect(response.status).toBe(501);
+      expect(await response.json()).toEqual(
+        unsupportedEnvelope(scenario.feature),
+      );
+      expect(invoked).toBe(false);
     });
-    const app = createServer({
-      config: { providers: [] },
-      providerInstances: [provider],
-    });
-
-    // When
-    const response = await app.request("/v1/responses", {
-      body: JSON.stringify({
-        ...responsesRequest,
-        previous_response_id: "resp-old",
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
-
-    // Then
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(
-      unsupportedEnvelope("previous_response_id"),
-    );
-    expect(invoked).toBe(false);
-  });
-
-  test("Given store true When POST is requested Then unsupported feature is returned", async () => {
-    // Given
-    const app = createServer({ config: { providers: [] } });
-
-    // When
-    const response = await app.request("/v1/responses", {
-      body: JSON.stringify({ ...responsesRequest, store: true }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
-
-    // Then
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(unsupportedEnvelope("store"));
-  });
-
-  test("Given background true When POST is requested Then unsupported feature is returned", async () => {
-    // Given
-    const app = createServer({ config: { providers: [] } });
-
-    // When
-    const response = await app.request("/v1/responses", {
-      body: JSON.stringify({ ...responsesRequest, background: true }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
-
-    // Then
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(unsupportedEnvelope("background"));
-  });
+  }
 
   test("Given forbidden built-in tool When POST is requested Then unsupported feature is returned", async () => {
     // Given
