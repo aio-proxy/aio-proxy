@@ -3,6 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  listInstalledNpmPackages,
+  NpmInstallError,
+  NpmPackageEntrypointError,
+  NpmPackageJsonError,
+  NpmPackageNameError,
+  npmAdd,
+} from "@aio-proxy/core";
+import {
   ConfigWriteError,
   formatUserError,
   getLocale,
@@ -28,6 +36,11 @@ type ServeOptions = {
   readonly port?: string;
   readonly dashboard?: boolean;
   readonly config?: string;
+};
+
+type ProviderInstallOptions = {
+  readonly yes?: boolean;
+  readonly registry?: string;
 };
 
 const parsePort = (value: string | undefined, fallback: number) => {
@@ -106,6 +119,28 @@ const serve = (options: ServeOptions) => {
 
 const runStub = () => {};
 
+const providerInstall = async (
+  pkg: string,
+  options: ProviderInstallOptions,
+) => {
+  if (options.yes !== true) {
+    console.error(`provider install ${pkg} requires --yes`);
+    process.exitCode = 1;
+    return;
+  }
+  const installed = await npmAdd(pkg, options.registry);
+  console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
+};
+
+const providerList = async () => {
+  const installed = await listInstalledNpmPackages();
+  for (const item of installed) {
+    console.log(
+      `${item.packageName} ${item.version} ${dirname(item.entrypoint)}`,
+    );
+  }
+};
+
 export const buildProgram = () => {
   const program = new Command()
     .name("aio-proxy")
@@ -126,10 +161,15 @@ export const buildProgram = () => {
     .command("dashboard")
     .description(m.cli_dashboard_description())
     .action(runStub);
-  program
+  const provider = program
     .command("provider")
-    .description(m.cli_provider_description())
-    .action(runStub);
+    .description(m.cli_provider_description());
+  provider
+    .command("install <pkg>")
+    .option("--yes", "Confirm runtime package installation.")
+    .option("--registry <url>", "Registry URL.")
+    .action(providerInstall);
+  provider.command("list").action(providerList);
   program
     .command("model")
     .description(m.cli_model_description())
@@ -147,6 +187,16 @@ export const main = async () => {
     validatePortArgv(process.argv);
     await buildProgram().parseAsync(process.argv);
   } catch (err) {
+    if (
+      err instanceof NpmInstallError ||
+      err instanceof NpmPackageNameError ||
+      err instanceof NpmPackageJsonError ||
+      err instanceof NpmPackageEntrypointError
+    ) {
+      console.error(err.message);
+      process.exitCode = 1;
+      return;
+    }
     const formatted = formatUserError(err, getLocale());
     console.error(formatted.message);
     process.exitCode = 1;

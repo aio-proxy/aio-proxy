@@ -58,6 +58,21 @@ export {
   safeParseOpenAIResponses,
 } from "./ingress/openai-responses";
 export {
+  findInstalledNpmPackage,
+  NpmInstallError,
+  NpmPackageEntrypointError,
+  type NpmPackageInfo,
+  NpmPackageJsonError,
+  NpmPackageNameError,
+  npmAdd,
+  npmPackageCacheDir,
+} from "./npm";
+export {
+  type InstalledNpmPackage,
+  listInstalledNpmPackages,
+} from "./npm-list";
+export { NpmLockError } from "./npm-lock";
+export {
   AiSdkProviderError,
   type AiSdkProviderFactoryOptions,
   type AiSdkProviderInstance,

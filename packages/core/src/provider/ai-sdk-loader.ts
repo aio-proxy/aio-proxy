@@ -1,4 +1,6 @@
+import { pathToFileURL } from "node:url";
 import type { ProviderV3, ProviderV4 } from "@ai-sdk/provider";
+import { findInstalledNpmPackage } from "../npm";
 
 export const BUNDLED_PROVIDER_PACKAGES = [
   "@ai-sdk/openai",
@@ -90,6 +92,36 @@ export class AiSdkProviderLoaderError extends Error {
   override readonly name = "AiSdkProviderLoaderError";
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
+  return typeof value === "function";
+}
+
+async function loadCachedProvider(
+  packageName: string,
+  options?: AiSdkProviderLoadOptions,
+): Promise<LoadedAiSdkProvider | null> {
+  const cached = await findInstalledNpmPackage(packageName);
+  if (cached === null) {
+    return null;
+  }
+  const loaded: unknown = await import(pathToFileURL(cached.entrypoint).href);
+  if (!isRecord(loaded)) {
+    throw new AiSdkProviderLoaderError(`No exports found in ${packageName}`);
+  }
+  for (const [name, value] of Object.entries(loaded)) {
+    if (name.startsWith("create") && isProviderLoader(value)) {
+      return value(options);
+    }
+  }
+  throw new AiSdkProviderLoaderError(
+    `No create* export found in ${packageName}`,
+  );
+}
+
 export async function loadAiSdkProvider(
   packageName: string,
   options?: AiSdkProviderLoadOptions,
@@ -97,7 +129,7 @@ export async function loadAiSdkProvider(
   const loader = BUNDLED_PROVIDERS[packageName];
 
   if (loader === undefined) {
-    return null;
+    return loadCachedProvider(packageName, options);
   }
 
   return loader(options);

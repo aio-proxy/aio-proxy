@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
   loadAiSdkProvider,
+  npmPackageCacheDir,
 } from "../../src/index";
 
 type ExpectedProvider = {
@@ -83,5 +87,39 @@ describe("loadAiSdkProvider", () => {
     });
 
     expect(provider).toBeNull();
+  });
+
+  test("Given runtime package cached When bundled lookup misses Then provider factory imports from cache", async () => {
+    // Given
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-loader-home-"));
+    const previousHome = process.env.HOME;
+    process.env.HOME = home;
+    const pkg = "aio-proxy-runtime-provider";
+    const packageDir = join(npmPackageCacheDir(pkg), "node_modules", pkg);
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      join(packageDir, "package.json"),
+      JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }),
+    );
+    writeFileSync(
+      join(packageDir, "index.js"),
+      "export function createRuntimeProvider(options) { return { languageModel() { return options.apiKey; } }; }\n",
+    );
+
+    try {
+      // When
+      const provider = await loadAiSdkProvider(pkg, { apiKey: "test-key" });
+
+      // Then
+      expect(provider).not.toBeNull();
+      expect(typeof provider?.languageModel).toBe("function");
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
