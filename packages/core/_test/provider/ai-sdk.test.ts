@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type {
   LanguageModelV2,
   LanguageModelV2StreamPart,
+  ProviderV3,
 } from "@ai-sdk/provider";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 import { createAiSdkProvider } from "../../src/index";
@@ -63,7 +64,9 @@ describe("createAiSdkProvider", () => {
       { resolveModel: () => model },
     );
 
-    const parts = await collect(provider.invoke(messages));
+    const parts = await collect(
+      provider.invoke({ messages, modelId: "mock-model" }),
+    );
 
     expect(parts.filter((part) => part.type.startsWith("text"))).toEqual([
       { type: "text-start", id: "text-1" },
@@ -95,8 +98,191 @@ describe("createAiSdkProvider", () => {
       { resolveModel: () => model },
     );
 
-    await expect(collect(provider.invoke(messages))).rejects.toThrow(
-      /mock-ai-sdk.*upstream exploded/,
+    await expect(
+      collect(provider.invoke({ messages, modelId: "mock-model" })),
+    ).rejects.toThrow(/mock-ai-sdk.*upstream exploded/);
+  });
+
+  test("Given bundled ai-sdk provider When invoked Then loader provider receives the routed model id", async () => {
+    // Given
+    let packageSeen: string | undefined;
+    let modelSeen: string | undefined;
+    const model = {
+      specificationVersion: "v2",
+      provider: "mock",
+      modelId: "routed-model",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("doGenerate should not be called");
+      },
+      async doStream() {
+        return {
+          stream: textPartStream([
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "ok" },
+            { type: "text-end", id: "text-1" },
+          ]),
+        };
+      },
+    } satisfies LanguageModelV2;
+    const loadedProvider = {
+      languageModel(modelId: string) {
+        modelSeen = modelId;
+        return model;
+      },
+    } satisfies Pick<ProviderV3, "languageModel">;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "mock-ai-sdk",
+        packageName: "@ai-sdk/openai",
+        models: [{ alias: "alias-model", id: "routed-model" }],
+      },
+      {
+        async loadProvider(packageName) {
+          packageSeen = packageName;
+          return loadedProvider;
+        },
+      },
     );
+
+    // When
+    const parts = await collect(
+      provider.invoke({ messages, modelId: "routed-model" }),
+    );
+
+    // Then
+    expect(packageSeen).toBe("@ai-sdk/openai");
+    expect(modelSeen).toBe("routed-model");
+    expect(parts.filter((part) => part.type === "text-delta")).toEqual([
+      { type: "text-delta", id: "text-1", text: "ok" },
+    ]);
+  });
+
+  test("Given uninstalled ai-sdk package When invoked Then request fails with install hint", async () => {
+    // Given
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "missing-provider",
+        packageName: "@vendor/missing-provider",
+        models: ["missing-model"],
+      },
+      {
+        async loadProvider() {
+          return null;
+        },
+      },
+    );
+
+    // When / Then
+    await expect(
+      collect(provider.invoke({ messages, modelId: "missing-model" })),
+    ).rejects.toThrow(
+      "run aio-proxy provider install @vendor/missing-provider",
+    );
+  });
+
+  test("Given DeepSeek openai-compatible raw reasoning chunk When invoked Then reasoning delta is surfaced", async () => {
+    // Given
+    const model = {
+      specificationVersion: "v2",
+      provider: "openai-compatible",
+      modelId: "deepseek-reasoner",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("doGenerate should not be called");
+      },
+      async doStream() {
+        return {
+          stream: textPartStream([
+            {
+              type: "raw",
+              rawValue: {
+                choices: [{ delta: { reasoning_content: "think first" } }],
+              },
+            },
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "answer" },
+            { type: "text-end", id: "text-1" },
+          ]),
+        };
+      },
+    } satisfies LanguageModelV2;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "deepseek",
+        packageName: "@ai-sdk/openai-compatible",
+        providerName: "deepseek",
+        models: ["deepseek-reasoner"],
+      },
+      { resolveModel: () => model },
+    );
+
+    // When
+    const parts = await collect(
+      provider.invoke({ messages, modelId: "deepseek-reasoner" }),
+    );
+
+    // Then
+    expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([
+      {
+        type: "reasoning-delta",
+        id: "reasoning-aio-proxy",
+        text: "think first",
+      },
+    ]);
+  });
+
+  test("Given DeepSeek stream has native and raw reasoning When invoked Then reasoning is not duplicated", async () => {
+    // Given
+    const model = {
+      specificationVersion: "v2",
+      provider: "openai-compatible",
+      modelId: "deepseek-reasoner",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("doGenerate should not be called");
+      },
+      async doStream() {
+        return {
+          stream: textPartStream([
+            {
+              type: "raw",
+              rawValue: {
+                choices: [{ delta: { reasoning_content: "think once" } }],
+              },
+            },
+            { type: "reasoning-start", id: "reason-1" },
+            { type: "reasoning-delta", id: "reason-1", delta: "think once" },
+            { type: "reasoning-end", id: "reason-1" },
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "answer" },
+            { type: "text-end", id: "text-1" },
+          ]),
+        };
+      },
+    } satisfies LanguageModelV2;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "deepseek",
+        packageName: "@ai-sdk/openai-compatible",
+        providerName: "deepseek",
+        models: ["deepseek-reasoner"],
+      },
+      { resolveModel: () => model },
+    );
+
+    // When
+    const parts = await collect(
+      provider.invoke({ messages, modelId: "deepseek-reasoner" }),
+    );
+
+    // Then
+    expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([
+      { type: "reasoning-delta", id: "reason-1", text: "think once" },
+    ]);
   });
 });

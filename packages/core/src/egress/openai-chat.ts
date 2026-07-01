@@ -1,8 +1,9 @@
 import type {
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
-} from "@ai-sdk/provider";
-import type { TextStreamPart, ToolSet } from "ai";
+  TextStreamPart,
+  ToolSet,
+} from "../ai-sdk-bridge";
 
 const chunkId = "chatcmpl-aio-proxy";
 const encoder = new TextEncoder();

@@ -151,10 +151,12 @@ describe("POST /v1beta/models/:model::generateContent", () => {
   test("Given ai-sdk provider When generateContent is posted Then Gemini JSON is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
+    let modelSeen: string | undefined;
     let settingsSeen: ProviderSeenSettings | undefined;
-    const provider = aiSdkProvider((messages, settings) => {
-      messagesSeen = messages;
-      settingsSeen = settings;
+    const provider = aiSdkProvider((request) => {
+      messagesSeen = request.messages;
+      modelSeen = request.modelId;
+      settingsSeen = request.settings;
       return textStream([
         { type: "text-start", id: "text-1" },
         { type: "text-delta", id: "text-1", text: "Hel" },
@@ -179,6 +181,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(messagesSeen).toEqual([
       { role: "user", content: [{ type: "text", text: "Hello proxy" }] },
     ]);
+    expect(modelSeen).toBe("gemini-2.5-flash");
     expect(settingsSeen).toEqual({});
     expect(body).toEqual({
       candidates: [
@@ -210,9 +213,9 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     ];
     let settingsSeen: ProviderSeenSettings | undefined;
     let toolsSeen: ToolSet | undefined;
-    const provider = aiSdkProvider((_messages, settings, tools) => {
-      settingsSeen = settings;
-      toolsSeen = tools;
+    const provider = aiSdkProvider((request) => {
+      settingsSeen = request.settings;
+      toolsSeen = request.tools;
       return textStream([
         { type: "text-start", id: "text-1" },
         { type: "text-delta", id: "text-1", text: "ok" },
@@ -285,8 +288,8 @@ describe("POST /v1beta/models/:model::generateContent", () => {
   test("Given 9MiB inlineData with large Content-Length When generateContent is posted Then provider receives it", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
-    const provider = aiSdkProvider((messages) => {
-      messagesSeen = messages;
+    const provider = aiSdkProvider((request) => {
+      messagesSeen = request.messages;
       return textStream([
         { type: "text-start", id: "text-1" },
         { type: "text-delta", id: "text-1", text: "accepted" },

@@ -53,6 +53,9 @@ export const AiSdkProviderSchema = z.object({
   id: z.string(),
   packageName: z.string(),
   providerName: z.string().optional(),
+  apiKey: z.string().optional(),
+  baseURL: z.string().url().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   models: z.array(ModelEntrySchema).optional(),
 });
 

@@ -1,5 +1,8 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
-import type { TextStreamPart, ToolSet } from "ai";
+import type {
+  LanguageModelV2StreamPart,
+  TextStreamPart,
+  ToolSet,
+} from "../ai-sdk-bridge";
 
 const responseId = "resp-aio-proxy";
 const messageId = "msg-aio-proxy";

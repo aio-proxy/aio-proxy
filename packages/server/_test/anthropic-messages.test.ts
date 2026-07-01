@@ -66,12 +66,14 @@ describe("POST /v1/messages", () => {
   test("Given ai-sdk provider When stream message is posted Then provider is invoked and Anthropic SSE is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
+    let modelSeen: string | undefined;
     const provider = {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["claude-sonnet-4-5"],
-      invoke(messages) {
-        messagesSeen = messages;
+      invoke(request) {
+        messagesSeen = request.messages;
+        modelSeen = request.modelId;
         return textStream([
           { type: "text-start", id: "text-1" },
           { type: "text-delta", id: "text-1", text: "pong" },
@@ -102,6 +104,7 @@ describe("POST /v1/messages", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(messagesSeen).toEqual([{ role: "user", content: "Hello proxy" }]);
+    expect(modelSeen).toBe("claude-sonnet-4-5");
     expect(text).toContain("event: message_start");
     expect(text).toContain("event: content_block_delta");
     expect(text).toContain('"text":"pong"');

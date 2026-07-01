@@ -6,6 +6,18 @@ import type {
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
+export type {
+  CallSettings,
+  FilePart,
+  JSONValue,
+  LanguageModelV2FinishReason,
+  LanguageModelV2StreamPart,
+  ModelMessage,
+  TextPart,
+  TextStreamPart,
+  ToolSet,
+} from "./ai-sdk-bridge";
+export { jsonSchema } from "./ai-sdk-bridge";
 export { writeAnthropicMessagesSSE } from "./egress/anthropic-messages";
 export { type IngressError, toIngressError } from "./egress/error";
 export {
@@ -113,7 +125,6 @@ export {
   modelMessagesToGeminiGenerateContent,
 } from "./transform/gemini-generate-content";
 export {
-  modelMessagesToOpenAIChat,
   type OpenAIChatFromModelMessages,
   type OpenAIChatModelMessages,
   OpenAIChatTransformError,
@@ -121,6 +132,7 @@ export {
   type OpenAIChatTransformTool,
   openaiChatToModelMessages,
 } from "./transform/openai-chat";
+export { modelMessagesToOpenAIChat } from "./transform/openai-chat-from-model";
 export {
   modelMessagesToOpenAIResponses,
   type OpenAIResponsesFromModelMessages,

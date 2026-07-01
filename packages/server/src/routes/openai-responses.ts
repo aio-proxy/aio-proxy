@@ -1,16 +1,17 @@
 import {
+  type JSONValue,
+  jsonSchema,
   type OpenAIResponsesTransformTool,
   OpenAIResponsesUnsupportedFeatureError,
   openAIResponsesToModelMessages,
   parseOpenAIResponses,
   Router,
   RouterModelNotFoundError,
+  type ToolSet,
   toIngressError,
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
 } from "@aio-proxy/core";
-import type { JSONValue, ToolSet } from "ai";
-import { jsonSchema } from "ai";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import type { RuntimeProviderInstance } from "./openai-chat";
@@ -64,12 +65,13 @@ export function createOpenAIResponsesRoutes(
 
       if (request.stream === false) {
         try {
-          const stream = provider.invoke(
-            transformed.messages,
-            transformed.settings,
-            tools,
-            context.req.raw.signal,
-          );
+          const stream = provider.invoke({
+            messages: transformed.messages,
+            modelId: route.modelId,
+            settings: transformed.settings,
+            signal: context.req.raw.signal,
+            ...(tools === undefined ? {} : { tools }),
+          });
           return Response.json(await writeOpenAIResponsesResponse(stream));
         } catch (error) {
           // no-excuse-ok: catch - HTTP boundary converts provider failures.
@@ -80,12 +82,13 @@ export function createOpenAIResponsesRoutes(
         }
       }
 
-      const stream = provider.invoke(
-        transformed.messages,
-        transformed.settings,
-        tools,
-        context.req.raw.signal,
-      );
+      const stream = provider.invoke({
+        messages: transformed.messages,
+        modelId: route.modelId,
+        settings: transformed.settings,
+        signal: context.req.raw.signal,
+        ...(tools === undefined ? {} : { tools }),
+      });
 
       return new Response(writeOpenAIResponsesSSE(stream), {
         headers: {

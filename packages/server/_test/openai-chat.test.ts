@@ -126,12 +126,14 @@ describe("POST /v1/chat/completions", () => {
   test("Given ai-sdk provider When stream chat completion is posted Then provider is invoked and OpenAI SSE is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
+    let modelSeen: string | undefined;
     const provider = {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
-      invoke(messages) {
-        messagesSeen = messages;
+      invoke(request) {
+        messagesSeen = request.messages;
+        modelSeen = request.modelId;
         return textStream([
           { type: "text-start", id: "text-1" },
           { type: "text-delta", id: "text-1", text: "pong" },
@@ -162,6 +164,7 @@ describe("POST /v1/chat/completions", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(messagesSeen).toEqual([{ role: "user", content: "Hello proxy" }]);
+    expect(modelSeen).toBe("gpt-4o-mini");
     expect(text).toContain("chat.completion.chunk");
     expect(text).toContain('"content":"pong"');
     expect(text).toContain("data: [DONE]");

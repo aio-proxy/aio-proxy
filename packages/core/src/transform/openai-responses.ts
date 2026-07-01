@@ -1,4 +1,4 @@
-import type { ModelMessage, TextPart } from "ai";
+import type { ModelMessage, TextPart } from "../ai-sdk-bridge";
 import type {
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,

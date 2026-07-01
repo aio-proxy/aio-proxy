@@ -1,16 +1,18 @@
 import {
+  type CallSettings,
   type GeminiGenerateContentSettings,
   type GeminiGenerateContentTool,
   GeminiInlineDataTooLargeError,
   geminiGenerateContentToModelMessages,
+  type JSONValue,
+  jsonSchema,
   parseGeminiGenerateContent,
   Router,
   RouterModelNotFoundError,
+  type ToolSet,
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
 } from "@aio-proxy/core";
-import type { CallSettings, JSONValue, ToolSet } from "ai";
-import { jsonSchema } from "ai";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import type { RuntimeProviderInstance } from "./openai-chat";
@@ -81,12 +83,14 @@ export function createGeminiGenerateContentRoutes(
     }
 
     const transformed = geminiGenerateContentToModelMessages(request);
-    const stream = provider.invoke(
-      transformed.messages,
-      aiSdkSettings(transformed.settings),
-      aiSdkTools(transformed.tools),
-      context.req.raw.signal,
-    );
+    const tools = aiSdkTools(transformed.tools);
+    const stream = provider.invoke({
+      messages: transformed.messages,
+      modelId: route.modelId,
+      settings: aiSdkSettings(transformed.settings),
+      signal: context.req.raw.signal,
+      ...(tools === undefined ? {} : { tools }),
+    });
 
     if (target.stream) {
       return new Response(writeGeminiGenerateContentSSE(stream), {

@@ -106,12 +106,14 @@ describe("OpenAI Responses routes", () => {
   test("Given ai-sdk provider When POST streams text Then Responses SSE events are returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
+    let modelSeen: string | undefined;
     let settingsSeen: CallSettings | undefined;
     let toolsSeen: ToolSet | undefined;
-    const provider = aiSdkProvider((messages, settings, tools) => {
-      messagesSeen = messages;
-      settingsSeen = settings;
-      toolsSeen = tools;
+    const provider = aiSdkProvider((request) => {
+      messagesSeen = request.messages;
+      modelSeen = request.modelId;
+      settingsSeen = request.settings;
+      toolsSeen = request.tools;
       return textStream([
         { type: "text-delta", id: "text-1", text: "pong" },
         {
@@ -142,6 +144,7 @@ describe("OpenAI Responses routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(messagesSeen).toEqual([{ role: "user", content: "Say pong." }]);
+    expect(modelSeen).toBe("gpt-4.1-mini");
     expect(settingsSeen).toEqual({ stream: true });
     expect(Object.keys(toolsSeen ?? {})).toEqual(["lookup"]);
     expect(text).toContain("event: response.created");

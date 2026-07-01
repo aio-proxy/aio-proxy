@@ -1,4 +1,4 @@
-import type { TextStreamPart, ToolSet } from "ai";
+import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 
 const encoder = new TextEncoder();
 

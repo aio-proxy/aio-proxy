@@ -1,4 +1,4 @@
-import type { ModelMessage } from "ai";
+import type { ModelMessage } from "../ai-sdk-bridge";
 import type { OpenAIResponsesRequest } from "../ingress/openai-responses";
 
 export type OpenAIResponsesTransformTool = {

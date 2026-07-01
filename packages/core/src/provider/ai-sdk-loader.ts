@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import type { ProviderV3, ProviderV4 } from "@ai-sdk/provider";
+import type { LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
 import { findInstalledNpmPackage } from "../npm";
 
 export const BUNDLED_PROVIDER_PACKAGES = [
@@ -23,7 +23,7 @@ export type AiSdkProviderLoadOptions = {
   readonly name?: string;
 };
 
-export type LoadedAiSdkProvider = ProviderV3 | ProviderV4;
+export type LoadedAiSdkProvider = LoadedAiSdkRuntimeProvider;
 
 type AiSdkProviderLoader = (
   options?: AiSdkProviderLoadOptions,

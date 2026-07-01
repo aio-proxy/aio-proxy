@@ -1,12 +1,14 @@
 import {
   type AnthropicModelMessage,
   anthropicMessagesToModelMessages,
+  type ModelMessage,
   parseAnthropicMessages,
   Router,
   RouterModelNotFoundError,
+  type TextStreamPart,
+  type ToolSet,
   writeAnthropicMessagesSSE,
 } from "@aio-proxy/core";
-import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import type { RuntimeProviderInstance } from "./openai-chat";
@@ -66,12 +68,12 @@ export function createAnthropicMessagesRoutes(
       }
 
       const transformed = anthropicMessagesToModelMessages(request);
-      const stream = provider.invoke(
-        aiSdkMessages(transformed.messages),
-        transformed.settings,
-        undefined,
-        context.req.raw.signal,
-      );
+      const stream = provider.invoke({
+        messages: aiSdkMessages(transformed.messages),
+        modelId: route.modelId,
+        settings: transformed.settings,
+        signal: context.req.raw.signal,
+      });
 
       if (request.stream === true) {
         return new Response(writeAnthropicMessagesSSE(stream), {
