@@ -7,6 +7,7 @@ import {
   createOpenAIChatRoutes,
   type RuntimeProviderInstance,
 } from "./routes/openai-chat";
+import { createOpenAIResponsesRoutes } from "./routes/openai-responses";
 
 export const serverDefaults = {
   host: "127.0.0.1",
@@ -60,10 +61,12 @@ const createRoutes = (
   const geminiGenerateContentRoutes =
     createGeminiGenerateContentRoutes(providerInstances);
   const openAIChatRoutes = createOpenAIChatRoutes(providerInstances);
+  const openAIResponsesRoutes = createOpenAIResponsesRoutes(providerInstances);
   const routes = app
     .route("/", anthropicMessagesRoutes)
     .route("/", geminiGenerateContentRoutes)
     .route("/", openAIChatRoutes)
+    .route("/", openAIResponsesRoutes)
     .route("/dashboard", dashboardRoutes);
   return routes;
 };
