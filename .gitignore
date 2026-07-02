@@ -11,3 +11,4 @@ packages/i18n/src/paraglide/
 packages/dashboard/src/route-tree.gen.ts
 packages/dashboard/dist
 *.tsbuildinfo
+aio-proxy.json
