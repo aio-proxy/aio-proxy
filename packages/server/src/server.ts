@@ -4,7 +4,7 @@ import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
 import { createGeminiGenerateContentRoutes } from "./routes/gemini-generate-content";
-import { createOpenAIChatRoutes } from "./routes/openai-chat";
+import { createOpenAICompletionsRoutes } from "./routes/openai-completions";
 import { createOpenAIResponsesRoutes } from "./routes/openai-responses";
 import type { RuntimeProviderInstance } from "./runtime";
 import { createServerState, type ServerState } from "./server-state";
@@ -14,10 +14,8 @@ export const serverDefaults = {
   port: 22_078,
 } as const;
 
-const dashboardOrigins = new Set([
-  "http://127.0.0.1:22079",
-  "http://localhost:22079",
-]);
+const dashboardOrigins = (port: number) =>
+  new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 
 const csrfMethods = new Set(["POST", "PUT", "DELETE"]);
 const defaultConfig = ConfigSchema.parse({ providers: [] });
@@ -32,7 +30,10 @@ export type CreateServerOptions = {
   readonly watchConfig?: boolean;
 };
 
-const createRoutes = (state: ServerState) => {
+const createRoutes = (
+  state: ServerState,
+  dashboardOriginPort: number = serverDefaults.port,
+) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
       status: "ok",
@@ -40,6 +41,7 @@ const createRoutes = (state: ServerState) => {
       version: "0.0.0",
     }),
   );
+  const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
 
   app.use("/dashboard/*", async (context, next) => {
     if (!csrfMethods.has(context.req.method)) {
@@ -48,7 +50,7 @@ const createRoutes = (state: ServerState) => {
     }
 
     const origin = context.req.header("origin");
-    if (origin === undefined || !dashboardOrigins.has(origin)) {
+    if (origin === undefined || !allowedDashboardOrigins.has(origin)) {
       return context.text("Forbidden", 403);
     }
 
@@ -58,12 +60,12 @@ const createRoutes = (state: ServerState) => {
   const dashboardRoutes = createDashboardRoutes(state);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
-  const openAIChatRoutes = createOpenAIChatRoutes(state);
+  const openAICompletionsRoutes = createOpenAICompletionsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const routes = app
     .route("/", anthropicMessagesRoutes)
     .route("/", geminiGenerateContentRoutes)
-    .route("/", openAIChatRoutes)
+    .route("/", openAICompletionsRoutes)
     .route("/", openAIResponsesRoutes)
     .route("/dashboard", dashboardRoutes);
   return routes;
@@ -80,10 +82,11 @@ export const bunServer = {
   fetch: app.fetch,
 };
 
-export const createServer = (options: CreateServerOptions): AppType =>
-  createRoutes(
+export const createServer = (options: CreateServerOptions): AppType => {
+  const config = ConfigSchema.parse(options.config);
+  return createRoutes(
     createServerState({
-      config: ConfigSchema.parse(options.config),
+      config,
       ...(options.configPath === undefined
         ? {}
         : { configPath: options.configPath }),
@@ -97,6 +100,8 @@ export const createServer = (options: CreateServerOptions): AppType =>
         ? {}
         : { watchConfig: options.watchConfig }),
     }),
+    options.port ?? config.server.port,
   );
+};
 
 export default bunServer;

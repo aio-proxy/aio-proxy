@@ -44,7 +44,7 @@ class AbortStreamError extends Error {
 }
 
 describe("POST /v1/chat/completions", () => {
-  test("Given openai-compatible api provider When chat completion is posted Then passthrough receives original request", async () => {
+  test("Given openai-compatible api provider When completion is posted Then passthrough receives original request", async () => {
     // Given
     let bodySeen: unknown;
     const provider = {
@@ -79,7 +79,7 @@ describe("POST /v1/chat/completions", () => {
     expect(bodySeen).toEqual(chatRequest);
   });
 
-  test("Given openai-compatible api provider When non-stream chat completion is posted Then passthrough receives original request", async () => {
+  test("Given openai-compatible api provider When non-stream completion is posted Then passthrough receives original request", async () => {
     // Given
     let bodySeen: unknown;
     const provider = {
@@ -123,7 +123,7 @@ describe("POST /v1/chat/completions", () => {
     expect(bodySeen).toEqual(request);
   });
 
-  test("Given ai-sdk provider When stream chat completion is posted Then provider is invoked and OpenAI SSE is returned", async () => {
+  test("Given ai-sdk provider When stream completion is posted Then provider is invoked and OpenAI SSE is returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
     let modelSeen: string | undefined;
@@ -170,7 +170,7 @@ describe("POST /v1/chat/completions", () => {
     expect(text).toContain("data: [DONE]");
   });
 
-  test("Given ai-sdk provider When non-stream chat completion is posted Then OpenAI JSON is returned", async () => {
+  test("Given ai-sdk provider When non-stream completion is posted Then OpenAI JSON is returned", async () => {
     // Given
     const provider = {
       id: "mock-ai",
@@ -224,7 +224,7 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test("Given ai-sdk provider returns upstream status error When non-stream chat completion is posted Then OpenAI error hides provider id", async () => {
+  test("Given ai-sdk provider returns upstream status error When non-stream completion is posted Then OpenAI error hides provider id", async () => {
     // Given
     const provider = {
       id: "mock-ai",
@@ -260,7 +260,7 @@ describe("POST /v1/chat/completions", () => {
     expect(text).not.toContain("mock-ai");
   });
 
-  test("Given ai-sdk provider returns abort error When non-stream chat completion is posted Then OpenAI error uses 499", async () => {
+  test("Given ai-sdk provider returns abort error When non-stream completion is posted Then OpenAI error uses 499", async () => {
     // Given
     const provider = {
       id: "mock-ai",
@@ -294,7 +294,7 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test("Given ai-sdk provider package is missing When non-stream chat completion is posted Then OpenAI error is actionable 503", async () => {
+  test("Given ai-sdk provider package is missing When non-stream completion is posted Then OpenAI error is actionable 503", async () => {
     // Given
     const provider = createAiSdkProvider(
       {
@@ -334,7 +334,7 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test("Given ai-sdk provider package is missing When stream chat completion is posted Then OpenAI error is actionable 503", async () => {
+  test("Given ai-sdk provider package is missing When stream completion is posted Then OpenAI error is actionable 503", async () => {
     // Given
     const provider = createAiSdkProvider(
       {
@@ -377,7 +377,7 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test("Given ai-sdk provider returns generic error When non-stream chat completion is posted Then OpenAI error hides provider id", async () => {
+  test("Given ai-sdk provider returns generic error When non-stream completion is posted Then OpenAI error hides provider id", async () => {
     // Given
     const provider = {
       id: "mock-ai",
@@ -413,7 +413,7 @@ describe("POST /v1/chat/completions", () => {
     expect(text).not.toContain("mock-ai");
   });
 
-  test("Given no matching alias When chat completion is posted Then returns 404 OpenAI error envelope", async () => {
+  test("Given no matching alias When completion is posted Then returns 404 OpenAI error envelope", async () => {
     // Given
     let invoked = false;
     const provider = {
@@ -450,7 +450,7 @@ describe("POST /v1/chat/completions", () => {
     expect(invoked).toBe(false);
   });
 
-  test("Given oversized content-length When chat completion is posted Then rejects before provider invocation", async () => {
+  test("Given oversized content-length When completion is posted Then rejects before provider invocation", async () => {
     // Given
     let invoked = false;
     const provider = {

@@ -14,7 +14,7 @@ import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 
-export function createOpenAIChatRoutes(source: ProviderRouteSource) {
+export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
   return new Hono().post("/v1/chat/completions", async (context) => {
     const contentLength = context.req.header("content-length");
     if (
@@ -46,7 +46,7 @@ export function createOpenAIChatRoutes(source: ProviderRouteSource) {
       return openAIError(
         501,
         "not_implemented",
-        "Provider does not support OpenAI Chat transform dispatch",
+        "Provider does not support OpenAI Chat Completions transform dispatch",
       );
     }
 
@@ -103,7 +103,11 @@ async function parseRequest(
     return parseOpenAIChat(await raw.clone().json());
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
-      return openAIError(400, "invalid_request", "Invalid OpenAI Chat request");
+      return openAIError(
+        400,
+        "invalid_request",
+        "Invalid OpenAI Chat Completions request",
+      );
     }
 
     throw error;

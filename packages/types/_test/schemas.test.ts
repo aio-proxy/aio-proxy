@@ -26,7 +26,7 @@ function expectIssuePath(input: unknown, path: (string | number)[]) {
 describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
     expect(ConfigSchema.parse({ providers: [apiProvider] })).toEqual({
-      server: { host: "127.0.0.1", port: 22078, dashboardPort: 22079 },
+      server: { host: "127.0.0.1", port: 22078 },
       providers: [apiProvider],
     });
   });
@@ -40,7 +40,7 @@ describe("ConfigSchema", () => {
     };
 
     expect(ConfigSchema.parse({ server: {}, providers: [provider] })).toEqual({
-      server: { host: "127.0.0.1", port: 22078, dashboardPort: 22079 },
+      server: { host: "127.0.0.1", port: 22078 },
       providers: [provider],
     });
   });
@@ -55,7 +55,7 @@ describe("ConfigSchema", () => {
     };
 
     expect(ConfigSchema.parse({ providers: [provider] })).toEqual({
-      server: { host: "127.0.0.1", port: 22078, dashboardPort: 22079 },
+      server: { host: "127.0.0.1", port: 22078 },
       providers: [provider],
     });
   });
@@ -96,11 +96,11 @@ describe("ConfigSchema", () => {
 
     expect(
       ConfigSchema.parse({
-        server: { host: "0.0.0.0", port: 3000, dashboardPort: 3001 },
+        server: { host: "0.0.0.0", port: 3000 },
         providers,
       }),
     ).toEqual({
-      server: { host: "0.0.0.0", port: 3000, dashboardPort: 3001 },
+      server: { host: "0.0.0.0", port: 3000 },
       providers,
     });
   });
