@@ -11,6 +11,7 @@ import {
   type DashboardProviderSummary,
   DashboardProvidersResponseSchema,
 } from "@aio-proxy/types";
+import { confirm } from "@inquirer/prompts";
 
 export type ProviderInstallOptions = {
   readonly yes?: boolean;
@@ -37,13 +38,24 @@ export async function providerInstall(
   pkg: string,
   options: ProviderInstallOptions,
 ): Promise<void> {
-  if (options.yes !== true) {
+  if (options.yes !== true && !(await confirmInstall(pkg))) {
     console.error(`provider install ${pkg} requires --yes`);
     process.exitCode = 1;
     return;
   }
   const installed = await npmAdd(pkg, options.registry);
   console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
+}
+
+async function confirmInstall(pkg: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    return false;
+  }
+
+  return confirm({
+    default: false,
+    message: `Install and dynamically load ${pkg}? Only continue if you trust this package.`,
+  });
 }
 
 export async function providerList(

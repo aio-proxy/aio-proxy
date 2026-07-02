@@ -31,7 +31,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
         if (baseUrl === undefined) {
           throw new ProviderBuildError(id, "api provider requires baseUrl");
         }
-        probes.set(id, () => probeApi(baseUrl));
+        probes.set(id, () => probeApi(provider, baseUrl));
         return createApiProvider({ ...provider, id, baseUrl });
       }
       case "ai-sdk": {
@@ -112,13 +112,14 @@ function providerId(provider: Provider): string {
   }
 }
 
-async function probeApi(baseUrl: string): Promise<DashboardProviderProbe> {
+async function probeApi(
+  provider: Extract<Provider, { kind: "api" }>,
+  baseUrl: string,
+): Promise<DashboardProviderProbe> {
   try {
-    const response = await fetch(baseUrl, {
-      body: JSON.stringify({
-        messages: [{ role: "user", content: "ping" }],
-        model: "aio-proxy-probe",
-      }),
+    const request = providerProbeRequest(provider, baseUrl);
+    const response = await fetch(request.url, {
+      body: JSON.stringify(request.body),
       headers: { "content-type": "application/json" },
       method: "POST",
       signal: AbortSignal.timeout(1_000),
@@ -132,6 +133,43 @@ async function probeApi(baseUrl: string): Promise<DashboardProviderProbe> {
       return "FAIL";
     }
     throw error;
+  }
+}
+
+function providerProbeRequest(
+  provider: Extract<Provider, { kind: "api" }>,
+  baseUrl: string,
+): { readonly body: unknown; readonly url: URL } {
+  const model = "aio-proxy-probe";
+  const url = new URL(baseUrl);
+  switch (provider.protocol) {
+    case "openai-chat":
+      url.pathname = "/v1/chat/completions";
+      return {
+        body: { messages: [{ role: "user", content: "ping" }], model },
+        url,
+      };
+    case "openai-responses":
+      url.pathname = "/v1/responses";
+      return { body: { input: "ping", model }, url };
+    case "anthropic-messages":
+      url.pathname = "/v1/messages";
+      return {
+        body: {
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+          model,
+        },
+        url,
+      };
+    case "gemini-generate-content":
+      url.pathname = `/v1beta/models/${model}:generateContent`;
+      return {
+        body: { contents: [{ role: "user", parts: [{ text: "ping" }] }] },
+        url,
+      };
+    default:
+      return assertNever(provider.protocol);
   }
 }
 

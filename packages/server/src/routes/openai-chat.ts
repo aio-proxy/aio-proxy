@@ -8,6 +8,7 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError } from "zod";
+import { ensureAiSdkProviderAvailable } from "../provider-availability";
 import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -53,6 +54,7 @@ export function createOpenAIChatRoutes(source: ProviderRouteSource) {
 
     if (request.stream === false) {
       try {
+        await ensureAiSdkProviderAvailable(provider);
         const stream = provider.invoke({
           messages: transformed.messages,
           modelId: route.modelId,
@@ -70,12 +72,7 @@ export function createOpenAIChatRoutes(source: ProviderRouteSource) {
     }
 
     try {
-      if (
-        "ensureAvailable" in provider &&
-        typeof provider.ensureAvailable === "function"
-      ) {
-        await provider.ensureAvailable();
-      }
+      await ensureAiSdkProviderAvailable(provider);
       const stream = provider.invoke({
         messages: transformed.messages,
         modelId: route.modelId,

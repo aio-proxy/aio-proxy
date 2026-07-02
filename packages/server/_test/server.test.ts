@@ -17,11 +17,15 @@ const config = {
       models: ["gpt-test"],
     },
     {
-      kind: "api",
-      vendor: "openai-compatible",
-      protocol: "openai-chat",
+      kind: "ai-sdk",
+      id: "compatible",
+      packageName: "@ai-sdk/openai-compatible",
       apiKey: "Bearer super-secret-token",
-      baseUrl: "https://compatible.example.com",
+      baseURL: "https://compatible.example.com",
+      headers: {
+        authorization: "Token provider-secret",
+        "x-api-key": "header-secret",
+      },
       models: ["compatible-test"],
     },
   ],
@@ -55,8 +59,12 @@ describe("server routes", () => {
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(JSON.stringify(body)).not.toContain("super-secret-token");
+    expect(JSON.stringify(body)).not.toContain("provider-secret");
+    expect(JSON.stringify(body)).not.toContain("header-secret");
     expect(body.providers[0].apiKey).toBe("sk-****");
-    expect(body.providers[1].apiKey).toBe("Bearer ****");
+    expect(body.providers[1].apiKey).toBe("****");
+    expect(body.providers[1].headers.authorization).toBe("****");
+    expect(body.providers[1].headers["x-api-key"]).toBe("****");
   });
 
   test("POST /dashboard/config rejects evil origin when requested", async () => {
@@ -108,10 +116,12 @@ describe("server routes", () => {
 
   test("Given configured provider When dashboard providers are requested Then summary and probe status are returned", async () => {
     // Given
+    let pathSeen = "";
     const upstream = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
-      fetch() {
+      fetch(request) {
+        pathSeen = new URL(request.url).pathname;
         return new Response("", { status: 204 });
       },
     });
@@ -156,9 +166,97 @@ describe("server routes", () => {
       expect(probeBody.providers[0].probe).toBe("OK");
       expect(probeBody.providers[0].last_status).toBe("OK");
       expect(typeof probeBody.providers[0].last_latency).toBe("number");
+      expect(pathSeen).toBe("/v1/chat/completions");
     } finally {
       await upstream.stop(true);
     }
+  });
+
+  test("Given configured provider When dashboard provider detail is requested Then one provider is returned", async () => {
+    // Given
+    const app = createServer({ config });
+
+    // When
+    const found = await app.request("/dashboard/providers/openai-native");
+    const missing = await app.request("/dashboard/providers/missing");
+
+    // Then
+    expect(found.status).toBe(200);
+    expect(await found.json()).toEqual({
+      provider: {
+        id: "openai-native",
+        kind: "api",
+        enabled: true,
+        passthrough: true,
+        last_status: "unknown",
+        last_latency: null,
+      },
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  test("Given dashboard install request without confirmation When posted Then request is rejected", async () => {
+    // Given
+    const app = createServer({ config });
+
+    // When
+    const response = await app.request("/dashboard/providers/install", {
+      body: JSON.stringify({ npm: "aio-proxy-test-provider" }),
+      headers: {
+        "content-type": "application/json",
+        Origin: "http://127.0.0.1:22079",
+      },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("confirmed: true");
+  });
+
+  test("Given dashboard install request with invalid package name When posted Then request is rejected", async () => {
+    // Given
+    const app = createServer({ config });
+
+    // When
+    const response = await app.request("/dashboard/providers/install", {
+      body: JSON.stringify({ npm: "../bad", confirmed: true }),
+      headers: {
+        "content-type": "application/json",
+        Origin: "http://127.0.0.1:22079",
+      },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("Invalid npm package name");
+  });
+
+  test("Given dashboard install request fails at registry When posted Then controlled error is returned", async () => {
+    // Given
+    const app = createServer({ config });
+
+    // When
+    const response = await app.request("/dashboard/providers/install", {
+      body: JSON.stringify({
+        npm: "aio-proxy-dashboard-missing-package",
+        confirmed: true,
+        registry: "http://127.0.0.1:9",
+      }),
+      headers: {
+        "content-type": "application/json",
+        Origin: "http://127.0.0.1:22079",
+      },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("Runtime install failed");
   });
 
   test("Given upstream HTTP 500 When provider is probed Then dashboard reports failure", async () => {

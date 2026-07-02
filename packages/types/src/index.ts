@@ -141,10 +141,25 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
     }),
   }),
   z.object({
+    event: z.literal("trace.start"),
+    data: z.object({
+      trace_id: IdSchema,
+      providerId: IdSchema,
+      modelId: IdSchema,
+    }),
+  }),
+  z.object({
     event: z.literal("trace.delta"),
     data: z.object({
       trace_id: IdSchema,
       textDelta: z.string(),
+    }),
+  }),
+  z.object({
+    event: z.literal("trace.end"),
+    data: z.object({
+      trace_id: IdSchema,
+      usage: UsageRowSchema.optional(),
     }),
   }),
 ]);

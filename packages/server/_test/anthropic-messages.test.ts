@@ -3,6 +3,7 @@ import type {
   AiSdkProviderInstance,
   ApiProviderInstance,
 } from "@aio-proxy/core";
+import { createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 
@@ -146,6 +147,45 @@ describe("POST /v1/messages", () => {
       },
     });
     expect(invoked).toBe(false);
+  });
+
+  test("Given ai-sdk provider package is missing When stream message is posted Then Anthropic error is actionable 503 before SSE", async () => {
+    // Given
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "missing-ai",
+        packageName: "@vendor/missing-provider",
+        models: ["claude-sonnet-4-5"],
+      },
+      {
+        async loadProvider() {
+          return null;
+        },
+      },
+    );
+    const app = createServer({
+      config: { providers: [] },
+      providerInstances: [provider],
+    });
+
+    // When
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify(messagesRequest),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).not.toContain(
+      "text/event-stream",
+    );
+    expect(body.error.type).toBe("invalid_request_error");
+    expect(body.error.message).toContain(
+      "run aio-proxy provider install @vendor/missing-provider",
+    );
   });
 });
 

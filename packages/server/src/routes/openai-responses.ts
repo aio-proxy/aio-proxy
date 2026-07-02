@@ -13,6 +13,7 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
+import { ensureAiSdkProviderAvailable } from "../provider-availability";
 import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -60,6 +61,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
 
       if (request.stream === false) {
         try {
+          await ensureAiSdkProviderAvailable(provider);
           const stream = provider.invoke({
             messages: transformed.messages,
             modelId: route.modelId,
@@ -77,13 +79,23 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         }
       }
 
-      const stream = provider.invoke({
-        messages: transformed.messages,
-        modelId: route.modelId,
-        settings: transformed.settings,
-        signal: context.req.raw.signal,
-        ...(tools === undefined ? {} : { tools }),
-      });
+      let stream: ReturnType<typeof provider.invoke>;
+      try {
+        await ensureAiSdkProviderAvailable(provider);
+        stream = provider.invoke({
+          messages: transformed.messages,
+          modelId: route.modelId,
+          settings: transformed.settings,
+          signal: context.req.raw.signal,
+          ...(tools === undefined ? {} : { tools }),
+        });
+      } catch (error) {
+        // no-excuse-ok: catch - HTTP boundary converts provider failures.
+        const ingressError = toIngressError(error, "openai-chat");
+        return Response.json(ingressError.body, {
+          status: ingressError.status,
+        });
+      }
 
       return new Response(writeOpenAIResponsesSSE(stream), {
         headers: {

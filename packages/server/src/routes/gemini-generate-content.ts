@@ -14,6 +14,10 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
+import {
+  ensureAiSdkProviderAvailable,
+  providerNotInstalled,
+} from "../provider-availability";
 import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
@@ -79,13 +83,20 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
 
     const transformed = geminiGenerateContentToModelMessages(request);
     const tools = aiSdkTools(transformed.tools);
-    const stream = provider.invoke({
-      messages: transformed.messages,
-      modelId: route.modelId,
-      settings: aiSdkSettings(transformed.settings),
-      signal: context.req.raw.signal,
-      ...(tools === undefined ? {} : { tools }),
-    });
+    let stream: ReturnType<typeof provider.invoke>;
+    try {
+      await ensureAiSdkProviderAvailable(provider);
+      stream = provider.invoke({
+        messages: transformed.messages,
+        modelId: route.modelId,
+        settings: aiSdkSettings(transformed.settings),
+        signal: context.req.raw.signal,
+        ...(tools === undefined ? {} : { tools }),
+      });
+    } catch (error) {
+      // no-excuse-ok: catch - HTTP boundary converts provider failures.
+      return geminiProviderError(error);
+    }
 
     if (target.stream) {
       return new Response(writeGeminiGenerateContentSSE(stream), {
@@ -96,7 +107,12 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
       });
     }
 
-    return Response.json(await writeGeminiGenerateContentResponse(stream));
+    try {
+      return Response.json(await writeGeminiGenerateContentResponse(stream));
+    } catch (error) {
+      // no-excuse-ok: catch - HTTP boundary converts provider failures.
+      return geminiProviderError(error);
+    }
   });
 }
 
@@ -249,8 +265,22 @@ function geminiError(
     | "INVALID_ARGUMENT"
     | "NOT_FOUND"
     | "RESOURCE_EXHAUSTED"
+    | "UNAVAILABLE"
     | "UNIMPLEMENTED",
   message: string,
 ): Response {
   return Response.json({ error: { code, message, status } }, { status: code });
+}
+
+function geminiProviderError(error: unknown): Response {
+  const missing = providerNotInstalled(error);
+  if (missing !== undefined) {
+    return geminiError(503, "UNAVAILABLE", missing.message);
+  }
+
+  if (error instanceof Error) {
+    return geminiError(500, "UNAVAILABLE", error.message);
+  }
+
+  throw error;
 }

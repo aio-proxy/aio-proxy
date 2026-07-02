@@ -97,4 +97,45 @@ describe("dashboard event hub", () => {
       hub.close();
     }
   });
+
+  test("Given trace lifecycle events When published Then dashboard SSE emits start and end", async () => {
+    // Given
+    const hub = createDashboardEventHub();
+    const stream = new Response(hub.stream());
+
+    try {
+      // When
+      hub.publish({
+        event: "trace.start",
+        data: {
+          modelId: "gpt-test",
+          providerId: "openai",
+          trace_id: "trace-1",
+        },
+      });
+      hub.publish({
+        event: "trace.end",
+        data: {
+          trace_id: "trace-1",
+          usage: {
+            providerId: "openai",
+            modelId: "gpt-test",
+            inputTokens: 1,
+            outputTokens: 2,
+            totalTokens: 3,
+          },
+        },
+      });
+      hub.close();
+      const text = await stream.text();
+
+      // Then
+      expect(text).toContain("event: trace.start");
+      expect(text).toContain('"providerId":"openai"');
+      expect(text).toContain("event: trace.end");
+      expect(text).toContain('"totalTokens":3');
+    } finally {
+      hub.close();
+    }
+  });
 });

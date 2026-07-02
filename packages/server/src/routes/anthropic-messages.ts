@@ -10,6 +10,10 @@ import {
 } from "@aio-proxy/core";
 import { Hono } from "hono";
 import { ZodError } from "zod";
+import {
+  ensureAiSdkProviderAvailable,
+  providerNotInstalled,
+} from "../provider-availability";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
 declare module "@aio-proxy/core" {
@@ -63,14 +67,22 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
       }
 
       const transformed = anthropicMessagesToModelMessages(request);
-      const stream = provider.invoke({
-        messages: aiSdkMessages(transformed.messages),
-        modelId: route.modelId,
-        settings: transformed.settings,
-        signal: context.req.raw.signal,
-      });
 
       if (request.stream === true) {
+        let stream: ReturnType<typeof provider.invoke>;
+        try {
+          await ensureAiSdkProviderAvailable(provider);
+          stream = provider.invoke({
+            messages: aiSdkMessages(transformed.messages),
+            modelId: route.modelId,
+            settings: transformed.settings,
+            signal: context.req.raw.signal,
+          });
+        } catch (error) {
+          // no-excuse-ok: catch - HTTP boundary converts provider failures.
+          return anthropicProviderError(error);
+        }
+
         return new Response(writeAnthropicMessagesSSE(stream), {
           headers: {
             "cache-control": "no-cache",
@@ -79,7 +91,19 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
         });
       }
 
-      return Response.json(await anthropicMessage(stream));
+      try {
+        await ensureAiSdkProviderAvailable(provider);
+        const stream = provider.invoke({
+          messages: aiSdkMessages(transformed.messages),
+          modelId: route.modelId,
+          settings: transformed.settings,
+          signal: context.req.raw.signal,
+        });
+        return Response.json(await anthropicMessage(stream));
+      } catch (error) {
+        // no-excuse-ok: catch - HTTP boundary converts provider failures.
+        return anthropicProviderError(error);
+      }
     })
     .post("/v1/messages/count_tokens", async (context) => {
       const request = await parseRequest(context.req.raw);
@@ -208,6 +232,19 @@ function anthropicError(
   message: string,
 ): Response {
   return Response.json({ type: "error", error: { type, message } }, { status });
+}
+
+function anthropicProviderError(error: unknown): Response {
+  const missing = providerNotInstalled(error);
+  if (missing !== undefined) {
+    return anthropicError(503, "invalid_request_error", missing.message);
+  }
+
+  if (error instanceof Error) {
+    return anthropicError(500, "invalid_request_error", error.message);
+  }
+
+  throw error;
 }
 
 function assertNever(value: never): never {

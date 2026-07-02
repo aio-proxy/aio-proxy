@@ -3,6 +3,7 @@ import {
   type AioModelMessage,
   type AioStreamPart,
   ConfigSchema,
+  DashboardEventSchema,
   TraceEventSchema,
 } from "../src/index";
 
@@ -173,6 +174,39 @@ describe("TraceEventSchema", () => {
     };
 
     expect(TraceEventSchema.parse(event)).toEqual(event);
+  });
+});
+
+describe("DashboardEventSchema", () => {
+  test("roundtrips trace start dashboard events", () => {
+    const event = {
+      event: "trace.start",
+      data: {
+        trace_id: "trace-1",
+        providerId: "openai",
+        modelId: "gpt-5-mini",
+      },
+    };
+
+    expect(DashboardEventSchema.parse(event)).toEqual(event);
+  });
+
+  test("roundtrips trace end dashboard events with usage", () => {
+    const event = {
+      event: "trace.end",
+      data: {
+        trace_id: "trace-1",
+        usage: {
+          providerId: "openai",
+          modelId: "gpt-5-mini",
+          inputTokens: 3,
+          outputTokens: 5,
+          totalTokens: 8,
+        },
+      },
+    };
+
+    expect(DashboardEventSchema.parse(event)).toEqual(event);
   });
 });
 
