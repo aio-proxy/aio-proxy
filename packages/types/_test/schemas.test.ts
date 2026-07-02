@@ -10,8 +10,7 @@ import {
 const apiProvider = {
   kind: "api",
   name: "OpenAI",
-  vendor: "openai-native",
-  protocol: "openai-responses",
+  protocol: "openai-response",
   apiKey: "sk-test",
   models: ["gpt-5-mini"],
 };
@@ -120,13 +119,6 @@ describe("ConfigSchema", () => {
       0,
       "kind",
     ]);
-  });
-
-  test("rejects invalid api vendor at providers.0.vendor", () => {
-    expectIssuePath(
-      { server: {}, providers: [{ ...apiProvider, vendor: "bad-vendor" }] },
-      ["providers", 0, "vendor"],
-    );
   });
 
   test("rejects invalid api protocol at providers.0.protocol", () => {

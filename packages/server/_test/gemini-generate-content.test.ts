@@ -4,6 +4,7 @@ import type {
   ApiProviderInstance,
 } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type {
   CallSettings,
   JSONValue,
@@ -54,8 +55,7 @@ function googleNativeProvider(
     id: "google",
     kind: "api",
     models: ["gemini-2.5-flash"],
-    protocol: "gemini-generate-content",
-    vendor: "google-native",
+    protocol: ProviderProtocol.Gemini,
     passthrough,
   };
 }
@@ -92,7 +92,7 @@ function postStream(app: ReturnType<typeof createServer>): Promise<Response> {
 }
 
 describe("POST /v1beta/models/:model::generateContent", () => {
-  test("Given google-native api provider When generateContent is posted Then passthrough receives original bytes", async () => {
+  test("Given gemini api provider When generateContent is posted Then passthrough receives original bytes", async () => {
     // Given
     const requestBody = JSON.stringify(generateRequest);
     let bodySeen = "";
@@ -115,7 +115,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(bodySeen).toBe(requestBody);
   });
 
-  test("Given google-native oversized inlineData When generateContent is posted Then returns 413 without passthrough", async () => {
+  test("Given gemini oversized inlineData When generateContent is posted Then returns 413 without passthrough", async () => {
     // Given
     let invoked = false;
     const provider = googleNativeProvider(async () => {
@@ -378,7 +378,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
 });
 
 describe("POST /v1beta/models/:model::streamGenerateContent", () => {
-  test("Given google-native api provider When streamGenerateContent is posted Then passthrough preserves stream bytes", async () => {
+  test("Given gemini api provider When streamGenerateContent is posted Then passthrough preserves stream bytes", async () => {
     // Given
     const provider = googleNativeProvider(async () => {
       return new Response('data: {"upstream":true}\n\n', {
@@ -397,7 +397,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     expect(await response.text()).toBe('data: {"upstream":true}\n\n');
   });
 
-  test("Given google-native oversized inlineData When streamGenerateContent is posted Then returns 413 without passthrough", async () => {
+  test("Given gemini oversized inlineData When streamGenerateContent is posted Then returns 413 without passthrough", async () => {
     // Given
     let invoked = false;
     const provider = googleNativeProvider(async () => {

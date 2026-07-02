@@ -4,6 +4,7 @@ import type {
   ApiProviderInstance,
 } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
 
 const responsesRequest = {
@@ -65,7 +66,7 @@ const unsupportedBeforeProviderInvocationCases = [
 ] as const;
 
 describe("OpenAI Responses routes", () => {
-  test("Given openai-responses native provider When POST is valid Then raw request and response bytes pass through", async () => {
+  test("Given openai-response api provider When POST is valid Then raw request and response bytes pass through", async () => {
     // Given
     const rawRequest =
       '{"model":"gpt-4.1-mini","input":"Say pong.","stream":false}';
@@ -74,8 +75,7 @@ describe("OpenAI Responses routes", () => {
       id: "openai",
       kind: "api",
       models: ["gpt-4.1-mini"],
-      protocol: "openai-responses",
-      vendor: "openai-native",
+      protocol: ProviderProtocol.OpenAIResponse,
       async passthrough(req) {
         bodySeen = await req.text();
         return new Response('{"upstream":true}', {

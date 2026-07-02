@@ -5,6 +5,7 @@ import type {
   DashboardProviderSummary,
   Provider,
 } from "@aio-proxy/types";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -14,12 +15,6 @@ export type ProviderRuntime = {
   readonly probes: ReadonlyMap<string, ProviderProbe>;
   readonly summaries: readonly DashboardProviderSummary[];
 };
-
-const passthroughVendors = new Set([
-  "openai-native",
-  "anthropic-native",
-  "google-native",
-]);
 
 export function materializeProviders(config: Config): ProviderRuntime {
   const probes = new Map<string, ProviderProbe>();
@@ -103,7 +98,7 @@ export class ProviderBuildError extends Error {
 function providerId(provider: Provider): string {
   switch (provider.kind) {
     case "api":
-      return provider.id ?? provider.vendor;
+      return provider.id ?? provider.protocol;
     case "ai-sdk":
     case "subscription":
       return provider.id;
@@ -143,16 +138,16 @@ function providerProbeRequest(
   const model = "aio-proxy-probe";
   const url = new URL(baseUrl);
   switch (provider.protocol) {
-    case "openai-chat":
+    case ProviderProtocol.OpenAICompatible:
       url.pathname = "/v1/chat/completions";
       return {
         body: { messages: [{ role: "user", content: "ping" }], model },
         url,
       };
-    case "openai-responses":
+    case ProviderProtocol.OpenAIResponse:
       url.pathname = "/v1/responses";
       return { body: { input: "ping", model }, url };
-    case "anthropic-messages":
+    case ProviderProtocol.Anthropic:
       url.pathname = "/v1/messages";
       return {
         body: {
@@ -162,7 +157,7 @@ function providerProbeRequest(
         },
         url,
       };
-    case "gemini-generate-content":
+    case ProviderProtocol.Gemini:
       url.pathname = `/v1beta/models/${model}:generateContent`;
       return {
         body: { contents: [{ role: "user", parts: [{ text: "ping" }] }] },
@@ -192,7 +187,7 @@ async function probeAiSdk(
 }
 
 function isPassthrough(provider: RuntimeProviderInstance): boolean {
-  return provider.kind === "api" && passthroughVendors.has(provider.vendor);
+  return provider.kind === "api";
 }
 
 function assertNever(value: never): never {

@@ -32,7 +32,6 @@ export type ApiProviderInstance = {
   readonly models?: readonly ModelEntry[];
   readonly passthrough: (req: Request) => Promise<Response>;
   readonly protocol: ProviderProtocol;
-  readonly vendor: ApiProviderConfig["vendor"];
 };
 
 export type ApiProviderFactoryOptions = {
@@ -50,7 +49,6 @@ export function createApiProvider(
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),
     protocol: config.protocol,
-    vendor: config.vendor,
     async passthrough(req) {
       const upstreamUrl = rewrittenUrl(config.baseUrl, req.url);
       const headers = new Headers(req.headers);

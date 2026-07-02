@@ -6,6 +6,7 @@ import {
   writeOpenAIChatCompletion,
   writeOpenAIChatSSE,
 } from "@aio-proxy/core";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { ensureAiSdkProviderAvailable } from "../provider-availability";
@@ -36,8 +37,7 @@ export function createOpenAIChatRoutes(source: ProviderRouteSource) {
     const provider = route.provider;
     if (
       provider.kind === "api" &&
-      provider.protocol === "openai-chat" &&
-      provider.vendor === "openai-native"
+      provider.protocol === ProviderProtocol.OpenAICompatible
     ) {
       return provider.passthrough(context.req.raw);
     }

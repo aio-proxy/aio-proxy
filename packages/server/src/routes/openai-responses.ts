@@ -11,6 +11,7 @@ import {
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
 } from "@aio-proxy/core";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable } from "../provider-availability";
@@ -43,8 +44,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
       const provider = route.provider;
       if (
         provider.kind === "api" &&
-        provider.protocol === "openai-responses" &&
-        provider.vendor === "openai-native"
+        provider.protocol === ProviderProtocol.OpenAIResponse
       ) {
         return provider.passthrough(context.req.raw);
       }

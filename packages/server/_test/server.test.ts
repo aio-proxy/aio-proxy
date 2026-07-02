@@ -4,14 +4,14 @@ import serverEntrypoint, {
   createServer,
   serverDefaults,
 } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { hc } from "hono/client";
 
 const config = {
   providers: [
     {
       kind: "api",
-      vendor: "openai-native",
-      protocol: "openai-chat",
+      protocol: ProviderProtocol.OpenAICompatible,
       apiKey: "sk-abcdefghijklmnopqrstuvwxyz",
       baseUrl: "https://api.example.com",
       models: ["gpt-test"],
@@ -131,8 +131,7 @@ describe("server routes", () => {
           {
             kind: "api",
             id: "openai",
-            vendor: "openai-native",
-            protocol: "openai-chat",
+            protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },
@@ -177,14 +176,14 @@ describe("server routes", () => {
     const app = createServer({ config });
 
     // When
-    const found = await app.request("/dashboard/providers/openai-native");
+    const found = await app.request("/dashboard/providers/openai-compatible");
     const missing = await app.request("/dashboard/providers/missing");
 
     // Then
     expect(found.status).toBe(200);
     expect(await found.json()).toEqual({
       provider: {
-        id: "openai-native",
+        id: "openai-compatible",
         kind: "api",
         enabled: true,
         passthrough: true,
@@ -274,8 +273,7 @@ describe("server routes", () => {
           {
             kind: "api",
             id: "bad",
-            vendor: "openai-native",
-            protocol: "openai-chat",
+            protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },

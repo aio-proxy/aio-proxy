@@ -12,6 +12,7 @@ import {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
 } from "@aio-proxy/core";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import {
@@ -57,8 +58,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     const provider = route.provider;
     if (
       provider.kind === "api" &&
-      provider.protocol === "gemini-generate-content" &&
-      provider.vendor === "google-native"
+      provider.protocol === ProviderProtocol.Gemini
     ) {
       const request = await parseRequest(context.req.raw, target.model);
       if (request instanceof Response) {

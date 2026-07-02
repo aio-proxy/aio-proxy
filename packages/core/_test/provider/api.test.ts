@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { ApiProviderTrace } from "../../src/index";
 import { createApiProvider } from "../../src/index";
 
@@ -63,8 +64,7 @@ describe("createApiProvider", () => {
       const provider = createApiProvider({
         kind: "api",
         id: "openai",
-        vendor: "openai-compatible",
-        protocol: "openai-chat",
+        protocol: ProviderProtocol.OpenAICompatible,
         baseUrl: upstream.url.toString(),
         apiKey: "$AIO_PROXY_TEST_KEY",
         models: ["gpt-5-mini"],
@@ -121,8 +121,7 @@ describe("createApiProvider", () => {
       const provider = createApiProvider({
         kind: "api",
         id: "openai",
-        vendor: "openai-compatible",
-        protocol: "openai-chat",
+        protocol: ProviderProtocol.OpenAICompatible,
         baseUrl: upstream.url.toString(),
         apiKey: "direct-key",
         trace,
@@ -157,8 +156,7 @@ describe("createApiProvider", () => {
       const provider = createApiProvider({
         kind: "api",
         id: "openai",
-        vendor: "openai-compatible",
-        protocol: "openai-chat",
+        protocol: ProviderProtocol.OpenAICompatible,
         baseUrl: upstream.url.toString(),
         trace,
       });

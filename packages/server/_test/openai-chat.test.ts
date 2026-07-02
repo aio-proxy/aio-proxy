@@ -5,6 +5,7 @@ import {
   createAiSdkProvider,
 } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 
 const chatRequest = {
@@ -43,15 +44,14 @@ class AbortStreamError extends Error {
 }
 
 describe("POST /v1/chat/completions", () => {
-  test("Given openai-native api provider When chat completion is posted Then passthrough receives original request", async () => {
+  test("Given openai-compatible api provider When chat completion is posted Then passthrough receives original request", async () => {
     // Given
     let bodySeen: unknown;
     const provider = {
       id: "openai",
       kind: "api",
       models: ["gpt-4o-mini"],
-      protocol: "openai-chat",
-      vendor: "openai-native",
+      protocol: ProviderProtocol.OpenAICompatible,
       async passthrough(req) {
         bodySeen = await req.json();
         return new Response("provider-bytes", {
@@ -79,15 +79,14 @@ describe("POST /v1/chat/completions", () => {
     expect(bodySeen).toEqual(chatRequest);
   });
 
-  test("Given openai-native api provider When non-stream chat completion is posted Then passthrough receives original request", async () => {
+  test("Given openai-compatible api provider When non-stream chat completion is posted Then passthrough receives original request", async () => {
     // Given
     let bodySeen: unknown;
     const provider = {
       id: "openai",
       kind: "api",
       models: ["gpt-4o-mini"],
-      protocol: "openai-chat",
-      vendor: "openai-native",
+      protocol: ProviderProtocol.OpenAICompatible,
       async passthrough(req) {
         bodySeen = await req.json();
         return Response.json(

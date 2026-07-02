@@ -5,6 +5,7 @@ import type {
 } from "@aio-proxy/core";
 import { createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 
 const messagesRequest = {
@@ -28,15 +29,14 @@ function textStream(
 }
 
 describe("POST /v1/messages", () => {
-  test("Given anthropic-native api provider When message is posted Then passthrough receives original request", async () => {
+  test("Given anthropic api provider When message is posted Then passthrough receives original request", async () => {
     // Given
     let bodySeen: unknown;
     const provider = {
       id: "anthropic",
       kind: "api",
       models: ["claude-sonnet-4-5"],
-      protocol: "anthropic-messages",
-      vendor: "anthropic-native",
+      protocol: ProviderProtocol.Anthropic,
       async passthrough(req) {
         bodySeen = await req.json();
         return new Response("provider-bytes", {

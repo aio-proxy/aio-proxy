@@ -3,6 +3,7 @@ import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { createServerState } from "../src/server-state";
 
 const decoder = new TextDecoder();
@@ -12,8 +13,7 @@ const configWithProvider = (id: string, baseUrl: string) => ({
     {
       kind: "api",
       id,
-      vendor: "openai-native",
-      protocol: "openai-chat",
+      protocol: ProviderProtocol.OpenAICompatible,
       baseUrl,
       models: [`${id}-model`],
     },
@@ -83,16 +83,14 @@ describe("server reload", () => {
           {
             kind: "api",
             id: "first",
-            vendor: "openai-native",
-            protocol: "openai-chat",
+            protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: "https://first.example.com",
             models: [{ alias: "same", id: "first-model" }],
           },
           {
             kind: "api",
             id: "second",
-            vendor: "openai-native",
-            protocol: "openai-chat",
+            protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: "https://second.example.com",
             models: [{ alias: "same", id: "second-model" }],
           },

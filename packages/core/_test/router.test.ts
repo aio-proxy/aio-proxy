@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type { ProviderInstance } from "../src/index";
 import { Router, RouterModelNotFoundError } from "../src/index";
 
@@ -12,8 +13,7 @@ const copilot = {
 const openai = {
   kind: "api",
   id: "openai",
-  vendor: "openai-native",
-  protocol: "openai-responses",
+  protocol: ProviderProtocol.OpenAIResponse,
   models: ["gpt-5-mini", { alias: "mini", id: "gpt-5-mini" }],
 } satisfies ProviderInstance;
 
@@ -30,8 +30,7 @@ describe("Router", () => {
     const anthropic = {
       kind: "api",
       id: "anthropic",
-      vendor: "anthropic-native",
-      protocol: "anthropic-messages",
+      protocol: ProviderProtocol.Anthropic,
       models: [{ alias: "haiku", id: "claude-3-5-haiku" }],
     } satisfies ProviderInstance;
     const router = new Router([openai, anthropic]);
@@ -48,8 +47,7 @@ describe("Router", () => {
     const other = {
       kind: "api",
       id: "other",
-      vendor: "openai-compatible",
-      protocol: "openai-chat",
+      protocol: ProviderProtocol.OpenAICompatible,
       models: [{ alias: "mini", id: "other-mini" }],
     } satisfies ProviderInstance;
 
@@ -104,8 +102,7 @@ describe("Router", () => {
     const duplicate = {
       kind: "api",
       id: "dupe",
-      vendor: "openai-native",
-      protocol: "openai-responses",
+      protocol: ProviderProtocol.OpenAIResponse,
       models: [
         { alias: "mini", id: "first" },
         { alias: "mini", id: "second" },

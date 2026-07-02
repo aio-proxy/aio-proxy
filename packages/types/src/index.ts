@@ -16,25 +16,19 @@ export const ModelEntrySchema = z.union([
   }),
 ]);
 
-const ApiVendorSchema = z.enum([
-  "openai-native",
-  "anthropic-native",
-  "google-native",
-  "openai-compatible",
-]);
+export enum ProviderProtocol {
+  OpenAIResponse = "openai-response",
+  OpenAICompatible = "openai-compatible",
+  Anthropic = "anthropic",
+  Gemini = "gemini",
+}
 
-export const ProviderProtocolSchema = z.enum([
-  "openai-chat",
-  "openai-responses",
-  "anthropic-messages",
-  "gemini-generate-content",
-]);
+export const ProviderProtocolSchema = z.enum(ProviderProtocol);
 
 export const ApiProviderSchema = z.object({
   kind: z.literal("api"),
   id: z.string().optional(),
   name: z.string().optional(),
-  vendor: ApiVendorSchema,
   protocol: ProviderProtocolSchema,
   baseUrl: z.string().url().optional(),
   apiKey: z.string().optional(),
@@ -236,4 +230,3 @@ export type DashboardProvidersResponse = z.infer<
 export type DashboardEvent = z.infer<typeof DashboardEventSchema>;
 export type AioModelMessage = z.infer<typeof AioModelMessageSchema>;
 export type AioStreamPart = z.infer<typeof AioStreamPartSchema>;
-export type ProviderProtocol = z.infer<typeof ProviderProtocolSchema>;

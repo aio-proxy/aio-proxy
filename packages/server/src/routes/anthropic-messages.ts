@@ -8,6 +8,7 @@ import {
   type ToolSet,
   writeAnthropicMessagesSSE,
 } from "@aio-proxy/core";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import {
@@ -52,8 +53,7 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
       const provider = route.provider;
       if (
         provider.kind === "api" &&
-        provider.protocol === "anthropic-messages" &&
-        provider.vendor === "anthropic-native"
+        provider.protocol === ProviderProtocol.Anthropic
       ) {
         return provider.passthrough(context.req.raw);
       }
