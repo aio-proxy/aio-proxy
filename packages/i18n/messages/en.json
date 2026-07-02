@@ -17,6 +17,7 @@
   "cli_error_config_not_found": "Config file not found.",
   "cli_error_config_invalid": "Config file is invalid.",
   "cli_bootstrap_empty_config": "Config bootstrapped at {path}. Edit it or open the dashboard at {dashboardUrl}.",
+  "cli_serve_started": "AIO Proxy listening at {apiUrl}. Dashboard: {dashboardUrl}",
   "error_provider_not_installed": "Provider package not installed: {pkg}. Run `aio-proxy provider install {pkg}` first.",
   "error_alias_collision": "Alias collision: {alias} is provided by both {providerA} and {providerB}. Rename one or use the provider/alias syntax.",
   "error_invalid_locale": "Invalid locale.",

@@ -17,6 +17,7 @@
   "cli_error_config_not_found": "未找到配置文件。",
   "cli_error_config_invalid": "配置文件无效。",
   "cli_bootstrap_empty_config": "配置已初始化到 {path}。请编辑它，或打开控制台 {dashboardUrl}。",
+  "cli_serve_started": "AIO Proxy 正在监听 {apiUrl}。控制台：{dashboardUrl}",
   "error_provider_not_installed": "提供商包尚未安装：{pkg}。请先运行 `aio-proxy provider install {pkg}`。",
   "error_alias_collision": "别名冲突：{alias} 同时由 {providerA} 和 {providerB} 提供。请重命名其中一个，或使用 provider/alias 语法。",
   "error_invalid_locale": "无效的语言区域。",
