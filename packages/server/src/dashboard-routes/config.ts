@@ -20,7 +20,7 @@ const SENSITIVE_KEY_PATTERN =
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
   confirmed: z.literal(true),
-  registry: z.string().url().optional(),
+  registry: z.url().optional(),
 });
 
 const maskSecret = (key: string, value: string): string => {
