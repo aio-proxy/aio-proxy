@@ -32,6 +32,7 @@ describe("createApiProvider", () => {
       | {
           readonly authorization: string | null;
           readonly body: string;
+          readonly encoding: string | null;
           readonly forwardedBy: string | null;
           readonly host: string | null;
           readonly method: string;
@@ -47,6 +48,7 @@ describe("createApiProvider", () => {
         seen = {
           authorization: req.headers.get("authorization"),
           body: await req.text(),
+          encoding: req.headers.get("accept-encoding"),
           forwardedBy: req.headers.get("x-forwarded-by"),
           host: req.headers.get("host"),
           method: req.method,
@@ -75,6 +77,7 @@ describe("createApiProvider", () => {
           body: '{"model":"gpt-5-mini"}',
           headers: {
             authorization: "Bearer old",
+            "accept-encoding": "gzip",
             host: "proxy.local",
             "content-type": "application/json",
             "x-custom": "kept",
@@ -88,6 +91,7 @@ describe("createApiProvider", () => {
       expect(seen).toEqual({
         authorization: "Bearer env-secret",
         body: '{"model":"gpt-5-mini"}',
+        encoding: "identity",
         forwardedBy: "aio-proxy/0.0.0",
         host: upstream.url.host,
         method: "POST",
@@ -138,6 +142,81 @@ describe("createApiProvider", () => {
         category: undefined,
         status: 200,
       });
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
+  test("strips upstream decompression headers from decoded responses", async () => {
+    const body = JSON.stringify({ ok: true });
+    const compressed = Bun.gzipSync(new TextEncoder().encode(body));
+    const upstream = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.byteLength),
+            "content-type": "application/json",
+          },
+        });
+      },
+    });
+
+    try {
+      const provider = createApiProvider({
+        kind: "api",
+        id: "openai",
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseUrl: upstream.url.toString(),
+      });
+
+      const response = await provider.passthrough(
+        new Request("https://proxy.local/v1/chat/completions"),
+      );
+
+      expect(response.headers.get("content-encoding")).toBeNull();
+      expect(response.headers.get("content-length")).toBeNull();
+      expect(await response.text()).toBe(body);
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
+  test("strips zstd headers when upstream ignores identity encoding", async () => {
+    const body = JSON.stringify({ ok: true });
+    const compressed = Bun.zstdCompressSync(new TextEncoder().encode(body));
+    const upstream = Bun.serve({
+      port: 0,
+      fetch(req) {
+        expect(req.headers.get("accept-encoding")).toBe("identity");
+        return new Response(compressed, {
+          headers: {
+            "content-encoding": "zstd",
+            "content-length": String(compressed.byteLength),
+            "content-type": "application/json",
+          },
+        });
+      },
+    });
+
+    try {
+      const provider = createApiProvider({
+        kind: "api",
+        id: "openai",
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseUrl: upstream.url.toString(),
+      });
+
+      const response = await provider.passthrough(
+        new Request("https://proxy.local/v1/chat/completions", {
+          headers: { "accept-encoding": "gzip, deflate, br, zstd" },
+        }),
+      );
+
+      expect(response.headers.get("content-encoding")).toBeNull();
+      expect(response.headers.get("content-length")).toBeNull();
+      expect(await response.text()).toBe(body);
     } finally {
       upstream.stop(true);
     }
