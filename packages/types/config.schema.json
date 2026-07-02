@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "server": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "host": {
+          "default": "127.0.0.1",
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "default": 22078,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "dashboardPort": {
+          "default": 22079,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "api"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "openai-response",
+                  "openai-compatible",
+                  "anthropic",
+                  "gemini"
+                ]
+              },
+              "baseUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "apiKey": {
+                "type": "string"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "alias": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["alias", "id"]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["kind", "protocol"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "subscription"
+              },
+              "id": {
+                "type": "string"
+              },
+              "vendor": {
+                "type": "string",
+                "const": "github-copilot"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "alias": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["alias", "id"]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["kind", "id", "vendor"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ai-sdk"
+              },
+              "id": {
+                "type": "string"
+              },
+              "packageName": {
+                "default": "@ai-sdk/openai-compatible",
+                "type": "string"
+              },
+              "options": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "parseReasoningContent": {
+                "type": "boolean"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "alias": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["alias", "id"]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["kind", "id"]
+          }
+        ]
+      }
+    }
+  },
+  "required": ["providers"]
+}

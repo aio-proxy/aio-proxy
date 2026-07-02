@@ -2,11 +2,13 @@
   "name": "@aio-proxy/types",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./config.schema.json": "./config.schema.json"
   },
   "scripts": {
     "build": "tsc -b",
     "check": "biome check . && tsc -b --pretty false",
+    "schema:generate": "bun scripts/generate-config-schema.js && biome format --write config.schema.json",
     "test": "bun run test:unit",
     "test:unit": "bun test _test/*.test.ts"
   },
