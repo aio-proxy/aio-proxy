@@ -57,6 +57,7 @@ describe("cli", () => {
       stderr: "pipe",
       stdout: "pipe",
     });
+    const stdout = new Response(server.stdout).text();
 
     try {
       // When
@@ -69,6 +70,13 @@ describe("cli", () => {
       expect(response.status).toBe(200);
       expect(existsSync(configPath)).toBe(true);
       expect(await readFile(configPath, "utf8")).toContain("providers");
+      server.kill();
+      await server.exited;
+      const outputText = await stdout;
+      expect(outputText).toContain(`http://127.0.0.1:${port}/dashboard`);
+      if (port !== 22_078) {
+        expect(outputText).not.toContain("http://127.0.0.1:22078/dashboard");
+      }
     } finally {
       server.kill();
       await server.exited;

@@ -75,7 +75,7 @@ const resolveConfigPath = (optionPath: string | undefined) =>
   // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
   optionPath ?? process.env["AIO_PROXY_CONFIG"] ?? defaultConfigPath();
 
-const readOrBootstrapConfig = async (path: string) => {
+const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   if (!existsSync(path)) {
     try {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -92,7 +92,7 @@ const readOrBootstrapConfig = async (path: string) => {
       console.log(
         m.cli_bootstrap_empty_config({
           path,
-          dashboardUrl: `http://127.0.0.1:${DEFAULT_CONFIG.server.port}/dashboard`,
+          dashboardUrl,
         }),
       );
     }
@@ -104,11 +104,19 @@ const readOrBootstrapConfig = async (path: string) => {
 
 const serve = async (options: ServeOptions) => {
   const configPath = resolveConfigPath(options.config);
-  const config = await readOrBootstrapConfig(configPath);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
+  const apiUrl = `http://${host}:${port}`;
+  const dashboardUrl = `${apiUrl}/dashboard`;
+  const config = await readOrBootstrapConfig(configPath, dashboardUrl);
   const app = createServer({ config, configPath, host, port });
-  Bun.serve({ hostname: host, port, fetch: app.fetch });
+  const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
+  console.log(
+    m.cli_serve_started({
+      apiUrl: `http://${server.hostname}:${server.port}`,
+      dashboardUrl: `http://${server.hostname}:${server.port}/dashboard`,
+    }),
+  );
 };
 
 const runStub = () => {};
