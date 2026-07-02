@@ -52,15 +52,12 @@ function firstPragmaValue(record: unknown): string | number {
 }
 
 function runChildLock(home: string): Bun.Subprocess<"pipe", "pipe", "pipe"> {
-  const child = Bun.spawn(
-    ["/opt/homebrew/bin/bun", busyLockChildPath, "1000"],
-    {
-      cwd: process.cwd(),
-      env: { ...process.env, AIO_PROXY_HOME: home },
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
+  const child = Bun.spawn([process.execPath, busyLockChildPath, "1000"], {
+    cwd: process.cwd(),
+    env: { ...process.env, AIO_PROXY_HOME: home },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   return child;
 }
 
