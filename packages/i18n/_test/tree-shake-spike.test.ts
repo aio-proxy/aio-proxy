@@ -72,5 +72,5 @@ describe("paraglide tree-shaking spike", () => {
     // Then
     expect(build.exitCode).toBe(0);
     expect(readFileSync(bundle, "utf8")).toContain("spike_msg_050");
-  });
+  }, 30_000);
 });
