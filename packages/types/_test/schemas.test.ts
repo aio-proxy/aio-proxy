@@ -50,7 +50,7 @@ describe("ConfigSchema", () => {
       kind: "ai-sdk",
       id: "google",
       packageName: "@ai-sdk/google",
-      providerName: "google",
+      options: { name: "google" },
       models: ["gemini-2.5-flash"],
     };
 
@@ -65,9 +65,12 @@ describe("ConfigSchema", () => {
     const provider = {
       kind: "ai-sdk",
       id: "compatible",
-      baseURL: "https://api.example.test/v1",
-      apiKey: "sk-test",
-      headers: { "x-test": "yes" },
+      options: {
+        baseURL: "https://api.example.test/v1",
+        apiKey: "sk-test",
+        headers: { "x-test": "yes" },
+        name: "compatible",
+      },
       parseReasoningContent: true,
       models: ["custom-reasoner"],
     };

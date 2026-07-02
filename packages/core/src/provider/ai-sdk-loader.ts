@@ -21,6 +21,7 @@ export type AiSdkProviderLoadOptions = {
   readonly baseURL?: string;
   readonly headers?: Record<string, string>;
   readonly name?: string;
+  readonly [key: string]: unknown;
 };
 
 export type LoadedAiSdkProvider = LoadedAiSdkRuntimeProvider;
@@ -46,7 +47,10 @@ const bundledProviders = {
     return createGoogle(options);
   },
   "@ai-sdk/openai-compatible": async (options = {}) => {
-    if (options.baseURL === undefined || options.name === undefined) {
+    if (
+      typeof options.baseURL !== "string" ||
+      typeof options.name !== "string"
+    ) {
       throw new AiSdkProviderLoaderError(
         "@ai-sdk/openai-compatible requires name and baseURL",
       );

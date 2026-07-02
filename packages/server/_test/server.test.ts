@@ -20,11 +20,14 @@ const config = {
       kind: "ai-sdk",
       id: "compatible",
       packageName: "@ai-sdk/openai-compatible",
-      apiKey: "Bearer super-secret-token",
-      baseURL: "https://compatible.example.com",
-      headers: {
-        authorization: "Token provider-secret",
-        "x-api-key": "header-secret",
+      options: {
+        apiKey: "Bearer super-secret-token",
+        baseURL: "https://compatible.example.com",
+        headers: {
+          authorization: "Token provider-secret",
+          "x-api-key": "header-secret",
+        },
+        name: "compatible",
       },
       models: ["compatible-test"],
     },
@@ -62,9 +65,9 @@ describe("server routes", () => {
     expect(JSON.stringify(body)).not.toContain("provider-secret");
     expect(JSON.stringify(body)).not.toContain("header-secret");
     expect(body.providers[0].apiKey).toBe("sk-****");
-    expect(body.providers[1].apiKey).toBe("****");
-    expect(body.providers[1].headers.authorization).toBe("****");
-    expect(body.providers[1].headers["x-api-key"]).toBe("****");
+    expect(body.providers[1].options.apiKey).toBe("****");
+    expect(body.providers[1].options.headers.authorization).toBe("****");
+    expect(body.providers[1].options.headers["x-api-key"]).toBe("****");
   });
 
   test("POST /dashboard/config rejects evil origin when requested", async () => {

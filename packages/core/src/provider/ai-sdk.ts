@@ -180,12 +180,7 @@ function enqueueStreamParts(
 }
 
 function loadOptions(config: AiSdkProvider): AiSdkProviderLoadOptions {
-  return {
-    ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
-    ...(config.baseURL === undefined ? {} : { baseURL: config.baseURL }),
-    ...(config.headers === undefined ? {} : { headers: config.headers }),
-    name: config.providerName ?? config.id,
-  };
+  return config.options ?? {};
 }
 
 async function resolveLoadedModel({
