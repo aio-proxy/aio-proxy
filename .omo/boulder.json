@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "active_work_id": "aio-proxy",
+  "works": {
+    "aio-proxy": {
+      "work_id": "aio-proxy",
+      "active_plan": ".omo/plans/aio-proxy.md",
+      "plan_name": "aio-proxy",
+      "session_ids": ["codex:019f1790-ead2-7b21-9c2d-de4a0079a9ea"],
+      "status": "active",
+      "worktree_path": null
+    }
+  }
+}
