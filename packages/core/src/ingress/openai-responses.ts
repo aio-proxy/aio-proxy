@@ -88,11 +88,11 @@ export const OpenAIResponsesRequestSchema = z.object({
   background: z.boolean().optional(),
 });
 
-type RawOpenAIResponsesRequest = z.infer<typeof OpenAIResponsesRequestSchema>;
-export type OpenAIResponsesInputMessage = z.infer<typeof inputMessageSchema>;
-export type OpenAIResponsesTextPart = z.infer<typeof textPartSchema>;
-export type OpenAIResponsesFunctionTool = z.infer<typeof functionToolSchema>;
-export type OpenAIResponsesCustomTool = z.infer<typeof customToolSchema>;
+type RawOpenAIResponsesRequest = z.output<typeof OpenAIResponsesRequestSchema>;
+export type OpenAIResponsesInputMessage = z.output<typeof inputMessageSchema>;
+export type OpenAIResponsesTextPart = z.output<typeof textPartSchema>;
+export type OpenAIResponsesFunctionTool = z.output<typeof functionToolSchema>;
+export type OpenAIResponsesCustomTool = z.output<typeof customToolSchema>;
 export type OpenAIResponsesTool =
   | OpenAIResponsesFunctionTool
   | OpenAIResponsesCustomTool;

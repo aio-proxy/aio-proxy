@@ -1,6 +1,7 @@
 import type {
   ApiProvider,
   ModelEntry,
+  ProviderKind,
   ProviderProtocol,
 } from "@aio-proxy/types";
 
@@ -28,7 +29,7 @@ export type ApiProviderConfig = Omit<ApiProvider, "baseUrl" | "id"> & {
 
 export type ApiProviderInstance = {
   readonly id: string;
-  readonly kind: "api";
+  readonly kind: ProviderKind.Api;
   readonly models?: readonly ModelEntry[];
   readonly passthrough: (req: Request) => Promise<Response>;
   readonly protocol: ProviderProtocol;

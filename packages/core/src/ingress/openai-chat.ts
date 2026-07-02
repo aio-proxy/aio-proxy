@@ -69,7 +69,7 @@ export const OpenAIChatRequestSchema = z.object({
   reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
 });
 
-export type OpenAIChatRequest = z.infer<typeof OpenAIChatRequestSchema>;
+export type OpenAIChatRequest = z.output<typeof OpenAIChatRequestSchema>;
 
 export function parseOpenAIChat(input: unknown): OpenAIChatRequest {
   return OpenAIChatRequestSchema.parse(input);

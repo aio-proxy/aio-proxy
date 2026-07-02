@@ -5,7 +5,7 @@ import type {
   DashboardProviderSummary,
   Provider,
 } from "@aio-proxy/types";
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -21,7 +21,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
   const providers = config.providers.map((provider) => {
     const id = providerId(provider);
     switch (provider.kind) {
-      case "api": {
+      case ProviderKind.Api: {
         const baseUrl = provider.baseUrl;
         if (baseUrl === undefined) {
           throw new ProviderBuildError(id, "api provider requires baseUrl");
@@ -29,12 +29,12 @@ export function materializeProviders(config: Config): ProviderRuntime {
         probes.set(id, () => probeApi(provider, baseUrl));
         return createApiProvider({ ...provider, id, baseUrl });
       }
-      case "ai-sdk": {
+      case ProviderKind.AiSdk: {
         const instance = createAiSdkProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         return instance;
       }
-      case "subscription":
+      case ProviderKind.Subscription:
         return {
           id,
           kind: provider.kind,
@@ -97,10 +97,10 @@ export class ProviderBuildError extends Error {
 
 function providerId(provider: Provider): string {
   switch (provider.kind) {
-    case "api":
+    case ProviderKind.Api:
       return provider.id ?? provider.protocol;
-    case "ai-sdk":
-    case "subscription":
+    case ProviderKind.AiSdk:
+    case ProviderKind.Subscription:
       return provider.id;
     default:
       return assertNever(provider);
@@ -108,7 +108,7 @@ function providerId(provider: Provider): string {
 }
 
 async function probeApi(
-  provider: Extract<Provider, { kind: "api" }>,
+  provider: Extract<Provider, { kind: ProviderKind.Api }>,
   baseUrl: string,
 ): Promise<DashboardProviderProbe> {
   try {
@@ -132,7 +132,7 @@ async function probeApi(
 }
 
 function providerProbeRequest(
-  provider: Extract<Provider, { kind: "api" }>,
+  provider: Extract<Provider, { kind: ProviderKind.Api }>,
   baseUrl: string,
 ): { readonly body: unknown; readonly url: URL } {
   const model = "aio-proxy-probe";
@@ -169,7 +169,7 @@ function providerProbeRequest(
 }
 
 async function probeAiSdk(
-  provider: Extract<RuntimeProviderInstance, { kind: "ai-sdk" }>,
+  provider: Extract<RuntimeProviderInstance, { kind: ProviderKind.AiSdk }>,
 ): Promise<DashboardProviderProbe> {
   if (provider.ensureAvailable === undefined) {
     return "OK";
@@ -187,7 +187,7 @@ async function probeAiSdk(
 }
 
 function isPassthrough(provider: RuntimeProviderInstance): boolean {
-  return provider.kind === "api";
+  return provider.kind === ProviderKind.Api;
 }
 
 function assertNever(value: never): never {

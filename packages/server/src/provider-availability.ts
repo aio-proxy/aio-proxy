@@ -1,9 +1,10 @@
 import { AiSdkProviderError, ProviderNotInstalledError } from "@aio-proxy/core";
+import type { ProviderKind } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "./runtime";
 
 type AiSdkRuntimeProvider = Extract<
   RuntimeProviderInstance,
-  { kind: "ai-sdk" }
+  { kind: ProviderKind.AiSdk }
 >;
 
 export async function ensureAiSdkProviderAvailable(

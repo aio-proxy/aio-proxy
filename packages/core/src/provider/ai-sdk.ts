@@ -1,4 +1,4 @@
-import type { AiSdkProvider, ModelEntry } from "@aio-proxy/types";
+import type { AiSdkProvider, ModelEntry, ProviderKind } from "@aio-proxy/types";
 import type {
   AiSdkLanguageModel,
   CallSettings,
@@ -38,7 +38,7 @@ export type AiSdkProviderFactoryOptions = {
 
 export type AiSdkProviderInstance = {
   readonly id: string;
-  readonly kind: "ai-sdk";
+  readonly kind: ProviderKind.AiSdk;
   readonly models?: readonly ModelEntry[];
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (

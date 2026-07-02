@@ -12,7 +12,7 @@ import {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
 } from "@aio-proxy/core";
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import {
@@ -57,7 +57,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
 
     const provider = route.provider;
     if (
-      provider.kind === "api" &&
+      provider.kind === ProviderKind.Api &&
       provider.protocol === ProviderProtocol.Gemini
     ) {
       const request = await parseRequest(context.req.raw, target.model);
@@ -68,7 +68,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
       return provider.passthrough(context.req.raw);
     }
 
-    if (provider.kind !== "ai-sdk") {
+    if (provider.kind !== ProviderKind.AiSdk) {
       return geminiError(
         501,
         "UNIMPLEMENTED",

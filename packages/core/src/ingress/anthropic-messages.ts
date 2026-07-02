@@ -109,16 +109,16 @@ export const AnthropicMessagesRequestSchema = z.object({
   temperature: z.number().optional(),
 });
 
-export type AnthropicCacheControl = z.infer<typeof CacheControlSchema>;
-export type AnthropicTextBlock = z.infer<typeof TextBlockSchema>;
-export type AnthropicToolUseBlock = z.infer<typeof ToolUseBlockSchema>;
-export type AnthropicToolResultBlock = z.infer<typeof ToolResultBlockSchema>;
-export type AnthropicThinkingBlock = z.infer<typeof ThinkingBlockSchema>;
-export type AnthropicUserContentBlock = z.infer<typeof UserContentBlockSchema>;
-export type AnthropicAssistantContentBlock = z.infer<
+export type AnthropicCacheControl = z.output<typeof CacheControlSchema>;
+export type AnthropicTextBlock = z.output<typeof TextBlockSchema>;
+export type AnthropicToolUseBlock = z.output<typeof ToolUseBlockSchema>;
+export type AnthropicToolResultBlock = z.output<typeof ToolResultBlockSchema>;
+export type AnthropicThinkingBlock = z.output<typeof ThinkingBlockSchema>;
+export type AnthropicUserContentBlock = z.output<typeof UserContentBlockSchema>;
+export type AnthropicAssistantContentBlock = z.output<
   typeof AssistantContentBlockSchema
 >;
-export type AnthropicMessagesRequest = z.infer<
+export type AnthropicMessagesRequest = z.output<
   typeof AnthropicMessagesRequestSchema
 >;
 

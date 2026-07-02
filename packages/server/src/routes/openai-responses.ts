@@ -11,7 +11,7 @@ import {
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
 } from "@aio-proxy/core";
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable } from "../provider-availability";
@@ -43,13 +43,13 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
 
       const provider = route.provider;
       if (
-        provider.kind === "api" &&
+        provider.kind === ProviderKind.Api &&
         provider.protocol === ProviderProtocol.OpenAIResponse
       ) {
         return provider.passthrough(context.req.raw);
       }
 
-      if (provider.kind !== "ai-sdk") {
+      if (provider.kind !== ProviderKind.AiSdk) {
         return unsupportedFeature("openai_responses_transform_dispatch");
       }
 

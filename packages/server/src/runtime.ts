@@ -3,11 +3,11 @@ import type {
   ApiProviderInstance,
   Router,
 } from "@aio-proxy/core";
-import type { ModelEntry } from "@aio-proxy/types";
+import type { ModelEntry, ProviderKind } from "@aio-proxy/types";
 
 export type SubscriptionProviderInstance = {
   readonly id: string;
-  readonly kind: "subscription";
+  readonly kind: ProviderKind.Subscription;
   readonly models?: ModelEntry[];
   readonly vendor: "github-copilot";
 };

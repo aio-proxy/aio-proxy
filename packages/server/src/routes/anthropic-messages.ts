@@ -8,7 +8,7 @@ import {
   type ToolSet,
   writeAnthropicMessagesSSE,
 } from "@aio-proxy/core";
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import {
@@ -52,13 +52,13 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
 
       const provider = route.provider;
       if (
-        provider.kind === "api" &&
+        provider.kind === ProviderKind.Api &&
         provider.protocol === ProviderProtocol.Anthropic
       ) {
         return provider.passthrough(context.req.raw);
       }
 
-      if (provider.kind !== "ai-sdk") {
+      if (provider.kind !== ProviderKind.AiSdk) {
         return anthropicError(
           501,
           "invalid_request_error",
@@ -147,7 +147,7 @@ function resolveRoute(source: ProviderRouteSource, model: string) {
 
 async function anthropicMessage(
   stream: ReturnType<
-    Extract<RuntimeProviderInstance, { kind: "ai-sdk" }>["invoke"]
+    Extract<RuntimeProviderInstance, { kind: ProviderKind.AiSdk }>["invoke"]
   >,
 ) {
   const text: string[] = [];

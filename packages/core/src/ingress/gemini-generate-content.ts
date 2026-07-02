@@ -89,8 +89,8 @@ export const GeminiGenerateContentRequestSchema = z.object({
   safetySettings: z.array(safetySettingSchema).optional(),
 });
 
-export type GeminiGenerateContentPart = z.infer<typeof partSchema>;
-export type GeminiGenerateContentRequest = z.infer<
+export type GeminiGenerateContentPart = z.output<typeof partSchema>;
+export type GeminiGenerateContentRequest = z.output<
   typeof GeminiGenerateContentRequestSchema
 >;
 
