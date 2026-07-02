@@ -54,6 +54,7 @@ export function createApiProvider(
       const upstreamUrl = rewrittenUrl(config.baseUrl, req.url);
       const headers = new Headers(req.headers);
       headers.delete("host");
+      headers.set("accept-encoding", "identity");
       headers.set("x-forwarded-by", "aio-proxy/0.0.0");
 
       const apiKey = resolveApiKey(config.apiKey);
@@ -68,14 +69,25 @@ export function createApiProvider(
       });
 
       if (trace === undefined || response.body === null) {
-        return response;
+        return new Response(response.body, decodedBodyResponseInit(response));
       }
 
       const [returnedBody, tracedBody] = response.body.tee();
       void recordTrace(trace, response.status, tracedBody);
 
-      return new Response(returnedBody, response);
+      return new Response(returnedBody, decodedBodyResponseInit(response));
     },
+  };
+}
+
+function decodedBodyResponseInit(response: Response): ResponseInit {
+  const headers = new Headers(response.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  return {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
   };
 }
 
