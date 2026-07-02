@@ -54,6 +54,7 @@
     "@biomejs/biome": "^2.5.1",
     "@inlang/paraglide-js": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
+    "@rslib/core": "^0.23.1",
     "ai": "catalog:",
     "drizzle-kit": "^0.31.10",
     "turbo": "^2.10.1",

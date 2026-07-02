@@ -7,7 +7,7 @@
   },
   "scripts": {
     "compile": "bun scripts/compile.ts",
-    "build": "tsc -b",
+    "build": "rslib build",
     "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/i18n/_test/*.test.ts"

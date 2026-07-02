@@ -11,7 +11,13 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "package.json", "tsconfig.json"],
+      "inputs": [
+        "../../rslib.base.ts",
+        "src/**",
+        "package.json",
+        "rslib.config.ts",
+        "tsconfig.json"
+      ],
       "outputs": [
         "dist/**",
         "src/route-tree.gen.ts",
