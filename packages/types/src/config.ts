@@ -14,13 +14,6 @@ export const ServerConfigSchema = z.object({
     .max(65_535)
     .default(22_078)
     .describe("HTTP port for the proxy API server."),
-  dashboardPort: z
-    .number()
-    .int()
-    .min(1)
-    .max(65_535)
-    .default(22_079)
-    .describe("HTTP port for the local dashboard server."),
 });
 
 export const ConfigSchema = z.object({

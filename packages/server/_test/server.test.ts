@@ -95,12 +95,12 @@ describe("server routes", () => {
     expect(response.status).toBe(403);
   });
 
-  test("server defaults bind to localhost dashboard port when inspected", () => {
+  test("server defaults bind to localhost api port when inspected", () => {
     // Given / When / Then
     expect(serverDefaults).toEqual({ host: "127.0.0.1", port: 22_078 });
   });
 
-  test("Bun entrypoint binds localhost dashboard port when inspected", () => {
+  test("Bun entrypoint binds localhost api port when inspected", () => {
     // Given / When / Then
     expect(serverEntrypoint).toMatchObject({
       hostname: serverDefaults.host,
@@ -206,7 +206,7 @@ describe("server routes", () => {
       body: JSON.stringify({ npm: "aio-proxy-test-provider" }),
       headers: {
         "content-type": "application/json",
-        Origin: "http://127.0.0.1:22079",
+        Origin: "http://127.0.0.1:22078",
       },
       method: "POST",
     });
@@ -226,7 +226,7 @@ describe("server routes", () => {
       body: JSON.stringify({ npm: "../bad", confirmed: true }),
       headers: {
         "content-type": "application/json",
-        Origin: "http://127.0.0.1:22079",
+        Origin: "http://127.0.0.1:22078",
       },
       method: "POST",
     });
@@ -250,7 +250,7 @@ describe("server routes", () => {
       }),
       headers: {
         "content-type": "application/json",
-        Origin: "http://127.0.0.1:22079",
+        Origin: "http://127.0.0.1:22078",
       },
       method: "POST",
     });

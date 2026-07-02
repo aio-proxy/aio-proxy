@@ -99,7 +99,7 @@ describe("server reload", () => {
 
       // When
       const reload = await app.request("/dashboard/reload", {
-        headers: { Origin: "http://127.0.0.1:22079" },
+        headers: { Origin: "http://127.0.0.1:22078" },
         method: "POST",
       });
       const chat = await app.request("/v1/chat/completions", {

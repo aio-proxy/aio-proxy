@@ -58,11 +58,11 @@ describe("dashboard event hub", () => {
 
     // When
     await app.request("/dashboard/reload", {
-      headers: { Origin: "http://127.0.0.1:22079" },
+      headers: { Origin: "http://127.0.0.1:22078" },
       method: "POST",
     });
     await app.request("/dashboard/reload", {
-      headers: { Origin: "http://127.0.0.1:22079" },
+      headers: { Origin: "http://127.0.0.1:22078" },
       method: "POST",
     });
     const text = await stream.text();

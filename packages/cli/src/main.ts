@@ -26,7 +26,7 @@ setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
 
 const DEFAULT_CONFIG = {
-  server: { port: 22_078, dashboardPort: 22_079 },
+  server: { port: 22_078 },
   providers: [],
 } as const;
 
@@ -92,7 +92,7 @@ const readOrBootstrapConfig = async (path: string) => {
       console.log(
         m.cli_bootstrap_empty_config({
           path,
-          dashboardUrl: `http://127.0.0.1:${DEFAULT_CONFIG.server.dashboardPort}`,
+          dashboardUrl: `http://127.0.0.1:${DEFAULT_CONFIG.server.port}/dashboard`,
         }),
       );
     }
