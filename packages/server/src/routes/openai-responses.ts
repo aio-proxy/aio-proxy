@@ -59,7 +59,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         return tools;
       }
 
-      if (request.stream === false) {
+      if (request.stream !== true) {
         try {
           await ensureAiSdkProviderAvailable(provider);
           const stream = provider.invoke({
