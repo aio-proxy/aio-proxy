@@ -7,7 +7,7 @@
     "./db/schema/auth": "./src/db/schema/auth.ts"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "rslib build",
     "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
     "test:unit": "bun test _test"

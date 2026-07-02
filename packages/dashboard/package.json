@@ -5,7 +5,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "rslib build",
     "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
     "test:unit": "bun -e \"process.exit(0)\"",
