@@ -4,6 +4,12 @@ dist
 .codegraph
 .turbo/
 packages/*/.turbo/
+.omo/*
+!.omo/drafts/
+!.omo/drafts/**
+!.omo/plans/
+!.omo/plans/**
+!.omo/evidence/
 .omo/evidence/*
 !.omo/evidence/.gitkeep
 bun-debug.log
