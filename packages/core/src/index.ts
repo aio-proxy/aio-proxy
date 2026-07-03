@@ -7,9 +7,11 @@ import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
 export type {
+  AiSdkLanguageModel,
   CallSettings,
   FilePart,
   JSONValue,
+  LanguageModelV2,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   ModelMessage,
@@ -107,7 +109,9 @@ export {
   type ApiProviderTrace,
   type ApiProviderTraceSink,
   createApiProvider,
+  resolveApiKey,
 } from "./provider/api";
+export { bridgeApiProviderToAiSdk } from "./provider/api-bridge";
 export {
   type AnthropicMessagesFromModelMessages,
   type AnthropicMessagesModelMessages,

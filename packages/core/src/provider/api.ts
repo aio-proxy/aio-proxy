@@ -100,7 +100,7 @@ function rewrittenUrl(baseUrl: string, requestUrl: string): URL {
   return upstreamUrl;
 }
 
-function resolveApiKey(apiKey: string | undefined): string | undefined {
+export function resolveApiKey(apiKey: string | undefined): string | undefined {
   if (apiKey === undefined) {
     return undefined;
   }

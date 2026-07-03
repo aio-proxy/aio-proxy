@@ -33,7 +33,8 @@ export type AiSdkProviderFactoryOptions = {
   readonly resolveModel?: (
     config: AiSdkProvider,
     modelId: string,
-  ) => AiSdkLanguageModel;
+    provider: LoadedAiSdkRuntimeProvider | null,
+  ) => AiSdkLanguageModel | undefined;
 };
 
 export type AiSdkProviderInstance = {
@@ -117,12 +118,13 @@ export function createAiSdkProvider(
       return new ReadableStream({
         async start(controller) {
           try {
+            const loadedProvider = await providerTask();
             const model =
-              options.resolveModel?.(config, request.modelId) ??
+              options.resolveModel?.(config, request.modelId, loadedProvider) ??
               (await resolveLoadedModel({
                 config,
                 modelId: request.modelId,
-                provider: await providerTask(),
+                provider: loadedProvider,
               }));
             const result = streamAiSdkText({
               model,
