@@ -6,12 +6,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib build",
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "bun test _test",
-    "e2e": "bun -e \"process.exit(0)\"",
-    "start": "bun src/main.ts serve",
-    "dev": "bun -e \"process.exit(0)\""
+    "serve:dev": "bun src/main.ts serve --config ../../aio-proxy.json",
+    "start": "bun src/main.ts serve"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",

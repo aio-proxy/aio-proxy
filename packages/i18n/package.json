@@ -7,7 +7,8 @@
   },
   "scripts": {
     "compile": "bun scripts/compile.ts",
-    "build": "rslib build",
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/i18n/_test/*.test.ts"
   },

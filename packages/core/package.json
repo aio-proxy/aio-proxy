@@ -7,7 +7,8 @@
     "./db/schema/auth": "./src/db/schema/auth.ts"
   },
   "scripts": {
-    "build": "rslib build",
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "build:migrations": "bun x drizzle-kit generate --config=drizzle.config.ts && bun scripts/build-migrations-manifest.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test _test"

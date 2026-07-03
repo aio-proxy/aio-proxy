@@ -5,10 +5,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib build",
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test _test",
-    "e2e": "bun -e \"process.exit(0)\""
+    "test:unit": "bun test _test"
   },
   "dependencies": {
     "@aio-proxy/auth-flows": "workspace:*",
