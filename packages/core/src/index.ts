@@ -3,6 +3,7 @@ import type {
   ModelEntry,
   ProviderProtocol,
 } from "@aio-proxy/types";
+import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
@@ -36,6 +37,27 @@ export {
   writeOpenAIResponsesSSE,
 } from "./egress/openai-responses";
 export {
+  AioProxyError,
+  AiSdkProviderError,
+  AiSdkProviderLoaderError,
+  AnthropicMessagesTransformError,
+  DatabaseSchemaTooNewError,
+  GeminiGenerateContentTransformError,
+  GeminiInlineDataTooLargeError,
+  MigrationHashMismatchError,
+  NpmInstallError,
+  NpmLockError,
+  NpmPackageEntrypointError,
+  NpmPackageJsonError,
+  NpmPackageNameError,
+  OpenAIChatTransformError,
+  OpenAIResponsesTransformError,
+  OpenAIResponsesUnsupportedFeatureError,
+  ProviderNotInstalledError,
+  RouterModelCollisionError,
+  RouterModelNotFoundError,
+} from "./error";
+export {
   type AnthropicCacheControl,
   type AnthropicMessagesRequest,
   AnthropicMessagesRequestSchema,
@@ -49,7 +71,6 @@ export {
   type GeminiGenerateContentPart,
   type GeminiGenerateContentRequest,
   GeminiGenerateContentRequestSchema,
-  GeminiInlineDataTooLargeError,
   parseGeminiGenerateContent,
   safeParseGeminiGenerateContent,
 } from "./ingress/gemini-generate-content";
@@ -67,17 +88,12 @@ export {
   OpenAIResponsesRequestSchema,
   type OpenAIResponsesTextPart,
   type OpenAIResponsesTool,
-  OpenAIResponsesUnsupportedFeatureError,
   parseOpenAIResponses,
   safeParseOpenAIResponses,
 } from "./ingress/openai-responses";
 export {
   findInstalledNpmPackage,
-  NpmInstallError,
-  NpmPackageEntrypointError,
   type NpmPackageInfo,
-  NpmPackageJsonError,
-  NpmPackageNameError,
   npmAdd,
   npmPackageCacheDir,
 } from "./npm";
@@ -85,16 +101,12 @@ export {
   type InstalledNpmPackage,
   listInstalledNpmPackages,
 } from "./npm-list";
-export { NpmLockError } from "./npm-lock";
 export {
-  AiSdkProviderError,
   type AiSdkProviderFactoryOptions,
   type AiSdkProviderInstance,
   createAiSdkProvider,
-  ProviderNotInstalledError,
 } from "./provider/ai-sdk";
 export {
-  AiSdkProviderLoaderError,
   type AiSdkProviderLoadOptions,
   BUNDLED_PROVIDER_PACKAGES,
   BUNDLED_PROVIDERS,
@@ -115,7 +127,6 @@ export { bridgeApiProviderToAiSdk } from "./provider/api-bridge";
 export {
   type AnthropicMessagesFromModelMessages,
   type AnthropicMessagesModelMessages,
-  AnthropicMessagesTransformError,
   type AnthropicModelMessage,
   anthropicMessagesToModelMessages,
   modelMessagesToAnthropicMessages,
@@ -125,14 +136,12 @@ export {
   type GeminiGenerateContentModelMessages,
   type GeminiGenerateContentSettings,
   type GeminiGenerateContentTool,
-  GeminiGenerateContentTransformError,
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
 } from "./transform/gemini-generate-content";
 export {
   type OpenAIChatFromModelMessages,
   type OpenAIChatModelMessages,
-  OpenAIChatTransformError,
   type OpenAIChatTransformSettings,
   type OpenAIChatTransformTool,
   openaiChatToModelMessages,
@@ -145,7 +154,6 @@ export {
   type OpenAIResponsesProviderOptions,
   type OpenAIResponsesReasoningEffort,
   type OpenAIResponsesReasoningSummary,
-  OpenAIResponsesTransformError,
   type OpenAIResponsesTransformSettings,
   type OpenAIResponsesTransformTool,
   openAIResponsesToModelMessages,
@@ -172,29 +180,6 @@ type ModelRoute = {
   readonly alias: string;
   readonly modelId: string;
 };
-
-export class RouterModelNotFoundError extends Error {
-  readonly code = "MODEL_NOT_FOUND";
-  readonly status = 404;
-
-  constructor(readonly model: string) {
-    super(`Model not found: ${model}`);
-    this.name = "RouterModelNotFoundError";
-  }
-}
-
-export class RouterModelCollisionError extends Error {
-  constructor(
-    readonly alias: string,
-    readonly firstProviderId: string,
-    readonly secondProviderId: string,
-  ) {
-    super(
-      `Model alias "${alias}" is exposed by both "${firstProviderId}" and "${secondProviderId}"`,
-    );
-    this.name = "RouterModelCollisionError";
-  }
-}
 
 export class Router<TProvider extends ProviderInstance = ProviderInstance> {
   private readonly aliases = new Map<string, RouterResolution<TProvider>>();

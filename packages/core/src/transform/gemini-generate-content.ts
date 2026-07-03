@@ -1,9 +1,7 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
+import { GeminiGenerateContentTransformError } from "../error";
 import type { GeminiGenerateContentRequest } from "../ingress/gemini-generate-content";
-import {
-  type GeminiGenerateContentModelMessages,
-  GeminiGenerateContentTransformError,
-} from "./gemini-generate-content-types";
+import type { GeminiGenerateContentModelMessages } from "./gemini-generate-content-types";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
@@ -19,12 +17,11 @@ type GeminiPart =
 type GeminiContent = GeminiGenerateContentRequest["contents"][number];
 
 export { modelMessagesToGeminiGenerateContent } from "./gemini-generate-content-from-model";
-export {
-  type GeminiGenerateContentFromModelMessages,
-  type GeminiGenerateContentModelMessages,
-  type GeminiGenerateContentSettings,
-  type GeminiGenerateContentTool,
-  GeminiGenerateContentTransformError,
+export type {
+  GeminiGenerateContentFromModelMessages,
+  GeminiGenerateContentModelMessages,
+  GeminiGenerateContentSettings,
+  GeminiGenerateContentTool,
 } from "./gemini-generate-content-types";
 
 export function geminiGenerateContentToModelMessages(

@@ -1,9 +1,9 @@
 import type { FilePart, ModelMessage } from "../ai-sdk-bridge";
+import { GeminiGenerateContentTransformError } from "../error";
 import type { GeminiGenerateContentRequest } from "../ingress/gemini-generate-content";
-import {
-  type GeminiGenerateContentFromModelMessages,
-  type GeminiGenerateContentTool,
-  GeminiGenerateContentTransformError,
+import type {
+  GeminiGenerateContentFromModelMessages,
+  GeminiGenerateContentTool,
 } from "./gemini-generate-content-types";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;

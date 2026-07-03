@@ -1,0 +1,187 @@
+# Dashboard Frontend Rules
+
+This file is the frontend authority for `packages/dashboard`.
+
+## Package Shape
+
+- The dashboard is a React/Rsbuild package served under `/dashboard/`.
+- Use Bun workspace commands from the repo root, for example `bun run --filter @aio-proxy/dashboard build`.
+- Do not edit `src/route-tree.gen.ts`; TanStack Router generates it.
+- Keep browser-only code in this package. Shared API types come from `@aio-proxy/server`.
+
+## UI Components
+
+- Use the shadcn components in `src/components/ui` when an equivalent exists.
+- Add missing shadcn components through the shadcn CLI so `components.json` stays the source of truth.
+- The configured primitives are Base UI and lucide icons; follow that pattern for new UI controls.
+- Direct Tailwind is fine for layout, spacing, responsive behavior, and page composition.
+- Control styling belongs in the shared UI components, not one-off lookalikes.
+
+## Data And Requests
+
+- Mount `QueryClientProvider` globally in `routes/__root.tsx` once the dashboard has server state.
+- Server state must use TanStack Query.
+- Components, routes, and templates must not call `fetch` directly.
+- Dashboard API calls should live in `src/modules/<domain>/services/` and use the typed Hono client from `createDashboardClient`.
+- Do not add preview fallback or mock service responses. Dev and QA should exercise the real dashboard routes in `@aio-proxy/server`.
+
+## Forms
+
+- Every input, select, checkbox, textarea, and editable field must use TanStack Form.
+- Zod is the validation and schema source.
+- Use shadcn `Field`, `Label`, `Input`, `Select`, `Checkbox`, and `Textarea` components for form UI.
+
+## Tables
+
+- Every data table must use TanStack Table plus shadcn `Table`.
+- Default capabilities are sorting, filtering, pagination, and column visibility.
+- Table state stays local to the component or module unless explicitly requested.
+
+## Utilities
+
+- `es-toolkit` is the standard reusable utility library.
+- Do not hand-write reusable utilities that `es-toolkit` already provides, including `debounce`, `throttle`, `groupBy`, `keyBy`, `partition`, `uniqBy`, `sortBy`, `pick`, `omit`, `chunk`, `compact`, deep merge, and clone helpers.
+- Prefer native JavaScript for trivial one-liners like `map`, `filter`, `some`, `every`, and simple object spreads.
+- Prefer tree-shakable category imports such as `es-toolkit/array`, `es-toolkit/function`, and `es-toolkit/object`.
+- Avoid `es-toolkit/compat` unless explicitly migrating lodash-compatible behavior.
+
+## Copy And i18n
+
+- All user-facing copy must come from i18n messages.
+- Do not hardcode labels, placeholders, helper text, empty states, error messages, success messages, button text, table headers, badges, ARIA labels, page titles, or page descriptions in components, templates, routes, or hooks.
+- Add or update keys in `packages/i18n/messages/*.json` before using them.
+- Import messages as `import { m } from "@aio-proxy/i18n"` and call keys with `m.some_key()`.
+- Run `bun run i18n:compile` after changing message files.
+- Non-user-facing constants, protocol values, IDs, query keys, route paths, and test fixtures may stay literal.
+
+## Module Structure
+
+- Use `src/modules/<domain>/` for non-trivial dashboard features.
+- Each module may contain `services/`, `hooks/`, `components/`, `stores/`, and `templates/`.
+- `services`: non-React domain adapters, types, query options, and mutation functions. Services may call the typed Hono dashboard client.
+- `hooks`: React Query, TanStack Form, and TanStack Table hooks only.
+- `components`: reusable domain UI pieces.
+- `stores`: client-only UI state such as collapsed panels, local table state, and selected rows. Stores must not mirror API response data.
+- `templates`: page-level assembly such as `ProvidersPage`.
+- `routes/*.tsx` should declare TanStack Router routes and render module templates for non-trivial pages.
+- Each `.tsx` file may declare exactly one React component. Split helper components into their own files instead of colocating multiple components in one file.
+- Component filenames should match their single exported component in kebab-case, for example `PageContainer` lives in `page-container.tsx`.
+
+## Few-Shots
+
+### shadcn
+
+Bad:
+
+```tsx
+<span className="rounded-md border px-2 py-1 text-xs">Stored</span>
+```
+
+Good:
+
+```tsx
+<Badge variant="outline">{m.provider_stored_redacted()}</Badge>
+```
+
+### Query
+
+Bad:
+
+```tsx
+useEffect(() => {
+  void createDashboardClient("").dashboard.providers.$get().then(setProviders)
+}, [])
+```
+
+Good:
+
+```tsx
+const providers = useQuery(providersQueryOptions())
+```
+
+### Form
+
+Bad:
+
+```tsx
+<Input value={name} onChange={(event) => setName(event.target.value)} />
+```
+
+Good:
+
+```tsx
+<form.Field name="name">
+  {(field) => <Input value={field.state.value} onChange={(event) => field.handleChange(event.target.value)} />}
+</form.Field>
+```
+
+### Table
+
+Bad:
+
+```tsx
+<table>{rows.map((row) => <tr key={row.id}>{row.name}</tr>)}</table>
+```
+
+Good:
+
+```tsx
+const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() })
+return <Table>{table.getRowModel().rows.map((row) => <TableRow key={row.id} />)}</Table>
+```
+
+### Services
+
+Bad:
+
+```tsx
+const response = await fetch("/dashboard/providers")
+```
+
+Good:
+
+```ts
+export const providersQueryOptions = () =>
+  queryOptions({
+    queryKey: ["providers"],
+    queryFn: async () => {
+      const response = await dashboardClient.dashboard.providers.$get()
+      return response.json()
+    },
+  })
+```
+
+### es-toolkit
+
+Bad:
+
+```ts
+const byProvider = items.reduce<Record<string, Model[]>>((acc, item) => {
+  acc[item.providerId] = [...(acc[item.providerId] ?? []), item]
+  return acc
+}, {})
+```
+
+Good:
+
+```ts
+import { groupBy } from "es-toolkit/array"
+
+const byProvider = groupBy(items, (item) => item.providerId)
+```
+
+### i18n
+
+Bad:
+
+```tsx
+<Button>Save provider</Button>
+```
+
+Good:
+
+```tsx
+import { m } from "@aio-proxy/i18n"
+
+<Button>{m.dashboard_providers_save()}</Button>
+```

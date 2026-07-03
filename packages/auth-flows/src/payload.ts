@@ -1,7 +1,4 @@
-import {
-  AuthPayloadParseError,
-  AuthPayloadSerializationError,
-} from "./store-types";
+import { AuthPayloadParseError, AuthPayloadSerializationError } from "./errors";
 
 export function serializePayload(payload: unknown): string {
   const serialized = JSON.stringify(payload);

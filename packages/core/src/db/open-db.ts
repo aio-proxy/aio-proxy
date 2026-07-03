@@ -5,6 +5,10 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import {
+  DatabaseSchemaTooNewError,
+  MigrationHashMismatchError,
+} from "../error";
+import {
   COMPILED_SCHEMA_VERSION,
   MIGRATIONS,
   type Migration,
@@ -35,32 +39,6 @@ type RegistryEntry = {
 };
 
 const registry = new Map<string, RegistryEntry>();
-
-export class DatabaseSchemaTooNewError extends Error {
-  override readonly name = "DatabaseSchemaTooNewError";
-
-  constructor(
-    readonly actualVersion: number,
-    readonly compiledVersion: number,
-  ) {
-    super(
-      `database schema version ${actualVersion} is newer than this binary schema version ${compiledVersion}; please upgrade aio-proxy`,
-    );
-  }
-}
-
-export class MigrationHashMismatchError extends Error {
-  override readonly name = "MigrationHashMismatchError";
-
-  constructor(
-    readonly migration: Migration,
-    readonly actualSha256: string,
-  ) {
-    super(
-      `migration v${migration.version} (${migration.file}) hash mismatch; binary expected ${migration.sha256}, got ${actualSha256}. Re-run \`bun run build:migrations\` to regenerate migrations and the manifest, or revert the SQL change.`,
-    );
-  }
-}
 
 export function openDb(options: OpenDbOptions = {}): OpenDbHandle {
   const path = resolveDbPath(options);

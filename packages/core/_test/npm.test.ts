@@ -9,8 +9,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NpmLockError } from "../src";
 import { NpmInstallError, npmAdd, npmPackageCacheDir } from "../src/index";
-import { acquireNpmInstallLock, NpmLockError } from "../src/npm-lock";
+import { acquireNpmInstallLock } from "../src/npm-lock";
 
 const homes: string[] = [];
 

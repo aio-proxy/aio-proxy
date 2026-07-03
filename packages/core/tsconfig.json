@@ -3,8 +3,7 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "types": ["bun"],
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "types": ["bun"]
   },
   "include": ["src/**/*.ts"],
   "references": [

@@ -32,10 +32,3 @@ export type GeminiGenerateContentModelMessages = Readonly<{
 
 export type GeminiGenerateContentFromModelMessages =
   GeminiGenerateContentModelMessages & { readonly model: string };
-
-export class GeminiGenerateContentTransformError extends Error {
-  constructor(readonly path: string) {
-    super(`Invalid Gemini generateContent request at ${path}`);
-    this.name = "GeminiGenerateContentTransformError";
-  }
-}

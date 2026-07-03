@@ -8,6 +8,7 @@ import type {
   ToolSet,
 } from "../ai-sdk-bridge";
 import { streamAiSdkText } from "../ai-sdk-bridge";
+import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
 import {
   type AiSdkProviderLoadOptions,
   loadAiSdkProvider,
@@ -53,33 +54,6 @@ type LanguageModelShape = {
   readonly doStream?: unknown;
 };
 
-export class AiSdkProviderError extends Error {
-  override readonly name = "AiSdkProviderError";
-
-  constructor(
-    readonly providerId: string,
-    cause: unknown,
-  ) {
-    super(`${providerId}: ${errorMessage(cause)}`, { cause });
-  }
-}
-
-export class ProviderNotInstalledError extends Error {
-  override readonly name = "ProviderNotInstalledError";
-  readonly hint: string;
-
-  constructor(
-    readonly providerId: string,
-    readonly packageName: string,
-  ) {
-    const hint = `run aio-proxy provider install ${packageName}`;
-    super(
-      `${providerId}: ai-sdk provider package "${packageName}" is not installed; ${hint}`,
-    );
-    this.hint = hint;
-  }
-}
-
 export function createAiSdkProvider(
   config: AiSdkProvider,
   options: AiSdkProviderFactoryOptions = {},
@@ -118,14 +92,14 @@ export function createAiSdkProvider(
       return new ReadableStream({
         async start(controller) {
           try {
-            const loadedProvider = await providerTask();
             const model =
-              options.resolveModel?.(config, request.modelId, loadedProvider) ??
-              (await resolveLoadedModel({
+              options.resolveModel?.(config, request.modelId, null) ??
+              (await resolveProviderModel(
                 config,
-                modelId: request.modelId,
-                provider: loadedProvider,
-              }));
+                request.modelId,
+                providerTask,
+                options.resolveModel,
+              ));
             const result = streamAiSdkText({
               model,
               messages: request.messages,
@@ -167,6 +141,19 @@ export function createAiSdkProvider(
       });
     },
   };
+}
+
+async function resolveProviderModel(
+  config: AiSdkProvider,
+  modelId: string,
+  providerTask: () => Promise<LoadedAiSdkRuntimeProvider | null>,
+  resolveModel: AiSdkProviderFactoryOptions["resolveModel"],
+): Promise<AiSdkLanguageModel> {
+  const provider = await providerTask();
+  return (
+    resolveModel?.(config, modelId, provider) ??
+    (await resolveLoadedModel({ config, modelId, provider }))
+  );
 }
 
 function enqueueStreamParts(
@@ -244,12 +231,4 @@ function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
 }
