@@ -1,12 +1,10 @@
 import {
-  type AnthropicModelMessage,
   anthropicMessagesToModelMessages,
+  type AnthropicModelMessage,
   type ModelMessage,
   parseAnthropicMessages,
   RouterModelNotFoundError,
-  type TextStreamPart,
-  type ToolSet,
-  writeAnthropicMessagesSSE,
+  writeAnthropicMessagesSSE
 } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
@@ -16,12 +14,6 @@ import {
   providerNotInstalled,
 } from "../provider-availability";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
-
-declare module "@aio-proxy/core" {
-  export function writeAnthropicMessagesSSE(
-    stream: ReadableStream<TextStreamPart<ToolSet>>,
-  ): ReadableStream<Uint8Array>;
-}
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 
