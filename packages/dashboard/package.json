@@ -5,11 +5,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib build",
-    "test": "bun run test:unit",
-    "test:unit": "bun -e \"process.exit(0)\"",
-    "e2e": "bun -e \"process.exit(0)\"",
-    "dev": "bun -e \"process.exit(0)\""
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean"
   },
   "dependencies": {
     "@aio-proxy/i18n": "workspace:*",

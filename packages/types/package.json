@@ -6,7 +6,8 @@
     "./config.schema.json": "./dist/config.schema.json"
   },
   "scripts": {
-    "build": "rslib build",
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "bun test _test/*.test.ts"
   },

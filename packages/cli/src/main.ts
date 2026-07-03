@@ -37,6 +37,21 @@ type ServeOptions = {
   readonly config?: string;
 };
 
+class ServeListenError extends Error {
+  override readonly name = "ServeListenError";
+
+  constructor(
+    readonly host: string,
+    readonly port: number,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `Cannot start AIO Proxy on ${host}:${port}. Is another process already listening there?`,
+      options,
+    );
+  }
+}
+
 const parsePort = (value: string | undefined, fallback: number) => {
   if (value === undefined) {
     return fallback;
@@ -102,12 +117,31 @@ const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   return config;
 };
 
+const assertPortAvailable = (host: string, port: number) => {
+  let probe: { stop(force?: boolean): void } | undefined;
+  try {
+    probe = Bun.serve({
+      hostname: host,
+      port,
+      fetch: () => new Response(null, { status: 204 }),
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      throw new ServeListenError(host, port, { cause: err });
+    }
+    throw err;
+  } finally {
+    probe?.stop(true);
+  }
+};
+
 const serve = async (options: ServeOptions) => {
   const configPath = resolveConfigPath(options.config);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
   const apiUrl = `http://${host}:${port}`;
   const dashboardUrl = `${apiUrl}/dashboard`;
+  assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(configPath, dashboardUrl);
   const app = createServer({ config, configPath, host, port });
   const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
@@ -177,6 +211,11 @@ export const main = async () => {
     validatePortArgv(process.argv);
     await buildProgram().parseAsync(process.argv);
   } catch (err) {
+    if (err instanceof ServeListenError) {
+      console.error(err.message);
+      process.exitCode = 1;
+      return;
+    }
     if (
       err instanceof Error &&
       providerErrors.some((errorType) => err instanceof errorType)

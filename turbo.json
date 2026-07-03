@@ -41,6 +41,20 @@
       "outputs": []
     },
     "dev": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false,
+      "outputs": []
+    },
+    "@aio-proxy/cli#dev": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false,
+      "outputs": [],
+      "with": ["@aio-proxy/cli#serve:dev"]
+    },
+    "serve:dev": {
+      "dependsOn": ["build"],
       "persistent": true,
       "cache": false,
       "outputs": []

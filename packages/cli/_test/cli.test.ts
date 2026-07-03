@@ -46,6 +46,27 @@ describe("cli", () => {
     expect(output(result)).toContain("Port 99999 is out of range");
   });
 
+  test("reports serve port conflicts with the bound address", () => {
+    // Given
+    const blocker = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: { data() {} },
+    });
+
+    try {
+      // When
+      const result = runCli(["serve", "--port", String(blocker.port)]);
+
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(output(result)).toContain(`127.0.0.1:${blocker.port}`);
+      expect(output(result)).not.toContain("Unexpected internal error");
+    } finally {
+      blocker.stop(true);
+    }
+  });
+
   test("bootstraps missing non-tty config path and serves health", async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-"));
