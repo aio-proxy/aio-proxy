@@ -1,8 +1,3 @@
-import { defineLibraryConfig } from "../../rslib.base.ts";
+import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
 
-export default defineLibraryConfig({
-  entry: {
-    index: "./src/index.ts",
-    "db/schema/auth": "./src/db/schema/auth.ts",
-  },
-});
+export default defineLibraryConfig();

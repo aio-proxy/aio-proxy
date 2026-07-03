@@ -1,0 +1,19 @@
+{
+  "name": "@aio-proxy/infra",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./rslib": "./src/rslib.ts",
+    "./tsconfig/base.json": "./tsconfig/base.json"
+  },
+  "scripts": {
+    "test": "bun run test:unit",
+    "test:unit": "bun -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@rslib/core": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}
