@@ -6,7 +6,6 @@
   },
   "scripts": {
     "build": "rslib build",
-    "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
     "test:unit": "bun test _test/store.test.ts"
   },
@@ -17,6 +16,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
     "typescript": "catalog:"
   }
 }

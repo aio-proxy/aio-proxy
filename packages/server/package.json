@@ -6,7 +6,6 @@
   },
   "scripts": {
     "build": "rslib build",
-    "check": "biome check . && tsc -b --pretty false",
     "test": "bun run test:unit",
     "test:unit": "bun test _test",
     "e2e": "bun -e \"process.exit(0)\""
@@ -20,7 +19,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14",
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
     "typescript": "catalog:"
   }
 }

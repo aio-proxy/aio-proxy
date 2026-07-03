@@ -21,6 +21,8 @@
       "@ai-sdk/xai": "4.0.3",
       "@ai-sdk/provider": "4.0.1",
       "@openrouter/ai-sdk-provider": "2.10.0",
+      "@rslib/core": "^0.23.1",
+      "@types/bun": "^1.3.14",
       "@inlang/paraglide-js": "2.20.2",
       "zod": "^4.4.3",
       "hono": "^4.12.27",
@@ -29,35 +31,21 @@
     }
   },
   "scripts": {
-    "check": "turbo run check",
+    "check": "biome check package.json turbo.json tsconfig.json biome.json packages && tsc -b --pretty false",
     "test:unit": "turbo run test:unit",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test",
     "e2e": "turbo run e2e",
-    "build:migrations": "bun x drizzle-kit generate --config=drizzle.config.ts && bun packages/core/scripts/build-migrations-manifest.ts",
+    "build:migrations": "bun run --filter @aio-proxy/core build:migrations",
     "build": "turbo run build",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "i18n:compile": "bun run --filter @aio-proxy/i18n compile",
     "dev": "turbo run dev --filter=@aio-proxy/cli",
-    "preflight": "bun run i18n:compile && turbo run check test:unit"
+    "preflight": "bun run i18n:compile && bun run check && turbo run test:unit"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/gateway": "4.0.6",
-    "@ai-sdk/google": "catalog:",
-    "@ai-sdk/groq": "catalog:",
-    "@ai-sdk/mistral": "catalog:",
-    "@ai-sdk/openai": "catalog:",
-    "@ai-sdk/openai-compatible": "catalog:",
-    "@ai-sdk/provider": "catalog:",
-    "@ai-sdk/xai": "catalog:",
     "@biomejs/biome": "^2.5.1",
-    "@inlang/paraglide-js": "catalog:",
-    "@openrouter/ai-sdk-provider": "catalog:",
-    "@rslib/core": "^0.23.1",
-    "ai": "catalog:",
-    "drizzle-kit": "^0.31.10",
     "turbo": "^2.10.1",
-    "typescript": "catalog:"
+    "typescript": "^6.0.3"
   }
 }

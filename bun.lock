@@ -5,23 +5,9 @@
     "": {
       "name": "aio-proxy",
       "devDependencies": {
-        "@ai-sdk/anthropic": "catalog:",
-        "@ai-sdk/gateway": "4.0.6",
-        "@ai-sdk/google": "catalog:",
-        "@ai-sdk/groq": "catalog:",
-        "@ai-sdk/mistral": "catalog:",
-        "@ai-sdk/openai": "catalog:",
-        "@ai-sdk/openai-compatible": "catalog:",
-        "@ai-sdk/provider": "catalog:",
-        "@ai-sdk/xai": "catalog:",
         "@biomejs/biome": "^2.5.1",
-        "@inlang/paraglide-js": "catalog:",
-        "@openrouter/ai-sdk-provider": "catalog:",
-        "@rslib/core": "^0.23.1",
-        "ai": "catalog:",
-        "drizzle-kit": "^0.31.10",
         "turbo": "^2.10.1",
-        "typescript": "catalog:",
+        "typescript": "^6.0.3",
       },
     },
     "packages/auth-flows": {
@@ -33,6 +19,8 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -48,7 +36,9 @@
         "commander": "15",
       },
       "devDependencies": {
-        "@types/bun": "^1.3.14",
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -70,7 +60,10 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@types/bun": "^1.3.14",
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "drizzle-kit": "^0.31.10",
         "typescript": "catalog:",
       },
     },
@@ -82,6 +75,8 @@
         "hono": "catalog:",
       },
       "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -91,6 +86,17 @@
         "@inlang/paraglide-js": "catalog:",
         "hono": "catalog:",
         "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/infra": {
+      "name": "@aio-proxy/infra",
+      "dependencies": {
+        "@rslib/core": "catalog:",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -107,7 +113,9 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@types/bun": "^1.3.14",
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -117,6 +125,8 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -132,6 +142,8 @@
     "@ai-sdk/xai": "4.0.3",
     "@inlang/paraglide-js": "2.20.2",
     "@openrouter/ai-sdk-provider": "2.10.0",
+    "@rslib/core": "^0.23.1",
+    "@types/bun": "^1.3.14",
     "ai": "7.0.8",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.27",
@@ -168,6 +180,8 @@
     "@aio-proxy/dashboard": ["@aio-proxy/dashboard@workspace:packages/dashboard"],
 
     "@aio-proxy/i18n": ["@aio-proxy/i18n@workspace:packages/i18n"],
+
+    "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/server": ["@aio-proxy/server@workspace:packages/server"],
 

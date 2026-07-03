@@ -12,7 +12,9 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": [
-        "../../rslib.base.ts",
+        "../infra/package.json",
+        "../infra/src/rslib.ts",
+        "../infra/tsconfig/base.json",
         "src/**",
         "package.json",
         "rslib.config.ts",
@@ -25,20 +27,12 @@
         "src/db/migrations.manifest.ts"
       ]
     },
-    "check": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
     "test": {
       "dependsOn": ["^build"],
       "outputs": []
     },
     "test:unit": {
       "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "preflight": {
-      "dependsOn": ["check", "test:unit"],
       "outputs": []
     },
     "e2e": {

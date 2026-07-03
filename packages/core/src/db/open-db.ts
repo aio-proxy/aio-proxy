@@ -57,7 +57,7 @@ export class MigrationHashMismatchError extends Error {
     readonly actualSha256: string,
   ) {
     super(
-      `migration v${migration.version} (${migration.file}) hash mismatch; binary expected ${migration.sha256}, got ${actualSha256}. Re-run \`bun run build:migrations && bun packages/core/scripts/build-migrations-manifest.ts\` to regenerate the manifest, or revert the SQL change.`,
+      `migration v${migration.version} (${migration.file}) hash mismatch; binary expected ${migration.sha256}, got ${actualSha256}. Re-run \`bun run build:migrations\` to regenerate migrations and the manifest, or revert the SQL change.`,
     );
   }
 }

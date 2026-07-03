@@ -1,3 +1,3 @@
-import { defineLibraryConfig } from "../../rslib.base.ts";
+import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
 
 export default defineLibraryConfig();

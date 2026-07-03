@@ -1,6 +1,8 @@
-import type { RsbuildPlugin } from "@rslib/core";
+import {
+  defineLibraryConfig,
+  type RsbuildPlugin,
+} from "@aio-proxy/infra/rslib";
 import { z } from "zod";
-import { defineLibraryConfig } from "../../rslib.base.ts";
 import { ConfigSchema } from "./src/index.ts";
 
 const configSchemaPlugin = (): RsbuildPlugin => ({
