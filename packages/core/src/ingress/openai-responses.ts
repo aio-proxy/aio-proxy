@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OpenAIResponsesUnsupportedFeatureError } from "../error";
 
 const idSchema = z.string().min(1);
 const looseObjectSchema = z.object({}).catchall(z.unknown());
@@ -102,19 +103,6 @@ export type OpenAIResponsesRequest = Omit<
 > & {
   readonly tools?: readonly OpenAIResponsesTool[] | undefined;
 };
-
-export class OpenAIResponsesUnsupportedFeatureError extends Error {
-  readonly code = "UNSUPPORTED_OPENAI_RESPONSES_FEATURE";
-  readonly status = 400;
-
-  constructor(
-    readonly feature: string,
-    readonly path: string,
-  ) {
-    super(`OpenAI Responses feature is not supported: ${feature} at ${path}`);
-    this.name = "OpenAIResponsesUnsupportedFeatureError";
-  }
-}
 
 export type OpenAIResponsesParseResult =
   | { readonly ok: true; readonly value: OpenAIResponsesRequest }

@@ -44,10 +44,3 @@ export type OpenAIResponsesModelMessages = {
 export type OpenAIResponsesFromModelMessages = OpenAIResponsesModelMessages & {
   readonly model: string;
 };
-
-export class OpenAIResponsesTransformError extends Error {
-  constructor(readonly path: string) {
-    super(`Invalid OpenAI Responses request at ${path}`);
-    this.name = "OpenAIResponsesTransformError";
-  }
-}

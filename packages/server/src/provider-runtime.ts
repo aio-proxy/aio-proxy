@@ -6,6 +6,7 @@ import type {
   Provider,
 } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { ProviderBuildError } from "./errors";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -82,17 +83,6 @@ export function providerDiff(
         .map((provider) => provider.id),
     },
   };
-}
-
-export class ProviderBuildError extends Error {
-  override readonly name = "ProviderBuildError";
-
-  constructor(
-    readonly providerId: string,
-    message: string,
-  ) {
-    super(`${providerId}: ${message}`);
-  }
 }
 
 function providerId(provider: Provider): string {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GeminiInlineDataTooLargeError } from "../error";
 
 const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
@@ -93,22 +94,6 @@ export type GeminiGenerateContentPart = z.output<typeof partSchema>;
 export type GeminiGenerateContentRequest = z.output<
   typeof GeminiGenerateContentRequestSchema
 >;
-
-export class GeminiInlineDataTooLargeError extends Error {
-  readonly code = "INLINE_DATA_TOO_LARGE";
-  readonly status = 413;
-
-  constructor(
-    readonly path: string,
-    readonly limitBytes: number,
-    readonly actualBytes: number,
-  ) {
-    super(
-      `Gemini inlineData at ${path} is ${actualBytes} bytes; limit is ${limitBytes}`,
-    );
-    this.name = "GeminiInlineDataTooLargeError";
-  }
-}
 
 export type GeminiGenerateContentParseResult =
   | {

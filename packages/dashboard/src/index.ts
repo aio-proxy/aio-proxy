@@ -1,4 +1,0 @@
-import type { AppType } from "@aio-proxy/server";
-import { hc } from "hono/client";
-
-export const createDashboardClient = (baseUrl: string) => hc<AppType>(baseUrl);

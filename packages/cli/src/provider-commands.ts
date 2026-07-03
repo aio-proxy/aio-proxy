@@ -12,6 +12,7 @@ import {
   DashboardProvidersResponseSchema,
 } from "@aio-proxy/types";
 import { confirm } from "@inquirer/prompts";
+import { ProviderDashboardError } from "./errors";
 
 export type ProviderInstallOptions = {
   readonly yes?: boolean;
@@ -90,17 +91,6 @@ export async function providerTest(
   options: Omit<ProviderListOptions, "filter" | "probe">,
 ): Promise<void> {
   await providerList({ ...options, filter: id, probe: true });
-}
-
-export class ProviderDashboardError extends Error {
-  override readonly name = "ProviderDashboardError";
-
-  constructor(
-    readonly status: number,
-    readonly url: string,
-  ) {
-    super(`dashboard provider request failed with ${status}: ${url}`);
-  }
 }
 
 async function providerInstalledList(): Promise<void> {

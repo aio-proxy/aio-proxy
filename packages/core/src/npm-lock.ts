@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { NpmLockError } from "./error";
 
 const LOCK_FILE = ".aio-proxy-install.lock";
 const LOCK_VERSION = 1;
@@ -21,20 +22,9 @@ export type NpmInstallLock = {
   readonly release: () => Promise<void>;
 };
 
-export class NpmLockError extends Error {
-  override readonly name = "NpmLockError";
-
-  constructor(readonly pkg: string) {
-    super(`Unable to acquire install lock for ${pkg}`);
-  }
-}
-
-function isNodeCode(error: unknown, code: string): boolean {
+function isNodeCode(error: Error, code: string): boolean {
   return (
-    error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string" &&
-    error.code === code
+    "code" in error && typeof error.code === "string" && error.code === code
   );
 }
 
@@ -66,6 +56,9 @@ function processIsAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
     if (isNodeCode(error, "ESRCH")) {
       return false;
     }
@@ -82,9 +75,10 @@ async function removeIfUnchanged(
       await rm(path);
     }
   } catch (error) {
-    if (!isNodeCode(error, "ENOENT")) {
-      throw error;
+    if (error instanceof Error && isNodeCode(error, "ENOENT")) {
+      return;
     }
+    throw error;
   }
 }
 
@@ -93,7 +87,7 @@ async function recoverStaleLock(path: string): Promise<boolean> {
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    if (isNodeCode(error, "ENOENT")) {
+    if (error instanceof Error && isNodeCode(error, "ENOENT")) {
       return true;
     }
     throw error;
@@ -156,6 +150,9 @@ export async function acquireNpmInstallLock(
         release: () => removeIfUnchanged(lockPath, content),
       };
     } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
       if (!isNodeCode(error, "EEXIST")) {
         throw error;
       }

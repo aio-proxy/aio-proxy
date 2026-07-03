@@ -1,9 +1,7 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
+import { OpenAIChatTransformError } from "../error";
 import type { OpenAIChatRequest } from "../ingress/openai-chat";
-import {
-  type OpenAIChatFromModelMessages,
-  OpenAIChatTransformError,
-} from "./openai-chat";
+import type { OpenAIChatFromModelMessages } from "./openai-chat";
 
 export function modelMessagesToOpenAIChat({
   model,

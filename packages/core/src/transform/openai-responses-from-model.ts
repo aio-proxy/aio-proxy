@@ -1,14 +1,14 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
+import { OpenAIResponsesTransformError } from "../error";
 import type {
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
   OpenAIResponsesTextPart,
   OpenAIResponsesTool,
 } from "../ingress/openai-responses";
-import {
-  type OpenAIResponsesFromModelMessages,
-  OpenAIResponsesTransformError,
-  type OpenAIResponsesTransformTool,
+import type {
+  OpenAIResponsesFromModelMessages,
+  OpenAIResponsesTransformTool,
 } from "./openai-responses-types";
 
 type UserMessage = Extract<ModelMessage, { role: "user" }>;

@@ -1,4 +1,5 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
+import { OpenAIChatTransformError } from "../error";
 import type { OpenAIChatRequest } from "../ingress/openai-chat";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
@@ -30,13 +31,6 @@ export type OpenAIChatModelMessages = {
 export type OpenAIChatFromModelMessages = OpenAIChatModelMessages & {
   readonly model: string;
 };
-
-export class OpenAIChatTransformError extends Error {
-  constructor(readonly path: string) {
-    super(`Invalid OpenAI chat request at ${path}`);
-    this.name = "OpenAIChatTransformError";
-  }
-}
 
 export function openaiChatToModelMessages(
   req: OpenAIChatRequest,

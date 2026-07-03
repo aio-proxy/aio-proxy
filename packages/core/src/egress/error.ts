@@ -1,7 +1,4 @@
-import {
-  AiSdkProviderError,
-  ProviderNotInstalledError,
-} from "../provider/ai-sdk";
+import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
 
 type IngressProtocol = "openai-chat";
 

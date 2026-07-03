@@ -3,6 +3,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { z } from "zod";
+import {
+  NpmInstallError,
+  NpmPackageEntrypointError,
+  NpmPackageJsonError,
+  NpmPackageNameError,
+} from "./error";
 import { acquireNpmInstallLock } from "./npm-lock";
 
 const REGISTRY = "https://registry.npmjs.org";
@@ -24,42 +30,6 @@ export type NpmPackageInfo = {
   readonly entrypoint: string;
   readonly version: string;
 };
-
-export class NpmPackageNameError extends Error {
-  override readonly name = "NpmPackageNameError";
-
-  constructor(readonly pkg: string) {
-    super(`Invalid npm package name: ${pkg}`);
-  }
-}
-
-export class NpmPackageJsonError extends Error {
-  override readonly name = "NpmPackageJsonError";
-
-  constructor(readonly path: string) {
-    super(`Invalid package.json: ${path}`);
-  }
-}
-
-export class NpmPackageEntrypointError extends Error {
-  override readonly name = "NpmPackageEntrypointError";
-
-  constructor(readonly pkg: string) {
-    super(`Unable to resolve entrypoint for ${pkg}`);
-  }
-}
-
-export class NpmInstallError extends Error {
-  override readonly name = "NpmInstallError";
-
-  constructor(
-    readonly pkg: string,
-    readonly exitCode: number | null,
-    readonly output: string,
-  ) {
-    super(`Runtime install failed for ${pkg}: ${output.trim()}`);
-  }
-}
 
 function isNodeCode(error: unknown, code: string): boolean {
   return (

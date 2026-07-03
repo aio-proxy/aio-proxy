@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import type { LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
+import { AiSdkProviderLoaderError } from "../error";
 import { findInstalledNpmPackage } from "../npm";
 
 export const BUNDLED_PROVIDER_PACKAGES = [
@@ -91,10 +92,6 @@ const bundledProviders = {
 
 export const BUNDLED_PROVIDERS: Readonly<Record<string, AiSdkProviderLoader>> =
   bundledProviders;
-
-export class AiSdkProviderLoaderError extends Error {
-  override readonly name = "AiSdkProviderLoaderError";
-}
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

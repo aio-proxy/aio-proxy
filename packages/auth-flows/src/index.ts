@@ -1,12 +1,14 @@
 export type AuthFlowStatus = "idle" | "pending" | "authenticated";
-export { Auth } from "./store";
 export {
   AuthCasBusyError,
-  type AuthCasCurrent,
-  type AuthCasNext,
   AuthPayloadParseError,
   AuthPayloadSerializationError,
-  type AuthRecord,
-  type AuthSummary,
   StaleProviderGenerationError,
+} from "./errors";
+export { Auth } from "./store";
+export type {
+  AuthCasCurrent,
+  AuthCasNext,
+  AuthRecord,
+  AuthSummary,
 } from "./store-types";

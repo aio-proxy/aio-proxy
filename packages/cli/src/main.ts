@@ -15,6 +15,7 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { ServeListenError } from "./errors";
 import {
   providerErrors,
   providerInstall,
@@ -36,21 +37,6 @@ type ServeOptions = {
   readonly dashboard?: boolean;
   readonly config?: string;
 };
-
-class ServeListenError extends Error {
-  override readonly name = "ServeListenError";
-
-  constructor(
-    readonly host: string,
-    readonly port: number,
-    options?: ErrorOptions,
-  ) {
-    super(
-      `Cannot start AIO Proxy on ${host}:${port}. Is another process already listening there?`,
-      options,
-    );
-  }
-}
 
 const parsePort = (value: string | undefined, fallback: number) => {
   if (value === undefined) {

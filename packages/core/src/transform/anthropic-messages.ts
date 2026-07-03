@@ -1,3 +1,4 @@
+import { AnthropicMessagesTransformError } from "../error";
 import type {
   AnthropicAssistantContentBlock,
   AnthropicCacheControl,
@@ -95,13 +96,6 @@ export type AnthropicMessagesFromModelMessages =
   AnthropicMessagesModelMessages & {
     readonly model: string;
   };
-
-export class AnthropicMessagesTransformError extends Error {
-  constructor(readonly path: string) {
-    super(`Invalid Anthropic Messages request at ${path}`);
-    this.name = "AnthropicMessagesTransformError";
-  }
-}
 
 export function anthropicMessagesToModelMessages(
   req: AnthropicMessagesRequest,
