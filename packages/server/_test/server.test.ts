@@ -50,6 +50,25 @@ describe("server routes", () => {
     expect(typeof body.version).toBe("string");
   });
 
+  test("Given configured providers When OpenAI models are requested Then model list is returned", async () => {
+    // Given
+    const app = createServer({ config });
+
+    // When
+    const response = await app.request("/v1/models");
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      object: "list",
+      data: [
+        { id: "gpt-test", object: "model", owned_by: "openai-compatible" },
+        { id: "compatible-test", object: "model", owned_by: "compatible" },
+      ],
+    });
+  });
+
   test("GET /dashboard/config redacts secret-like config values when requested", async () => {
     // Given
     const app = createServer({ config });
