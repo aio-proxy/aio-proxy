@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 const rootDir = join(import.meta.dir, "..");
 const distBin = join(rootDir, "packages", "cli", "dist-bin");
+const dryRun = process.argv.includes("--dry-run");
 
 const platformPackages = ["cli-darwin-arm64", "cli-darwin-x64", "cli-linux-x64", "cli-linux-arm64"] as const;
 
@@ -46,6 +47,10 @@ for (const dir of dirs) {
   const pkg = await readPackage(dir);
   if (isPublished(pkg.name, pkg.version)) {
     console.log(`skip ${pkg.name}@${pkg.version} (already published)`);
+    continue;
+  }
+  if (dryRun) {
+    console.log(`[dry-run] would publish ${pkg.name}@${pkg.version}`);
     continue;
   }
   console.log(`publish ${pkg.name}@${pkg.version}`);
