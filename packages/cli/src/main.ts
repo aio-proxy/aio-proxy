@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ConfigWriteError,
   formatUserError,
@@ -16,6 +15,7 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
 import { providerErrors, providerInstall, providerList, providerTest } from "./provider-commands";
 
@@ -72,27 +72,6 @@ const resolveConfigPath = (optionPath: string | undefined) =>
   // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
   optionPath ?? process.env["AIO_PROXY_CONFIG"] ?? defaultConfigPath();
 
-const dashboardPackageDir = () => dirname(dirname(fileURLToPath(import.meta.resolve("@aio-proxy/dashboard"))));
-
-const ensureDashboardStaticDir = async () => {
-  const packageDir = dashboardPackageDir();
-  const staticDir = join(packageDir, "dist");
-  if (existsSync(join(staticDir, "index.html"))) {
-    return staticDir;
-  }
-
-  const build = Bun.spawn([process.execPath, "run", "build"], {
-    cwd: packageDir,
-    stderr: "inherit",
-    stdout: "inherit",
-  });
-  const code = await build.exited;
-  if (code !== 0) {
-    throw new Error(`Dashboard build failed with exit code ${code}`);
-  }
-  return staticDir;
-};
-
 const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   if (!existsSync(path)) {
     try {
@@ -138,7 +117,7 @@ const assertPortAvailable = (host: string, port: number) => {
   }
 };
 
-const serve = async (options: ServeOptions) => {
+const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   const configPath = resolveConfigPath(options.config);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
@@ -146,11 +125,11 @@ const serve = async (options: ServeOptions) => {
   const dashboardUrl = `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(configPath, dashboardUrl);
-  const dashboardStaticDir = await ensureDashboardStaticDir();
+  const dashboardAssets = deps.dashboardAssets();
   const app = createServer({
     config,
     configPath,
-    dashboardStaticDir,
+    dashboardAssets,
     host,
     port,
   });
@@ -165,7 +144,7 @@ const serve = async (options: ServeOptions) => {
 
 const runStub = () => {};
 
-export const buildProgram = () => {
+export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   const program = new Command()
     .name("aio-proxy")
     .description(m.cli_root_description())
@@ -179,7 +158,7 @@ export const buildProgram = () => {
     .option("--port <port>", m.cli_serve_option_port_description())
     .option("--dashboard", m.cli_serve_option_dashboard_description())
     .option("--config <path>", m.cli_serve_option_config_description())
-    .action(serve);
+    .action(serve(deps));
 
   program.command("dashboard").description(m.cli_dashboard_description()).action(runStub);
   const provider = program.command("provider").description(m.cli_provider_description());
@@ -202,10 +181,10 @@ export const buildProgram = () => {
   return program;
 };
 
-export const main = async () => {
+export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
     validatePortArgv(process.argv);
-    await buildProgram().parseAsync(process.argv);
+    await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {
     if (err instanceof ServeListenError) {
       console.error(err.message);
