@@ -9,12 +9,8 @@ export type GeminiGenerateContentTool = Readonly<{
 }>;
 
 export type GeminiGenerateContentSettings = Readonly<{
-  readonly generationConfig?:
-    | GeminiGenerateContentRequest["generationConfig"]
-    | undefined;
-  readonly safetySettings?:
-    | GeminiGenerateContentRequest["safetySettings"]
-    | undefined;
+  readonly generationConfig?: GeminiGenerateContentRequest["generationConfig"] | undefined;
+  readonly safetySettings?: GeminiGenerateContentRequest["safetySettings"] | undefined;
   readonly providerOptions?:
     | {
         readonly google: {
@@ -30,5 +26,4 @@ export type GeminiGenerateContentModelMessages = Readonly<{
   readonly settings: GeminiGenerateContentSettings;
 }>;
 
-export type GeminiGenerateContentFromModelMessages =
-  GeminiGenerateContentModelMessages & { readonly model: string };
+export type GeminiGenerateContentFromModelMessages = GeminiGenerateContentModelMessages & { readonly model: string };

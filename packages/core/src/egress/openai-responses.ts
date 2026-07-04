@@ -1,8 +1,4 @@
-import type {
-  LanguageModelV2StreamPart,
-  TextStreamPart,
-  ToolSet,
-} from "../ai-sdk-bridge";
+import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 
 const responseId = "resp-aio-proxy";
 const messageId = "msg-aio-proxy";
@@ -10,14 +6,9 @@ const reasoningId = "rs-aio-proxy";
 const encoder = new TextEncoder();
 
 type OpenAIResponsesStatus = "in_progress" | "completed";
-type OpenAIResponsesStreamPart =
-  | LanguageModelV2StreamPart
-  | TextStreamPart<ToolSet>;
+type OpenAIResponsesStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
 type TextDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "text-delta" }>;
-type ReasoningDeltaPart = Extract<
-  OpenAIResponsesStreamPart,
-  { type: "reasoning-delta" }
->;
+type ReasoningDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "reasoning-delta" }>;
 type FinishPart = Extract<OpenAIResponsesStreamPart, { type: "finish" }>;
 
 type OpenAIResponsesUsage = {
@@ -49,9 +40,7 @@ type OpenAIResponsesSummaryText = {
   readonly text: string;
 };
 
-type OpenAIResponsesOutputItem =
-  | OpenAIResponsesReasoningItem
-  | OpenAIResponsesMessageItem;
+type OpenAIResponsesOutputItem = OpenAIResponsesReasoningItem | OpenAIResponsesMessageItem;
 
 export type OpenAIResponsesResponse = {
   readonly id: typeof responseId;
@@ -67,9 +56,7 @@ type ResponseState = {
   usage?: OpenAIResponsesUsage;
 };
 
-export function writeOpenAIResponsesSSE(
-  stream: ReadableStream<OpenAIResponsesStreamPart>,
-): ReadableStream<Uint8Array> {
+export function writeOpenAIResponsesSSE(stream: ReadableStream<OpenAIResponsesStreamPart>): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       const state: ResponseState = { text: [], reasoning: [] };
@@ -170,10 +157,7 @@ export async function writeOpenAIResponsesResponse(
   return responseObject("completed", state);
 }
 
-function responseObject(
-  status: OpenAIResponsesStatus,
-  state: ResponseState,
-): OpenAIResponsesResponse {
+function responseObject(status: OpenAIResponsesStatus, state: ResponseState): OpenAIResponsesResponse {
   return {
     id: responseId,
     object: "response",
@@ -183,9 +167,7 @@ function responseObject(
   };
 }
 
-function outputItems(
-  state: ResponseState,
-): readonly OpenAIResponsesOutputItem[] {
+function outputItems(state: ResponseState): readonly OpenAIResponsesOutputItem[] {
   return [
     ...(state.reasoning.length === 0
       ? []
@@ -247,15 +229,9 @@ function openAIUsage(usage: {
   readonly totalTokens?: number | undefined;
 }): OpenAIResponsesUsage | undefined {
   const value = {
-    ...(usage.inputTokens === undefined
-      ? {}
-      : { input_tokens: usage.inputTokens }),
-    ...(usage.outputTokens === undefined
-      ? {}
-      : { output_tokens: usage.outputTokens }),
-    ...(usage.totalTokens === undefined
-      ? {}
-      : { total_tokens: usage.totalTokens }),
+    ...(usage.inputTokens === undefined ? {} : { input_tokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined ? {} : { output_tokens: usage.outputTokens }),
+    ...(usage.totalTokens === undefined ? {} : { total_tokens: usage.totalTokens }),
   } satisfies OpenAIResponsesUsage;
 
   return Object.keys(value).length === 0 ? undefined : value;

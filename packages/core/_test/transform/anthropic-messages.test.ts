@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  AnthropicMessagesModelMessages,
-  AnthropicMessagesRequest,
-} from "../../src/index";
+import type { AnthropicMessagesModelMessages, AnthropicMessagesRequest } from "../../src/index";
 import {
   AnthropicMessagesTransformError,
   anthropicMessagesToModelMessages,
@@ -22,12 +19,8 @@ const validFixtures = [
 
 type FixtureFile = (typeof validFixtures)[number];
 
-async function readFixture(
-  file: FixtureFile,
-): Promise<AnthropicMessagesRequest> {
-  return parseAnthropicMessages(
-    await Bun.file(`${fixtureRoot}/${file}`).json(),
-  );
+async function readFixture(file: FixtureFile): Promise<AnthropicMessagesRequest> {
+  return parseAnthropicMessages(await Bun.file(`${fixtureRoot}/${file}`).json());
 }
 
 describe("Anthropic Messages transform", () => {
@@ -133,11 +126,7 @@ describe("Anthropic Messages transform", () => {
         ],
         settings: {},
       }),
-    ).toThrow(
-      new AnthropicMessagesTransformError(
-        "messages.0.content.0.providerOptions.anthropic.signature",
-      ),
-    );
+    ).toThrow(new AnthropicMessagesTransformError("messages.0.content.0.providerOptions.anthropic.signature"));
   });
 
   test("Given unsupported role When reversed Then typed error names path", () => {

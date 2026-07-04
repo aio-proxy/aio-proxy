@@ -1,14 +1,7 @@
 import type { AiSdkProvider, ApiProvider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import type {
-  AiSdkLanguageModel,
-  LoadedAiSdkRuntimeProvider,
-} from "../ai-sdk-bridge";
-import {
-  type AiSdkProviderFactoryOptions,
-  type AiSdkProviderInstance,
-  createAiSdkProvider,
-} from "./ai-sdk";
+import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
+import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./ai-sdk";
 import type { AiSdkProviderLoadOptions } from "./ai-sdk-loader";
 import { resolveApiKey } from "./api";
 
@@ -47,17 +40,11 @@ export function bridgeApiProviderToAiSdk(
 
   return createAiSdkProvider(synthesized, {
     ...options,
-    ...(mapping.resolveModel === undefined
-      ? {}
-      : { resolveModel: mapping.resolveModel }),
+    ...(mapping.resolveModel === undefined ? {} : { resolveModel: mapping.resolveModel }),
   });
 }
 
-function bridgeMapping(
-  provider: ApiProvider,
-  baseURL: string,
-  providerId: string,
-): BridgeMapping {
+function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: string): BridgeMapping {
   const apiKey = resolveApiKey(provider.apiKey);
   const sharedOptions = {
     ...(apiKey === undefined ? {} : { apiKey }),
@@ -107,18 +94,11 @@ function resolveOpenAIResponsesModel(
 }
 
 function hasResponses(provider: unknown): provider is ResponsesProvider {
-  return (
-    hasRuntimeProviderMethods(provider) &&
-    typeof provider.responses === "function"
-  );
+  return hasRuntimeProviderMethods(provider) && typeof provider.responses === "function";
 }
 
-function hasRuntimeProviderMethods(
-  value: unknown,
-): value is RuntimeProviderMethods {
-  return (
-    (typeof value === "object" && value !== null) || typeof value === "function"
-  );
+function hasRuntimeProviderMethods(value: unknown): value is RuntimeProviderMethods {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
 function assertNever(value: never): never {

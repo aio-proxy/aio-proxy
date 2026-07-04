@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  AiSdkProviderInstance,
-  ApiProviderInstance,
-} from "@aio-proxy/core";
+import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
@@ -13,9 +10,7 @@ const responsesRequest = {
   stream: true,
 };
 
-function textStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -26,9 +21,7 @@ function textStream(
   });
 }
 
-function aiSdkProvider(
-  invoke: AiSdkProviderInstance["invoke"],
-): AiSdkProviderInstance {
+function aiSdkProvider(invoke: AiSdkProviderInstance["invoke"]): AiSdkProviderInstance {
   return {
     id: "mock-ai",
     kind: "ai-sdk",
@@ -68,8 +61,7 @@ const unsupportedBeforeProviderInvocationCases = [
 describe("OpenAI Responses routes", () => {
   test("Given openai-response api provider When POST is valid Then raw request and response bytes pass through", async () => {
     // Given
-    const rawRequest =
-      '{"model":"gpt-4.1-mini","input":"Say pong.","stream":false}';
+    const rawRequest = '{"model":"gpt-4.1-mini","input":"Say pong.","stream":false}';
     let bodySeen = "";
     const provider = {
       id: "openai",
@@ -252,9 +244,7 @@ describe("OpenAI Responses routes", () => {
 
       // Then
       expect(response.status).toBe(501);
-      expect(await response.json()).toEqual(
-        unsupportedEnvelope(scenario.feature),
-      );
+      expect(await response.json()).toEqual(unsupportedEnvelope(scenario.feature));
       expect(invoked).toBe(false);
     });
   }
@@ -275,9 +265,7 @@ describe("OpenAI Responses routes", () => {
 
     // Then
     expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(
-      unsupportedEnvelope("web_search_preview"),
-    );
+    expect(await response.json()).toEqual(unsupportedEnvelope("web_search_preview"));
   });
 
   test("Given stored response id When GET is requested Then retrieval is unsupported", async () => {
@@ -289,9 +277,7 @@ describe("OpenAI Responses routes", () => {
 
     // Then
     expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(
-      unsupportedEnvelope("response_retrieval"),
-    );
+    expect(await response.json()).toEqual(unsupportedEnvelope("response_retrieval"));
   });
 
   test("Given malformed JSON When POST is requested Then invalid request is returned before provider invocation", async () => {

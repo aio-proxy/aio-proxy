@@ -1,9 +1,4 @@
-import type {
-  ApiProvider,
-  ModelEntry,
-  ProviderKind,
-  ProviderProtocol,
-} from "@aio-proxy/types";
+import type { ApiProvider, ModelEntry, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -134,7 +129,5 @@ async function recordTrace(
 }
 
 function hex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

@@ -39,11 +39,7 @@ describe("GeminiGenerateContentRequestSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
-        "contents",
-        0,
-        "role",
-      ]);
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["contents", 0, "role"]);
     }
   });
 
@@ -54,9 +50,7 @@ describe("GeminiGenerateContentRequestSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
-        "model",
-      ]);
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["model"]);
     }
   });
 
@@ -78,12 +72,7 @@ describe("GeminiGenerateContentRequestSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
-        "contents",
-        0,
-        "parts",
-        0,
-      ]);
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["contents", 0, "parts", 0]);
     }
   });
 

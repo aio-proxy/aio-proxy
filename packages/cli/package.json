@@ -1,12 +1,14 @@
 {
   "name": "@aio-proxy/cli",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "build": "rslib",
+    "build:binary": "bun scripts/build-binary.ts",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "bun test _test",
@@ -15,6 +17,7 @@
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
+    "@aio-proxy/dashboard": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",

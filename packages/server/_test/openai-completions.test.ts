@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type AiSdkProviderInstance,
-  type ApiProviderInstance,
-  createAiSdkProvider,
-} from "@aio-proxy/core";
+import { type AiSdkProviderInstance, type ApiProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
@@ -14,9 +10,7 @@ const chatRequest = {
   stream: true,
 };
 
-function textStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -363,9 +357,7 @@ describe("POST /v1/chat/completions", () => {
 
     // Then
     expect(response.status).toBe(503);
-    expect(response.headers.get("content-type")).not.toContain(
-      "text/event-stream",
-    );
+    expect(response.headers.get("content-type")).not.toContain("text/event-stream");
     const body = await response.json();
     expect(body).toEqual({
       error: {

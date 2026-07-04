@@ -15,13 +15,9 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
-import {
-  providerErrors,
-  providerInstall,
-  providerList,
-  providerTest,
-} from "./provider-commands";
+import { providerErrors, providerInstall, providerList, providerTest } from "./provider-commands";
 
 setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
@@ -121,7 +117,7 @@ const assertPortAvailable = (host: string, port: number) => {
   }
 };
 
-const serve = async (options: ServeOptions) => {
+const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   const configPath = resolveConfigPath(options.config);
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
@@ -129,7 +125,14 @@ const serve = async (options: ServeOptions) => {
   const dashboardUrl = `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(configPath, dashboardUrl);
-  const app = createServer({ config, configPath, host, port });
+  const dashboardAssets = deps.dashboardAssets();
+  const app = createServer({
+    config,
+    configPath,
+    dashboardAssets,
+    host,
+    port,
+  });
   const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
   console.log(
     m.cli_serve_started({
@@ -141,7 +144,7 @@ const serve = async (options: ServeOptions) => {
 
 const runStub = () => {};
 
-export const buildProgram = () => {
+export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   const program = new Command()
     .name("aio-proxy")
     .description(m.cli_root_description())
@@ -155,15 +158,10 @@ export const buildProgram = () => {
     .option("--port <port>", m.cli_serve_option_port_description())
     .option("--dashboard", m.cli_serve_option_dashboard_description())
     .option("--config <path>", m.cli_serve_option_config_description())
-    .action(serve);
+    .action(serve(deps));
 
-  program
-    .command("dashboard")
-    .description(m.cli_dashboard_description())
-    .action(runStub);
-  const provider = program
-    .command("provider")
-    .description(m.cli_provider_description());
+  program.command("dashboard").description(m.cli_dashboard_description()).action(runStub);
+  const provider = program.command("provider").description(m.cli_provider_description());
   provider
     .command("install <pkg>")
     .option("--yes", "Confirm runtime package installation.")
@@ -176,36 +174,24 @@ export const buildProgram = () => {
     .option("--probe", "Probe listed providers.")
     .option("--installed", "List packages installed in the runtime cache.")
     .action(providerList);
-  provider
-    .command("test <id>")
-    .option("--url <url>", "Dashboard URL.")
-    .action(providerTest);
-  program
-    .command("model")
-    .description(m.cli_model_description())
-    .action(runStub);
-  program
-    .command("trace")
-    .description(m.cli_trace_description())
-    .action(runStub);
+  provider.command("test <id>").option("--url <url>", "Dashboard URL.").action(providerTest);
+  program.command("model").description(m.cli_model_description()).action(runStub);
+  program.command("trace").description(m.cli_trace_description()).action(runStub);
 
   return program;
 };
 
-export const main = async () => {
+export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
     validatePortArgv(process.argv);
-    await buildProgram().parseAsync(process.argv);
+    await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {
     if (err instanceof ServeListenError) {
       console.error(err.message);
       process.exitCode = 1;
       return;
     }
-    if (
-      err instanceof Error &&
-      providerErrors.some((errorType) => err instanceof errorType)
-    ) {
+    if (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) {
       console.error(err.message);
       process.exitCode = 1;
       return;

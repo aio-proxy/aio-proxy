@@ -1,34 +1,19 @@
-import type {
-  LanguageModelV2FinishReason,
-  LanguageModelV2StreamPart,
-  TextStreamPart,
-  ToolSet,
-} from "../ai-sdk-bridge";
+import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 
 const messageId = "msg_aio_proxy";
 const model = "aio-proxy";
 const encoder = new TextEncoder();
 
-type AnthropicStopReason =
-  | "end_turn"
-  | "max_tokens"
-  | "stop_sequence"
-  | "tool_use"
-  | "error";
+type AnthropicStopReason = "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "error";
 
 type AnthropicUsage = {
   readonly input_tokens?: number;
   readonly output_tokens?: number;
 };
 
-type AnthropicMessagesStreamPart =
-  | LanguageModelV2StreamPart
-  | TextStreamPart<ToolSet>;
+type AnthropicMessagesStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
 
-type TextDeltaPart = Extract<
-  AnthropicMessagesStreamPart,
-  { type: "text-delta" }
->;
+type TextDeltaPart = Extract<AnthropicMessagesStreamPart, { type: "text-delta" }>;
 type FinishPart = Extract<AnthropicMessagesStreamPart, { type: "finish" }>;
 type FinishReason = FinishPart["finishReason"] | LanguageModelV2FinishReason;
 type TokenUsage = {
@@ -133,17 +118,11 @@ function anthropicUsage(usage: TokenUsage): {
   readonly usage?: AnthropicUsage;
 } {
   const anthropicUsage = {
-    ...(usage.inputTokens === undefined
-      ? {}
-      : { input_tokens: usage.inputTokens }),
-    ...(usage.outputTokens === undefined
-      ? {}
-      : { output_tokens: usage.outputTokens }),
+    ...(usage.inputTokens === undefined ? {} : { input_tokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined ? {} : { output_tokens: usage.outputTokens }),
   } satisfies AnthropicUsage;
 
-  return Object.keys(anthropicUsage).length === 0
-    ? {}
-    : { usage: anthropicUsage };
+  return Object.keys(anthropicUsage).length === 0 ? {} : { usage: anthropicUsage };
 }
 
 function anthropicStopReason(finishReason: FinishReason): AnthropicStopReason {

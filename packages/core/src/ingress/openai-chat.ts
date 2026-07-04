@@ -9,11 +9,7 @@ const ContentPartSchema = z
   })
   .catchall(z.unknown());
 
-const MessageContentSchema = z.union([
-  z.string(),
-  z.null(),
-  z.array(ContentPartSchema),
-]);
+const MessageContentSchema = z.union([z.string(), z.null(), z.array(ContentPartSchema)]);
 
 const ToolCallSchema = z.object({
   id: IdSchema,
@@ -58,9 +54,7 @@ export const OpenAIChatRequestSchema = z.object({
   model: IdSchema,
   messages: z.array(MessageSchema).min(1),
   tools: z.array(ToolSchema).optional(),
-  tool_choice: z
-    .union([z.enum(["none", "auto", "required"]), LooseObjectSchema])
-    .optional(),
+  tool_choice: z.union([z.enum(["none", "auto", "required"]), LooseObjectSchema]).optional(),
   stream: z.boolean().optional(),
   temperature: z.number().optional(),
   max_tokens: z.number().int().positive().optional(),

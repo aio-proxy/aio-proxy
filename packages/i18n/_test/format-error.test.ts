@@ -82,19 +82,12 @@ describe("formatUserError", () => {
 
   test("formats custom app errors and stale generation errors", () => {
     // Given / When / Then
-    expect(
-      formatUserError(
-        new AppError("config_not_found", "cli_error_config_not_found"),
-        "en",
-      ),
-    ).toEqual({
+    expect(formatUserError(new AppError("config_not_found", "cli_error_config_not_found"), "en")).toEqual({
       code: "config_not_found",
       message: "Config file not found.",
     });
 
-    expect(
-      formatUserError(new StaleProviderGenerationError("openai"), "en"),
-    ).toEqual({
+    expect(formatUserError(new StaleProviderGenerationError("openai"), "en")).toEqual({
       code: "stale_provider_generation",
       message: "Provider generation is stale for openai. Regenerate providers.",
     });

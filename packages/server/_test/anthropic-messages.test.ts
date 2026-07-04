@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  AiSdkProviderInstance,
-  ApiProviderInstance,
-} from "@aio-proxy/core";
+import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
 import { createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -15,9 +12,7 @@ const messagesRequest = {
   stream: true,
 };
 
-function textStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -179,13 +174,9 @@ describe("POST /v1/messages", () => {
 
     // Then
     expect(response.status).toBe(503);
-    expect(response.headers.get("content-type")).not.toContain(
-      "text/event-stream",
-    );
+    expect(response.headers.get("content-type")).not.toContain("text/event-stream");
     expect(body.error.type).toBe("invalid_request_error");
-    expect(body.error.message).toContain(
-      "run aio-proxy provider install @vendor/missing-provider",
-    );
+    expect(body.error.message).toContain("run aio-proxy provider install @vendor/missing-provider");
   });
 });
 

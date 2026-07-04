@@ -69,10 +69,7 @@ describe("loadAiSdkProvider", () => {
     );
 
     for (const expected of expectedProviders) {
-      const provider = await loadAiSdkProvider(
-        expected.packageName,
-        expected.options,
-      );
+      const provider = await loadAiSdkProvider(expected.packageName, expected.options);
 
       expect(provider).not.toBeNull();
       for (const method of expected.methods) {
@@ -97,10 +94,7 @@ describe("loadAiSdkProvider", () => {
     const pkg = "aio-proxy-runtime-provider";
     const packageDir = join(npmPackageCacheDir(pkg), "node_modules", pkg);
     mkdirSync(packageDir, { recursive: true });
-    writeFileSync(
-      join(packageDir, "package.json"),
-      JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }),
-    );
+    writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
     writeFileSync(
       join(packageDir, "index.js"),
       "export function createRuntimeProvider(options) { return { languageModel() { return options.apiKey; } }; }\n",

@@ -9,16 +9,8 @@ export type InstalledNpmPackage = NpmPackageInfo & {
   readonly cacheDir: string;
 };
 
-export async function listInstalledNpmPackages(): Promise<
-  readonly InstalledNpmPackage[]
-> {
-  const packagesRoot = join(
-    homedir(),
-    ".config",
-    "aio-proxy",
-    "cache",
-    "packages",
-  );
+export async function listInstalledNpmPackages(): Promise<readonly InstalledNpmPackage[]> {
+  const packagesRoot = join(homedir(), ".config", "aio-proxy", "cache", "packages");
   if (!existsSync(packagesRoot)) {
     return [];
   }

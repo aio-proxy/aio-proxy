@@ -75,10 +75,7 @@ const ThinkingBlockSchema = z
     }),
   );
 
-const UserContentBlockSchema = z.discriminatedUnion("type", [
-  TextBlockSchema,
-  ToolResultBlockSchema,
-]);
+const UserContentBlockSchema = z.discriminatedUnion("type", [TextBlockSchema, ToolResultBlockSchema]);
 
 const AssistantContentBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
@@ -99,11 +96,7 @@ const AssistantMessageSchema = z.object({
 export const AnthropicMessagesRequestSchema = z.object({
   model: IdSchema,
   system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
-  messages: z
-    .array(
-      z.discriminatedUnion("role", [UserMessageSchema, AssistantMessageSchema]),
-    )
-    .min(1),
+  messages: z.array(z.discriminatedUnion("role", [UserMessageSchema, AssistantMessageSchema])).min(1),
   stream: z.boolean().optional(),
   max_tokens: z.number().int().positive().optional(),
   temperature: z.number().optional(),
@@ -115,15 +108,9 @@ export type AnthropicToolUseBlock = z.output<typeof ToolUseBlockSchema>;
 export type AnthropicToolResultBlock = z.output<typeof ToolResultBlockSchema>;
 export type AnthropicThinkingBlock = z.output<typeof ThinkingBlockSchema>;
 export type AnthropicUserContentBlock = z.output<typeof UserContentBlockSchema>;
-export type AnthropicAssistantContentBlock = z.output<
-  typeof AssistantContentBlockSchema
->;
-export type AnthropicMessagesRequest = z.output<
-  typeof AnthropicMessagesRequestSchema
->;
+export type AnthropicAssistantContentBlock = z.output<typeof AssistantContentBlockSchema>;
+export type AnthropicMessagesRequest = z.output<typeof AnthropicMessagesRequestSchema>;
 
-export function parseAnthropicMessages(
-  input: unknown,
-): AnthropicMessagesRequest {
+export function parseAnthropicMessages(input: unknown): AnthropicMessagesRequest {
   return AnthropicMessagesRequestSchema.parse(input);
 }

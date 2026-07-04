@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TextStreamPart, ToolSet } from "ai";
-import {
-  writeGeminiGenerateContentResponse,
-  writeGeminiGenerateContentSSE,
-} from "../../src/index";
+import { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from "../../src/index";
 
 async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
   const chunks: string[] = [];
@@ -17,9 +14,7 @@ async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
   return chunks.join("");
 }
 
-function partStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function partStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -110,9 +105,7 @@ describe("Gemini generateContent egress", () => {
       },
     ]);
 
-    await expect(
-      collectSSE(writeGeminiGenerateContentSSE(stream)),
-    ).resolves.toBe(
+    await expect(collectSSE(writeGeminiGenerateContentSSE(stream))).resolves.toBe(
       'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hel"}]}}]}\n\n' +
         'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}\n\n' +
         'data: {"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}\n\n',

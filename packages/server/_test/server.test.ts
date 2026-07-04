@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AppType } from "@aio-proxy/server";
-import serverEntrypoint, {
-  createServer,
-  serverDefaults,
-} from "@aio-proxy/server";
+import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { hc } from "hono/client";
 
@@ -69,12 +66,12 @@ describe("server routes", () => {
     });
   });
 
-  test("GET /dashboard/config redacts secret-like config values when requested", async () => {
+  test("GET /dashboard/api/config redacts secret-like config values when requested", async () => {
     // Given
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/config");
+    const response = await app.request("/dashboard/api/config");
     const body = await response.json();
 
     // Then
@@ -89,12 +86,12 @@ describe("server routes", () => {
     expect(body.providers[1].options.headers["x-api-key"]).toBe("****");
   });
 
-  test("POST /dashboard/config rejects evil origin when requested", async () => {
+  test("POST /dashboard/api/config rejects evil origin when requested", async () => {
     // Given
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/config", {
+    const response = await app.request("/dashboard/api/config", {
       method: "POST",
       headers: { Origin: "http://evil.example" },
     });
@@ -103,12 +100,14 @@ describe("server routes", () => {
     expect(response.status).toBe(403);
   });
 
-  test("POST /dashboard/config rejects absent origin when requested", async () => {
+  test("POST /dashboard/api/config rejects absent origin when requested", async () => {
     // Given
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/config", { method: "POST" });
+    const response = await app.request("/dashboard/api/config", {
+      method: "POST",
+    });
 
     // Then
     expect(response.status).toBe(403);
@@ -133,7 +132,7 @@ describe("server routes", () => {
     const client = hc<AppType>("http://127.0.0.1:22078");
 
     // Then
-    expect(typeof client.dashboard.config.$get).toBe("function");
+    expect(typeof client.dashboard.api.config.$get).toBe("function");
   });
 
   test("Given configured provider When dashboard providers are requested Then summary and probe status are returned", async () => {
@@ -163,10 +162,8 @@ describe("server routes", () => {
 
     try {
       // When
-      const list = await app.request("/dashboard/providers");
-      const probe = await app.request(
-        "/dashboard/providers?probe=true&filter=openai",
-      );
+      const list = await app.request("/dashboard/api/providers");
+      const probe = await app.request("/dashboard/api/providers?probe=true&filter=openai");
 
       // Then
       expect(list.status).toBe(200);
@@ -198,8 +195,8 @@ describe("server routes", () => {
     const app = createServer({ config });
 
     // When
-    const found = await app.request("/dashboard/providers/openai-compatible");
-    const missing = await app.request("/dashboard/providers/missing");
+    const found = await app.request("/dashboard/api/providers/openai-compatible");
+    const missing = await app.request("/dashboard/api/providers/missing");
 
     // Then
     expect(found.status).toBe(200);
@@ -221,7 +218,7 @@ describe("server routes", () => {
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/providers/install", {
+    const response = await app.request("/dashboard/api/providers/install", {
       body: JSON.stringify({ npm: "aio-proxy-test-provider" }),
       headers: {
         "content-type": "application/json",
@@ -241,7 +238,7 @@ describe("server routes", () => {
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/providers/install", {
+    const response = await app.request("/dashboard/api/providers/install", {
       body: JSON.stringify({ npm: "../bad", confirmed: true }),
       headers: {
         "content-type": "application/json",
@@ -261,7 +258,7 @@ describe("server routes", () => {
     const app = createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/providers/install", {
+    const response = await app.request("/dashboard/api/providers/install", {
       body: JSON.stringify({
         npm: "aio-proxy-dashboard-missing-package",
         confirmed: true,
@@ -305,9 +302,7 @@ describe("server routes", () => {
 
     try {
       // When
-      const probe = await app.request(
-        "/dashboard/providers?probe=true&filter=bad",
-      );
+      const probe = await app.request("/dashboard/api/providers?probe=true&filter=bad");
       const body = await probe.json();
 
       // Then

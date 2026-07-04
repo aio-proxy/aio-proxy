@@ -1,7 +1,4 @@
-import {
-  defineLibraryConfig,
-  type RsbuildPlugin,
-} from "@aio-proxy/infra/rslib";
+import { defineLibraryConfig, type RsbuildPlugin } from "@aio-proxy/infra/rslib";
 import { z } from "zod";
 import { ConfigSchema } from "./src/index.ts";
 
@@ -11,10 +8,7 @@ const configSchemaPlugin = (): RsbuildPlugin => ({
   setup(api) {
     api.processAssets({ stage: "additional" }, ({ sources, compilation }) => {
       const schema = z.toJSONSchema(ConfigSchema, { io: "input" });
-      compilation.emitAsset(
-        "config.schema.json",
-        new sources.RawSource(JSON.stringify(schema, null, 2)),
-      );
+      compilation.emitAsset("config.schema.json", new sources.RawSource(JSON.stringify(schema, null, 2)));
     });
   },
 });

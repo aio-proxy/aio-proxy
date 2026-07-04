@@ -1,10 +1,5 @@
 import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
-import type {
-  Config,
-  DashboardProviderProbe,
-  DashboardProviderSummary,
-  Provider,
-} from "@aio-proxy/types";
+import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { ProviderBuildError } from "./errors";
 import type { RuntimeProviderInstance } from "./runtime";
@@ -54,9 +49,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
   };
 }
 
-export function providerSummary(
-  provider: RuntimeProviderInstance,
-): DashboardProviderSummary {
+export function providerSummary(provider: RuntimeProviderInstance): DashboardProviderSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -67,20 +60,13 @@ export function providerSummary(
   };
 }
 
-export function providerDiff(
-  before: readonly DashboardProviderSummary[],
-  after: readonly DashboardProviderSummary[],
-) {
+export function providerDiff(before: readonly DashboardProviderSummary[], after: readonly DashboardProviderSummary[]) {
   const beforeIds = new Set(before.map((provider) => provider.id));
   const afterIds = new Set(after.map((provider) => provider.id));
   return {
     providerIds: {
-      added: after
-        .filter((provider) => !beforeIds.has(provider.id))
-        .map((provider) => provider.id),
-      removed: before
-        .filter((provider) => !afterIds.has(provider.id))
-        .map((provider) => provider.id),
+      added: after.filter((provider) => !beforeIds.has(provider.id)).map((provider) => provider.id),
+      removed: before.filter((provider) => !afterIds.has(provider.id)).map((provider) => provider.id),
     },
   };
 }

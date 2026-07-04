@@ -19,14 +19,8 @@ describe("paraglide compile output", () => {
 
   test("emits an aggregated typed m object", () => {
     // Given
-    const declaration = readFileSync(
-      "packages/i18n/src/paraglide/messages.d.ts",
-      "utf8",
-    );
-    const indexDeclaration = readFileSync(
-      "packages/i18n/src/paraglide/messages/_index.d.ts",
-      "utf8",
-    );
+    const declaration = readFileSync("packages/i18n/src/paraglide/messages.d.ts", "utf8");
+    const indexDeclaration = readFileSync("packages/i18n/src/paraglide/messages/_index.d.ts", "utf8");
 
     // When / Then
     expect(declaration).toContain("export * as m");

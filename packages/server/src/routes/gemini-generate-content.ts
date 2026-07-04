@@ -15,10 +15,7 @@ import {
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
-import {
-  ensureAiSdkProviderAvailable,
-  providerNotInstalled,
-} from "../provider-availability";
+import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
 import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
@@ -56,10 +53,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     }
 
     const provider = route.provider;
-    if (
-      provider.kind === ProviderKind.Api &&
-      provider.protocol === ProviderProtocol.Gemini
-    ) {
+    if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Gemini) {
       const request = await parseRequest(context.req.raw, target.model);
       if (request instanceof Response) {
         return request;
@@ -69,11 +63,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     }
 
     if (provider.kind !== ProviderKind.AiSdk) {
-      return geminiError(
-        501,
-        "UNIMPLEMENTED",
-        "Provider does not support Gemini generateContent transform dispatch",
-      );
+      return geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
     }
 
     const request = await parseRequest(context.req.raw, target.model);
@@ -152,9 +142,7 @@ function resolveRoute(source: ProviderRouteSource, model: string) {
   }
 }
 
-function routeTarget(
-  pathname: string,
-): { readonly model: string; readonly stream: boolean } | undefined {
+function routeTarget(pathname: string): { readonly model: string; readonly stream: boolean } | undefined {
   if (!pathname.startsWith(routePrefix)) {
     return undefined;
   }
@@ -173,12 +161,8 @@ function routeTarget(
   return undefined;
 }
 
-function aiSdkSettings(
-  settings: GeminiGenerateContentSettings,
-): GeminiAiSdkSettings {
-  const parsed = aiSdkGenerationConfigSchema.safeParse(
-    settings.generationConfig ?? {},
-  );
+function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
+  const parsed = aiSdkGenerationConfigSchema.safeParse(settings.generationConfig ?? {});
   if (!parsed.success) {
     return aiSdkProviderOptions(settings);
   }
@@ -186,27 +170,17 @@ function aiSdkSettings(
   const config = parsed.data;
   return {
     ...aiSdkProviderOptions(settings),
-    ...(config.maxOutputTokens === undefined
-      ? {}
-      : { maxOutputTokens: config.maxOutputTokens }),
-    ...(config.temperature === undefined
-      ? {}
-      : { temperature: config.temperature }),
+    ...(config.maxOutputTokens === undefined ? {} : { maxOutputTokens: config.maxOutputTokens }),
+    ...(config.temperature === undefined ? {} : { temperature: config.temperature }),
     ...(config.topP === undefined ? {} : { topP: config.topP }),
     ...(config.topK === undefined ? {} : { topK: config.topK }),
-    ...(config.stopSequences === undefined
-      ? {}
-      : { stopSequences: config.stopSequences }),
+    ...(config.stopSequences === undefined ? {} : { stopSequences: config.stopSequences }),
     ...(config.seed === undefined ? {} : { seed: config.seed }),
   };
 }
 
-function aiSdkProviderOptions(
-  settings: GeminiGenerateContentSettings,
-): GeminiAiSdkSettings {
-  const safetySettings = jsonValue(
-    settings.providerOptions?.google.safetySettings,
-  );
+function aiSdkProviderOptions(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
+  const safetySettings = jsonValue(settings.providerOptions?.google.safetySettings);
 
   if (safetySettings === undefined) {
     return {};
@@ -219,9 +193,7 @@ function aiSdkProviderOptions(
   };
 }
 
-function aiSdkTools(
-  tools: readonly GeminiGenerateContentTool[] | undefined,
-): ToolSet | undefined {
+function aiSdkTools(tools: readonly GeminiGenerateContentTool[] | undefined): ToolSet | undefined {
   if (tools === undefined) {
     return undefined;
   }
@@ -230,9 +202,7 @@ function aiSdkTools(
   for (const tool of tools) {
     result[tool.name] = {
       type: "function",
-      ...(tool.description === undefined
-        ? {}
-        : { description: tool.description }),
+      ...(tool.description === undefined ? {} : { description: tool.description }),
       inputSchema: jsonSchema(jsonSchemaObject(tool.inputSchema)),
       outputSchema: jsonSchema({}),
     };
@@ -261,12 +231,7 @@ function jsonValue(value: unknown): JSONValue | undefined {
 
 function geminiError(
   code: number,
-  status:
-    | "INVALID_ARGUMENT"
-    | "NOT_FOUND"
-    | "RESOURCE_EXHAUSTED"
-    | "UNAVAILABLE"
-    | "UNIMPLEMENTED",
+  status: "INVALID_ARGUMENT" | "NOT_FOUND" | "RESOURCE_EXHAUSTED" | "UNAVAILABLE" | "UNIMPLEMENTED",
   message: string,
 ): Response {
   return Response.json({ error: { code, message, status } }, { status: code });

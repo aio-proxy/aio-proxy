@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  LanguageModelV2,
-  LanguageModelV2StreamPart,
-  ProviderV3,
-} from "@ai-sdk/provider";
+import type { LanguageModelV2, LanguageModelV2StreamPart, ProviderV3 } from "@ai-sdk/provider";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
 import { createAiSdkProvider } from "../../src/index";
 
@@ -11,9 +7,7 @@ Object.assign(globalThis, { AI_SDK_LOG_WARNINGS: false });
 
 const messages: ModelMessage[] = [{ role: "user", content: "hello" }];
 
-async function collect(
-  stream: ReadableStream<TextStreamPart<ToolSet>>,
-): Promise<readonly TextStreamPart<ToolSet>[]> {
+async function collect(stream: ReadableStream<TextStreamPart<ToolSet>>): Promise<readonly TextStreamPart<ToolSet>[]> {
   const parts: TextStreamPart<ToolSet>[] = [];
   for await (const part of stream) {
     parts.push(part);
@@ -22,9 +16,7 @@ async function collect(
   return parts;
 }
 
-function textPartStream(
-  parts: readonly LanguageModelV2StreamPart[],
-): ReadableStream<LanguageModelV2StreamPart> {
+function textPartStream(parts: readonly LanguageModelV2StreamPart[]): ReadableStream<LanguageModelV2StreamPart> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -64,9 +56,7 @@ describe("createAiSdkProvider", () => {
       { resolveModel: () => model },
     );
 
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "mock-model" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "mock-model" }));
 
     expect(parts.filter((part) => part.type.startsWith("text"))).toEqual([
       { type: "text-start", id: "text-1" },
@@ -98,9 +88,9 @@ describe("createAiSdkProvider", () => {
       { resolveModel: () => model },
     );
 
-    await expect(
-      collect(provider.invoke({ messages, modelId: "mock-model" })),
-    ).rejects.toThrow(/mock-ai-sdk.*upstream exploded/);
+    await expect(collect(provider.invoke({ messages, modelId: "mock-model" }))).rejects.toThrow(
+      /mock-ai-sdk.*upstream exploded/,
+    );
   });
 
   test("Given bundled ai-sdk provider When invoked Then loader provider receives the routed model id", async () => {
@@ -147,9 +137,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "routed-model" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "routed-model" }));
 
     // Then
     expect(packageSeen).toBe("@ai-sdk/openai");
@@ -176,9 +164,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When / Then
-    await expect(
-      collect(provider.invoke({ messages, modelId: "missing-model" })),
-    ).rejects.toThrow(
+    await expect(collect(provider.invoke({ messages, modelId: "missing-model" }))).rejects.toThrow(
       "run aio-proxy provider install @vendor/missing-provider",
     );
   });
@@ -221,9 +207,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "deepseek-reasoner" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "deepseek-reasoner" }));
 
     // Then
     expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([
@@ -276,9 +260,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "deepseek-reasoner" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "deepseek-reasoner" }));
 
     // Then
     expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([
@@ -334,9 +316,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "deepseek-reasoner" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "deepseek-reasoner" }));
 
     // Then
     expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([
@@ -383,9 +363,7 @@ describe("createAiSdkProvider", () => {
     );
 
     // When
-    const parts = await collect(
-      provider.invoke({ messages, modelId: "custom-reasoner" }),
-    );
+    const parts = await collect(provider.invoke({ messages, modelId: "custom-reasoner" }));
 
     // Then
     expect(parts.filter((part) => part.type === "reasoning-delta")).toEqual([

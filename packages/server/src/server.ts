@@ -1,5 +1,7 @@
 import { ConfigSchema } from "@aio-proxy/types";
+import type { Context } from "hono";
 import { Hono } from "hono";
+import type { DashboardAssets } from "./dashboard-assets";
 import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
@@ -14,8 +16,7 @@ export const serverDefaults = {
   port: 22_078,
 } as const;
 
-const dashboardOrigins = (port: number) =>
-  new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+const dashboardOrigins = (port: number) => new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 
 const csrfMethods = new Set(["POST", "PUT", "DELETE"]);
 const defaultConfig = ConfigSchema.parse({ providers: [] });
@@ -27,12 +28,14 @@ export type CreateServerOptions = {
   readonly providerInstances?: readonly RuntimeProviderInstance[];
   readonly port?: number;
   readonly host?: string;
+  readonly dashboardAssets?: DashboardAssets;
   readonly watchConfig?: boolean;
 };
 
 const createRoutes = (
   state: ServerState,
   dashboardOriginPort: number = serverDefaults.port,
+  dashboardAssets?: DashboardAssets,
 ) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
@@ -55,7 +58,7 @@ const createRoutes = (
   );
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
 
-  app.use("/dashboard/*", async (context, next) => {
+  app.use("/dashboard/api/*", async (context, next) => {
     if (!csrfMethods.has(context.req.method)) {
       await next();
       return;
@@ -79,7 +82,24 @@ const createRoutes = (
     .route("/", geminiGenerateContentRoutes)
     .route("/", openAICompletionsRoutes)
     .route("/", openAIResponsesRoutes)
-    .route("/dashboard", dashboardRoutes);
+    .route("/dashboard/api", dashboardRoutes);
+
+  if (dashboardAssets !== undefined) {
+    const dashboardIndex = async (context: Context) => (await dashboardAssets("index.html")) ?? context.notFound();
+    routes
+      .get("/dashboard", dashboardIndex)
+      .get("/dashboard/", dashboardIndex)
+      .get(
+        "/dashboard/static/*",
+        async (context) =>
+          (await dashboardAssets(context.req.path.replace(/^\/dashboard\//u, ""))) ?? context.notFound(),
+      )
+      .all("/dashboard/static/*", (context) => context.notFound())
+      .all("/dashboard/api", (context) => context.notFound())
+      .all("/dashboard/api/*", (context) => context.notFound())
+      .get("/dashboard/*", dashboardIndex);
+  }
+
   return routes;
 };
 
@@ -99,20 +119,13 @@ export const createServer = (options: CreateServerOptions): AppType => {
   return createRoutes(
     createServerState({
       config,
-      ...(options.configPath === undefined
-        ? {}
-        : { configPath: options.configPath }),
-      ...(options.eventLimits === undefined
-        ? {}
-        : { eventLimits: options.eventLimits }),
-      ...(options.providerInstances === undefined
-        ? {}
-        : { providerInstances: options.providerInstances }),
-      ...(options.watchConfig === undefined
-        ? {}
-        : { watchConfig: options.watchConfig }),
+      ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
+      ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
+      ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
+      ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
     }),
     options.port ?? config.server.port,
+    options.dashboardAssets,
   );
 };
 

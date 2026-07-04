@@ -1,17 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  AiSdkProviderInstance,
-  ApiProviderInstance,
-} from "@aio-proxy/core";
+import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
-import type {
-  CallSettings,
-  JSONValue,
-  ModelMessage,
-  TextStreamPart,
-  ToolSet,
-} from "ai";
+import type { CallSettings, JSONValue, ModelMessage, TextStreamPart, ToolSet } from "ai";
 import { asSchema } from "ai";
 
 const generateRequest = {
@@ -26,9 +17,7 @@ type ProviderSeenSettings = CallSettings & {
   };
 };
 
-function textStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -39,18 +28,14 @@ function textStream(
   });
 }
 
-function appWith(
-  provider?: ApiProviderInstance | AiSdkProviderInstance,
-): ReturnType<typeof createServer> {
+function appWith(provider?: ApiProviderInstance | AiSdkProviderInstance): ReturnType<typeof createServer> {
   return createServer({
     config: { providers: [] },
     providerInstances: provider === undefined ? [] : [provider],
   });
 }
 
-function googleNativeProvider(
-  passthrough: ApiProviderInstance["passthrough"],
-): ApiProviderInstance {
+function googleNativeProvider(passthrough: ApiProviderInstance["passthrough"]): ApiProviderInstance {
   return {
     id: "google",
     kind: "api",
@@ -60,9 +45,7 @@ function googleNativeProvider(
   };
 }
 
-function aiSdkProvider(
-  invoke: AiSdkProviderInstance["invoke"],
-): AiSdkProviderInstance {
+function aiSdkProvider(invoke: AiSdkProviderInstance["invoke"]): AiSdkProviderInstance {
   return {
     id: "mock-ai",
     kind: "ai-sdk",
@@ -140,8 +123,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message:
-          "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
         status: "RESOURCE_EXHAUSTED",
       },
     });
@@ -178,9 +160,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(messagesSeen).toEqual([
-      { role: "user", content: [{ type: "text", text: "Hello proxy" }] },
-    ]);
+    expect(messagesSeen).toEqual([{ role: "user", content: [{ type: "text", text: "Hello proxy" }] }]);
     expect(modelSeen).toBe("gemini-2.5-flash");
     expect(settingsSeen).toEqual({});
     expect(body).toEqual({
@@ -255,9 +235,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     });
     expect(weatherTool.type).toBe("function");
     expect(weatherTool.description).toBe("Returns weather for a city.");
-    expect(await asSchema(weatherTool.inputSchema).jsonSchema).toEqual(
-      parameters,
-    );
+    expect(await asSchema(weatherTool.inputSchema).jsonSchema).toEqual(parameters);
   });
 
   test("Given no matching alias When generateContent is posted Then returns 404 Gemini error envelope", async () => {
@@ -307,17 +285,14 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     });
 
     // When
-    const response = await app.request(
-      "/v1beta/models/gemini-2.5-flash:generateContent",
-      {
-        body,
-        headers: {
-          ...jsonHeaders,
-          "content-length": String(body.length),
-        },
-        method: "POST",
+    const response = await app.request("/v1beta/models/gemini-2.5-flash:generateContent", {
+      body,
+      headers: {
+        ...jsonHeaders,
+        "content-length": String(body.length),
       },
-    );
+      method: "POST",
+    });
 
     // Then
     expect(response.status).toBe(200);
@@ -368,8 +343,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message:
-          "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
         status: "RESOURCE_EXHAUSTED",
       },
     });
@@ -408,20 +382,17 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     const data = `${"A".repeat(27_962_028)}====`;
 
     // When
-    const response = await app.request(
-      "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
-      {
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ inlineData: { mimeType: "image/png", data } }],
-            },
-          ],
-        }),
-        headers: jsonHeaders,
-        method: "POST",
-      },
-    );
+    const response = await app.request("/v1beta/models/gemini-2.5-flash:streamGenerateContent", {
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ inlineData: { mimeType: "image/png", data } }],
+          },
+        ],
+      }),
+      headers: jsonHeaders,
+      method: "POST",
+    });
     const body = await response.json();
 
     // Then
@@ -429,8 +400,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message:
-          "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
         status: "RESOURCE_EXHAUSTED",
       },
     });
