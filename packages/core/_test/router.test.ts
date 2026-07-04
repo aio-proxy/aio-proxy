@@ -51,9 +51,7 @@ describe("Router", () => {
       models: [{ alias: "mini", id: "other-mini" }],
     } satisfies ProviderInstance;
 
-    expect(() => new Router([openai, other])).toThrow(
-      /openai.*other|other.*openai/,
-    );
+    expect(() => new Router([openai, other])).toThrow(/openai.*other|other.*openai/);
   });
 
   test("throws a 404 sentinel for a missing alias", () => {

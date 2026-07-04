@@ -7,13 +7,9 @@ type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
 type UserMessage = Extract<ModelMessage, { role: "user" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
-type ToolPart = Extract<
-  ToolMessage["content"][number],
-  { type: "tool-result" }
->;
+type ToolPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
 type UserPart = Exclude<UserMessage["content"], string>[number];
-type GeminiPart =
-  GeminiGenerateContentRequest["contents"][number]["parts"][number];
+type GeminiPart = GeminiGenerateContentRequest["contents"][number]["parts"][number];
 type GeminiContent = GeminiGenerateContentRequest["contents"][number];
 
 export { modelMessagesToGeminiGenerateContent } from "./gemini-generate-content-from-model";
@@ -34,9 +30,7 @@ export function geminiGenerateContentToModelMessages(
         : [
             {
               role: "system",
-              content: request.systemInstruction.parts
-                .map((part) => part.text)
-                .join(""),
+              content: request.systemInstruction.parts.map((part) => part.text).join(""),
             } satisfies ModelMessage,
           ]),
       ...request.contents.map(contentToMessage),
@@ -45,44 +39,31 @@ export function geminiGenerateContentToModelMessages(
       tool.functionDeclarations.map((declaration) => ({
         type: "function",
         name: declaration.name,
-        ...(declaration.description === undefined
-          ? {}
-          : { description: declaration.description }),
-        ...(declaration.parameters === undefined
-          ? {}
-          : { inputSchema: declaration.parameters }),
+        ...(declaration.description === undefined ? {} : { description: declaration.description }),
+        ...(declaration.parameters === undefined ? {} : { inputSchema: declaration.parameters }),
       })),
     ),
     settings: {
       generationConfig: request.generationConfig,
       safetySettings: request.safetySettings,
       providerOptions:
-        request.safetySettings === undefined
-          ? undefined
-          : { google: { safetySettings: request.safetySettings } },
+        request.safetySettings === undefined ? undefined : { google: { safetySettings: request.safetySettings } },
     },
   };
 }
 
-function contentToMessage(
-  content: GeminiContent,
-  contentIndex: number,
-): ModelMessage {
+function contentToMessage(content: GeminiContent, contentIndex: number): ModelMessage {
   if (content.role === "model") {
     return {
       role: "assistant",
-      content: content.parts.map((part, partIndex) =>
-        assistantPart(part, contentIndex, partIndex),
-      ),
+      content: content.parts.map((part, partIndex) => assistantPart(part, contentIndex, partIndex)),
     };
   }
 
   if (content.parts.every((part) => part.functionResponse !== undefined)) {
     return {
       role: "tool",
-      content: content.parts.map((part, partIndex) =>
-        toolResultPart(part, contentIndex, partIndex),
-      ),
+      content: content.parts.map((part, partIndex) => toolResultPart(part, contentIndex, partIndex)),
     };
   }
 
@@ -105,11 +86,7 @@ function userPart(part: GeminiPart): UserPart {
   throw new GeminiGenerateContentTransformError("contents.parts");
 }
 
-function assistantPart(
-  part: GeminiPart,
-  contentIndex: number,
-  partIndex: number,
-): AssistantPart {
+function assistantPart(part: GeminiPart, contentIndex: number, partIndex: number): AssistantPart {
   if (part.text !== undefined) {
     return { type: "text", text: part.text };
   }
@@ -123,21 +100,13 @@ function assistantPart(
     };
   }
 
-  throw new GeminiGenerateContentTransformError(
-    `contents.${contentIndex}.parts.${partIndex}`,
-  );
+  throw new GeminiGenerateContentTransformError(`contents.${contentIndex}.parts.${partIndex}`);
 }
 
-function toolResultPart(
-  part: GeminiPart,
-  contentIndex: number,
-  partIndex: number,
-): ToolPart {
+function toolResultPart(part: GeminiPart, contentIndex: number, partIndex: number): ToolPart {
   const response = part.functionResponse;
   if (response === undefined) {
-    throw new GeminiGenerateContentTransformError(
-      `contents.${contentIndex}.parts.${partIndex}`,
-    );
+    throw new GeminiGenerateContentTransformError(`contents.${contentIndex}.parts.${partIndex}`);
   }
 
   return {

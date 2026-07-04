@@ -24,24 +24,16 @@ const writeConfig = (path: string, config: unknown): void => {
   writeFileSync(path, `${JSON.stringify(config)}\n`);
 };
 
-async function readNextEventText(
-  stream: Response,
-  timeoutMs = 2_000,
-): Promise<string> {
+async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
   const reader = stream.body?.getReader();
   if (reader === undefined) {
     throw new Error("dashboard event stream body is missing");
   }
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<ReadableStreamReadResult<Uint8Array>>(
-    (_resolve, reject) => {
-      timeout = setTimeout(
-        () => reject(new Error("timed out waiting for dashboard event")),
-        timeoutMs,
-      );
-    },
-  );
+  const deadline = new Promise<ReadableStreamReadResult<Uint8Array>>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error("timed out waiting for dashboard event")), timeoutMs);
+  });
 
   try {
     const chunk = await Promise.race([reader.read(), deadline]);
@@ -66,10 +58,7 @@ describe("server reload", () => {
         return Response.json({ servedBy: "old-openai" }, { status: 208 });
       },
     });
-    const initialConfig = configWithProvider(
-      "old-openai",
-      `http://127.0.0.1:${upstream.port}`,
-    );
+    const initialConfig = configWithProvider("old-openai", `http://127.0.0.1:${upstream.port}`);
     writeConfig(configPath, initialConfig);
     const app = createServer({
       config: initialConfig,
@@ -98,7 +87,7 @@ describe("server reload", () => {
       });
 
       // When
-      const reload = await app.request("/dashboard/reload", {
+      const reload = await app.request("/dashboard/api/reload", {
         headers: { Origin: "http://127.0.0.1:22078" },
         method: "POST",
       });
@@ -153,10 +142,7 @@ describe("server reload", () => {
     const configPath = join(dir, "config.jsonc");
     const tempPath = join(dir, "config.jsonc.tmp");
     const initialConfig = configWithProvider("old-openai", "https://old.test");
-    const middleConfig = configWithProvider(
-      "middle-openai",
-      "https://middle.test",
-    );
+    const middleConfig = configWithProvider("middle-openai", "https://middle.test");
     const nextConfig = configWithProvider("new-openai", "https://new.test");
     writeConfig(configPath, initialConfig);
     const state = createServerState({ config: initialConfig, configPath });
@@ -177,13 +163,9 @@ describe("server reload", () => {
 
       // Then
       expect(firstEventText).toContain("event: config.changed");
-      expect(middleProviders.map((provider) => provider.id)).toEqual([
-        "middle-openai",
-      ]);
+      expect(middleProviders.map((provider) => provider.id)).toEqual(["middle-openai"]);
       expect(secondEventText).toContain("event: config.changed");
-      expect(nextProviders.map((provider) => provider.id)).toEqual([
-        "new-openai",
-      ]);
+      expect(nextProviders.map((provider) => provider.id)).toEqual(["new-openai"]);
     } finally {
       state.close();
       rmSync(dir, { recursive: true, force: true });

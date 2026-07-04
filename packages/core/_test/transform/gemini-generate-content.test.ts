@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  GeminiGenerateContentModelMessages,
-  GeminiGenerateContentRequest,
-} from "../../src/index";
+import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from "../../src/index";
 import {
   GeminiGenerateContentTransformError,
   geminiGenerateContentToModelMessages,
@@ -22,12 +19,8 @@ const validFixtures = [
 
 type FixtureFile = (typeof validFixtures)[number];
 
-async function readFixture(
-  file: FixtureFile,
-): Promise<GeminiGenerateContentRequest> {
-  return parseGeminiGenerateContent(
-    await Bun.file(`${fixtureRoot}/${file}`).json(),
-  );
+async function readFixture(file: FixtureFile): Promise<GeminiGenerateContentRequest> {
+  return parseGeminiGenerateContent(await Bun.file(`${fixtureRoot}/${file}`).json());
 }
 
 describe("Gemini generateContent transform", () => {

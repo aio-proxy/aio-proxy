@@ -18,9 +18,7 @@ const unsupportedProbeSchema = z
     previous_response_id: z.unknown().optional(),
     store: z.unknown().optional(),
     background: z.unknown().optional(),
-    tools: z
-      .array(z.object({ type: z.string() }).catchall(z.unknown()))
-      .optional(),
+    tools: z.array(z.object({ type: z.string() }).catchall(z.unknown())).optional(),
   })
   .passthrough();
 
@@ -31,10 +29,7 @@ const textPartSchema = z
   })
   .catchall(z.unknown());
 
-const messageContentSchema = z.union([
-  z.string(),
-  z.array(textPartSchema).min(1),
-]);
+const messageContentSchema = z.union([z.string(), z.array(textPartSchema).min(1)]);
 
 const inputMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
@@ -61,11 +56,7 @@ const forbiddenToolSchema = z
   })
   .catchall(z.unknown());
 
-const toolSchema = z.union([
-  functionToolSchema,
-  customToolSchema,
-  forbiddenToolSchema,
-]);
+const toolSchema = z.union([functionToolSchema, customToolSchema, forbiddenToolSchema]);
 
 export const OpenAIResponsesRequestSchema = z.object({
   model: idSchema,
@@ -82,9 +73,7 @@ export const OpenAIResponsesRequestSchema = z.object({
   top_p: z.number().optional(),
   max_output_tokens: z.number().int().positive().optional(),
   parallel_tool_calls: z.boolean().optional(),
-  tool_choice: z
-    .union([z.enum(["none", "auto", "required"]), looseObjectSchema])
-    .optional(),
+  tool_choice: z.union([z.enum(["none", "auto", "required"]), looseObjectSchema]).optional(),
   store: z.boolean().optional(),
   background: z.boolean().optional(),
 });
@@ -94,13 +83,8 @@ export type OpenAIResponsesInputMessage = z.output<typeof inputMessageSchema>;
 export type OpenAIResponsesTextPart = z.output<typeof textPartSchema>;
 export type OpenAIResponsesFunctionTool = z.output<typeof functionToolSchema>;
 export type OpenAIResponsesCustomTool = z.output<typeof customToolSchema>;
-export type OpenAIResponsesTool =
-  | OpenAIResponsesFunctionTool
-  | OpenAIResponsesCustomTool;
-export type OpenAIResponsesRequest = Omit<
-  RawOpenAIResponsesRequest,
-  "tools"
-> & {
+export type OpenAIResponsesTool = OpenAIResponsesFunctionTool | OpenAIResponsesCustomTool;
+export type OpenAIResponsesRequest = Omit<RawOpenAIResponsesRequest, "tools"> & {
   readonly tools?: readonly OpenAIResponsesTool[] | undefined;
 };
 
@@ -111,9 +95,7 @@ export type OpenAIResponsesParseResult =
       readonly error: z.ZodError | OpenAIResponsesUnsupportedFeatureError;
     };
 
-export function safeParseOpenAIResponses(
-  input: unknown,
-): OpenAIResponsesParseResult {
+export function safeParseOpenAIResponses(input: unknown): OpenAIResponsesParseResult {
   const unsupported = unsupportedFeature(input);
   if (unsupported !== undefined) {
     return { ok: false, error: unsupported };
@@ -136,19 +118,14 @@ export function parseOpenAIResponses(input: unknown): OpenAIResponsesRequest {
   return result.value;
 }
 
-function unsupportedFeature(
-  input: unknown,
-): OpenAIResponsesUnsupportedFeatureError | undefined {
+function unsupportedFeature(input: unknown): OpenAIResponsesUnsupportedFeatureError | undefined {
   const parsed = unsupportedProbeSchema.safeParse(input);
   if (!parsed.success) {
     return undefined;
   }
 
   if (parsed.data.previous_response_id !== undefined) {
-    return new OpenAIResponsesUnsupportedFeatureError(
-      "previous_response_id",
-      "previous_response_id",
-    );
+    return new OpenAIResponsesUnsupportedFeatureError("previous_response_id", "previous_response_id");
   }
 
   if (parsed.data.store === true) {
@@ -156,27 +133,19 @@ function unsupportedFeature(
   }
 
   if (parsed.data.background === true) {
-    return new OpenAIResponsesUnsupportedFeatureError(
-      "background",
-      "background",
-    );
+    return new OpenAIResponsesUnsupportedFeatureError("background", "background");
   }
 
   for (const [index, tool] of (parsed.data.tools ?? []).entries()) {
     if (isForbiddenToolType(tool.type)) {
-      return new OpenAIResponsesUnsupportedFeatureError(
-        tool.type,
-        `tools.${index}.type`,
-      );
+      return new OpenAIResponsesUnsupportedFeatureError(tool.type, `tools.${index}.type`);
     }
   }
 
   return undefined;
 }
 
-function supportedRequest(
-  request: RawOpenAIResponsesRequest,
-): OpenAIResponsesRequest {
+function supportedRequest(request: RawOpenAIResponsesRequest): OpenAIResponsesRequest {
   const { tools, ...rest } = request;
 
   return {
@@ -185,9 +154,7 @@ function supportedRequest(
   };
 }
 
-function supportedTool(
-  tool: NonNullable<RawOpenAIResponsesRequest["tools"]>[number],
-): OpenAIResponsesTool {
+function supportedTool(tool: NonNullable<RawOpenAIResponsesRequest["tools"]>[number]): OpenAIResponsesTool {
   switch (tool.type) {
     case "function":
     case "custom":

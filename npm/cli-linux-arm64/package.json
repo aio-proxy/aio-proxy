@@ -1,0 +1,12 @@
+{
+  "name": "@aio-proxy/cli-linux-arm64",
+  "version": "0.0.0",
+  "description": "aio-proxy binary for linux-arm64",
+  "repository": "github:baranwang/aio-proxy",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  }
+}

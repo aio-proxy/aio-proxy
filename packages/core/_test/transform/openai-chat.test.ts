@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { OpenAIChatRequest } from "../../src/index";
-import {
-  modelMessagesToOpenAIChat,
-  openaiChatToModelMessages,
-  parseOpenAIChat,
-} from "../../src/index";
+import { modelMessagesToOpenAIChat, openaiChatToModelMessages, parseOpenAIChat } from "../../src/index";
 
 const fixtureRoot = `${import.meta.dir}/../fixtures/openai-chat`;
 
@@ -28,8 +24,7 @@ function expectedRoundTrip(request: OpenAIChatRequest): OpenAIChatRequest {
     ...request,
     tool_choice: undefined,
     max_tokens: undefined,
-    max_completion_tokens:
-      request.max_completion_tokens ?? request.max_tokens ?? undefined,
+    max_completion_tokens: request.max_completion_tokens ?? request.max_tokens ?? undefined,
     messages: request.messages.map((message) =>
       Array.isArray(message.content)
         ? {
@@ -64,9 +59,7 @@ describe("OpenAI Chat transform", () => {
       ...openaiChatToModelMessages(request),
     });
 
-    expect(roundTrip.messages[0]?.content).toEqual([
-      { type: "text", text: "Describe this image." },
-    ]);
+    expect(roundTrip.messages[0]?.content).toEqual([{ type: "text", text: "Describe this image." }]);
   });
 
   test("infers tool result names from preceding assistant tool calls", async () => {
@@ -107,8 +100,8 @@ describe("OpenAI Chat transform", () => {
       ],
     };
 
-    expect(() =>
-      openaiChatToModelMessages(request as OpenAIChatRequest),
-    ).toThrow("messages.0.tool_calls.0.function.name");
+    expect(() => openaiChatToModelMessages(request as OpenAIChatRequest)).toThrow(
+      "messages.0.tool_calls.0.function.name",
+    );
   });
 });

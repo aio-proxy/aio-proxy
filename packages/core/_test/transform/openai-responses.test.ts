@@ -1,17 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { OpenAIResponsesRequest } from "../../src/index";
-import {
-  modelMessagesToOpenAIResponses,
-  openAIResponsesToModelMessages,
-  parseOpenAIResponses,
-} from "../../src/index";
+import { modelMessagesToOpenAIResponses, openAIResponsesToModelMessages, parseOpenAIResponses } from "../../src/index";
 
 const fixtureRoot = `${import.meta.dir}/../fixtures/openai-responses`;
 
-type FixtureFile =
-  | "string-input.json"
-  | "message-array.json"
-  | "reasoning-tools.json";
+type FixtureFile = "string-input.json" | "message-array.json" | "reasoning-tools.json";
 
 async function readFixture(file: FixtureFile): Promise<OpenAIResponsesRequest> {
   return parseOpenAIResponses(await Bun.file(`${fixtureRoot}/${file}`).json());
@@ -21,9 +14,7 @@ describe("OpenAI Responses transform", () => {
   test("Given string input When transformed Then it becomes one user message", async () => {
     const request = await readFixture("string-input.json");
 
-    expect(openAIResponsesToModelMessages(request).messages).toEqual([
-      { role: "user", content: "Say pong." },
-    ]);
+    expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: "user", content: "Say pong." }]);
   });
 
   test("Given text message array When transformed twice Then it round-trips enough for MVP", async () => {

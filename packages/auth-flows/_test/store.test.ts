@@ -13,9 +13,7 @@ type IsolatedHome = {
 
 const homes: string[] = [];
 const ENV_AIO_PROXY_HOME = "AIO_PROXY_HOME";
-const busyLockChildPath = fileURLToPath(
-  new URL("./busy-lock-child.ts", import.meta.url),
-);
+const busyLockChildPath = fileURLToPath(new URL("./busy-lock-child.ts", import.meta.url));
 
 afterEach(() => {
   const previousHome = homes.pop();
@@ -61,9 +59,7 @@ function runChildLock(home: string): Bun.Subprocess<"pipe", "pipe", "pipe"> {
   return child;
 }
 
-async function waitForLocked(
-  child: Bun.Subprocess<"pipe", "pipe", "pipe">,
-): Promise<void> {
+async function waitForLocked(child: Bun.Subprocess<"pipe", "pipe", "pipe">): Promise<void> {
   const reader = child.stdout.getReader();
   const decoder = new TextDecoder();
   let output = "";
@@ -137,31 +133,18 @@ test("Given token payloads When auth rows are listed Then summaries redact paylo
     },
   ]);
   expect(serialized).not.toContain("payload");
-  expect(serialized).not.toMatch(
-    /access_token|refresh_token|Bearer|ghu_[A-Za-z0-9_]+/,
-  );
+  expect(serialized).not.toMatch(/access_token|refresh_token|Bearer|ghu_[A-Za-z0-9_]+/);
 });
 
 test("Given an initialized auth database When PRAGMA and table metadata are inspected Then WAL busy timeout and account_fingerprint exist", () => {
   isolateHome();
-  Auth.set(
-    "github-copilot",
-    "default",
-    { account: "octocat" },
-    "fingerprint-default",
-  );
+  Auth.set("github-copilot", "default", { account: "octocat" }, "fingerprint-default");
 
   const handle = openDb({ readonly: true });
   try {
-    const journalMode = firstPragmaValue(
-      handle.sqlite.query("PRAGMA journal_mode").get(),
-    );
-    const busyTimeout = firstPragmaValue(
-      handle.sqlite.query("PRAGMA busy_timeout").get(),
-    );
-    const tableInfo = JSON.stringify(
-      handle.sqlite.query("PRAGMA table_info(auth)").all(),
-    );
+    const journalMode = firstPragmaValue(handle.sqlite.query("PRAGMA journal_mode").get());
+    const busyTimeout = firstPragmaValue(handle.sqlite.query("PRAGMA busy_timeout").get());
+    const tableInfo = JSON.stringify(handle.sqlite.query("PRAGMA table_info(auth)").all());
 
     expect(journalMode).toBe("wal");
     expect(busyTimeout).toBe(5_000);
@@ -192,9 +175,7 @@ test("Given 50 CAS writers with the same expected fingerprint When each attempts
 
   expect(outcomes.filter((outcome) => outcome === "success")).toHaveLength(1);
   expect(outcomes.filter((outcome) => outcome === "stale")).toHaveLength(49);
-  expect(Auth.get("github-copilot", "default")?.accountFingerprint).toMatch(
-    /^winner-/,
-  );
+  expect(Auth.get("github-copilot", "default")?.accountFingerprint).toMatch(/^winner-/);
 });
 
 test("Given another process holds a write transaction When CAS begins immediate Then busy maps to AuthCasBusyError and timeout is restored", async () => {
@@ -215,9 +196,7 @@ test("Given another process holds a write transaction When CAS begins immediate 
 
     const handle = openDb({ readonly: true });
     try {
-      expect(
-        firstPragmaValue(handle.sqlite.query("PRAGMA busy_timeout").get()),
-      ).toBe(5_000);
+      expect(firstPragmaValue(handle.sqlite.query("PRAGMA busy_timeout").get())).toBe(5_000);
     } finally {
       handle.close();
     }

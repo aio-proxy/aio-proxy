@@ -17,10 +17,7 @@ const maxBodyBytes = 8 * 1_024 * 1_024;
 export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
   return new Hono().post("/v1/chat/completions", async (context) => {
     const contentLength = context.req.header("content-length");
-    if (
-      contentLength !== undefined &&
-      Number.parseInt(contentLength, 10) > maxBodyBytes
-    ) {
+    if (contentLength !== undefined && Number.parseInt(contentLength, 10) > maxBodyBytes) {
       return openAIError(413, "request_too_large", "Request body too large");
     }
 
@@ -35,10 +32,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
     }
 
     const provider = route.provider;
-    if (
-      provider.kind === ProviderKind.Api &&
-      provider.protocol === ProviderProtocol.OpenAICompatible
-    ) {
+    if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAICompatible) {
       return provider.passthrough(context.req.raw);
     }
 
@@ -96,18 +90,12 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
   });
 }
 
-async function parseRequest(
-  raw: Request,
-): Promise<ReturnType<typeof parseOpenAIChat> | Response> {
+async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAIChat> | Response> {
   try {
     return parseOpenAIChat(await raw.clone().json());
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
-      return openAIError(
-        400,
-        "invalid_request",
-        "Invalid OpenAI Chat Completions request",
-      );
+      return openAIError(400, "invalid_request", "Invalid OpenAI Chat Completions request");
     }
 
     throw error;
@@ -127,8 +115,5 @@ function resolveRoute(source: ProviderRouteSource, model: string) {
 }
 
 function openAIError(status: number, code: string, message: string): Response {
-  return Response.json(
-    { error: { code, message, type: "invalid_request_error" } },
-    { status },
-  );
+  return Response.json({ error: { code, message, type: "invalid_request_error" } }, { status });
 }

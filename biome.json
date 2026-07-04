@@ -3,10 +3,10 @@
   "files": {
     "includes": [
       "**",
-      "!**/dist/**",
+      "!**/dist",
       "!packages/dashboard/src/route-tree.gen.ts",
       "!packages/i18n/project.inlang/.meta.json",
-      "!packages/i18n/src/paraglide/**"
+      "!packages/i18n/src/paraglide"
     ]
   },
   "formatter": {
@@ -18,9 +18,17 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "preset": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": ["packages/dashboard/src/components/ui/**"],
+      "linter": {
+        "enabled": false
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {

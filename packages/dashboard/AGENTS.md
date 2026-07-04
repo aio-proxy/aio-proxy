@@ -89,7 +89,7 @@ Bad:
 
 ```tsx
 useEffect(() => {
-  void createDashboardClient("").dashboard.providers.$get().then(setProviders)
+  void createDashboardClient("").dashboard.api.providers.$get().then(setProviders)
 }, [])
 ```
 
@@ -135,7 +135,7 @@ return <Table>{table.getRowModel().rows.map((row) => <TableRow key={row.id} />)}
 Bad:
 
 ```tsx
-const response = await fetch("/dashboard/providers")
+const response = await fetch("/dashboard/api/providers")
 ```
 
 Good:
@@ -145,7 +145,7 @@ export const providersQueryOptions = () =>
   queryOptions({
     queryKey: ["providers"],
     queryFn: async () => {
-      const response = await dashboardClient.dashboard.providers.$get()
+      const response = await dashboardClient.dashboard.api.providers.$get()
       return response.json()
     },
   })

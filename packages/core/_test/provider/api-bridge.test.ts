@@ -30,9 +30,7 @@ type ModelStreamPart =
     }
   | { readonly type: "text-end"; readonly id: string };
 
-async function collect(
-  stream: ReadableStream<TextStreamPart<ToolSet>>,
-): Promise<readonly TextStreamPart<ToolSet>[]> {
+async function collect(stream: ReadableStream<TextStreamPart<ToolSet>>): Promise<readonly TextStreamPart<ToolSet>[]> {
   const parts: TextStreamPart<ToolSet>[] = [];
   for await (const part of stream) {
     parts.push(part);
@@ -70,9 +68,7 @@ function model(modelId: string, text: string): LanguageModelV2 {
 function loadedProvider(factory: LoadedProviderFactory): LoadedAiSdkProvider {
   return Object.assign((modelId: string) => factory.languageModel(modelId), {
     languageModel: factory.languageModel,
-    ...(factory.responses === undefined
-      ? {}
-      : { responses: factory.responses }),
+    ...(factory.responses === undefined ? {} : { responses: factory.responses }),
   });
 }
 
@@ -209,10 +205,7 @@ describe("bridgeApiProviderToAiSdk", () => {
     );
 
     // When
-    const parts =
-      bridge === undefined
-        ? []
-        : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
+    const parts = bridge === undefined ? [] : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
 
     // Then
     expect(responsesSeen).toBe("gpt-test");
@@ -246,10 +239,7 @@ describe("bridgeApiProviderToAiSdk", () => {
     );
 
     // When
-    const parts =
-      bridge === undefined
-        ? []
-        : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
+    const parts = bridge === undefined ? [] : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
 
     // Then
     expect(languageSeen).toBe("gpt-test");

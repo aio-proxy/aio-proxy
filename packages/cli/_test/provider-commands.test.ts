@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { output, runCli, runCliAsync } from "./cli-test-helpers";
@@ -22,16 +16,13 @@ type FakeDashboardProvider = {
   readonly probe?: "OK" | "FAIL";
 };
 
-const withFakeDashboard = async (
-  providers: readonly FakeDashboardProvider[],
-  run: (url: string) => Promise<void>,
-) => {
+const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], run: (url: string) => Promise<void>) => {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
       const url = new URL(request.url);
-      if (url.pathname !== "/dashboard/providers") {
+      if (url.pathname !== "/dashboard/api/providers") {
         return new Response("not found", { status: 404 });
       }
 
@@ -85,9 +76,7 @@ describe("provider commands", () => {
 
       // Then
       expect(result.exitCode).toBe(0);
-      expect(result.stdout.toString()).toContain(
-        "aio-proxy-cli-provider 1.0.0",
-      );
+      expect(result.stdout.toString()).toContain("aio-proxy-cli-provider 1.0.0");
       expect(result.stdout.toString()).toContain(packageDir);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -120,29 +109,13 @@ describe("provider commands", () => {
       async (url) => {
         // When
         const list = await runCliAsync(["provider", "list", "--url", url]);
-        const testProvider = await runCliAsync([
-          "provider",
-          "test",
-          "openai",
-          "--url",
-          url,
-        ]);
-        const failedProvider = await runCliAsync([
-          "provider",
-          "test",
-          "slow-ai",
-          "--url",
-          url,
-        ]);
+        const testProvider = await runCliAsync(["provider", "test", "openai", "--url", url]);
+        const failedProvider = await runCliAsync(["provider", "test", "slow-ai", "--url", url]);
 
         // Then
         expect(list.exitCode).toBe(0);
-        expect(list.stdout).toContain(
-          "id | kind | enabled | passthrough | last_status | last_latency",
-        );
-        expect(list.stdout).toContain(
-          "openai | api | true | true | unknown | -",
-        );
+        expect(list.stdout).toContain("id | kind | enabled | passthrough | last_status | last_latency");
+        expect(list.stdout).toContain("openai | api | true | true | unknown | -");
         expect(testProvider.exitCode).toBe(0);
         expect(testProvider.stdout).toContain("openai");
         expect(testProvider.stdout).toContain("OK");
@@ -162,14 +135,7 @@ describe("provider commands", () => {
     try {
       // When
       const result = runCli(
-        [
-          "provider",
-          "install",
-          "aio-proxy-missing-package",
-          "--yes",
-          "--registry",
-          "http://127.0.0.1:9",
-        ],
+        ["provider", "install", "aio-proxy-missing-package", "--yes", "--registry", "http://127.0.0.1:9"],
         { HOME: dir },
       );
 
@@ -187,23 +153,14 @@ describe("provider commands", () => {
 
     try {
       // When
-      const result = runCli(
-        [
-          "provider",
-          "install",
-          "aio-proxy-missing-package",
-          "--registry",
-          "http://127.0.0.1:9",
-        ],
-        { HOME: dir },
-      );
+      const result = runCli(["provider", "install", "aio-proxy-missing-package", "--registry", "http://127.0.0.1:9"], {
+        HOME: dir,
+      });
 
       // Then
       expect(result.exitCode).toBe(1);
       expect(output(result)).toContain("requires --yes");
-      expect(existsSync(join(dir, ".config", "aio-proxy", "cache"))).toBe(
-        false,
-      );
+      expect(existsSync(join(dir, ".config", "aio-proxy", "cache"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

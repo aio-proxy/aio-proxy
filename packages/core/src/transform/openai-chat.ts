@@ -32,9 +32,7 @@ export type OpenAIChatFromModelMessages = OpenAIChatModelMessages & {
   readonly model: string;
 };
 
-export function openaiChatToModelMessages(
-  req: OpenAIChatRequest,
-): OpenAIChatModelMessages {
+export function openaiChatToModelMessages(req: OpenAIChatRequest): OpenAIChatModelMessages {
   const toolNames = new Map<string, string>();
 
   return {
@@ -46,14 +44,10 @@ export function openaiChatToModelMessages(
           return { role: "user", content: modelContent(message.content) };
         case "assistant": {
           const parts: AssistantPart[] = textParts(message.content);
-          for (const [toolIndex, toolCall] of (
-            message.tool_calls ?? []
-          ).entries()) {
+          for (const [toolIndex, toolCall] of (message.tool_calls ?? []).entries()) {
             const toolName = toolCall.function.name;
             if (toolName === undefined || toolName === "") {
-              throw new OpenAIChatTransformError(
-                `messages.${messageIndex}.tool_calls.${toolIndex}.function.name`,
-              );
+              throw new OpenAIChatTransformError(`messages.${messageIndex}.tool_calls.${toolIndex}.function.name`);
             }
 
             toolNames.set(toolCall.id, toolName);
@@ -90,40 +84,23 @@ export function openaiChatToModelMessages(
           tools: req.tools.map((tool) => ({
             type: "function",
             name: tool.function.name,
-            ...(tool.function.description !== undefined
-              ? { description: tool.function.description }
-              : {}),
-            ...(tool.function.parameters !== undefined
-              ? { inputSchema: tool.function.parameters }
-              : {}),
+            ...(tool.function.description !== undefined ? { description: tool.function.description } : {}),
+            ...(tool.function.parameters !== undefined ? { inputSchema: tool.function.parameters } : {}),
           })),
         }
       : {}),
     settings: {
       ...(req.stream !== undefined ? { stream: req.stream } : {}),
-      ...(req.temperature !== undefined
-        ? { temperature: req.temperature }
-        : {}),
-      ...(req.max_completion_tokens !== undefined
-        ? { maxTokens: req.max_completion_tokens }
-        : {}),
-      ...(req.max_completion_tokens === undefined &&
-      req.max_tokens !== undefined
-        ? { maxTokens: req.max_tokens }
-        : {}),
-      ...(req.response_format !== undefined
-        ? { responseFormat: req.response_format }
-        : {}),
-      ...(req.reasoning_effort !== undefined
-        ? { reasoningEffort: req.reasoning_effort }
-        : {}),
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+      ...(req.max_completion_tokens !== undefined ? { maxTokens: req.max_completion_tokens } : {}),
+      ...(req.max_completion_tokens === undefined && req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
+      ...(req.response_format !== undefined ? { responseFormat: req.response_format } : {}),
+      ...(req.reasoning_effort !== undefined ? { reasoningEffort: req.reasoning_effort } : {}),
     },
   };
 }
 
-function textContent(
-  content: OpenAIChatRequest["messages"][number]["content"],
-) {
+function textContent(content: OpenAIChatRequest["messages"][number]["content"]) {
   if (typeof content === "string") {
     return content;
   }
@@ -134,15 +111,11 @@ function textContent(
 
   return content
     .filter((part) => part.type === "text")
-    .map((part) =>
-      textKey in part && typeof part[textKey] === "string" ? part[textKey] : "",
-    )
+    .map((part) => (textKey in part && typeof part[textKey] === "string" ? part[textKey] : ""))
     .join("");
 }
 
-function modelContent(
-  content: OpenAIChatRequest["messages"][number]["content"],
-) {
+function modelContent(content: OpenAIChatRequest["messages"][number]["content"]) {
   if (typeof content === "string") {
     return content;
   }
@@ -150,13 +123,9 @@ function modelContent(
   return textParts(content);
 }
 
-function textParts(
-  content: OpenAIChatRequest["messages"][number]["content"],
-): TextPart[] {
+function textParts(content: OpenAIChatRequest["messages"][number]["content"]): TextPart[] {
   if (!Array.isArray(content)) {
-    return typeof content === "string" && content !== ""
-      ? [{ type: "text" as const, text: content }]
-      : [];
+    return typeof content === "string" && content !== "" ? [{ type: "text" as const, text: content }] : [];
   }
 
   return content.flatMap((part) =>

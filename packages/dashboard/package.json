@@ -1,8 +1,12 @@
 {
   "name": "@aio-proxy/dashboard",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.tsx",
+    "./dist/index.html": "./dist/index.html",
+    "./dist/*": "./dist/*"
   },
   "scripts": {
     "dev": "rsbuild --open",

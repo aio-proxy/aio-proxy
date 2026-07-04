@@ -23,9 +23,7 @@ export type NpmInstallLock = {
 };
 
 function isNodeCode(error: Error, code: string): boolean {
-  return (
-    "code" in error && typeof error.code === "string" && error.code === code
-  );
+  return "code" in error && typeof error.code === "string" && error.code === code;
 }
 
 async function processStarttime(pid: number): Promise<string | null> {
@@ -66,10 +64,7 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
-async function removeIfUnchanged(
-  path: string,
-  expected: string,
-): Promise<void> {
+async function removeIfUnchanged(path: string, expected: string): Promise<void> {
   try {
     if ((await readFile(path, "utf8")) === expected) {
       await rm(path);
@@ -103,17 +98,13 @@ async function recoverStaleLock(path: string): Promise<boolean> {
   }
 
   const lock = parsed.success ? parsed.data : undefined;
-  const staleByAge =
-    lock === undefined || Date.now() - lock.createdAt > STALE_LOCK_MS;
+  const staleByAge = lock === undefined || Date.now() - lock.createdAt > STALE_LOCK_MS;
   const ownerAlive = lock === undefined ? false : processIsAlive(lock.pid);
-  const ownerStarttime =
-    lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
+  const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
   const staleByOwner =
     lock === undefined ||
     !ownerAlive ||
-    (ownerStarttime !== null &&
-      lock.starttime !== STARTTIME_UNAVAILABLE &&
-      ownerStarttime !== lock.starttime);
+    (ownerStarttime !== null && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== lock.starttime);
 
   if (!staleByAge && !staleByOwner) {
     return false;
@@ -127,14 +118,10 @@ function retryDelay(attempt: number): number {
   return Math.floor(base * (0.5 + Math.random()));
 }
 
-export async function acquireNpmInstallLock(
-  pkg: string,
-  cacheDir: string,
-): Promise<NpmInstallLock> {
+export async function acquireNpmInstallLock(pkg: string, cacheDir: string): Promise<NpmInstallLock> {
   const lockPath = join(cacheDir, LOCK_FILE);
   await mkdir(cacheDir, { recursive: true, mode: 0o700 });
-  const starttime =
-    (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
+  const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
   const lock: LockFile = {
     pid: process.pid,
     createdAt: Date.now(),

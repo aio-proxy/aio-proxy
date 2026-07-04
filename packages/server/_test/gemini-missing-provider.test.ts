@@ -28,24 +28,17 @@ describe("Gemini missing provider boundary", () => {
     });
 
     // When
-    const response = await app.request(
-      "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
-      {
-        body: JSON.stringify(generateRequest),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      },
-    );
+    const response = await app.request("/v1beta/models/gemini-2.5-flash:streamGenerateContent", {
+      body: JSON.stringify(generateRequest),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
     const body = await response.json();
 
     // Then
     expect(response.status).toBe(503);
-    expect(response.headers.get("content-type")).not.toContain(
-      "text/event-stream",
-    );
+    expect(response.headers.get("content-type")).not.toContain("text/event-stream");
     expect(body.error.status).toBe("UNAVAILABLE");
-    expect(body.error.message).toContain(
-      "run aio-proxy provider install @vendor/missing-provider",
-    );
+    expect(body.error.message).toContain("run aio-proxy provider install @vendor/missing-provider");
   });
 });

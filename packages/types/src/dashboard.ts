@@ -60,23 +60,11 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
   }),
 ]);
 
-export type DashboardProviderProbeInput = z.input<
-  typeof DashboardProviderProbeSchema
->;
-export type DashboardProviderProbe = z.output<
-  typeof DashboardProviderProbeSchema
->;
-export type DashboardProviderSummaryInput = z.input<
-  typeof DashboardProviderSummarySchema
->;
-export type DashboardProviderSummary = z.output<
-  typeof DashboardProviderSummarySchema
->;
-export type DashboardProvidersResponseInput = z.input<
-  typeof DashboardProvidersResponseSchema
->;
-export type DashboardProvidersResponse = z.output<
-  typeof DashboardProvidersResponseSchema
->;
+export type DashboardProviderProbeInput = z.input<typeof DashboardProviderProbeSchema>;
+export type DashboardProviderProbe = z.output<typeof DashboardProviderProbeSchema>;
+export type DashboardProviderSummaryInput = z.input<typeof DashboardProviderSummarySchema>;
+export type DashboardProviderSummary = z.output<typeof DashboardProviderSummarySchema>;
+export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersResponseSchema>;
+export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;

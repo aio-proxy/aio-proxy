@@ -17,9 +17,7 @@ async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
   return chunks.join("");
 }
 
-function partStream(
-  parts: readonly LanguageModelV2StreamPart[],
-): ReadableStream<LanguageModelV2StreamPart> {
+function partStream(parts: readonly LanguageModelV2StreamPart[]): ReadableStream<LanguageModelV2StreamPart> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -30,9 +28,7 @@ function partStream(
   });
 }
 
-function aiSdkPartStream(
-  parts: readonly TextStreamPart<ToolSet>[],
-): ReadableStream<TextStreamPart<ToolSet>> {
+function aiSdkPartStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
     start(controller) {
       for (const part of parts) {

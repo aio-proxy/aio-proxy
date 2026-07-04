@@ -1,0 +1,12 @@
+{
+  "name": "@aio-proxy/cli-darwin-x64",
+  "version": "0.0.0",
+  "description": "aio-proxy binary for darwin-x64",
+  "repository": "github:baranwang/aio-proxy",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  }
+}

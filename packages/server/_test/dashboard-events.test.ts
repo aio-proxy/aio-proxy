@@ -4,24 +4,16 @@ import { createDashboardEventHub } from "../src/dashboard-events";
 
 const decoder = new TextDecoder();
 
-async function readNextEventText(
-  stream: Response,
-  timeoutMs = 1_000,
-): Promise<string> {
+async function readNextEventText(stream: Response, timeoutMs = 1_000): Promise<string> {
   const reader = stream.body?.getReader();
   if (reader === undefined) {
     throw new Error("dashboard event stream body is missing");
   }
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<ReadableStreamReadResult<Uint8Array>>(
-    (_resolve, reject) => {
-      timeout = setTimeout(
-        () => reject(new Error("timed out waiting for dashboard event")),
-        timeoutMs,
-      );
-    },
-  );
+  const deadline = new Promise<ReadableStreamReadResult<Uint8Array>>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error("timed out waiting for dashboard event")), timeoutMs);
+  });
 
   try {
     const chunk = await Promise.race([reader.read(), deadline]);
@@ -54,14 +46,14 @@ describe("dashboard event hub", () => {
       config: { providers: [] },
       eventLimits: { maxEvents: 1, maxBytes: 1_024 },
     });
-    const stream = await app.request("/dashboard/events");
+    const stream = await app.request("/dashboard/api/events");
 
     // When
-    await app.request("/dashboard/reload", {
+    await app.request("/dashboard/api/reload", {
       headers: { Origin: "http://127.0.0.1:22078" },
       method: "POST",
     });
-    await app.request("/dashboard/reload", {
+    await app.request("/dashboard/api/reload", {
       headers: { Origin: "http://127.0.0.1:22078" },
       method: "POST",
     });

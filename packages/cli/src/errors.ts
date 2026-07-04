@@ -5,10 +5,7 @@ export class ProviderDashboardError extends AioProxyError {
     readonly status: number,
     readonly url: string,
   ) {
-    super(
-      "ProviderDashboardError",
-      `dashboard provider request failed with ${status}: ${url}`,
-    );
+    super("ProviderDashboardError", `dashboard provider request failed with ${status}: ${url}`);
   }
 }
 

@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - uses: changesets/action@v1
+        with:
+          version: bunx changeset version
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      needs-release: ${{ steps.meta.outputs.needs-release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: meta
+        run: |
+          version="$(jq -r .version npm/aio-proxy/package.json)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "needs-release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs-release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.needs-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun run i18n:compile
+      - run: bun run build:dashboard
+      - run: bun run --filter @aio-proxy/cli build:binary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: packages/cli/dist-bin/
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            binary: aio-proxy-linux-x64
+          - runner: ubuntu-24.04-arm
+            binary: aio-proxy-linux-arm64
+          - runner: macos-latest
+            binary: aio-proxy-darwin-arm64
+          - runner: macos-latest
+            binary: aio-proxy-darwin-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+      - run: |
+          chmod +x "${{ matrix.binary }}"
+          "./${{ matrix.binary }}" --version
+
+  publish:
+    needs: [check, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: packages/cli/dist-bin/
+      - name: Create GitHub Release
+        run: |
+          gh release create "v${{ needs.check.outputs.version }}" \
+            packages/cli/dist-bin/aio-proxy-* \
+            --title "v${{ needs.check.outputs.version }}" \
+            --notes-file npm/aio-proxy/CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish to npm
+        run: bun scripts/publish-npm.ts
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}

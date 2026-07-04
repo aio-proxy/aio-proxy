@@ -30,12 +30,9 @@ const partSchema = z
   })
   .strict()
   .superRefine((part, ctx) => {
-    const count = [
-      part.text,
-      part.inlineData,
-      part.functionCall,
-      part.functionResponse,
-    ].filter((value) => value !== undefined).length;
+    const count = [part.text, part.inlineData, part.functionCall, part.functionResponse].filter(
+      (value) => value !== undefined,
+    ).length;
 
     if (count !== 1) {
       ctx.addIssue({
@@ -91,9 +88,7 @@ export const GeminiGenerateContentRequestSchema = z.object({
 });
 
 export type GeminiGenerateContentPart = z.output<typeof partSchema>;
-export type GeminiGenerateContentRequest = z.output<
-  typeof GeminiGenerateContentRequestSchema
->;
+export type GeminiGenerateContentRequest = z.output<typeof GeminiGenerateContentRequestSchema>;
 
 export type GeminiGenerateContentParseResult =
   | {
@@ -105,9 +100,7 @@ export type GeminiGenerateContentParseResult =
       readonly error: z.ZodError | GeminiInlineDataTooLargeError;
     };
 
-export function safeParseGeminiGenerateContent(
-  input: unknown,
-): GeminiGenerateContentParseResult {
+export function safeParseGeminiGenerateContent(input: unknown): GeminiGenerateContentParseResult {
   const parsed = GeminiGenerateContentRequestSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error };
@@ -121,9 +114,7 @@ export function safeParseGeminiGenerateContent(
   return { ok: true, value: parsed.data };
 }
 
-export function parseGeminiGenerateContent(
-  input: unknown,
-): GeminiGenerateContentRequest {
+export function parseGeminiGenerateContent(input: unknown): GeminiGenerateContentRequest {
   const parsed = GeminiGenerateContentRequestSchema.parse(input);
   const tooLarge = inlineDataTooLarge(parsed);
   if (tooLarge !== undefined) {
@@ -133,9 +124,7 @@ export function parseGeminiGenerateContent(
   return parsed;
 }
 
-function inlineDataTooLarge(
-  request: GeminiGenerateContentRequest,
-): GeminiInlineDataTooLargeError | undefined {
+function inlineDataTooLarge(request: GeminiGenerateContentRequest): GeminiInlineDataTooLargeError | undefined {
   for (const [contentIndex, content] of request.contents.entries()) {
     for (const [partIndex, part] of content.parts.entries()) {
       if (part.inlineData !== undefined) {

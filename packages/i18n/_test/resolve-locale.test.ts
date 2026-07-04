@@ -43,9 +43,7 @@ describe("resolveLocale", () => {
 describe("resolveLocaleFromArgv", () => {
   test("reads --lang value forms before environment fallback", () => {
     // Given / When / Then
-    expect(resolveLocaleFromArgv(["serve", "--lang", "zh_CN.UTF-8"])).toBe(
-      "zh-CN",
-    );
+    expect(resolveLocaleFromArgv(["serve", "--lang", "zh_CN.UTF-8"])).toBe("zh-CN");
     expect(resolveLocaleFromArgv(["serve", "--lang=en"])).toBe("en");
   });
 });

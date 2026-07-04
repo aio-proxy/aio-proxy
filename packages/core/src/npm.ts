@@ -3,12 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { z } from "zod";
-import {
-  NpmInstallError,
-  NpmPackageEntrypointError,
-  NpmPackageJsonError,
-  NpmPackageNameError,
-} from "./error";
+import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from "./error";
 import { acquireNpmInstallLock } from "./npm-lock";
 
 const REGISTRY = "https://registry.npmjs.org";
@@ -32,12 +27,7 @@ export type NpmPackageInfo = {
 };
 
 function isNodeCode(error: unknown, code: string): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string" &&
-    error.code === code
-  );
+  return error instanceof Error && "code" in error && typeof error.code === "string" && error.code === code;
 }
 
 function packageNameParts(pkg: string): readonly string[] {
@@ -51,23 +41,11 @@ function packageNameParts(pkg: string): readonly string[] {
 
 export function npmPackageCacheDir(pkg: string): string {
   packageNameParts(pkg);
-  return join(
-    homedir(),
-    ".config",
-    "aio-proxy",
-    "cache",
-    "packages",
-    encodeURIComponent(pkg),
-  );
+  return join(homedir(), ".config", "aio-proxy", "cache", "packages", encodeURIComponent(pkg));
 }
 
 function packageJsonPath(pkg: string): string {
-  return join(
-    npmPackageCacheDir(pkg),
-    "node_modules",
-    ...packageNameParts(pkg),
-    "package.json",
-  );
+  return join(npmPackageCacheDir(pkg), "node_modules", ...packageNameParts(pkg), "package.json");
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -96,22 +74,11 @@ function exportPath(value: unknown): string | undefined {
   return undefined;
 }
 
-function resolveEntrypoint(
-  pkg: string,
-  packageJson: PackageJson,
-  path: string,
-): string {
+function resolveEntrypoint(pkg: string, packageJson: PackageJson, path: string): string {
   const packageDir = dirname(path);
-  const raw =
-    packageJson.module ??
-    packageJson.main ??
-    exportPath(packageJson.exports) ??
-    "index.js";
+  const raw = packageJson.module ?? packageJson.main ?? exportPath(packageJson.exports) ?? "index.js";
   const entrypoint = normalize(join(packageDir, raw));
-  if (
-    entrypoint !== packageDir &&
-    !entrypoint.startsWith(`${packageDir}${sep}`)
-  ) {
+  if (entrypoint !== packageDir && !entrypoint.startsWith(`${packageDir}${sep}`)) {
     throw new NpmPackageEntrypointError(pkg);
   }
   return entrypoint;
@@ -131,9 +98,7 @@ function parsePackageJson(text: string, path: string): PackageJson {
   throw new NpmPackageJsonError(path);
 }
 
-export async function findInstalledNpmPackage(
-  pkg: string,
-): Promise<NpmPackageInfo | null> {
+export async function findInstalledNpmPackage(pkg: string): Promise<NpmPackageInfo | null> {
   const path = packageJsonPath(pkg);
   if (!existsSync(path)) {
     return null;
@@ -145,11 +110,7 @@ export async function findInstalledNpmPackage(
   };
 }
 
-async function runInstall(
-  pkg: string,
-  registry: string,
-  cacheDir: string,
-): Promise<void> {
+async function runInstall(pkg: string, registry: string, cacheDir: string): Promise<void> {
   try {
     await writeFile(join(cacheDir, "package.json"), '{"private":true}\n', {
       flag: "wx",
@@ -190,10 +151,7 @@ async function runInstall(
   }
 }
 
-export async function npmAdd(
-  pkg: string,
-  registry: string = REGISTRY,
-): Promise<NpmPackageInfo> {
+export async function npmAdd(pkg: string, registry: string = REGISTRY): Promise<NpmPackageInfo> {
   const hit = await findInstalledNpmPackage(pkg);
   if (hit !== null) {
     return hit;

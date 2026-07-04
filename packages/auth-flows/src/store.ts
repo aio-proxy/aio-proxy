@@ -2,19 +2,8 @@ import { openDb } from "@aio-proxy/core/db";
 import { auth } from "@aio-proxy/core/db/schema/auth";
 import { and, eq } from "drizzle-orm";
 import { AuthCasBusyError, StaleProviderGenerationError } from "./errors";
-import {
-  hasToken,
-  parsePayload,
-  readAccountLabel,
-  readExpiresAt,
-  serializePayload,
-} from "./payload";
-import type {
-  AuthCasCurrent,
-  AuthCasNext,
-  AuthRecord,
-  AuthSummary,
-} from "./store-types";
+import { hasToken, parsePayload, readAccountLabel, readExpiresAt, serializePayload } from "./payload";
+import type { AuthCasCurrent, AuthCasNext, AuthRecord, AuthSummary } from "./store-types";
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 const CAS_BUSY_TIMEOUT_MS = 350;
@@ -50,12 +39,7 @@ function get(vendor: string, providerId: string): AuthRecord | null {
   }
 }
 
-function set(
-  vendor: string,
-  providerId: string,
-  payload: unknown,
-  accountFingerprint: string | null = null,
-): void {
+function set(vendor: string, providerId: string, payload: unknown, accountFingerprint: string | null = null): void {
   const handle = openDb();
   const payloadJson = serializePayload(payload);
   const updatedAt = new Date();
@@ -134,12 +118,7 @@ function cas(
   try {
     const casTx = sqlite.transaction(() => {
       const existing = readCasRow(vendor, providerId, sqlite);
-      assertExpectedFingerprint(
-        vendor,
-        providerId,
-        expectedFingerprint,
-        existing,
-      );
+      assertExpectedFingerprint(vendor, providerId, expectedFingerprint, existing);
       const next = mutator(
         existing === null
           ? null
@@ -170,12 +149,7 @@ function cas(
         );
 
       if (result.changes === 0) {
-        throw new StaleProviderGenerationError(
-          vendor,
-          providerId,
-          expectedFingerprint,
-          "<concurrent>",
-        );
+        throw new StaleProviderGenerationError(vendor, providerId, expectedFingerprint, "<concurrent>");
       }
     });
 
@@ -201,9 +175,7 @@ function readCasRow(
   sqlite: ReturnType<typeof openDb>["sqlite"],
 ): StoredCasRow | null {
   const row = sqlite
-    .prepare(
-      "SELECT account_fingerprint, payload FROM auth WHERE vendor = ? AND provider_id = ?",
-    )
+    .prepare("SELECT account_fingerprint, payload FROM auth WHERE vendor = ? AND provider_id = ?")
     .get(vendor, providerId);
 
   if (row === null || row === undefined) {
@@ -214,8 +186,7 @@ function readCasRow(
     typeof row === "object" &&
     "account_fingerprint" in row &&
     "payload" in row &&
-    (typeof row.account_fingerprint === "string" ||
-      row.account_fingerprint === null) &&
+    (typeof row.account_fingerprint === "string" || row.account_fingerprint === null) &&
     typeof row.payload === "string"
   ) {
     return {
@@ -235,20 +206,12 @@ function assertExpectedFingerprint(
 ): void {
   if (expectedFingerprint === null) {
     if (existing !== null && existing.accountFingerprint !== null) {
-      throw new StaleProviderGenerationError(
-        vendor,
-        providerId,
-        null,
-        existing.accountFingerprint,
-      );
+      throw new StaleProviderGenerationError(vendor, providerId, null, existing.accountFingerprint);
     }
     return;
   }
 
-  if (
-    existing === null ||
-    existing.accountFingerprint !== expectedFingerprint
-  ) {
+  if (existing === null || existing.accountFingerprint !== expectedFingerprint) {
     throw new StaleProviderGenerationError(
       vendor,
       providerId,

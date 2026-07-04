@@ -78,10 +78,7 @@ export class NpmPackageJsonError extends AioProxyError {
 
 export class NpmPackageEntrypointError extends AioProxyError {
   constructor(readonly pkg: string) {
-    super(
-      "NpmPackageEntrypointError",
-      `Unable to resolve entrypoint for ${pkg}`,
-    );
+    super("NpmPackageEntrypointError", `Unable to resolve entrypoint for ${pkg}`);
   }
 }
 
@@ -91,10 +88,7 @@ export class NpmInstallError extends AioProxyError {
     readonly exitCode: number | null,
     readonly output: string,
   ) {
-    super(
-      "NpmInstallError",
-      `Runtime install failed for ${pkg}: ${output.trim()}`,
-    );
+    super("NpmInstallError", `Runtime install failed for ${pkg}: ${output.trim()}`);
   }
 }
 
@@ -152,10 +146,7 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
     readonly feature: string,
     readonly path: string,
   ) {
-    super(
-      "OpenAIResponsesUnsupportedFeatureError",
-      `OpenAI Responses feature is not supported: ${feature} at ${path}`,
-    );
+    super("OpenAIResponsesUnsupportedFeatureError", `OpenAI Responses feature is not supported: ${feature} at ${path}`);
   }
 }
 
@@ -167,28 +158,19 @@ export class OpenAIChatTransformError extends AioProxyError {
 
 export class OpenAIResponsesTransformError extends AioProxyError {
   constructor(readonly path: string) {
-    super(
-      "OpenAIResponsesTransformError",
-      `Invalid OpenAI Responses request at ${path}`,
-    );
+    super("OpenAIResponsesTransformError", `Invalid OpenAI Responses request at ${path}`);
   }
 }
 
 export class AnthropicMessagesTransformError extends AioProxyError {
   constructor(readonly path: string) {
-    super(
-      "AnthropicMessagesTransformError",
-      `Invalid Anthropic Messages request at ${path}`,
-    );
+    super("AnthropicMessagesTransformError", `Invalid Anthropic Messages request at ${path}`);
   }
 }
 
 export class GeminiGenerateContentTransformError extends AioProxyError {
   constructor(readonly path: string) {
-    super(
-      "GeminiGenerateContentTransformError",
-      `Invalid Gemini generateContent request at ${path}`,
-    );
+    super("GeminiGenerateContentTransformError", `Invalid Gemini generateContent request at ${path}`);
   }
 }
 
