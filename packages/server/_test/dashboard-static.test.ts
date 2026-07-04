@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "@aio-proxy/server";
+import { createServer, directoryDashboardAssets } from "@aio-proxy/server";
 
 const config = { providers: [] } as const;
 
@@ -13,7 +13,7 @@ describe("dashboard static routes", () => {
     mkdirSync(join(dir, "static"));
     writeFileSync(join(dir, "index.html"), '<div id="root"></div><script src="/dashboard/static/app.js"></script>');
     writeFileSync(join(dir, "static", "app.js"), "console.log('dashboard');");
-    const app = createServer({ config, dashboardStaticDir: dir });
+    const app = createServer({ config, dashboardAssets: directoryDashboardAssets(dir) });
 
     try {
       // When

@@ -1,6 +1,7 @@
 import { ConfigSchema } from "@aio-proxy/types";
+import type { Context } from "hono";
 import { Hono } from "hono";
-import { serveStatic } from "hono/bun";
+import type { DashboardAssets } from "./dashboard-assets";
 import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
@@ -27,14 +28,14 @@ export type CreateServerOptions = {
   readonly providerInstances?: readonly RuntimeProviderInstance[];
   readonly port?: number;
   readonly host?: string;
-  readonly dashboardStaticDir?: string;
+  readonly dashboardAssets?: DashboardAssets;
   readonly watchConfig?: boolean;
 };
 
 const createRoutes = (
   state: ServerState,
   dashboardOriginPort: number = serverDefaults.port,
-  dashboardStaticDir?: string,
+  dashboardAssets?: DashboardAssets,
 ) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
@@ -83,20 +84,15 @@ const createRoutes = (
     .route("/", openAIResponsesRoutes)
     .route("/dashboard/api", dashboardRoutes);
 
-  if (dashboardStaticDir !== undefined) {
-    const dashboardIndex = serveStatic({
-      root: dashboardStaticDir,
-      path: "index.html",
-    });
+  if (dashboardAssets !== undefined) {
+    const dashboardIndex = async (context: Context) => (await dashboardAssets("index.html")) ?? context.notFound();
     routes
       .get("/dashboard", dashboardIndex)
       .get("/dashboard/", dashboardIndex)
       .get(
         "/dashboard/static/*",
-        serveStatic({
-          root: dashboardStaticDir,
-          rewriteRequestPath: (path) => path.replace(/^\/dashboard\//u, ""),
-        }),
+        async (context) =>
+          (await dashboardAssets(context.req.path.replace(/^\/dashboard\//u, ""))) ?? context.notFound(),
       )
       .all("/dashboard/static/*", (context) => context.notFound())
       .all("/dashboard/api", (context) => context.notFound())
@@ -129,7 +125,7 @@ export const createServer = (options: CreateServerOptions): AppType => {
       ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
     }),
     options.port ?? config.server.port,
-    options.dashboardStaticDir,
+    options.dashboardAssets,
   );
 };
 
