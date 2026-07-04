@@ -28,14 +28,14 @@ asset="aio-proxy-${os}-${arch}"
 url="https://github.com/${REPO}/releases/latest/download/${asset}"
 
 mkdir -p "$INSTALL_DIR"
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+tmp="$(mktemp "$INSTALL_DIR/.aio-proxy.tmp.XXXXXX")"
+trap 'rm -f "$tmp"' INT TERM EXIT
 
 echo "Downloading ${url} ..."
 curl -fSL --progress-bar -o "$tmp" "$url"
 chmod +x "$tmp"
 mv "$tmp" "$INSTALL_DIR/aio-proxy"
-trap - EXIT
+trap - INT TERM EXIT
 
 echo "Installed aio-proxy to $INSTALL_DIR/aio-proxy"
 case ":$PATH:" in
