@@ -6,6 +6,7 @@ import { routeTree } from "./route-tree.gen";
 
 const router = createRouter({
   routeTree,
+  basepath: "/dashboard",
   defaultPreload: "intent",
   scrollRestoration: true,
 });
