@@ -1,6 +1,6 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { generateCompiledEntry } from "./generate-compiled-entry";
+import { virtualCompiledEntry } from "./generate-compiled-entry";
 
 const targets = [
   { suffix: "darwin-arm64", target: "bun-darwin-arm64" },
@@ -16,24 +16,27 @@ if (selected.length === 0) {
   process.exit(1);
 }
 
-const packageDir = join(import.meta.dir, "..");
-const outDir = join(packageDir, "dist-bin");
-mkdirSync(outDir, { recursive: true });
+const rootDir = join(import.meta.dir, "..", "..", "..");
 
-const entry = generateCompiledEntry();
-try {
-  for (const { suffix, target } of selected) {
-    const outfile = join(outDir, `aio-proxy-${suffix}`);
-    const build = Bun.spawnSync(
-      [process.execPath, "build", "--compile", `--target=${target}`, entry, `--outfile=${outfile}`],
-      { cwd: packageDir, stderr: "inherit", stdout: "inherit" },
-    );
-    if (build.exitCode !== 0) {
-      console.error(`bun build --compile failed for ${target}`);
-      process.exit(build.exitCode ?? 1);
+const entry = virtualCompiledEntry();
+for (const { suffix, target } of selected) {
+  const binDir = join(rootDir, "npm", `cli-${suffix}`, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const outfile = join(binDir, "aio-proxy");
+  const build = await Bun.build({
+    entrypoints: [entry.entrypoint],
+    files: entry.files,
+    compile: {
+      target,
+      outfile,
+    },
+  });
+  if (!build.success) {
+    for (const log of build.logs) {
+      console.error(log);
     }
-    console.log(outfile);
+    console.error(`bun build --compile failed for ${target}`);
+    process.exit(1);
   }
-} finally {
-  rmSync(entry, { force: true });
+  console.log(`${suffix}: ${outfile}`);
 }

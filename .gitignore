@@ -18,5 +18,4 @@ packages/dashboard/dist
 *.tsbuildinfo
 aio-proxy.json
 packages/cli/src/main.compiled.gen.ts
-packages/cli/dist-bin/
 npm/cli-*/bin/
