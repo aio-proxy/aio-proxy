@@ -1,7 +1,8 @@
 {
   "name": "@aio-proxy/dashboard",
-  "type": "module",
+  "version": "0.0.0",
   "private": true,
+  "type": "module",
   "exports": {
     ".": "./src/index.tsx",
     "./dist/index.html": "./dist/index.html",

@@ -42,10 +42,12 @@
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "i18n:compile": "bun run --filter @aio-proxy/i18n compile",
     "dev": "turbo run dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run i18n:compile && bun run check && turbo run test:unit"
+    "preflight": "bun run i18n:compile && bun run check && turbo run test:unit",
+    "changeset": "changeset"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
+    "@changesets/cli": "^2.31.0",
     "turbo": "^2.10.1",
     "typescript": "^6.0.3"
   }
