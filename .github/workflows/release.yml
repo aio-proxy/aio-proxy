@@ -59,10 +59,11 @@ jobs:
       - run: bun run i18n:compile
       - run: bun run build:dashboard
       - run: bun run --filter @aio-proxy/cli build:binary
+      - run: tar -cf npm-binaries.tar npm/cli-*/bin/aio-proxy
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries
-          path: packages/cli/dist-bin/
+          name: npm-binaries
+          path: npm-binaries.tar
           if-no-files-found: error
 
   smoke:
@@ -71,18 +72,19 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            binary: aio-proxy-linux-x64
+            binary: npm/cli-linux-x64/bin/aio-proxy
           - runner: ubuntu-24.04-arm
-            binary: aio-proxy-linux-arm64
+            binary: npm/cli-linux-arm64/bin/aio-proxy
           - runner: macos-latest
-            binary: aio-proxy-darwin-arm64
+            binary: npm/cli-darwin-arm64/bin/aio-proxy
           - runner: macos-latest
-            binary: aio-proxy-darwin-x64
+            binary: npm/cli-darwin-x64/bin/aio-proxy
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
+          name: npm-binaries
+      - run: tar -xf npm-binaries.tar
       - run: |
           chmod +x "${{ matrix.binary }}"
           "./${{ matrix.binary }}" --version
@@ -98,17 +100,26 @@ jobs:
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
-          path: packages/cli/dist-bin/
+          name: npm-binaries
+      - run: tar -xf npm-binaries.tar
       - name: Create GitHub Release
         run: |
+          mkdir -p release-assets
+          cp npm/cli-darwin-arm64/bin/aio-proxy release-assets/aio-proxy-darwin-arm64
+          cp npm/cli-darwin-x64/bin/aio-proxy release-assets/aio-proxy-darwin-x64
+          cp npm/cli-linux-x64/bin/aio-proxy release-assets/aio-proxy-linux-x64
+          cp npm/cli-linux-arm64/bin/aio-proxy release-assets/aio-proxy-linux-arm64
           gh release create "v${{ needs.check.outputs.version }}" \
-            packages/cli/dist-bin/aio-proxy-* \
+            release-assets/aio-proxy-* \
             --title "v${{ needs.check.outputs.version }}" \
-            --notes-file npm/aio-proxy/CHANGELOG.md
+            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish to npm
-        run: bun scripts/publish-npm.ts
+      - name: Configure npm auth
+        run: printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > ~/.npmrc
         env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm
+        run: bunx changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

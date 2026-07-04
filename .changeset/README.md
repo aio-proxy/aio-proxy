@@ -1,3 +1,5 @@
 # Changesets
 
-版本管理用 changesets，所有包版本通过 `fixed` 组同步。发布不走 `changeset publish`，由 `.github/workflows/release.yml` 按序（先平台包后主包）用 `bun publish` 完成。
+版本管理与 npm 发布用 changesets，所有包版本通过 `fixed` 组同步。
+
+`npm/aio-proxy` 的平台包依赖必须使用普通精确版本（如 `"0.0.0"`），不要使用 `workspace:*`。`changeset version` 会同步更新 `optionalDependencies`，`changeset publish` 再用 npm 发布所有未发布的 public 包。

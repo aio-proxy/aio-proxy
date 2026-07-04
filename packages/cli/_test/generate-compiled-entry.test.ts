@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listAssetPaths, renderCompiledEntry } from "../scripts/generate-compiled-entry";
+import { listAssetPaths, renderCompiledEntry, virtualCompiledEntry } from "../scripts/generate-compiled-entry";
 
 describe("listAssetPaths", () => {
   test("Given nested dist When listing Then returns sorted slash-separated relative paths", () => {
@@ -27,5 +27,17 @@ describe("renderCompiledEntry", () => {
     expect(code).toContain('import { embeddedDashboardAssets } from "./dashboard-assets";');
     expect(code).toContain('import { main } from "./main";');
     expect(code).toContain("await main({ dashboardAssets: () => embeddedDashboardAssets(files) });");
+  });
+});
+
+describe("virtualCompiledEntry", () => {
+  test("Given asset paths When creating a virtual entry Then returns the entry path and in-memory source", () => {
+    const entry = virtualCompiledEntry(["index.html"]);
+
+    expect(entry.entrypoint).toEndWith(join("packages", "cli", "src", "main.compiled.gen.ts"));
+    expect(Object.keys(entry.files)).toEqual([entry.entrypoint]);
+    expect(entry.files[entry.entrypoint]).toContain(
+      "await main({ dashboardAssets: () => embeddedDashboardAssets(files) });",
+    );
   });
 });
