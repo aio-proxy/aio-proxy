@@ -27,5 +27,5 @@ export default defineConfig({
   },
   html: {
     title: "AIO Proxy Dashboard",
-  }
+  },
 });
