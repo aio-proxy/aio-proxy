@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ConfigWriteError,
   formatUserError,
@@ -16,12 +17,7 @@ import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 import { ServeListenError } from "./errors";
-import {
-  providerErrors,
-  providerInstall,
-  providerList,
-  providerTest,
-} from "./provider-commands";
+import { providerErrors, providerInstall, providerList, providerTest } from "./provider-commands";
 
 setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
@@ -76,6 +72,27 @@ const resolveConfigPath = (optionPath: string | undefined) =>
   // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
   optionPath ?? process.env["AIO_PROXY_CONFIG"] ?? defaultConfigPath();
 
+const dashboardPackageDir = () => dirname(dirname(fileURLToPath(import.meta.resolve("@aio-proxy/dashboard"))));
+
+const ensureDashboardStaticDir = async () => {
+  const packageDir = dashboardPackageDir();
+  const staticDir = join(packageDir, "dist");
+  if (existsSync(join(staticDir, "index.html"))) {
+    return staticDir;
+  }
+
+  const build = Bun.spawn([process.execPath, "run", "build"], {
+    cwd: packageDir,
+    stderr: "inherit",
+    stdout: "inherit",
+  });
+  const code = await build.exited;
+  if (code !== 0) {
+    throw new Error(`Dashboard build failed with exit code ${code}`);
+  }
+  return staticDir;
+};
+
 const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   if (!existsSync(path)) {
     try {
@@ -129,7 +146,14 @@ const serve = async (options: ServeOptions) => {
   const dashboardUrl = `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(configPath, dashboardUrl);
-  const app = createServer({ config, configPath, host, port });
+  const dashboardStaticDir = await ensureDashboardStaticDir();
+  const app = createServer({
+    config,
+    configPath,
+    dashboardStaticDir,
+    host,
+    port,
+  });
   const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
   console.log(
     m.cli_serve_started({
@@ -157,13 +181,8 @@ export const buildProgram = () => {
     .option("--config <path>", m.cli_serve_option_config_description())
     .action(serve);
 
-  program
-    .command("dashboard")
-    .description(m.cli_dashboard_description())
-    .action(runStub);
-  const provider = program
-    .command("provider")
-    .description(m.cli_provider_description());
+  program.command("dashboard").description(m.cli_dashboard_description()).action(runStub);
+  const provider = program.command("provider").description(m.cli_provider_description());
   provider
     .command("install <pkg>")
     .option("--yes", "Confirm runtime package installation.")
@@ -176,18 +195,9 @@ export const buildProgram = () => {
     .option("--probe", "Probe listed providers.")
     .option("--installed", "List packages installed in the runtime cache.")
     .action(providerList);
-  provider
-    .command("test <id>")
-    .option("--url <url>", "Dashboard URL.")
-    .action(providerTest);
-  program
-    .command("model")
-    .description(m.cli_model_description())
-    .action(runStub);
-  program
-    .command("trace")
-    .description(m.cli_trace_description())
-    .action(runStub);
+  provider.command("test <id>").option("--url <url>", "Dashboard URL.").action(providerTest);
+  program.command("model").description(m.cli_model_description()).action(runStub);
+  program.command("trace").description(m.cli_trace_description()).action(runStub);
 
   return program;
 };
@@ -202,10 +212,7 @@ export const main = async () => {
       process.exitCode = 1;
       return;
     }
-    if (
-      err instanceof Error &&
-      providerErrors.some((errorType) => err instanceof errorType)
-    ) {
+    if (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) {
       console.error(err.message);
       process.exitCode = 1;
       return;

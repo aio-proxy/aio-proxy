@@ -41,13 +41,13 @@
       "outputs": []
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build"],
       "persistent": true,
       "cache": false,
       "outputs": []
     },
     "@aio-proxy/cli#dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build"],
       "persistent": true,
       "cache": false,
       "outputs": [],

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
+    "@aio-proxy/dashboard": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",
