@@ -10,6 +10,35 @@
         "typescript": "^6.0.3",
       },
     },
+    "npm/aio-proxy": {
+      "name": "aio-proxy",
+      "version": "0.0.0",
+      "bin": {
+        "aio-proxy": "bin/aio-proxy.js",
+      },
+      "optionalDependencies": {
+        "@aio-proxy/cli-darwin-arm64": "workspace:*",
+        "@aio-proxy/cli-darwin-x64": "workspace:*",
+        "@aio-proxy/cli-linux-arm64": "workspace:*",
+        "@aio-proxy/cli-linux-x64": "workspace:*",
+      },
+    },
+    "npm/cli-darwin-arm64": {
+      "name": "@aio-proxy/cli-darwin-arm64",
+      "version": "0.0.0",
+    },
+    "npm/cli-darwin-x64": {
+      "name": "@aio-proxy/cli-darwin-x64",
+      "version": "0.0.0",
+    },
+    "npm/cli-linux-arm64": {
+      "name": "@aio-proxy/cli-linux-arm64",
+      "version": "0.0.0",
+    },
+    "npm/cli-linux-x64": {
+      "name": "@aio-proxy/cli-linux-x64",
+      "version": "0.0.0",
+    },
     "packages/auth-flows": {
       "name": "@aio-proxy/auth-flows",
       "dependencies": {
@@ -199,6 +228,14 @@
     "@aio-proxy/auth-flows": ["@aio-proxy/auth-flows@workspace:packages/auth-flows"],
 
     "@aio-proxy/cli": ["@aio-proxy/cli@workspace:packages/cli"],
+
+    "@aio-proxy/cli-darwin-arm64": ["@aio-proxy/cli-darwin-arm64@workspace:npm/cli-darwin-arm64"],
+
+    "@aio-proxy/cli-darwin-x64": ["@aio-proxy/cli-darwin-x64@workspace:npm/cli-darwin-x64"],
+
+    "@aio-proxy/cli-linux-arm64": ["@aio-proxy/cli-linux-arm64@workspace:npm/cli-linux-arm64"],
+
+    "@aio-proxy/cli-linux-x64": ["@aio-proxy/cli-linux-x64@workspace:npm/cli-linux-x64"],
 
     "@aio-proxy/core": ["@aio-proxy/core@workspace:packages/core"],
 
@@ -629,6 +666,8 @@
     "acorn": ["acorn@8.17.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg=="],
 
     "ai": ["ai@7.0.8", "", { "dependencies": { "@ai-sdk/gateway": "4.0.6", "@ai-sdk/provider": "4.0.1", "@ai-sdk/provider-utils": "5.0.2" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-vTEKl6fDBZ2IxBXTRaZOajf9W2Ev57Ju8iKtUvqlmDk8Z9BrEP4c22SWJsg1RcWHSFmJMSBa/s5dlUBHUq3YwA=="],
+
+    "aio-proxy": ["aio-proxy@workspace:npm/aio-proxy"],
 
     "ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
