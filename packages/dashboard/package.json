@@ -4,7 +4,8 @@
   "private": true,
   "exports": {
     ".": "./src/index.tsx",
-    "./dist/index.html": "./dist/index.html"
+    "./dist/index.html": "./dist/index.html",
+    "./dist/*": "./dist/*"
   },
   "scripts": {
     "dev": "rsbuild --open",
