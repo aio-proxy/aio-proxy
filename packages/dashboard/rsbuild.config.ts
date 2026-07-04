@@ -25,4 +25,7 @@ export default defineConfig({
   output: {
     assetPrefix: "/dashboard/",
   },
+  html: {
+    title: "AIO Proxy Dashboard",
+  }
 });
