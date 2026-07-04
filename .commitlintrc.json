@@ -1,0 +1,4 @@
+{
+  "$schema": "https://unpkg.com/@commitlint/config-validator@21.2.0/lib/commitlint.schema.json",
+  "extends": ["@commitlint/config-conventional"]
+}
