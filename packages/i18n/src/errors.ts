@@ -36,31 +36,19 @@ export class AppError extends Error {
 
 export class ProviderNotInstalledError extends AppError {
   constructor(readonly pkg: string) {
-    super(
-      ERROR_CODES.providerNotInstalled,
-      "error_invalid_locale",
-      "ProviderNotInstalledError",
-    );
+    super(ERROR_CODES.providerNotInstalled, "error_invalid_locale", "ProviderNotInstalledError");
   }
 }
 
 export class PortOutOfRangeError extends AppError {
   constructor(readonly port: string) {
-    super(
-      ERROR_CODES.portOutOfRange,
-      "cli_error_port_out_of_range",
-      "PortOutOfRangeError",
-    );
+    super(ERROR_CODES.portOutOfRange, "cli_error_port_out_of_range", "PortOutOfRangeError");
   }
 }
 
 export class ConfigWriteError extends AppError {
   constructor(readonly path: string) {
-    super(
-      ERROR_CODES.configWriteFailed,
-      "cli_error_config_write_failed",
-      "ConfigWriteError",
-    );
+    super(ERROR_CODES.configWriteFailed, "cli_error_config_write_failed", "ConfigWriteError");
   }
 }
 
@@ -70,20 +58,12 @@ export class AliasCollisionError extends AppError {
     readonly providerA: string,
     readonly providerB: string,
   ) {
-    super(
-      ERROR_CODES.aliasCollision,
-      "error_invalid_locale",
-      "AliasCollisionError",
-    );
+    super(ERROR_CODES.aliasCollision, "error_invalid_locale", "AliasCollisionError");
   }
 }
 
 export class StaleProviderGenerationError extends AppError {
   constructor(readonly provider: string) {
-    super(
-      ERROR_CODES.staleProviderGeneration,
-      "error_invalid_locale",
-      "StaleProviderGenerationError",
-    );
+    super(ERROR_CODES.staleProviderGeneration, "error_invalid_locale", "StaleProviderGenerationError");
   }
 }

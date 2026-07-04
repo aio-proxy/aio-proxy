@@ -7,14 +7,10 @@ async function sha256Text(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
 
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function waitForTrace(
-  trace: readonly ApiProviderTrace[],
-): Promise<ApiProviderTrace> {
+async function waitForTrace(trace: readonly ApiProviderTrace[]): Promise<ApiProviderTrace> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const first = trace[0];
     if (first !== undefined) {
@@ -106,10 +102,7 @@ describe("createApiProvider", () => {
   });
 
   test("passes SSE stream bytes through unchanged and records response hash", async () => {
-    const body = Array.from(
-      { length: 50 },
-      (_, index) => `data: chunk-${index}\n\n`,
-    ).join("");
+    const body = Array.from({ length: 50 }, (_, index) => `data: chunk-${index}\n\n`).join("");
     const expectedHash = await sha256Text(body);
     const trace: ApiProviderTrace[] = [];
     const upstream = Bun.serve({
@@ -131,9 +124,7 @@ describe("createApiProvider", () => {
         trace,
       });
 
-      const response = await provider.passthrough(
-        new Request("https://proxy.local/v1/chat/completions?stream=true"),
-      );
+      const response = await provider.passthrough(new Request("https://proxy.local/v1/chat/completions?stream=true"));
 
       expect(response.status).toBe(200);
       expect(await response.text()).toBe(body);
@@ -171,9 +162,7 @@ describe("createApiProvider", () => {
         baseUrl: upstream.url.toString(),
       });
 
-      const response = await provider.passthrough(
-        new Request("https://proxy.local/v1/chat/completions"),
-      );
+      const response = await provider.passthrough(new Request("https://proxy.local/v1/chat/completions"));
 
       expect(response.headers.get("content-encoding")).toBeNull();
       expect(response.headers.get("content-length")).toBeNull();
@@ -240,9 +229,7 @@ describe("createApiProvider", () => {
         trace,
       });
 
-      const response = await provider.passthrough(
-        new Request("https://proxy.local/v1/chat/completions"),
-      );
+      const response = await provider.passthrough(new Request("https://proxy.local/v1/chat/completions"));
 
       expect(response.status).toBe(429);
       expect(await response.text()).toBe("slow down");

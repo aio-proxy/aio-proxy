@@ -65,9 +65,7 @@ type AnthropicUserMessage = {
 
 type AnthropicAssistantMessage = {
   readonly role: "assistant";
-  readonly content:
-    | string
-    | readonly (TextPart | ToolCallPart | ToolResultPart | ReasoningPart)[];
+  readonly content: string | readonly (TextPart | ToolCallPart | ToolResultPart | ReasoningPart)[];
 };
 
 type AnthropicToolMessage = {
@@ -92,14 +90,11 @@ export type AnthropicMessagesModelMessages = {
   readonly settings: AnthropicMessagesSettings;
 };
 
-export type AnthropicMessagesFromModelMessages =
-  AnthropicMessagesModelMessages & {
-    readonly model: string;
-  };
+export type AnthropicMessagesFromModelMessages = AnthropicMessagesModelMessages & {
+  readonly model: string;
+};
 
-export function anthropicMessagesToModelMessages(
-  req: AnthropicMessagesRequest,
-): AnthropicMessagesModelMessages {
+export function anthropicMessagesToModelMessages(req: AnthropicMessagesRequest): AnthropicMessagesModelMessages {
   return {
     messages: [
       ...(req.system === undefined ? [] : [systemToModelMessage(req.system)]),
@@ -107,9 +102,7 @@ export function anthropicMessagesToModelMessages(
     ],
     settings: {
       ...(req.stream !== undefined ? { stream: req.stream } : {}),
-      ...(req.temperature !== undefined
-        ? { temperature: req.temperature }
-        : {}),
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
     },
   };
@@ -138,19 +131,13 @@ export function modelMessagesToAnthropicMessages({
       case "user":
         requestMessages.push({
           role: "user",
-          content: userContentFromModelParts(
-            message.content,
-            `messages.${index}.content`,
-          ),
+          content: userContentFromModelParts(message.content, `messages.${index}.content`),
         });
         break;
       case "assistant":
         requestMessages.push({
           role: "assistant",
-          content: assistantContentFromModelParts(
-            message.content,
-            `messages.${index}.content`,
-          ),
+          content: assistantContentFromModelParts(message.content, `messages.${index}.content`),
         });
         break;
       case "tool":
@@ -165,12 +152,8 @@ export function modelMessagesToAnthropicMessages({
     ...(system !== undefined ? { system } : {}),
     messages: requestMessages,
     ...(settings.stream !== undefined ? { stream: settings.stream } : {}),
-    ...(settings.maxTokens !== undefined
-      ? { max_tokens: settings.maxTokens }
-      : {}),
-    ...(settings.temperature !== undefined
-      ? { temperature: settings.temperature }
-      : {}),
+    ...(settings.maxTokens !== undefined ? { max_tokens: settings.maxTokens } : {}),
+    ...(settings.temperature !== undefined ? { temperature: settings.temperature } : {}),
   };
 }
 
@@ -193,9 +176,7 @@ function messageToModelMessage(
   }
 }
 
-function systemToModelMessage(
-  system: NonNullable<AnthropicMessagesRequest["system"]>,
-): AnthropicSystemMessage {
+function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest["system"]>): AnthropicSystemMessage {
   if (typeof system === "string") {
     return { role: "system", content: system };
   }
@@ -208,10 +189,7 @@ function systemToModelMessage(
 }
 
 function userContentToModelParts(
-  content: Extract<
-    AnthropicMessagesRequest["messages"][number],
-    { role: "user" }
-  >["content"],
+  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
 ): string | readonly (TextPart | ToolResultPart)[] {
   return typeof content === "string"
     ? content
@@ -228,10 +206,7 @@ function userContentToModelParts(
 }
 
 function assistantContentToModelParts(
-  content: Extract<
-    AnthropicMessagesRequest["messages"][number],
-    { role: "assistant" }
-  >["content"],
+  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"],
 ): string | readonly (TextPart | ToolCallPart | ReasoningPart)[] {
   return typeof content === "string"
     ? content
@@ -256,10 +231,7 @@ function assistantContentToModelParts(
 function userContentFromModelParts(
   content: AnthropicUserMessage["content"],
   path: string,
-): Extract<
-  AnthropicMessagesRequest["messages"][number],
-  { role: "user" }
->["content"] {
+): Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"] {
   return typeof content === "string"
     ? content
     : content.map((part, index) => {
@@ -277,10 +249,7 @@ function userContentFromModelParts(
 function assistantContentFromModelParts(
   content: AnthropicAssistantMessage["content"],
   path: string,
-): Extract<
-  AnthropicMessagesRequest["messages"][number],
-  { role: "assistant" }
->["content"] {
+): Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"] {
   return typeof content === "string"
     ? content
     : content.map((part, index) => {
@@ -303,9 +272,7 @@ function textPart(part: AnthropicTextBlock): TextPart {
   return {
     type: "text",
     text: part.text,
-    ...(part.cache_control !== undefined
-      ? { providerOptions: cacheProviderOptions(part.cache_control) }
-      : {}),
+    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
   };
 }
 
@@ -315,9 +282,7 @@ function toolCallPart(part: AnthropicToolUseBlock): ToolCallPart {
     toolCallId: part.id,
     toolName: part.name,
     input: part.input,
-    ...(part.cache_control !== undefined
-      ? { providerOptions: cacheProviderOptions(part.cache_control) }
-      : {}),
+    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
   };
 }
 
@@ -336,9 +301,7 @@ function toolResultPart(part: AnthropicToolResultBlock): ToolResultPart {
               text: contentPart.text,
             })),
           },
-    ...(part.cache_control !== undefined
-      ? { providerOptions: cacheProviderOptions(part.cache_control) }
-      : {}),
+    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
   };
 }
 
@@ -381,23 +344,16 @@ function toolResultBlock(part: ToolResultPart): AnthropicToolResultBlock {
   };
 }
 
-function thinkingBlock(
-  part: ReasoningPart,
-  path: string,
-): AnthropicAssistantContentBlock {
+function thinkingBlock(part: ReasoningPart, path: string): AnthropicAssistantContentBlock {
   const signature = part.providerOptions?.anthropic.signature;
   if (signature === undefined) {
-    throw new AnthropicMessagesTransformError(
-      `${path}.providerOptions.anthropic.signature`,
-    );
+    throw new AnthropicMessagesTransformError(`${path}.providerOptions.anthropic.signature`);
   }
 
   return { type: "thinking", thinking: part.text, signature };
 }
 
-function cacheProviderOptions(
-  cacheControl: AnthropicCacheControl,
-): AnthropicProviderOptions {
+function cacheProviderOptions(cacheControl: AnthropicCacheControl): AnthropicProviderOptions {
   return { anthropic: { cache_control: cacheControl } };
 }
 

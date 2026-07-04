@@ -16,10 +16,7 @@ export type IngressError = {
   readonly body: OpenAIErrorEnvelope;
 };
 
-export function toIngressError(
-  error: unknown,
-  ingressProtocol: IngressProtocol,
-): IngressError {
+export function toIngressError(error: unknown, ingressProtocol: IngressProtocol): IngressError {
   switch (ingressProtocol) {
     case "openai-chat":
       return toOpenAIChatError(error);

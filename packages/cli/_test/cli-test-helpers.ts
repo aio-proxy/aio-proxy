@@ -23,10 +23,7 @@ export const runCli = (args: readonly string[], env: CliEnv = {}) =>
     stdout: "pipe",
   });
 
-export const runCliAsync = async (
-  args: readonly string[],
-  env: CliEnv = {},
-) => {
+export const runCliAsync = async (args: readonly string[], env: CliEnv = {}) => {
   const subprocess = Bun.spawn([...cli, ...args], {
     cwd: repoRoot,
     env: cliEnv(env),
@@ -44,10 +41,7 @@ export const runCliAsync = async (
 export const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
   `${result.stdout.toString()}${result.stderr.toString()}`;
 
-export const cliServeArgs = (
-  configPath: string,
-  port: number,
-): readonly string[] => [
+export const cliServeArgs = (configPath: string, port: number): readonly string[] => [
   ...cli,
   "serve",
   "--config",
@@ -69,10 +63,7 @@ export const freePort = () => {
   return port;
 };
 
-export async function waitForOk(
-  url: string,
-  timeoutMs: number,
-): Promise<Response> {
+export async function waitForOk(url: string, timeoutMs: number): Promise<Response> {
   const deadline = performance.now() + timeoutMs;
   let lastError: Error | undefined;
 

@@ -19,10 +19,7 @@ type Subscriber = {
   outstandingEvents: number;
 };
 
-type TraceDeltaEvent = Extract<
-  DashboardEvent,
-  { readonly event: "trace.delta" }
->;
+type TraceDeltaEvent = Extract<DashboardEvent, { readonly event: "trace.delta" }>;
 
 const encoder = new TextEncoder();
 const defaultLimits = {
@@ -30,9 +27,7 @@ const defaultLimits = {
   maxEvents: 1_000,
 } as const;
 
-export function createDashboardEventHub(
-  limits: DashboardEventLimits = defaultLimits,
-): DashboardEventHub {
+export function createDashboardEventHub(limits: DashboardEventLimits = defaultLimits): DashboardEventHub {
   let nextSubscriberId = 1;
   const subscribers = new Map<number, Subscriber>();
   const pendingTraceDeltas = new Map<string, DashboardEvent>();
@@ -135,10 +130,7 @@ export function createDashboardEventHub(
     subscriber.outstandingEvents += 1;
   }
 
-  function closeSubscriber(
-    subscriber: Subscriber,
-    closeController: boolean,
-  ): void {
+  function closeSubscriber(subscriber: Subscriber, closeController: boolean): void {
     if (subscriber.closed) {
       return;
     }
@@ -153,7 +145,5 @@ export function createDashboardEventHub(
 }
 
 function encodeEvent(event: DashboardEvent): Uint8Array {
-  return encoder.encode(
-    `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`,
-  );
+  return encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`);
 }

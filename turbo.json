@@ -2,11 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "compile": {
-      "inputs": [
-        "messages/**/*.json",
-        "project.inlang/**",
-        "scripts/compile.ts"
-      ],
+      "inputs": ["messages/**/*.json", "project.inlang/**", "scripts/compile.ts"],
       "outputs": ["src/paraglide/**"]
     },
     "build": {
@@ -20,12 +16,7 @@
         "rslib.config.ts",
         "tsconfig.json"
       ],
-      "outputs": [
-        "dist/**",
-        "src/route-tree.gen.ts",
-        "src/paraglide/**",
-        "src/db/migrations.manifest.ts"
-      ]
+      "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**", "src/db/migrations.manifest.ts"]
     },
     "test": {
       "dependsOn": ["^build"],

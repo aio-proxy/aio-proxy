@@ -4,14 +4,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
-import {
-  cliServeArgs,
-  freePort,
-  output,
-  repoCwd,
-  runCli,
-  waitForOk,
-} from "./cli-test-helpers";
+import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "./cli-test-helpers";
 
 describe("cli", () => {
   test("prints package version when requested", () => {
@@ -82,10 +75,7 @@ describe("cli", () => {
 
     try {
       // When
-      const response = await waitForOk(
-        `http://127.0.0.1:${port}/health`,
-        1_000,
-      );
+      const response = await waitForOk(`http://127.0.0.1:${port}/health`, 1_000);
 
       // Then
       expect(response.status).toBe(200);

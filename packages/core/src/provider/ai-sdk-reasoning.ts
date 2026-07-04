@@ -5,22 +5,14 @@ type ReasoningContentShape = {
   readonly reasoning_content?: unknown;
 };
 
-type ReasoningDeltaPart = Extract<
-  TextStreamPart<ToolSet>,
-  { readonly type: "reasoning-delta" }
->;
+type ReasoningDeltaPart = Extract<TextStreamPart<ToolSet>, { readonly type: "reasoning-delta" }>;
 
 export type AiSdkReasoningAdapter = {
-  readonly push: (
-    part: TextStreamPart<ToolSet>,
-  ) => readonly TextStreamPart<ToolSet>[];
+  readonly push: (part: TextStreamPart<ToolSet>) => readonly TextStreamPart<ToolSet>[];
   readonly flush: () => readonly TextStreamPart<ToolSet>[];
 };
 
-export function createAiSdkReasoningAdapter(
-  config: AiSdkProvider,
-  modelId: string,
-): AiSdkReasoningAdapter {
+export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: string): AiSdkReasoningAdapter {
   if (!parsesDeepSeekReasoning(config, modelId)) {
     return {
       push(part) {
@@ -80,10 +72,7 @@ export function createAiSdkReasoningAdapter(
           pendingNative = [...pendingNative, part];
           const nativeText = pendingNative.map((item) => item.text).join("");
 
-          if (
-            pendingReasoning === nativeText ||
-            nativeText.startsWith(pendingReasoning)
-          ) {
+          if (pendingReasoning === nativeText || nativeText.startsWith(pendingReasoning)) {
             pendingReasoning = "";
             return takeNative();
           }
@@ -102,15 +91,10 @@ export function createAiSdkReasoningAdapter(
   };
 }
 
-export function parsesDeepSeekReasoning(
-  config: AiSdkProvider,
-  modelId: string,
-): boolean {
+export function parsesDeepSeekReasoning(config: AiSdkProvider, modelId: string): boolean {
   return (
     config.packageName === "@ai-sdk/openai-compatible" &&
-    (config.parseReasoningContent === true ||
-      modelId === "deepseek-reasoner" ||
-      modelId.startsWith("deepseek-r1"))
+    (config.parseReasoningContent === true || modelId === "deepseek-reasoner" || modelId.startsWith("deepseek-r1"))
   );
 }
 

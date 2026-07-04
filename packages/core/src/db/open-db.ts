@@ -4,15 +4,8 @@ import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
-import {
-  DatabaseSchemaTooNewError,
-  MigrationHashMismatchError,
-} from "../error";
-import {
-  COMPILED_SCHEMA_VERSION,
-  MIGRATIONS,
-  type Migration,
-} from "./migrations.manifest";
+import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from "../error";
+import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from "./migrations.manifest";
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 const ENV_AIO_PROXY_HOME = "AIO_PROXY_HOME";
@@ -49,10 +42,7 @@ export function openDb(options: OpenDbOptions = {}): OpenDbHandle {
   }
 
   ensureDbFile(path);
-  const sqlite =
-    options.readonly === true
-      ? new Database(path, { readonly: true })
-      : new Database(path);
+  const sqlite = options.readonly === true ? new Database(path, { readonly: true }) : new Database(path);
   applyPragmas(sqlite, options.readonly === true);
   applyMigrations(sqlite, options.readonly === true);
 
@@ -95,16 +85,10 @@ function resolveDbPath(options: OpenDbOptions): string {
 
 function defaultHomeDir(): string {
   if (process.platform === "win32") {
-    return join(
-      process.env[ENV_APPDATA] ?? join(homedir(), "AppData", "Roaming"),
-      "aio-proxy",
-    );
+    return join(process.env[ENV_APPDATA] ?? join(homedir(), "AppData", "Roaming"), "aio-proxy");
   }
 
-  return join(
-    process.env[ENV_XDG_CONFIG_HOME] ?? join(homedir(), ".config"),
-    "aio-proxy",
-  );
+  return join(process.env[ENV_XDG_CONFIG_HOME] ?? join(homedir(), ".config"), "aio-proxy");
 }
 
 function ensureDbFile(path: string): void {
@@ -134,10 +118,7 @@ function applyPragmas(sqlite: Database, readonly: boolean): void {
 function applyMigrations(sqlite: Database, readonly: boolean): void {
   const currentVersion = readUserVersion(sqlite);
   if (currentVersion > COMPILED_SCHEMA_VERSION) {
-    throw new DatabaseSchemaTooNewError(
-      currentVersion,
-      COMPILED_SCHEMA_VERSION,
-    );
+    throw new DatabaseSchemaTooNewError(currentVersion, COMPILED_SCHEMA_VERSION);
   }
 
   if (readonly) {

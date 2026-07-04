@@ -20,27 +20,18 @@ export class AuthCasBusyError extends AioProxyError {
     readonly providerId: string,
     readonly originalError: unknown,
   ) {
-    super(
-      "AuthCasBusyError",
-      `auth row for ${vendor}:${providerId} is busy, retry later`,
-    );
+    super("AuthCasBusyError", `auth row for ${vendor}:${providerId} is busy, retry later`);
   }
 }
 
 export class AuthPayloadSerializationError extends AioProxyError {
   constructor() {
-    super(
-      "AuthPayloadSerializationError",
-      "auth payload could not be serialized as JSON",
-    );
+    super("AuthPayloadSerializationError", "auth payload could not be serialized as JSON");
   }
 }
 
 export class AuthPayloadParseError extends AioProxyError {
   constructor(readonly syntaxError: SyntaxError) {
-    super(
-      "AuthPayloadParseError",
-      "auth payload stored in the database is not valid JSON",
-    );
+    super("AuthPayloadParseError", "auth payload stored in the database is not valid JSON");
   }
 }

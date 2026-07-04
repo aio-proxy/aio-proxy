@@ -9,12 +9,8 @@ import type {
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
 type UserMessage = Extract<ModelMessage, { role: "user" }>;
-type ToolPart = Extract<
-  ToolMessage["content"][number],
-  { type: "tool-result" }
->;
-type GeminiPart =
-  GeminiGenerateContentRequest["contents"][number]["parts"][number];
+type ToolPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
+type GeminiPart = GeminiGenerateContentRequest["contents"][number]["parts"][number];
 type GeminiContent = GeminiGenerateContentRequest["contents"][number];
 
 export function modelMessagesToGeminiGenerateContent({
@@ -29,15 +25,12 @@ export function modelMessagesToGeminiGenerateContent({
 
   const first = messages[0];
   const body = first?.role === "system" ? messages.slice(1) : messages;
-  const safety =
-    settings.providerOptions?.google.safetySettings ?? settings.safetySettings;
+  const safety = settings.providerOptions?.google.safetySettings ?? settings.safetySettings;
 
   return {
     model,
     contents: body.map(messageToContent),
-    ...(first?.role === "system"
-      ? { systemInstruction: { parts: [{ text: first.content }] } }
-      : {}),
+    ...(first?.role === "system" ? { systemInstruction: { parts: [{ text: first.content }] } } : {}),
     ...(tools === undefined
       ? {}
       : {
@@ -47,9 +40,7 @@ export function modelMessagesToGeminiGenerateContent({
             },
           ],
         }),
-    ...(settings.generationConfig === undefined
-      ? {}
-      : { generationConfig: settings.generationConfig }),
+    ...(settings.generationConfig === undefined ? {} : { generationConfig: settings.generationConfig }),
     ...(safety === undefined ? {} : { safetySettings: safety }),
   };
 }
@@ -57,9 +48,7 @@ export function modelMessagesToGeminiGenerateContent({
 function geminiTool(tool: GeminiGenerateContentTool) {
   return {
     name: tool.name,
-    ...(tool.description === undefined
-      ? {}
-      : { description: tool.description }),
+    ...(tool.description === undefined ? {} : { description: tool.description }),
     ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),
   };
 }
@@ -76,9 +65,7 @@ function messageToContent(message: ModelMessage, index: number): GeminiContent {
         if (part.type === "tool-result") {
           return functionResponsePart(part);
         }
-        throw new GeminiGenerateContentTransformError(
-          `messages.${index}.content.${partIndex}.type`,
-        );
+        throw new GeminiGenerateContentTransformError(`messages.${index}.content.${partIndex}.type`);
       }),
     };
   }
@@ -93,10 +80,7 @@ function messageToContent(message: ModelMessage, index: number): GeminiContent {
   };
 }
 
-function userPartsToGemini(
-  content: UserMessage["content"],
-  path: string,
-): GeminiPart[] {
+function userPartsToGemini(content: UserMessage["content"], path: string): GeminiPart[] {
   if (typeof content === "string") {
     return [{ text: content }];
   }
@@ -115,16 +99,11 @@ function userPartsToGemini(
       };
     }
 
-    throw new GeminiGenerateContentTransformError(
-      `${path}.content.${index}.type`,
-    );
+    throw new GeminiGenerateContentTransformError(`${path}.content.${index}.type`);
   });
 }
 
-function assistantPartsToGemini(
-  content: AssistantMessage["content"],
-  path: string,
-): GeminiPart[] {
+function assistantPartsToGemini(content: AssistantMessage["content"], path: string): GeminiPart[] {
   if (typeof content === "string") {
     return [{ text: content }];
   }
@@ -138,9 +117,7 @@ function assistantPartsToGemini(
       return { functionCall: { name: part.toolName, args: part.input } };
     }
 
-    throw new GeminiGenerateContentTransformError(
-      `${path}.content.${index}.type`,
-    );
+    throw new GeminiGenerateContentTransformError(`${path}.content.${index}.type`);
   });
 }
 

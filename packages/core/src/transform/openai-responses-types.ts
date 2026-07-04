@@ -16,13 +16,9 @@ export type OpenAIResponsesProviderOptions = {
   };
 };
 
-export type OpenAIResponsesReasoningEffort = NonNullable<
-  NonNullable<OpenAIResponsesRequest["reasoning"]>["effort"]
->;
+export type OpenAIResponsesReasoningEffort = NonNullable<NonNullable<OpenAIResponsesRequest["reasoning"]>["effort"]>;
 
-export type OpenAIResponsesReasoningSummary = NonNullable<
-  NonNullable<OpenAIResponsesRequest["reasoning"]>["summary"]
->;
+export type OpenAIResponsesReasoningSummary = NonNullable<NonNullable<OpenAIResponsesRequest["reasoning"]>["summary"]>;
 
 export type OpenAIResponsesTransformSettings = {
   readonly stream?: boolean;

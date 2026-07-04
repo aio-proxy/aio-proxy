@@ -33,10 +33,7 @@ export function modelMessagesToOpenAIChat({
           return {
             role: "tool",
             tool_call_id: part?.type === "tool-result" ? part.toolCallId : "",
-            content:
-              part?.type === "tool-result" && part.output.type === "text"
-                ? part.output.value
-                : "",
+            content: part?.type === "tool-result" && part.output.type === "text" ? part.output.value : "",
           };
         }
       }
@@ -49,28 +46,16 @@ export function modelMessagesToOpenAIChat({
             type: "function",
             function: {
               name: tool.name,
-              ...(tool.description === undefined
-                ? {}
-                : { description: tool.description }),
-              ...(tool.inputSchema === undefined
-                ? {}
-                : { parameters: tool.inputSchema }),
+              ...(tool.description === undefined ? {} : { description: tool.description }),
+              ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),
             },
           })),
         }),
     ...(settings.stream === undefined ? {} : { stream: settings.stream }),
-    ...(settings.temperature === undefined
-      ? {}
-      : { temperature: settings.temperature }),
-    ...(settings.maxTokens === undefined
-      ? {}
-      : { max_completion_tokens: settings.maxTokens }),
-    ...(settings.responseFormat === undefined
-      ? {}
-      : { response_format: settings.responseFormat }),
-    ...(settings.reasoningEffort === undefined
-      ? {}
-      : { reasoning_effort: settings.reasoningEffort }),
+    ...(settings.temperature === undefined ? {} : { temperature: settings.temperature }),
+    ...(settings.maxTokens === undefined ? {} : { max_completion_tokens: settings.maxTokens }),
+    ...(settings.responseFormat === undefined ? {} : { response_format: settings.responseFormat }),
+    ...(settings.reasoningEffort === undefined ? {} : { reasoning_effort: settings.reasoningEffort }),
   };
 }
 
@@ -79,9 +64,7 @@ function openAIContent(content: ModelMessage["content"]) {
     return content;
   }
 
-  return content.flatMap((part) =>
-    part.type === "text" ? [{ type: "text" as const, text: part.text }] : [],
-  );
+  return content.flatMap((part) => (part.type === "text" ? [{ type: "text" as const, text: part.text }] : []));
 }
 
 function assistantOpenAIContent(content: ModelMessage["content"]) {
@@ -106,10 +89,7 @@ function assistantToolCalls(content: ModelMessage["content"]) {
             type: "function" as const,
             function: {
               name: part.toolName,
-              arguments:
-                typeof part.input === "string"
-                  ? part.input
-                  : JSON.stringify(part.input),
+              arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
             },
           },
         ]

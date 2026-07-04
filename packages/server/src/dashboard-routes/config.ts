@@ -14,8 +14,7 @@ const OPENAI_SECRET_PATTERN = /^sk-[A-Za-z0-9_-]{20,}$/;
 const BEARER_SECRET_PATTERN = /^Bearer\s+.+$/i;
 const TOKEN_SECRET_PATTERN = /^Token\s+.+$/i;
 const API_KEY_TEXT_PATTERN = /("?apiKey"?\s*:\s*")[^"]*(")/gi;
-const SENSITIVE_KEY_PATTERN =
-  /(?:api[-_]?key|authorization|bearer|credential|password|secret|token)/i;
+const SENSITIVE_KEY_PATTERN = /(?:api[-_]?key|authorization|bearer|credential|password|secret|token)/i;
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
@@ -39,11 +38,7 @@ const maskSecret = (key: string, value: string): string => {
   return value.replace(API_KEY_TEXT_PATTERN, "$1****$2");
 };
 
-export const redactSecrets = (
-  value: unknown,
-  key = "",
-  insideHeaders = false,
-): unknown => {
+export const redactSecrets = (value: unknown, key = "", insideHeaders = false): unknown => {
   if (typeof value === "string") {
     return insideHeaders ? "****" : maskSecret(key, value);
   }
@@ -56,11 +51,7 @@ export const redactSecrets = (
     return Object.fromEntries(
       Object.entries(value).map(([entryKey, entryValue]) => [
         entryKey,
-        redactSecrets(
-          entryValue,
-          entryKey,
-          insideHeaders || entryKey.toLowerCase() === "headers",
-        ),
+        redactSecrets(entryValue, entryKey, insideHeaders || entryKey.toLowerCase() === "headers"),
       ]),
     );
   }
@@ -70,9 +61,7 @@ export const redactSecrets = (
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
-    .get("/config", (context) =>
-      context.json(redactSecrets(state.redactedConfig())),
-    )
+    .get("/config", (context) => context.json(redactSecrets(state.redactedConfig())))
     .get("/providers", async (context) => {
       const filter = context.req.query("filter");
       const probe = context.req.query("probe") === "true";
@@ -92,17 +81,14 @@ export const createDashboardRoutes = (state: ServerState) =>
     })
     .post("/providers/install", async (context) => {
       try {
-        const request = ProviderInstallRequestSchema.parse(
-          await context.req.json(),
-        );
+        const request = ProviderInstallRequestSchema.parse(await context.req.json());
         const installed = await npmAdd(request.npm, request.registry);
         return context.json({ installed });
       } catch (error) {
         if (error instanceof ZodError || error instanceof SyntaxError) {
           return context.json(
             {
-              error:
-                "provider install requires { npm, confirmed: true, registry? }",
+              error: "provider install requires { npm, confirmed: true, registry? }",
             },
             400,
           );
@@ -138,8 +124,5 @@ export const createDashboardRoutes = (state: ServerState) =>
       if (result.ok) {
         return context.json({ ok: true, diff: result.diff });
       }
-      return context.json(
-        { ok: false, error: result.error, stage: result.stage },
-        409,
-      );
+      return context.json({ ok: false, error: result.error, stage: result.stage }, 409);
     });

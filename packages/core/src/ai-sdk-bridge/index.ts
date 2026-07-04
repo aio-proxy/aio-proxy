@@ -38,17 +38,12 @@ export type {
 };
 export { jsonSchema };
 
-export type AiSdkLanguageModel =
-  | LanguageModelV2
-  | LanguageModelV3
-  | LanguageModelV4;
+export type AiSdkLanguageModel = LanguageModelV2 | LanguageModelV3 | LanguageModelV4;
 
 export type AiSdkRuntimeProvider = ProviderV3 | ProviderV4;
 export type AiSdkCallableProvider = (modelId: string) => AiSdkLanguageModel;
 
-export type LoadedAiSdkRuntimeProvider =
-  | AiSdkRuntimeProvider
-  | AiSdkCallableProvider;
+export type LoadedAiSdkRuntimeProvider = AiSdkRuntimeProvider | AiSdkCallableProvider;
 
 export type AiSdkTextStreamRequest = {
   readonly model: AiSdkLanguageModel;

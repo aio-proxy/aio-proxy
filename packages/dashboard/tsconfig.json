@@ -9,19 +9,12 @@
     "noUnusedParameters": true,
     "rootDir": "src",
     "outDir": "dist",
-    "types": [
-      "@rsbuild/core/types"
-    ],
+    "types": ["@rsbuild/core/types"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "references": [
     {
       "path": "../i18n"

@@ -1,7 +1,7 @@
 import type { AppType } from "@aio-proxy/server";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { hc } from "hono/client";
 import ReactDOM from "react-dom/client";
-import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { routeTree } from "./route-tree.gen";
 
 const router = createRouter({

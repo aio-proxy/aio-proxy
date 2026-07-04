@@ -1,18 +1,15 @@
 import {
-  anthropicMessagesToModelMessages,
   type AnthropicModelMessage,
+  anthropicMessagesToModelMessages,
   type ModelMessage,
   parseAnthropicMessages,
   RouterModelNotFoundError,
-  writeAnthropicMessagesSSE
+  writeAnthropicMessagesSSE,
 } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
-import {
-  ensureAiSdkProviderAvailable,
-  providerNotInstalled,
-} from "../provider-availability";
+import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -21,15 +18,8 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
   return new Hono()
     .post("/v1/messages", async (context) => {
       const contentLength = context.req.header("content-length");
-      if (
-        contentLength !== undefined &&
-        Number.parseInt(contentLength, 10) > maxBodyBytes
-      ) {
-        return anthropicError(
-          413,
-          "invalid_request_error",
-          "Request body too large",
-        );
+      if (contentLength !== undefined && Number.parseInt(contentLength, 10) > maxBodyBytes) {
+        return anthropicError(413, "invalid_request_error", "Request body too large");
       }
 
       const request = await parseRequest(context.req.raw);
@@ -43,10 +33,7 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
       }
 
       const provider = route.provider;
-      if (
-        provider.kind === ProviderKind.Api &&
-        provider.protocol === ProviderProtocol.Anthropic
-      ) {
+      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Anthropic) {
         return provider.passthrough(context.req.raw);
       }
 
@@ -107,18 +94,12 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
     });
 }
 
-async function parseRequest(
-  raw: Request,
-): Promise<ReturnType<typeof parseAnthropicMessages> | Response> {
+async function parseRequest(raw: Request): Promise<ReturnType<typeof parseAnthropicMessages> | Response> {
   try {
     return parseAnthropicMessages(await raw.clone().json());
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
-      return anthropicError(
-        400,
-        "invalid_request_error",
-        "Invalid Anthropic Messages request",
-      );
+      return anthropicError(400, "invalid_request_error", "Invalid Anthropic Messages request");
     }
 
     throw error;
@@ -138,9 +119,7 @@ function resolveRoute(source: ProviderRouteSource, model: string) {
 }
 
 async function anthropicMessage(
-  stream: ReturnType<
-    Extract<RuntimeProviderInstance, { kind: ProviderKind.AiSdk }>["invoke"]
-  >,
+  stream: ReturnType<Extract<RuntimeProviderInstance, { kind: ProviderKind.AiSdk }>["invoke"]>,
 ) {
   const text: string[] = [];
   let stopReason: "end_turn" | "max_tokens" = "end_turn";
@@ -169,9 +148,7 @@ async function anthropicMessage(
   };
 }
 
-function aiSdkMessages(
-  messages: readonly AnthropicModelMessage[],
-): readonly ModelMessage[] {
+function aiSdkMessages(messages: readonly AnthropicModelMessage[]): readonly ModelMessage[] {
   return messages.map((message) => {
     switch (message.role) {
       case "system":
@@ -212,17 +189,11 @@ function contentText(content: AnthropicModelMessage["content"]): string {
     .join("");
 }
 
-function tokenEstimate(
-  request: ReturnType<typeof parseAnthropicMessages>,
-): number {
+function tokenEstimate(request: ReturnType<typeof parseAnthropicMessages>): number {
   return Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
 }
 
-function anthropicError(
-  status: number,
-  type: "invalid_request_error" | "not_found_error",
-  message: string,
-): Response {
+function anthropicError(status: number, type: "invalid_request_error" | "not_found_error", message: string): Response {
   return Response.json({ type: "error", error: { type, message } }, { status });
 }
 

@@ -9,14 +9,8 @@ import type {
 } from "../ai-sdk-bridge";
 import { streamAiSdkText } from "../ai-sdk-bridge";
 import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
-import {
-  type AiSdkProviderLoadOptions,
-  loadAiSdkProvider,
-} from "./ai-sdk-loader";
-import {
-  createAiSdkReasoningAdapter,
-  parsesDeepSeekReasoning,
-} from "./ai-sdk-reasoning";
+import { type AiSdkProviderLoadOptions, loadAiSdkProvider } from "./ai-sdk-loader";
+import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "./ai-sdk-reasoning";
 
 export type AiSdkProviderInvokeRequest = {
   readonly modelId: string;
@@ -43,9 +37,7 @@ export type AiSdkProviderInstance = {
   readonly kind: ProviderKind.AiSdk;
   readonly models?: readonly ModelEntry[];
   readonly ensureAvailable?: () => Promise<void>;
-  readonly invoke: (
-    request: AiSdkProviderInvokeRequest,
-  ) => ReadableStream<TextStreamPart<ToolSet>>;
+  readonly invoke: (request: AiSdkProviderInvokeRequest) => ReadableStream<TextStreamPart<ToolSet>>;
 };
 
 type LanguageModelShape = {
@@ -59,15 +51,10 @@ export function createAiSdkProvider(
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
   const loadProvider = options.loadProvider ?? loadAiSdkProvider;
-  let loadedProviderTask:
-    | Promise<LoadedAiSdkRuntimeProvider | null>
-    | undefined;
+  let loadedProviderTask: Promise<LoadedAiSdkRuntimeProvider | null> | undefined;
 
   function providerTask(): Promise<LoadedAiSdkRuntimeProvider | null> {
-    loadedProviderTask ??= loadProvider(
-      config.packageName,
-      loadOptions(config),
-    );
+    loadedProviderTask ??= loadProvider(config.packageName, loadOptions(config));
     return loadedProviderTask;
   }
 
@@ -94,31 +81,16 @@ export function createAiSdkProvider(
           try {
             const model =
               options.resolveModel?.(config, request.modelId, null) ??
-              (await resolveProviderModel(
-                config,
-                request.modelId,
-                providerTask,
-                options.resolveModel,
-              ));
+              (await resolveProviderModel(config, request.modelId, providerTask, options.resolveModel));
             const result = streamAiSdkText({
               model,
               messages: request.messages,
-              ...(request.settings === undefined
-                ? {}
-                : { settings: request.settings }),
+              ...(request.settings === undefined ? {} : { settings: request.settings }),
               ...(request.tools === undefined ? {} : { tools: request.tools }),
-              ...(request.signal === undefined
-                ? {}
-                : { signal: request.signal }),
-              includeRawChunks: parsesDeepSeekReasoning(
-                config,
-                request.modelId,
-              ),
+              ...(request.signal === undefined ? {} : { signal: request.signal }),
+              includeRawChunks: parsesDeepSeekReasoning(config, request.modelId),
             });
-            const reasoningAdapter = createAiSdkReasoningAdapter(
-              config,
-              request.modelId,
-            );
+            const reasoningAdapter = createAiSdkReasoningAdapter(config, request.modelId);
 
             for await (const part of result.fullStream) {
               enqueueStreamParts(controller, reasoningAdapter.push(part));
@@ -150,10 +122,7 @@ async function resolveProviderModel(
   resolveModel: AiSdkProviderFactoryOptions["resolveModel"],
 ): Promise<AiSdkLanguageModel> {
   const provider = await providerTask();
-  return (
-    resolveModel?.(config, modelId, provider) ??
-    (await resolveLoadedModel({ config, modelId, provider }))
-  );
+  return resolveModel?.(config, modelId, provider) ?? (await resolveLoadedModel({ config, modelId, provider }));
 }
 
 function enqueueStreamParts(
@@ -190,10 +159,7 @@ async function resolveLoadedModel({
     return callableModel;
   }
 
-  if (
-    typeof provider !== "function" &&
-    typeof provider.languageModel === "function"
-  ) {
+  if (typeof provider !== "function" && typeof provider.languageModel === "function") {
     return provider.languageModel(modelId);
   }
 
@@ -203,10 +169,7 @@ async function resolveLoadedModel({
   );
 }
 
-function callableProviderModel(
-  provider: LoadedAiSdkRuntimeProvider,
-  modelId: string,
-): AiSdkLanguageModel | undefined {
+function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: string): AiSdkLanguageModel | undefined {
   if (typeof provider !== "function") {
     return undefined;
   }

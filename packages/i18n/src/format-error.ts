@@ -33,10 +33,7 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       if (err instanceof ConfigWriteError) {
         return {
           code: err.code,
-          message: m.cli_error_config_write_failed(
-            { path: err.path },
-            { locale },
-          ),
+          message: m.cli_error_config_write_failed({ path: err.path }, { locale }),
         };
       }
       return {
@@ -47,10 +44,7 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       if (err instanceof PortOutOfRangeError) {
         return {
           code: err.code,
-          message: m.cli_error_port_out_of_range(
-            { port: err.port },
-            { locale },
-          ),
+          message: m.cli_error_port_out_of_range({ port: err.port }, { locale }),
         };
       }
       return {
@@ -65,10 +59,7 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
   }
 }
 
-export function formatUserError(
-  err: unknown,
-  locale: Locale,
-): FormattedUserError {
+export function formatUserError(err: unknown, locale: Locale): FormattedUserError {
   if (err instanceof ProviderNotInstalledError) {
     return {
       code: err.code,
@@ -93,10 +84,7 @@ export function formatUserError(
   if (err instanceof StaleProviderGenerationError) {
     return {
       code: err.code,
-      message: m.error_stale_provider_generation(
-        { provider: err.provider },
-        { locale },
-      ),
+      message: m.error_stale_provider_generation({ provider: err.provider }, { locale }),
     };
   }
 

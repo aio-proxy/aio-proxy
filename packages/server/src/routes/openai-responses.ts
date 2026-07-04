@@ -24,10 +24,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
   return new Hono()
     .post("/v1/responses", async (context) => {
       const contentLength = context.req.header("content-length");
-      if (
-        contentLength !== undefined &&
-        Number.parseInt(contentLength, 10) > maxBodyBytes
-      ) {
+      if (contentLength !== undefined && Number.parseInt(contentLength, 10) > maxBodyBytes) {
         return openAIError(413, "request_too_large", "Request body too large");
       }
 
@@ -42,10 +39,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
       }
 
       const provider = route.provider;
-      if (
-        provider.kind === ProviderKind.Api &&
-        provider.protocol === ProviderProtocol.OpenAIResponse
-      ) {
+      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAIResponse) {
         return provider.passthrough(context.req.raw);
       }
 
@@ -107,9 +101,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
     .get("/v1/responses/:id", () => unsupportedFeature("response_retrieval"));
 }
 
-async function parseRequest(
-  raw: Request,
-): Promise<ReturnType<typeof parseOpenAIResponses> | Response> {
+async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAIResponses> | Response> {
   try {
     return parseOpenAIResponses(await raw.clone().json());
   } catch (error) {
@@ -118,11 +110,7 @@ async function parseRequest(
     }
 
     if (error instanceof SyntaxError || error instanceof ZodError) {
-      return openAIError(
-        400,
-        "invalid_request",
-        "Invalid OpenAI Responses request",
-      );
+      return openAIError(400, "invalid_request", "Invalid OpenAI Responses request");
     }
 
     throw error;
@@ -141,9 +129,7 @@ function resolveRoute(source: ProviderRouteSource, model: string) {
   }
 }
 
-function aiSdkTools(
-  tools: readonly OpenAIResponsesTransformTool[] | undefined,
-): ToolSet | Response | undefined {
+function aiSdkTools(tools: readonly OpenAIResponsesTransformTool[] | undefined): ToolSet | Response | undefined {
   if (tools === undefined) {
     return undefined;
   }
@@ -156,9 +142,7 @@ function aiSdkTools(
 
     result[tool.name] = {
       type: "function",
-      ...(tool.description === undefined
-        ? {}
-        : { description: tool.description }),
+      ...(tool.description === undefined ? {} : { description: tool.description }),
       inputSchema: jsonSchema(jsonSchemaObject(tool.inputSchema)),
       outputSchema: jsonSchema({}),
     };
@@ -199,8 +183,5 @@ function unsupportedFeature(feature: string): Response {
 }
 
 function openAIError(status: number, code: string, message: string): Response {
-  return Response.json(
-    { error: { code, message, type: "invalid_request_error" } },
-    { status },
-  );
+  return Response.json({ error: { code, message, type: "invalid_request_error" } }, { status });
 }

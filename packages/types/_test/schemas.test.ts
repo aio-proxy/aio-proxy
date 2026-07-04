@@ -106,10 +106,7 @@ describe("ConfigSchema", () => {
   });
 
   test("rejects invalid server port at server.port", () => {
-    expectIssuePath({ server: { port: 0 }, providers: [apiProvider] }, [
-      "server",
-      "port",
-    ]);
+    expectIssuePath({ server: { port: 0 }, providers: [apiProvider] }, ["server", "port"]);
   });
 
   test("rejects missing providers at providers", () => {
@@ -117,18 +114,15 @@ describe("ConfigSchema", () => {
   });
 
   test("rejects unknown provider kind at providers.0.kind", () => {
-    expectIssuePath({ server: {}, providers: [{ kind: "unknown" }] }, [
-      "providers",
-      0,
-      "kind",
-    ]);
+    expectIssuePath({ server: {}, providers: [{ kind: "unknown" }] }, ["providers", 0, "kind"]);
   });
 
   test("rejects invalid api protocol at providers.0.protocol", () => {
-    expectIssuePath(
-      { server: {}, providers: [{ ...apiProvider, protocol: "bad-protocol" }] },
-      ["providers", 0, "protocol"],
-    );
+    expectIssuePath({ server: {}, providers: [{ ...apiProvider, protocol: "bad-protocol" }] }, [
+      "providers",
+      0,
+      "protocol",
+    ]);
   });
 
   test("rejects invalid subscription vendor at providers.0.vendor", () => {

@@ -27,11 +27,7 @@ export function readAccountLabel(payload: unknown): string | null {
 }
 
 export function readExpiresAt(payload: unknown): number | null {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "expiresAt" in payload
-  ) {
+  if (typeof payload === "object" && payload !== null && "expiresAt" in payload) {
     return typeof payload.expiresAt === "number" ? payload.expiresAt : null;
   }
   return null;
@@ -47,9 +43,5 @@ export function hasToken(payload: unknown): boolean {
   if ("accessToken" in payload && typeof payload.accessToken === "string") {
     return payload.accessToken.length > 0;
   }
-  return (
-    "token" in payload &&
-    typeof payload.token === "string" &&
-    payload.token.length > 0
-  );
+  return "token" in payload && typeof payload.token === "string" && payload.token.length > 0;
 }

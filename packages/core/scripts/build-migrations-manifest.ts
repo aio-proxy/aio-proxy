@@ -13,10 +13,7 @@ const migrationFiles = readdirSync(migrationsDir, { withFileTypes: true })
   .sort();
 
 const imports = migrationFiles
-  .map(
-    (file, index) =>
-      `import sql${index} from "./migrations/${file}" with { type: "text" };`,
-  )
+  .map((file, index) => `import sql${index} from "./migrations/${file}" with { type: "text" };`)
   .join("\n");
 
 const rows = migrationFiles
