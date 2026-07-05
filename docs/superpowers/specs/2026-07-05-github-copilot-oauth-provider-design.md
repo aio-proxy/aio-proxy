@@ -17,7 +17,8 @@
 | --- | --- |
 | Public kind | `kind: "oauth"` |
 | 公共抽象 | `BaseOAuthProvider` 抽象类 |
-| 登录入口 | 第一版只做 CLI，核心登录逻辑用 callbacks 暴露，后续 dashboard 复用 |
+| 登录入口 | 第一版只做 `aio-proxy provider login copilot`，核心登录逻辑用 callbacks 暴露，后续 dashboard 复用 |
+| Provider id | base class 用 `prefix-userId` 生成；Copilot prefix 为 `copilot` |
 | Token 来源 | 只支持 device login，不做 env fallback 或 token import |
 | OAuth client id | 使用 OpenClaw 参考实现里的 `Iv1.b507a08c87ecfe98` |
 | 模型来源 | 远端 `/models` 为准，本地 auth payload 缓存兜底 |
@@ -32,8 +33,11 @@
 
 `BaseOAuthProvider` 负责：
 
-- 读取、写入 `Auth` store 中 `(vendor, providerId)` 对应的 payload。
+- 持有 provider family prefix，例如 GitHub Copilot 使用 `copilot`。
 - 提供 `login(callbacks)`，由 CLI 或未来 dashboard 注入展示授权 URL、提示、进度、取消信号。
+- 接收子类登录返回的 `{ status, payload, userId, accountLabel? }`；base class 不解析 `payload`，只负责存储。
+- 用 `${prefix}-${userId}` 组装最终 provider id，并把 provider config 插入用户配置。
+- 读取、写入 `Auth` store 中 `(vendor, providerId)` 对应的 payload。
 - 提供 `models()`，同步返回当前本地模型缓存，供 Router 和 `/v1/models` 使用。
 - 提供 `syncModels({ force })`，异步刷新远端模型并更新 auth payload。
 - 提供 `ensureAvailable()`，缺登录态、刷新失败或没有模型缓存时返回可读错误。
@@ -42,6 +46,7 @@ GitHub Copilot 子类负责：
 
 - device code flow、polling、`slow_down`、超时和取消。
 - 用 GitHub OAuth access token 换短期 Copilot token。
+- 登录成功后调用 GitHub `GET /user` 解析账号身份。使用数字 `id` 作为稳定 `userId`；`login` 和公开 `email` 只作为展示 label，因为 email 可能为空且私有邮箱需要额外 scope。
 - 从 Copilot token 的 `proxy-ep` 推断 API base URL；无法推断时 enterprise 用 `https://copilot-api.{domain}`，默认 `https://api.individual.githubcopilot.com`。
 - 拉取 `/models`，过滤可用且 `model_picker_enabled=true` 的 chat 模型。
 - 对可见模型尝试 POST `/models/{id}/policy` 启用 policy；失败不阻断登录和同步。
@@ -103,12 +108,15 @@ Fallback 触发条件：
 
 ## 5. CLI 登录入口
 
-新增 `aio-proxy provider login <id>`：
+新增 `aio-proxy provider login copilot`：
 
-- 从 config 中查找 provider id，要求 kind 为 `oauth`。
-- 调用核心 `login(providerId, callbacks)`。
+- `copilot` 是 provider family，不是最终 provider id。
+- 调用核心 `login("copilot", callbacks)`。
 - CLI callbacks 在终端打印 verification URL、user code 和进度。
-- 登录成功后写入 auth payload，并强制执行一次模型同步。
+- 登录成功后 base class 生成 provider id，例如 `copilot-1234567`。
+- CLI 将 `{ kind: "oauth", vendor: "github-copilot" }` 插入 config 的 `providers[providerId]`。
+- 如果 `providers[providerId]` 已存在且也是 Copilot OAuth provider，只更新 auth payload 和模型缓存，不重复插入。
+- 写入 auth payload，并强制执行一次模型同步。
 
 这个 CLI 命令不承担 OAuth 逻辑，只负责把 terminal I/O 适配成 callbacks。dashboard 后续可用同一核心接口实现 start/poll/cancel 或 SSE UI。
 
@@ -123,7 +131,7 @@ Fallback 触发条件：
 
 ## 验收
 
-- `provider login <copilot-id>` 完成 device flow 后，auth store 有 token、base URL、模型缓存。
+- `provider login copilot` 完成 device flow 后，config 中出现 `copilot-<github-user-id>` provider，auth store 有 token、base URL、模型缓存。
 - `/v1/models` 展示远端 picker-enabled Copilot 模型。
 - Copilot provider 可通过 OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Gemini 入站协议的现有 transform route 调用。
 - Copilot `/models` 同步失败时，旧本地模型缓存仍可用。
