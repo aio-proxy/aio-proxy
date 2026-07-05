@@ -29,23 +29,21 @@ describe("GitHubCopilotOAuthProvider", () => {
     const home = isolateHome();
     let authUrl = "";
     let userCode = "";
-    const provider = new GitHubCopilotOAuthProvider({
-      fetch: fakeCopilotFetch(),
-      now: () => 1_000,
-      sleep: async () => undefined,
-    });
+    const provider = new GitHubCopilotOAuthProvider();
 
     try {
-      const result = await provider.login(
-        {},
-        {
-          onAuth: (info) => {
-            authUrl = info.url;
-            userCode = info.userCode ?? "";
+      const result = await withFetchMock(fakeCopilotFetch(), async () => {
+        return await provider.login(
+          {},
+          {
+            onAuth: (info) => {
+              authUrl = info.url;
+              userCode = info.userCode ?? "";
+            },
+            onProgress: () => undefined,
           },
-          onProgress: () => undefined,
-        },
-      );
+        );
+      });
 
       expect(authUrl).toBe("https://github.com/login/device?user_code=ABCD");
       expect(userCode).toBe("ABCD");
@@ -97,18 +95,21 @@ describe("GitHubCopilotOAuthProvider", () => {
 
   test("enterprise login validates domain before device flow", async () => {
     let called = false;
-    const provider = new GitHubCopilotOAuthProvider({
-      fetch: async () => {
+    const provider = new GitHubCopilotOAuthProvider();
+    await withFetchMock(
+      async () => {
         called = true;
         return Response.json({});
       },
-      now: () => 1_000,
-      sleep: async () => undefined,
-    });
-
-    await expect(
-      provider.login({ deploymentType: "enterprise", enterpriseUrl: "not a host name" }, { onAuth: () => undefined }),
-    ).rejects.toThrow("GitHub Enterprise URL or domain is required");
+      async () => {
+        await expect(
+          provider.login(
+            { deploymentType: "enterprise", enterpriseUrl: "not a host name" },
+            { onAuth: () => undefined },
+          ),
+        ).rejects.toThrow("GitHub Enterprise URL or domain is required");
+      },
+    );
     expect(called).toBe(false);
   });
 
@@ -191,4 +192,14 @@ function fakeCopilotFetch(): typeof fetch {
 
     return Response.json({ error: `unexpected ${url.pathname}` }, { status: 404 });
   };
+}
+
+async function withFetchMock<T>(fetchImpl: typeof fetch, run: () => Promise<T>): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }

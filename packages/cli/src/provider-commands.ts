@@ -1,14 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
-  Auth,
-  githubCopilotOAuthProvider,
-  normalizeDomain,
-  type OAuthLoginForm,
-  type OAuthLoginInput,
-  type OAuthPrompt,
-} from "@aio-proxy/auth-flows";
-import {
   listInstalledNpmPackages,
   NpmInstallError,
   NpmPackageEntrypointError,
@@ -16,6 +8,14 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
+import {
+  Auth,
+  githubCopilotOAuthProvider,
+  normalizeDomain,
+  type OAuthLoginForm,
+  type OAuthLoginInput,
+  type OAuthPrompt,
+} from "@aio-proxy/oauth";
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
 import { confirm, input, select } from "@inquirer/prompts";
 import { resolveConfigPath } from "./config-path";

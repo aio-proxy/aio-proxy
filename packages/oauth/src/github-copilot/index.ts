@@ -1,9 +1,17 @@
-import type { OAuthLoginCallbacks, OAuthLoginForm, OAuthLoginInput, OAuthProviderLoginResult } from "./oauth-provider";
-import { BaseOAuthProvider } from "./oauth-provider";
+import { fetchJson } from "@aio-proxy/core/utils";
+import type { OAuthLoginCallbacks, OAuthLoginForm, OAuthLoginInput, OAuthProviderLoginResult } from "../oauth-provider";
+import { BaseOAuthProvider } from "../oauth-provider";
+import {
+  type CopilotTransport,
+  copilotModelSchema,
+  copilotTokenResponseSchema,
+  deviceCodeResponseSchema,
+  githubTokenResponseSchema,
+  githubUserResponseSchema,
+  modelsResponseSchema,
+} from "./schema";
 
 const CLIENT_ID = "Iv1.b507a08c87ecfe98";
-
-type CopilotTransport = "chat" | "messages" | "responses";
 
 export type GitHubCopilotPayload = {
   readonly access: string;
@@ -17,12 +25,6 @@ export type GitHubCopilotPayload = {
     readonly transport: CopilotTransport;
   }[];
   readonly syncedAt: number;
-};
-
-type GitHubCopilotOAuthProviderOptions = {
-  readonly fetch?: typeof fetch;
-  readonly now?: () => number;
-  readonly sleep?: (ms: number) => Promise<void>;
 };
 
 export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotPayload> {
@@ -50,15 +52,8 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     ],
   } as const satisfies OAuthLoginForm;
 
-  private readonly fetch: typeof fetch;
-  private readonly now: () => number;
-  private readonly sleep: (ms: number) => Promise<void>;
-
-  constructor(options: GitHubCopilotOAuthProviderOptions = {}) {
+  constructor() {
     super("github-copilot", "copilot");
-    this.fetch = options.fetch ?? globalThis.fetch;
-    this.now = options.now ?? Date.now;
-    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   async login(
@@ -93,7 +88,7 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
       ...(enterpriseDomain === undefined ? {} : { enterpriseUrl: `https://${enterpriseDomain}` }),
       baseUrl,
       models,
-      syncedAt: this.now(),
+      syncedAt: Date.now(),
     };
     const providerId = this.providerId(user.id);
     this.store(providerId, payload, user.login);
@@ -108,8 +103,7 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   }
 
   private async requestDeviceCode(authBase: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(
-      this.fetch,
+    return await fetchJson(
       `${authBase}/login/device/code`,
       withSignal(
         {
@@ -119,16 +113,8 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
         },
         signal,
       ),
+      deviceCodeResponseSchema,
     );
-
-    return {
-      deviceCode: readString(json, "device_code"),
-      userCode: readString(json, "user_code"),
-      verificationUri: readString(json, "verification_uri"),
-      verificationUriComplete: readOptionalString(json, "verification_uri_complete"),
-      interval: readNumber(json, "interval") ?? 5,
-      expiresIn: readNumber(json, "expires_in") ?? 900,
-    };
   }
 
   private async pollGitHubToken(
@@ -137,10 +123,9 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     callbacks: OAuthLoginCallbacks,
   ): Promise<string> {
     let interval = device.interval;
-    const deadline = this.now() + device.expiresIn * 1_000;
-    while (this.now() <= deadline) {
-      const json = await fetchJson(
-        this.fetch,
+    const deadline = Date.now() + device.expiresIn * 1_000;
+    while (Date.now() <= deadline) {
+      const body = await fetchJson(
         `${authBase}/login/oauth/access_token`,
         withSignal(
           {
@@ -154,69 +139,65 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
           },
           callbacks.signal,
         ),
+        githubTokenResponseSchema,
       );
-      const accessToken = readOptionalString(json, "access_token");
-      if (accessToken !== undefined) {
-        return accessToken;
+      if (body.access_token !== undefined) {
+        return body.access_token;
       }
 
-      const error = readOptionalString(json, "error");
-      if (error === "authorization_pending") {
+      if (body.error === "authorization_pending") {
         callbacks.onProgress?.("Waiting for GitHub authorization");
-        await this.sleep(interval * 1_000);
+        await delay(interval * 1_000);
         continue;
       }
-      if (error === "slow_down") {
+      if (body.error === "slow_down") {
         interval += 5;
-        await this.sleep(interval * 1_000);
+        await delay(interval * 1_000);
         continue;
       }
-      throw new Error(error ?? "GitHub device authorization failed");
+      throw new Error(body.error ?? "GitHub device authorization failed");
     }
 
     throw new Error("GitHub device authorization timed out");
   }
 
   private async fetchCopilotToken(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(
-      this.fetch,
+    const body = await fetchJson(
       `${apiBase}/copilot_internal/v2/token`,
       withSignal({ headers: authHeaders(githubToken) }, signal),
+      copilotTokenResponseSchema,
     );
-    const access = readString(json, "token");
     return {
-      access,
-      expires: expiresAtMillis(readNumber(json, "expires_at"), access),
+      access: body.token,
+      expires: expiresAtMillis(body.expires_at, body.token),
     };
   }
 
   private async fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(
-      this.fetch,
+    const body = await fetchJson(
       `${apiBase}/user`,
       withSignal({ headers: authHeaders(githubToken) }, signal),
+      githubUserResponseSchema,
     );
-    const id = readNumber(json, "id")?.toString() ?? readString(json, "id");
     return {
-      id,
-      login: readOptionalString(json, "login"),
+      id: body.id.toString(),
+      login: body.login,
     };
   }
 
   private async fetchModels(baseUrl: string, copilotToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(
-      this.fetch,
+    const { data } = await fetchJson(
       `${baseUrl}/models`,
       withSignal({ headers: copilotHeaders(copilotToken) }, signal),
+      modelsResponseSchema,
     );
-    const data = readArray(json, "data");
     const models: GitHubCopilotPayload["models"][number][] = [];
     for (const item of data) {
       const model = modelEntry(item);
       if (model === undefined) {
         continue;
       }
-      const policy = await this.fetch(`${baseUrl}/models/${encodeURIComponent(model.id)}/policy`, {
+      const policy = await fetch(`${baseUrl}/models/${encodeURIComponent(model.id)}/policy`, {
         headers: copilotHeaders(copilotToken),
         ...(signal === undefined ? {} : { signal }),
       });
@@ -261,20 +242,15 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
 }
 
 function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | undefined {
-  if (typeof value !== "object" || value === null) {
+  const result = copilotModelSchema.safeParse(value);
+  if (!result.success) {
     return undefined;
   }
-  const record = value as Partial<CopilotModelRecord>;
+  const record = result.data;
   if (record.model_picker_enabled === false) {
     return undefined;
   }
-  const capabilities = record.capabilities;
-  if (Array.isArray(capabilities) && !capabilities.includes("chat")) {
-    return undefined;
-  }
-  const rawId = record.id;
-  const id = typeof rawId === "string" ? rawId : undefined;
-  if (id === undefined) {
+  if (record.capabilities !== undefined && !record.capabilities.includes("chat")) {
     return undefined;
   }
   const transport = transportFromEndpoints(record.endpoints);
@@ -282,25 +258,13 @@ function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | un
     return undefined;
   }
   return {
-    alias: typeof record.name === "string" ? record.name : id,
-    id,
+    alias: record.name ?? record.id,
+    id: record.id,
     transport,
   };
 }
 
-type CopilotModelRecord = {
-  readonly capabilities: unknown;
-  readonly endpoints: unknown;
-  readonly id: unknown;
-  readonly model_picker_enabled: unknown;
-  readonly name: unknown;
-};
-
-function transportFromEndpoints(value: unknown): CopilotTransport | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const endpoints = value.map((endpoint) => (typeof endpoint === "string" ? endpoint : JSON.stringify(endpoint)));
+function transportFromEndpoints(endpoints: readonly string[]): CopilotTransport | undefined {
   if (endpoints.some((endpoint) => endpoint.includes("/v1/messages"))) {
     return "messages";
   }
@@ -313,20 +277,12 @@ function transportFromEndpoints(value: unknown): CopilotTransport | undefined {
   return undefined;
 }
 
-async function fetchJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<Record<string, unknown>> {
-  const response = await fetchImpl(url, init);
-  const json = await response.json();
-  if (!response.ok) {
-    throw new Error(`GitHub Copilot request failed: ${response.status}`);
-  }
-  if (typeof json !== "object" || json === null || Array.isArray(json)) {
-    throw new Error("GitHub Copilot response was not an object");
-  }
-  return json as Record<string, unknown>;
-}
-
 function withSignal(init: RequestInit, signal: AbortSignal | undefined): RequestInit {
   return signal === undefined ? init : { ...init, signal };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -349,27 +305,4 @@ function copilotHeaders(token: string): HeadersInit {
 function expiresAtMillis(expiresAt: number | undefined, token: string): number {
   const value = expiresAt ?? Number(token.match(/(?:^|;)exp=(\d+)/)?.[1] ?? 0);
   return value > 1_000_000_000_000 ? value : value * 1_000;
-}
-
-function readString(record: Record<string, unknown>, key: string): string {
-  const value = readOptionalString(record, key);
-  if (value === undefined) {
-    throw new Error(`GitHub Copilot response missing ${key}`);
-  }
-  return value;
-}
-
-function readOptionalString(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function readNumber(record: Record<string, unknown>, key: string): number | undefined {
-  const value = record[key];
-  return typeof value === "number" ? value : undefined;
-}
-
-function readArray(record: Record<string, unknown>, key: string): readonly unknown[] {
-  const value = record[key];
-  return Array.isArray(value) ? value : [];
 }

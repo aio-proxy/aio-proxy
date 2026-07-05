@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Auth } from "@aio-proxy/auth-flows";
+import { Auth } from "@aio-proxy/oauth";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
 import { materializeProviders } from "../src/provider-runtime";
 

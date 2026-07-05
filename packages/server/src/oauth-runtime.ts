@@ -1,5 +1,5 @@
-import { Auth } from "@aio-proxy/auth-flows";
 import { createAiSdkProvider } from "@aio-proxy/core";
+import { Auth } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
 import { ProviderKind } from "@aio-proxy/types";
 import type { OAuthProviderInstance } from "./runtime";

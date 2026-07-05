@@ -1,9 +1,0 @@
-{
-  "extends": "@aio-proxy/infra/tsconfig/base.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "../dist/scripts",
-    "types": ["bun"]
-  },
-  "include": ["*.ts"]
-}
