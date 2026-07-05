@@ -1,5 +1,5 @@
 import { createAiSdkProvider } from "@aio-proxy/core";
-import { Auth } from "@aio-proxy/oauth";
+import { githubCopilotOAuthProvider } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
 import { ProviderKind } from "@aio-proxy/types";
 import type { OAuthProviderInstance } from "./runtime";
@@ -7,13 +7,11 @@ import type { OAuthProviderInstance } from "./runtime";
 type CopilotTransport = "chat" | "messages" | "responses";
 
 export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuthProviderInstance {
-  const row = Auth.get(config.vendor, config.id);
-  const payload = row?.payload as {
+  const payload = githubCopilotOAuthProvider.payload(config.id) as {
     access?: unknown;
     baseUrl?: unknown;
-    models?: unknown;
   } | null;
-  const cachedModels = cachedCopilotModels(payload?.models);
+  const cachedModels = cachedCopilotModels(config.models);
   const modelEntries =
     cachedModels === undefined ? config.models : cachedModels.map(({ alias, id }) => ({ alias, id }));
   const transportByModelId = new Map(cachedModels?.map(({ id, transport }) => [id, transport]) ?? []);

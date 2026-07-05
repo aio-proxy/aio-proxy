@@ -1,5 +1,12 @@
 import { fetchJson } from "@aio-proxy/core/utils";
-import type { OAuthLoginCallbacks, OAuthLoginForm, OAuthLoginInput, OAuthProviderLoginResult } from "../oauth-provider";
+import { m } from "@aio-proxy/i18n";
+import type {
+  OAuthLoginCallbacks,
+  OAuthLoginForm,
+  OAuthLoginInput,
+  OAuthProviderLoginResult,
+  OAuthProviderModel,
+} from "../oauth-provider";
 import { BaseOAuthProvider } from "../oauth-provider";
 import {
   type CopilotTransport,
@@ -19,33 +26,39 @@ export type GitHubCopilotPayload = {
   readonly expires: number;
   readonly enterpriseUrl?: string;
   readonly baseUrl: string;
-  readonly models: readonly {
-    readonly alias: string;
-    readonly id: string;
-    readonly transport: CopilotTransport;
-  }[];
-  readonly syncedAt: number;
+};
+
+export type GitHubCopilotModel = OAuthProviderModel & {
+  readonly transport: CopilotTransport;
 };
 
 export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotPayload> {
   readonly loginForm = {
     type: "oauth",
-    label: "Login with GitHub Copilot",
+    label: m["oauth.github-copilot.login_label"](),
     prompts: [
       {
         type: "select",
         key: "deploymentType",
-        message: "Select GitHub deployment type",
+        message: m["oauth.github-copilot.deployment_type.message"](),
         options: [
-          { label: "GitHub.com", value: "github.com", hint: "Public" },
-          { label: "GitHub Enterprise", value: "enterprise", hint: "Data residency or self-hosted" },
+          {
+            label: m["oauth.github-copilot.deployment_type.options.github.label"](),
+            value: "github.com",
+            hint: m["oauth.github-copilot.deployment_type.options.github.description"](),
+          },
+          {
+            label: m["oauth.github-copilot.deployment_type.options.github-enterprise.label"](),
+            value: "enterprise",
+            hint: m["oauth.github-copilot.deployment_type.options.github-enterprise.description"](),
+          },
         ],
       },
       {
         type: "text",
         key: "enterpriseUrl",
-        message: "Enter your GitHub Enterprise URL or domain",
-        placeholder: "company.ghe.com or https://company.ghe.com",
+        message: m["oauth.github-copilot.enterprise_url.message"](),
+        placeholder: m["oauth.github-copilot.enterprise_url.placeholder"](),
         when: { key: "deploymentType", op: "eq", value: "enterprise" },
         validate: { required: true, format: "domain-or-url" },
       },
@@ -80,15 +93,12 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     const copilot = await this.fetchCopilotToken(apiBase, githubToken, callbacks.signal);
     const baseUrl = getGitHubCopilotBaseUrl(copilot.access, enterpriseDomain ?? undefined);
     const user = await this.fetchGitHubUser(apiBase, githubToken, callbacks.signal);
-    const models = await this.fetchModels(baseUrl, copilot.access, callbacks.signal);
     const payload: GitHubCopilotPayload = {
       access: copilot.access,
       refresh: githubToken,
       expires: copilot.expires,
       ...(enterpriseDomain === undefined ? {} : { enterpriseUrl: `https://${enterpriseDomain}` }),
       baseUrl,
-      models,
-      syncedAt: Date.now(),
     };
     const providerId = this.providerId(user.id);
     this.store(providerId, payload, user.login);
@@ -105,14 +115,12 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   private async requestDeviceCode(authBase: string, signal: AbortSignal | undefined) {
     return await fetchJson(
       `${authBase}/login/device/code`,
-      withSignal(
-        {
-          body: new URLSearchParams({ client_id: CLIENT_ID, scope: "read:user" }),
-          headers: { accept: "application/json" },
-          method: "POST",
-        },
-        signal,
-      ),
+      {
+        body: new URLSearchParams({ client_id: CLIENT_ID, scope: "read:user" }),
+        headers: { accept: "application/json" },
+        method: "POST",
+        ...(signal === undefined ? {} : { signal }),
+      },
       deviceCodeResponseSchema,
     );
   }
@@ -127,18 +135,16 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     while (Date.now() <= deadline) {
       const body = await fetchJson(
         `${authBase}/login/oauth/access_token`,
-        withSignal(
-          {
-            body: new URLSearchParams({
-              client_id: CLIENT_ID,
-              device_code: device.deviceCode,
-              grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-            }),
-            headers: { accept: "application/json" },
-            method: "POST",
-          },
-          callbacks.signal,
-        ),
+        {
+          body: new URLSearchParams({
+            client_id: CLIENT_ID,
+            device_code: device.deviceCode,
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          }),
+          headers: { accept: "application/json" },
+          method: "POST",
+          ...(callbacks.signal === undefined ? {} : { signal: callbacks.signal }),
+        },
         githubTokenResponseSchema,
       );
       if (body.access_token !== undefined) {
@@ -147,12 +153,12 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
 
       if (body.error === "authorization_pending") {
         callbacks.onProgress?.("Waiting for GitHub authorization");
-        await delay(interval * 1_000);
+        await Bun.sleep(interval * 1_000);
         continue;
       }
       if (body.error === "slow_down") {
         interval += 5;
-        await delay(interval * 1_000);
+        await Bun.sleep(interval * 1_000);
         continue;
       }
       throw new Error(body.error ?? "GitHub device authorization failed");
@@ -164,7 +170,10 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   private async fetchCopilotToken(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
     const body = await fetchJson(
       `${apiBase}/copilot_internal/v2/token`,
-      withSignal({ headers: authHeaders(githubToken) }, signal),
+      {
+        headers: authHeaders(githubToken),
+        ...(signal === undefined ? {} : { signal }),
+      },
       copilotTokenResponseSchema,
     );
     return {
@@ -176,7 +185,10 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   private async fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
     const body = await fetchJson(
       `${apiBase}/user`,
-      withSignal({ headers: authHeaders(githubToken) }, signal),
+      {
+        headers: authHeaders(githubToken),
+        ...(signal === undefined ? {} : { signal }),
+      },
       githubUserResponseSchema,
     );
     return {
@@ -188,24 +200,24 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   private async fetchModels(baseUrl: string, copilotToken: string, signal: AbortSignal | undefined) {
     const { data } = await fetchJson(
       `${baseUrl}/models`,
-      withSignal({ headers: copilotHeaders(copilotToken) }, signal),
-      modelsResponseSchema,
-    );
-    const models: GitHubCopilotPayload["models"][number][] = [];
-    for (const item of data) {
-      const model = modelEntry(item);
-      if (model === undefined) {
-        continue;
-      }
-      const policy = await fetch(`${baseUrl}/models/${encodeURIComponent(model.id)}/policy`, {
+      {
         headers: copilotHeaders(copilotToken),
         ...(signal === undefined ? {} : { signal }),
-      });
-      if (policy.ok) {
-        models.push(model);
-      }
-    }
-    return models;
+      },
+      modelsResponseSchema,
+    );
+    return data.flatMap((item) => {
+      const model = modelEntry(item);
+      return model === undefined ? [] : [model];
+    });
+  }
+
+  async models(payload: GitHubCopilotPayload, signal?: AbortSignal): Promise<readonly GitHubCopilotModel[]> {
+    const enterpriseDomain =
+      payload.enterpriseUrl === undefined ? undefined : (normalizeDomain(payload.enterpriseUrl) ?? undefined);
+    const apiBase = enterpriseDomain === undefined ? "https://api.github.com" : `https://${enterpriseDomain}/api/v3`;
+    const copilot = await this.fetchCopilotToken(apiBase, payload.refresh, signal);
+    return await this.fetchModels(getGitHubCopilotBaseUrl(copilot.access, enterpriseDomain), copilot.access, signal);
   }
 }
 
@@ -241,7 +253,7 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
   return "https://api.githubcopilot.com";
 }
 
-function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | undefined {
+function modelEntry(value: unknown): GitHubCopilotModel | undefined {
   const result = copilotModelSchema.safeParse(value);
   if (!result.success) {
     return undefined;
@@ -250,7 +262,7 @@ function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | un
   if (record.model_picker_enabled === false) {
     return undefined;
   }
-  if (record.capabilities !== undefined && !record.capabilities.includes("chat")) {
+  if (record.capabilities === false) {
     return undefined;
   }
   const transport = transportFromEndpoints(record.endpoints);
@@ -258,7 +270,7 @@ function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | un
     return undefined;
   }
   return {
-    alias: record.name ?? record.id,
+    alias: record.id,
     id: record.id,
     transport,
   };
@@ -275,14 +287,6 @@ function transportFromEndpoints(endpoints: readonly string[]): CopilotTransport 
     return "chat";
   }
   return undefined;
-}
-
-function withSignal(init: RequestInit, signal: AbortSignal | undefined): RequestInit {
-  return signal === undefined ? init : { ...init, signal };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function authHeaders(token: string): HeadersInit {

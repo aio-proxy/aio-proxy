@@ -43,10 +43,26 @@ const endpointSchema = z.unknown().transform((endpoint) => {
   return typeof endpoint === "string" ? endpoint : (JSON.stringify(endpoint) ?? "");
 });
 
-export const copilotModelSchema = z.object({
-  capabilities: z.array(z.unknown()).optional(),
-  endpoints: z.array(endpointSchema),
-  id: z.string(),
-  model_picker_enabled: z.boolean().optional(),
-  name: z.string().optional(),
+const capabilitiesSchema = z.unknown().transform((capabilities) => {
+  if (Array.isArray(capabilities)) {
+    return capabilities.includes("chat");
+  }
+  if (typeof capabilities === "object" && capabilities !== null && "type" in capabilities) {
+    return capabilities.type === "chat";
+  }
+  return undefined;
 });
+
+export const copilotModelSchema = z
+  .object({
+    capabilities: capabilitiesSchema.optional(),
+    endpoints: z.array(endpointSchema).optional().default([]),
+    id: z.string(),
+    model_picker_enabled: z.boolean().optional(),
+    name: z.string().optional(),
+    supported_endpoints: z.array(endpointSchema).optional().default([]),
+  })
+  .transform(({ supported_endpoints, ...model }) => ({
+    ...model,
+    endpoints: [...model.endpoints, ...supported_endpoints],
+  }));
