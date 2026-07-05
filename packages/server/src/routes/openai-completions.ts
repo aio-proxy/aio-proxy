@@ -41,14 +41,15 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       provider.kind === ProviderKind.Api
         ? bridgeApiProviderToAiSdk({
             ...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
-            ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
+            baseUrl: provider.baseUrl,
+            enabled: provider.enabled,
             id: provider.id,
             kind: provider.kind,
             ...(provider.models === undefined ? {} : { models: [...provider.models] }),
             protocol: provider.protocol,
           })
         : provider;
-    if (aiSdkProvider === undefined || aiSdkProvider.kind !== ProviderKind.AiSdk) {
+    if (aiSdkProvider.kind !== ProviderKind.AiSdk) {
       return openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
     }
 

@@ -156,26 +156,6 @@ describe("bridgeApiProviderToAiSdk", () => {
     }
   });
 
-  test("Given api provider without baseUrl When bridged Then no bridge is created", () => {
-    // Given / When
-    const bridge = bridgeApiProviderToAiSdk(
-      {
-        kind: ProviderKind.Api,
-        id: "missing-base",
-        protocol: ProviderProtocol.OpenAICompatible,
-        models: ["gpt-test"],
-      },
-      {
-        async loadProvider() {
-          throw new Error("loadProvider should not be called");
-        },
-      },
-    );
-
-    // Then
-    expect(bridge).toBeUndefined();
-  });
-
   test("Given OpenAI Responses bridge When provider exposes responses Then responses model is preferred", async () => {
     // Given
     let responsesSeen: string | undefined;

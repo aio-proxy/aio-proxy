@@ -22,16 +22,13 @@ type ResponsesProvider = {
 export function bridgeApiProviderToAiSdk(
   provider: ApiProvider,
   options: AiSdkProviderFactoryOptions = {},
-): AiSdkProviderInstance | undefined {
+): AiSdkProviderInstance {
   const baseURL = provider.baseUrl;
-  if (baseURL === undefined) {
-    return undefined;
-  }
-
-  const providerId = provider.id ?? provider.protocol;
+  const providerId = provider.id;
   const mapping = bridgeMapping(provider, baseURL, providerId);
   const synthesized = {
     kind: ProviderKind.AiSdk,
+    enabled: provider.enabled,
     id: `${providerId}:bridge`,
     packageName: mapping.packageName,
     options: mapping.options,
