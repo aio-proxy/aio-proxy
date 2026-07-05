@@ -17,7 +17,7 @@ Design spec: `docs/superpowers/specs/2026-07-05-github-copilot-oauth-provider-de
 - `packages/types/src/provider.ts` and `packages/types/src/config.ts`: rename public config kind from `subscription` to `oauth`.
 - `packages/core/src/index.ts`: change `Router` to return ordered provider candidates.
 - `packages/server/src/route-dispatch.ts`: shared fallback helper for route files.
-- `packages/auth-flows/src/oauth-provider.ts`: `BaseOAuthProvider`, login result types, provider id assembly, and auth payload storage helpers.
+- `packages/auth-flows/src/oauth-provider.ts`: `BaseOAuthProvider`, serializable login form prompt types, login result types, provider id assembly, and auth payload storage helpers.
 - `packages/auth-flows/src/github-copilot.ts`: GitHub Copilot device flow, token refresh, identity lookup, model sync, and Copilot header helpers.
 - `packages/server/src/oauth-runtime.ts`: materialize configured OAuth providers into runtime provider instances.
 - `packages/server/src/provider-runtime.ts` and `packages/server/src/runtime.ts`: replace the current inert OAuth runtime object with a real invoke-capable provider.
@@ -460,6 +460,7 @@ git commit -m "feat(server): fallback across provider candidates"
 Create `packages/auth-flows/_test/github-copilot.test.ts` with tests that cover:
 
 - device login returns provider id `copilot-12345`;
+- `loginForm` exposes `deploymentType` and conditional `enterpriseUrl` prompts;
 - `GET /user` `email: null` still succeeds by using numeric `id`;
 - `/models` filters out `model_picker_enabled=false`;
 - token `proxy-ep=proxy.individual.githubcopilot.com` becomes `https://api.individual.githubcopilot.com`.
@@ -477,15 +478,46 @@ test("login creates provider id from GitHub numeric user id", async () => {
     sleep: async () => undefined,
   });
 
-  const result = await provider.login({
-    onAuth: () => undefined,
-    onProgress: () => undefined,
-  });
+  const result = await provider.login(
+    {},
+    {
+      onAuth: () => undefined,
+      onProgress: () => undefined,
+    },
+  );
 
   expect(result.providerId).toBe("copilot-12345");
   expect(result.userId).toBe("12345");
   expect(result.accountLabel).toBe("octocat");
   expect(result.payload.baseUrl).toBe("https://api.individual.githubcopilot.com");
+});
+
+test("exposes reusable login form prompts", () => {
+  const provider = new GitHubCopilotOAuthProvider();
+
+  expect(provider.loginForm).toEqual({
+    type: "oauth",
+    label: "Login with GitHub Copilot",
+    prompts: [
+      {
+        type: "select",
+        key: "deploymentType",
+        message: "Select GitHub deployment type",
+        options: [
+          { label: "GitHub.com", value: "github.com", hint: "Public" },
+          { label: "GitHub Enterprise", value: "enterprise", hint: "Data residency or self-hosted" },
+        ],
+      },
+      {
+        type: "text",
+        key: "enterpriseUrl",
+        message: "Enter your GitHub Enterprise URL or domain",
+        placeholder: "company.ghe.com or https://company.ghe.com",
+        when: { key: "deploymentType", op: "eq", value: "enterprise" },
+        validate: { required: true, format: "domain-or-url" },
+      },
+    ],
+  });
 });
 ```
 
@@ -521,6 +553,48 @@ export type OAuthLoginCallbacks = {
   readonly signal?: AbortSignal;
 };
 
+export type OAuthPromptWhen = {
+  readonly key: string;
+  readonly op: "eq";
+  readonly value: string;
+};
+
+export type OAuthPromptValidation = {
+  readonly required?: boolean;
+  readonly format?: "domain-or-url";
+};
+
+export type OAuthSelectPrompt = {
+  readonly type: "select";
+  readonly key: string;
+  readonly message: string;
+  readonly options: readonly {
+    readonly label: string;
+    readonly value: string;
+    readonly hint?: string;
+  }[];
+  readonly when?: OAuthPromptWhen;
+};
+
+export type OAuthTextPrompt = {
+  readonly type: "text";
+  readonly key: string;
+  readonly message: string;
+  readonly placeholder?: string;
+  readonly validate?: OAuthPromptValidation;
+  readonly when?: OAuthPromptWhen;
+};
+
+export type OAuthPrompt = OAuthSelectPrompt | OAuthTextPrompt;
+
+export type OAuthLoginForm = {
+  readonly type: "oauth";
+  readonly label: string;
+  readonly prompts: readonly OAuthPrompt[];
+};
+
+export type OAuthLoginInput = Record<string, string | undefined>;
+
 export type OAuthLoginPayload = {
   readonly access: string;
   readonly refresh: string;
@@ -537,6 +611,8 @@ export type OAuthProviderLoginResult<TPayload extends OAuthLoginPayload = OAuthL
 };
 
 export abstract class BaseOAuthProvider<TPayload extends OAuthLoginPayload = OAuthLoginPayload> {
+  abstract readonly loginForm: OAuthLoginForm;
+
   protected constructor(
     readonly vendor: string,
     private readonly prefix: string,
@@ -550,7 +626,10 @@ export abstract class BaseOAuthProvider<TPayload extends OAuthLoginPayload = OAu
     Auth.set(this.vendor, providerId, { ...payload, accountLabel }, providerId);
   }
 
-  abstract login(callbacks: OAuthLoginCallbacks): Promise<OAuthProviderLoginResult<TPayload>>;
+  abstract login(
+    input: OAuthLoginInput,
+    callbacks: OAuthLoginCallbacks,
+  ): Promise<OAuthProviderLoginResult<TPayload>>;
 }
 ```
 
@@ -563,10 +642,40 @@ Create `packages/auth-flows/src/github-copilot.ts` with:
 - `GitHubCopilotOAuthProvider`
 - exported `githubCopilotOAuthProvider = new GitHubCopilotOAuthProvider()`
 
+`GitHubCopilotOAuthProvider` must expose this serializable form definition so CLI/TUI/Dashboard can render the same login fields:
+
+```ts
+readonly loginForm = {
+  type: "oauth",
+  label: "Login with GitHub Copilot",
+  prompts: [
+    {
+      type: "select",
+      key: "deploymentType",
+      message: "Select GitHub deployment type",
+      options: [
+        { label: "GitHub.com", value: "github.com", hint: "Public" },
+        { label: "GitHub Enterprise", value: "enterprise", hint: "Data residency or self-hosted" },
+      ],
+    },
+    {
+      type: "text",
+      key: "enterpriseUrl",
+      message: "Enter your GitHub Enterprise URL or domain",
+      placeholder: "company.ghe.com or https://company.ghe.com",
+      when: { key: "deploymentType", op: "eq", value: "enterprise" },
+      validate: { required: true, format: "domain-or-url" },
+    },
+  ],
+} as const;
+```
+
 Implementation requirements:
 
 - Use `CLIENT_ID = "Iv1.b507a08c87ecfe98"`.
 - Use `scope=read:user`.
+- Treat missing `deploymentType` as `"github.com"`.
+- When `deploymentType === "enterprise"`, validate `enterpriseUrl` with `normalizeDomain()` and throw `Error("GitHub Enterprise URL or domain is required")` before starting the device flow if it is missing or invalid.
 - Poll `/login/oauth/access_token` until access token, `authorization_pending`, `slow_down`, timeout, or abort.
 - Refresh Copilot token through `/copilot_internal/v2/token`.
 - Call GitHub `GET /user` with the GitHub token and parse `id` as string `userId`; use `login` as `accountLabel`.
@@ -580,7 +689,14 @@ Implementation requirements:
 In `packages/auth-flows/src/index.ts`, export:
 
 ```ts
-export { BaseOAuthProvider, type OAuthLoginCallbacks, type OAuthProviderLoginResult } from "./oauth-provider";
+export {
+  BaseOAuthProvider,
+  type OAuthLoginCallbacks,
+  type OAuthLoginForm,
+  type OAuthLoginInput,
+  type OAuthProviderLoginResult,
+  type OAuthPrompt,
+} from "./oauth-provider";
 export {
   GitHubCopilotOAuthProvider,
   getGitHubCopilotBaseUrl,
@@ -975,15 +1091,18 @@ async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
     Auth.set("github-copilot", result.providerId, result.payload, result.providerId);
     return result;
   }
-  const result = await githubCopilotOAuthProvider.login({
-    onAuth: ({ url, instructions }) => {
-      console.log(url);
-      if (instructions !== undefined) {
-        console.log(instructions);
-      }
+  const result = await githubCopilotOAuthProvider.login(
+    {},
+    {
+      onAuth: ({ url, instructions }) => {
+        console.log(url);
+        if (instructions !== undefined) {
+          console.log(instructions);
+        }
+      },
+      onProgress: (message) => console.error(message),
     },
-    onProgress: (message) => console.error(message),
-  });
+  );
   return { payload: result.payload, providerId: result.providerId };
 }
 ```
