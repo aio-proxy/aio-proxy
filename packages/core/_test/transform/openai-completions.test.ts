@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { OpenAIChatRequest } from "../../src/index";
-import { modelMessagesToOpenAIChat, openaiChatToModelMessages, parseOpenAIChat } from "../../src/index";
+import type { OpenAICompletionsRequest } from "../../src/index";
+import {
+  modelMessagesToOpenAICompletions,
+  openAICompletionsToModelMessages,
+  parseOpenAICompletions,
+} from "../../src/index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/openai-chat`;
+const fixtureRoot = `${import.meta.dir}/../fixtures/openai-completions`;
 
 const validFixtures = [
   "valid-basic.json",
@@ -15,11 +19,11 @@ const validFixtures = [
 
 type FixtureFile = (typeof validFixtures)[number];
 
-async function readFixture(file: FixtureFile): Promise<OpenAIChatRequest> {
-  return parseOpenAIChat(await Bun.file(`${fixtureRoot}/${file}`).json());
+async function readFixture(file: FixtureFile): Promise<OpenAICompletionsRequest> {
+  return parseOpenAICompletions(await Bun.file(`${fixtureRoot}/${file}`).json());
 }
 
-function expectedRoundTrip(request: OpenAIChatRequest): OpenAIChatRequest {
+function expectedRoundTrip(request: OpenAICompletionsRequest): OpenAICompletionsRequest {
   return {
     ...request,
     tool_choice: undefined,
@@ -36,13 +40,13 @@ function expectedRoundTrip(request: OpenAIChatRequest): OpenAIChatRequest {
   };
 }
 
-describe("OpenAI Chat transform", () => {
+describe("OpenAI Completions transform", () => {
   for (const file of validFixtures) {
     test(`round-trips ${file}`, async () => {
       const request = await readFixture(file);
 
-      const converted = openaiChatToModelMessages(request);
-      const roundTrip = modelMessagesToOpenAIChat({
+      const converted = openAICompletionsToModelMessages(request);
+      const roundTrip = modelMessagesToOpenAICompletions({
         model: request.model,
         ...converted,
       });
@@ -54,9 +58,9 @@ describe("OpenAI Chat transform", () => {
   test("documents unsupported content part loss", async () => {
     const request = await readFixture("valid-content-parts.json");
 
-    const roundTrip = modelMessagesToOpenAIChat({
+    const roundTrip = modelMessagesToOpenAICompletions({
       model: request.model,
-      ...openaiChatToModelMessages(request),
+      ...openAICompletionsToModelMessages(request),
     });
 
     expect(roundTrip.messages[0]?.content).toEqual([{ type: "text", text: "Describe this image." }]);
@@ -65,7 +69,7 @@ describe("OpenAI Chat transform", () => {
   test("infers tool result names from preceding assistant tool calls", async () => {
     const request = await readFixture("valid-tool-message.json");
 
-    const { messages } = openaiChatToModelMessages(request);
+    const { messages } = openAICompletionsToModelMessages(request);
 
     expect(messages[1]).toEqual({
       role: "tool",
@@ -77,6 +81,21 @@ describe("OpenAI Chat transform", () => {
           output: { type: "text", value: '{"ok":true}' },
         },
       ],
+    });
+  });
+
+  test("maps developer messages to system messages", () => {
+    const request = parseOpenAICompletions({
+      model: "gpt-5.5",
+      messages: [
+        { role: "developer", content: "You are a helpful assistant." },
+        { role: "user", content: "Hello!" },
+      ],
+    });
+
+    expect(openAICompletionsToModelMessages(request).messages[0]).toEqual({
+      role: "system",
+      content: "You are a helpful assistant.",
     });
   });
 
@@ -100,7 +119,7 @@ describe("OpenAI Chat transform", () => {
       ],
     };
 
-    expect(() => openaiChatToModelMessages(request as OpenAIChatRequest)).toThrow(
+    expect(() => openAICompletionsToModelMessages(request as OpenAICompletionsRequest)).toThrow(
       "messages.0.tool_calls.0.function.name",
     );
   });

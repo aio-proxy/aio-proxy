@@ -24,9 +24,9 @@ export {
   writeGeminiGenerateContentSSE,
 } from "./egress/gemini-generate-content";
 export {
-  writeOpenAIChatCompletion,
-  writeOpenAIChatSSE,
-} from "./egress/openai-chat";
+  writeOpenAICompletionsResponse,
+  writeOpenAICompletionsSSE,
+} from "./egress/openai-completions";
 export {
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
@@ -46,7 +46,7 @@ export {
   NpmPackageEntrypointError,
   NpmPackageJsonError,
   NpmPackageNameError,
-  OpenAIChatTransformError,
+  OpenAICompletionsTransformError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
@@ -71,10 +71,10 @@ export {
   safeParseGeminiGenerateContent,
 } from "./ingress/gemini-generate-content";
 export {
-  type OpenAIChatRequest,
-  OpenAIChatRequestSchema,
-  parseOpenAIChat,
-} from "./ingress/openai-chat";
+  type OpenAICompletionsRequest,
+  OpenAICompletionsRequestSchema,
+  parseOpenAICompletions,
+} from "./ingress/openai-completions";
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesFunctionTool,
@@ -136,13 +136,13 @@ export {
   modelMessagesToGeminiGenerateContent,
 } from "./transform/gemini-generate-content";
 export {
-  type OpenAIChatFromModelMessages,
-  type OpenAIChatModelMessages,
-  type OpenAIChatTransformSettings,
-  type OpenAIChatTransformTool,
-  openaiChatToModelMessages,
-} from "./transform/openai-chat";
-export { modelMessagesToOpenAIChat } from "./transform/openai-chat-from-model";
+  type OpenAICompletionsFromModelMessages,
+  type OpenAICompletionsModelMessages,
+  type OpenAICompletionsTransformSettings,
+  type OpenAICompletionsTransformTool,
+  openAICompletionsToModelMessages,
+} from "./transform/openai-completions";
+export { modelMessagesToOpenAICompletions } from "./transform/openai-completions-from-model";
 export {
   modelMessagesToOpenAIResponses,
   type OpenAIResponsesFromModelMessages,

@@ -22,6 +22,10 @@ const ToolCallSchema = z.object({
 
 const MessageSchema = z.discriminatedUnion("role", [
   z.object({
+    role: z.literal("developer"),
+    content: MessageContentSchema,
+  }),
+  z.object({
     role: z.literal("system"),
     content: MessageContentSchema,
   }),
@@ -50,7 +54,7 @@ const ToolSchema = z.object({
   }),
 });
 
-export const OpenAIChatRequestSchema = z.object({
+export const OpenAICompletionsRequestSchema = z.object({
   model: IdSchema,
   messages: z.array(MessageSchema).min(1),
   tools: z.array(ToolSchema).optional(),
@@ -63,8 +67,8 @@ export const OpenAIChatRequestSchema = z.object({
   reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
 });
 
-export type OpenAIChatRequest = z.output<typeof OpenAIChatRequestSchema>;
+export type OpenAICompletionsRequest = z.output<typeof OpenAICompletionsRequestSchema>;
 
-export function parseOpenAIChat(input: unknown): OpenAIChatRequest {
-  return OpenAIChatRequestSchema.parse(input);
+export function parseOpenAICompletions(input: unknown): OpenAICompletionsRequest {
+  return OpenAICompletionsRequestSchema.parse(input);
 }

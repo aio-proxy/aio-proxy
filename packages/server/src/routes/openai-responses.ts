@@ -66,7 +66,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
           return Response.json(await writeOpenAIResponsesResponse(stream));
         } catch (error) {
           // no-excuse-ok: catch - HTTP boundary converts provider failures.
-          const ingressError = toIngressError(error, "openai-chat");
+          const ingressError = toIngressError(error, "openai");
           return Response.json(ingressError.body, {
             status: ingressError.status,
           });
@@ -85,7 +85,7 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         });
       } catch (error) {
         // no-excuse-ok: catch - HTTP boundary converts provider failures.
-        const ingressError = toIngressError(error, "openai-chat");
+        const ingressError = toIngressError(error, "openai");
         return Response.json(ingressError.body, {
           status: ingressError.status,
         });

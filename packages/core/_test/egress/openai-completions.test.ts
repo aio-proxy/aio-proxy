@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import type { TextStreamPart, ToolSet } from "ai";
-import { writeOpenAIChatSSE } from "../../src/index";
+import { writeOpenAICompletionsSSE } from "../../src/index";
 
 const doneFrame = "data: [DONE]\n\n";
 
@@ -50,7 +50,7 @@ function runtimePartStream(parts: readonly object[]) {
   });
 }
 
-describe("writeOpenAIChatSSE", () => {
+describe("writeOpenAICompletionsSSE", () => {
   test("Given AI SDK text stream When encoded Then uses text and total usage", async () => {
     const stream = aiSdkPartStream([
       { type: "text-start", id: "text-1" },
@@ -64,7 +64,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"pong"},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}\n\n' +
         doneFrame,
@@ -84,7 +84,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hel"},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"lo"},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n' +
@@ -109,7 +109,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":\\""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\":\\"pizza\\"}"}}]},"index":0}]}\n\n' +
@@ -137,7 +137,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"Checking "},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"index":0}]}\n\n' +
@@ -167,7 +167,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"second","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_a","type":"function","function":{"name":"first","arguments":""}}]},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_a","type":"function","function":{"name":"first","arguments":"{\\"a\\":1}"}}]},"index":0}]}\n\n' +
@@ -196,7 +196,7 @@ describe("writeOpenAIChatSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeOpenAIChatSSE(stream))).resolves.toBe(
+    await expect(collectSSE(writeOpenAICompletionsSSE(stream))).resolves.toBe(
       'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{"content":"safe"},"index":0}]}\n\n' +
         'data: {"id":"chatcmpl-aio-proxy","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}\n\n' +
         doneFrame,

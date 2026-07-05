@@ -150,9 +150,9 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
-export class OpenAIChatTransformError extends AioProxyError {
+export class OpenAICompletionsTransformError extends AioProxyError {
   constructor(readonly path: string) {
-    super("OpenAIChatTransformError", `Invalid OpenAI chat request at ${path}`);
+    super("OpenAICompletionsTransformError", `Invalid OpenAI Completions request at ${path}`);
   }
 }
 
