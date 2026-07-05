@@ -4,7 +4,7 @@ import type { ProviderInstance } from "../src/index";
 import { Router, RouterModelNotFoundError } from "../src/index";
 
 const copilot = {
-  kind: "subscription",
+  kind: "oauth",
   id: "copilot",
   vendor: "github-copilot",
   models: [{ alias: "sonnet", id: "claude-sonnet-4-5" }],

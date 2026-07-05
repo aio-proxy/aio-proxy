@@ -37,7 +37,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
         summaries.push(providerSummary(instance));
         break;
       }
-      case ProviderKind.Subscription: {
+      case ProviderKind.OAuth: {
         const instance = {
           enabled: provider.enabled,
           id,

@@ -3,7 +3,7 @@ import { ModelEntrySchema } from "./common";
 
 export enum ProviderKind {
   Api = "api",
-  Subscription = "subscription",
+  OAuth = "oauth",
   AiSdk = "ai-sdk",
 }
 
@@ -34,10 +34,10 @@ export const ApiProviderSchema = z.object({
   models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 
-export const SubscriptionProviderSchema = z.object({
-  kind: z.literal(ProviderKind.Subscription).describe("Provider backed by a local subscription account."),
+export const OAuthProviderSchema = z.object({
+  kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
   ...BaseProviderSchema,
-  vendor: z.literal("github-copilot").describe("Subscription vendor."),
+  vendor: z.literal("github-copilot").describe("OAuth vendor."),
   models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 
@@ -61,14 +61,14 @@ export const AiSdkProviderSchema = z.object({
 
 export const ProviderSchema = z.discriminatedUnion("kind", [
   ApiProviderSchema,
-  SubscriptionProviderSchema,
+  OAuthProviderSchema,
   AiSdkProviderSchema,
 ]);
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;
-export type SubscriptionProviderInput = z.input<typeof SubscriptionProviderSchema>;
-export type SubscriptionProvider = z.output<typeof SubscriptionProviderSchema>;
+export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
+export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;
 export type AiSdkProvider = z.output<typeof AiSdkProviderSchema>;
 export type ProviderInput = z.input<typeof ProviderSchema>;
