@@ -28,4 +28,16 @@ export default defineConfig({
   html: {
     title: "AIO Proxy Dashboard",
   },
+  server: {
+    proxy: {
+      "/dashboard/api": {
+        target: "http://127.0.0.1:22078",
+        on: {
+          proxyReq: (proxyReq) => {
+            proxyReq.setHeader("Origin", "http://127.0.0.1:22078");
+          },
+        },
+      },
+    },
+  },
 });
