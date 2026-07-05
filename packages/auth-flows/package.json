@@ -10,7 +10,7 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test _test/store.test.ts"
+    "test:unit": "bun test _test/*.test.ts"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",

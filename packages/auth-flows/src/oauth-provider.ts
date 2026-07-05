@@ -46,7 +46,10 @@ export type OAuthLoginForm = {
   readonly prompts: readonly OAuthPrompt[];
 };
 
-export type OAuthLoginInput = Record<string, string | undefined>;
+export type OAuthLoginInput = Record<string, string | undefined> & {
+  readonly deploymentType?: string;
+  readonly enterpriseUrl?: string;
+};
 
 export type OAuthLoginPayload = {
   readonly access: string;

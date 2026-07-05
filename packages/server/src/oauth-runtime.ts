@@ -1,6 +1,6 @@
 import { Auth } from "@aio-proxy/auth-flows";
 import { createAiSdkProvider } from "@aio-proxy/core";
-import type { ModelEntry, OAuthProvider } from "@aio-proxy/types";
+import type { OAuthProvider } from "@aio-proxy/types";
 import { ProviderKind } from "@aio-proxy/types";
 import type { OAuthProviderInstance } from "./runtime";
 
@@ -61,7 +61,9 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
   };
 }
 
-type CachedCopilotModel = ModelEntry & {
+type CachedCopilotModel = {
+  readonly alias: string;
+  readonly id: string;
   readonly transport: CopilotTransport;
 };
 
@@ -74,7 +76,7 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     if (typeof model !== "object" || model === null) {
       return false;
     }
-    const candidate = model as Record<string, unknown>;
+    const candidate = model as Partial<CachedCopilotModel>;
     return (
       typeof candidate.alias === "string" &&
       typeof candidate.id === "string" &&

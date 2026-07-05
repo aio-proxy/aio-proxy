@@ -70,7 +70,7 @@ export async function providerLogin(family: string, options: ProviderLoginOption
 }
 
 async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
-  const fake = process.env["AIO_PROXY_TEST_COPILOT_LOGIN"];
+  const fake = (process.env as { readonly AIO_PROXY_TEST_COPILOT_LOGIN?: string }).AIO_PROXY_TEST_COPILOT_LOGIN;
   if (fake !== undefined) {
     const result = JSON.parse(fake) as LoginForCliResult;
     Auth.set("github-copilot", result.providerId, result.payload, result.providerId);

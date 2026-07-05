@@ -98,7 +98,7 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     this.store(providerId, payload, user.login);
 
     return {
-      accountLabel: user.login,
+      ...(user.login === undefined ? {} : { accountLabel: user.login }),
       payload,
       providerId,
       status: "authenticated",
@@ -107,12 +107,18 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   }
 
   private async requestDeviceCode(authBase: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(this.fetch, `${authBase}/login/device/code`, {
-      body: new URLSearchParams({ client_id: CLIENT_ID, scope: "read:user" }),
-      headers: { accept: "application/json" },
-      method: "POST",
-      signal,
-    });
+    const json = await fetchJson(
+      this.fetch,
+      `${authBase}/login/device/code`,
+      withSignal(
+        {
+          body: new URLSearchParams({ client_id: CLIENT_ID, scope: "read:user" }),
+          headers: { accept: "application/json" },
+          method: "POST",
+        },
+        signal,
+      ),
+    );
 
     return {
       deviceCode: readString(json, "device_code"),
@@ -131,16 +137,22 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     let interval = device.interval;
     const deadline = this.now() + device.expiresIn * 1_000;
     while (this.now() <= deadline) {
-      const json = await fetchJson(this.fetch, `${authBase}/login/oauth/access_token`, {
-        body: new URLSearchParams({
-          client_id: CLIENT_ID,
-          device_code: device.deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
-        headers: { accept: "application/json" },
-        method: "POST",
-        signal: callbacks.signal,
-      });
+      const json = await fetchJson(
+        this.fetch,
+        `${authBase}/login/oauth/access_token`,
+        withSignal(
+          {
+            body: new URLSearchParams({
+              client_id: CLIENT_ID,
+              device_code: device.deviceCode,
+              grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+            }),
+            headers: { accept: "application/json" },
+            method: "POST",
+          },
+          callbacks.signal,
+        ),
+      );
       const accessToken = readOptionalString(json, "access_token");
       if (accessToken !== undefined) {
         return accessToken;
@@ -164,10 +176,11 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   }
 
   private async fetchCopilotToken(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(this.fetch, `${apiBase}/copilot_internal/v2/token`, {
-      headers: authHeaders(githubToken),
-      signal,
-    });
+    const json = await fetchJson(
+      this.fetch,
+      `${apiBase}/copilot_internal/v2/token`,
+      withSignal({ headers: authHeaders(githubToken) }, signal),
+    );
     const access = readString(json, "token");
     return {
       access,
@@ -176,10 +189,11 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   }
 
   private async fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(this.fetch, `${apiBase}/user`, {
-      headers: authHeaders(githubToken),
-      signal,
-    });
+    const json = await fetchJson(
+      this.fetch,
+      `${apiBase}/user`,
+      withSignal({ headers: authHeaders(githubToken) }, signal),
+    );
     const id = readNumber(json, "id")?.toString() ?? readString(json, "id");
     return {
       id,
@@ -188,10 +202,11 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
   }
 
   private async fetchModels(baseUrl: string, copilotToken: string, signal: AbortSignal | undefined) {
-    const json = await fetchJson(this.fetch, `${baseUrl}/models`, {
-      headers: copilotHeaders(copilotToken),
-      signal,
-    });
+    const json = await fetchJson(
+      this.fetch,
+      `${baseUrl}/models`,
+      withSignal({ headers: copilotHeaders(copilotToken) }, signal),
+    );
     const data = readArray(json, "data");
     const models: GitHubCopilotPayload["models"][number][] = [];
     for (const item of data) {
@@ -201,7 +216,7 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
       }
       const policy = await this.fetch(`${baseUrl}/models/${encodeURIComponent(model.id)}/policy`, {
         headers: copilotHeaders(copilotToken),
-        signal,
+        ...(signal === undefined ? {} : { signal }),
       });
       if (policy.ok) {
         models.push(model);
@@ -247,14 +262,16 @@ function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | un
   if (typeof value !== "object" || value === null) {
     return undefined;
   }
-  const record = value as Record<string, unknown>;
+  const record = value as Partial<CopilotModelRecord>;
   if (record.model_picker_enabled === false) {
     return undefined;
   }
-  if (Array.isArray(record.capabilities) && !record.capabilities.includes("chat")) {
+  const capabilities = record.capabilities;
+  if (Array.isArray(capabilities) && !capabilities.includes("chat")) {
     return undefined;
   }
-  const id = typeof record.id === "string" ? record.id : undefined;
+  const rawId = record.id;
+  const id = typeof rawId === "string" ? rawId : undefined;
   if (id === undefined) {
     return undefined;
   }
@@ -268,6 +285,14 @@ function modelEntry(value: unknown): GitHubCopilotPayload["models"][number] | un
     transport,
   };
 }
+
+type CopilotModelRecord = {
+  readonly capabilities: unknown;
+  readonly endpoints: unknown;
+  readonly id: unknown;
+  readonly model_picker_enabled: unknown;
+  readonly name: unknown;
+};
 
 function transportFromEndpoints(value: unknown): CopilotTransport | undefined {
   if (!Array.isArray(value)) {
@@ -296,6 +321,10 @@ async function fetchJson(fetchImpl: typeof fetch, url: string, init: RequestInit
     throw new Error("GitHub Copilot response was not an object");
   }
   return json as Record<string, unknown>;
+}
+
+function withSignal(init: RequestInit, signal: AbortSignal | undefined): RequestInit {
+  return signal === undefined ? init : { ...init, signal };
 }
 
 function authHeaders(token: string): HeadersInit {
