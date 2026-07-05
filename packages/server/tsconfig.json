@@ -17,7 +17,7 @@
       "path": "../core"
     },
     {
-      "path": "../auth-flows"
+      "path": "../oauth"
     }
   ]
 }

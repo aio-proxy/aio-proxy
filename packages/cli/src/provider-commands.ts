@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
   listInstalledNpmPackages,
@@ -7,8 +8,17 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
+import {
+  Auth,
+  githubCopilotOAuthProvider,
+  normalizeDomain,
+  type OAuthLoginForm,
+  type OAuthLoginInput,
+  type OAuthPrompt,
+} from "@aio-proxy/oauth";
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
-import { confirm } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
+import { resolveConfigPath } from "./config-path";
 import { ProviderDashboardError } from "./errors";
 
 export type ProviderInstallOptions = {
@@ -21,6 +31,15 @@ export type ProviderListOptions = {
   readonly installed?: boolean;
   readonly probe?: boolean;
   readonly url?: string;
+};
+
+export type ProviderLoginOptions = {
+  readonly config?: string;
+};
+
+type LoginForCliResult = {
+  readonly payload: Record<string, unknown>;
+  readonly providerId: string;
 };
 
 const defaultDashboardUrl = "http://127.0.0.1:22078";
@@ -40,6 +59,151 @@ export async function providerInstall(pkg: string, options: ProviderInstallOptio
   }
   const installed = await npmAdd(pkg, options.registry);
   console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
+}
+
+export async function providerLogin(family: string, options: ProviderLoginOptions): Promise<void> {
+  if (family !== "copilot") {
+    console.error(`unknown oauth provider family: ${family}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const result = await runCopilotLoginForCli();
+  const configPath = resolveConfigPath(options.config);
+  const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
+  const providers = config.providers ?? {};
+  providers[result.providerId] = { kind: "oauth", vendor: "github-copilot" };
+  await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
+  console.log(result.providerId);
+}
+
+async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
+  const fake = (process.env as { readonly AIO_PROXY_TEST_COPILOT_LOGIN?: string }).AIO_PROXY_TEST_COPILOT_LOGIN;
+  if (fake !== undefined) {
+    const result = JSON.parse(fake) as LoginForCliResult;
+    Auth.set("github-copilot", result.providerId, result.payload, result.providerId);
+    return result;
+  }
+
+  const result = await githubCopilotOAuthProvider.login(
+    await collectOAuthLoginInput(githubCopilotOAuthProvider.loginForm),
+    {
+      onAuth: ({ url, instructions, userCode }) => {
+        clearProgressLine();
+        if (userCode !== undefined && copyToClipboard(userCode)) {
+          console.log("Copied GitHub device code to clipboard.");
+        }
+        if (openBrowser(url)) {
+          console.log("Opened GitHub login in your default browser.");
+        }
+        console.log(url);
+        if (instructions !== undefined) {
+          console.log(instructions);
+        }
+      },
+      onProgress: (message) => writeProgressLine(message),
+    },
+  );
+  clearProgressLine();
+  return { payload: result.payload, providerId: result.providerId };
+}
+
+async function collectOAuthLoginInput(form: OAuthLoginForm): Promise<OAuthLoginInput> {
+  if (process.stdin.isTTY !== true) {
+    return {};
+  }
+
+  const values: Record<string, string | undefined> = {};
+  for (const prompt of form.prompts) {
+    if (!shouldShowPrompt(prompt, values)) {
+      continue;
+    }
+    if (prompt.type === "select") {
+      values[prompt.key] = await select({
+        message: prompt.message,
+        choices: prompt.options.map((option) => ({
+          name: option.label,
+          value: option.value,
+          ...(option.hint === undefined ? {} : { description: option.hint }),
+        })),
+      });
+      continue;
+    }
+    values[prompt.key] = await input({
+      message: prompt.placeholder === undefined ? prompt.message : `${prompt.message} (${prompt.placeholder})`,
+      validate: (value) => validateTextPrompt(prompt, value),
+    });
+  }
+
+  return values;
+}
+
+function shouldShowPrompt(prompt: OAuthPrompt, values: Record<string, string | undefined>): boolean {
+  if (prompt.when === undefined) {
+    return true;
+  }
+  return prompt.when.op === "eq" && values[prompt.when.key] === prompt.when.value;
+}
+
+function validateTextPrompt(prompt: Extract<OAuthPrompt, { type: "text" }>, value: string): true | string {
+  if (prompt.validate?.required === true && value.trim() === "") {
+    return "URL or domain is required";
+  }
+  if (prompt.validate?.format === "domain-or-url" && normalizeDomain(value) === null) {
+    return "Please enter a valid URL (e.g., company.ghe.com or https://company.ghe.com)";
+  }
+  return true;
+}
+
+function writeProgressLine(message: string): void {
+  if (process.stderr.isTTY !== true) {
+    return;
+  }
+  process.stderr.write(`\r${message}...`);
+}
+
+function clearProgressLine(): void {
+  if (process.stderr.isTTY !== true) {
+    return;
+  }
+  process.stderr.write("\r\x1b[2K");
+}
+
+function openBrowser(url: string): boolean {
+  const command =
+    process.platform === "darwin"
+      ? { bin: "open", args: [url] }
+      : process.platform === "win32"
+        ? { bin: "cmd", args: ["/c", "start", "", url] }
+        : { bin: "xdg-open", args: [url] };
+  try {
+    const child = spawn(command.bin, command.args, { detached: true, stdio: "ignore" });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function copyToClipboard(value: string): boolean {
+  const commands =
+    process.platform === "darwin"
+      ? [{ bin: "pbcopy", args: [] as string[] }]
+      : process.platform === "win32"
+        ? [{ bin: "clip", args: [] as string[] }]
+        : [
+            { bin: "wl-copy", args: [] as string[] },
+            { bin: "xclip", args: ["-selection", "clipboard"] },
+            { bin: "xsel", args: ["--clipboard", "--input"] },
+          ];
+
+  return commands.some((command) => {
+    try {
+      return spawnSync(command.bin, command.args, { input: value, stdio: ["pipe", "ignore", "ignore"] }).status === 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function confirmInstall(pkg: string): Promise<boolean> {

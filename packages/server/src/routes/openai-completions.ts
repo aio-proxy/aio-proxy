@@ -1,5 +1,4 @@
 import {
-  bridgeApiProviderToAiSdk,
   openAICompletionsToModelMessages,
   parseOpenAICompletions,
   RouterModelNotFoundError,
@@ -11,6 +10,7 @@ import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { ensureAiSdkProviderAvailable } from "../provider-availability";
+import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
 import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -27,35 +27,31 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       return request;
     }
 
-    const route = resolveRoute(source, request.model);
-    if (route instanceof Response) {
-      return route;
-    }
-
-    const provider = route.provider;
-    if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAICompatible) {
-      return provider.passthrough(context.req.raw);
-    }
-
-    const aiSdkProvider =
-      provider.kind === ProviderKind.Api
-        ? bridgeApiProviderToAiSdk({
-            ...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
-            baseUrl: provider.baseUrl,
-            enabled: provider.enabled,
-            id: provider.id,
-            kind: provider.kind,
-            ...(provider.models === undefined ? {} : { models: [...provider.models] }),
-            protocol: provider.protocol,
-          })
-        : provider;
-    if (aiSdkProvider.kind !== ProviderKind.AiSdk) {
-      return openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
+    const candidates = resolveCandidates(source, request.model);
+    if (candidates instanceof RouterModelNotFoundError) {
+      return openAIError(404, "model_not_found", candidates.message);
     }
 
     const transformed = openAICompletionsToModelMessages(request);
+    let last = openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
+    for (const [index, route] of candidates.entries()) {
+      const hasNext = index < candidates.length - 1;
+      const provider = route.provider;
+      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAICompatible) {
+        const response = await provider.passthrough(context.req.raw.clone());
+        if (hasNext && shouldTryNextResponse(response)) {
+          last = response;
+          continue;
+        }
+        return response;
+      }
 
-    if (request.stream !== true) {
+      const aiSdkProvider = toAiSdkProvider(provider);
+      if (aiSdkProvider === undefined) {
+        last = openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
+        continue;
+      }
+
       try {
         await ensureAiSdkProviderAvailable(aiSdkProvider);
         const stream = aiSdkProvider.invoke({
@@ -64,38 +60,30 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
           settings: transformed.settings,
           signal: context.req.raw.signal,
         });
-        return Response.json(await writeOpenAICompletionsResponse(stream));
+        if (request.stream !== true) {
+          return Response.json(await writeOpenAICompletionsResponse(stream));
+        }
+
+        return new Response(writeOpenAICompletionsSSE(stream), {
+          headers: {
+            "cache-control": "no-cache",
+            "content-type": "text/event-stream; charset=utf-8",
+          },
+        });
       } catch (error) {
         // no-excuse-ok: catch - HTTP boundary converts provider failures.
         const ingressError = toIngressError(error, "openai");
-        return Response.json(ingressError.body, {
+        last = Response.json(ingressError.body, {
           status: ingressError.status,
         });
+        if (hasNext && shouldTryNextResponse(last)) {
+          continue;
+        }
+        return last;
       }
     }
 
-    try {
-      await ensureAiSdkProviderAvailable(aiSdkProvider);
-      const stream = aiSdkProvider.invoke({
-        messages: transformed.messages,
-        modelId: route.modelId,
-        settings: transformed.settings,
-        signal: context.req.raw.signal,
-      });
-
-      return new Response(writeOpenAICompletionsSSE(stream), {
-        headers: {
-          "cache-control": "no-cache",
-          "content-type": "text/event-stream; charset=utf-8",
-        },
-      });
-    } catch (error) {
-      // no-excuse-ok: catch - HTTP boundary converts provider failures.
-      const ingressError = toIngressError(error, "openai");
-      return Response.json(ingressError.body, {
-        status: ingressError.status,
-      });
-    }
+    return last;
   });
 }
 
@@ -105,18 +93,6 @@ async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAI
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
       return openAIError(400, "invalid_request", "Invalid OpenAI Completions request");
-    }
-
-    throw error;
-  }
-}
-
-function resolveRoute(source: ProviderRouteSource, model: string) {
-  try {
-    return source.currentProviderSnapshot().router.resolve(model);
-  } catch (error) {
-    if (error instanceof RouterModelNotFoundError) {
-      return openAIError(404, "model_not_found", error.message);
     }
 
     throw error;

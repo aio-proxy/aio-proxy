@@ -10,6 +10,7 @@ import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
+import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -27,62 +28,68 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
         return request;
       }
 
-      const route = resolveRoute(source, request.model);
-      if (route instanceof Response) {
-        return route;
-      }
-
-      const provider = route.provider;
-      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Anthropic) {
-        return provider.passthrough(context.req.raw);
-      }
-
-      if (provider.kind !== ProviderKind.AiSdk) {
-        return anthropicError(
-          501,
-          "invalid_request_error",
-          "Provider does not support Anthropic Messages transform dispatch",
-        );
+      const candidates = resolveCandidates(source, request.model);
+      if (candidates instanceof RouterModelNotFoundError) {
+        return anthropicError(404, "not_found_error", candidates.message);
       }
 
       const transformed = anthropicMessagesToModelMessages(request);
+      let last = anthropicError(
+        501,
+        "invalid_request_error",
+        "Provider does not support Anthropic Messages transform dispatch",
+      );
+      for (const [index, route] of candidates.entries()) {
+        const hasNext = index < candidates.length - 1;
+        const provider = route.provider;
+        if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Anthropic) {
+          const response = await provider.passthrough(context.req.raw.clone());
+          if (hasNext && shouldTryNextResponse(response)) {
+            last = response;
+            continue;
+          }
+          return response;
+        }
 
-      if (request.stream === true) {
-        let stream: ReturnType<typeof provider.invoke>;
+        const aiSdkProvider = toAiSdkProvider(provider);
+        if (aiSdkProvider === undefined) {
+          last = anthropicError(
+            501,
+            "invalid_request_error",
+            "Provider does not support Anthropic Messages transform dispatch",
+          );
+          continue;
+        }
+
         try {
-          await ensureAiSdkProviderAvailable(provider);
-          stream = provider.invoke({
+          await ensureAiSdkProviderAvailable(aiSdkProvider);
+          const stream = aiSdkProvider.invoke({
             messages: aiSdkMessages(transformed.messages),
             modelId: route.modelId,
             settings: transformed.settings,
             signal: context.req.raw.signal,
           });
+          if (request.stream !== true) {
+            return Response.json(await anthropicMessage(stream));
+          }
+
+          return new Response(writeAnthropicMessagesSSE(stream), {
+            headers: {
+              "cache-control": "no-cache",
+              "content-type": "text/event-stream; charset=utf-8",
+            },
+          });
         } catch (error) {
           // no-excuse-ok: catch - HTTP boundary converts provider failures.
-          return anthropicProviderError(error);
+          last = anthropicProviderError(error);
+          if (hasNext && shouldTryNextResponse(last)) {
+            continue;
+          }
+          return last;
         }
-
-        return new Response(writeAnthropicMessagesSSE(stream), {
-          headers: {
-            "cache-control": "no-cache",
-            "content-type": "text/event-stream; charset=utf-8",
-          },
-        });
       }
 
-      try {
-        await ensureAiSdkProviderAvailable(provider);
-        const stream = provider.invoke({
-          messages: aiSdkMessages(transformed.messages),
-          modelId: route.modelId,
-          settings: transformed.settings,
-          signal: context.req.raw.signal,
-        });
-        return Response.json(await anthropicMessage(stream));
-      } catch (error) {
-        // no-excuse-ok: catch - HTTP boundary converts provider failures.
-        return anthropicProviderError(error);
-      }
+      return last;
     })
     .post("/v1/messages/count_tokens", async (context) => {
       const request = await parseRequest(context.req.raw);
@@ -100,18 +107,6 @@ async function parseRequest(raw: Request): Promise<ReturnType<typeof parseAnthro
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
       return anthropicError(400, "invalid_request_error", "Invalid Anthropic Messages request");
-    }
-
-    throw error;
-  }
-}
-
-function resolveRoute(source: ProviderRouteSource, model: string) {
-  try {
-    return source.currentProviderSnapshot().router.resolve(model);
-  } catch (error) {
-    if (error instanceof RouterModelNotFoundError) {
-      return anthropicError(404, "not_found_error", error.message);
     }
 
     throw error;

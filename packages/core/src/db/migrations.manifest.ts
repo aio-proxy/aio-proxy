@@ -1,5 +1,4 @@
-// AUTO-GENERATED - do not edit. Regenerate via `bun run build:migrations`.
-import sql0 from "./migrations/0000_auth.sql" with { type: "text" };
+import { createHash } from "node:crypto";
 
 export type Migration = {
   readonly version: number;
@@ -8,13 +7,31 @@ export type Migration = {
   readonly sql: string;
 };
 
-export const COMPILED_SCHEMA_VERSION = 1;
+type GlobOptions = {
+  readonly eager: true;
+  readonly import: "default";
+  readonly query: "?raw";
+};
 
-export const MIGRATIONS: readonly Migration[] = [
-  {
-    version: 1,
-    file: "0000_auth.sql",
-    sha256: "eb1e949c83a040008245b395c29aa2dad4eee7786bae8875660094e2f8cf9ab0",
-    sql: sql0,
-  },
-];
+declare global {
+  interface ImportMeta {
+    glob<T>(pattern: string, options: GlobOptions): Record<string, T>;
+  }
+}
+
+const migrationSql = import.meta.glob<string>("./migrations/*.sql", {
+  eager: true,
+  import: "default",
+  query: "?raw",
+});
+
+export const MIGRATIONS: readonly Migration[] = Object.entries(migrationSql)
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([path, sql], index) => ({
+    version: index + 1,
+    file: path.split("/").at(-1) ?? path,
+    sha256: createHash("sha256").update(sql).digest("hex"),
+    sql,
+  }));
+
+export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

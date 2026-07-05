@@ -14,10 +14,7 @@
       "path": "./packages/core"
     },
     {
-      "path": "./packages/core/scripts"
-    },
-    {
-      "path": "./packages/auth-flows"
+      "path": "./packages/oauth"
     },
     {
       "path": "./packages/server"

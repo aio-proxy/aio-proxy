@@ -167,13 +167,15 @@ export type RouterResolution<TProvider extends ProviderInstance = ProviderInstan
   readonly modelId: string;
 };
 
+export type RouterCandidate<TProvider extends ProviderInstance = ProviderInstance> = RouterResolution<TProvider>;
+
 type ModelRoute = {
   readonly alias: string;
   readonly modelId: string;
 };
 
 export class Router<TProvider extends ProviderInstance = ProviderInstance> {
-  private readonly aliases = new Map<string, RouterResolution<TProvider>>();
+  private readonly aliases = new Map<string, RouterCandidate<TProvider>[]>();
   private readonly providerAliases = new Map<string, RouterResolution<TProvider>>();
 
   constructor(providers: readonly TProvider[]) {
@@ -187,14 +189,14 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
     }
   }
 
-  resolve(model: string): RouterResolution<TProvider> {
+  resolve(model: string): RouterCandidate<TProvider>[] {
     const route = model.indexOf("/") > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
 
     if (route === undefined) {
       throw new RouterModelNotFoundError(model);
     }
 
-    return route;
+    return Array.isArray(route) ? route : [route];
   }
 
   private addRoute(provider: TProvider, model: ModelRoute): void {
@@ -206,13 +208,10 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
       throw new RouterModelCollisionError(model.alias, existingProviderRoute.provider.id, provider.id);
     }
 
-    const existingRoute = this.aliases.get(model.alias);
-    if (existingRoute !== undefined && existingRoute.provider.id !== provider.id) {
-      throw new RouterModelCollisionError(model.alias, existingRoute.provider.id, provider.id);
-    }
-
     this.providerAliases.set(providerAlias, route);
-    this.aliases.set(model.alias, route);
+    const routes = this.aliases.get(model.alias) ?? [];
+    routes.push(route);
+    this.aliases.set(model.alias, routes);
   }
 }
 
