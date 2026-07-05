@@ -259,6 +259,84 @@ describe("POST /v1/chat/completions", () => {
     expect(body.choices[0].message.content).toBe("Hello");
   });
 
+  test("Given first provider returns 429 When completion is posted Then next provider is used", async () => {
+    const first = {
+      id: "rate-limited",
+      kind: "api",
+      models: ["gpt-5-mini"],
+      protocol: ProviderProtocol.OpenAICompatible,
+      passthrough: async () => Response.json({ error: "rate limited" }, { status: 429 }),
+    } satisfies ApiProviderInstance;
+    const second = {
+      id: "ok",
+      kind: "ai-sdk",
+      models: ["gpt-5-mini"],
+      invoke: () =>
+        textStream([
+          { type: "text-start", id: "fallback" },
+          { type: "text-delta", id: "fallback", text: "fallback ok" },
+          { type: "text-end", id: "fallback" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]),
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5-mini", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(body)).toContain("fallback ok");
+  });
+
+  test("Given first provider returns 400 When completion is posted Then no fallback occurs", async () => {
+    let secondCalled = false;
+    const first = {
+      id: "bad-request",
+      kind: "api",
+      models: ["gpt-5-mini"],
+      protocol: ProviderProtocol.OpenAICompatible,
+      passthrough: async () => Response.json({ error: "bad request" }, { status: 400 }),
+    } satisfies ApiProviderInstance;
+    const second = {
+      id: "ok",
+      kind: "ai-sdk",
+      models: ["gpt-5-mini"],
+      invoke: () => {
+        secondCalled = true;
+        return textStream([
+          { type: "text-start", id: "fallback" },
+          { type: "text-delta", id: "fallback", text: "fallback ok" },
+          { type: "text-end", id: "fallback" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5-mini", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(secondCalled).toBe(false);
+  });
+
   test("Given ai-sdk provider returns upstream status error When non-stream completion is posted Then OpenAI error hides provider id", async () => {
     // Given
     const provider = {

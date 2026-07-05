@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AiSdkProviderSchema, ApiProviderSchema, ProviderSchema, SubscriptionProviderSchema } from "./provider";
+import { AiSdkProviderSchema, ApiProviderSchema, OAuthProviderSchema, ProviderSchema } from "./provider";
 
 export const ServerConfigSchema = z.object({
   host: z.string().min(1).default("127.0.0.1").describe("HTTP host for the proxy API server."),
@@ -8,7 +8,7 @@ export const ServerConfigSchema = z.object({
 
 const ProviderInputValueSchema = z.discriminatedUnion("kind", [
   ApiProviderSchema.omit({ id: true }),
-  SubscriptionProviderSchema.omit({ id: true }),
+  OAuthProviderSchema.omit({ id: true }),
   AiSdkProviderSchema.omit({ id: true }),
 ]);
 

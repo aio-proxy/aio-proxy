@@ -13,7 +13,7 @@
     "test:unit": "bun test _test"
   },
   "dependencies": {
-    "@aio-proxy/auth-flows": "workspace:*",
+    "@aio-proxy/oauth": "workspace:*",
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/types": "workspace:*",

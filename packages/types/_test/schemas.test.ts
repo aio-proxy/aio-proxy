@@ -42,9 +42,9 @@ describe("ConfigSchema", () => {
     });
   });
 
-  test("accepts subscription provider config", () => {
+  test("accepts oauth provider config", () => {
     const provider = {
-      kind: "subscription",
+      kind: "oauth",
       vendor: "github-copilot",
       models: ["gpt-5-mini"],
     };
@@ -100,7 +100,7 @@ describe("ConfigSchema", () => {
   test("accepts mixed provider config", () => {
     const input = {
       openai: apiProvider,
-      copilot: { kind: "subscription", vendor: "github-copilot" },
+      copilot: { kind: "oauth", vendor: "github-copilot" },
       anthropic: { kind: "ai-sdk", packageName: "@ai-sdk/anthropic" },
     };
 
@@ -113,7 +113,7 @@ describe("ConfigSchema", () => {
       server: { host: "0.0.0.0", port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
-        { kind: "subscription", enabled: true, id: "copilot", vendor: "github-copilot" },
+        { kind: "oauth", enabled: true, id: "copilot", vendor: "github-copilot" },
         { kind: "ai-sdk", enabled: true, id: "anthropic", packageName: "@ai-sdk/anthropic" },
       ],
     });
@@ -178,11 +178,11 @@ describe("ConfigSchema", () => {
     expectIssuePath({ server: {}, providers: { openai: provider } }, ["providers", "openai", "baseUrl"]);
   });
 
-  test("rejects invalid subscription vendor at providers.copilot.vendor", () => {
+  test("rejects invalid oauth vendor at providers.copilot.vendor", () => {
     expectIssuePath(
       {
         server: {},
-        providers: { copilot: { kind: "subscription", vendor: "github" } },
+        providers: { copilot: { kind: "oauth", vendor: "github" } },
       },
       ["providers", "copilot", "vendor"],
     );

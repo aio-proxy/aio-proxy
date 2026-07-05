@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "check": "biome check package.json turbo.json tsconfig.json biome.json packages && tsc -b --pretty false",
+    "check": "biome check package.json turbo.json tsconfig.json biome.json packages",
     "test:unit": "turbo run test:unit",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test",

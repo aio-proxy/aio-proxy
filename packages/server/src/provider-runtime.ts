@@ -1,6 +1,7 @@
 import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { createGitHubCopilotRuntimeProvider } from "./oauth-runtime";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -37,14 +38,9 @@ export function materializeProviders(config: Config): ProviderRuntime {
         summaries.push(providerSummary(instance));
         break;
       }
-      case ProviderKind.Subscription: {
-        const instance = {
-          enabled: provider.enabled,
-          id,
-          kind: provider.kind,
-          ...(provider.models === undefined ? {} : { models: provider.models }),
-          vendor: provider.vendor,
-        };
+      case ProviderKind.OAuth: {
+        const instance = createGitHubCopilotRuntimeProvider(provider);
+        probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
         summaries.push(providerSummary(instance));
         break;
@@ -159,9 +155,9 @@ function providerProbeRequest(
   }
 }
 
-async function probeAiSdk(
-  provider: Extract<RuntimeProviderInstance, { kind: ProviderKind.AiSdk }>,
-): Promise<DashboardProviderProbe> {
+async function probeAiSdk(provider: {
+  readonly ensureAvailable?: () => Promise<void>;
+}): Promise<DashboardProviderProbe> {
   if (provider.ensureAvailable === undefined) {
     return "OK";
   }

@@ -16,6 +16,7 @@ import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
+import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
 import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
@@ -47,23 +48,9 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
       return context.text("404 Not Found", 404);
     }
 
-    const route = resolveRoute(source, target.model);
-    if (route instanceof Response) {
-      return route;
-    }
-
-    const provider = route.provider;
-    if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Gemini) {
-      const request = await parseRequest(context.req.raw, target.model);
-      if (request instanceof Response) {
-        return request;
-      }
-
-      return provider.passthrough(context.req.raw);
-    }
-
-    if (provider.kind !== ProviderKind.AiSdk) {
-      return geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
+    const candidates = resolveCandidates(source, target.model);
+    if (candidates instanceof RouterModelNotFoundError) {
+      return geminiError(404, "NOT_FOUND", candidates.message);
     }
 
     const request = await parseRequest(context.req.raw, target.model);
@@ -73,36 +60,55 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
 
     const transformed = geminiGenerateContentToModelMessages(request);
     const tools = aiSdkTools(transformed.tools);
-    let stream: ReturnType<typeof provider.invoke>;
-    try {
-      await ensureAiSdkProviderAvailable(provider);
-      stream = provider.invoke({
-        messages: transformed.messages,
-        modelId: route.modelId,
-        settings: aiSdkSettings(transformed.settings),
-        signal: context.req.raw.signal,
-        ...(tools === undefined ? {} : { tools }),
-      });
-    } catch (error) {
-      // no-excuse-ok: catch - HTTP boundary converts provider failures.
-      return geminiProviderError(error);
+    let last = geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
+    for (const [index, route] of candidates.entries()) {
+      const hasNext = index < candidates.length - 1;
+      const provider = route.provider;
+      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Gemini) {
+        const response = await provider.passthrough(context.req.raw.clone());
+        if (hasNext && shouldTryNextResponse(response)) {
+          last = response;
+          continue;
+        }
+        return response;
+      }
+
+      const aiSdkProvider = toAiSdkProvider(provider);
+      if (aiSdkProvider === undefined) {
+        last = geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
+        continue;
+      }
+
+      try {
+        await ensureAiSdkProviderAvailable(aiSdkProvider);
+        const stream = aiSdkProvider.invoke({
+          messages: transformed.messages,
+          modelId: route.modelId,
+          settings: aiSdkSettings(transformed.settings),
+          signal: context.req.raw.signal,
+          ...(tools === undefined ? {} : { tools }),
+        });
+        if (target.stream) {
+          return new Response(writeGeminiGenerateContentSSE(stream), {
+            headers: {
+              "cache-control": "no-cache",
+              "content-type": "text/event-stream; charset=utf-8",
+            },
+          });
+        }
+
+        return Response.json(await writeGeminiGenerateContentResponse(stream));
+      } catch (error) {
+        // no-excuse-ok: catch - HTTP boundary converts provider failures.
+        last = geminiProviderError(error);
+        if (hasNext && shouldTryNextResponse(last)) {
+          continue;
+        }
+        return last;
+      }
     }
 
-    if (target.stream) {
-      return new Response(writeGeminiGenerateContentSSE(stream), {
-        headers: {
-          "cache-control": "no-cache",
-          "content-type": "text/event-stream; charset=utf-8",
-        },
-      });
-    }
-
-    try {
-      return Response.json(await writeGeminiGenerateContentResponse(stream));
-    } catch (error) {
-      // no-excuse-ok: catch - HTTP boundary converts provider failures.
-      return geminiProviderError(error);
-    }
+    return last;
   });
 }
 
@@ -124,18 +130,6 @@ async function parseRequest(
 
     if (error instanceof SyntaxError || error instanceof ZodError) {
       return geminiError(400, "INVALID_ARGUMENT", "Invalid Gemini request");
-    }
-
-    throw error;
-  }
-}
-
-function resolveRoute(source: ProviderRouteSource, model: string) {
-  try {
-    return source.currentProviderSnapshot().router.resolve(model);
-  } catch (error) {
-    if (error instanceof RouterModelNotFoundError) {
-      return geminiError(404, "NOT_FOUND", error.message);
     }
 
     throw error;
