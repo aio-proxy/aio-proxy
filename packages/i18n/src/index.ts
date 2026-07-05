@@ -8,10 +8,10 @@ export {
 } from "./errors";
 export { type FormattedUserError, formatUserError } from "./format-error";
 export { m } from "./paraglide/messages";
-export { getLocale, setLocale } from "./paraglide/runtime";
+export { getLocale, locales } from "./paraglide/runtime";
 export {
-  LOCALES,
   type Locale,
   resolveLocale,
   resolveLocaleFromArgv,
 } from "./resolve";
+export { setLocale } from "./runtime";

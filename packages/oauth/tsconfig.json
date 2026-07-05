@@ -2,7 +2,8 @@
   "extends": "@aio-proxy/infra/tsconfig/base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["bun"]
   },
   "include": ["src/**/*.ts"],
   "references": [

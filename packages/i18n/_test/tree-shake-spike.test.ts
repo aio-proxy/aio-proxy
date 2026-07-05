@@ -15,7 +15,7 @@ describe("paraglide tree-shaking spike", () => {
     });
 
     const enPath = join(root, "messages/en.json");
-    const zhPath = join(root, "messages/zh-CN.json");
+    const zhPath = join(root, "messages/zh-Hans.json");
     const enMessages = JSON.parse(readFileSync(enPath, "utf8")) as Record<string, string>;
     const zhMessages = JSON.parse(readFileSync(zhPath, "utf8")) as Record<string, string>;
 

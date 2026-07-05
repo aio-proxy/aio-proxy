@@ -61,9 +61,8 @@ describe("provider commands", () => {
             refresh: "github-token",
             expires: Date.now() + 60_000,
             baseUrl: "https://api.individual.githubcopilot.com",
-            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
-            syncedAt: Date.now(),
           },
+          models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
         }),
       });
 
@@ -71,7 +70,11 @@ describe("provider commands", () => {
       expect(result.stdout).toContain("copilot-12345");
       expect(await Bun.file(configPath).json()).toEqual({
         providers: {
-          "copilot-12345": { kind: "oauth", vendor: "github-copilot" },
+          "copilot-12345": {
+            kind: "oauth",
+            vendor: "github-copilot",
+            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
+          },
         },
       });
     } finally {

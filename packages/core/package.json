@@ -3,33 +3,28 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./db": {
       "types": "./dist/db/index.d.ts",
-      "import": "./dist/db/index.js",
       "default": "./dist/db/index.js"
     },
-    "./db/schema/auth": {
-      "types": "./dist/db/schema/auth.d.ts",
-      "import": "./dist/db/schema/auth.js",
-      "default": "./dist/db/schema/auth.js"
+    "./db/schema/*": {
+      "types": "./dist/db/schema/*.d.ts",
+      "default": "./dist/db/schema/*.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     }
   },
   "scripts": {
     "build": "rslib",
-    "dev": "rslib --watch",
-    "build:migrations": "bun x drizzle-kit generate --config=drizzle.config.ts",
+    "dev": "rslib --watch --no-clean",
+    "build:migrations": "drizzle-kit generate",
     "test": "bun run test:unit",
     "test:unit": "bun test _test"
   },

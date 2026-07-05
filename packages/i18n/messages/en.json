@@ -39,5 +39,27 @@
   "common_confirm": "Confirm",
   "common_loading": "Loading",
   "common_save": "Save",
-  "common_delete": "Delete"
+  "common_delete": "Delete",
+  "oauth": {
+    "github-copilot": {
+      "login_label": "Login with GitHub Copilot",
+      "deployment_type": {
+        "message": "Select GitHub deployment type",
+        "options": {
+          "github": {
+            "label": "GitHub.com",
+            "description": "Public"
+          },
+          "github-enterprise": {
+            "label": "GitHub Enterprise",
+            "description": "Data residency or self-hosted"
+          }
+        }
+      },
+      "enterprise_url": {
+        "message": "Enter your GitHub Enterprise URL or domain",
+        "placeholder": "company.ghe.com or https://company.ghe.com"
+      }
+    }
+  }
 }
