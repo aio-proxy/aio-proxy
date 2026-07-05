@@ -14,7 +14,10 @@ Split provider model configuration so `models` is only the upstream model pool, 
       "model": "gemini-3.5-flash",
       "preserve": true,
       "variants": {
-        "medium": "gemini-3.5-flash-medium",
+        "medium": {
+          "model": "gemini-3.5-flash-medium",
+          "preserve": true
+        },
         "low": "gemini-3.5-flash-low"
       }
     }
@@ -30,7 +33,27 @@ Split provider model configuration so `models` is only the upstream model pool, 
 
 `alias.*.preserve` exposes `alias.*.model` under its original model id as well as the alias key. It defaults to `false`.
 
-`alias.*.variants` is optional metadata for future mode-based routing, such as thinking effort. The first implementation validates and preserves it, but routing uses only `model`.
+`alias.*.variants` is optional metadata for future mode-based routing, such as thinking effort. Each variant value uses the same target shape as the alias itself, except nested `variants` are not needed.
+
+A variant may use string shorthand:
+
+```json
+{
+  "low": "gemini-3.5-flash-low"
+}
+```
+
+This parses the same as:
+
+```json
+{
+  "low": {
+    "model": "gemini-3.5-flash-low"
+  }
+}
+```
+
+The first implementation validates and preserves variants, but routing uses only `alias.*.model`.
 
 ## Routing
 
@@ -52,9 +75,14 @@ models?: string[];
 alias?: Record<string, {
   model: string;
   preserve?: boolean;
-  variants?: Record<string, string>;
+  variants?: Record<string, string | {
+    model: string;
+    preserve?: boolean;
+  }>;
 }>;
 ```
+
+The Zod schema should reuse a shared alias target schema for `alias.*` and `alias.*.variants.*`. String shorthand should be normalized to `{ model: value }` during parsing so the rest of the code handles one output shape.
 
 The schema rejects empty strings. Cross-field validation should reject alias targets and variant targets that are not listed in `models` when `models` is present.
 
