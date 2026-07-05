@@ -1,5 +1,12 @@
 import { dirname } from "node:path";
-import { Auth, githubCopilotOAuthProvider } from "@aio-proxy/auth-flows";
+import {
+  Auth,
+  githubCopilotOAuthProvider,
+  normalizeDomain,
+  type OAuthLoginForm,
+  type OAuthLoginInput,
+  type OAuthPrompt,
+} from "@aio-proxy/auth-flows";
 import {
   listInstalledNpmPackages,
   NpmInstallError,
@@ -9,7 +16,7 @@ import {
   npmAdd,
 } from "@aio-proxy/core";
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
-import { confirm } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
 import { resolveConfigPath } from "./config-path";
 import { ProviderDashboardError } from "./errors";
 
@@ -78,18 +85,81 @@ async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
   }
 
   const result = await githubCopilotOAuthProvider.login(
-    {},
+    await collectOAuthLoginInput(githubCopilotOAuthProvider.loginForm),
     {
       onAuth: ({ url, instructions }) => {
+        clearProgressLine();
         console.log(url);
         if (instructions !== undefined) {
           console.log(instructions);
         }
       },
-      onProgress: (message) => console.error(message),
+      onProgress: (message) => writeProgressLine(message),
     },
   );
+  clearProgressLine();
   return { payload: result.payload, providerId: result.providerId };
+}
+
+async function collectOAuthLoginInput(form: OAuthLoginForm): Promise<OAuthLoginInput> {
+  if (process.stdin.isTTY !== true) {
+    return {};
+  }
+
+  const values: Record<string, string | undefined> = {};
+  for (const prompt of form.prompts) {
+    if (!shouldShowPrompt(prompt, values)) {
+      continue;
+    }
+    if (prompt.type === "select") {
+      values[prompt.key] = await select({
+        message: prompt.message,
+        choices: prompt.options.map((option) => ({
+          name: option.label,
+          value: option.value,
+          ...(option.hint === undefined ? {} : { description: option.hint }),
+        })),
+      });
+      continue;
+    }
+    values[prompt.key] = await input({
+      message: prompt.placeholder === undefined ? prompt.message : `${prompt.message} (${prompt.placeholder})`,
+      validate: (value) => validateTextPrompt(prompt, value),
+    });
+  }
+
+  return values;
+}
+
+function shouldShowPrompt(prompt: OAuthPrompt, values: Record<string, string | undefined>): boolean {
+  if (prompt.when === undefined) {
+    return true;
+  }
+  return prompt.when.op === "eq" && values[prompt.when.key] === prompt.when.value;
+}
+
+function validateTextPrompt(prompt: Extract<OAuthPrompt, { type: "text" }>, value: string): true | string {
+  if (prompt.validate?.required === true && value.trim() === "") {
+    return "URL or domain is required";
+  }
+  if (prompt.validate?.format === "domain-or-url" && normalizeDomain(value) === null) {
+    return "Please enter a valid URL (e.g., company.ghe.com or https://company.ghe.com)";
+  }
+  return true;
+}
+
+function writeProgressLine(message: string): void {
+  if (process.stderr.isTTY !== true) {
+    return;
+  }
+  process.stderr.write(`\r${message}...`);
+}
+
+function clearProgressLine(): void {
+  if (process.stderr.isTTY !== true) {
+    return;
+  }
+  process.stderr.write("\r\x1b[2K");
 }
 
 async function confirmInstall(pkg: string): Promise<boolean> {
