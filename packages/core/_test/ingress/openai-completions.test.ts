@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
-import { OpenAIChatRequestSchema, parseOpenAIChat } from "../../src/index";
+import { OpenAICompletionsRequestSchema, parseOpenAICompletions } from "../../src/index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/openai-chat`;
+const fixtureRoot = `${import.meta.dir}/../fixtures/openai-completions`;
 
 const validFixtures = [
   "valid-basic.json",
@@ -23,19 +23,19 @@ async function readFixture(file: string): Promise<unknown> {
   return await Bun.file(`${fixtureRoot}/${file}`).json();
 }
 
-describe("OpenAIChatRequestSchema", () => {
+describe("OpenAICompletionsRequestSchema", () => {
   for (const file of validFixtures) {
     test(`parses ${file}`, async () => {
       const input = await readFixture(file);
 
-      expect(parseOpenAIChat(input)).toEqual(input);
+      expect(parseOpenAICompletions(input)).toEqual(input);
     });
   }
 
   for (const fixture of invalidFixtures) {
     test(`rejects ${fixture.file} at ${fixture.path.join(".")}`, async () => {
       const input = await readFixture(fixture.file);
-      const result = OpenAIChatRequestSchema.safeParse(input);
+      const result = OpenAICompletionsRequestSchema.safeParse(input);
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -44,9 +44,9 @@ describe("OpenAIChatRequestSchema", () => {
     });
   }
 
-  test("parseOpenAIChat throws ZodError on invalid input", async () => {
+  test("parseOpenAICompletions throws ZodError on invalid input", async () => {
     const input = await readFixture("invalid-role.json");
 
-    expect(() => parseOpenAIChat(input)).toThrow(ZodError);
+    expect(() => parseOpenAICompletions(input)).toThrow(ZodError);
   });
 });

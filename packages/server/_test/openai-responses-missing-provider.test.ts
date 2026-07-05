@@ -25,7 +25,7 @@ describe("OpenAI Responses missing provider boundary", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 

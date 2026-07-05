@@ -23,6 +23,8 @@ export type ApiProviderConfig = Omit<ApiProvider, "baseUrl" | "id"> & {
 };
 
 export type ApiProviderInstance = {
+  readonly apiKey?: string;
+  readonly baseUrl: string;
   readonly id: string;
   readonly kind: ProviderKind.Api;
   readonly models?: readonly ModelEntry[];
@@ -38,15 +40,18 @@ export function createApiProvider(
   config: ApiProviderConfig,
   options: ApiProviderFactoryOptions = {},
 ): ApiProviderInstance {
+  const baseUrl = config.baseUrl;
   const trace = options.trace ?? config.trace;
 
   return {
+    ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
+    baseUrl,
     id: config.id,
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),
     protocol: config.protocol,
     async passthrough(req) {
-      const upstreamUrl = rewrittenUrl(config.baseUrl, req.url);
+      const upstreamUrl = rewrittenUrl(baseUrl, req.url);
       const headers = new Headers(req.headers);
       headers.delete("host");
       headers.set("accept-encoding", "identity");

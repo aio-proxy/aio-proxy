@@ -77,7 +77,7 @@ describe("OpenAI Responses routes", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -117,7 +117,7 @@ describe("OpenAI Responses routes", () => {
       ]);
     });
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -160,7 +160,7 @@ describe("OpenAI Responses routes", () => {
       ]),
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -192,7 +192,7 @@ describe("OpenAI Responses routes", () => {
       ]),
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -231,7 +231,7 @@ describe("OpenAI Responses routes", () => {
         return textStream([]);
       });
       const app = createServer({
-        config: { providers: [] },
+        config: { providers: {} },
         providerInstances: [provider],
       });
 
@@ -251,7 +251,7 @@ describe("OpenAI Responses routes", () => {
 
   test("Given forbidden built-in tool When POST is requested Then unsupported feature is returned", async () => {
     // Given
-    const app = createServer({ config: { providers: [] } });
+    const app = createServer({ config: { providers: {} } });
 
     // When
     const response = await app.request("/v1/responses", {
@@ -270,7 +270,7 @@ describe("OpenAI Responses routes", () => {
 
   test("Given stored response id When GET is requested Then retrieval is unsupported", async () => {
     // Given
-    const app = createServer({ config: { providers: [] } });
+    const app = createServer({ config: { providers: {} } });
 
     // When
     const response = await app.request("/v1/responses/resp-1");
@@ -288,7 +288,7 @@ describe("OpenAI Responses routes", () => {
       return textStream([]);
     });
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 

@@ -19,7 +19,7 @@ export const serverDefaults = {
 const dashboardOrigins = (port: number) => new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 
 const csrfMethods = new Set(["POST", "PUT", "DELETE"]);
-const defaultConfig = ConfigSchema.parse({ providers: [] });
+const defaultConfig = ConfigSchema.parse({ providers: {} });
 
 export type CreateServerOptions = {
   readonly config: unknown;

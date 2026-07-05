@@ -9,7 +9,7 @@
     "./dist/*": "./dist/*"
   },
   "scripts": {
-    "dev": "rsbuild --open",
+    "dev": "rsbuild",
     "build": "rsbuild build"
   },
   "dependencies": {

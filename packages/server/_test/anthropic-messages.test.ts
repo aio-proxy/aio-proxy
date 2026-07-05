@@ -41,7 +41,7 @@ describe("POST /v1/messages", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -84,7 +84,7 @@ describe("POST /v1/messages", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -120,7 +120,7 @@ describe("POST /v1/messages", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -160,7 +160,7 @@ describe("POST /v1/messages", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -192,7 +192,7 @@ describe("POST /v1/messages/count_tokens", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 

@@ -43,7 +43,7 @@ describe("dashboard event hub", () => {
   test("Given slow dashboard event consumer When queue overflows Then dropped event is emitted and stream closes", async () => {
     // Given
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       eventLimits: { maxEvents: 1, maxBytes: 1_024 },
     });
     const stream = await app.request("/dashboard/api/events");

@@ -8,7 +8,7 @@ import type {
   TextStreamPart,
   ToolSet,
 } from "../../src/index";
-import { bridgeApiProviderToAiSdk } from "../../src/index";
+import { bridgeApiProviderToAiSdk, createApiProvider } from "../../src/index";
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -246,5 +246,37 @@ describe("bridgeApiProviderToAiSdk", () => {
     expect(parts.filter((part) => part.type === "text-delta")).toEqual([
       { type: "text-delta", id: "text-1", text: "language" },
     ]);
+  });
+
+  test("Given materialized api provider When bridged Then retained metadata is used", async () => {
+    // Given
+    let packageSeen: string | undefined;
+    let optionsSeen: AiSdkProviderLoadOptions | undefined;
+    const provider = createApiProvider({
+      kind: ProviderKind.Api,
+      id: "responses",
+      protocol: ProviderProtocol.OpenAIResponse,
+      apiKey: "secret",
+      baseUrl: "https://api.example.com/v1",
+      models: ["gpt-test"],
+    });
+
+    const bridge = bridgeApiProviderToAiSdk(provider, {
+      async loadProvider(packageName, options) {
+        packageSeen = packageName;
+        optionsSeen = options;
+        return loadedProvider({ languageModel: (modelId) => model(modelId, "ok") });
+      },
+    });
+
+    // When
+    await bridge?.ensureAvailable?.();
+
+    // Then
+    expect(packageSeen).toBe("@ai-sdk/openai");
+    expect(optionsSeen).toEqual({
+      apiKey: "secret",
+      baseURL: "https://api.example.com/v1",
+    });
   });
 });
