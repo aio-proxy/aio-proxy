@@ -1,4 +1,4 @@
-import type { ApiProvider, ModelEntry, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import type { ApiProvider } from "@aio-proxy/types";
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -16,20 +16,12 @@ export type ApiProviderTraceSink = {
 
 type ApiProviderTraceTarget = ApiProviderTraceSink | ApiProviderTrace[];
 
-export type ApiProviderConfig = Omit<ApiProvider, "baseUrl" | "id"> & {
-  readonly baseUrl: string;
-  readonly id: string;
+export type ApiProviderConfig = ApiProvider & {
   readonly trace?: ApiProviderTraceTarget;
 };
 
-export type ApiProviderInstance = {
-  readonly apiKey?: string;
-  readonly baseUrl: string;
-  readonly id: string;
-  readonly kind: ProviderKind.Api;
-  readonly models?: readonly ModelEntry[];
+export type ApiProviderInstance = ApiProvider & {
   readonly passthrough: (req: Request) => Promise<Response>;
-  readonly protocol: ProviderProtocol;
 };
 
 export type ApiProviderFactoryOptions = {
@@ -46,6 +38,7 @@ export function createApiProvider(
   return {
     ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
     baseUrl,
+    enabled: config.enabled,
     id: config.id,
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),

@@ -33,6 +33,7 @@ export type AiSdkProviderFactoryOptions = {
 };
 
 export type AiSdkProviderInstance = {
+  readonly enabled: boolean;
   readonly id: string;
   readonly kind: ProviderKind.AiSdk;
   readonly models?: readonly ModelEntry[];
@@ -59,6 +60,7 @@ export function createAiSdkProvider(
   }
 
   return {
+    enabled: config.enabled,
     id: config.id,
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),

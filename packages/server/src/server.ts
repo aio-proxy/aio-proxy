@@ -47,13 +47,16 @@ const createRoutes = (
   app.get("/v1/models", (context) =>
     context.json({
       object: "list",
-      data: state.currentProviderSnapshot().providers.flatMap((provider) =>
-        (provider.models ?? []).map((model) => ({
-          id: typeof model === "string" ? model : model.alias,
-          object: "model",
-          owned_by: provider.id,
-        })),
-      ),
+      data: state
+        .currentProviderSnapshot()
+        .providers.filter((provider) => provider.enabled)
+        .flatMap((provider) =>
+          (provider.models ?? []).map((model) => ({
+            id: typeof model === "string" ? model : model.alias,
+            object: "model",
+            owned_by: provider.id,
+          })),
+        ),
     }),
   );
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);

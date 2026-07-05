@@ -2,6 +2,7 @@ import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-pr
 import type { ModelEntry, ProviderKind } from "@aio-proxy/types";
 
 export type SubscriptionProviderInstance = {
+  readonly enabled: boolean;
   readonly id: string;
   readonly kind: ProviderKind.Subscription;
   readonly models?: ModelEntry[];

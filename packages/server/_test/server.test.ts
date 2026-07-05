@@ -65,6 +65,42 @@ describe("server routes", () => {
     });
   });
 
+  test("Given disabled provider When models and dashboard are requested Then provider is not routed", async () => {
+    // Given
+    const app = createServer({
+      config: {
+        providers: {
+          openai: {
+            kind: "api",
+            enabled: false,
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.example.com",
+            models: ["gpt-disabled"],
+          },
+        },
+      },
+    });
+
+    // When
+    const models = await app.request("/v1/models");
+    const providers = await app.request("/dashboard/api/providers");
+
+    // Then
+    expect(await models.json()).toEqual({ object: "list", data: [] });
+    expect(await providers.json()).toEqual({
+      providers: [
+        {
+          id: "openai",
+          kind: "api",
+          enabled: false,
+          passthrough: true,
+          last_status: "unknown",
+          last_latency: null,
+        },
+      ],
+    });
+  });
+
   test("GET /dashboard/api/config redacts secret-like config values when requested", async () => {
     // Given
     const app = createServer({ config });
