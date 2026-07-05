@@ -179,6 +179,7 @@
         "@aio-proxy/infra": "workspace:*",
         "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
+        "ai": "catalog:",
         "typescript": "catalog:",
       },
     },

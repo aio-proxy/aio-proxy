@@ -23,6 +23,30 @@ const writeConfig = (path: string, config: unknown): void => {
   writeFileSync(path, `${JSON.stringify(config)}\n`);
 };
 
+const settleWatcher = () => Bun.sleep(50);
+
+async function waitForProviderIds(
+  state: ReturnType<typeof createServerState>,
+  expectedIds: readonly string[],
+  timeoutMs = 2_000,
+): Promise<readonly string[]> {
+  const deadline = performance.now() + timeoutMs;
+  let ids: readonly string[] = [];
+  while (performance.now() < deadline) {
+    const providers = await state.providerSummaries({ probe: false });
+    ids = providers.map((provider) => provider.id);
+    if (sameIds(ids, expectedIds)) {
+      return ids;
+    }
+    await Bun.sleep(10);
+  }
+  return ids;
+}
+
+function sameIds(actual: readonly string[], expected: readonly string[]): boolean {
+  return actual.length === expected.length && actual.every((id, index) => id === expected[index]);
+}
+
 async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
   const reader = stream.body?.getReader();
   if (reader === undefined) {
@@ -120,13 +144,14 @@ describe("server reload", () => {
 
     try {
       // When
+      await settleWatcher();
       writeConfig(configPath, nextConfig);
       const eventText = await readNextEventText(stream);
-      const providers = await state.providerSummaries({ probe: false });
+      const providerIds = await waitForProviderIds(state, ["new-openai"]);
 
       // Then
       expect(eventText).toContain("event: config.changed");
-      expect(providers.map((provider) => provider.id)).toEqual(["new-openai"]);
+      expect(providerIds).toEqual(["new-openai"]);
     } finally {
       state.close();
       rmSync(dir, { recursive: true, force: true });
@@ -146,23 +171,24 @@ describe("server reload", () => {
 
     try {
       // When
+      await settleWatcher();
       const firstStream = new Response(state.events.stream());
       writeConfig(tempPath, middleConfig);
       renameSync(tempPath, configPath);
       const firstEventText = await readNextEventText(firstStream);
-      const middleProviders = await state.providerSummaries({ probe: false });
+      const middleProviderIds = await waitForProviderIds(state, ["middle-openai"]);
 
       const secondStream = new Response(state.events.stream());
       writeConfig(tempPath, nextConfig);
       renameSync(tempPath, configPath);
       const secondEventText = await readNextEventText(secondStream);
-      const nextProviders = await state.providerSummaries({ probe: false });
+      const nextProviderIds = await waitForProviderIds(state, ["new-openai"]);
 
       // Then
       expect(firstEventText).toContain("event: config.changed");
-      expect(middleProviders.map((provider) => provider.id)).toEqual(["middle-openai"]);
+      expect(middleProviderIds).toEqual(["middle-openai"]);
       expect(secondEventText).toContain("event: config.changed");
-      expect(nextProviders.map((provider) => provider.id)).toEqual(["new-openai"]);
+      expect(nextProviderIds).toEqual(["new-openai"]);
     } finally {
       state.close();
       rmSync(dir, { recursive: true, force: true });
