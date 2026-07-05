@@ -13,7 +13,7 @@
 ## File Structure
 
 - Modify `packages/types/src/common.ts`: replace `ModelEntrySchema` with model id and alias config schemas.
-- Modify `packages/types/src/provider.ts`: change provider schemas to `models?: string[]` and `alias?: Record<string, AliasConfig>`.
+- Modify `packages/types/src/provider.ts`: change provider schemas to `models?: string[]` and `alias?: Record<string, string | AliasConfig>`.
 - Modify `packages/types/_test/schemas.test.ts`: cover alias parsing, shorthand normalization, preserve, variants, and invalid targets.
 - Modify `packages/core/src/index.ts`: build router routes from `provider.alias`, not mixed model entries.
 - Modify `packages/core/_test/router.test.ts`: cover alias-only exposure and `preserve`.
@@ -50,6 +50,7 @@ Add these tests inside `describe("ConfigSchema", ...)` in `packages/types/_test/
             low: "gemini-3.5-flash-low",
           },
         },
+        "gemini-3.5-flash": "gemini-3.5-flash",
       },
     };
 
@@ -66,6 +67,7 @@ Add these tests inside `describe("ConfigSchema", ...)` in `packages/types/_test/
             low: { model: "gemini-3.5-flash-low", preserve: false },
           },
         },
+        "gemini-3.5-flash": { model: "gemini-3.5-flash", preserve: false },
       },
     });
   });
@@ -152,9 +154,14 @@ export const AliasTargetSchema = z
   .union([ModelIdSchema, AliasTargetObjectSchema])
   .transform((value) => (typeof value === "string" ? { model: value, preserve: false } : value));
 
-export const AliasConfigSchema = AliasTargetObjectSchema.extend({
-  variants: z.record(z.string().min(1), AliasTargetSchema).optional(),
-});
+export const AliasConfigSchema = z
+  .union([
+    ModelIdSchema,
+    AliasTargetObjectSchema.extend({
+      variants: z.record(z.string().min(1), AliasTargetSchema).optional(),
+    }),
+  ])
+  .transform((value) => (typeof value === "string" ? { model: value, preserve: false } : value));
 
 export type ModelIdInput = z.input<typeof ModelIdSchema>;
 export type ModelId = z.output<typeof ModelIdSchema>;
@@ -738,7 +745,7 @@ rtk git commit -m "test: update model alias fixtures" -m "Co-authored-by: Codex 
 
 Spec coverage:
 - `models` as `string[]`: Task 1.
-- `alias` with `model`, `preserve`, and reusable `variants`: Task 1.
+- `alias` with string shorthand, `model`, `preserve`, and reusable `variants`: Task 1.
 - Router uses alias keys and preserved originals only: Task 2.
 - `/v1/models` lists exposed aliases: Task 3.
 - OAuth and CLI write new config shape: Task 4.

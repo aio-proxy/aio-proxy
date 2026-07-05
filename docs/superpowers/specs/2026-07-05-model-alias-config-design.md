@@ -10,6 +10,7 @@ Split provider model configuration so `models` is only the upstream model pool, 
 {
   "models": ["gemini-3.5-flash", "gemini-3.5-flash-medium", "gemini-3.5-flash-low"],
   "alias": {
+    "gemini-3.5-flash": "gemini-3.5-flash",
     "gemini-3-flash-agent": {
       "model": "gemini-3.5-flash",
       "preserve": true,
@@ -27,9 +28,27 @@ Split provider model configuration so `models` is only the upstream model pool, 
 
 `models` is `string[]` and lists upstream model ids available through the provider.
 
-`alias` is `Record<string, AliasConfig>`. The record key is the model id clients send to aio-proxy.
+`alias` is `Record<string, string | AliasConfig>`. The record key is the model id clients send to aio-proxy.
 
 `alias.*.model` is the default upstream model id.
+
+An alias may use string shorthand:
+
+```json
+{
+  "gemini-3.5-flash": "gemini-3.5-flash"
+}
+```
+
+This parses the same as:
+
+```json
+{
+  "gemini-3.5-flash": {
+    "model": "gemini-3.5-flash"
+  }
+}
+```
 
 `alias.*.preserve` exposes `alias.*.model` under its original model id as well as the alias key. It defaults to `false`.
 
@@ -72,7 +91,7 @@ Each provider schema accepts:
 
 ```ts
 models?: string[];
-alias?: Record<string, {
+alias?: Record<string, string | {
   model: string;
   preserve?: boolean;
   variants?: Record<string, string | {
@@ -82,7 +101,7 @@ alias?: Record<string, {
 }>;
 ```
 
-The Zod schema should reuse a shared alias target schema for `alias.*` and `alias.*.variants.*`. String shorthand should be normalized to `{ model: value }` during parsing so the rest of the code handles one output shape.
+The Zod schema should reuse a shared alias target schema for `alias.*` and `alias.*.variants.*`. String shorthand should be normalized to `{ model: value, preserve: false }` during parsing so the rest of the code handles one output shape.
 
 The schema rejects empty strings. Cross-field validation should reject alias targets and variant targets that are not listed in `models` when `models` is present.
 
