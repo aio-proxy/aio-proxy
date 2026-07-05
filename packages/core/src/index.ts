@@ -178,6 +178,9 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
 
   constructor(providers: readonly TProvider[]) {
     for (const provider of providers) {
+      if (provider.enabled === false) {
+        continue;
+      }
       for (const model of provider.models ?? []) {
         this.addRoute(provider, modelRoute(model));
       }

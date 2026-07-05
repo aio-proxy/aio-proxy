@@ -1,7 +1,6 @@
 import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { ProviderBuildError } from "./errors";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -14,38 +13,51 @@ export type ProviderRuntime = {
 
 export function materializeProviders(config: Config): ProviderRuntime {
   const probes = new Map<string, ProviderProbe>();
-  const providers = config.providers.map((provider) => {
+  const providers: RuntimeProviderInstance[] = [];
+  const summaries: DashboardProviderSummary[] = [];
+  for (const provider of config.providers) {
     const id = providerId(provider);
+    if (!provider.enabled) {
+      summaries.push(providerConfigSummary(provider));
+      continue;
+    }
+
     switch (provider.kind) {
       case ProviderKind.Api: {
-        const baseUrl = provider.baseUrl;
-        if (baseUrl === undefined) {
-          throw new ProviderBuildError(id, "api provider requires baseUrl");
-        }
-        probes.set(id, () => probeApi(provider, baseUrl));
-        return createApiProvider({ ...provider, id, baseUrl });
+        probes.set(id, () => probeApi(provider, provider.baseUrl));
+        const instance = createApiProvider(provider);
+        providers.push(instance);
+        summaries.push(providerSummary(instance));
+        break;
       }
       case ProviderKind.AiSdk: {
         const instance = createAiSdkProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
-        return instance;
+        providers.push(instance);
+        summaries.push(providerSummary(instance));
+        break;
       }
-      case ProviderKind.Subscription:
-        return {
+      case ProviderKind.Subscription: {
+        const instance = {
+          enabled: provider.enabled,
           id,
           kind: provider.kind,
           ...(provider.models === undefined ? {} : { models: provider.models }),
           vendor: provider.vendor,
         };
+        providers.push(instance);
+        summaries.push(providerSummary(instance));
+        break;
+      }
       default:
-        return assertNever(provider);
+        assertNever(provider);
     }
-  });
+  }
 
   return {
     probes,
     providers,
-    summaries: providers.map((provider) => providerSummary(provider)),
+    summaries,
   };
 }
 
@@ -53,7 +65,7 @@ export function providerSummary(provider: RuntimeProviderInstance): DashboardPro
   return {
     id: provider.id,
     kind: provider.kind,
-    enabled: true,
+    enabled: provider.enabled,
     passthrough: isPassthrough(provider),
     last_status: "unknown",
     last_latency: null,
@@ -73,6 +85,17 @@ export function providerDiff(before: readonly DashboardProviderSummary[], after:
 
 function providerId(provider: Provider): string {
   return provider.id;
+}
+
+function providerConfigSummary(provider: Provider): DashboardProviderSummary {
+  return {
+    id: provider.id,
+    kind: provider.kind,
+    enabled: provider.enabled,
+    passthrough: provider.kind === ProviderKind.Api,
+    last_status: "unknown",
+    last_latency: null,
+  };
 }
 
 async function probeApi(

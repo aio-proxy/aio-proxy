@@ -69,6 +69,13 @@ describe("Router", () => {
     }
   });
 
+  test("ignores disabled providers", () => {
+    const router = new Router([{ ...openai, enabled: false }]);
+
+    expect(() => router.resolve("gpt-5-mini")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("openai/gpt-5-mini")).toThrow(RouterModelNotFoundError);
+  });
+
   test("resolves the plan QA copilot sonnet alias", () => {
     const router = new Router([copilot]);
 

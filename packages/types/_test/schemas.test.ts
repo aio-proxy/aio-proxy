@@ -12,6 +12,7 @@ const apiProvider = {
   kind: "api",
   name: "OpenAI",
   protocol: "openai-response",
+  baseUrl: "https://api.example.com",
   apiKey: "sk-test",
   models: ["gpt-5-mini"],
 };
@@ -30,7 +31,14 @@ describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: apiProvider }))).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [{ ...apiProvider, id: "openai" }],
+      providers: [{ ...apiProvider, enabled: true, id: "openai" }],
+    });
+  });
+
+  test("accepts disabled provider config", () => {
+    expect(ConfigSchema.parse(providers({ openai: { ...apiProvider, enabled: false } }))).toEqual({
+      server: { host: "127.0.0.1", port: 22078 },
+      providers: [{ ...apiProvider, enabled: false, id: "openai" }],
     });
   });
 
@@ -43,7 +51,7 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse({ server: {}, providers: { copilot: provider } })).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [{ ...provider, id: "copilot" }],
+      providers: [{ ...provider, enabled: true, id: "copilot" }],
     });
   });
 
@@ -57,7 +65,7 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [{ ...provider, id: "google" }],
+      providers: [{ ...provider, enabled: true, id: "google" }],
     });
   });
 
@@ -82,6 +90,7 @@ describe("ConfigSchema", () => {
     expect(config.providers).toEqual([
       {
         ...provider,
+        enabled: true,
         id: "compatible",
         packageName: "@ai-sdk/openai-compatible",
       },
@@ -103,9 +112,9 @@ describe("ConfigSchema", () => {
     ).toEqual({
       server: { host: "0.0.0.0", port: 3000 },
       providers: [
-        { ...apiProvider, id: "openai" },
-        { kind: "subscription", id: "copilot", vendor: "github-copilot" },
-        { kind: "ai-sdk", id: "anthropic", packageName: "@ai-sdk/anthropic" },
+        { ...apiProvider, enabled: true, id: "openai" },
+        { kind: "subscription", enabled: true, id: "copilot", vendor: "github-copilot" },
+        { kind: "ai-sdk", enabled: true, id: "anthropic", packageName: "@ai-sdk/anthropic" },
       ],
     });
   });
@@ -161,6 +170,12 @@ describe("ConfigSchema", () => {
       "openai",
       "protocol",
     ]);
+  });
+
+  test("rejects api provider without baseUrl at providers.openai.baseUrl", () => {
+    const { baseUrl: _baseUrl, ...provider } = apiProvider;
+
+    expectIssuePath({ server: {}, providers: { openai: provider } }, ["providers", "openai", "baseUrl"]);
   });
 
   test("rejects invalid subscription vendor at providers.copilot.vendor", () => {
