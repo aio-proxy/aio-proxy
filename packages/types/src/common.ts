@@ -9,6 +9,7 @@ export const ModelEntrySchema = z.union([
       alias: IdSchema.describe("Model name clients send to aio-proxy."),
       id: IdSchema.describe("Upstream model id sent to the provider."),
     })
+    .passthrough()
     .describe("Expose an upstream model under a different client-facing alias."),
 ]);
 

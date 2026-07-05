@@ -15,6 +15,7 @@ import {
   type OAuthLoginForm,
   type OAuthLoginInput,
   type OAuthPrompt,
+  type OAuthProviderModel,
 } from "@aio-proxy/oauth";
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
 import { confirm, input, select } from "@inquirer/prompts";
@@ -38,6 +39,7 @@ export type ProviderLoginOptions = {
 };
 
 type LoginForCliResult = {
+  readonly models?: readonly OAuthProviderModel[];
   readonly payload: Record<string, unknown>;
   readonly providerId: string;
 };
@@ -72,7 +74,11 @@ export async function providerLogin(family: string, options: ProviderLoginOption
   const configPath = resolveConfigPath(options.config);
   const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
   const providers = config.providers ?? {};
-  providers[result.providerId] = { kind: "oauth", vendor: "github-copilot" };
+  providers[result.providerId] = {
+    kind: "oauth",
+    vendor: "github-copilot",
+    ...(result.models === undefined ? {} : { models: result.models }),
+  };
   await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
   console.log(result.providerId);
 }
@@ -104,8 +110,9 @@ async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
       onProgress: (message) => writeProgressLine(message),
     },
   );
+  const models = await githubCopilotOAuthProvider.models(result.payload);
   clearProgressLine();
-  return { payload: result.payload, providerId: result.providerId };
+  return { models, payload: result.payload, providerId: result.providerId };
 }
 
 async function collectOAuthLoginInput(form: OAuthLoginForm): Promise<OAuthLoginInput> {

@@ -28,22 +28,28 @@ describe("GitHubCopilotOAuthProvider", () => {
   test("login creates provider id from GitHub numeric user id", async () => {
     const home = isolateHome();
     let authUrl = "";
+    let modelRequests = 0;
     let userCode = "";
     const provider = new GitHubCopilotOAuthProvider();
 
     try {
-      const result = await withFetchMock(fakeCopilotFetch(), async () => {
-        return await provider.login(
-          {},
-          {
-            onAuth: (info) => {
-              authUrl = info.url;
-              userCode = info.userCode ?? "";
+      const { models, result } = await withFetchMock(
+        fakeCopilotFetch(() => modelRequests++),
+        async () => {
+          const result = await provider.login(
+            {},
+            {
+              onAuth: (info) => {
+                authUrl = info.url;
+                userCode = info.userCode ?? "";
+              },
+              onProgress: () => undefined,
             },
-            onProgress: () => undefined,
-          },
-        );
-      });
+          );
+          expect(modelRequests).toBe(0);
+          return { models: await provider.models(result.payload), result };
+        },
+      );
 
       expect(authUrl).toBe("https://github.com/login/device?user_code=ABCD");
       expect(userCode).toBe("ABCD");
@@ -51,11 +57,14 @@ describe("GitHubCopilotOAuthProvider", () => {
       expect(result.userId).toBe("12345");
       expect(result.accountLabel).toBe("octocat");
       expect(result.payload.baseUrl).toBe("https://api.individual.githubcopilot.com");
-      expect(result.payload.models).toEqual([
+      expect("models" in result.payload).toBe(false);
+      expect("models" in result).toBe(false);
+      expect(models).toEqual([
         { alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" },
         { alias: "claude-sonnet-4", id: "claude-sonnet-4", transport: "messages" },
         { alias: "gpt-5", id: "gpt-5", transport: "responses" },
       ]);
+      expect(modelRequests).toBe(1);
       expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
         ...result.payload,
         accountLabel: "octocat",
@@ -118,9 +127,50 @@ describe("GitHubCopilotOAuthProvider", () => {
       "https://api.individual.githubcopilot.com",
     );
   });
+
+  test("models refreshes Copilot access before discovery", async () => {
+    const provider = new GitHubCopilotOAuthProvider();
+
+    const models = await withFetchMock(
+      async (input, init) => {
+        const url = new URL(input.toString());
+        if (url.pathname === "/copilot_internal/v2/token") {
+          return Response.json({
+            token: "tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;",
+            expires_at: 9_999_999_999,
+          });
+        }
+        if (
+          url.pathname === "/models" &&
+          new Headers(init?.headers).get("authorization")?.includes("tid=x;") === true
+        ) {
+          return Response.json({
+            data: [
+              {
+                id: "gpt-5-mini",
+                model_picker_enabled: true,
+                capabilities: { type: "chat" },
+                supported_endpoints: ["/chat/completions"],
+              },
+            ],
+          });
+        }
+        return Response.json({}, { status: 401 });
+      },
+      () =>
+        provider.models({
+          access: "stale-token",
+          refresh: "github-token",
+          expires: Date.now() + 60_000,
+          baseUrl: "https://api.individual.githubcopilot.com",
+        }),
+    );
+
+    expect(models).toEqual([{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }]);
+  });
 });
 
-function fakeCopilotFetch(): typeof fetch {
+function fakeCopilotFetch(onModels: () => void = () => undefined): typeof fetch {
   return async (input) => {
     const url = new URL(input.toString());
     if (url.pathname === "/login/device/code") {
@@ -150,44 +200,46 @@ function fakeCopilotFetch(): typeof fetch {
     }
 
     if (url.pathname === "/models") {
+      onModels();
       return Response.json({
         data: [
           {
             id: "gpt-5-mini",
+            name: "GPT 5 Mini",
             model_picker_enabled: true,
-            capabilities: ["chat"],
-            endpoints: ["/chat/completions"],
+            capabilities: { type: "chat" },
+            supported_endpoints: ["/chat/completions"],
           },
           {
             id: "claude-sonnet-4",
             model_picker_enabled: true,
-            capabilities: ["chat"],
-            endpoints: ["/v1/messages"],
+            capabilities: { type: "chat" },
+            supported_endpoints: ["/v1/messages"],
           },
           {
             id: "gpt-5",
             model_picker_enabled: true,
-            capabilities: ["chat"],
-            endpoints: ["/responses"],
+            capabilities: { type: "chat" },
+            supported_endpoints: ["/responses"],
           },
           {
             id: "hidden",
             model_picker_enabled: false,
-            capabilities: ["chat"],
-            endpoints: ["/chat/completions"],
+            capabilities: { type: "chat" },
+            supported_endpoints: ["/chat/completions"],
           },
           {
             id: "embedding",
             model_picker_enabled: true,
-            capabilities: ["embeddings"],
-            endpoints: ["/embeddings"],
+            capabilities: { type: "embeddings" },
+            supported_endpoints: ["/embeddings"],
           },
         ],
       });
     }
 
     if (url.pathname.startsWith("/models/") && url.pathname.endsWith("/policy")) {
-      return Response.json({}, { status: 200 });
+      return Response.json({}, { status: 405 });
     }
 
     return Response.json({ error: `unexpected ${url.pathname}` }, { status: 404 });

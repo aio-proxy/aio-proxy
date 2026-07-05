@@ -18,6 +18,7 @@ export {
   type OAuthLoginInput,
   type OAuthPrompt,
   type OAuthProviderLoginResult,
+  type OAuthProviderModel,
 } from "./oauth-provider";
 export { Auth } from "./store";
 export type {

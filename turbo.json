@@ -1,10 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "compile": {
-      "inputs": ["messages/**/*.json", "project.inlang/**", "scripts/compile.ts"],
-      "outputs": ["src/paraglide/**"]
-    },
     "build": {
       "dependsOn": ["^build"],
       "inputs": [
@@ -26,26 +22,27 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@aio-proxy/i18n#test:unit": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
     "e2e": {
       "dependsOn": ["build"],
       "cache": false,
       "outputs": []
     },
     "dev": {
-      "dependsOn": ["^build", "build"],
       "persistent": true,
       "cache": false,
       "outputs": []
     },
     "@aio-proxy/cli#dev": {
-      "dependsOn": ["^build", "build"],
       "persistent": true,
       "cache": false,
       "outputs": [],
       "with": ["@aio-proxy/cli#serve:dev"]
     },
     "serve:dev": {
-      "dependsOn": ["build"],
       "persistent": true,
       "cache": false,
       "outputs": []

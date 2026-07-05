@@ -66,6 +66,12 @@ export type OAuthProviderLoginResult<TPayload extends OAuthLoginPayload = OAuthL
   readonly userId: string;
 };
 
+export type OAuthProviderModel = {
+  readonly alias: string;
+  readonly id: string;
+  readonly [key: string]: unknown;
+};
+
 export abstract class BaseOAuthProvider<TPayload extends OAuthLoginPayload = OAuthLoginPayload> {
   abstract readonly loginForm: OAuthLoginForm;
 
@@ -81,6 +87,12 @@ export abstract class BaseOAuthProvider<TPayload extends OAuthLoginPayload = OAu
   protected store(providerId: string, payload: TPayload, accountLabel?: string): void {
     Auth.set(this.vendor, providerId, { ...payload, accountLabel }, providerId);
   }
+
+  payload(providerId: string): unknown {
+    return Auth.get(this.vendor, providerId)?.payload;
+  }
+
+  abstract models(payload: TPayload, signal?: AbortSignal): Promise<readonly OAuthProviderModel[]>;
 
   abstract login(input: OAuthLoginInput, callbacks: OAuthLoginCallbacks): Promise<OAuthProviderLoginResult<TPayload>>;
 }
