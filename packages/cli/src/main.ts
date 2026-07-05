@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import {
   ConfigWriteError,
   formatUserError,
@@ -15,9 +14,10 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { resolveConfigPath } from "./config-path";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
-import { providerErrors, providerInstall, providerList, providerTest } from "./provider-commands";
+import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
 
 setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
@@ -58,19 +58,6 @@ const validatePortArgv = (argv: readonly string[]) => {
     }
   }
 };
-
-const defaultConfigPath = () => {
-  // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
-  const appData = process.env["APPDATA"];
-  if (process.platform === "win32" && appData !== undefined) {
-    return join(appData, "aio-proxy", "config.jsonc");
-  }
-  return join(homedir(), ".config", "aio-proxy", "config.jsonc");
-};
-
-const resolveConfigPath = (optionPath: string | undefined) =>
-  // biome-ignore lint/complexity/useLiteralKeys: process.env is an index signature under noPropertyAccessFromIndexSignature.
-  optionPath ?? process.env["AIO_PROXY_CONFIG"] ?? defaultConfigPath();
 
 const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   if (!existsSync(path)) {
@@ -174,6 +161,10 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option("--probe", "Probe listed providers.")
     .option("--installed", "List packages installed in the runtime cache.")
     .action(providerList);
+  provider
+    .command("login <family>")
+    .option("--config <path>", m.cli_serve_option_config_description())
+    .action(providerLogin);
   provider.command("test <id>").option("--url <url>", "Dashboard URL.").action(providerTest);
   program.command("model").description(m.cli_model_description()).action(runStub);
   program.command("trace").description(m.cli_trace_description()).action(runStub);

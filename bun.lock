@@ -62,6 +62,7 @@
       "name": "@aio-proxy/cli",
       "version": "0.0.0",
       "dependencies": {
+        "@aio-proxy/auth-flows": "workspace:*",
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",

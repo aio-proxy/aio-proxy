@@ -46,6 +46,39 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
 };
 
 describe("provider commands", () => {
+  test("provider login copilot writes provider config returned by login service", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
+    const configPath = join(dir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+
+    try {
+      const result = await runCliAsync(["provider", "login", "copilot", "--config", configPath], {
+        AIO_PROXY_HOME: dir,
+        AIO_PROXY_TEST_COPILOT_LOGIN: JSON.stringify({
+          providerId: "copilot-12345",
+          payload: {
+            access: "copilot-token",
+            refresh: "github-token",
+            expires: Date.now() + 60_000,
+            baseUrl: "https://api.individual.githubcopilot.com",
+            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
+            syncedAt: Date.now(),
+          },
+        }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("copilot-12345");
+      expect(await Bun.file(configPath).json()).toEqual({
+        providers: {
+          "copilot-12345": { kind: "oauth", vendor: "github-copilot" },
+        },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("provider list prints packages installed in the runtime cache", () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
