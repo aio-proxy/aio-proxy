@@ -1,4 +1,5 @@
 import {
+  bridgeApiProviderToAiSdk,
   openAICompletionsToModelMessages,
   parseOpenAICompletions,
   RouterModelNotFoundError,
@@ -36,16 +37,27 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       return provider.passthrough(context.req.raw);
     }
 
-    if (provider.kind !== ProviderKind.AiSdk) {
+    const aiSdkProvider =
+      provider.kind === ProviderKind.Api
+        ? bridgeApiProviderToAiSdk({
+            ...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
+            ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
+            id: provider.id,
+            kind: provider.kind,
+            ...(provider.models === undefined ? {} : { models: [...provider.models] }),
+            protocol: provider.protocol,
+          })
+        : provider;
+    if (aiSdkProvider === undefined || aiSdkProvider.kind !== ProviderKind.AiSdk) {
       return openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
     }
 
     const transformed = openAICompletionsToModelMessages(request);
 
-    if (request.stream === false) {
+    if (request.stream !== true) {
       try {
-        await ensureAiSdkProviderAvailable(provider);
-        const stream = provider.invoke({
+        await ensureAiSdkProviderAvailable(aiSdkProvider);
+        const stream = aiSdkProvider.invoke({
           messages: transformed.messages,
           modelId: route.modelId,
           settings: transformed.settings,
@@ -62,8 +74,8 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
     }
 
     try {
-      await ensureAiSdkProviderAvailable(provider);
-      const stream = provider.invoke({
+      await ensureAiSdkProviderAvailable(aiSdkProvider);
+      const stream = aiSdkProvider.invoke({
         messages: transformed.messages,
         modelId: route.modelId,
         settings: transformed.settings,

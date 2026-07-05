@@ -1,6 +1,5 @@
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 
-const chunkId = "chatcmpl-aio-proxy";
 const encoder = new TextEncoder();
 
 type OpenAICompletionsFinishReason =
@@ -34,14 +33,14 @@ type OpenAICompletionsResponseChoice = {
 };
 
 type OpenAICompletionsResponse = {
-  readonly id: typeof chunkId;
+  readonly id: string;
   readonly object: "chat.completion";
   readonly choices: readonly [OpenAICompletionsResponseChoice];
   readonly usage?: OpenAICompletionsUsage;
 };
 
 type OpenAICompletionsChunk = {
-  readonly id: typeof chunkId;
+  readonly id: string;
   readonly object: "chat.completion.chunk";
   readonly choices: readonly [OpenAICompletionsChoice];
   readonly usage?: OpenAICompletionsUsage;
@@ -85,12 +84,13 @@ export function writeOpenAICompletionsSSE(
 ): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
+      const id = completionId();
       const tools = new Map<string, ToolState>();
 
       for await (const part of stream) {
         switch (part.type) {
           case "text-delta":
-            controller.enqueue(frame({ content: textDelta(part) }));
+            controller.enqueue(frame(id, { content: textDelta(part) }));
             break;
           case "tool-input-start": {
             const tool = {
@@ -100,26 +100,26 @@ export function writeOpenAICompletionsSSE(
               arguments: "",
             };
             tools.set(part.id, tool);
-            controller.enqueue(frame({ tool_calls: [toolDelta(tool)] }));
+            controller.enqueue(frame(id, { tool_calls: [toolDelta(tool)] }));
             break;
           }
           case "tool-input-delta": {
             const tool = tools.get(part.id);
             if (tool !== undefined) {
               tool.arguments += part.delta;
-              controller.enqueue(frame({ tool_calls: [toolDelta(tool)] }));
+              controller.enqueue(frame(id, { tool_calls: [toolDelta(tool)] }));
             }
             break;
           }
           case "tool-input-end": {
             const tool = tools.get(part.id);
             if (tool !== undefined) {
-              controller.enqueue(frame({ tool_calls: [toolDelta(tool)] }));
+              controller.enqueue(frame(id, { tool_calls: [toolDelta(tool)] }));
             }
             break;
           }
           case "finish":
-            controller.enqueue(frame({}, openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))));
+            controller.enqueue(frame(id, {}, openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))));
             break;
           default:
             break;
@@ -154,7 +154,7 @@ export async function writeOpenAICompletionsResponse(
   }
 
   return {
-    id: chunkId,
+    id: completionId(),
     object: "chat.completion",
     choices: [
       {
@@ -176,6 +176,7 @@ function finishUsage(part: FinishPart): TokenUsage {
 }
 
 function frame(
+  id: string,
   delta: OpenAICompletionsDelta,
   finishReason?: OpenAICompletionsFinishReason,
   usage?: OpenAICompletionsUsage,
@@ -186,13 +187,17 @@ function frame(
     ...(finishReason === undefined ? {} : { finish_reason: finishReason }),
   } satisfies OpenAICompletionsChoice;
   const chunk = {
-    id: chunkId,
+    id,
     object: "chat.completion.chunk",
     choices: [choice],
     ...(usage === undefined ? {} : { usage }),
   } satisfies OpenAICompletionsChunk;
 
   return encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`);
+}
+
+function completionId(): string {
+  return `chatcmpl-${crypto.randomUUID()}`;
 }
 
 function toolDelta(tool: ToolState): OpenAICompletionsToolCallDelta {

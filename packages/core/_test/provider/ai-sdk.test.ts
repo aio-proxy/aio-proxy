@@ -65,6 +65,53 @@ describe("createAiSdkProvider", () => {
     ]);
   });
 
+  test("moves system messages into AI SDK instructions", async () => {
+    let promptSeen: unknown;
+    const model = {
+      specificationVersion: "v2",
+      provider: "mock",
+      modelId: "mock-model",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("doGenerate should not be called");
+      },
+      async doStream(options) {
+        promptSeen = options.prompt;
+        return {
+          stream: textPartStream([
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "ok" },
+            { type: "text-end", id: "text-1" },
+          ]),
+        };
+      },
+    } satisfies LanguageModelV2;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "mock-ai-sdk",
+        packageName: "@ai-sdk/openai",
+        models: ["mock-model"],
+      },
+      { resolveModel: () => model },
+    );
+
+    await collect(
+      provider.invoke({
+        messages: [
+          { role: "system", content: "Be brief." },
+          { role: "user", content: "hello" },
+        ],
+        modelId: "mock-model",
+      }),
+    );
+
+    expect(promptSeen).toEqual([
+      { role: "system", content: "Be brief.", providerOptions: undefined },
+      { role: "user", content: [{ type: "text", text: "hello" }], providerOptions: undefined },
+    ]);
+  });
+
   test("wraps model stream failures with the provider id", async () => {
     const model = {
       specificationVersion: "v2",

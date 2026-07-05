@@ -66,10 +66,14 @@ export function streamAiSdkText({
   signal,
   tools,
 }: AiSdkTextStreamRequest): AiSdkTextStreamResult {
+  const instructions = messages.filter((message) => message.role === "system");
+  const inputMessages = messages.filter((message) => message.role !== "system");
+
   return streamText({
     ...settings,
     model,
-    messages: [...messages],
+    ...(instructions.length === 0 ? {} : { instructions: [...instructions] }),
+    messages: [...inputMessages],
     ...(tools === undefined ? {} : { tools }),
     ...(signal === undefined ? {} : { abortSignal: signal }),
     ...(includeRawChunks === true ? { includeRawChunks: true } : {}),
