@@ -155,6 +155,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
+        "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "drizzle-orm": "catalog:",
         "zod": "catalog:",
@@ -162,6 +163,7 @@
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
         "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },

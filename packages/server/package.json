@@ -7,8 +7,6 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib",
-    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "bun test _test"
   },
@@ -22,7 +20,6 @@
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
-    "@rslib/core": "catalog:",
     "@types/bun": "catalog:",
     "ai": "catalog:",
     "typescript": "catalog:"

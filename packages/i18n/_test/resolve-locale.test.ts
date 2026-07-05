@@ -21,17 +21,17 @@ describe("resolveLocale", () => {
 
     try {
       // When / Then
-      expect(resolveLocale()).toBe("zh-CN");
+      expect(resolveLocale()).toBe("zh-Hans");
     } finally {
       delete process.env.AIO_PROXY_LANG;
       delete process.env.LC_ALL;
     }
   });
 
-  test("normalizes zh-Hans and zh to zh-CN", () => {
+  test("normalizes zh-Hans and zh to zh-Hans", () => {
     // Given / When / Then
-    expect(resolveLocale({ lang: "zh-Hans" })).toBe("zh-CN");
-    expect(resolveLocale({ lang: "zh" })).toBe("zh-CN");
+    expect(resolveLocale({ lang: "zh-Hans" })).toBe("zh-Hans");
+    expect(resolveLocale({ lang: "zh" })).toBe("zh-Hans");
   });
 
   test("falls back to en for malformed input", () => {
@@ -43,7 +43,7 @@ describe("resolveLocale", () => {
 describe("resolveLocaleFromArgv", () => {
   test("reads --lang value forms before environment fallback", () => {
     // Given / When / Then
-    expect(resolveLocaleFromArgv(["serve", "--lang", "zh_CN.UTF-8"])).toBe("zh-CN");
+    expect(resolveLocaleFromArgv(["serve", "--lang", "zh_CN.UTF-8"])).toBe("zh-Hans");
     expect(resolveLocaleFromArgv(["serve", "--lang=en"])).toBe("en");
   });
 });

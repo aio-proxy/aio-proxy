@@ -7,20 +7,19 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib",
-    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "bun test _test/*.test.ts"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
+    "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
-    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
     "typescript": "catalog:"
   }
 }

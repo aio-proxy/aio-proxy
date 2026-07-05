@@ -1,6 +1,6 @@
-export const LOCALES = ["en", "zh-CN"] as const;
+import type { locales } from "./paraglide/runtime";
 
-export type Locale = (typeof LOCALES)[number];
+export type Locale = (typeof locales)[number];
 
 type LocaleEnv = {
   readonly lang?: string;
@@ -33,7 +33,7 @@ function normalizeLocale(value: string | undefined): Locale | undefined {
       normalized?.startsWith("zh-hans-") ||
       normalized?.startsWith("zh-cn-")
     ) {
-      return "zh-CN";
+      return "zh-Hans";
     }
   }
 
