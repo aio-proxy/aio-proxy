@@ -47,7 +47,8 @@ describe("OAuth provider runtime", () => {
       }),
     );
 
-    expect(runtime.providers[0]).toMatchObject({
+    const provider = runtime.providers[0];
+    expect(provider).toMatchObject({
       id: "copilot-12345",
       kind: ProviderKind.OAuth,
       models: [
@@ -56,7 +57,7 @@ describe("OAuth provider runtime", () => {
         { alias: "gpt-5", id: "gpt-5" },
       ],
     });
-    expect("invoke" in runtime.providers[0]!).toBe(true);
-    expect(runtime.providers[0]!.models).toHaveLength(3);
+    expect(provider).toHaveProperty("invoke");
+    expect(provider?.models).toHaveLength(3);
   });
 });
