@@ -5,17 +5,16 @@ import { ProviderProtocol } from "@aio-proxy/types";
 import { hc } from "hono/client";
 
 const config = {
-  providers: [
-    {
+  providers: {
+    "openai-compatible": {
       kind: "api",
       protocol: ProviderProtocol.OpenAICompatible,
       apiKey: "sk-abcdefghijklmnopqrstuvwxyz",
       baseUrl: "https://api.example.com",
       models: ["gpt-test"],
     },
-    {
+    compatible: {
       kind: "ai-sdk",
-      id: "compatible",
       packageName: "@ai-sdk/openai-compatible",
       options: {
         apiKey: "Bearer super-secret-token",
@@ -28,7 +27,7 @@ const config = {
       },
       models: ["compatible-test"],
     },
-  ],
+  },
 };
 
 describe("server routes", () => {
@@ -148,15 +147,14 @@ describe("server routes", () => {
     });
     const app = createServer({
       config: {
-        providers: [
-          {
+        providers: {
+          openai: {
             kind: "api",
-            id: "openai",
             protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },
-        ],
+        },
       },
     });
 
@@ -288,15 +286,14 @@ describe("server routes", () => {
     });
     const app = createServer({
       config: {
-        providers: [
-          {
+        providers: {
+          bad: {
             kind: "api",
-            id: "bad",
             protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },
-        ],
+        },
       },
     });
 

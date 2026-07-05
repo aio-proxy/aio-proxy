@@ -30,7 +30,7 @@ function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<T
 
 function appWith(provider?: ApiProviderInstance | AiSdkProviderInstance): ReturnType<typeof createServer> {
   return createServer({
-    config: { providers: [] },
+    config: { providers: {} },
     providerInstances: provider === undefined ? [] : [provider],
   });
 }

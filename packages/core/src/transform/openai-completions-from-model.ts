@@ -1,14 +1,14 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
-import { OpenAIChatTransformError } from "../error";
-import type { OpenAIChatRequest } from "../ingress/openai-chat";
-import type { OpenAIChatFromModelMessages } from "./openai-chat";
+import { OpenAICompletionsTransformError } from "../error";
+import type { OpenAICompletionsRequest } from "../ingress/openai-completions";
+import type { OpenAICompletionsFromModelMessages } from "./openai-completions";
 
-export function modelMessagesToOpenAIChat({
+export function modelMessagesToOpenAICompletions({
   model,
   messages,
   tools,
   settings,
-}: OpenAIChatFromModelMessages): OpenAIChatRequest {
+}: OpenAICompletionsFromModelMessages): OpenAICompletionsRequest {
   return {
     model,
     messages: messages.map((message, messageIndex) => {
@@ -37,7 +37,7 @@ export function modelMessagesToOpenAIChat({
           };
         }
       }
-      throw new OpenAIChatTransformError(`messages.${messageIndex}.role`);
+      throw new OpenAICompletionsTransformError(`messages.${messageIndex}.role`);
     }),
     ...(tools === undefined
       ? {}

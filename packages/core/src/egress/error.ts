@@ -1,6 +1,6 @@
 import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
 
-type IngressProtocol = "openai-chat";
+type IngressProtocol = "openai";
 
 type OpenAIErrorEnvelope = {
   readonly error: {
@@ -18,12 +18,12 @@ export type IngressError = {
 
 export function toIngressError(error: unknown, ingressProtocol: IngressProtocol): IngressError {
   switch (ingressProtocol) {
-    case "openai-chat":
-      return toOpenAIChatError(error);
+    case "openai":
+      return toOpenAIError(error);
   }
 }
 
-function toOpenAIChatError(error: unknown): IngressError {
+function toOpenAIError(error: unknown): IngressError {
   const cause = unwrappedCause(error);
 
   if (isAbortError(cause)) {

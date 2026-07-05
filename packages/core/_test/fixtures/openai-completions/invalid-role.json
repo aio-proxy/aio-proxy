@@ -2,7 +2,7 @@
   "model": "gpt-5-mini",
   "messages": [
     {
-      "role": "developer",
+      "role": "invalid",
       "content": "hello"
     }
   ]

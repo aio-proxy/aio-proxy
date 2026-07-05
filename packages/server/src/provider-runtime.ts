@@ -72,15 +72,7 @@ export function providerDiff(before: readonly DashboardProviderSummary[], after:
 }
 
 function providerId(provider: Provider): string {
-  switch (provider.kind) {
-    case ProviderKind.Api:
-      return provider.id ?? provider.protocol;
-    case ProviderKind.AiSdk:
-    case ProviderKind.Subscription:
-      return provider.id;
-    default:
-      return assertNever(provider);
-  }
+  return provider.id;
 }
 
 async function probeApi(

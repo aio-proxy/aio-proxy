@@ -1,43 +1,44 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
-import { OpenAIChatTransformError } from "../error";
-import type { OpenAIChatRequest } from "../ingress/openai-chat";
+import { OpenAICompletionsTransformError } from "../error";
+import type { OpenAICompletionsRequest } from "../ingress/openai-completions";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
 type TextPart = Extract<AssistantPart, { type: "text" }>;
 const textKey = "text";
 
-export type OpenAIChatTransformTool = {
+export type OpenAICompletionsTransformTool = {
   readonly type: "function";
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
 };
 
-export type OpenAIChatTransformSettings = {
+export type OpenAICompletionsTransformSettings = {
   readonly stream?: boolean;
   readonly temperature?: number;
   readonly maxTokens?: number;
-  readonly responseFormat?: OpenAIChatRequest["response_format"];
+  readonly responseFormat?: OpenAICompletionsRequest["response_format"];
   readonly reasoningEffort?: "low" | "medium" | "high";
 };
 
-export type OpenAIChatModelMessages = {
+export type OpenAICompletionsModelMessages = {
   readonly messages: readonly ModelMessage[];
-  readonly tools?: readonly OpenAIChatTransformTool[];
-  readonly settings: OpenAIChatTransformSettings;
+  readonly tools?: readonly OpenAICompletionsTransformTool[];
+  readonly settings: OpenAICompletionsTransformSettings;
 };
 
-export type OpenAIChatFromModelMessages = OpenAIChatModelMessages & {
+export type OpenAICompletionsFromModelMessages = OpenAICompletionsModelMessages & {
   readonly model: string;
 };
 
-export function openaiChatToModelMessages(req: OpenAIChatRequest): OpenAIChatModelMessages {
+export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest): OpenAICompletionsModelMessages {
   const toolNames = new Map<string, string>();
 
   return {
     messages: req.messages.map((message, messageIndex) => {
       switch (message.role) {
+        case "developer":
         case "system":
           return { role: "system", content: textContent(message.content) };
         case "user":
@@ -47,7 +48,9 @@ export function openaiChatToModelMessages(req: OpenAIChatRequest): OpenAIChatMod
           for (const [toolIndex, toolCall] of (message.tool_calls ?? []).entries()) {
             const toolName = toolCall.function.name;
             if (toolName === undefined || toolName === "") {
-              throw new OpenAIChatTransformError(`messages.${messageIndex}.tool_calls.${toolIndex}.function.name`);
+              throw new OpenAICompletionsTransformError(
+                `messages.${messageIndex}.tool_calls.${toolIndex}.function.name`,
+              );
             }
 
             toolNames.set(toolCall.id, toolName);
@@ -77,7 +80,7 @@ export function openaiChatToModelMessages(req: OpenAIChatRequest): OpenAIChatMod
             ],
           };
       }
-      throw new OpenAIChatTransformError(`messages.${messageIndex}.role`);
+      throw new OpenAICompletionsTransformError(`messages.${messageIndex}.role`);
     }),
     ...(req.tools !== undefined
       ? {
@@ -100,7 +103,7 @@ export function openaiChatToModelMessages(req: OpenAIChatRequest): OpenAIChatMod
   };
 }
 
-function textContent(content: OpenAIChatRequest["messages"][number]["content"]) {
+function textContent(content: OpenAICompletionsRequest["messages"][number]["content"]) {
   if (typeof content === "string") {
     return content;
   }
@@ -115,7 +118,7 @@ function textContent(content: OpenAIChatRequest["messages"][number]["content"]) 
     .join("");
 }
 
-function modelContent(content: OpenAIChatRequest["messages"][number]["content"]) {
+function modelContent(content: OpenAICompletionsRequest["messages"][number]["content"]) {
   if (typeof content === "string") {
     return content;
   }
@@ -123,7 +126,7 @@ function modelContent(content: OpenAIChatRequest["messages"][number]["content"])
   return textParts(content);
 }
 
-function textParts(content: OpenAIChatRequest["messages"][number]["content"]): TextPart[] {
+function textParts(content: OpenAICompletionsRequest["messages"][number]["content"]): TextPart[] {
   if (!Array.isArray(content)) {
     return typeof content === "string" && content !== "" ? [{ type: "text" as const, text: content }] : [];
   }

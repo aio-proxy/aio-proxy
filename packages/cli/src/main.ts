@@ -24,7 +24,7 @@ const VERSION = packageJson.version;
 
 const DEFAULT_CONFIG = {
   server: { port: 22_078 },
-  providers: [],
+  providers: {},
 } as const;
 
 type ServeOptions = {

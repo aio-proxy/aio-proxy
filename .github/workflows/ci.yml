@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -61,7 +62,7 @@ jobs:
       - name: Start aio-proxy
         run: |
           mkdir -p "$RUNNER_TEMP/aio-proxy-home/.config/aio-proxy"
-          printf '{"server":{"port":22078,"dashboardPort":22079},"providers":[]}\n' > "$RUNNER_TEMP/aio-proxy-home/.config/aio-proxy/config.jsonc"
+          printf '{"server":{"port":22078,"dashboardPort":22079},"providers":{}}\n' > "$RUNNER_TEMP/aio-proxy-home/.config/aio-proxy/config.jsonc"
           HOME="$RUNNER_TEMP/aio-proxy-home" bun run --filter @aio-proxy/cli start &
           echo "$!" > "$RUNNER_TEMP/aio-proxy.pid"
 

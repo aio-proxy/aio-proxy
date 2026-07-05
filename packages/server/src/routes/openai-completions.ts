@@ -1,10 +1,11 @@
 import {
-  openaiChatToModelMessages,
-  parseOpenAIChat,
+  bridgeApiProviderToAiSdk,
+  openAICompletionsToModelMessages,
+  parseOpenAICompletions,
   RouterModelNotFoundError,
   toIngressError,
-  writeOpenAIChatCompletion,
-  writeOpenAIChatSSE,
+  writeOpenAICompletionsResponse,
+  writeOpenAICompletionsSSE,
 } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
@@ -36,29 +37,36 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       return provider.passthrough(context.req.raw);
     }
 
-    if (provider.kind !== ProviderKind.AiSdk) {
-      return openAIError(
-        501,
-        "not_implemented",
-        "Provider does not support OpenAI Chat Completions transform dispatch",
-      );
+    const aiSdkProvider =
+      provider.kind === ProviderKind.Api
+        ? bridgeApiProviderToAiSdk({
+            ...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
+            ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
+            id: provider.id,
+            kind: provider.kind,
+            ...(provider.models === undefined ? {} : { models: [...provider.models] }),
+            protocol: provider.protocol,
+          })
+        : provider;
+    if (aiSdkProvider === undefined || aiSdkProvider.kind !== ProviderKind.AiSdk) {
+      return openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
     }
 
-    const transformed = openaiChatToModelMessages(request);
+    const transformed = openAICompletionsToModelMessages(request);
 
-    if (request.stream === false) {
+    if (request.stream !== true) {
       try {
-        await ensureAiSdkProviderAvailable(provider);
-        const stream = provider.invoke({
+        await ensureAiSdkProviderAvailable(aiSdkProvider);
+        const stream = aiSdkProvider.invoke({
           messages: transformed.messages,
           modelId: route.modelId,
           settings: transformed.settings,
           signal: context.req.raw.signal,
         });
-        return Response.json(await writeOpenAIChatCompletion(stream));
+        return Response.json(await writeOpenAICompletionsResponse(stream));
       } catch (error) {
         // no-excuse-ok: catch - HTTP boundary converts provider failures.
-        const ingressError = toIngressError(error, "openai-chat");
+        const ingressError = toIngressError(error, "openai");
         return Response.json(ingressError.body, {
           status: ingressError.status,
         });
@@ -66,15 +74,15 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
     }
 
     try {
-      await ensureAiSdkProviderAvailable(provider);
-      const stream = provider.invoke({
+      await ensureAiSdkProviderAvailable(aiSdkProvider);
+      const stream = aiSdkProvider.invoke({
         messages: transformed.messages,
         modelId: route.modelId,
         settings: transformed.settings,
         signal: context.req.raw.signal,
       });
 
-      return new Response(writeOpenAIChatSSE(stream), {
+      return new Response(writeOpenAICompletionsSSE(stream), {
         headers: {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8",
@@ -82,7 +90,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       });
     } catch (error) {
       // no-excuse-ok: catch - HTTP boundary converts provider failures.
-      const ingressError = toIngressError(error, "openai-chat");
+      const ingressError = toIngressError(error, "openai");
       return Response.json(ingressError.body, {
         status: ingressError.status,
       });
@@ -90,12 +98,12 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
   });
 }
 
-async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAIChat> | Response> {
+async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAICompletions> | Response> {
   try {
-    return parseOpenAIChat(await raw.clone().json());
+    return parseOpenAICompletions(await raw.clone().json());
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof ZodError) {
-      return openAIError(400, "invalid_request", "Invalid OpenAI Chat Completions request");
+      return openAIError(400, "invalid_request", "Invalid OpenAI Completions request");
     }
 
     throw error;

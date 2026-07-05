@@ -55,7 +55,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -94,7 +94,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
     const request = { ...chatRequest, stream: false };
@@ -142,7 +142,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -186,7 +186,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -200,8 +200,10 @@ describe("POST /v1/chat/completions", () => {
 
     // Then
     expect(response.status).toBe(200);
+    expect(body.id).toStartWith("chatcmpl-");
+    expect(body.id).not.toContain("aio-proxy");
     expect(body).toEqual({
-      id: "chatcmpl-aio-proxy",
+      ...body,
       object: "chat.completion",
       choices: [
         {
@@ -218,6 +220,45 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
+  test("Given ai-sdk provider When stream is omitted Then OpenAI JSON is returned", async () => {
+    // Given
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gpt-4o-mini"],
+      invoke() {
+        return textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-delta", id: "text-1", text: "Hello" },
+          { type: "text-end", id: "text-1" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({
+      config: { providers: {} },
+      providerInstances: [provider],
+    });
+
+    // When
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ model: chatRequest.model, messages: chatRequest.messages }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    // Then
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(body.object).toBe("chat.completion");
+    expect(body.choices[0].message.content).toBe("Hello");
+  });
+
   test("Given ai-sdk provider returns upstream status error When non-stream completion is posted Then OpenAI error hides provider id", async () => {
     // Given
     const provider = {
@@ -229,7 +270,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -265,7 +306,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -304,7 +345,7 @@ describe("POST /v1/chat/completions", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -344,7 +385,7 @@ describe("POST /v1/chat/completions", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -380,7 +421,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -418,7 +459,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -455,7 +496,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
