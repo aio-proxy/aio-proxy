@@ -3,7 +3,9 @@ import type { ModelEntry, ProviderKind } from "@aio-proxy/types";
 
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
+  readonly ensureAvailable?: () => Promise<void>;
   readonly id: string;
+  readonly invoke: AiSdkProviderInstance["invoke"];
   readonly kind: ProviderKind.OAuth;
   readonly models?: ModelEntry[];
   readonly vendor: "github-copilot";

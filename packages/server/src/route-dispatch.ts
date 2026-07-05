@@ -26,6 +26,10 @@ export function toAiSdkProvider(provider: RuntimeProviderInstance) {
     return provider;
   }
 
+  if (provider.kind === ProviderKind.OAuth) {
+    return provider;
+  }
+
   if (provider.kind === ProviderKind.Api) {
     return bridgeApiProviderToAiSdk({
       ...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
