@@ -55,7 +55,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -94,7 +94,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
     const request = { ...chatRequest, stream: false };
@@ -142,7 +142,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -186,7 +186,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -241,7 +241,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -270,7 +270,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -306,7 +306,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -345,7 +345,7 @@ describe("POST /v1/chat/completions", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -385,7 +385,7 @@ describe("POST /v1/chat/completions", () => {
       },
     );
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -421,7 +421,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -459,7 +459,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 
@@ -496,7 +496,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({
-      config: { providers: [] },
+      config: { providers: {} },
       providerInstances: [provider],
     });
 

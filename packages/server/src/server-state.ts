@@ -14,7 +14,7 @@ import { materializeProviders, type ProviderProbe, providerDiff, providerSummary
 import type { ProviderRouteSnapshot, ProviderRouteSource, RuntimeProviderInstance } from "./runtime";
 
 export type ServerStateOptions = {
-  readonly config: unknown;
+  readonly config: Config;
   readonly configPath?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly logger?: (entry: ConfigReloadLog) => void;
@@ -67,7 +67,7 @@ const defaultLogger = (entry: ConfigReloadLog): void => {
 };
 
 export function createServerState(options: ServerStateOptions): ServerState {
-  let snapshot = buildSnapshotFromConfig(ConfigSchema.parse(options.config));
+  let snapshot = buildSnapshotFromConfig(options.config);
   if (options.providerInstances !== undefined) {
     snapshot = buildSnapshotWithProviders(snapshot.config, options.providerInstances);
   }
@@ -142,8 +142,8 @@ async function buildReloadSnapshot(
   fallback: Config,
 ): Promise<{ readonly ok: true; readonly snapshot: Snapshot } | ReloadFailure> {
   try {
-    const raw = configPath === undefined ? fallback : JSON.parse(await readFile(configPath, "utf8"));
-    const config = ConfigSchema.parse(raw);
+    const config =
+      configPath === undefined ? fallback : ConfigSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
     // Provider and router construction is CPU-only and completes before the atomic swap.
     return { ok: true, snapshot: buildSnapshotFromConfig(config) };
   } catch (error) {

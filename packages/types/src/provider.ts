@@ -20,8 +20,9 @@ export const ProviderProtocolSchema = z
 
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
-  id: z.string().optional().describe("Stable provider id used in routing."),
+  id: z.string().describe("Stable provider id used in routing."),
   name: z.string().optional().describe("Display name shown in the dashboard."),
+  weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().optional().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
@@ -31,6 +32,7 @@ export const ApiProviderSchema = z.object({
 export const SubscriptionProviderSchema = z.object({
   kind: z.literal(ProviderKind.Subscription).describe("Provider backed by a local subscription account."),
   id: z.string().describe("Stable provider id used in routing."),
+  weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
   vendor: z.literal("github-copilot").describe("Subscription vendor."),
   models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
@@ -38,6 +40,7 @@ export const SubscriptionProviderSchema = z.object({
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
   id: z.string().describe("Stable provider id used in routing."),
+  weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
   packageName: z
     .string()
     .default("@ai-sdk/openai-compatible")

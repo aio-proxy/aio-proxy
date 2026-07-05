@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, directoryDashboardAssets } from "@aio-proxy/server";
 
-const config = { providers: [] } as const;
+const config = { providers: {} } as const;
 
 describe("dashboard static routes", () => {
   test("Given built dashboard assets When dashboard paths are requested Then static app and API are separated", async () => {

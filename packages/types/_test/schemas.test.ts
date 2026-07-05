@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { z } from "zod";
 import {
   type AioModelMessage,
   type AioStreamPart,
@@ -15,6 +16,8 @@ const apiProvider = {
   models: ["gpt-5-mini"],
 };
 
+const providers = (entries: Record<string, unknown>) => ({ providers: entries });
+
 function expectIssuePath(input: unknown, path: (string | number)[]) {
   const result = ConfigSchema.safeParse(input);
   expect(result.success).toBe(false);
@@ -25,38 +28,36 @@ function expectIssuePath(input: unknown, path: (string | number)[]) {
 
 describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
-    expect(ConfigSchema.parse({ providers: [apiProvider] })).toEqual({
+    expect(ConfigSchema.parse(providers({ openai: apiProvider }))).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [apiProvider],
+      providers: [{ ...apiProvider, id: "openai" }],
     });
   });
 
   test("accepts subscription provider config", () => {
     const provider = {
       kind: "subscription",
-      id: "copilot",
       vendor: "github-copilot",
       models: ["gpt-5-mini"],
     };
 
-    expect(ConfigSchema.parse({ server: {}, providers: [provider] })).toEqual({
+    expect(ConfigSchema.parse({ server: {}, providers: { copilot: provider } })).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [provider],
+      providers: [{ ...provider, id: "copilot" }],
     });
   });
 
   test("accepts ai-sdk provider config", () => {
     const provider = {
       kind: "ai-sdk",
-      id: "google",
       packageName: "@ai-sdk/google",
       options: { name: "google" },
       models: ["gemini-2.5-flash"],
     };
 
-    expect(ConfigSchema.parse({ providers: [provider] })).toEqual({
+    expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [provider],
+      providers: [{ ...provider, id: "google" }],
     });
   });
 
@@ -64,7 +65,6 @@ describe("ConfigSchema", () => {
     // Given
     const provider = {
       kind: "ai-sdk",
-      id: "compatible",
       options: {
         baseURL: "https://api.example.test/v1",
         apiKey: "sk-test",
@@ -76,62 +76,100 @@ describe("ConfigSchema", () => {
     };
 
     // When
-    const config = ConfigSchema.parse({ providers: [provider] });
+    const config = ConfigSchema.parse(providers({ compatible: provider }));
 
     // Then
     expect(config.providers).toEqual([
       {
         ...provider,
+        id: "compatible",
         packageName: "@ai-sdk/openai-compatible",
       },
     ]);
   });
 
   test("accepts mixed provider config", () => {
-    const providers = [
-      apiProvider,
-      { kind: "subscription", id: "copilot", vendor: "github-copilot" },
-      { kind: "ai-sdk", id: "anthropic", packageName: "@ai-sdk/anthropic" },
-    ];
+    const input = {
+      openai: apiProvider,
+      copilot: { kind: "subscription", vendor: "github-copilot" },
+      anthropic: { kind: "ai-sdk", packageName: "@ai-sdk/anthropic" },
+    };
 
     expect(
       ConfigSchema.parse({
         server: { host: "0.0.0.0", port: 3000 },
-        providers,
+        providers: input,
       }),
     ).toEqual({
       server: { host: "0.0.0.0", port: 3000 },
-      providers,
+      providers: [
+        { ...apiProvider, id: "openai" },
+        { kind: "subscription", id: "copilot", vendor: "github-copilot" },
+        { kind: "ai-sdk", id: "anthropic", packageName: "@ai-sdk/anthropic" },
+      ],
     });
   });
 
+  test("sorts providers by descending weight and preserves key order for ties", () => {
+    const config = ConfigSchema.parse(
+      providers({
+        first: { ...apiProvider, weight: 10 },
+        second: { ...apiProvider, weight: 20 },
+        third: { ...apiProvider, weight: 10 },
+      }),
+    );
+
+    expect(config.providers.map((provider) => provider.id)).toEqual(["second", "first", "third"]);
+    expect(config.providers.map((provider) => provider.weight)).toEqual([20, 10, 10]);
+  });
+
+  test("generates object-shaped provider input schema without value id", () => {
+    const jsonSchema = z.toJSONSchema(ConfigSchema, { io: "input" }) as {
+      properties: {
+        providers: {
+          additionalProperties: { oneOf: { properties: Record<string, unknown> }[] };
+          type: string;
+        };
+      };
+    };
+
+    expect(jsonSchema.properties.providers.type).toBe("object");
+    for (const providerSchema of jsonSchema.properties.providers.additionalProperties.oneOf) {
+      expect(providerSchema.properties).not.toHaveProperty("id");
+    }
+  });
+
   test("rejects invalid server port at server.port", () => {
-    expectIssuePath({ server: { port: 0 }, providers: [apiProvider] }, ["server", "port"]);
+    expectIssuePath({ server: { port: 0 }, providers: { openai: apiProvider } }, ["server", "port"]);
   });
 
   test("rejects missing providers at providers", () => {
     expectIssuePath({ server: {} }, ["providers"]);
   });
 
-  test("rejects unknown provider kind at providers.0.kind", () => {
-    expectIssuePath({ server: {}, providers: [{ kind: "unknown" }] }, ["providers", 0, "kind"]);
+  test("rejects array providers at providers", () => {
+    expectIssuePath({ server: {}, providers: [apiProvider] }, ["providers"]);
   });
 
-  test("rejects invalid api protocol at providers.0.protocol", () => {
-    expectIssuePath({ server: {}, providers: [{ ...apiProvider, protocol: "bad-protocol" }] }, [
+  test("rejects unknown provider kind at providers.openai.kind", () => {
+    expectIssuePath({ server: {}, providers: { openai: { kind: "unknown" } } }, ["providers", "openai", "kind"]);
+  });
+
+  test("rejects invalid api protocol at providers.openai.protocol", () => {
+    expectIssuePath({ server: {}, providers: { openai: { ...apiProvider, protocol: "bad-protocol" } } }, [
       "providers",
-      0,
+      "openai",
       "protocol",
     ]);
   });
 
-  test("rejects invalid subscription vendor at providers.0.vendor", () => {
+  test("rejects invalid subscription vendor at providers.copilot.vendor", () => {
     expectIssuePath(
       {
         server: {},
-        providers: [{ kind: "subscription", id: "x", vendor: "github" }],
+        providers: { copilot: { kind: "subscription", vendor: "github" } },
       },
-      ["providers", 0, "vendor"],
+      ["providers", "copilot", "vendor"],
     );
   });
 });
