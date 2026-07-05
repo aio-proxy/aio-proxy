@@ -1,11 +1,13 @@
-# GitHub Copilot 订阅 Provider 设计
+# GitHub Copilot OAuth Provider 设计
 
 日期：2026-07-05
 状态：待评审
 
 ## 背景
 
-`subscription` provider 类型已经存在，但当前只保留 `vendor: "github-copilot"` 和 `models`，运行时没有登录、刷新、模型同步或调用逻辑。目标是把 GitHub Copilot 做成第一种订阅型 provider，同时抽出后续订阅 provider 可复用的公共边界。
+`subscription` provider 命名不够准确：它描述的是账号权益或付费形态，不是 aio-proxy 运行时真正需要实现的机制。这里改为 `oauth` provider：配置表达“这个 provider 由本地 OAuth 登录态驱动”，运行时负责登录、刷新、模型同步和调用。
+
+当前 GitHub Copilot 只是第一个 OAuth provider。实现时应把现有占位的 `ProviderKind.Subscription` / `SubscriptionProviderSchema` 重命名为 `ProviderKind.OAuth` / `OAuthProviderSchema`，并把 config kind 从 `"subscription"` 改为 `"oauth"`。
 
 本设计参考 OpenClaw 的 Copilot device flow / token refresh / base URL 推断 / model policy 逻辑，以及 opencode 的 Copilot `/models` 解析和请求头处理。`@ai-sdk/github-copilot` 不存在，不能作为依赖或运行时 provider。
 
@@ -13,7 +15,8 @@
 
 | 决策点 | 结论 |
 | --- | --- |
-| 公共抽象 | `BaseSubscriptionProvider` 抽象类 |
+| Public kind | `kind: "oauth"` |
+| 公共抽象 | `BaseOAuthProvider` 抽象类 |
 | 登录入口 | 第一版只做 CLI，核心登录逻辑用 callbacks 暴露，后续 dashboard 复用 |
 | Token 来源 | 只支持 device login，不做 env fallback 或 token import |
 | OAuth client id | 使用 OpenClaw 参考实现里的 `Iv1.b507a08c87ecfe98` |
@@ -23,11 +26,11 @@
 | Transport | 按远端 `supported_endpoints` 映射到已有 bundled AI SDK providers |
 | Fallback 路由 | 本轮一起实现多 provider 候选和失败重试 |
 
-## 1. Subscription Provider 抽象
+## 1. OAuth Provider 抽象
 
-新增订阅 provider runtime 抽象，目标是让 route 层继续只关心“能否 passthrough / 能否 invoke”，不把 GitHub Copilot 的 OAuth 和模型目录细节散到各协议 route。
+新增 OAuth provider runtime 抽象，目标是让 route 层继续只关心“能否 passthrough / 能否 invoke”，不把 GitHub Copilot 的登录态和模型目录细节散到各协议 route。
 
-`BaseSubscriptionProvider` 负责：
+`BaseOAuthProvider` 负责：
 
 - 读取、写入 `Auth` store 中 `(vendor, providerId)` 对应的 payload。
 - 提供 `login(callbacks)`，由 CLI 或未来 dashboard 注入展示授权 URL、提示、进度、取消信号。
@@ -57,7 +60,7 @@ GitHub Copilot auth payload 保存：
 - `models`：远端同步后的 `ModelEntry[]` 加上内部 transport metadata。
 - `syncedAt`：模型目录同步时间。
 
-`models()` 只读本地 payload，因此保持同步 API。`syncModels()` 成功后用 CAS 更新 payload，失败时保留旧模型缓存。没有登录态或没有缓存时，该 subscription provider 暂时没有可路由模型。
+`models()` 只读本地 payload，因此保持同步 API。`syncModels()` 成功后用 CAS 更新 payload，失败时保留旧模型缓存。没有登录态或没有缓存时，该 OAuth provider 暂时没有可路由模型。
 
 ## 3. 调用与 Headers
 
@@ -83,7 +86,7 @@ GitHub Copilot provider 在内部构造对应 AI SDK provider/options，注入 C
 - `providerId/modelAlias` 仍只解析指定 provider。
 - disabled provider 不参与候选。
 - raw API provider 同协议仍走 passthrough；协议不匹配仍桥到 AI SDK invoke。
-- subscription provider 只走 invoke，不走 raw passthrough。
+- OAuth provider 只走 invoke，不走 raw passthrough。
 
 Fallback 触发条件：
 
@@ -102,7 +105,7 @@ Fallback 触发条件：
 
 新增 `aio-proxy provider login <id>`：
 
-- 从 config 中查找 provider id，要求 kind 为 `subscription`。
+- 从 config 中查找 provider id，要求 kind 为 `oauth`。
 - 调用核心 `login(providerId, callbacks)`。
 - CLI callbacks 在终端打印 verification URL、user code 和进度。
 - 登录成功后写入 auth payload，并强制执行一次模型同步。
@@ -126,4 +129,3 @@ Fallback 触发条件：
 - Copilot `/models` 同步失败时，旧本地模型缓存仍可用。
 - 同 alias 多 provider 时按顺序 fallback；`429`、`5xx`、网络异常触发下一个候选，普通 `4xx` 不触发。
 - 全部候选失败时返回最后一个失败。
-
