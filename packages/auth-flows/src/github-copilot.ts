@@ -75,8 +75,9 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     const apiBase = enterpriseDomain === undefined ? "https://api.github.com" : `${authBase}/api/v3`;
     const device = await this.requestDeviceCode(authBase, callbacks.signal);
     callbacks.onAuth({
-      url: device.verificationUri,
+      url: device.verificationUriComplete ?? device.verificationUri,
       instructions: `Enter code ${device.userCode}`,
+      userCode: device.userCode,
     });
 
     const githubToken = await this.pollGitHubToken(authBase, device, callbacks);
@@ -124,6 +125,7 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
       deviceCode: readString(json, "device_code"),
       userCode: readString(json, "user_code"),
       verificationUri: readString(json, "verification_uri"),
+      verificationUriComplete: readOptionalString(json, "verification_uri_complete"),
       interval: readNumber(json, "interval") ?? 5,
       expiresIn: readNumber(json, "expires_in") ?? 900,
     };

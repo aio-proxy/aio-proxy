@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
   Auth,
@@ -87,8 +88,14 @@ async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
   const result = await githubCopilotOAuthProvider.login(
     await collectOAuthLoginInput(githubCopilotOAuthProvider.loginForm),
     {
-      onAuth: ({ url, instructions }) => {
+      onAuth: ({ url, instructions, userCode }) => {
         clearProgressLine();
+        if (userCode !== undefined && copyToClipboard(userCode)) {
+          console.log("Copied GitHub device code to clipboard.");
+        }
+        if (openBrowser(url)) {
+          console.log("Opened GitHub login in your default browser.");
+        }
         console.log(url);
         if (instructions !== undefined) {
           console.log(instructions);
@@ -160,6 +167,43 @@ function clearProgressLine(): void {
     return;
   }
   process.stderr.write("\r\x1b[2K");
+}
+
+function openBrowser(url: string): boolean {
+  const command =
+    process.platform === "darwin"
+      ? { bin: "open", args: [url] }
+      : process.platform === "win32"
+        ? { bin: "cmd", args: ["/c", "start", "", url] }
+        : { bin: "xdg-open", args: [url] };
+  try {
+    const child = spawn(command.bin, command.args, { detached: true, stdio: "ignore" });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function copyToClipboard(value: string): boolean {
+  const commands =
+    process.platform === "darwin"
+      ? [{ bin: "pbcopy", args: [] as string[] }]
+      : process.platform === "win32"
+        ? [{ bin: "clip", args: [] as string[] }]
+        : [
+            { bin: "wl-copy", args: [] as string[] },
+            { bin: "xclip", args: ["-selection", "clipboard"] },
+            { bin: "xsel", args: ["--clipboard", "--input"] },
+          ];
+
+  return commands.some((command) => {
+    try {
+      return spawnSync(command.bin, command.args, { input: value, stdio: ["pipe", "ignore", "ignore"] }).status === 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function confirmInstall(pkg: string): Promise<boolean> {

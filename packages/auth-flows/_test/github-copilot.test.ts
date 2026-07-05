@@ -27,6 +27,8 @@ function isolateHome() {
 describe("GitHubCopilotOAuthProvider", () => {
   test("login creates provider id from GitHub numeric user id", async () => {
     const home = isolateHome();
+    let authUrl = "";
+    let userCode = "";
     const provider = new GitHubCopilotOAuthProvider({
       fetch: fakeCopilotFetch(),
       now: () => 1_000,
@@ -37,11 +39,16 @@ describe("GitHubCopilotOAuthProvider", () => {
       const result = await provider.login(
         {},
         {
-          onAuth: () => undefined,
+          onAuth: (info) => {
+            authUrl = info.url;
+            userCode = info.userCode ?? "";
+          },
           onProgress: () => undefined,
         },
       );
 
+      expect(authUrl).toBe("https://github.com/login/device?user_code=ABCD");
+      expect(userCode).toBe("ABCD");
       expect(result.providerId).toBe("copilot-12345");
       expect(result.userId).toBe("12345");
       expect(result.accountLabel).toBe("octocat");
@@ -120,6 +127,7 @@ function fakeCopilotFetch(): typeof fetch {
         device_code: "device",
         user_code: "ABCD",
         verification_uri: "https://github.com/login/device",
+        verification_uri_complete: "https://github.com/login/device?user_code=ABCD",
         interval: 0,
         expires_in: 600,
       });

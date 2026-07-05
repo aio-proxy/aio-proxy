@@ -1,7 +1,7 @@
 import { Auth } from "./store";
 
 export type OAuthLoginCallbacks = {
-  readonly onAuth: (info: { readonly url: string; readonly instructions?: string }) => void;
+  readonly onAuth: (info: { readonly instructions?: string; readonly url: string; readonly userCode?: string }) => void;
   readonly onProgress?: (message: string) => void;
   readonly signal?: AbortSignal;
 };
