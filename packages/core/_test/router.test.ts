@@ -23,7 +23,7 @@ describe("Router", () => {
 
     const resolved = router.resolve("mini");
 
-    expect(resolved).toEqual({ provider: openai, modelId: "gpt-5-mini" });
+    expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
   });
 
   test("resolves a fully-qualified provider alias override", () => {
@@ -37,13 +37,10 @@ describe("Router", () => {
 
     const resolved = router.resolve("anthropic/haiku");
 
-    expect(resolved).toEqual({
-      provider: anthropic,
-      modelId: "claude-3-5-haiku",
-    });
+    expect(resolved).toEqual([{ provider: anthropic, modelId: "claude-3-5-haiku" }]);
   });
 
-  test("throws a collision error including both provider ids", () => {
+  test("returns ordered candidates for duplicate aliases", () => {
     const other = {
       kind: "api",
       id: "other",
@@ -51,7 +48,25 @@ describe("Router", () => {
       models: [{ alias: "mini", id: "other-mini" }],
     } satisfies ProviderInstance;
 
-    expect(() => new Router([openai, other])).toThrow(/openai.*other|other.*openai/);
+    const router = new Router([openai, other]);
+
+    expect(router.resolve("mini")).toEqual([
+      { provider: openai, modelId: "gpt-5-mini" },
+      { provider: other, modelId: "other-mini" },
+    ]);
+  });
+
+  test("provider-qualified aliases only return the requested provider", () => {
+    const other = {
+      kind: "api",
+      id: "other",
+      protocol: ProviderProtocol.OpenAICompatible,
+      models: [{ alias: "mini", id: "other-mini" }],
+    } satisfies ProviderInstance;
+
+    const router = new Router([openai, other]);
+
+    expect(router.resolve("other/mini")).toEqual([{ provider: other, modelId: "other-mini" }]);
   });
 
   test("throws a 404 sentinel for a missing alias", () => {
@@ -81,10 +96,7 @@ describe("Router", () => {
 
     const resolved = router.resolve("sonnet");
 
-    expect(resolved).toEqual({
-      provider: copilot,
-      modelId: "claude-sonnet-4-5",
-    });
+    expect(resolved).toEqual([{ provider: copilot, modelId: "claude-sonnet-4-5" }]);
   });
 
   test("resolves a direct model string", () => {
@@ -92,7 +104,7 @@ describe("Router", () => {
 
     const resolved = router.resolve("gpt-5-mini");
 
-    expect(resolved).toEqual({ provider: openai, modelId: "gpt-5-mini" });
+    expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
   });
 
   test("resolves a fully-qualified direct model string", () => {
@@ -100,7 +112,7 @@ describe("Router", () => {
 
     const resolved = router.resolve("openai/gpt-5-mini");
 
-    expect(resolved).toEqual({ provider: openai, modelId: "gpt-5-mini" });
+    expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
   });
 
   test("rejects duplicate provider-specific aliases", () => {
