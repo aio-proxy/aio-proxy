@@ -118,6 +118,17 @@ describe("Router", () => {
     expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
   });
 
+  test("treats a preserved self-alias as a single route", () => {
+    const selfAlias = {
+      ...openai,
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: true } },
+    } satisfies ProviderInstance;
+    const router = new Router([selfAlias]);
+
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider: selfAlias, modelId: "gpt-5-mini" }]);
+    expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider: selfAlias, modelId: "gpt-5-mini" }]);
+  });
+
   test("rejects duplicate provider-specific aliases", () => {
     const duplicate = {
       kind: "api",

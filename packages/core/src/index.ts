@@ -218,6 +218,6 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
 function modelRoutes(provider: ProviderInstance): ModelRoute[] {
   return Object.entries(provider.alias ?? {}).flatMap(([alias, config]) => [
     { alias, modelId: config.model },
-    ...(config.preserve ? [{ alias: config.model, modelId: config.model }] : []),
+    ...(config.preserve && alias !== config.model ? [{ alias: config.model, modelId: config.model }] : []),
   ]);
 }
