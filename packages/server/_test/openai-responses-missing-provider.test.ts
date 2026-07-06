@@ -17,6 +17,7 @@ describe("OpenAI Responses missing provider boundary", () => {
         id: "missing-ai",
         packageName: "@vendor/missing-provider",
         models: ["gpt-4.1-mini"],
+        alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
       },
       {
         async loadProvider() {

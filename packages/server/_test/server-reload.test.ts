@@ -15,6 +15,7 @@ const configWithProvider = (id: string, baseUrl: string) => ({
       protocol: ProviderProtocol.OpenAICompatible,
       baseUrl,
       models: [`${id}-model`],
+      alias: { [`${id}-model`]: { model: `${id}-model`, preserve: false } },
     },
   },
 });
@@ -96,10 +97,11 @@ describe("server reload", () => {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: "https://duplicate.example.com",
-            models: [
-              { alias: "same", id: "first-model" },
-              { alias: "same", id: "second-model" },
-            ],
+            models: ["first-model"],
+            alias: {
+              firstAlias: { model: "first-model", preserve: true },
+              secondAlias: { model: "first-model", preserve: true },
+            },
           },
         },
       });

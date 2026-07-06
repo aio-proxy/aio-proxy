@@ -7,14 +7,16 @@ const copilot = {
   kind: "oauth",
   id: "copilot",
   vendor: "github-copilot",
-  models: [{ alias: "sonnet", id: "claude-sonnet-4-5" }],
+  models: ["claude-sonnet-4-5"],
+  alias: { sonnet: { model: "claude-sonnet-4-5", preserve: false } },
 } satisfies ProviderInstance;
 
 const openai = {
   kind: "api",
   id: "openai",
   protocol: ProviderProtocol.OpenAIResponse,
-  models: ["gpt-5-mini", { alias: "mini", id: "gpt-5-mini" }],
+  models: ["gpt-5-mini"],
+  alias: { mini: { model: "gpt-5-mini", preserve: true } },
 } satisfies ProviderInstance;
 
 describe("Router", () => {
@@ -31,7 +33,8 @@ describe("Router", () => {
       kind: "api",
       id: "anthropic",
       protocol: ProviderProtocol.Anthropic,
-      models: [{ alias: "haiku", id: "claude-3-5-haiku" }],
+      models: ["claude-3-5-haiku"],
+      alias: { haiku: { model: "claude-3-5-haiku", preserve: false } },
     } satisfies ProviderInstance;
     const router = new Router([openai, anthropic]);
 
@@ -45,7 +48,8 @@ describe("Router", () => {
       kind: "api",
       id: "other",
       protocol: ProviderProtocol.OpenAICompatible,
-      models: [{ alias: "mini", id: "other-mini" }],
+      models: ["other-mini"],
+      alias: { mini: { model: "other-mini", preserve: false } },
     } satisfies ProviderInstance;
 
     const router = new Router([openai, other]);
@@ -61,7 +65,8 @@ describe("Router", () => {
       kind: "api",
       id: "other",
       protocol: ProviderProtocol.OpenAICompatible,
-      models: [{ alias: "mini", id: "other-mini" }],
+      models: ["other-mini"],
+      alias: { mini: { model: "other-mini", preserve: false } },
     } satisfies ProviderInstance;
 
     const router = new Router([openai, other]);
@@ -99,15 +104,13 @@ describe("Router", () => {
     expect(resolved).toEqual([{ provider: copilot, modelId: "claude-sonnet-4-5" }]);
   });
 
-  test("resolves a direct model string", () => {
-    const router = new Router([openai]);
+  test("does not expose raw model strings unless preserved", () => {
+    const router = new Router([{ ...openai, alias: { mini: { model: "gpt-5-mini", preserve: false } } }]);
 
-    const resolved = router.resolve("gpt-5-mini");
-
-    expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
+    expect(() => router.resolve("gpt-5-mini")).toThrow(RouterModelNotFoundError);
   });
 
-  test("resolves a fully-qualified direct model string", () => {
+  test("resolves a fully-qualified preserved original model id", () => {
     const router = new Router([openai]);
 
     const resolved = router.resolve("openai/gpt-5-mini");
@@ -120,10 +123,11 @@ describe("Router", () => {
       kind: "api",
       id: "dupe",
       protocol: ProviderProtocol.OpenAIResponse,
-      models: [
-        { alias: "mini", id: "first" },
-        { alias: "mini", id: "second" },
-      ],
+      models: ["first", "second"],
+      alias: {
+        firstAlias: { model: "first", preserve: true },
+        secondAlias: { model: "first", preserve: true },
+      },
     } satisfies ProviderInstance;
 
     expect(() => new Router([duplicate])).toThrow(/dupe/);

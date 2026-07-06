@@ -187,6 +187,93 @@ describe("ConfigSchema", () => {
       ["providers", "copilot", "vendor"],
     );
   });
+
+  test("accepts provider alias config and normalizes variant shorthand", () => {
+    const provider = {
+      ...apiProvider,
+      models: ["gemini-3.5-flash", "gemini-3.5-flash-medium", "gemini-3.5-flash-low"],
+      alias: {
+        "gemini-3-flash-agent": {
+          model: "gemini-3.5-flash",
+          preserve: true,
+          variants: {
+            medium: { model: "gemini-3.5-flash-medium", preserve: true },
+            low: "gemini-3.5-flash-low",
+          },
+        },
+        "gemini-3.5-flash": "gemini-3.5-flash",
+      },
+    };
+
+    expect(ConfigSchema.parse(providers({ gemini: provider })).providers[0]).toEqual({
+      ...provider,
+      enabled: true,
+      id: "gemini",
+      alias: {
+        "gemini-3-flash-agent": {
+          model: "gemini-3.5-flash",
+          preserve: true,
+          variants: {
+            medium: { model: "gemini-3.5-flash-medium", preserve: true },
+            low: { model: "gemini-3.5-flash-low", preserve: false },
+          },
+        },
+        "gemini-3.5-flash": { model: "gemini-3.5-flash", preserve: false },
+      },
+    });
+  });
+
+  test("rejects object model entries now that aliases are separate", () => {
+    expectIssuePath(
+      {
+        server: {},
+        providers: {
+          openai: {
+            ...apiProvider,
+            models: [{ alias: "mini", id: "gpt-5-mini" }],
+          },
+        },
+      },
+      ["providers", "openai", "models", 0],
+    );
+  });
+
+  test("rejects alias target outside configured models", () => {
+    expectIssuePath(
+      {
+        server: {},
+        providers: {
+          openai: {
+            ...apiProvider,
+            models: ["gpt-5-mini"],
+            alias: { mini: { model: "missing-model" } },
+          },
+        },
+      },
+      ["providers", "openai", "alias", "mini", "model"],
+    );
+  });
+
+  test("rejects variant target outside configured models", () => {
+    expectIssuePath(
+      {
+        server: {},
+        providers: {
+          openai: {
+            ...apiProvider,
+            models: ["gpt-5-mini"],
+            alias: {
+              mini: {
+                model: "gpt-5-mini",
+                variants: { low: "missing-model" },
+              },
+            },
+          },
+        },
+      },
+      ["providers", "openai", "alias", "mini", "variants", "low", "model"],
+    );
+  });
 });
 
 describe("TraceEventSchema", () => {
