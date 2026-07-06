@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { extractAccountId } from "../src/openai-chatgpt/jwt";
+import { base64url, generatePKCE, generateState } from "../src/openai-chatgpt/pkce";
 
 describe("extractAccountId", () => {
   test("extractAccountId prefers top-level claim", () => {
@@ -39,6 +40,30 @@ describe("extractAccountId", () => {
   test("extractAccountId returns undefined for malformed token", () => {
     expect(extractAccountId("not-a-jwt")).toBeUndefined();
     expect(extractAccountId("header.not-base64url.signature")).toBeUndefined();
+  });
+
+  test("generatePKCE produces valid verifier and challenge", async () => {
+    for (let index = 0; index < 100; index += 1) {
+      const { challenge, verifier } = await generatePKCE();
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const expectedChallenge = base64url(new Uint8Array(digest));
+
+      expect(verifier.length).toBe(43);
+      expect(verifier).toMatch(/^[A-Za-z0-9\-._~]{43}$/);
+      expect(challenge).toBe(expectedChallenge);
+      expect(challenge).toMatch(/^[A-Za-z0-9\-_]{43}$/);
+      expect(challenge).not.toContain("=");
+    }
+  });
+
+  test("base64url strips padding", () => {
+    expect(base64url(new Uint8Array([0xff]))).toBe("_w");
+  });
+
+  test("generateState produces URL-safe state", () => {
+    const state = generateState();
+
+    expect(state).toMatch(/^[A-Za-z0-9\-_]{43}$/);
   });
 });
 
