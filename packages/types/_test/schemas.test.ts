@@ -212,7 +212,7 @@ describe("ConfigSchema", () => {
       alias: {
         "gemini-3-flash-agent": {
           model: "gemini-3.5-flash",
-          preserve: true,
+          preserve: false,
           variants: {
             medium: { model: "gemini-3.5-flash-medium", preserve: true },
             low: { model: "gemini-3.5-flash-low", preserve: false },
