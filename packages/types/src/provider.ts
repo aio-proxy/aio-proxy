@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ModelEntrySchema } from "./common";
+import { AliasConfigSchema, ModelIdSchema } from "./common";
 
 export enum ProviderKind {
   Api = "api",
@@ -24,6 +24,11 @@ const BaseProviderSchema = {
   weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
 } as const;
 
+const ProviderModelsSchema = {
+  models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+} as const;
+
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
   ...BaseProviderSchema,
@@ -31,14 +36,14 @@ export const ApiProviderSchema = z.object({
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
+  ...ProviderModelsSchema,
 });
 
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
   ...BaseProviderSchema,
   vendor: z.literal("github-copilot").describe("OAuth vendor."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
+  ...ProviderModelsSchema,
 });
 
 export const AiSdkProviderSchema = z.object({
@@ -56,14 +61,52 @@ export const AiSdkProviderSchema = z.object({
     .boolean()
     .optional()
     .describe("Parse reasoning content from OpenAI-compatible stream chunks."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
+  ...ProviderModelsSchema,
 });
 
-export const ProviderSchema = z.discriminatedUnion("kind", [
-  ApiProviderSchema,
-  OAuthProviderSchema,
-  AiSdkProviderSchema,
-]);
+export const ProviderSchema = z
+  .discriminatedUnion("kind", [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
+  .superRefine(validateAliasTargets);
+
+export function validateAliasTargets(
+  provider: {
+    models?: string[] | undefined;
+    alias?:
+      | Record<
+          string,
+          {
+            model: string;
+            preserve: boolean;
+            variants?: Record<string, { model: string; preserve: boolean }> | undefined;
+          }
+        >
+      | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (provider.models === undefined || provider.alias === undefined) {
+    return;
+  }
+  const models = new Set(provider.models);
+  for (const [alias, config] of Object.entries(provider.alias)) {
+    if (!models.has(config.model)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Alias target "${config.model}" is not listed in models`,
+        path: ["alias", alias, "model"],
+      });
+    }
+    for (const [variant, target] of Object.entries(config.variants ?? {})) {
+      if (!models.has(target.model)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Alias variant target "${target.model}" is not listed in models`,
+          path: ["alias", alias, "variants", variant, "model"],
+        });
+      }
+    }
+  }
+}
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;

@@ -33,6 +33,7 @@ export function bridgeApiProviderToAiSdk(
     packageName: mapping.packageName,
     options: mapping.options,
     ...(provider.models === undefined ? {} : { models: provider.models }),
+    ...(provider.alias === undefined ? {} : { alias: provider.alias }),
   } satisfies AiSdkProvider;
 
   return createAiSdkProvider(synthesized, {

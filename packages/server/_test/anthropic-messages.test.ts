@@ -31,6 +31,7 @@ describe("POST /v1/messages", () => {
       id: "anthropic",
       kind: "api",
       models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
       protocol: ProviderProtocol.Anthropic,
       async passthrough(req) {
         bodySeen = await req.json();
@@ -67,6 +68,7 @@ describe("POST /v1/messages", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
       invoke(request) {
         messagesSeen = request.messages;
         modelSeen = request.modelId;
@@ -114,6 +116,7 @@ describe("POST /v1/messages", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
       invoke() {
         invoked = true;
         return textStream([]);
@@ -152,6 +155,7 @@ describe("POST /v1/messages", () => {
         id: "missing-ai",
         packageName: "@vendor/missing-provider",
         models: ["claude-sonnet-4-5"],
+        alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
       },
       {
         async loadProvider() {
@@ -187,6 +191,7 @@ describe("POST /v1/messages/count_tokens", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
       invoke() {
         return textStream([]);
       },

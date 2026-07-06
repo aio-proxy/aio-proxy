@@ -1,4 +1,4 @@
-import type { Provider as ConfigProvider, ModelEntry, ProviderProtocol } from "@aio-proxy/types";
+import type { Provider as ConfigProvider, ProviderProtocol } from "@aio-proxy/types";
 import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
@@ -183,8 +183,8 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
       if (provider.enabled === false) {
         continue;
       }
-      for (const model of provider.models ?? []) {
-        this.addRoute(provider, modelRoute(model));
+      for (const model of modelRoutes(provider)) {
+        this.addRoute(provider, model);
       }
     }
   }
@@ -215,10 +215,9 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
   }
 }
 
-function modelRoute(model: ModelEntry): ModelRoute {
-  if (typeof model === "string") {
-    return { alias: model, modelId: model };
-  }
-
-  return { alias: model.alias, modelId: model.id };
+function modelRoutes(provider: ProviderInstance): ModelRoute[] {
+  return Object.entries(provider.alias ?? {}).flatMap(([alias, config]) => [
+    { alias, modelId: config.model },
+    ...(config.preserve ? [{ alias: config.model, modelId: config.model }] : []),
+  ]);
 }
