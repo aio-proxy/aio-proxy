@@ -14,6 +14,11 @@ export enum ProviderProtocol {
   Gemini = "gemini",
 }
 
+export enum OAuthVendor {
+  GitHubCopilot = "github-copilot",
+  OpenAIChatGPT = "openai-chatgpt",
+}
+
 export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");
@@ -37,7 +42,7 @@ export const ApiProviderSchema = z.object({
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
   ...BaseProviderSchema,
-  vendor: z.enum(["github-copilot", "openai-chatgpt"] as const).describe("OAuth vendor."),
+  vendor: z.enum(OAuthVendor).describe("OAuth vendor."),
   models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 

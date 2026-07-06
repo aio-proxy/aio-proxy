@@ -5,6 +5,7 @@ import {
   type AioStreamPart,
   ConfigSchema,
   DashboardEventSchema,
+  OAuthVendor,
   TraceEventSchema,
 } from "../src/index";
 
@@ -45,7 +46,7 @@ describe("ConfigSchema", () => {
   test("accepts oauth provider config", () => {
     const provider = {
       kind: "oauth",
-      vendor: "github-copilot",
+      vendor: OAuthVendor.GitHubCopilot,
       models: ["gpt-5-mini"],
     };
 
@@ -58,7 +59,7 @@ describe("ConfigSchema", () => {
   test("Given oauth provider config with openai-chatgpt vendor When parsed Then it is accepted", () => {
     const provider = {
       kind: "oauth",
-      vendor: "openai-chatgpt",
+      vendor: OAuthVendor.OpenAIChatGPT,
     };
 
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
@@ -112,7 +113,7 @@ describe("ConfigSchema", () => {
   test("accepts mixed provider config", () => {
     const input = {
       openai: apiProvider,
-      copilot: { kind: "oauth", vendor: "github-copilot" },
+      copilot: { kind: "oauth", vendor: OAuthVendor.GitHubCopilot },
       anthropic: { kind: "ai-sdk", packageName: "@ai-sdk/anthropic" },
     };
 
@@ -125,7 +126,7 @@ describe("ConfigSchema", () => {
       server: { host: "0.0.0.0", port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
-        { kind: "oauth", enabled: true, id: "copilot", vendor: "github-copilot" },
+        { kind: "oauth", enabled: true, id: "copilot", vendor: OAuthVendor.GitHubCopilot },
         { kind: "ai-sdk", enabled: true, id: "anthropic", packageName: "@ai-sdk/anthropic" },
       ],
     });
