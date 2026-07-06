@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { extractAccountId } from "../src/openai-chatgpt/jwt";
 import { base64url, generatePKCE, generateState } from "../src/openai-chatgpt/pkce";
+import { tokenResponseSchema } from "../src/openai-chatgpt/schema";
 
 describe("extractAccountId", () => {
   test("extractAccountId prefers top-level claim", () => {
@@ -64,6 +65,34 @@ describe("extractAccountId", () => {
     const state = generateState();
 
     expect(state).toMatch(/^[A-Za-z0-9\-_]{43}$/);
+  });
+});
+
+describe("tokenResponseSchema", () => {
+  test("tokenResponseSchema parses valid response", () => {
+    const response = tokenResponseSchema.parse({
+      access_token: "access-token",
+      expires_in: 3_600,
+      id_token: "id-token",
+      refresh_token: "refresh-token",
+      scope: "chatgpt",
+    });
+
+    expect(response).toEqual({
+      access_token: "access-token",
+      expires_in: 3_600,
+      id_token: "id-token",
+      refresh_token: "refresh-token",
+      scope: "chatgpt",
+    });
+  });
+
+  test("tokenResponseSchema rejects missing access_token", () => {
+    expect(() =>
+      tokenResponseSchema.parse({
+        refresh_token: "refresh-token",
+      }),
+    ).toThrow();
   });
 });
 
