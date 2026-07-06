@@ -37,7 +37,7 @@ export const ApiProviderSchema = z.object({
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
   ...BaseProviderSchema,
-  vendor: z.literal("github-copilot").describe("OAuth vendor."),
+  vendor: z.enum(["github-copilot", "openai-chatgpt"] as const).describe("OAuth vendor."),
   models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 

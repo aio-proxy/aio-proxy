@@ -55,6 +55,18 @@ describe("ConfigSchema", () => {
     });
   });
 
+  test("Given oauth provider config with openai-chatgpt vendor When parsed Then it is accepted", () => {
+    const provider = {
+      kind: "oauth",
+      vendor: "openai-chatgpt",
+    };
+
+    expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
+      server: { host: "127.0.0.1", port: 22078 },
+      providers: [{ ...provider, enabled: true, id: "chatgpt" }],
+    });
+  });
+
   test("accepts ai-sdk provider config", () => {
     const provider = {
       kind: "ai-sdk",
@@ -183,6 +195,16 @@ describe("ConfigSchema", () => {
       {
         server: {},
         providers: { copilot: { kind: "oauth", vendor: "github" } },
+      },
+      ["providers", "copilot", "vendor"],
+    );
+  });
+
+  test("unknown vendor rejected at providers.copilot.vendor", () => {
+    expectIssuePath(
+      {
+        server: {},
+        providers: { copilot: { kind: "oauth", vendor: "openai" } },
       },
       ["providers", "copilot", "vendor"],
     );
