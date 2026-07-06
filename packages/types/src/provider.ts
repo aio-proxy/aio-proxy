@@ -18,37 +18,32 @@ export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");
 
-const BaseProviderSchema = {
+const SharedProviderSchema = {
   id: z.string().describe("Stable provider id used in routing."),
   enabled: z.boolean().default(true).describe("Whether this provider participates in routing."),
   weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
-} as const;
-
-const ProviderModelsSchema = {
   models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
 } as const;
 
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   name: z.string().optional().describe("Display name shown in the dashboard."),
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
-  ...ProviderModelsSchema,
 });
 
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   vendor: z.literal("github-copilot").describe("OAuth vendor."),
-  ...ProviderModelsSchema,
 });
 
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   packageName: z
     .string()
     .default("@ai-sdk/openai-compatible")
@@ -61,29 +56,21 @@ export const AiSdkProviderSchema = z.object({
     .boolean()
     .optional()
     .describe("Parse reasoning content from OpenAI-compatible stream chunks."),
-  ...ProviderModelsSchema,
 });
+
+type ProviderValue =
+  | z.output<typeof ApiProviderSchema>
+  | z.output<typeof OAuthProviderSchema>
+  | z.output<typeof AiSdkProviderSchema>;
+type ProviderAliasTargets = Pick<ProviderValue, "models" | "alias">;
+type ProviderAlias = NonNullable<ProviderAliasTargets["alias"]>;
 
 export const ProviderSchema = z
   .discriminatedUnion("kind", [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
-  .superRefine(validateAliasTargets);
+  .superRefine(validateAliasTargets)
+  .transform(normalizeProviderAliasPreserve);
 
-export function validateAliasTargets(
-  provider: {
-    models?: string[] | undefined;
-    alias?:
-      | Record<
-          string,
-          {
-            model: string;
-            preserve: boolean;
-            variants?: Record<string, { model: string; preserve: boolean }> | undefined;
-          }
-        >
-      | undefined;
-  },
-  ctx: z.RefinementCtx,
-): void {
+export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.RefinementCtx): void {
   if (provider.models === undefined || provider.alias === undefined) {
     return;
   }
@@ -106,6 +93,29 @@ export function validateAliasTargets(
       }
     }
   }
+}
+
+function normalizeProviderAliasPreserve(provider: ProviderValue): ProviderValue {
+  if (provider.alias === undefined) {
+    return provider;
+  }
+  const alias = normalizeAliasPreserve(provider.alias);
+  return alias === provider.alias ? provider : { ...provider, alias };
+}
+
+function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
+  let changed = false;
+  const normalized: ProviderAlias = {};
+  for (const [clientModel, config] of Object.entries(alias)) {
+    const selfAlias = alias[config.model];
+    if (config.preserve && clientModel !== config.model && selfAlias?.model === config.model) {
+      normalized[clientModel] = { ...config, preserve: false };
+      changed = true;
+      continue;
+    }
+    normalized[clientModel] = config;
+  }
+  return changed ? normalized : alias;
 }
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
