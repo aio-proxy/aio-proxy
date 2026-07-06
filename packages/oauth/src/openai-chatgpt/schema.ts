@@ -9,7 +9,7 @@ export const tokenResponseSchema = z
     id_token: z.string().optional(),
     refresh_token: z.string(),
   })
-  .passthrough();
+  .loose();
 
 export type TokenResponse = z.output<typeof tokenResponseSchema>;
 
