@@ -1,16 +1,24 @@
 import { z } from "zod";
-import { AiSdkProviderSchema, ApiProviderSchema, OAuthProviderSchema, ProviderSchema } from "./provider";
+import {
+  AiSdkProviderSchema,
+  ApiProviderSchema,
+  OAuthProviderSchema,
+  ProviderSchema,
+  validateAliasTargets,
+} from "./provider";
 
 export const ServerConfigSchema = z.object({
   host: z.string().min(1).default("127.0.0.1").describe("HTTP host for the proxy API server."),
   port: z.number().int().min(1).max(65_535).default(22_078).describe("HTTP port for the proxy API server."),
 });
 
-const ProviderInputValueSchema = z.discriminatedUnion("kind", [
-  ApiProviderSchema.omit({ id: true }),
-  OAuthProviderSchema.omit({ id: true }),
-  AiSdkProviderSchema.omit({ id: true }),
-]);
+const ProviderInputValueSchema = z
+  .discriminatedUnion("kind", [
+    ApiProviderSchema.omit({ id: true }),
+    OAuthProviderSchema.omit({ id: true }),
+    AiSdkProviderSchema.omit({ id: true }),
+  ])
+  .superRefine(validateAliasTargets);
 
 const ProvidersInputSchema = z
   .record(z.string().min(1), ProviderInputValueSchema)

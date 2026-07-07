@@ -38,6 +38,7 @@ export function toAiSdkProvider(provider: RuntimeProviderInstance) {
       id: provider.id,
       kind: provider.kind,
       ...(provider.models === undefined ? {} : { models: [...provider.models] }),
+      ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       protocol: provider.protocol,
     });
   }

@@ -173,7 +173,8 @@ describe("createAiSdkProvider", () => {
         kind: "ai-sdk",
         id: "mock-ai-sdk",
         packageName: "@ai-sdk/openai",
-        models: [{ alias: "alias-model", id: "routed-model" }],
+        models: ["routed-model"],
+        alias: { "alias-model": { model: "routed-model", preserve: false } },
       },
       {
         async loadProvider(packageName) {

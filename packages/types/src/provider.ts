@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ModelEntrySchema } from "./common";
+import { AliasConfigSchema, ModelIdSchema } from "./common";
 
 export enum ProviderKind {
   Api = "api",
@@ -18,32 +18,32 @@ export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");
 
-const BaseProviderSchema = {
+const SharedProviderSchema = {
   id: z.string().describe("Stable provider id used in routing."),
   enabled: z.boolean().default(true).describe("Whether this provider participates in routing."),
   weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
+  models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
 } as const;
 
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   name: z.string().optional().describe("Display name shown in the dashboard."),
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   vendor: z.literal("github-copilot").describe("OAuth vendor."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
-  ...BaseProviderSchema,
+  ...SharedProviderSchema,
   packageName: z
     .string()
     .default("@ai-sdk/openai-compatible")
@@ -56,14 +56,67 @@ export const AiSdkProviderSchema = z.object({
     .boolean()
     .optional()
     .describe("Parse reasoning content from OpenAI-compatible stream chunks."),
-  models: z.array(ModelEntrySchema).optional().describe("Models or aliases exposed through this provider."),
 });
 
-export const ProviderSchema = z.discriminatedUnion("kind", [
-  ApiProviderSchema,
-  OAuthProviderSchema,
-  AiSdkProviderSchema,
-]);
+type ProviderValue =
+  | z.output<typeof ApiProviderSchema>
+  | z.output<typeof OAuthProviderSchema>
+  | z.output<typeof AiSdkProviderSchema>;
+type ProviderAliasTargets = Pick<ProviderValue, "models" | "alias">;
+type ProviderAlias = NonNullable<ProviderAliasTargets["alias"]>;
+
+export const ProviderSchema = z
+  .discriminatedUnion("kind", [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
+  .superRefine(validateAliasTargets)
+  .transform(normalizeProviderAliasPreserve);
+
+export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.RefinementCtx): void {
+  if (provider.models === undefined || provider.alias === undefined) {
+    return;
+  }
+  const models = new Set(provider.models);
+  for (const [alias, config] of Object.entries(provider.alias)) {
+    if (!models.has(config.model)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Alias target "${config.model}" is not listed in models`,
+        path: ["alias", alias, "model"],
+      });
+    }
+    for (const [variant, target] of Object.entries(config.variants ?? {})) {
+      if (!models.has(target.model)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Alias variant target "${target.model}" is not listed in models`,
+          path: ["alias", alias, "variants", variant, "model"],
+        });
+      }
+    }
+  }
+}
+
+function normalizeProviderAliasPreserve(provider: ProviderValue): ProviderValue {
+  if (provider.alias === undefined) {
+    return provider;
+  }
+  const alias = normalizeAliasPreserve(provider.alias);
+  return alias === provider.alias ? provider : { ...provider, alias };
+}
+
+function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
+  let changed = false;
+  const normalized: ProviderAlias = {};
+  for (const [clientModel, config] of Object.entries(alias)) {
+    const selfAlias = alias[config.model];
+    if (config.preserve && clientModel !== config.model && selfAlias?.model === config.model) {
+      normalized[clientModel] = { ...config, preserve: false };
+      changed = true;
+      continue;
+    }
+    normalized[clientModel] = config;
+  }
+  return changed ? normalized : alias;
+}
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;

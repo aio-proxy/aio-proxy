@@ -136,7 +136,6 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
-        "@rslib/core": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -162,7 +161,6 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
-        "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
@@ -180,7 +178,6 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
-        "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
         "ai": "catalog:",
         "typescript": "catalog:",
