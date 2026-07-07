@@ -19,6 +19,7 @@ import {
 } from "@aio-proxy/oauth";
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
 import { confirm, input, select } from "@inquirer/prompts";
+import { openAIChatGPTOAuthProvider } from "../../oauth/src/openai-chatgpt";
 import { resolveConfigPath } from "./config-path";
 import { ProviderDashboardError } from "./errors";
 
@@ -64,19 +65,24 @@ export async function providerInstall(pkg: string, options: ProviderInstallOptio
 }
 
 export async function providerLogin(family: string, options: ProviderLoginOptions): Promise<void> {
-  if (family !== "copilot") {
+  const result =
+    family === "copilot"
+      ? await runCopilotLoginForCli()
+      : family === "chatgpt"
+        ? await runChatGPTLoginForCli()
+        : undefined;
+  if (result === undefined) {
     console.error(`unknown oauth provider family: ${family}`);
     process.exitCode = 1;
     return;
   }
 
-  const result = await runCopilotLoginForCli();
   const configPath = resolveConfigPath(options.config);
   const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
   const providers = config.providers ?? {};
   providers[result.providerId] = {
     kind: "oauth",
-    vendor: "github-copilot",
+    vendor: family === "chatgpt" ? "openai-chatgpt" : "github-copilot",
     ...(result.models === undefined ? {} : { models: result.models }),
   };
   await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
@@ -111,6 +117,32 @@ async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
     },
   );
   const models = await githubCopilotOAuthProvider.models(result.payload);
+  clearProgressLine();
+  return { models, payload: result.payload, providerId: result.providerId };
+}
+
+async function runChatGPTLoginForCli(): Promise<LoginForCliResult> {
+  const fake = (process.env as { readonly AIO_PROXY_TEST_CHATGPT_LOGIN?: string }).AIO_PROXY_TEST_CHATGPT_LOGIN;
+  if (fake !== undefined) {
+    const result = JSON.parse(fake) as LoginForCliResult;
+    Auth.set("openai-chatgpt", result.providerId, result.payload, result.providerId);
+    return result;
+  }
+
+  const result = await openAIChatGPTOAuthProvider.login(
+    await collectOAuthLoginInput(openAIChatGPTOAuthProvider.loginForm),
+    {
+      onAuth: ({ url }) => {
+        clearProgressLine();
+        if (openBrowser(url)) {
+          console.log("Opened ChatGPT login in your default browser.");
+        }
+        console.log(url);
+      },
+      onProgress: (message) => writeProgressLine(message),
+    },
+  );
+  const models = await openAIChatGPTOAuthProvider.models(result.payload);
   clearProgressLine();
   return { models, payload: result.payload, providerId: result.providerId };
 }

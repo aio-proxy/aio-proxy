@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Auth } from "@aio-proxy/oauth";
+import { ConfigSchema } from "@aio-proxy/types";
 import { output, runCli, runCliAsync } from "./cli-test-helpers";
 
 const jsonHeaders = { "content-type": "application/json" } as const;
@@ -78,6 +80,62 @@ describe("provider commands", () => {
         },
       });
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("provider login chatgpt writes oauth config and stores auth payload", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
+    const configPath = join(dir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+    const providerId = "chatgpt-account-123";
+    const payload = {
+      access: "chatgpt-access",
+      accountId: "account-123",
+      expires: Date.now() + 60_000,
+      refresh: "chatgpt-refresh",
+    };
+    const models = [
+      { alias: "gpt-5.5", id: "gpt-5.5" },
+      { alias: "gpt-5.4", id: "gpt-5.4" },
+      { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
+      { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+    ] as const;
+    const previousHome = process.env.AIO_PROXY_HOME;
+    process.env.AIO_PROXY_HOME = dir;
+
+    try {
+      const result = await runCliAsync(["provider", "login", "chatgpt", "--config", configPath], {
+        AIO_PROXY_HOME: dir,
+        AIO_PROXY_TEST_CHATGPT_LOGIN: JSON.stringify({
+          providerId,
+          payload,
+          models,
+        }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(providerId);
+      expect(Auth.get("openai-chatgpt", providerId)?.payload).toEqual(payload);
+
+      const parsed = ConfigSchema.parse(await Bun.file(configPath).json());
+      const provider = parsed.providers.find((entry) => entry.id === providerId);
+      expect(provider).toEqual({
+        enabled: true,
+        id: providerId,
+        kind: "oauth",
+        models,
+        vendor: "openai-chatgpt",
+      });
+      expect(provider && "alias" in provider).toBe(false);
+      expect(provider?.models).toHaveLength(4);
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.AIO_PROXY_HOME;
+      } else {
+        process.env.AIO_PROXY_HOME = previousHome;
+      }
+      Auth.del("openai-chatgpt", providerId);
       rmSync(dir, { recursive: true, force: true });
     }
   });
