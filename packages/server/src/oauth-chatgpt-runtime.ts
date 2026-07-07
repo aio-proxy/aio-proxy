@@ -132,8 +132,7 @@ function isModelEntryArray(value: unknown): value is readonly OAuthProviderModel
       if (!isPlainObject(model)) {
         return false;
       }
-      const candidate = Object(model);
-      return typeof Reflect.get(candidate, "alias") === "string" && typeof Reflect.get(candidate, "id") === "string";
+      return typeof Reflect.get(Object(model), "id") === "string";
     })
   );
 }

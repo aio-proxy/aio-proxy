@@ -20,10 +20,10 @@ describe("OpenAIChatGPTOAuthProvider", () => {
     await expect(
       provider.models({ access: "a", expires: 0, refresh: "r", accountId: "u", models: [] }),
     ).resolves.toEqual([
-      { alias: "gpt-5.5", id: "gpt-5.5" },
-      { alias: "gpt-5.4", id: "gpt-5.4" },
-      { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
-      { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+      { id: "gpt-5.5", displayName: "GPT-5.5" },
+      { id: "gpt-5.4", displayName: "GPT-5.4" },
+      { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+      { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
     ]);
   });
 
@@ -53,7 +53,7 @@ describe("OpenAIChatGPTOAuthProvider", () => {
         {
           onAuth: (info) => {
             expect(info).toEqual({
-              url: "https://auth.openai.com/oauth/authorize?client_id=Iv1.b507a08c87ecfe98&code_challenge=challenge-123&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&response_type=code&state=state-123",
+              url: "https://auth.openai.com/oauth/authorize?client_id=app_EMoamEEZ73f0CkXaXp7hrann&code_challenge=challenge-123&code_challenge_method=S256&codex_cli_simplified_flow=true&id_token_add_organizations=true&originator=codex_cli_rs&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&response_type=code&scope=openid+profile+email+offline_access&state=state-123",
             });
           },
         },
@@ -66,10 +66,10 @@ describe("OpenAIChatGPTOAuthProvider", () => {
           accountId,
           expires: 1_700_000_900_000,
           models: [
-            { alias: "gpt-5.5", id: "gpt-5.5" },
-            { alias: "gpt-5.4", id: "gpt-5.4" },
-            { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
-            { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+            { id: "gpt-5.5", displayName: "GPT-5.5" },
+            { id: "gpt-5.4", displayName: "GPT-5.4" },
+            { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+            { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
           ],
           refresh: "refresh-token",
         },
@@ -83,10 +83,10 @@ describe("OpenAIChatGPTOAuthProvider", () => {
         accountLabel: accountId,
         expires: 1_700_000_900_000,
         models: [
-          { alias: "gpt-5.5", id: "gpt-5.5" },
-          { alias: "gpt-5.4", id: "gpt-5.4" },
-          { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
-          { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+          { id: "gpt-5.5", displayName: "GPT-5.5" },
+          { id: "gpt-5.4", displayName: "GPT-5.4" },
+          { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+          { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
         ],
         refresh: "refresh-token",
       });

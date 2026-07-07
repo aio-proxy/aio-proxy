@@ -76,7 +76,6 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
 }
 
 type CachedCopilotModel = {
-  readonly alias: string;
   readonly id: string;
   readonly transport: CopilotTransport;
 };
@@ -92,7 +91,6 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     }
     const candidate = model as Partial<CachedCopilotModel>;
     return (
-      typeof candidate.alias === "string" &&
       typeof candidate.id === "string" &&
       (candidate.transport === "chat" || candidate.transport === "messages" || candidate.transport === "responses")
     );
