@@ -18,7 +18,7 @@ type OpenAIChatGPTDeps = {
   readonly generateState: typeof generateState;
 };
 
-const OPENAI_CHATGPT_MODELS = [
+export const OPENAI_CHATGPT_MODELS = [
   { id: "gpt-5.5", displayName: "GPT-5.5" },
   { id: "gpt-5.4", displayName: "GPT-5.4" },
   { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },

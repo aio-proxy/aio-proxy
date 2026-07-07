@@ -21,6 +21,7 @@ export {
   type OAuthProviderModel,
 } from "./oauth-provider";
 export {
+  OPENAI_CHATGPT_MODELS,
   OpenAIChatGPTOAuthProvider,
   openAIChatGPTOAuthProvider,
 } from "./openai-chatgpt";
