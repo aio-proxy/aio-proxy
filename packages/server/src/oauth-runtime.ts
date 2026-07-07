@@ -1,7 +1,10 @@
 import { createAiSdkProvider } from "@aio-proxy/core";
 import { githubCopilotOAuthProvider } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
-import { ProviderKind } from "@aio-proxy/types";
+import { OAuthVendor, ProviderKind } from "@aio-proxy/types";
+
+export { codexFetchWrapper, createOpenAIChatGPTRuntimeProvider } from "./oauth-chatgpt-runtime";
+
 import type { OAuthProviderInstance } from "./runtime";
 
 type CopilotTransport = "chat" | "messages" | "responses";
@@ -47,7 +50,7 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
     id: config.id,
     kind: ProviderKind.OAuth,
     ...(modelEntries === undefined ? {} : { models: modelEntries }),
-    vendor: config.vendor,
+    vendor: OAuthVendor.GitHubCopilot,
     async ensureAvailable() {
       if (access === undefined || baseUrl === undefined) {
         throw new Error(`${config.id}: GitHub Copilot login required`);

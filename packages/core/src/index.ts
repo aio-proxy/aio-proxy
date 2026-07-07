@@ -119,7 +119,7 @@ export {
   createApiProvider,
   resolveApiKey,
 } from "./provider/api";
-export { bridgeApiProviderToAiSdk } from "./provider/api-bridge";
+export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
 export {
   type AnthropicMessagesFromModelMessages,
   type AnthropicMessagesModelMessages,

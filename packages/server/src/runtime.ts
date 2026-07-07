@@ -1,5 +1,5 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-proxy/core";
-import type { ModelEntry, ProviderKind } from "@aio-proxy/types";
+import type { ModelEntry, OAuthVendor, ProviderKind } from "@aio-proxy/types";
 
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
@@ -8,7 +8,7 @@ export type OAuthProviderInstance = {
   readonly invoke: AiSdkProviderInstance["invoke"];
   readonly kind: ProviderKind.OAuth;
   readonly models?: ModelEntry[];
-  readonly vendor: "github-copilot";
+  readonly vendor: OAuthVendor.GitHubCopilot;
 };
 
 export type RuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;
