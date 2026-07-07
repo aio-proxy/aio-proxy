@@ -100,6 +100,14 @@ describe("tokenResponseSchema", () => {
       }),
     ).toThrow();
   });
+
+  test("tokenResponseSchema rejects missing refresh_token", () => {
+    expect(() =>
+      tokenResponseSchema.parse({
+        access_token: "access-token",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("createLoopbackServer", () => {
@@ -171,5 +179,5 @@ function buildJwt(payload: Record<string, unknown>): string {
 }
 
 function encodeBase64Url(input: string): string {
-  return Buffer.from(input, "utf8").toString("base64url");
+  return base64url(new TextEncoder().encode(input));
 }
