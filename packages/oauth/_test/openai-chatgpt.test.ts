@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { extractAccountId } from "../src/openai-chatgpt/jwt";
+import {
+  ChatGPTOAuthAbortedError,
+  ChatGPTOAuthPortInUseError,
+  ChatGPTStateMismatchError,
+  createLoopbackServer,
+} from "../src/openai-chatgpt/loopback";
 import { base64url, generatePKCE, generateState } from "../src/openai-chatgpt/pkce";
 import { tokenResponseSchema } from "../src/openai-chatgpt/schema";
 
@@ -93,6 +99,68 @@ describe("tokenResponseSchema", () => {
         refresh_token: "refresh-token",
       }),
     ).toThrow();
+  });
+});
+
+describe("createLoopbackServer", () => {
+  test("loopback resolves on matching state", async () => {
+    const loopback = createLoopbackServer("expected-state", { port: 0 });
+
+    try {
+      const url = new URL(loopback.redirectUri);
+
+      expect(url.hostname).toBe("localhost");
+      expect(url.pathname).toBe("/auth/callback");
+      expect(Number(url.port)).toBeGreaterThan(0);
+
+      const response = await fetch(`${url.toString()}?code=abc&state=expected-state`);
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(html).toContain("You may close this window");
+      await expect(loopback.waitForCode()).resolves.toEqual({ code: "abc", state: "expected-state" });
+    } finally {
+      loopback.close();
+    }
+  });
+
+  test("loopback rejects on state mismatch", async () => {
+    const loopback = createLoopbackServer("expected-state", { port: 0 });
+
+    try {
+      const response = await fetch(`${loopback.redirectUri}?code=abc&state=wrong-state`);
+
+      expect(response.status).toBe(400);
+      await expect(loopback.waitForCode()).rejects.toBeInstanceOf(ChatGPTStateMismatchError);
+    } finally {
+      loopback.close();
+    }
+  });
+
+  test("loopback rejects when abort signal fires", async () => {
+    const loopback = createLoopbackServer("expected-state", { port: 0 });
+    const controller = new AbortController();
+
+    try {
+      const wait = loopback.waitForCode(controller.signal);
+      controller.abort();
+
+      await expect(wait).rejects.toBeInstanceOf(ChatGPTOAuthAbortedError);
+    } finally {
+      loopback.close();
+    }
+  });
+
+  test("loopback throws ChatGPTOAuthPortInUseError when Bun.serve fails", async () => {
+    const first = createLoopbackServer("expected-state", { port: 0 });
+
+    try {
+      const port = Number(new URL(first.redirectUri).port);
+
+      expect(() => createLoopbackServer("other-state", { port })).toThrow(ChatGPTOAuthPortInUseError);
+    } finally {
+      first.close();
+    }
   });
 });
 
