@@ -20,6 +20,11 @@ export {
   type OAuthProviderLoginResult,
   type OAuthProviderModel,
 } from "./oauth-provider";
+export {
+  OpenAIChatGPTOAuthProvider,
+  openAIChatGPTOAuthProvider,
+} from "./openai-chatgpt";
+export type { ChatGPTModel, ChatGPTPayload } from "./openai-chatgpt/schema";
 export { Auth } from "./store";
 export type {
   AuthCasCurrent,
