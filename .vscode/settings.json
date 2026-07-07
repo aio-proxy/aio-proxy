@@ -28,5 +28,7 @@
   },
   "search.exclude": {
     "**/route-tree.gen.ts": true
-  }
+  },
+  "tailwindCSS.classAttributes": ["class", "className"],
+  "tailwindCSS.classFunctions": ["cn", "cva"]
 }
