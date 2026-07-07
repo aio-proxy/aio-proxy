@@ -11,7 +11,7 @@ export const RootLayout: React.FC = () => {
       <TooltipProvider>
         <SidebarProvider>
           <SideMenu />
-          <SidebarInset className="h-[calc(100dvh-1rem)] md:peer-data-[state=collapsed]:[--app-toolbar-content-offset:12rem]">
+          <SidebarInset className="h-[calc(100dvh-1rem)]">
             <Outlet />
           </SidebarInset>
         </SidebarProvider>
