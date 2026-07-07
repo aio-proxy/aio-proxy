@@ -46,7 +46,7 @@ describe("GitHubCopilotOAuthProvider", () => {
               onProgress: () => undefined,
             },
           );
-          expect(modelRequests).toBe(0);
+          expect(modelRequests).toBe(1);
           return { models: await provider.models(result.payload), result };
         },
       );
@@ -57,14 +57,14 @@ describe("GitHubCopilotOAuthProvider", () => {
       expect(result.userId).toBe("12345");
       expect(result.accountLabel).toBe("octocat");
       expect(result.payload.baseUrl).toBe("https://api.individual.githubcopilot.com");
-      expect("models" in result.payload).toBe(false);
+      expect("models" in result.payload).toBe(true);
       expect("models" in result).toBe(false);
       expect(models).toEqual([
         { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: "chat" },
         { id: "claude-sonnet-4", transport: "messages" },
         { id: "gpt-5", transport: "responses" },
       ]);
-      expect(modelRequests).toBe(1);
+      expect(modelRequests).toBe(2);
       expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
         ...result.payload,
         accountLabel: "octocat",
@@ -167,6 +167,60 @@ describe("GitHubCopilotOAuthProvider", () => {
     );
 
     expect(models).toEqual([{ id: "gpt-5-mini", transport: "chat" }]);
+  });
+
+  test("login stores the fetched model list in the auth payload", async () => {
+    const home = isolateHome();
+    const provider = new GitHubCopilotOAuthProvider();
+
+    try {
+      const result = await withFetchMock(fakeCopilotFetch(), () =>
+        provider.login({}, { onAuth: () => undefined, onProgress: () => undefined }),
+      );
+
+      expect(result.status).toBe("authenticated");
+      expect(result.payload.models).toEqual([
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: "chat" },
+        { id: "claude-sonnet-4", transport: "messages" },
+        { id: "gpt-5", transport: "responses" },
+      ]);
+      expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
+        ...result.payload,
+        accountLabel: "octocat",
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("login survives a failed model fetch and warns without storing models", async () => {
+    const home = isolateHome();
+    const progress: string[] = [];
+    const provider = new GitHubCopilotOAuthProvider();
+    const base = fakeCopilotFetch();
+
+    try {
+      const result = await withFetchMock(
+        async (input, init) => {
+          const url = new URL(input.toString());
+          if (url.pathname === "/models") {
+            return Response.json({}, { status: 500 });
+          }
+          return base(input, init);
+        },
+        () => provider.login({}, { onAuth: () => undefined, onProgress: (message) => progress.push(message) }),
+      );
+
+      expect(result.status).toBe("authenticated");
+      expect("models" in result.payload).toBe(false);
+      expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
+        ...result.payload,
+        accountLabel: "octocat",
+      });
+      expect(progress).toContain("model list sync failed — /v1/models exposure requires re-login");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 
