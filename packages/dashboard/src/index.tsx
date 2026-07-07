@@ -4,6 +4,8 @@ import { hc } from "hono/client";
 import ReactDOM from "react-dom/client";
 import { routeTree } from "./route-tree.gen";
 
+import "./styles.css";
+
 const router = createRouter({
   routeTree,
   basepath: "/dashboard",

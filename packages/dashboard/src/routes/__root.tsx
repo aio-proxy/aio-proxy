@@ -1,17 +1,11 @@
+import { getLocale } from "@aio-proxy/i18n";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { RootLayout } from "@/components/root-layout";
 import { Toaster } from "@/components/ui/sonner";
-
-import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-    ],
   }),
   notFoundComponent: () => (
     <main className="container mx-auto p-4 pt-16">
@@ -21,7 +15,7 @@ export const Route = createRootRoute({
   ),
   shellComponent: ({ children }) => {
     return (
-      <html lang="en">
+      <html lang={getLocale()}>
         <head>
           <HeadContent />
         </head>
@@ -33,4 +27,5 @@ export const Route = createRootRoute({
       </html>
     );
   },
+  component: RootLayout,
 });
