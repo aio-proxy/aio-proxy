@@ -73,7 +73,10 @@ describe("provider commands", () => {
           "copilot-12345": {
             kind: "oauth",
             vendor: "github-copilot",
-            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
+            models: ["gpt-5-mini"],
+            alias: {
+              "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
+            },
           },
         },
       });

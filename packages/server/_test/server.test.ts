@@ -12,6 +12,9 @@ const config = {
       apiKey: "sk-abcdefghijklmnopqrstuvwxyz",
       baseUrl: "https://api.example.com",
       models: ["gpt-test"],
+      alias: {
+        "gpt-alias": { model: "gpt-test", preserve: true },
+      },
     },
     compatible: {
       kind: "ai-sdk",
@@ -26,6 +29,9 @@ const config = {
         name: "compatible",
       },
       models: ["compatible-test"],
+      alias: {
+        compatible: { model: "compatible-test", preserve: false },
+      },
     },
   },
 };
@@ -59,8 +65,9 @@ describe("server routes", () => {
     expect(body).toEqual({
       object: "list",
       data: [
+        { id: "gpt-alias", object: "model", owned_by: "openai-compatible" },
         { id: "gpt-test", object: "model", owned_by: "openai-compatible" },
-        { id: "compatible-test", object: "model", owned_by: "compatible" },
+        { id: "compatible", object: "model", owned_by: "compatible" },
       ],
     });
   });

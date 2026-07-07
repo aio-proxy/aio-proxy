@@ -15,6 +15,7 @@ describe("Gemini missing provider boundary", () => {
         id: "missing-ai",
         packageName: "@vendor/missing-provider",
         models: ["gemini-2.5-flash"],
+        alias: { "gemini-2.5-flash": { model: "gemini-2.5-flash", preserve: false } },
       },
       {
         async loadProvider() {

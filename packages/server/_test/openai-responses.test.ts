@@ -26,6 +26,7 @@ function aiSdkProvider(invoke: AiSdkProviderInstance["invoke"]): AiSdkProviderIn
     id: "mock-ai",
     kind: "ai-sdk",
     models: ["gpt-4.1-mini"],
+    alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
     invoke,
   };
 }
@@ -67,6 +68,7 @@ describe("OpenAI Responses routes", () => {
       id: "openai",
       kind: "api",
       models: ["gpt-4.1-mini"],
+      alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
       async passthrough(req) {
         bodySeen = await req.text();

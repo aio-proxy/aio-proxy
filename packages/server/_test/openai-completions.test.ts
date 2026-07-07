@@ -45,6 +45,7 @@ describe("POST /v1/chat/completions", () => {
       id: "openai",
       kind: "api",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
       async passthrough(req) {
         bodySeen = await req.json();
@@ -80,6 +81,7 @@ describe("POST /v1/chat/completions", () => {
       id: "openai",
       kind: "api",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
       async passthrough(req) {
         bodySeen = await req.json();
@@ -125,6 +127,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke(request) {
         messagesSeen = request.messages;
         modelSeen = request.modelId;
@@ -170,6 +173,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         return textStream([
           { type: "text-start", id: "text-1" },
@@ -226,6 +230,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         return textStream([
           { type: "text-start", id: "text-1" },
@@ -264,6 +269,7 @@ describe("POST /v1/chat/completions", () => {
       id: "rate-limited",
       kind: "api",
       models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
       passthrough: async () => Response.json({ error: "rate limited" }, { status: 429 }),
     } satisfies ApiProviderInstance;
@@ -271,6 +277,7 @@ describe("POST /v1/chat/completions", () => {
       id: "ok",
       kind: "ai-sdk",
       models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
       invoke: () =>
         textStream([
           { type: "text-start", id: "fallback" },
@@ -303,6 +310,7 @@ describe("POST /v1/chat/completions", () => {
       id: "bad-request",
       kind: "api",
       models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
       passthrough: async () => Response.json({ error: "bad request" }, { status: 400 }),
     } satisfies ApiProviderInstance;
@@ -310,6 +318,7 @@ describe("POST /v1/chat/completions", () => {
       id: "ok",
       kind: "ai-sdk",
       models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
       invoke: () => {
         secondCalled = true;
         return textStream([
@@ -343,6 +352,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         return errorStream(new UpstreamStatusError("upstream denied"));
       },
@@ -379,6 +389,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         return errorStream(new AbortStreamError("client closed request"));
       },
@@ -415,6 +426,7 @@ describe("POST /v1/chat/completions", () => {
         id: "missing-ai",
         packageName: "@vendor/missing-provider",
         models: ["gpt-4o-mini"],
+        alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       },
       {
         async loadProvider() {
@@ -455,6 +467,7 @@ describe("POST /v1/chat/completions", () => {
         id: "missing-ai",
         packageName: "@vendor/missing-provider",
         models: ["gpt-4o-mini"],
+        alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       },
       {
         async loadProvider() {
@@ -494,6 +507,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         throw new Error("model exploded");
       },
@@ -531,6 +545,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         invoked = true;
         return textStream([]);
@@ -568,6 +583,7 @@ describe("POST /v1/chat/completions", () => {
       id: "mock-ai",
       kind: "ai-sdk",
       models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
       invoke() {
         invoked = true;
         return textStream([]);
