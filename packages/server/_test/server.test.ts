@@ -72,6 +72,33 @@ describe("server routes", () => {
     });
   });
 
+  test("Given provider with models but no alias When OpenAI models are requested Then models are listed by id", async () => {
+    // Given
+    const app = createServer({
+      config: {
+        providers: {
+          chatgpt: {
+            kind: "oauth",
+            vendor: "openai-chatgpt",
+            models: ["gpt-5.5", "gpt-5.4"],
+          },
+        },
+      },
+    });
+
+    // When
+    const response = await app.request("/v1/models");
+
+    // Then
+    expect(await response.json()).toEqual({
+      object: "list",
+      data: [
+        { id: "gpt-5.5", object: "model", owned_by: "chatgpt" },
+        { id: "gpt-5.4", object: "model", owned_by: "chatgpt" },
+      ],
+    });
+  });
+
   test("Given disabled provider When models and dashboard are requested Then provider is not routed", async () => {
     // Given
     const app = createServer({
