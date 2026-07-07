@@ -8,7 +8,7 @@ export type OAuthProviderInstance = {
   readonly invoke: AiSdkProviderInstance["invoke"];
   readonly kind: ProviderKind.OAuth;
   readonly models?: ModelEntry[];
-  readonly vendor: OAuthVendor.GitHubCopilot;
+  readonly vendor: OAuthVendor.GitHubCopilot | OAuthVendor.OpenAIChatGPT;
 };
 
 export type RuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;
