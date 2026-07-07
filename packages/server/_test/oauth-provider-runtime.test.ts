@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "@aio-proxy/oauth";
-import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import { ConfigSchema, OAuthVendor, ProviderKind } from "@aio-proxy/types";
 import { materializeProviders } from "../src/provider-runtime";
 
 describe("OAuth provider runtime", () => {
@@ -61,5 +61,28 @@ describe("OAuth provider runtime", () => {
     });
     expect(provider).toHaveProperty("invoke");
     expect(provider?.models).toHaveLength(3);
+  });
+
+  test("materializes oauth providers by vendor", () => {
+    const runtime = materializeProviders(
+      ConfigSchema.parse({
+        providers: {
+          copilot: {
+            kind: "oauth",
+            vendor: OAuthVendor.GitHubCopilot,
+            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
+          },
+          chatgpt: {
+            kind: "oauth",
+            vendor: OAuthVendor.OpenAIChatGPT,
+          },
+        },
+      }),
+    );
+
+    expect(runtime.providers.map((provider) => provider.vendor)).toEqual([
+      OAuthVendor.GitHubCopilot,
+      OAuthVendor.OpenAIChatGPT,
+    ]);
   });
 });

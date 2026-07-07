@@ -1,7 +1,7 @@
 import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { createGitHubCopilotRuntimeProvider } from "./oauth-runtime";
+import { createOAuthRuntimeProvider } from "./oauth-runtime";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
@@ -39,7 +39,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
         break;
       }
       case ProviderKind.OAuth: {
-        const instance = createGitHubCopilotRuntimeProvider(provider);
+        const instance = createOAuthRuntimeProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
         summaries.push(providerSummary(instance));
