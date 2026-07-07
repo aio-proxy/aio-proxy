@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "@aio-proxy/oauth";
-import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import { ConfigSchema, OAuthVendor, ProviderKind } from "@aio-proxy/types";
 import { materializeProviders } from "../src/provider-runtime";
 
 describe("OAuth provider runtime", () => {
@@ -32,9 +32,9 @@ describe("OAuth provider runtime", () => {
       expires: Date.now() + 60_000,
       baseUrl: "https://api.individual.githubcopilot.com",
       models: [
-        { alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" },
-        { alias: "claude-sonnet-4", id: "claude-sonnet-4", transport: "messages" },
-        { alias: "gpt-5", id: "gpt-5", transport: "responses" },
+        { id: "gpt-5-mini", transport: "chat" },
+        { id: "claude-sonnet-4", transport: "messages" },
+        { id: "gpt-5", transport: "responses" },
       ],
     });
 
@@ -68,5 +68,31 @@ describe("OAuth provider runtime", () => {
     });
     expect(provider).toHaveProperty("invoke");
     expect(provider?.models).toHaveLength(3);
+  });
+
+  test("materializes oauth providers by vendor", () => {
+    const runtime = materializeProviders(
+      ConfigSchema.parse({
+        providers: {
+          copilot: {
+            kind: "oauth",
+            vendor: OAuthVendor.GitHubCopilot,
+            models: ["gpt-5-mini"],
+            alias: {
+              "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
+            },
+          },
+          chatgpt: {
+            kind: "oauth",
+            vendor: OAuthVendor.OpenAIChatGPT,
+          },
+        },
+      }),
+    );
+
+    expect(runtime.providers.map((provider) => provider.vendor)).toEqual([
+      OAuthVendor.GitHubCopilot,
+      OAuthVendor.OpenAIChatGPT,
+    ]);
   });
 });

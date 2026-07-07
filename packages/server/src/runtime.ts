@@ -1,5 +1,5 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-proxy/core";
-import type { AliasConfig, ModelId, ProviderKind } from "@aio-proxy/types";
+import type { AliasConfig, ModelId, OAuthVendor, ProviderKind } from "@aio-proxy/types";
 
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
@@ -9,7 +9,7 @@ export type OAuthProviderInstance = {
   readonly kind: ProviderKind.OAuth;
   readonly models?: ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly vendor: "github-copilot";
+  readonly vendor: OAuthVendor.GitHubCopilot | OAuthVendor.OpenAIChatGPT;
 };
 
 export type RuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;

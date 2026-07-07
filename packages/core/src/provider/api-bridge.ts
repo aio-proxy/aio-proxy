@@ -79,7 +79,7 @@ function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: strin
   }
 }
 
-function resolveOpenAIResponsesModel(
+export function resolveOpenAIResponsesModel(
   _config: AiSdkProvider,
   modelId: string,
   provider: LoadedAiSdkRuntimeProvider | null,

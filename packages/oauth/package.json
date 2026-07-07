@@ -14,6 +14,8 @@
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/types": "workspace:*",
+    "es-toolkit": "catalog:",
+    "jose": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },

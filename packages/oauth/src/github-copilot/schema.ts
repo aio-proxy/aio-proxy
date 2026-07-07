@@ -62,7 +62,8 @@ export const copilotModelSchema = z
     name: z.string().optional(),
     supported_endpoints: z.array(endpointSchema).optional().default([]),
   })
-  .transform(({ supported_endpoints, ...model }) => ({
+  .transform(({ supported_endpoints, name, ...model }) => ({
     ...model,
+    displayName: name,
     endpoints: [...model.endpoints, ...supported_endpoints],
   }));

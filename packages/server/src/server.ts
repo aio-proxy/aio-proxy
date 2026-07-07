@@ -51,7 +51,7 @@ const createRoutes = (
         .currentProviderSnapshot()
         .providers.filter((provider) => provider.enabled)
         .flatMap((provider) =>
-          exposedModels(provider.alias).map((model) => ({
+          exposedModels(provider).map((model) => ({
             id: model,
             object: "model",
             owned_by: provider.id,
@@ -106,12 +106,20 @@ const createRoutes = (
   return routes;
 };
 
-function exposedModels(alias: RuntimeProviderInstance["alias"]): string[] {
+function exposedModels(provider: RuntimeProviderInstance): string[] {
+  const alias = provider.alias ?? {};
+  const aliased = new Set<string>();
   const ids: string[] = [];
-  for (const [clientModel, config] of Object.entries(alias ?? {})) {
+  for (const [clientModel, config] of Object.entries(alias)) {
     ids.push(clientModel);
+    aliased.add(config.model);
     if (config.preserve) {
       ids.push(config.model);
+    }
+  }
+  for (const model of provider.models ?? []) {
+    if (!aliased.has(model)) {
+      ids.push(model);
     }
   }
   return ids;

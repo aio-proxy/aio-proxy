@@ -1,10 +1,26 @@
 import { createAiSdkProvider } from "@aio-proxy/core";
 import { githubCopilotOAuthProvider } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
-import { ProviderKind } from "@aio-proxy/types";
+import { OAuthVendor, ProviderKind } from "@aio-proxy/types";
+
+import { createOpenAIChatGPTRuntimeProvider as createOpenAIChatGPTRuntimeProviderImpl } from "./oauth-chatgpt-runtime";
+
+export { codexFetchWrapper, createOpenAIChatGPTRuntimeProvider } from "./oauth-chatgpt-runtime";
+
 import type { OAuthProviderInstance } from "./runtime";
 
 type CopilotTransport = "chat" | "messages" | "responses";
+
+export function createOAuthRuntimeProvider(config: OAuthProvider): OAuthProviderInstance {
+  switch (config.vendor) {
+    case OAuthVendor.GitHubCopilot:
+      return createGitHubCopilotRuntimeProvider(config);
+    case OAuthVendor.OpenAIChatGPT:
+      return createOpenAIChatGPTRuntimeProviderImpl(config);
+    default:
+      return assertNever(config.vendor);
+  }
+}
 
 export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuthProviderInstance {
   const payload = githubCopilotOAuthProvider.payload(config.id) as {
@@ -60,7 +76,6 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
 }
 
 type CachedCopilotModel = {
-  readonly alias: string;
   readonly id: string;
   readonly transport: CopilotTransport;
 };
@@ -76,7 +91,6 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     }
     const candidate = model as Partial<CachedCopilotModel>;
     return (
-      typeof candidate.alias === "string" &&
       typeof candidate.id === "string" &&
       (candidate.transport === "chat" || candidate.transport === "messages" || candidate.transport === "responses")
     );
@@ -108,4 +122,8 @@ function copilotHeaders(): Record<string, string> {
     "Editor-Version": "vscode/1.107.0",
     "User-Agent": "GitHubCopilotChat/0.35.0",
   };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported OAuth vendor: ${String(value)}`);
 }
