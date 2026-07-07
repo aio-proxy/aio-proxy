@@ -67,8 +67,8 @@ export type OAuthProviderLoginResult<TPayload extends OAuthLoginPayload = OAuthL
 };
 
 export type OAuthProviderModel = {
-  readonly alias: string;
   readonly id: string;
+  readonly displayName?: string;
   readonly [key: string]: unknown;
 };
 
