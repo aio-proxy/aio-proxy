@@ -43,17 +43,45 @@ describe("ConfigSchema", () => {
     });
   });
 
-  test("accepts oauth provider config", () => {
+  test("Given oauth provider input with a models key When parsed Then the output omits models", () => {
+    // Given
     const provider = {
       kind: "oauth",
       vendor: OAuthVendor.GitHubCopilot,
       models: ["gpt-5-mini"],
     };
 
-    expect(ConfigSchema.parse({ server: {}, providers: { copilot: provider } })).toEqual({
+    // When
+    const config = ConfigSchema.parse({ server: {}, providers: { copilot: provider } });
+
+    // Then
+    expect(config).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [{ ...provider, enabled: true, id: "copilot" }],
+      providers: [{ kind: "oauth", vendor: OAuthVendor.GitHubCopilot, enabled: true, id: "copilot" }],
     });
+    expect(config.providers[0]).not.toHaveProperty("models");
+  });
+
+  test("Given oauth provider with alias but no models When parsed Then it passes without a models validation error", () => {
+    // Given
+    const provider = {
+      kind: "oauth",
+      vendor: OAuthVendor.GitHubCopilot,
+      alias: { mini: { model: "gpt-5-mini" } },
+    };
+
+    // When
+    const config = ConfigSchema.parse({ server: {}, providers: { copilot: provider } });
+
+    // Then
+    expect(config.providers[0]).toEqual({
+      kind: "oauth",
+      vendor: OAuthVendor.GitHubCopilot,
+      enabled: true,
+      id: "copilot",
+      alias: { mini: { model: "gpt-5-mini", preserve: false } },
+    });
+    expect(config.providers[0]).not.toHaveProperty("models");
   });
 
   test("Given oauth provider config with openai-chatgpt vendor When parsed Then it is accepted", () => {

@@ -23,17 +23,21 @@ export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");
 
-const SharedProviderSchema = {
+const SharedProviderSchemaBase = {
   id: z.string().describe("Stable provider id used in routing."),
   enabled: z.boolean().default(true).describe("Whether this provider participates in routing."),
   weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
-  models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+} as const;
+
+const modelsField = {
+  models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
 } as const;
 
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
-  ...SharedProviderSchema,
+  ...SharedProviderSchemaBase,
+  ...modelsField,
   name: z.string().optional().describe("Display name shown in the dashboard."),
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().describe("Provider API base URL."),
@@ -42,13 +46,14 @@ export const ApiProviderSchema = z.object({
 
 export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
-  ...SharedProviderSchema,
+  ...SharedProviderSchemaBase,
   vendor: z.enum(OAuthVendor).describe("OAuth vendor."),
 });
 
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
-  ...SharedProviderSchema,
+  ...SharedProviderSchemaBase,
+  ...modelsField,
   packageName: z
     .string()
     .default("@ai-sdk/openai-compatible")
@@ -67,8 +72,11 @@ type ProviderValue =
   | z.output<typeof ApiProviderSchema>
   | z.output<typeof OAuthProviderSchema>
   | z.output<typeof AiSdkProviderSchema>;
-type ProviderAliasTargets = Pick<ProviderValue, "models" | "alias">;
-type ProviderAlias = NonNullable<ProviderAliasTargets["alias"]>;
+type ProviderAlias = NonNullable<z.output<typeof ApiProviderSchema>["alias"]>;
+type ProviderAliasTargets = {
+  readonly models?: readonly string[] | undefined;
+  readonly alias?: ProviderAlias | undefined;
+};
 
 export const ProviderSchema = z
   .discriminatedUnion("kind", [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
