@@ -40,6 +40,7 @@ function googleNativeProvider(passthrough: ApiProviderInstance["passthrough"]): 
     id: "google",
     kind: "api",
     models: ["gemini-2.5-flash"],
+    alias: { "gemini-2.5-flash": { model: "gemini-2.5-flash", preserve: false } },
     protocol: ProviderProtocol.Gemini,
     passthrough,
   };
@@ -50,6 +51,7 @@ function aiSdkProvider(invoke: AiSdkProviderInstance["invoke"]): AiSdkProviderIn
     id: "mock-ai",
     kind: "ai-sdk",
     models: ["gemini-2.5-flash"],
+    alias: { "gemini-2.5-flash": { model: "gemini-2.5-flash", preserve: false } },
     invoke,
   };
 }

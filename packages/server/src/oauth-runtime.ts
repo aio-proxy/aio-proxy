@@ -26,10 +26,9 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
   const payload = githubCopilotOAuthProvider.payload(config.id) as {
     access?: unknown;
     baseUrl?: unknown;
+    models?: unknown;
   } | null;
-  const cachedModels = cachedCopilotModels(config.models);
-  const modelEntries =
-    cachedModels === undefined ? config.models : cachedModels.map(({ alias, id }) => ({ alias, id }));
+  const cachedModels = cachedCopilotModels(payload?.models);
   const transportByModelId = new Map(cachedModels?.map(({ id, transport }) => [id, transport]) ?? []);
   const access = typeof payload?.access === "string" ? payload.access : undefined;
   const baseUrl = typeof payload?.baseUrl === "string" ? payload.baseUrl : undefined;
@@ -62,8 +61,9 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
     enabled: config.enabled,
     id: config.id,
     kind: ProviderKind.OAuth,
-    ...(modelEntries === undefined ? {} : { models: modelEntries }),
-    vendor: OAuthVendor.GitHubCopilot,
+    ...(config.models === undefined ? {} : { models: config.models }),
+    ...(config.alias === undefined ? {} : { alias: config.alias }),
+    vendor: config.vendor,
     async ensureAvailable() {
       if (access === undefined || baseUrl === undefined) {
         throw new Error(`${config.id}: GitHub Copilot login required`);

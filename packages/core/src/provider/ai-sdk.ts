@@ -1,4 +1,4 @@
-import type { AiSdkProvider, ModelEntry, ProviderKind } from "@aio-proxy/types";
+import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind } from "@aio-proxy/types";
 import type {
   AiSdkLanguageModel,
   CallSettings,
@@ -36,7 +36,8 @@ export type AiSdkProviderInstance = {
   readonly enabled: boolean;
   readonly id: string;
   readonly kind: ProviderKind.AiSdk;
-  readonly models?: readonly ModelEntry[];
+  readonly models?: readonly ModelId[];
+  readonly alias?: Readonly<Record<string, AliasConfig>>;
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (request: AiSdkProviderInvokeRequest) => ReadableStream<TextStreamPart<ToolSet>>;
 };
@@ -64,6 +65,7 @@ export function createAiSdkProvider(
     id: config.id,
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),
+    ...(config.alias === undefined ? {} : { alias: config.alias }),
     async ensureAvailable() {
       try {
         if ((await providerTask()) === null) {
