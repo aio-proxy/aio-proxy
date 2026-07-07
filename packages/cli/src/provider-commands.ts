@@ -80,13 +80,27 @@ export async function providerLogin(family: string, options: ProviderLoginOption
   const configPath = resolveConfigPath(options.config);
   const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
   const providers = config.providers ?? {};
+  if (family === "copilot" && result.models !== undefined) {
+    Auth.set("github-copilot", result.providerId, { ...result.payload, models: result.models }, result.providerId);
+  }
   providers[result.providerId] = {
     kind: "oauth",
     vendor: family === "chatgpt" ? "openai-chatgpt" : "github-copilot",
-    ...(result.models === undefined ? {} : { models: result.models }),
+    ...modelConfig(result.models),
   };
   await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
   console.log(result.providerId);
+}
+
+function modelConfig(models: readonly OAuthProviderModel[] | undefined) {
+  if (models === undefined) {
+    return {};
+  }
+
+  return {
+    models: models.map((model) => model.id),
+    alias: Object.fromEntries(models.map((model) => [model.alias, { model: model.id, preserve: false }])),
+  };
 }
 
 async function runCopilotLoginForCli(): Promise<LoginForCliResult> {

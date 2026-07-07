@@ -75,7 +75,10 @@ describe("provider commands", () => {
           "copilot-12345": {
             kind: "oauth",
             vendor: "github-copilot",
-            models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
+            models: ["gpt-5-mini"],
+            alias: {
+              "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
+            },
           },
         },
       });
@@ -124,10 +127,11 @@ describe("provider commands", () => {
         enabled: true,
         id: providerId,
         kind: "oauth",
-        models,
+        models: models.map((model) => model.id),
+        alias: Object.fromEntries(models.map((model) => [model.alias, { model: model.id, preserve: false }])),
         vendor: "openai-chatgpt",
       });
-      expect(provider && "alias" in provider).toBe(false);
+      expect(provider && "alias" in provider).toBe(true);
       expect(provider?.models).toHaveLength(4);
     } finally {
       if (previousHome === undefined) {

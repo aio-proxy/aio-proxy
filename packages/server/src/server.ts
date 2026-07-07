@@ -51,8 +51,8 @@ const createRoutes = (
         .currentProviderSnapshot()
         .providers.filter((provider) => provider.enabled)
         .flatMap((provider) =>
-          (provider.models ?? []).map((model) => ({
-            id: typeof model === "string" ? model : model.alias,
+          exposedModels(provider.alias).map((model) => ({
+            id: model,
             object: "model",
             owned_by: provider.id,
           })),
@@ -105,6 +105,17 @@ const createRoutes = (
 
   return routes;
 };
+
+function exposedModels(alias: RuntimeProviderInstance["alias"]): string[] {
+  const ids: string[] = [];
+  for (const [clientModel, config] of Object.entries(alias ?? {})) {
+    ids.push(clientModel);
+    if (config.preserve) {
+      ids.push(config.model);
+    }
+  }
+  return ids;
+}
 
 const routes = createRoutes(createServerState({ config: defaultConfig }));
 
