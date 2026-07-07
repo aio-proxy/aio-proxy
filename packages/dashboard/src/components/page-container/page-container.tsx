@@ -8,9 +8,9 @@ interface PageContainerProps {
 export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>> = ({ title, extra, children }) => {
   return (
     <>
-      <header className="flex justify-between items-center border-border border-b px-4 h-12">
-        <div className="min-w-0 truncate ">
-          <h1 className="text-sm/normal font-semibold inline">{title}</h1>
+      <header className="flex h-12 items-center justify-between border-border border-b px-4">
+        <div className="min-w-0 truncate">
+          <h1 className="inline font-semibold text-sm/normal">{title}</h1>
         </div>
         {extra && <div className="ml-2">{extra}</div>}
       </header>
