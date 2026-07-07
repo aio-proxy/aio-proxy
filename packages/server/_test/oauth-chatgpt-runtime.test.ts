@@ -6,7 +6,7 @@ import { Auth } from "@aio-proxy/oauth";
 import { z } from "zod";
 import { codexFetchWrapper } from "../src/oauth-runtime";
 
-const models = [{ alias: "gpt-5.5", id: "gpt-5.5" }] as const;
+const models = [{ id: "gpt-5.5" }] as const;
 const responseBodySchema = z
   .object({
     input: z.string(),

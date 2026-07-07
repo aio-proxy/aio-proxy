@@ -60,9 +60,9 @@ describe("GitHubCopilotOAuthProvider", () => {
       expect("models" in result.payload).toBe(false);
       expect("models" in result).toBe(false);
       expect(models).toEqual([
-        { alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" },
-        { alias: "claude-sonnet-4", id: "claude-sonnet-4", transport: "messages" },
-        { alias: "gpt-5", id: "gpt-5", transport: "responses" },
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: "chat" },
+        { id: "claude-sonnet-4", transport: "messages" },
+        { id: "gpt-5", transport: "responses" },
       ]);
       expect(modelRequests).toBe(1);
       expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
@@ -166,7 +166,7 @@ describe("GitHubCopilotOAuthProvider", () => {
         }),
     );
 
-    expect(models).toEqual([{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }]);
+    expect(models).toEqual([{ id: "gpt-5-mini", transport: "chat" }]);
   });
 });
 

@@ -5,7 +5,8 @@ import { tokenResponseSchema } from "./schema";
 
 const TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token" as const;
 const DEFAULT_REDIRECT_URI = "http://localhost:1455/auth/callback" as const;
-const CLIENT_ID = "Iv1.b507a08c87ecfe98" as const;
+const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann" as const;
+const REFRESH_SCOPE = "openid profile email" as const;
 const DEFAULT_EXPIRES_IN_SECONDS = 3_600 as const;
 const refreshTokenResponseSchema = tokenResponseSchema.extend({
   refresh_token: z.string().optional(),
@@ -90,6 +91,7 @@ export async function refreshAccessToken(
       client_id: CLIENT_ID,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
+      scope: REFRESH_SCOPE,
     }),
     options,
     refreshTokenResponseSchema,

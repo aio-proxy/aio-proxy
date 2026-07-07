@@ -18,7 +18,7 @@ describe("openai-chatgpt oauth flow", () => {
         },
         {
           body: new URLSearchParams({
-            client_id: "Iv1.b507a08c87ecfe98",
+            client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
             code: "code-123",
             code_verifier: "verifier-123",
             grant_type: "authorization_code",
@@ -48,9 +48,10 @@ describe("openai-chatgpt oauth flow", () => {
         },
         {
           body: new URLSearchParams({
-            client_id: "Iv1.b507a08c87ecfe98",
+            client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
             grant_type: "refresh_token",
             refresh_token: "refresh-123",
+            scope: "openid profile email",
           }),
         },
       ),
@@ -74,9 +75,10 @@ describe("openai-chatgpt oauth flow", () => {
         },
         {
           body: new URLSearchParams({
-            client_id: "Iv1.b507a08c87ecfe98",
+            client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
             grant_type: "refresh_token",
             refresh_token: "refresh-123",
+            scope: "openid profile email",
           }),
         },
       ),
@@ -111,7 +113,7 @@ describe("openai-chatgpt oauth flow", () => {
           },
           {
             body: new URLSearchParams({
-              client_id: "Iv1.b507a08c87ecfe98",
+              client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
               code: "code-123",
               code_verifier: "verifier-123",
               grant_type: "authorization_code",

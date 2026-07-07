@@ -19,13 +19,16 @@ type OpenAIChatGPTDeps = {
 };
 
 const OPENAI_CHATGPT_MODELS = [
-  { alias: "gpt-5.5", id: "gpt-5.5" },
-  { alias: "gpt-5.4", id: "gpt-5.4" },
-  { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
-  { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+  { id: "gpt-5.5", displayName: "GPT-5.5" },
+  { id: "gpt-5.4", displayName: "GPT-5.4" },
+  { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+  { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
 ] as const satisfies readonly OAuthProviderModel[];
 
 const CHATGPT_AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/authorize" as const;
+const CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann" as const;
+const CHATGPT_SCOPE = "openid profile email offline_access" as const;
+const CHATGPT_ORIGINATOR = "codex_cli_rs" as const;
 const CHATGPT_LOGIN_LABEL = "Login with ChatGPT (Plus/Pro)" as const;
 
 export class OpenAIChatGPTOAuthProvider extends BaseOAuthProvider<ChatGPTPayload> {
@@ -56,11 +59,15 @@ export class OpenAIChatGPTOAuthProvider extends BaseOAuthProvider<ChatGPTPayload
 
     try {
       const authUrl = new URL(CHATGPT_AUTHORIZATION_ENDPOINT);
-      authUrl.searchParams.set("client_id", "Iv1.b507a08c87ecfe98");
+      authUrl.searchParams.set("client_id", CHATGPT_CLIENT_ID);
       authUrl.searchParams.set("code_challenge", pkce.challenge);
       authUrl.searchParams.set("code_challenge_method", "S256");
+      authUrl.searchParams.set("codex_cli_simplified_flow", "true");
+      authUrl.searchParams.set("id_token_add_organizations", "true");
+      authUrl.searchParams.set("originator", CHATGPT_ORIGINATOR);
       authUrl.searchParams.set("redirect_uri", loopback.redirectUri);
       authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("scope", CHATGPT_SCOPE);
       authUrl.searchParams.set("state", state);
 
       callbacks.onAuth({ url: authUrl.toString() });

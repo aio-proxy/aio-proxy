@@ -270,8 +270,8 @@ function modelEntry(value: unknown): GitHubCopilotModel | undefined {
     return undefined;
   }
   return {
-    alias: record.id,
     id: record.id,
+    ...(record.displayName === undefined ? {} : { displayName: record.displayName }),
     transport,
   };
 }

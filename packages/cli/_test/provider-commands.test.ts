@@ -76,9 +76,6 @@ describe("provider commands", () => {
             kind: "oauth",
             vendor: "github-copilot",
             models: ["gpt-5-mini"],
-            alias: {
-              "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
-            },
           },
         },
       });
@@ -99,10 +96,10 @@ describe("provider commands", () => {
       refresh: "chatgpt-refresh",
     };
     const models = [
-      { alias: "gpt-5.5", id: "gpt-5.5" },
-      { alias: "gpt-5.4", id: "gpt-5.4" },
-      { alias: "gpt-5.4-mini", id: "gpt-5.4-mini" },
-      { alias: "gpt-5.3-codex-spark", id: "gpt-5.3-codex-spark" },
+      { id: "gpt-5.5", displayName: "GPT-5.5" },
+      { id: "gpt-5.4", displayName: "GPT-5.4" },
+      { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+      { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
     ] as const;
     const previousHome = process.env.AIO_PROXY_HOME;
     process.env.AIO_PROXY_HOME = dir;
@@ -128,10 +125,9 @@ describe("provider commands", () => {
         id: providerId,
         kind: "oauth",
         models: models.map((model) => model.id),
-        alias: Object.fromEntries(models.map((model) => [model.alias, { model: model.id, preserve: false }])),
         vendor: "openai-chatgpt",
       });
-      expect(provider && "alias" in provider).toBe(true);
+      expect(provider && "alias" in provider).toBe(false);
       expect(provider?.models).toHaveLength(4);
     } finally {
       if (previousHome === undefined) {
