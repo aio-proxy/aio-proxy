@@ -1,4 +1,8 @@
 {
+  "brand": {
+    "name": "AIO Proxy",
+    "tagline": "All-in-one Gateway"
+  },
   "cli_root_description": "AIO Proxy command line interface.",
   "cli_version_description": "Print the CLI version.",
   "cli_option_lang_description": "Select the output language.",
@@ -60,6 +64,15 @@
         "message": "Enter your GitHub Enterprise URL or domain",
         "placeholder": "company.ghe.com or https://company.ghe.com"
       }
+    }
+  },
+  "dashboard": {
+    "menus": {
+      "overview": "Overview",
+      "dashboard": "Dashboard",
+      "configuration": "Configuration",
+      "providers": "Providers",
+      "models": "Models"
     }
   }
 }
