@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { Auth } from "../src";
 import { GitHubCopilotOAuthProvider, getGitHubCopilotBaseUrl } from "../src/github-copilot";
 
@@ -60,9 +61,9 @@ describe("GitHubCopilotOAuthProvider", () => {
       expect("models" in result.payload).toBe(true);
       expect("models" in result).toBe(false);
       expect(models).toEqual([
-        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: "chat" },
-        { id: "claude-sonnet-4", transport: "messages" },
-        { id: "gpt-5", transport: "responses" },
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
+        { id: "gpt-5", transport: ProviderProtocol.OpenAIResponse },
       ]);
       expect(modelRequests).toBe(2);
       expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
@@ -166,7 +167,7 @@ describe("GitHubCopilotOAuthProvider", () => {
         }),
     );
 
-    expect(models).toEqual([{ id: "gpt-5-mini", transport: "chat" }]);
+    expect(models).toEqual([{ id: "gpt-5-mini", transport: ProviderProtocol.OpenAICompatible }]);
   });
 
   test("login stores the fetched model list in the auth payload", async () => {
@@ -180,9 +181,9 @@ describe("GitHubCopilotOAuthProvider", () => {
 
       expect(result.status).toBe("authenticated");
       expect(result.payload.models).toEqual([
-        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: "chat" },
-        { id: "claude-sonnet-4", transport: "messages" },
-        { id: "gpt-5", transport: "responses" },
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
+        { id: "gpt-5", transport: ProviderProtocol.OpenAIResponse },
       ]);
       expect(Auth.get("github-copilot", "copilot-12345")?.payload).toEqual({
         ...result.payload,

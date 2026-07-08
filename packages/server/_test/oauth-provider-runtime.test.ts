@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Router } from "@aio-proxy/core";
 import { Auth } from "@aio-proxy/oauth";
-import { ConfigSchema, OAuthVendor, ProviderKind } from "@aio-proxy/types";
+import { ConfigSchema, OAuthVendor, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { materializeProviders } from "../src/provider-runtime";
 
 const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
@@ -36,8 +36,8 @@ describe("OAuth provider runtime", () => {
       expires: Date.now() + 60_000,
       baseUrl: "https://api.individual.githubcopilot.com",
       models: [
-        { id: "gpt-5-mini", transport: "chat" },
-        { id: "claude-sonnet-4", transport: "messages" },
+        { id: "gpt-5-mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
       ],
     });
 
@@ -68,8 +68,8 @@ describe("OAuth provider runtime", () => {
       expires: Date.now() + 60_000,
       baseUrl: "https://api.individual.githubcopilot.com",
       models: [
-        { id: "gpt-5-mini", transport: "chat" },
-        { id: "claude-sonnet-4", transport: "messages" },
+        { id: "gpt-5-mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
       ],
     });
 

@@ -62,7 +62,7 @@ describe("provider commands", () => {
             refresh: "github-token",
             expires: Date.now() + 60_000,
             baseUrl: "https://api.individual.githubcopilot.com",
-            models: [{ id: "gpt-5-mini", transport: "chat" }],
+            models: [{ id: "gpt-5-mini", transport: "openai-compatible" }],
           },
         }),
       });

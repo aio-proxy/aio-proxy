@@ -1,6 +1,10 @@
+import type { ProviderProtocol } from "@aio-proxy/types";
 import { z } from "zod";
 
-export type CopilotTransport = "chat" | "messages" | "responses";
+export type CopilotTransport =
+  | ProviderProtocol.OpenAICompatible
+  | ProviderProtocol.Anthropic
+  | ProviderProtocol.OpenAIResponse;
 
 export const deviceCodeResponseSchema = z
   .object({

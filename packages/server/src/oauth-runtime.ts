@@ -1,7 +1,7 @@
 import { createAiSdkProvider } from "@aio-proxy/core";
-import { githubCopilotOAuthProvider } from "@aio-proxy/oauth";
+import { type CopilotTransport, githubCopilotOAuthProvider } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
-import { OAuthVendor, ProviderKind } from "@aio-proxy/types";
+import { OAuthVendor, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 
 import { createOpenAIChatGPTRuntimeProvider as createOpenAIChatGPTRuntimeProviderImpl } from "./oauth-chatgpt-runtime";
 
@@ -9,8 +9,6 @@ export { codexFetchWrapper, createOpenAIChatGPTRuntimeProvider } from "./oauth-c
 
 import { deriveOAuthAlias } from "./oauth-alias";
 import type { OAuthProviderInstance } from "./runtime";
-
-type CopilotTransport = "chat" | "messages" | "responses";
 
 export function createOAuthRuntimeProvider(config: OAuthProvider): OAuthProviderInstance {
   switch (config.vendor) {
@@ -41,7 +39,7 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
   const access = typeof payload?.access === "string" ? payload.access : undefined;
   const baseUrl = typeof payload?.baseUrl === "string" ? payload.baseUrl : undefined;
   const providers = {
-    chat: createAiSdkProvider(
+    [ProviderProtocol.OpenAICompatible]: createAiSdkProvider(
       aiConfig(config, "@ai-sdk/openai-compatible", {
         apiKey: access,
         baseURL: baseUrl,
@@ -49,14 +47,14 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
         name: config.id,
       }),
     ),
-    messages: createAiSdkProvider(
+    [ProviderProtocol.Anthropic]: createAiSdkProvider(
       aiConfig(config, "@ai-sdk/anthropic", {
         apiKey: access,
         baseURL: baseUrl === undefined ? undefined : `${baseUrl}/v1`,
         headers: copilotHeaders(),
       }),
     ),
-    responses: createAiSdkProvider(
+    [ProviderProtocol.OpenAIResponse]: createAiSdkProvider(
       aiConfig(config, "@ai-sdk/openai", {
         apiKey: access,
         baseURL: baseUrl,
@@ -103,7 +101,9 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     const candidate = model as Partial<CachedCopilotModel>;
     return (
       typeof candidate.id === "string" &&
-      (candidate.transport === "chat" || candidate.transport === "messages" || candidate.transport === "responses")
+      (candidate.transport === ProviderProtocol.OpenAICompatible ||
+        candidate.transport === ProviderProtocol.Anthropic ||
+        candidate.transport === ProviderProtocol.OpenAIResponse)
     );
   });
 }
@@ -123,7 +123,7 @@ function aiConfig(
 }
 
 function transportFor(transportByModelId: ReadonlyMap<string, CopilotTransport>, modelId: string): CopilotTransport {
-  return transportByModelId.get(modelId) ?? "chat";
+  return transportByModelId.get(modelId) ?? ProviderProtocol.OpenAICompatible;
 }
 
 function copilotHeaders(): Record<string, string> {

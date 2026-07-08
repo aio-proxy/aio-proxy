@@ -1,5 +1,6 @@
 import { fetchJson } from "@aio-proxy/core/utils";
 import { m } from "@aio-proxy/i18n";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type {
   OAuthLoginCallbacks,
   OAuthLoginForm,
@@ -287,13 +288,13 @@ function modelEntry(value: unknown): GitHubCopilotModel | undefined {
 
 function transportFromEndpoints(endpoints: readonly string[]): CopilotTransport | undefined {
   if (endpoints.some((endpoint) => endpoint.includes("/v1/messages"))) {
-    return "messages";
+    return ProviderProtocol.Anthropic;
   }
   if (endpoints.some((endpoint) => endpoint.includes("/responses"))) {
-    return "responses";
+    return ProviderProtocol.OpenAIResponse;
   }
   if (endpoints.some((endpoint) => endpoint.includes("/chat/completions"))) {
-    return "chat";
+    return ProviderProtocol.OpenAICompatible;
   }
   return undefined;
 }
