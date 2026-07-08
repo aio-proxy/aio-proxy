@@ -9,7 +9,7 @@ import { join } from "node:path";
  * than resolving paths against the current directory.
  */
 export function aioHome(): string {
-  const home = process.env.AIO_PROXY_HOME;
+  const home = (process.env as { readonly AIO_PROXY_HOME?: string }).AIO_PROXY_HOME;
   return home === undefined || home === "" ? join(homedir(), ".aio-proxy") : home;
 }
 
