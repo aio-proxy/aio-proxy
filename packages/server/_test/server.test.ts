@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { AppType } from "@aio-proxy/server";
 import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -37,6 +41,25 @@ const config = {
 };
 
 describe("server routes", () => {
+  let dir: string;
+  let previousHome: string | undefined;
+
+  beforeEach(() => {
+    previousHome = process.env.AIO_PROXY_HOME;
+    dir = mkdtempSync(join(tmpdir(), "aio-proxy-server-"));
+    process.env.AIO_PROXY_HOME = dir;
+  });
+
+  afterEach(() => {
+    Auth.del("openai-chatgpt", "chatgpt-xxx");
+    if (previousHome === undefined) {
+      delete process.env.AIO_PROXY_HOME;
+    } else {
+      process.env.AIO_PROXY_HOME = previousHome;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("GET /health returns ok status and version when requested", async () => {
     // Given
     const app = createServer({ config });
@@ -72,14 +95,15 @@ describe("server routes", () => {
     });
   });
 
-  test("Given provider with models but no alias When OpenAI models are requested Then models are listed by id", async () => {
+  test("Given api provider with models-only and no alias When OpenAI models are requested Then no models are listed", async () => {
     // Given
     const app = createServer({
       config: {
         providers: {
-          chatgpt: {
-            kind: "oauth",
-            vendor: "openai-chatgpt",
+          openai: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.openai.com/v1",
             models: ["gpt-5.5", "gpt-5.4"],
           },
         },
@@ -90,13 +114,32 @@ describe("server routes", () => {
     const response = await app.request("/v1/models");
 
     // Then
-    expect(await response.json()).toEqual({
-      object: "list",
-      data: [
-        { id: "gpt-5.5", object: "model", owned_by: "chatgpt" },
-        { id: "gpt-5.4", object: "model", owned_by: "chatgpt" },
-      ],
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ object: "list", data: [] });
+  });
+
+  test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {
+    // Given
+    Auth.set("openai-chatgpt", "chatgpt-xxx", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      accountId: "xxx",
+      models: OPENAI_CHATGPT_MODELS,
     });
+    const app = createServer({
+      config: { providers: { "chatgpt-xxx": { kind: "oauth", vendor: "openai-chatgpt" } } },
+    });
+
+    // When
+    const response = await app.request("/v1/models");
+    const body = await response.json();
+
+    // Then
+    expect(response.status).toBe(200);
+    const ids = (body.data as Array<{ id: string }>).map((model) => model.id);
+    expect(ids).toContain("gpt-5.5");
+    expect(ids).toContain("gpt-5.4");
   });
 
   test("Given disabled provider When models and dashboard are requested Then provider is not routed", async () => {
