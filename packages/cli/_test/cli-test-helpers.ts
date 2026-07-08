@@ -12,6 +12,7 @@ const cliEnv = (env: CliEnv) => ({
   LANGUAGE: undefined,
   LC_ALL: undefined,
   LC_MESSAGES: undefined,
+  AIO_PROXY_HOME: env.AIO_PROXY_HOME,
   ...env,
 });
 
@@ -41,14 +42,7 @@ export const runCliAsync = async (args: readonly string[], env: CliEnv = {}) => 
 export const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
   `${result.stdout.toString()}${result.stderr.toString()}`;
 
-export const cliServeArgs = (configPath: string, port: number): readonly string[] => [
-  ...cli,
-  "serve",
-  "--config",
-  configPath,
-  "--port",
-  String(port),
-];
+export const cliServeArgs = (port: number): readonly string[] => [...cli, "serve", "--port", String(port)];
 
 export const repoCwd = repoRoot;
 

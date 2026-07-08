@@ -97,6 +97,7 @@ export {
   type InstalledNpmPackage,
   listInstalledNpmPackages,
 } from "./npm-list";
+export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths";
 export {
   type AiSdkProviderFactoryOptions,
   type AiSdkProviderInstance,
