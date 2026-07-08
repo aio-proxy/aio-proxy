@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { findInstalledNpmPackage, type NpmPackageInfo } from "./npm";
+import { packagesDir } from "./paths";
 
 export type InstalledNpmPackage = NpmPackageInfo & {
   readonly packageName: string;
@@ -10,7 +10,7 @@ export type InstalledNpmPackage = NpmPackageInfo & {
 };
 
 export async function listInstalledNpmPackages(): Promise<readonly InstalledNpmPackage[]> {
-  const packagesRoot = join(homedir(), ".config", "aio-proxy", "cache", "packages");
+  const packagesRoot = packagesDir();
   if (!existsSync(packagesRoot)) {
     return [];
   }
