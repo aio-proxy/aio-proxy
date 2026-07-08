@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
+  configPath,
   listInstalledNpmPackages,
   NpmInstallError,
   NpmPackageEntrypointError,
@@ -19,7 +20,6 @@ import {
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
 import { confirm, input, select } from "@inquirer/prompts";
 import { openAIChatGPTOAuthProvider } from "../../oauth/src/openai-chatgpt";
-import { resolveConfigPath } from "./config-path";
 import { ProviderDashboardError } from "./errors";
 
 export type ProviderInstallOptions = {
@@ -34,9 +34,7 @@ export type ProviderListOptions = {
   readonly url?: string;
 };
 
-export type ProviderLoginOptions = {
-  readonly config?: string;
-};
+export type ProviderLoginOptions = Record<string, never>;
 
 type LoginForCliResult = {
   readonly payload: Record<string, unknown>;
@@ -62,7 +60,7 @@ export async function providerInstall(pkg: string, options: ProviderInstallOptio
   console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
 }
 
-export async function providerLogin(family: string, options: ProviderLoginOptions): Promise<void> {
+export async function providerLogin(family: string, _options: ProviderLoginOptions): Promise<void> {
   const result =
     family === "copilot"
       ? await runCopilotLoginForCli()
@@ -75,14 +73,14 @@ export async function providerLogin(family: string, options: ProviderLoginOption
     return;
   }
 
-  const configPath = resolveConfigPath(options.config);
-  const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
+  const resolvedConfigPath = configPath();
+  const config = JSON.parse(await Bun.file(resolvedConfigPath).text()) as { providers?: Record<string, unknown> };
   const providers = config.providers ?? {};
   providers[result.providerId] = {
     kind: "oauth",
     vendor: family === "chatgpt" ? "openai-chatgpt" : "github-copilot",
   };
-  await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
+  await Bun.write(resolvedConfigPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
   console.log(result.providerId);
 }
 
