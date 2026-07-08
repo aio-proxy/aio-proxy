@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { z } from "zod";
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from "./error";
 import { acquireNpmInstallLock } from "./npm-lock";
+import { packagesDir } from "./paths";
 
 const REGISTRY = "https://registry.npmjs.org";
 const INSTALL_TIMEOUT_MS = 120_000;
@@ -41,7 +41,7 @@ function packageNameParts(pkg: string): readonly string[] {
 
 export function npmPackageCacheDir(pkg: string): string {
   packageNameParts(pkg);
-  return join(homedir(), ".config", "aio-proxy", "cache", "packages", encodeURIComponent(pkg));
+  return join(packagesDir(), encodeURIComponent(pkg));
 }
 
 function packageJsonPath(pkg: string): string {

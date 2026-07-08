@@ -1,6 +1,7 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
+  configPath,
   listInstalledNpmPackages,
   NpmInstallError,
   NpmPackageEntrypointError,
@@ -8,6 +9,7 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
+import { m } from "@aio-proxy/i18n";
 import {
   Auth,
   githubCopilotOAuthProvider,
@@ -19,7 +21,7 @@ import {
 import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
 import { confirm, input, select } from "@inquirer/prompts";
 import { openAIChatGPTOAuthProvider } from "../../oauth/src/openai-chatgpt";
-import { resolveConfigPath } from "./config-path";
+import { openBrowser } from "./browser";
 import { ProviderDashboardError } from "./errors";
 
 export type ProviderInstallOptions = {
@@ -34,9 +36,7 @@ export type ProviderListOptions = {
   readonly url?: string;
 };
 
-export type ProviderLoginOptions = {
-  readonly config?: string;
-};
+export type ProviderLoginOptions = Record<string, never>;
 
 type LoginForCliResult = {
   readonly payload: Record<string, unknown>;
@@ -62,27 +62,29 @@ export async function providerInstall(pkg: string, options: ProviderInstallOptio
   console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
 }
 
-export async function providerLogin(family: string, options: ProviderLoginOptions): Promise<void> {
+export async function providerLogin(vendor: string, _options: ProviderLoginOptions): Promise<void> {
+  const normalizedVendor = vendor === "copilot" ? "github-copilot" : vendor === "chatgpt" ? "openai-chatgpt" : vendor;
+
   const result =
-    family === "copilot"
+    normalizedVendor === "github-copilot"
       ? await runCopilotLoginForCli()
-      : family === "chatgpt"
+      : normalizedVendor === "openai-chatgpt"
         ? await runChatGPTLoginForCli()
         : undefined;
   if (result === undefined) {
-    console.error(`unknown oauth provider family: ${family}`);
+    console.error(m.cli_provider_login_unknown_vendor({ vendor }));
     process.exitCode = 1;
     return;
   }
 
-  const configPath = resolveConfigPath(options.config);
-  const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
+  const resolvedConfigPath = configPath();
+  const config = JSON.parse(await Bun.file(resolvedConfigPath).text()) as { providers?: Record<string, unknown> };
   const providers = config.providers ?? {};
   providers[result.providerId] = {
     kind: "oauth",
-    vendor: family === "chatgpt" ? "openai-chatgpt" : "github-copilot",
+    vendor: normalizedVendor,
   };
-  await Bun.write(configPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
+  await Bun.write(resolvedConfigPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
   console.log(result.providerId);
 }
 
@@ -201,22 +203,6 @@ function clearProgressLine(): void {
     return;
   }
   process.stderr.write("\r\x1b[2K");
-}
-
-function openBrowser(url: string): boolean {
-  const command =
-    process.platform === "darwin"
-      ? { bin: "open", args: [url] }
-      : process.platform === "win32"
-        ? { bin: "cmd", args: ["/c", "start", "", url] }
-        : { bin: "xdg-open", args: [url] };
-  try {
-    const child = spawn(command.bin, command.args, { detached: true, stdio: "ignore" });
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function copyToClipboard(value: string): boolean {

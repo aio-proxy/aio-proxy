@@ -1,16 +1,13 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from "../error";
+import { dbPath } from "../paths";
 import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from "./migrations.manifest";
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
-const ENV_AIO_PROXY_HOME = "AIO_PROXY_HOME";
-const ENV_APPDATA = "APPDATA";
-const ENV_XDG_CONFIG_HOME = "XDG_CONFIG_HOME";
 
 export type OpenDbOptions = {
   readonly readonly?: boolean;
@@ -78,17 +75,10 @@ function borrow(entry: RegistryEntry): OpenDbHandle {
 }
 
 function resolveDbPath(options: OpenDbOptions): string {
-  const configuredHome = options.home ?? process.env[ENV_AIO_PROXY_HOME];
-  const home = configuredHome ?? defaultHomeDir();
-  return resolve(home, "aio-proxy.db");
-}
-
-function defaultHomeDir(): string {
-  if (process.platform === "win32") {
-    return join(process.env[ENV_APPDATA] ?? join(homedir(), "AppData", "Roaming"), "aio-proxy");
+  if (options.home !== undefined) {
+    return resolve(options.home, "aio-proxy.db");
   }
-
-  return join(process.env[ENV_XDG_CONFIG_HOME] ?? join(homedir(), ".config"), "aio-proxy");
+  return dbPath();
 }
 
 function ensureDbFile(path: string): void {

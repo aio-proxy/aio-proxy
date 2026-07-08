@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { configPath } from "@aio-proxy/core";
 import {
   ConfigWriteError,
   formatUserError,
@@ -14,7 +15,7 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-import { resolveConfigPath } from "./config-path";
+import { openBrowser } from "./browser";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
@@ -30,8 +31,7 @@ const DEFAULT_CONFIG = {
 type ServeOptions = {
   readonly host?: string;
   readonly port?: string;
-  readonly dashboard?: boolean;
-  readonly config?: string;
+  readonly open?: boolean;
 };
 
 const parsePort = (value: string | undefined, fallback: number) => {
@@ -105,31 +105,32 @@ const assertPortAvailable = (host: string, port: number) => {
 };
 
 const serve = (deps: CliDeps) => async (options: ServeOptions) => {
-  const configPath = resolveConfigPath(options.config);
+  const resolvedConfigPath = configPath();
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
   const apiUrl = `http://${host}:${port}`;
   const dashboardUrl = `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
-  const config = await readOrBootstrapConfig(configPath, dashboardUrl);
+  const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
   const app = createServer({
     config,
-    configPath,
+    configPath: resolvedConfigPath,
     dashboardAssets,
     host,
     port,
   });
   const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
-  console.log(
+  console.error(
     m.cli_serve_started({
       apiUrl: `http://${server.hostname}:${server.port}`,
       dashboardUrl: `http://${server.hostname}:${server.port}/dashboard`,
     }),
   );
+  if (options.open === true) {
+    openBrowser(dashboardUrl);
+  }
 };
-
-const runStub = () => {};
 
 export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   const program = new Command()
@@ -143,31 +144,39 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .description(m.cli_serve_description())
     .option("--host <host>", m.cli_serve_option_host_description())
     .option("--port <port>", m.cli_serve_option_port_description())
-    .option("--dashboard", m.cli_serve_option_dashboard_description())
-    .option("--config <path>", m.cli_serve_option_config_description())
+    .option("--open", m.cli_serve_option_open_description())
     .action(serve(deps));
 
-  program.command("dashboard").description(m.cli_dashboard_description()).action(runStub);
+  program
+    .command("dashboard")
+    .description(m.cli_dashboard_description())
+    .action(() => {
+      console.error(m.cli_dashboard_not_yet_implemented());
+      process.exitCode = 2;
+    });
   const provider = program.command("provider").description(m.cli_provider_description());
   provider
-    .command("install <pkg>")
-    .option("--yes", "Confirm runtime package installation.")
-    .option("--registry <url>", "Registry URL.")
+    .command("install <package>")
+    .description(m.cli_provider_install_description())
+    .option("--yes", m.cli_provider_install_option_yes_description())
+    .option("--registry <url>", m.cli_provider_install_option_registry_description())
     .action(providerInstall);
   provider
     .command("list")
-    .option("--url <url>", "Dashboard URL.")
-    .option("--filter <id>", "Only list one provider id.")
-    .option("--probe", "Probe listed providers.")
-    .option("--installed", "List packages installed in the runtime cache.")
+    .description(m.cli_provider_list_description())
+    .option("--url <url>", m.cli_provider_list_option_url_description())
+    .option("--filter <provider-id>", m.cli_provider_list_option_filter_description())
+    .option("--probe", m.cli_provider_list_option_probe_description())
+    .option("--installed", m.cli_provider_list_option_installed_description())
     .action(providerList);
+  provider.command("login <vendor>").description(m.cli_provider_login_description()).action(providerLogin);
   provider
-    .command("login <family>")
-    .option("--config <path>", m.cli_serve_option_config_description())
-    .action(providerLogin);
-  provider.command("test <id>").option("--url <url>", "Dashboard URL.").action(providerTest);
-  program.command("model").description(m.cli_model_description()).action(runStub);
-  program.command("trace").description(m.cli_trace_description()).action(runStub);
+    .command("test <provider-id>")
+    .description(m.cli_provider_test_description())
+    .option("--url <url>", m.cli_provider_test_option_url_description())
+    .action(providerTest);
+  program.command("model").description(m.cli_model_description());
+  program.command("trace").description(m.cli_trace_description());
 
   return program;
 };
