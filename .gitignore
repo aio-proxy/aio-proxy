@@ -3,6 +3,7 @@ dist
 .DS_Store
 .turbo/
 packages/*/.turbo/
+.aio-proxy-dev/
 .omo/*
 !.omo/drafts/
 !.omo/drafts/**
@@ -15,6 +16,5 @@ bun-debug.log
 packages/i18n/src/paraglide/
 packages/dashboard/dist
 *.tsbuildinfo
-aio-proxy.json
 packages/cli/src/main.compiled.gen.ts
 npm/cli-*/bin/
