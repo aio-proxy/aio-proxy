@@ -1,5 +1,6 @@
 import { fetchJson } from "@aio-proxy/core/utils";
 import { m } from "@aio-proxy/i18n";
+import { ProviderProtocol } from "@aio-proxy/types";
 import type {
   OAuthLoginCallbacks,
   OAuthLoginForm,
@@ -26,6 +27,7 @@ export type GitHubCopilotPayload = {
   readonly expires: number;
   readonly enterpriseUrl?: string;
   readonly baseUrl: string;
+  readonly models?: readonly GitHubCopilotModel[];
 };
 
 export type GitHubCopilotModel = OAuthProviderModel & {
@@ -92,15 +94,23 @@ export class GitHubCopilotOAuthProvider extends BaseOAuthProvider<GitHubCopilotP
     callbacks.onProgress?.("Refreshing GitHub Copilot token");
     const copilot = await this.fetchCopilotToken(apiBase, githubToken, callbacks.signal);
     const baseUrl = getGitHubCopilotBaseUrl(copilot.access, enterpriseDomain ?? undefined);
+    let models: readonly GitHubCopilotModel[] | undefined;
+    try {
+      models = await this.fetchModels(baseUrl, copilot.access, callbacks.signal);
+    } catch {
+      callbacks.onProgress?.("model list sync failed — /v1/models exposure requires re-login");
+    }
     const user = await this.fetchGitHubUser(apiBase, githubToken, callbacks.signal);
     const payload: GitHubCopilotPayload = {
       access: copilot.access,
       refresh: githubToken,
       expires: copilot.expires,
+      ...(models !== undefined ? { models } : {}),
       ...(enterpriseDomain === undefined ? {} : { enterpriseUrl: `https://${enterpriseDomain}` }),
       baseUrl,
     };
     const providerId = this.providerId(user.id);
+    // store() completes synchronously (bun:sqlite); CLI must write config AFTER login() returns
     this.store(providerId, payload, user.login);
 
     return {
@@ -278,13 +288,13 @@ function modelEntry(value: unknown): GitHubCopilotModel | undefined {
 
 function transportFromEndpoints(endpoints: readonly string[]): CopilotTransport | undefined {
   if (endpoints.some((endpoint) => endpoint.includes("/v1/messages"))) {
-    return "messages";
+    return ProviderProtocol.Anthropic;
   }
   if (endpoints.some((endpoint) => endpoint.includes("/responses"))) {
-    return "responses";
+    return ProviderProtocol.OpenAIResponse;
   }
   if (endpoints.some((endpoint) => endpoint.includes("/chat/completions"))) {
-    return "chat";
+    return ProviderProtocol.OpenAICompatible;
   }
   return undefined;
 }

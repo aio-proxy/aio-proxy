@@ -11,6 +11,7 @@ export {
   githubCopilotOAuthProvider,
   normalizeDomain,
 } from "./github-copilot";
+export type { CopilotTransport } from "./github-copilot/schema";
 export {
   BaseOAuthProvider,
   type OAuthLoginCallbacks,
@@ -21,6 +22,7 @@ export {
   type OAuthProviderModel,
 } from "./oauth-provider";
 export {
+  OPENAI_CHATGPT_MODELS,
   OpenAIChatGPTOAuthProvider,
   openAIChatGPTOAuthProvider,
 } from "./openai-chatgpt";

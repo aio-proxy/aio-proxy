@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "@aio-proxy/oauth";
-import { ConfigSchema } from "@aio-proxy/types";
 import { output, runCli, runCliAsync } from "./cli-test-helpers";
 
 const jsonHeaders = { "content-type": "application/json" } as const;
@@ -63,8 +62,8 @@ describe("provider commands", () => {
             refresh: "github-token",
             expires: Date.now() + 60_000,
             baseUrl: "https://api.individual.githubcopilot.com",
+            models: [{ id: "gpt-5-mini", transport: "openai-compatible" }],
           },
-          models: [{ alias: "gpt-5-mini", id: "gpt-5-mini", transport: "chat" }],
         }),
       });
 
@@ -75,7 +74,6 @@ describe("provider commands", () => {
           "copilot-12345": {
             kind: "oauth",
             vendor: "github-copilot",
-            models: ["gpt-5-mini"],
           },
         },
       });
@@ -94,13 +92,8 @@ describe("provider commands", () => {
       accountId: "account-123",
       expires: Date.now() + 60_000,
       refresh: "chatgpt-refresh",
+      models: [{ id: "gpt-5.5", displayName: "GPT-5.5" }],
     };
-    const models = [
-      { id: "gpt-5.5", displayName: "GPT-5.5" },
-      { id: "gpt-5.4", displayName: "GPT-5.4" },
-      { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
-      { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
-    ] as const;
     const previousHome = process.env.AIO_PROXY_HOME;
     process.env.AIO_PROXY_HOME = dir;
 
@@ -110,7 +103,6 @@ describe("provider commands", () => {
         AIO_PROXY_TEST_CHATGPT_LOGIN: JSON.stringify({
           providerId,
           payload,
-          models,
         }),
       });
 
@@ -118,17 +110,14 @@ describe("provider commands", () => {
       expect(result.stdout).toContain(providerId);
       expect(Auth.get("openai-chatgpt", providerId)?.payload).toEqual(payload);
 
-      const parsed = ConfigSchema.parse(await Bun.file(configPath).json());
-      const provider = parsed.providers.find((entry) => entry.id === providerId);
-      expect(provider).toEqual({
-        enabled: true,
-        id: providerId,
-        kind: "oauth",
-        models: models.map((model) => model.id),
-        vendor: "openai-chatgpt",
+      expect(await Bun.file(configPath).json()).toEqual({
+        providers: {
+          [providerId]: {
+            kind: "oauth",
+            vendor: "openai-chatgpt",
+          },
+        },
       });
-      expect(provider && "alias" in provider).toBe(false);
-      expect(provider?.models).toHaveLength(4);
     } finally {
       if (previousHome === undefined) {
         delete process.env.AIO_PROXY_HOME;

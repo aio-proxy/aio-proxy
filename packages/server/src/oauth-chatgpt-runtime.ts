@@ -1,11 +1,12 @@
 import { createAiSdkProvider, resolveOpenAIResponsesModel } from "@aio-proxy/core";
-import { Auth } from "@aio-proxy/oauth";
+import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { OAuthProvider } from "@aio-proxy/types";
 import { ProviderKind } from "@aio-proxy/types";
 import { isPlainObject } from "es-toolkit/compat";
 import type { OAuthProviderModel } from "../../oauth/src/oauth-provider";
 import { refreshAccessToken } from "../../oauth/src/openai-chatgpt/oauth-flow";
 import type { ChatGPTPayload } from "../../oauth/src/openai-chatgpt/schema";
+import { deriveOAuthAlias } from "./oauth-alias";
 import type { OAuthProviderInstance } from "./runtime";
 
 type ChatGPTRuntimeProviderInstance = Omit<OAuthProviderInstance, "vendor"> & {
@@ -30,13 +31,14 @@ export type CodexFetchWrapperOptions = {
 
 export function createOpenAIChatGPTRuntimeProvider(config: OAuthProvider): ChatGPTRuntimeProviderInstance {
   const providerId = config.id;
+  const modelIds = OPENAI_CHATGPT_MODELS.map((model) => model.id);
+  const derivedAlias = deriveOAuthAlias(modelIds, config.alias);
   const provider = createAiSdkProvider(
     {
       enabled: config.enabled,
       id: `${providerId}:chatgpt`,
       kind: ProviderKind.AiSdk,
       packageName: "@ai-sdk/openai",
-      ...(config.models === undefined ? {} : { models: config.models }),
       options: {
         apiKey: "sk-oauth-placeholder",
         baseURL: CHATGPT_CODEX_BASE_URL,
@@ -53,7 +55,8 @@ export function createOpenAIChatGPTRuntimeProvider(config: OAuthProvider): ChatG
     enabled: config.enabled,
     id: config.id,
     kind: ProviderKind.OAuth,
-    ...(config.models === undefined ? {} : { models: config.models }),
+    models: modelIds,
+    alias: derivedAlias,
     vendor: config.vendor,
     async ensureAvailable() {
       parseChatGPTPayload(Auth.get("openai-chatgpt", providerId)?.payload, providerId);
@@ -85,7 +88,7 @@ export function codexFetchWrapper(options: CodexFetchWrapperOptions): Fetcher {
 
   async function refreshPayload(payload: ChatGPTPayload): Promise<ChatGPTPayload> {
     const refreshed = await refresh(payload.refresh);
-    const nextPayload: ChatGPTPayload = { ...payload, ...refreshed, models: payload.models };
+    const nextPayload: ChatGPTPayload = { ...payload, ...refreshed, models: OPENAI_CHATGPT_MODELS };
     Auth.set("openai-chatgpt", options.providerId, nextPayload, options.providerId);
     return nextPayload;
   }
