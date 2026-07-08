@@ -63,11 +63,12 @@ describe("cli", () => {
   test("bootstraps missing non-tty config path and serves health", async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-"));
-    const configPath = join(dir, "nested", "config.jsonc");
+    const home = join(dir, "nested");
+    const configFile = join(home, "config.jsonc");
     const port = freePort();
-    const server = Bun.spawn(cliServeArgs(configPath, port), {
+    const server = Bun.spawn(cliServeArgs(port), {
       cwd: repoCwd,
-      env: process.env,
+      env: { ...process.env, AIO_PROXY_HOME: home },
       stderr: "pipe",
       stdout: "pipe",
     });
@@ -79,8 +80,8 @@ describe("cli", () => {
 
       // Then
       expect(response.status).toBe(200);
-      expect(existsSync(configPath)).toBe(true);
-      expect(await readFile(configPath, "utf8")).toContain("providers");
+      expect(existsSync(configFile)).toBe(true);
+      expect(await readFile(configFile, "utf8")).toContain("providers");
       server.kill();
       await server.exited;
       const outputText = await stdout;
@@ -93,5 +94,42 @@ describe("cli", () => {
       await server.exited;
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("serve --help advertises --open and drops --config and --dashboard", () => {
+    // Given / When
+    const result = runCli(["serve", "--help"]);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    const help = result.stdout.toString();
+    expect(help).toContain("--open");
+    expect(help).not.toContain("config");
+    expect(help).not.toContain("--dashboard");
+  });
+
+  test("provider subcommands expose unified argument placeholders", () => {
+    // Given / When
+    const install = runCli(["provider", "install", "--help"]).stdout.toString();
+    const login = runCli(["provider", "login", "--help"]).stdout.toString();
+    const probe = runCli(["provider", "test", "--help"]).stdout.toString();
+
+    // Then
+    expect(install).toContain("<package>");
+    expect(install).not.toContain("<pkg>");
+    expect(login).toContain("<vendor>");
+    expect(login).not.toContain("<family>");
+    expect(probe).toContain("<provider-id>");
+    expect(probe).not.toContain("<id>");
+  });
+
+  test("dashboard command reports not-yet-implemented on stderr and exits 2", () => {
+    // Given / When
+    const result = runCli(["dashboard"]);
+
+    // Then
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr.toString()).toContain("not yet implemented");
+    expect(result.stdout.toString()).not.toContain("not yet implemented");
   });
 });
