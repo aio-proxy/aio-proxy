@@ -2,9 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Auth } from "@aio-proxy/oauth";
+import { Router } from "@aio-proxy/core";
+import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
+import type { AliasConfig, OAuthProvider } from "@aio-proxy/types";
+import { OAuthVendor, ProviderKind } from "@aio-proxy/types";
 import { z } from "zod";
-import { codexFetchWrapper } from "../src/oauth-runtime";
+import { codexFetchWrapper, createOpenAIChatGPTRuntimeProvider } from "../src/oauth-runtime";
 
 const models = [{ id: "gpt-5.5" }] as const;
 const responseBodySchema = z
@@ -136,7 +139,10 @@ describe("OpenAI ChatGPT OAuth runtime wrapper", () => {
 
     // Then
     expect(Auth.get("openai-chatgpt", providerId)?.accountFingerprint).toBe(providerId);
-    expect(Auth.get("openai-chatgpt", providerId)?.payload).toMatchObject({ access: "fresh-token", models });
+    expect(Auth.get("openai-chatgpt", providerId)?.payload).toMatchObject({
+      access: "fresh-token",
+      models: OPENAI_CHATGPT_MODELS,
+    });
   });
 
   test("wrapper sends Responses-API body shape", async () => {
@@ -177,6 +183,66 @@ describe("OpenAI ChatGPT OAuth runtime wrapper", () => {
     expect(response.status).toBe(401);
   });
 
+  test("bare config auto-exposes a route for every vendor model", () => {
+    // Given
+    const instance = createOpenAIChatGPTRuntimeProvider(chatgptConfig());
+
+    // Then
+    expect(instance.models).toEqual(OPENAI_CHATGPT_MODELS.map((model) => model.id));
+    const router = new Router([instance]);
+    for (const model of OPENAI_CHATGPT_MODELS) {
+      expect(instance.alias?.[model.id]).toEqual({ model: model.id, preserve: false });
+      expect(router.resolve(model.id)[0]?.modelId).toBe(model.id);
+    }
+  });
+
+  test("config alias rename replaces the auto self-alias for the targeted model", () => {
+    // Given
+    const instance = createOpenAIChatGPTRuntimeProvider(chatgptConfig({ gpt5: { model: "gpt-5.5", preserve: false } }));
+
+    // Then
+    const router = new Router([instance]);
+    expect(router.resolve("gpt5")[0]?.modelId).toBe("gpt-5.5");
+    expect(() => router.resolve("gpt-5.5")).toThrow();
+  });
+
+  test("refresh writes the static vendor model list, not the payload copy", async () => {
+    // Given
+    const providerId = trackProvider("chatgpt-refresh-static-models");
+    Auth.set("openai-chatgpt", providerId, payload({ expires: Date.now() - 1 }), providerId);
+    const wrapper = codexFetchWrapper({
+      fetch: captureFetch([], 200),
+      providerId,
+      refresh: async () => ({
+        access: "fresh-token",
+        accountId: "acct-123",
+        expires: Date.now() + 60_000,
+        refresh: "refresh-token",
+      }),
+    });
+
+    // When
+    await wrapper("https://example.test/v1/responses", { method: "POST" });
+
+    // Then
+    expect(Auth.get("openai-chatgpt", providerId)?.payload).toMatchObject({ models: OPENAI_CHATGPT_MODELS });
+  });
+
+  test("wrapper rejects with login-required when payload is missing models", async () => {
+    // Given
+    const providerId = trackProvider("chatgpt-missing-models");
+    const wrapper = codexFetchWrapper({
+      fetch: captureFetch([], 200),
+      getPayload: () => ({ access: "a", accountId: "acct-123", expires: Date.now() + 60_000, refresh: "r" }),
+      providerId,
+    });
+
+    // When / Then
+    await expect(wrapper("https://example.test/v1/responses", { method: "POST" })).rejects.toThrow(
+      "ChatGPT login required",
+    );
+  });
+
   function trackProvider(providerId: string): string {
     providerIds.push(providerId);
     return providerId;
@@ -185,6 +251,16 @@ describe("OpenAI ChatGPT OAuth runtime wrapper", () => {
 
 function payload(overrides: Partial<ReturnType<typeof payloadBase>>): ReturnType<typeof payloadBase> {
   return { ...payloadBase(), ...overrides };
+}
+
+function chatgptConfig(alias?: Readonly<Record<string, AliasConfig>>): OAuthProvider {
+  return {
+    enabled: true,
+    id: "chatgpt-test",
+    kind: ProviderKind.OAuth,
+    vendor: OAuthVendor.OpenAIChatGPT,
+    ...(alias === undefined ? {} : { alias }),
+  };
 }
 
 function payloadBase() {
