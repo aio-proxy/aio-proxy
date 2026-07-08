@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { configPath } from "@aio-proxy/core";
 import {
   ConfigWriteError,
   formatUserError,
@@ -14,7 +15,6 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-import { resolveConfigPath } from "./config-path";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
@@ -31,7 +31,6 @@ type ServeOptions = {
   readonly host?: string;
   readonly port?: string;
   readonly dashboard?: boolean;
-  readonly config?: string;
 };
 
 const parsePort = (value: string | undefined, fallback: number) => {
@@ -105,17 +104,17 @@ const assertPortAvailable = (host: string, port: number) => {
 };
 
 const serve = (deps: CliDeps) => async (options: ServeOptions) => {
-  const configPath = resolveConfigPath(options.config);
+  const resolvedConfigPath = configPath();
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
   const apiUrl = `http://${host}:${port}`;
   const dashboardUrl = `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
-  const config = await readOrBootstrapConfig(configPath, dashboardUrl);
+  const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
   const app = createServer({
     config,
-    configPath,
+    configPath: resolvedConfigPath,
     dashboardAssets,
     host,
     port,
@@ -144,7 +143,6 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option("--host <host>", m.cli_serve_option_host_description())
     .option("--port <port>", m.cli_serve_option_port_description())
     .option("--dashboard", m.cli_serve_option_dashboard_description())
-    .option("--config <path>", m.cli_serve_option_config_description())
     .action(serve(deps));
 
   program.command("dashboard").description(m.cli_dashboard_description()).action(runStub);
@@ -161,10 +159,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option("--probe", "Probe listed providers.")
     .option("--installed", "List packages installed in the runtime cache.")
     .action(providerList);
-  provider
-    .command("login <family>")
-    .option("--config <path>", m.cli_serve_option_config_description())
-    .action(providerLogin);
+  provider.command("login <family>").action(providerLogin);
   provider.command("test <id>").option("--url <url>", "Dashboard URL.").action(providerTest);
   program.command("model").description(m.cli_model_description()).action(runStub);
   program.command("trace").description(m.cli_trace_description()).action(runStub);
