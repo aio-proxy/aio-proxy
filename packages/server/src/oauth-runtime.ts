@@ -7,6 +7,7 @@ import { createOpenAIChatGPTRuntimeProvider as createOpenAIChatGPTRuntimeProvide
 
 export { codexFetchWrapper, createOpenAIChatGPTRuntimeProvider } from "./oauth-chatgpt-runtime";
 
+import { deriveOAuthAlias } from "./oauth-alias";
 import type { OAuthProviderInstance } from "./runtime";
 
 type CopilotTransport = "chat" | "messages" | "responses";
@@ -30,6 +31,13 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
   } | null;
   const cachedModels = cachedCopilotModels(payload?.models);
   const transportByModelId = new Map(cachedModels?.map(({ id, transport }) => [id, transport]) ?? []);
+  const modelIds = cachedModels?.map((model) => model.id) ?? [];
+  if (cachedModels === undefined && payload !== null) {
+    console.warn(
+      `${config.id}: no cached Copilot model list — run \`aio-proxy provider login copilot\` to sync; only config alias routes are exposed`,
+    );
+  }
+  const derivedAlias = deriveOAuthAlias(modelIds, config.alias);
   const access = typeof payload?.access === "string" ? payload.access : undefined;
   const baseUrl = typeof payload?.baseUrl === "string" ? payload.baseUrl : undefined;
   const providers = {
@@ -61,12 +69,15 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
     enabled: config.enabled,
     id: config.id,
     kind: ProviderKind.OAuth,
-    ...(config.models === undefined ? {} : { models: config.models }),
-    ...(config.alias === undefined ? {} : { alias: config.alias }),
+    models: modelIds,
+    alias: derivedAlias,
     vendor: config.vendor,
     async ensureAvailable() {
       if (access === undefined || baseUrl === undefined) {
         throw new Error(`${config.id}: GitHub Copilot login required`);
+      }
+      if (modelIds.length === 0) {
+        throw new Error(`${config.id}: no model list cached — re-login to sync model routing`);
       }
     },
     invoke(request) {
