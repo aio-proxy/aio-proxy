@@ -108,18 +108,11 @@ const createRoutes = (
 
 function exposedModels(provider: RuntimeProviderInstance): string[] {
   const alias = provider.alias ?? {};
-  const aliased = new Set<string>();
   const ids: string[] = [];
   for (const [clientModel, config] of Object.entries(alias)) {
     ids.push(clientModel);
-    aliased.add(config.model);
     if (config.preserve) {
       ids.push(config.model);
-    }
-  }
-  for (const model of provider.models ?? []) {
-    if (!aliased.has(model)) {
-      ids.push(model);
     }
   }
   return ids;
