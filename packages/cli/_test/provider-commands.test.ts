@@ -47,13 +47,16 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
 };
 
 describe("provider commands", () => {
-  test("provider login copilot writes provider config returned by login service", async () => {
+  test.each([
+    "copilot",
+    "github-copilot",
+  ])("provider login %s writes github-copilot provider config returned by login service", async (vendor) => {
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
-    const configPath = join(dir, "config.json");
+    const configPath = join(dir, "config.jsonc");
     writeFileSync(configPath, JSON.stringify({ providers: {} }));
 
     try {
-      const result = await runCliAsync(["provider", "login", "copilot", "--config", configPath], {
+      const result = await runCliAsync(["provider", "login", vendor], {
         AIO_PROXY_HOME: dir,
         AIO_PROXY_TEST_COPILOT_LOGIN: JSON.stringify({
           providerId: "copilot-12345",
@@ -82,9 +85,12 @@ describe("provider commands", () => {
     }
   });
 
-  test("provider login chatgpt writes oauth config and stores auth payload", async () => {
+  test.each([
+    "chatgpt",
+    "openai-chatgpt",
+  ])("provider login %s writes oauth config and stores auth payload", async (vendor) => {
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
-    const configPath = join(dir, "config.json");
+    const configPath = join(dir, "config.jsonc");
     writeFileSync(configPath, JSON.stringify({ providers: {} }));
     const providerId = "chatgpt-account-123";
     const payload = {
@@ -98,7 +104,7 @@ describe("provider commands", () => {
     process.env.AIO_PROXY_HOME = dir;
 
     try {
-      const result = await runCliAsync(["provider", "login", "chatgpt", "--config", configPath], {
+      const result = await runCliAsync(["provider", "login", vendor], {
         AIO_PROXY_HOME: dir,
         AIO_PROXY_TEST_CHATGPT_LOGIN: JSON.stringify({
           providerId,
@@ -131,17 +137,8 @@ describe("provider commands", () => {
 
   test("provider list prints packages installed in the runtime cache", () => {
     // Given
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
-    const packageDir = join(
-      dir,
-      ".config",
-      "aio-proxy",
-      "cache",
-      "packages",
-      "aio-proxy-cli-provider",
-      "node_modules",
-      "aio-proxy-cli-provider",
-    );
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-cli-home-"));
+    const packageDir = join(home, "packages", "aio-proxy-cli-provider", "node_modules", "aio-proxy-cli-provider");
     mkdirSync(packageDir, { recursive: true });
     writeFileSync(
       join(packageDir, "package.json"),
@@ -155,14 +152,14 @@ describe("provider commands", () => {
 
     try {
       // When
-      const result = runCli(["provider", "list", "--installed"], { HOME: dir });
+      const result = runCli(["provider", "list", "--installed"], { AIO_PROXY_HOME: home });
 
       // Then
       expect(result.exitCode).toBe(0);
       expect(result.stdout.toString()).toContain("aio-proxy-cli-provider 1.0.0");
       expect(result.stdout.toString()).toContain(packageDir);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   });
 
@@ -219,7 +216,7 @@ describe("provider commands", () => {
       // When
       const result = runCli(
         ["provider", "install", "aio-proxy-missing-package", "--yes", "--registry", "http://127.0.0.1:9"],
-        { HOME: dir },
+        { AIO_PROXY_HOME: dir },
       );
 
       // Then
@@ -237,13 +234,13 @@ describe("provider commands", () => {
     try {
       // When
       const result = runCli(["provider", "install", "aio-proxy-missing-package", "--registry", "http://127.0.0.1:9"], {
-        HOME: dir,
+        AIO_PROXY_HOME: dir,
       });
 
       // Then
       expect(result.exitCode).toBe(1);
       expect(output(result)).toContain("requires --yes");
-      expect(existsSync(join(dir, ".config", "aio-proxy", "cache"))).toBe(false);
+      expect(existsSync(join(dir, "packages"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
