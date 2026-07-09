@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type AiSdkProviderInstance, type ApiProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -9,6 +12,13 @@ const chatRequest = {
   messages: [{ role: "user", content: "Hello proxy" }],
   stream: true,
 };
+const homes: string[] = [];
+
+afterEach(() => {
+  for (const home of homes.splice(0)) {
+    rmSync(home, { force: true, recursive: true });
+  }
+});
 
 function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
@@ -35,6 +45,37 @@ class UpstreamStatusError extends Error {
 
 class AbortStreamError extends Error {
   override readonly name = "AbortError";
+}
+
+function tempHome(): string {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-openai-usage-"));
+  homes.push(home);
+  return home;
+}
+
+async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
+  const usageResponse = await app.request("/dashboard/api/usage");
+  expect(usageResponse.status).toBe(200);
+  return usageResponse.json();
+}
+
+async function waitForUsageRow(app: ReturnType<typeof createServer>): Promise<unknown> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const body = await usageJson(app);
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "summary" in body &&
+      typeof body.summary === "object" &&
+      body.summary !== null &&
+      "requestCount" in body.summary &&
+      body.summary.requestCount === 1
+    ) {
+      return body;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  return usageJson(app);
 }
 
 describe("POST /v1/chat/completions", () => {
@@ -292,6 +333,75 @@ describe("POST /v1/chat/completions", () => {
         completion_tokens: 2,
         total_tokens: 5,
       },
+    });
+  });
+
+  test("Given ai-sdk provider returns usage When completion finishes Then dashboard usage includes the row", async () => {
+    // Given
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
+      invoke() {
+        return textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-delta", id: "text-1", text: "Hel" },
+          { type: "text-delta", id: "text-1", text: "lo" },
+          { type: "text-end", id: "text-1" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: {
+              inputTokenDetails: {
+                noCacheTokens: undefined,
+                cacheReadTokens: undefined,
+                cacheWriteTokens: undefined,
+              },
+              inputTokens: 3,
+              outputTokenDetails: {
+                textTokens: undefined,
+                reasoningTokens: undefined,
+              },
+              outputTokens: 2,
+              totalTokens: 5,
+            },
+          },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({
+      config: { providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [provider],
+    });
+
+    // When
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ ...chatRequest, stream: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    await response.text();
+
+    // Then
+    expect(await waitForUsageRow(app)).toEqual({
+      summary: expect.objectContaining({
+        inputTokens: 3,
+        outputTokens: 2,
+        requestCount: 1,
+        totalTokens: 5,
+      }),
+      rows: [
+        expect.objectContaining({
+          inputTokens: 3,
+          modelId: "gpt-4o-mini",
+          outputTokens: 2,
+          providerId: "mock-ai",
+          totalTokens: 5,
+        }),
+      ],
     });
   });
 

@@ -1,5 +1,6 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-proxy/core";
 import type { AliasConfig, ModelId, OAuthVendor, ProviderKind } from "@aio-proxy/types";
+import type { UsageRecorder } from "./usage-recorder";
 
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
@@ -21,4 +22,5 @@ export type ProviderRouteSnapshot = {
 
 export type ProviderRouteSource = {
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
+  readonly usageRecorder: UsageRecorder;
 };

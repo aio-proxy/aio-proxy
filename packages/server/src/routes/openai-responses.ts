@@ -62,11 +62,18 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
                 ? context.req.raw.clone()
                 : await rewriteJsonRequestModel(context.req.raw, route.modelId);
             const response = await provider.passthrough(upstreamRequest);
-            if (hasNext && shouldTryNextResponse(response)) {
-              last = response;
+            const recorded = source.usageRecorder.recordPassthroughUsage({
+              response,
+              protocol: provider.protocol,
+              providerId: provider.id,
+              modelId: route.modelId,
+              traceId: crypto.randomUUID(),
+            });
+            if (hasNext && shouldTryNextResponse(recorded)) {
+              last = recorded;
               continue;
             }
-            return response;
+            return recorded;
           }
 
           const aiSdkProvider = toAiSdkProvider(provider);
@@ -76,12 +83,17 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
           }
 
           await ensureAiSdkProviderAvailable(aiSdkProvider);
-          const stream = aiSdkProvider.invoke({
-            messages: transformed.messages,
+          const stream = source.usageRecorder.recordStreamUsage({
+            providerId: provider.id,
             modelId: route.modelId,
-            settings: transformed.settings,
-            signal: context.req.raw.signal,
-            ...(tools === undefined ? {} : { tools }),
+            traceId: crypto.randomUUID(),
+            stream: aiSdkProvider.invoke({
+              messages: transformed.messages,
+              modelId: route.modelId,
+              settings: transformed.settings,
+              signal: context.req.raw.signal,
+              ...(tools === undefined ? {} : { tools }),
+            }),
           });
           if (request.stream !== true) {
             return Response.json(await writeOpenAIResponsesResponse(stream));

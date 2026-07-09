@@ -44,11 +44,18 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
         const provider = route.provider;
         if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Anthropic) {
           const response = await provider.passthrough(context.req.raw.clone());
-          if (hasNext && shouldTryNextResponse(response)) {
-            last = response;
+          const recorded = source.usageRecorder.recordPassthroughUsage({
+            response,
+            protocol: provider.protocol,
+            providerId: provider.id,
+            modelId: route.modelId,
+            traceId: crypto.randomUUID(),
+          });
+          if (hasNext && shouldTryNextResponse(recorded)) {
+            last = recorded;
             continue;
           }
-          return response;
+          return recorded;
         }
 
         const aiSdkProvider = toAiSdkProvider(provider);
@@ -63,11 +70,16 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
 
         try {
           await ensureAiSdkProviderAvailable(aiSdkProvider);
-          const stream = aiSdkProvider.invoke({
-            messages: aiSdkMessages(transformed.messages),
+          const stream = source.usageRecorder.recordStreamUsage({
+            providerId: provider.id,
             modelId: route.modelId,
-            settings: transformed.settings,
-            signal: context.req.raw.signal,
+            traceId: crypto.randomUUID(),
+            stream: aiSdkProvider.invoke({
+              messages: aiSdkMessages(transformed.messages),
+              modelId: route.modelId,
+              settings: transformed.settings,
+              signal: context.req.raw.signal,
+            }),
           });
           if (request.stream !== true) {
             return Response.json(await anthropicMessage(stream));

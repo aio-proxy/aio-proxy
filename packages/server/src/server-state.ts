@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { Router } from "@aio-proxy/core";
+import { createOpenRouterPriceCatalog, type OpenRouterPriceCatalog, Router } from "@aio-proxy/core";
+import { createUsageLedger, type OpenDbHandle, openDb, type UsageLedger } from "@aio-proxy/core/db";
 import {
   type Config,
   ConfigSchema,
@@ -13,10 +14,12 @@ import { watchConfigFile } from "./config-watcher";
 import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLimits } from "./dashboard-events";
 import { materializeProviders, type ProviderProbe, providerDiff, providerSummary } from "./provider-runtime";
 import type { ProviderRouteSnapshot, ProviderRouteSource, RuntimeProviderInstance } from "./runtime";
+import { createUsageRecorder } from "./usage-recorder";
 
 export type ServerStateOptions = {
   readonly config: Config;
   readonly configPath?: string;
+  readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly logger?: (entry: ConfigReloadLog) => void;
   readonly providerInstances?: readonly RuntimeProviderInstance[];
@@ -39,6 +42,7 @@ export type ServerState = ProviderRouteSource & {
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly redactedConfig: () => Config;
+  readonly usageLedger: UsageLedger;
 };
 
 export type ProviderSummaryOptions = {
@@ -68,6 +72,7 @@ type ProviderStatus = {
 const defaultLogger = (entry: ConfigReloadLog): void => {
   console.error(JSON.stringify(entry));
 };
+const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerState(options: ServerStateOptions): ServerState {
   let snapshot = buildSnapshotFromConfig(options.config);
@@ -77,6 +82,12 @@ export function createServerState(options: ServerStateOptions): ServerState {
 
   const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
+  const dbHandle = openServerDb(options);
+  const usageLedger = createUsageLedger(dbHandle.db);
+  const usageRecorder = createUsageRecorder({
+    ledger: usageLedger,
+    priceCatalogTask: createPriceCatalogTask(),
+  });
   const logger = options.logger ?? defaultLogger;
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
@@ -132,6 +143,7 @@ export function createServerState(options: ServerStateOptions): ServerState {
     close() {
       watcher?.close();
       events.close();
+      dbHandle.close();
     },
     configPath: options.configPath,
     configStore,
@@ -144,6 +156,37 @@ export function createServerState(options: ServerStateOptions): ServerState {
       return snapshot.config;
     },
     reload,
+    usageLedger,
+    usageRecorder,
+  };
+}
+
+function openServerDb(options: ServerStateOptions): OpenDbHandle {
+  return options.dbHome === undefined ? openDb() : openDb({ home: options.dbHome });
+}
+
+function createPriceCatalogTask(): () => Promise<OpenRouterPriceCatalog | undefined> {
+  let priceCatalog:
+    | {
+        readonly expiresAt: number;
+        readonly task: Promise<OpenRouterPriceCatalog | undefined>;
+      }
+    | undefined;
+
+  return () => {
+    const now = Date.now();
+    if (priceCatalog === undefined || priceCatalog.expiresAt <= now) {
+      priceCatalog = {
+        expiresAt: now + PRICE_CATALOG_TTL_MS,
+        task: createOpenRouterPriceCatalog().catch((error: unknown) => {
+          if (error instanceof Error) {
+            return undefined;
+          }
+          throw error;
+        }),
+      };
+    }
+    return priceCatalog.task;
   };
 }
 

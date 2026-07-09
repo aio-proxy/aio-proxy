@@ -73,11 +73,18 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
               ? context.req.raw.clone()
               : rewriteGeminiRequestModel(context.req.raw, route.modelId, target.stream);
           const response = await provider.passthrough(upstreamRequest);
-          if (hasNext && shouldTryNextResponse(response)) {
-            last = response;
+          const recorded = source.usageRecorder.recordPassthroughUsage({
+            response,
+            protocol: provider.protocol,
+            providerId: provider.id,
+            modelId: route.modelId,
+            traceId: crypto.randomUUID(),
+          });
+          if (hasNext && shouldTryNextResponse(recorded)) {
+            last = recorded;
             continue;
           }
-          return response;
+          return recorded;
         }
 
         const aiSdkProvider = toAiSdkProvider(provider);
@@ -91,12 +98,17 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
         }
 
         await ensureAiSdkProviderAvailable(aiSdkProvider);
-        const stream = aiSdkProvider.invoke({
-          messages: transformed.messages,
+        const stream = source.usageRecorder.recordStreamUsage({
+          providerId: provider.id,
           modelId: route.modelId,
-          settings: aiSdkSettings(transformed.settings),
-          signal: context.req.raw.signal,
-          ...(tools === undefined ? {} : { tools }),
+          traceId: crypto.randomUUID(),
+          stream: aiSdkProvider.invoke({
+            messages: transformed.messages,
+            modelId: route.modelId,
+            settings: aiSdkSettings(transformed.settings),
+            signal: context.req.raw.signal,
+            ...(tools === undefined ? {} : { tools }),
+          }),
         });
         if (target.stream) {
           return new Response(writeGeminiGenerateContentSSE(await preflightStream(stream)), {

@@ -2,7 +2,7 @@
 
 ## 1. Atmosphere & Identity
 
-The dashboard is a quiet operational console: compact enough for configuration work, but never visually crowded. Its signature is olive-toned structure with teal actions, Lexend headings, and layered Base UI surfaces that keep complex routing configuration readable without decorative effects.
+The dashboard is a quiet operational console: compact enough for configuration work, but never visually crowded. Its signature is olive-toned structure with teal actions, Lexend headings, and layered Base UI surfaces that keep complex routing configuration and dense usage tables readable without decorative effects.
 
 ## 2. Color
 
@@ -33,6 +33,7 @@ Light mode uses olive neutrals with teal actions. Dark mode preserves the same r
 - Monaco syntax highlighting is the exception: its theme API receives fixed Tailwind scale variables converted to hex so token roles stay stable across app themes.
 - Teal is reserved for actions and focus, not decoration.
 - Error meaning uses `destructive`; supporting information uses `muted-foreground`.
+- Tables use semantic borders and muted hover fills for hierarchy.
 
 ## 3. Typography
 
@@ -66,8 +67,28 @@ Spacing follows Tailwind's 4px scale. Existing dashboard composition primarily u
 - Provider aliases use the Base UI Drawer from the bottom below 768px and from the right at 768px and above.
 - The desktop Provider alias Drawer is full height and no wider than 680px; mobile uses the built-in bottom Drawer height constraints.
 - Drawer headers and footers remain fixed while the content region scrolls.
+- Page content uses responsive grids with dense mobile stacking and the existing `PageContainer` header and scroll region.
+- Avoid nested cards.
 
 ## 5. Components
+
+### Page Container
+
+- **Structure**: fixed header plus scrollable body.
+- **Variants**: optional back link and extra action.
+- **Spacing**: use the existing header height and `p-3` body padding.
+- **States**: title truncates; actions remain right-aligned.
+- **Accessibility**: title is the page `h1`.
+- **Motion**: none.
+
+### Side Menu Item
+
+- **Structure**: lucide icon, label, optional badge.
+- **Variants**: active/inactive.
+- **Spacing**: existing sidebar tokens.
+- **States**: default, hover, active, focus.
+- **Accessibility**: link semantics from TanStack Router.
+- **Motion**: use the existing color transition.
 
 ### Form Field
 
@@ -82,6 +103,22 @@ Spacing follows Tailwind's 4px scale. Existing dashboard composition primarily u
 - **Spacing**: `gap-3` and `p-4` by default.
 - **States**: default, focused-within, and error using semantic tokens.
 
+### Metric Card
+
+- **Structure**: shadcn `Card` with label, value, and optional description.
+- **Spacing**: use the shared `Card` spacing.
+- **States**: loading, empty, and error are handled at page level.
+- **Accessibility**: labels remain text; values use tabular numerals.
+- **Motion**: none.
+
+### Data Table
+
+- **Structure**: shadcn `Table` inside a single card or unframed panel.
+- **Variants**: normal and empty.
+- **Spacing**: table cells use `p-3`.
+- **States**: hover rows, empty state, and loading skeleton.
+- **Accessibility**: use semantic table elements.
+- **Motion**: use the existing hover transition.
 
 ### Empty State
 
@@ -92,7 +129,7 @@ Spacing follows Tailwind's 4px scale. Existing dashboard composition primarily u
 
 - Reuse the existing Base UI Drawer, Sheet, and dialog transitions.
 - Micro interactions use the existing component transitions; do not add decorative animation.
-- Animate only `transform` and `opacity`.
+- Transition only color, `transform`, and `opacity`.
 - Preserve visible hover, active, and focus feedback from shared components.
 - Respect reduced-motion behavior provided by the primitives and global styles.
 
@@ -103,4 +140,5 @@ The dashboard uses a mixed border-and-shadow strategy already present in shared 
 - Page and configuration grouping primarily use semantic borders and tonal surface changes.
 - Drawers, sheets, and dialogs use the shared elevated popover surface and existing shadow.
 - Inner cards use a tighter radius than the containing Drawer, Sheet, or section.
+- Dense tables use borders and shell divisions instead of additional nested surfaces.
 - Do not introduce one-off shadows, raw colors, or decorative gradients.

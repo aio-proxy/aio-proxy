@@ -666,6 +666,28 @@ describe("TraceEventSchema", () => {
 
     expect(TraceEventSchema.parse(event)).toEqual(event);
   });
+
+  test("roundtrips usage rows with price and optional token dimensions", () => {
+    const event = {
+      type: "end",
+      traceId: "trace-1",
+      timestamp: "2026-07-09T00:00:01.000Z",
+      usage: {
+        providerId: "openrouter",
+        modelId: "gpt-5.5",
+        inputTokens: 1000,
+        outputTokens: 2000,
+        totalTokens: 3000,
+        cacheReadTokens: 500,
+        cacheWriteTokens: 250,
+        reasoningTokens: 100,
+        priceModelId: "openai/gpt-5.5",
+        estimatedCostUsd: 0.0123,
+      },
+    };
+
+    expect(TraceEventSchema.parse(event)).toEqual(event);
+  });
 });
 
 describe("DashboardEventSchema", () => {

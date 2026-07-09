@@ -1,0 +1,126 @@
+import { ProviderProtocol, type UsageRow } from "@aio-proxy/types";
+
+type ExtractedUsage = Omit<UsageRow, "providerId" | "modelId">;
+
+export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
+  const values = sseDataValues(bodyText);
+  for (const value of [...values].reverse()) {
+    const parsed = parseJson(value);
+    if (parsed === undefined) {
+      continue;
+    }
+    const usage = usageFromJson(protocol, parsed);
+    if (usage !== undefined) {
+      return usage;
+    }
+  }
+  return undefined;
+}
+
+function sseDataValues(bodyText: string): readonly string[] {
+  const frames = bodyText.split(/\n\n/u);
+  const values = frames.flatMap((frame) => {
+    const dataLines = frame
+      .split(/\n/u)
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => line.slice("data: ".length));
+    return dataLines.length === 0 ? [frame] : [dataLines.join("\n")];
+  });
+  return values.map((value) => value.trim()).filter((value) => value !== "" && value !== "[DONE]");
+}
+
+function parseJson(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function usageFromJson(protocol: ProviderProtocol, value: unknown): ExtractedUsage | undefined {
+  switch (protocol) {
+    case ProviderProtocol.OpenAICompatible:
+      return openAICompatibleUsage(value);
+    case ProviderProtocol.OpenAIResponse:
+      return openAIResponsesUsage(value);
+    case ProviderProtocol.Anthropic:
+      return anthropicUsage(value);
+    case ProviderProtocol.Gemini:
+      return geminiUsage(value);
+    default:
+      return assertNever(protocol);
+  }
+}
+
+function openAICompatibleUsage(value: unknown): ExtractedUsage | undefined {
+  if (!isRecord(value) || !isRecord(value["usage"])) {
+    return undefined;
+  }
+  return tokenUsage({
+    inputTokens: numberField(value["usage"], "prompt_tokens"),
+    outputTokens: numberField(value["usage"], "completion_tokens"),
+    totalTokens: numberField(value["usage"], "total_tokens"),
+  });
+}
+
+function openAIResponsesUsage(value: unknown): ExtractedUsage | undefined {
+  if (!isRecord(value) || !isRecord(value["usage"])) {
+    return undefined;
+  }
+  return tokenUsage({
+    inputTokens: numberField(value["usage"], "input_tokens"),
+    outputTokens: numberField(value["usage"], "output_tokens"),
+    totalTokens: numberField(value["usage"], "total_tokens"),
+  });
+}
+
+function anthropicUsage(value: unknown): ExtractedUsage | undefined {
+  if (!isRecord(value) || !isRecord(value["usage"])) {
+    return undefined;
+  }
+  const inputTokens = numberField(value["usage"], "input_tokens");
+  const outputTokens = numberField(value["usage"], "output_tokens");
+  return tokenUsage({
+    inputTokens,
+    outputTokens,
+    totalTokens: totalTokens(inputTokens, outputTokens),
+  });
+}
+
+function geminiUsage(value: unknown): ExtractedUsage | undefined {
+  if (!isRecord(value) || !isRecord(value["usageMetadata"])) {
+    return undefined;
+  }
+  return tokenUsage({
+    inputTokens: numberField(value["usageMetadata"], "promptTokenCount"),
+    outputTokens: numberField(value["usageMetadata"], "candidatesTokenCount"),
+    totalTokens: numberField(value["usageMetadata"], "totalTokenCount"),
+  });
+}
+
+function tokenUsage(usage: ExtractedUsage): ExtractedUsage | undefined {
+  return Object.keys(usage).length === 0 ? undefined : usage;
+}
+
+function totalTokens(inputTokens: number | undefined, outputTokens: number | undefined): number | undefined {
+  if (inputTokens === undefined || outputTokens === undefined) {
+    return undefined;
+  }
+  return inputTokens + outputTokens;
+}
+
+function numberField(record: Record<string, unknown>, field: string): number | undefined {
+  const value = record[field];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported passthrough usage protocol: ${String(value)}`);
+}

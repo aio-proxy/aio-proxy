@@ -83,6 +83,7 @@
     "menus": {
       "overview": "Overview",
       "dashboard": "Dashboard",
+      "usage": "Usage",
       "configuration": "Configuration",
       "providers": "Providers",
       "models": "Models"
@@ -220,6 +221,31 @@
       "aliases_readonly_note": "Edit config file to modify aliases",
       "oauth_managed_cli": "OAuth providers are managed via CLI. Use the CLI to configure this provider.",
       "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI"
+    },
+    "usage": {
+      "title": "Usage",
+      "metric_requests": "Requests",
+      "metric_requests_description": "Successful requests with reported usage",
+      "metric_tokens": "Tokens",
+      "metric_tokens_description": "{input} input / {output} output",
+      "metric_cache": "Cache tokens",
+      "metric_cache_description": "{read} read / {write} write",
+      "metric_cost": "Estimated cost",
+      "metric_cost_description": "Priced with OpenRouter model rates",
+      "recent_title": "Recent usage",
+      "recent_description": "Successful completed requests that exposed token usage.",
+      "column_time": "Time",
+      "column_provider": "Provider",
+      "column_model": "Model",
+      "column_input": "Input",
+      "column_output": "Output",
+      "column_total": "Total",
+      "column_cost": "Cost",
+      "cost_unknown": "Unknown",
+      "empty_title": "No usage yet",
+      "empty_description": "Successful model requests with usage metadata will appear here.",
+      "error_title": "Usage unavailable",
+      "error_description": "The dashboard could not load usage data."
     }
   }
 }

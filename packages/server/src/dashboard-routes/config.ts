@@ -155,6 +155,16 @@ export const createDashboardRoutes = (state: ServerState) =>
       }
       return context.json({ provider });
     })
+    .get("/usage", (context) => {
+      const limit = usageLimit(context.req.query("limit"));
+      return context.json({
+        summary: state.usageLedger.summary(limit),
+        rows: state.usageLedger.list(limit).map((row) => ({
+          ...row,
+          createdAt: row.createdAt.toISOString(),
+        })),
+      });
+    })
     .post("/providers/install", async (context) => {
       try {
         const request = ProviderInstallRequestSchema.parse(await context.req.json());
@@ -202,3 +212,14 @@ export const createDashboardRoutes = (state: ServerState) =>
       }
       return context.json({ ok: false, error: result.error, stage: result.stage }, 409);
     });
+
+function usageLimit(value: string | undefined): number {
+  if (value === undefined) {
+    return 100;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+  return Math.min(500, Math.max(1, parsed));
+}
