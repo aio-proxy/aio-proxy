@@ -68,6 +68,37 @@ export const AiSdkProviderSchema = z.object({
     .describe("Parse reasoning content from OpenAI-compatible stream chunks."),
 });
 
+// ── Mutation body schemas (POST/PUT) ───────────────────────────────────────────
+// id is REQUIRED on both POST and PUT. apiKey uses "" → retain semantics server-side.
+export const ApiProviderMutationBodySchema = z.object({
+  kind: z.literal(ProviderKind.Api),
+  id: z.string().min(1),
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  weight: z.number().optional(),
+  protocol: ProviderProtocolSchema,
+  baseUrl: z.url(),
+  apiKey: z.string().optional(),
+  models: z.array(z.string()).optional(),
+});
+
+export const AiSdkProviderMutationBodySchema = z.object({
+  kind: z.literal(ProviderKind.AiSdk),
+  id: z.string().min(1),
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  weight: z.number().optional(),
+  packageName: z.string().optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
+  parseReasoningContent: z.boolean().optional(),
+  models: z.array(z.string()).optional(),
+});
+
+export const ProviderMutationBodySchema = z.discriminatedUnion("kind", [
+  ApiProviderMutationBodySchema,
+  AiSdkProviderMutationBodySchema,
+]);
+
 type ProviderValue =
   | z.output<typeof ApiProviderSchema>
   | z.output<typeof OAuthProviderSchema>
@@ -137,5 +168,11 @@ export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
 export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;
 export type AiSdkProvider = z.output<typeof AiSdkProviderSchema>;
+export type ApiProviderMutationBodyInput = z.input<typeof ApiProviderMutationBodySchema>;
+export type ApiProviderMutationBody = z.output<typeof ApiProviderMutationBodySchema>;
+export type AiSdkProviderMutationBodyInput = z.input<typeof AiSdkProviderMutationBodySchema>;
+export type AiSdkProviderMutationBody = z.output<typeof AiSdkProviderMutationBodySchema>;
+export type ProviderMutationBodyInput = z.input<typeof ProviderMutationBodySchema>;
+export type ProviderMutationBody = z.output<typeof ProviderMutationBodySchema>;
 export type ProviderInput = z.input<typeof ProviderSchema>;
 export type Provider = z.output<typeof ProviderSchema>;

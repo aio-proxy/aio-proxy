@@ -4,10 +4,12 @@ import {
   type AioModelMessage,
   type AioStreamPart,
   AiSdkProviderSchema,
+  ApiProviderMutationBodySchema,
   ConfigSchema,
   DashboardEventSchema,
   OAuthProviderSchema,
   OAuthVendor,
+  ProviderMutationBodySchema,
   TraceEventSchema,
 } from "../src/index";
 
@@ -287,6 +289,41 @@ describe("ConfigSchema", () => {
         "gemini-3.5-flash": { model: "gemini-3.5-flash", preserve: false },
       },
     });
+  });
+
+  test("accepts api provider mutation body", () => {
+    expect(
+      ProviderMutationBodySchema.parse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+      }),
+    ).toMatchObject({ kind: "api", id: "openai" });
+  });
+
+  test("accepts ai-sdk provider mutation body", () => {
+    expect(
+      ProviderMutationBodySchema.parse({
+        kind: "ai-sdk",
+        id: "google",
+        packageName: "@ai-sdk/google",
+      }),
+    ).toMatchObject({ kind: "ai-sdk", id: "google" });
+  });
+
+  test("rejects oauth kind in mutation body", () => {
+    expect(() => ProviderMutationBodySchema.parse({ kind: "oauth", id: "x", vendor: "github-copilot" })).toThrow();
+  });
+
+  test("requires id field", () => {
+    expect(() =>
+      ApiProviderMutationBodySchema.parse({
+        kind: "api",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+      }),
+    ).toThrow();
   });
 
   test("rejects object model entries now that aliases are separate", () => {
