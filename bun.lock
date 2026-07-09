@@ -94,6 +94,7 @@
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/server": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
         "@base-ui/react": "^1.6.0",
         "@fontsource-variable/lexend": "^5.2.11",
         "@tanstack/react-form": "^1.33.0",

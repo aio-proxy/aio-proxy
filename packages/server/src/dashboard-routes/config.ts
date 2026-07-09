@@ -133,19 +133,19 @@ export const createDashboardRoutes = (state: ServerState) =>
       }
       const { id: _id, ...bodyRest } = parsed.body;
       const providerData: Record<string, unknown> = { ...bodyRest };
-      const apiKeyProvided = typeof providerData["apiKey"] === "string" && providerData["apiKey"] !== "";
+      const apiKeyProvided = typeof providerData.apiKey === "string" && providerData.apiKey !== "";
       await state.configStore.mutateProviders((record) => {
         const next: Record<string, unknown> = { ...providerData };
         if (!apiKeyProvided) {
           const previous = record[id];
           const storedApiKey =
             typeof previous === "object" && previous !== null
-              ? (previous as Record<string, unknown>)["apiKey"]
+              ? (previous as Record<string, unknown>).apiKey
               : undefined;
           if (typeof storedApiKey === "string") {
-            next["apiKey"] = storedApiKey;
+            next.apiKey = storedApiKey;
           } else {
-            delete next["apiKey"];
+            delete next.apiKey;
           }
         }
         return { ...record, [id]: next };
