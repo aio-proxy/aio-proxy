@@ -28,6 +28,9 @@ export const createProviderMutationFn = async (
   body: ProviderMutationBody,
 ): Promise<{ provider: DashboardProviderSummary }> => {
   const response = await dashboardClient.dashboard.api.providers.$post({ json: body });
+  if (!response.ok) {
+    throw new Error(`create provider failed: ${response.status}`);
+  }
   return response.json();
 };
 
@@ -39,11 +42,17 @@ export const updateProviderMutationFn = async ({
   body: ProviderMutationBody;
 }): Promise<{ provider: DashboardProviderSummary }> => {
   const response = await dashboardClient.dashboard.api.providers[":id"].$put({ param: { id }, json: body });
+  if (!response.ok) {
+    throw new Error(`update provider failed: ${response.status}`);
+  }
   return response.json();
 };
 
 export const deleteProviderMutationFn = async (id: string): Promise<{ ok: true; id: string }> => {
   const response = await dashboardClient.dashboard.api.providers[":id"].$delete({ param: { id } });
+  if (!response.ok) {
+    throw new Error(`delete provider failed: ${response.status}`);
+  }
   return response.json();
 };
 

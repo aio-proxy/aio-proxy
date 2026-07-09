@@ -15,7 +15,7 @@ export function useProviderForm({ kind, initial, onSubmit }: UseProviderFormOpti
   const schema = kind === "api" ? ApiProviderMutationBodySchema : AiSdkProviderMutationBodySchema;
 
   return useForm({
-    defaultValues: initial ?? ({} as ApiProviderMutationBody | AiSdkProviderMutationBody),
+    defaultValues: { ...(initial ?? {}), kind } as ApiProviderMutationBody | AiSdkProviderMutationBody,
     validators: {
       onChange: ({ value }) => {
         const result = schema.safeParse(value);

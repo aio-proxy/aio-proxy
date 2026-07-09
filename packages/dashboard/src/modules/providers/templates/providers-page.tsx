@@ -39,12 +39,12 @@ export const ProvidersPage: React.FC = () => {
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
               <Link to="/providers/new/$kind" params={{ kind: "api" }}>
-                API
+                {m["dashboard.providers.kind_label.api"]()}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/providers/new/$kind" params={{ kind: "ai-sdk" }}>
-                AI SDK
+                {m["dashboard.providers.kind_label.ai-sdk"]()}
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
