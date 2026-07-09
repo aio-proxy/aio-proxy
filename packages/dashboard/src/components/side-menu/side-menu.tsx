@@ -51,7 +51,6 @@ export const SideMenu: React.FC = () => {
           label: m["dashboard.menus.providers"](),
           icon: HandPlatter,
           to: "/providers",
-          badge: "1", // todo: fetch the number of providers from the backend
           isActive: (pathname) => pathname.startsWith("/providers"),
         },
         {
