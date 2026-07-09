@@ -1,0 +1,1 @@
+Build passed, baseUrl is not present
