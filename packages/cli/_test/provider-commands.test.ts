@@ -32,6 +32,7 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
       const rows = providers
         .filter((provider) => filter === null || provider.id === filter)
         .map((provider) => ({
+          clientModels: [],
           ...provider,
           ...(probe ? { probe: provider.probe ?? "OK" } : {}),
         }));
