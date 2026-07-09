@@ -3,8 +3,10 @@ import { z } from "zod";
 import {
   type AioModelMessage,
   type AioStreamPart,
+  AiSdkProviderSchema,
   ConfigSchema,
   DashboardEventSchema,
+  OAuthProviderSchema,
   OAuthVendor,
   TraceEventSchema,
 } from "../src/index";
@@ -93,6 +95,19 @@ describe("ConfigSchema", () => {
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...provider, enabled: true, id: "chatgpt" }],
+    });
+  });
+
+  test("Given oauth and ai-sdk provider schemas When parsed Then name is accepted", () => {
+    expect(OAuthProviderSchema.parse({ kind: "oauth", id: "x", vendor: "github-copilot", name: "My Copilot" })).toEqual(
+      { kind: "oauth", id: "x", vendor: "github-copilot", name: "My Copilot", enabled: true },
+    );
+    expect(AiSdkProviderSchema.parse({ kind: "ai-sdk", id: "y", name: "My SDK" })).toEqual({
+      kind: "ai-sdk",
+      id: "y",
+      name: "My SDK",
+      enabled: true,
+      packageName: "@ai-sdk/openai-compatible",
     });
   });
 

@@ -28,6 +28,7 @@ const SharedProviderSchemaBase = {
   enabled: z.boolean().default(true).describe("Whether this provider participates in routing."),
   weight: z.number().optional().describe("Provider priority; higher weights are tried first."),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+  name: z.string().optional().describe("Display name shown in the dashboard."),
 } as const;
 
 const modelsField = {
@@ -38,7 +39,6 @@ export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
   ...SharedProviderSchemaBase,
   ...modelsField,
-  name: z.string().optional().describe("Display name shown in the dashboard."),
   protocol: ProviderProtocolSchema,
   baseUrl: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
