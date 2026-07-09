@@ -29,6 +29,9 @@ const tmpDir = mkdtempSync(join(tmpdir(), "aio-test-"));
 const configPath = join(tmpDir, "config.jsonc");
 writeFileSync(configPath, JSON.stringify(seedConfig, null, 2));
 
+// Isolate the OAuth SQLite from the developer's real ~/.aio-proxy schema.
+process.env.AIO_PROXY_HOME = tmpDir;
+
 // watchConfig:false — mutateProviders drives reload itself; no watcher needed.
 const app = createServer({ config: seedConfig, configPath, watchConfig: false, port: PORT });
 
