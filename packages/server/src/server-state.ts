@@ -8,6 +8,7 @@ import {
   type DashboardProviderSummary,
 } from "@aio-proxy/types";
 import { ZodError } from "zod";
+import { type ConfigStore, createConfigStore } from "./config-store";
 import { watchConfigFile } from "./config-watcher";
 import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLimits } from "./dashboard-events";
 import { materializeProviders, type ProviderProbe, providerDiff, providerSummary } from "./provider-runtime";
@@ -32,6 +33,8 @@ export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChang
 
 export type ServerState = ProviderRouteSource & {
   readonly close: () => void;
+  readonly configPath: string | undefined;
+  readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
@@ -120,11 +123,18 @@ export function createServerState(options: ServerStateOptions): ServerState {
     );
   }
 
+  const configStore = createConfigStore({
+    getConfigPath: () => options.configPath,
+    reload,
+  });
+
   return {
     close() {
       watcher?.close();
       events.close();
     },
+    configPath: options.configPath,
+    configStore,
     currentProviderSnapshot() {
       return snapshot;
     },
