@@ -28,21 +28,21 @@ export function materializeProviders(config: Config): ProviderRuntime {
         probes.set(id, () => probeApi(provider, provider.baseUrl));
         const instance = createApiProvider(provider);
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.AiSdk: {
         const instance = createAiSdkProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.OAuth: {
         const instance = createOAuthRuntimeProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       default:
@@ -57,7 +57,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
   };
 }
 
-export function providerSummary(provider: RuntimeProviderInstance): DashboardProviderSummary {
+export function providerSummary(provider: RuntimeProviderInstance, name?: string): DashboardProviderSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -65,8 +65,8 @@ export function providerSummary(provider: RuntimeProviderInstance): DashboardPro
     passthrough: isPassthrough(provider),
     last_status: "unknown",
     last_latency: null,
-    // ponytail: factories don't copy `name` onto instances yet; surfaces once they do
-    name: "name" in provider ? provider.name : undefined,
+    // Runtime factories don't carry `name`, so callers pass the config display name through.
+    name: name ?? ("name" in provider ? provider.name : undefined),
     clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
     hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };

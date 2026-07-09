@@ -7,9 +7,18 @@ export class ConfigPathMissingError extends Error {
   }
 }
 
+export class ConfigReloadRejectedError extends Error {
+  constructor(reason: string) {
+    super(`config reload rejected: ${reason}`);
+    this.name = "ConfigReloadRejectedError";
+  }
+}
+
+export type ConfigReloadOutcome = { readonly ok: true } | { readonly ok: false; readonly error: string };
+
 export type ConfigStoreOptions = {
   readonly getConfigPath: () => string | undefined;
-  readonly reload: () => Promise<unknown>;
+  readonly reload: () => Promise<ConfigReloadOutcome>;
 };
 
 export type ConfigStore = {
@@ -39,8 +48,13 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       // Write to tmp then rename atomically
       await writeFile(tmpPath, JSON.stringify(updated, null, 2), "utf8");
       await rename(tmpPath, configPath);
-      // Reload state to pick up the new config
-      await options.reload();
+      const result = await options.reload();
+      if (!result.ok) {
+        // ponytail: reload validates the persisted file; on rejection restore the prior valid config so disk never diverges from the live snapshot.
+        await writeFile(tmpPath, raw, "utf8");
+        await rename(tmpPath, configPath);
+        throw new ConfigReloadRejectedError(result.error);
+      }
     });
     // ponytail: a rejected write must not poison the mutex — swallow it on `chain`, surface it on `run`.
     chain = run.catch(() => {});

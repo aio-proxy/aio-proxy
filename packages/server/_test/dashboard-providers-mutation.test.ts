@@ -262,4 +262,31 @@ describe("dashboard provider CRUD", () => {
     expect(body.provider.alias).toBeDefined();
     expect(body.provider.alias["gpt-4o"].model).toBe("gpt-4o-upstream");
   });
+
+  test("18. PUT that yields an invalid config is rejected (422) and rolled back on disk", async () => {
+    const before = JSON.stringify(onDisk().providers["seed-api"]);
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+      models: ["unrelated-model"],
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(onDisk().providers["seed-api"])).toBe(before);
+  });
+
+  test("19. GET /providers surfaces the saved display name for an enabled provider", async () => {
+    const put = await req("PUT", "/providers/seed-ai", {
+      kind: "ai-sdk",
+      id: "seed-ai",
+      packageName: "@ai-sdk/openai-compatible",
+      name: "My Display Name",
+    });
+    expect(put.status).toBe(200);
+    const res = await req("GET", "/providers");
+    const body = await res.json();
+    const ai = body.providers.find((provider: { id: string }) => provider.id === "seed-ai");
+    expect(ai.name).toBe("My Display Name");
+  });
 });

@@ -9,6 +9,7 @@ import {
 import { type ProviderMutationBody, ProviderMutationBodySchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
+import { ConfigReloadRejectedError } from "../config-store";
 import type { ServerState } from "../server-state";
 
 const OPENAI_SECRET_PATTERN = /^sk-[A-Za-z0-9_-]{20,}$/;
@@ -112,7 +113,14 @@ export const createDashboardRoutes = (state: ServerState) =>
         return context.json({ error: "provider id already exists", id }, 409);
       }
       const providerData: Record<string, unknown> = { ...bodyRest };
-      await state.configStore.mutateProviders((record) => ({ ...record, [id]: providerData }));
+      try {
+        await state.configStore.mutateProviders((record) => ({ ...record, [id]: providerData }));
+      } catch (error) {
+        if (error instanceof ConfigReloadRejectedError) {
+          return context.json({ error: "config rejected", detail: error.message }, 422);
+        }
+        throw error;
+      }
       const summaries = await state.providerSummaries({ filter: id, probe: false });
       return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } }, 201);
     })
@@ -134,24 +142,31 @@ export const createDashboardRoutes = (state: ServerState) =>
       const { id: _id, ...bodyRest } = parsed.body;
       const providerData: Record<string, unknown> = { ...bodyRest };
       const apiKeyProvided = typeof providerData.apiKey === "string" && providerData.apiKey !== "";
-      await state.configStore.mutateProviders((record) => {
-        const previous = record[id];
-        const prev =
-          typeof previous === "object" && previous !== null ? (previous as Record<string, unknown>) : undefined;
-        const next: Record<string, unknown> = { ...providerData };
-        if (prev?.alias !== undefined) {
-          next.alias = prev.alias;
-        }
-        if (!apiKeyProvided) {
-          const storedApiKey = prev?.apiKey;
-          if (typeof storedApiKey === "string") {
-            next.apiKey = storedApiKey;
-          } else {
-            delete next.apiKey;
+      try {
+        await state.configStore.mutateProviders((record) => {
+          const previous = record[id];
+          const prev =
+            typeof previous === "object" && previous !== null ? (previous as Record<string, unknown>) : undefined;
+          const next: Record<string, unknown> = { ...providerData };
+          if (prev?.alias !== undefined) {
+            next.alias = prev.alias;
           }
+          if (!apiKeyProvided) {
+            const storedApiKey = prev?.apiKey;
+            if (typeof storedApiKey === "string") {
+              next.apiKey = storedApiKey;
+            } else {
+              delete next.apiKey;
+            }
+          }
+          return { ...record, [id]: next };
+        });
+      } catch (error) {
+        if (error instanceof ConfigReloadRejectedError) {
+          return context.json({ error: "config rejected", detail: error.message }, 422);
         }
-        return { ...record, [id]: next };
-      });
+        throw error;
+      }
       const summaries = await state.providerSummaries({ filter: id, probe: false });
       return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } });
     })

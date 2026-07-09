@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createConfigStore } from "../src/config-store";
+import { ConfigReloadRejectedError, createConfigStore } from "../src/config-store";
 
 describe("createConfigStore mutex", () => {
   test("a rejected write does not poison later mutations", async () => {
@@ -15,6 +15,7 @@ describe("createConfigStore mutex", () => {
       getConfigPath: () => configPath,
       reload: async () => {
         reloads += 1;
+        return { ok: true as const };
       },
     });
 
@@ -31,6 +32,26 @@ describe("createConfigStore mutex", () => {
     };
     expect(onDisk.providers.added).toEqual({ kind: "api" });
     expect(reloads).toBe(1);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("rejects and rolls back to the prior config when reload reports failure", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-store-"));
+    const configPath = join(dir, "config.json");
+    const original = JSON.stringify({ providers: { a: { kind: "api" } } }, null, 2);
+    writeFileSync(configPath, original);
+
+    const store = createConfigStore({
+      getConfigPath: () => configPath,
+      reload: async () => ({ ok: false as const, error: "invalid alias target" }),
+    });
+
+    await expect(store.mutateProviders((record) => ({ ...record, b: { kind: "api" } }))).rejects.toThrow(
+      ConfigReloadRejectedError,
+    );
+
+    expect(readFileSync(configPath, "utf8")).toBe(original);
 
     rmSync(dir, { recursive: true, force: true });
   });
