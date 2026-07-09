@@ -173,6 +173,8 @@ describe("server routes", () => {
           passthrough: true,
           last_status: "unknown",
           last_latency: null,
+          clientModels: ["gpt-disabled"],
+          hasApiKey: false,
         },
       ],
     });
@@ -287,6 +289,8 @@ describe("server routes", () => {
             passthrough: true,
             last_status: "unknown",
             last_latency: null,
+            clientModels: [],
+            hasApiKey: false,
           },
         ],
       });
@@ -319,6 +323,8 @@ describe("server routes", () => {
         passthrough: true,
         last_status: "unknown",
         last_latency: null,
+        clientModels: ["gpt-alias", "gpt-test"],
+        hasApiKey: true,
       },
     });
     expect(missing.status).toBe(404);

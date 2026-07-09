@@ -1,4 +1,4 @@
-import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
+import { createAiSdkProvider, createApiProvider, modelRoutes } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { createOAuthRuntimeProvider } from "./oauth-runtime";
@@ -65,6 +65,10 @@ export function providerSummary(provider: RuntimeProviderInstance): DashboardPro
     passthrough: isPassthrough(provider),
     last_status: "unknown",
     last_latency: null,
+    // ponytail: factories don't copy `name` onto instances yet; surfaces once they do
+    name: "name" in provider ? provider.name : undefined,
+    clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
+    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };
 }
 
@@ -84,6 +88,8 @@ function providerId(provider: Provider): string {
 }
 
 function providerConfigSummary(provider: Provider): DashboardProviderSummary {
+  const models = provider.kind === ProviderKind.OAuth ? [] : (provider.models ?? []);
+  const clientModels = [...new Set(provider.alias ? Object.keys(provider.alias) : models)];
   return {
     id: provider.id,
     kind: provider.kind,
@@ -91,6 +97,9 @@ function providerConfigSummary(provider: Provider): DashboardProviderSummary {
     passthrough: provider.kind === ProviderKind.Api,
     last_status: "unknown",
     last_latency: null,
+    name: provider.name,
+    clientModels,
+    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };
 }
 

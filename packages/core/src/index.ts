@@ -170,7 +170,7 @@ export type RouterResolution<TProvider extends ProviderInstance = ProviderInstan
 
 export type RouterCandidate<TProvider extends ProviderInstance = ProviderInstance> = RouterResolution<TProvider>;
 
-type ModelRoute = {
+export type ModelRoute = {
   readonly alias: string;
   readonly modelId: string;
 };
@@ -216,7 +216,7 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
   }
 }
 
-function modelRoutes(provider: ProviderInstance): ModelRoute[] {
+export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
   return Object.entries(provider.alias ?? {}).flatMap(([alias, config]) => [
     { alias, modelId: config.model },
     ...(config.preserve && alias !== config.model ? [{ alias: config.model, modelId: config.model }] : []),
