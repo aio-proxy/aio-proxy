@@ -18,17 +18,19 @@ type Props = {
 export const ProviderActionsMenu: React.FC<Props> = ({ provider, onDelete, onProbe }) => {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger data-testid="provider-actions-trigger" asChild>
-        <button type="button" className="flex h-8 w-8 items-center justify-center p-0">
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
+      <DropdownMenuTrigger
+        data-testid="provider-actions-trigger"
+        className="flex h-8 w-8 items-center justify-center p-0"
+      >
+        <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {provider.kind !== "oauth" && (
-          <DropdownMenuItem data-testid="provider-action-edit" asChild>
-            <Link to="/providers/$id/edit" params={{ id: provider.id }}>
-              {m["dashboard.providers.actions.edit"]()}
-            </Link>
+          <DropdownMenuItem
+            data-testid="provider-action-edit"
+            render={<Link preload="intent" to="/providers/$id/edit" params={{ id: provider.id }} />}
+          >
+            {m["dashboard.providers.actions.edit"]()}
           </DropdownMenuItem>
         )}
         {onProbe !== undefined && (
