@@ -6,6 +6,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TagsInput } from "@/components/ui/tags-input";
 import type { useProviderForm } from "../hooks/use-provider-form";
 
 type Props = {
@@ -141,18 +142,12 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, providerId 
           {(field) => (
             <Field>
               <Label htmlFor={field.name}>{m["dashboard.providers.form.label_models"]()}</Label>
-              <Input
+              <TagsInput
                 id={field.name}
-                value={(field.state.value ?? []).join(", ")}
-                onChange={(e) =>
-                  field.handleChange(
-                    e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  )
-                }
+                value={field.state.value ?? []}
+                onValueChange={(next) => field.handleChange(next)}
                 placeholder={m["dashboard.providers.form.placeholder_models"]()}
+                removeLabel={(model) => m["dashboard.providers.form.remove_model"]({ model })}
               />
               <p className="text-muted-foreground text-sm">{m["dashboard.providers.form.models_helper"]()}</p>
             </Field>

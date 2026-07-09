@@ -106,7 +106,8 @@
         "api_key_helper_create": "请输入该提供商的 API Key",
         "api_key_helper_edit": "留空以保留当前 API Key",
         "options_json_error": "JSON 格式无效",
-        "models_helper": "逗号分隔的模型 ID"
+        "models_helper": "按回车或逗号添加",
+        "remove_model": "移除 {model}"
       },
       "actions": {
         "save": "保存",

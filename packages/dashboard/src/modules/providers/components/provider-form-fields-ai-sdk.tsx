@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TagsInput } from "@/components/ui/tags-input";
 import { Textarea } from "@/components/ui/textarea";
 import type { useProviderForm } from "../hooks/use-provider-form";
 
@@ -147,18 +148,12 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode, providerI
           {(field) => (
             <Field>
               <Label htmlFor={field.name}>{m["dashboard.providers.form.label_models"]()}</Label>
-              <Input
+              <TagsInput
                 id={field.name}
-                value={(field.state.value ?? []).join(", ")}
-                onChange={(e) =>
-                  field.handleChange(
-                    e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  )
-                }
+                value={field.state.value ?? []}
+                onValueChange={(next) => field.handleChange(next)}
                 placeholder={m["dashboard.providers.form.placeholder_models"]()}
+                removeLabel={(model) => m["dashboard.providers.form.remove_model"]({ model })}
               />
               <p className="text-muted-foreground text-sm">{m["dashboard.providers.form.models_helper"]()}</p>
             </Field>

@@ -132,7 +132,8 @@
         "api_key_helper_create": "Enter API key for this provider",
         "api_key_helper_edit": "Leave blank to keep current API key",
         "options_json_error": "Invalid JSON",
-        "models_helper": "Comma-separated model IDs"
+        "models_helper": "Press Enter or comma to add",
+        "remove_model": "Remove {model}"
       },
       "actions": {
         "save": "Save",
