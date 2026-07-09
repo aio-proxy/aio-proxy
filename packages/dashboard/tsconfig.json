@@ -21,6 +21,9 @@
     },
     {
       "path": "../server"
+    },
+    {
+      "path": "../types"
     }
   ]
 }
