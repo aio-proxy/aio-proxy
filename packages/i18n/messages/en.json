@@ -85,6 +85,84 @@
       "configuration": "Configuration",
       "providers": "Providers",
       "models": "Models"
+    },
+    "providers": {
+      "list_title": "Providers",
+      "new_provider": "New Provider",
+      "kind_label": {
+        "api": "API",
+        "ai-sdk": "AI SDK",
+        "oauth": "OAuth"
+      },
+      "table": {
+        "col_type": "Type",
+        "col_id": "ID",
+        "col_name": "Name",
+        "col_enabled": "Enabled",
+        "col_status": "Status",
+        "col_models": "Models",
+        "col_weight": "Weight",
+        "col_actions": "Actions"
+      },
+      "badge": {
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "probe_ok": "OK",
+        "probe_fail": "FAIL"
+      },
+      "form": {
+        "label_id": "Provider ID",
+        "label_name": "Display Name",
+        "label_weight": "Weight",
+        "label_protocol": "Protocol",
+        "label_base_url": "Base URL",
+        "label_api_key": "API Key",
+        "label_package_name": "Package Name",
+        "label_options": "Options (JSON)",
+        "label_parse_reasoning": "Parse Reasoning Content",
+        "label_models": "Models",
+        "label_enabled": "Enabled",
+        "placeholder_id": "e.g. openai",
+        "placeholder_name": "e.g. OpenAI",
+        "placeholder_base_url": "https://api.openai.com",
+        "placeholder_api_key": "sk-...",
+        "placeholder_package_name": "@ai-sdk/openai-compatible",
+        "placeholder_options": "{\"baseURL\":\"...\"}",
+        "placeholder_models": "gpt-5-mini, gpt-5",
+        "api_key_helper_create": "Enter API key for this provider",
+        "api_key_helper_edit": "Leave blank to keep current API key",
+        "options_json_error": "Invalid JSON",
+        "models_helper": "Comma-separated model IDs"
+      },
+      "actions": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "probe_now": "Probe Now",
+        "edit_aliases": "Edit Aliases"
+      },
+      "toast": {
+        "created": "Provider created",
+        "updated": "Provider updated",
+        "deleted": "Provider deleted",
+        "create_failed": "Failed to create provider",
+        "update_failed": "Failed to update provider",
+        "delete_failed": "Failed to delete provider"
+      },
+      "delete_dialog": {
+        "title": "Delete Provider",
+        "description": "Are you sure you want to delete provider \"{id}\"? This cannot be undone.",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "empty_state": "No providers configured",
+      "new_title": "New Provider",
+      "edit_title": "Edit Provider",
+      "aliases_title": "Provider Aliases",
+      "aliases_readonly_note": "Edit config file to modify aliases",
+      "oauth_managed_cli": "OAuth providers are managed via CLI. Use the CLI to configure this provider.",
+      "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI"
     }
   }
 }
