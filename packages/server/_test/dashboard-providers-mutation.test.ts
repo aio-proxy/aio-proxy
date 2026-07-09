@@ -1,0 +1,244 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "@aio-proxy/server";
+
+// createServer builds ServerState internally from options; CSRF allows only the
+// dashboard origin for the configured port, so pin the port to match ORIGIN.
+const PORT = 22_079;
+const ORIGIN = `http://127.0.0.1:${PORT}`;
+const decoder = new TextDecoder();
+
+const seedConfig = {
+  providers: {
+    "seed-api": {
+      kind: "api",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+      apiKey: "sk-preserved-value",
+      enabled: true,
+    },
+    "seed-ai": { kind: "ai-sdk", packageName: "@ai-sdk/openai-compatible", enabled: true },
+    "seed-oauth": { kind: "oauth", vendor: "github-copilot", enabled: true },
+  },
+};
+
+const tmpDir = mkdtempSync(join(tmpdir(), "aio-test-"));
+const configPath = join(tmpDir, "config.jsonc");
+writeFileSync(configPath, JSON.stringify(seedConfig, null, 2));
+
+// watchConfig:false — mutateProviders drives reload itself; no watcher needed.
+const app = createServer({ config: seedConfig, configPath, watchConfig: false, port: PORT });
+
+const onDisk = () =>
+  JSON.parse(readFileSync(configPath, "utf8")) as { providers: Record<string, Record<string, unknown>> };
+
+const req = (method: string, path: string, body?: unknown) =>
+  app.request(`/dashboard/api${path}`, {
+    method,
+    headers: method === "GET" ? {} : { Origin: ORIGIN, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
+  const reader = stream.body?.getReader();
+  if (reader === undefined) {
+    throw new Error("dashboard event stream body is missing");
+  }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<ReadableStreamReadResult<Uint8Array>>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error("timed out waiting for dashboard event")), timeoutMs);
+  });
+  try {
+    const chunk = await Promise.race([reader.read(), deadline]);
+    return chunk.done ? "" : decoder.decode(chunk.value);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    await reader.cancel();
+  }
+}
+
+afterAll(() => {
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch {}
+});
+
+describe("dashboard provider CRUD", () => {
+  test("1. GET /providers list carries clientModels and hasApiKey fields", async () => {
+    const res = await req("GET", "/providers");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.providers)).toBe(true);
+    expect(body.providers[0]).toHaveProperty("clientModels");
+    const api = body.providers.find((provider: { id: string }) => provider.id === "seed-api");
+    expect(api).toHaveProperty("clientModels");
+    expect(api.hasApiKey).toBe(true);
+  });
+
+  test("2. POST new api provider returns 201 and writes it to disk", async () => {
+    const res = await req("POST", "/providers", {
+      kind: "api",
+      id: "newapi",
+      protocol: "openai-compatible",
+      baseUrl: "https://newapi.example.com",
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.provider.id).toBe("newapi");
+    expect(body.provider.kind).toBe("api");
+    expect(onDisk().providers.newapi).toBeDefined();
+  });
+
+  test("3. POST duplicate id returns 409", async () => {
+    const res = await req("POST", "/providers", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://dup.example.com",
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("provider id already exists");
+  });
+
+  test("4. POST oauth kind returns 400 (mutation union omits oauth)", async () => {
+    const res = await req("POST", "/providers", {
+      kind: "oauth",
+      id: "newoauth",
+      vendor: "github-copilot",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("5. POST malformed body (missing baseUrl) returns 400 with zod details", async () => {
+    const res = await req("POST", "/providers", {
+      kind: "api",
+      id: "bad-api",
+      protocol: "openai-response",
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("validation failed");
+    expect(Array.isArray(body.details)).toBe(true);
+    expect(
+      body.details.some((issue: { path: unknown[] }) => Array.isArray(issue.path) && issue.path.includes("baseUrl")),
+    ).toBe(true);
+  });
+
+  test("6. PUT rename attempt (body.id !== :id) returns 400", async () => {
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "renamed",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("provider rename not supported");
+  });
+
+  test("7. PUT with apiKey omitted preserves the stored key", async () => {
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+    });
+    expect(res.status).toBe(200);
+    expect(onDisk().providers["seed-api"].apiKey).toBe("sk-preserved-value");
+  });
+
+  test('8. PUT with apiKey: "" preserves the stored key', async () => {
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+      apiKey: "",
+    });
+    expect(res.status).toBe(200);
+    expect(onDisk().providers["seed-api"].apiKey).toBe("sk-preserved-value");
+  });
+
+  test("9. PUT with a new apiKey writes the new value", async () => {
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://api.example.com",
+      apiKey: "sk-new-value",
+    });
+    expect(res.status).toBe(200);
+    expect(onDisk().providers["seed-api"].apiKey).toBe("sk-new-value");
+  });
+
+  test("10. PUT nonexistent provider returns 404", async () => {
+    const res = await req("PUT", "/providers/ghost", {
+      kind: "api",
+      id: "ghost",
+      protocol: "openai-response",
+      baseUrl: "https://ghost.example.com",
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("provider not found");
+  });
+
+  test("11. DELETE seed-oauth removes it from disk", async () => {
+    const res = await req("DELETE", "/providers/seed-oauth");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, id: "seed-oauth" });
+    expect(onDisk().providers["seed-oauth"]).toBeUndefined();
+  });
+
+  test("12. DELETE nonexistent provider returns 404", async () => {
+    const res = await req("DELETE", "/providers/ghost");
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("provider not found");
+  });
+
+  test("13. GET edit-view returns hasApiKey:true and no apiKey field", async () => {
+    const res = await req("GET", "/providers/seed-api/edit-view");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.hasApiKey).toBe(true);
+    expect(body.provider).not.toHaveProperty("apiKey");
+  });
+
+  test("14. SSE config.changed fires after POST", async () => {
+    const stream = await req("GET", "/events");
+    expect(stream.status).toBe(200);
+    const post = await req("POST", "/providers", {
+      kind: "api",
+      id: "sseapi",
+      protocol: "openai-compatible",
+      baseUrl: "https://sse.example.com",
+    });
+    expect(post.status).toBe(201);
+    const text = await readNextEventText(stream);
+    expect(text).toContain("event: config.changed");
+  });
+
+  test("15. POST without a configured config path returns 409", async () => {
+    const pathless = createServer({ config: seedConfig, port: PORT });
+    const res = await pathless.request("/dashboard/api/providers", {
+      method: "POST",
+      headers: { Origin: ORIGIN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "api",
+        id: "nopath",
+        protocol: "openai-response",
+        baseUrl: "https://nopath.example.com",
+      }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("config file path is not configured");
+  });
+});
