@@ -1,0 +1,23 @@
+@aio-proxy/dashboard build: Rsbuild v2.1.4
+@aio-proxy/dashboard build: 
+@aio-proxy/dashboard build: info    build started...
+@aio-proxy/dashboard build: error   Build error: 
+@aio-proxy/dashboard build: File: ./src/routes/providers/index.tsx?tsr-split=component:1:1-78
+@aio-proxy/dashboard build:   × Module not found: Can't resolve '@/modules/providers/templates/providers-page' in '/Users/bytedance/Documents/self/aio-proxy/packages/dashboard/src/routes/providers'
+@aio-proxy/dashboard build:    ╭─[1:0]
+@aio-proxy/dashboard build:  1 │ import { ProvidersPage } from "@/modules/providers/templates/providers-page";
+@aio-proxy/dashboard build:    · ─────────────────────────────────────────────────────────────────────────────
+@aio-proxy/dashboard build:  2 │ const SplitComponent = ProvidersPage;
+@aio-proxy/dashboard build:  3 │ export { SplitComponent as component };
+@aio-proxy/dashboard build:    ╰────
+@aio-proxy/dashboard build: Import traces (entry → error):
+@aio-proxy/dashboard build:   ./src/index.tsx
+@aio-proxy/dashboard build:   ./src/route-tree.gen.ts
+@aio-proxy/dashboard build:   ./src/routes/providers/index.tsx
+@aio-proxy/dashboard build:   ./src/routes/providers/index.tsx?tsr-split=component ×
+@aio-proxy/dashboard build: 
+@aio-proxy/dashboard build: error   build failed in 0.52s
+@aio-proxy/dashboard build: error   Rspack build failed.
+@aio-proxy/dashboard build:     at file:///Users/bytedance/Documents/self/aio-proxy/node_modules/.bun/@rsbuild+core@2.1.4/node_modules/@rsbuild/core/dist/756.js:4322:141
+@aio-proxy/dashboard build:     at file:///Users/bytedance/Documents/self/aio-proxy/node_modules/.bun/@rspack+core@2.1.2+dcea513fa271d095/node_modules/@rspack/core/dist/index.js:11849:54
+@aio-proxy/dashboard build: Exited with code 1
