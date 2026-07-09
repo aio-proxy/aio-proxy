@@ -29,14 +29,14 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
     initial,
     onSubmit: async (value) => {
       if (mode === "create") {
-        createProvider(value as any, {
+        createProvider(value, {
           onSuccess: () => {
             void navigate({ to: "/providers" });
           },
         });
       } else if (providerId) {
         updateProvider(
-          { id: providerId, data: value as any },
+          { id: providerId, body: value },
           {
             onSuccess: () => {
               void navigate({ to: "/providers" });
@@ -63,9 +63,9 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
           }}
         >
           {kind === "api" ? (
-            <ProviderFormFieldsApi form={form as any} mode={mode} providerId={providerId} />
+            <ProviderFormFieldsApi form={form} mode={mode} providerId={providerId} />
           ) : (
-            <ProviderFormFieldsAiSdk form={form as any} mode={mode} providerId={providerId} />
+            <ProviderFormFieldsAiSdk form={form} mode={mode} providerId={providerId} />
           )}
           <div className="mt-6 flex gap-3">
             <Button type="submit" disabled={isPending} data-testid="provider-save">

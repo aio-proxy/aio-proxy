@@ -11,7 +11,7 @@ import type { useProviderForm } from "../hooks/use-provider-form";
 type Props = {
   form: ReturnType<typeof useProviderForm>;
   mode: "create" | "edit";
-  providerId?: string;
+  providerId?: string | undefined;
 };
 
 export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, providerId }) => {

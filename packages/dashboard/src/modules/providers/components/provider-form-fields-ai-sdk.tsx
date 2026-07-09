@@ -1,4 +1,5 @@
 import { m } from "@aio-proxy/i18n";
+import type { AnyFieldApi } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
 import React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,11 +12,10 @@ import type { useProviderForm } from "../hooks/use-provider-form";
 type Props = {
   form: ReturnType<typeof useProviderForm>;
   mode: "create" | "edit";
-  providerId?: string;
+  providerId?: string | undefined;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const OptionsTextarea: React.FC<{ field: any }> = ({ field }) => {
+const OptionsTextarea: React.FC<{ field: AnyFieldApi }> = ({ field }) => {
   const [jsonError, setJsonError] = React.useState<string | null>(null);
   return (
     <Field>

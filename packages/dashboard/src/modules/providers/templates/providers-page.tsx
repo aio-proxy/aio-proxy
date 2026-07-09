@@ -1,8 +1,9 @@
 import { m } from "@aio-proxy/i18n";
-import type { DashboardProviderSummary } from "@aio-proxy/types";
+import { type DashboardProviderSummary, ProviderKind } from "@aio-proxy/types";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { flexRender } from "@tanstack/react-table";
+import { startCase } from "es-toolkit/string";
 import type React from "react";
 import { useState } from "react";
 import { PageContainer } from "@/components/page-container";
@@ -18,9 +19,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DeleteProviderDialog } from "../components/delete-provider-dialog";
 import { ProviderActionsMenu } from "../components/provider-actions-menu";
-import { ProviderKindBadge } from "../components/provider-kind-badge";
+import { ProviderModelsCell } from "../components/provider-models-cell";
 import { useProvidersTable } from "../hooks/use-providers-table";
 import { providersQueryOptions } from "../services/providers-service";
+
+const kindLabels: Record<ProviderKind, () => string> = {
+  [ProviderKind.Api]: () => m["dashboard.providers.kind_label.api"](),
+  [ProviderKind.AiSdk]: () => m["dashboard.providers.kind_label.ai-sdk"](),
+  [ProviderKind.OAuth]: () => m["dashboard.providers.kind_label.oauth"](),
+};
 
 export const ProvidersPage: React.FC = () => {
   const { data, isLoading } = useQuery(providersQueryOptions());
@@ -33,19 +40,15 @@ export const ProvidersPage: React.FC = () => {
       title={m["dashboard.providers.list_title"]()}
       extra={
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button data-testid="new-provider-button">{m["dashboard.providers.new_provider"]()}</Button>
+          <DropdownMenuTrigger render={<Button data-testid="new-provider-button" />}>
+            {m["dashboard.providers.new_provider"]()}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link to="/providers/new/$kind" params={{ kind: "api" }}>
-                {m["dashboard.providers.kind_label.api"]()}
-              </Link>
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: "api" }} />}>
+              {m["dashboard.providers.kind_label.api"]()}
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/providers/new/$kind" params={{ kind: "ai-sdk" }}>
-                {m["dashboard.providers.kind_label.ai-sdk"]()}
-              </Link>
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: "ai-sdk" }} />}>
+              {m["dashboard.providers.kind_label.ai-sdk"]()}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -76,15 +79,14 @@ export const ProvidersPage: React.FC = () => {
           <TableBody>
             {table.getRowModel().rows.map((row) => (
               <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
-                <TableCell>
-                  <ProviderKindBadge kind={row.original.kind} />
-                </TableCell>
+                <TableCell>{kindLabels[row.original.kind]()}</TableCell>
                 <TableCell>{row.original.id}</TableCell>
-                <TableCell>{row.original.name ?? row.original.id}</TableCell>
+                <TableCell>{row.original.name ?? startCase(row.original.id)}</TableCell>
                 <TableCell>{row.original.enabled ? "✓" : "—"}</TableCell>
                 <TableCell>{row.original.last_status}</TableCell>
-                <TableCell>{(row.original.clientModels ?? []).join(", ")}</TableCell>
-                <TableCell>{row.original.weight ?? "—"}</TableCell>
+                <TableCell>
+                  <ProviderModelsCell models={row.original.clientModels ?? []} />
+                </TableCell>
                 <TableCell>
                   <ProviderActionsMenu provider={row.original} onDelete={() => setDeleteTarget(row.original)} />
                 </TableCell>
