@@ -6,6 +6,7 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
+import { type ProviderMutationBody, ProviderMutationBodySchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import type { ServerState } from "../server-state";
@@ -59,6 +60,25 @@ export const redactSecrets = (value: unknown, key = "", insideHeaders = false): 
   return value;
 };
 
+type MutationParseResult =
+  | { readonly ok: true; readonly body: ProviderMutationBody }
+  | { readonly ok: false; readonly status: 400; readonly payload: Record<string, unknown> };
+
+// oauth bodies 400 here with no explicit check: ProviderMutationBodySchema's union omits kind "oauth".
+const parseMutationBody = async (readJson: () => Promise<unknown>): Promise<MutationParseResult> => {
+  let raw: unknown;
+  try {
+    raw = await readJson();
+  } catch {
+    return { ok: false, status: 400, payload: { error: "invalid JSON" } };
+  }
+  const parsed = ProviderMutationBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, payload: { error: "validation failed", details: parsed.error.issues } };
+  }
+  return { ok: true, body: parsed.data };
+};
+
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.redactedConfig())))
@@ -67,6 +87,85 @@ export const createDashboardRoutes = (state: ServerState) =>
       const probe = context.req.query("probe") === "true";
       const providers = await state.providerSummaries({ filter, probe });
       return context.json({ providers });
+    })
+    .get("/providers/:id/edit-view", (context) => {
+      const id = context.req.param("id");
+      const provider = state.redactedConfig().providers.find((entry) => entry.id === id);
+      if (provider === undefined) {
+        return context.json({ error: "provider not found" }, 404);
+      }
+      const { apiKey, alias: _alias, ...rest } = provider as Record<string, unknown>;
+      return context.json({
+        provider: { ...rest, hasApiKey: typeof apiKey === "string" && apiKey !== "" },
+      });
+    })
+    .post("/providers", async (context) => {
+      if (state.configPath === undefined) {
+        return context.json({ error: "config file path is not configured" }, 409);
+      }
+      const parsed = await parseMutationBody(() => context.req.json());
+      if (!parsed.ok) {
+        return context.json(parsed.payload, parsed.status);
+      }
+      const { id, ...bodyRest } = parsed.body;
+      if (state.redactedConfig().providers.some((entry) => entry.id === id)) {
+        return context.json({ error: "provider id already exists", id }, 409);
+      }
+      const providerData: Record<string, unknown> = { ...bodyRest };
+      await state.configStore.mutateProviders((record) => ({ ...record, [id]: providerData }));
+      const summaries = await state.providerSummaries({ filter: id, probe: false });
+      return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } }, 201);
+    })
+    .put("/providers/:id", async (context) => {
+      if (state.configPath === undefined) {
+        return context.json({ error: "config file path is not configured" }, 409);
+      }
+      const id = context.req.param("id");
+      const parsed = await parseMutationBody(() => context.req.json());
+      if (!parsed.ok) {
+        return context.json(parsed.payload, parsed.status);
+      }
+      if (parsed.body.id !== id) {
+        return context.json({ error: "provider rename not supported" }, 400);
+      }
+      if (!state.redactedConfig().providers.some((entry) => entry.id === id)) {
+        return context.json({ error: "provider not found" }, 404);
+      }
+      const { id: _id, ...bodyRest } = parsed.body;
+      const providerData: Record<string, unknown> = { ...bodyRest };
+      const apiKeyProvided = typeof providerData["apiKey"] === "string" && providerData["apiKey"] !== "";
+      await state.configStore.mutateProviders((record) => {
+        const next: Record<string, unknown> = { ...providerData };
+        if (!apiKeyProvided) {
+          const previous = record[id];
+          const storedApiKey =
+            typeof previous === "object" && previous !== null
+              ? (previous as Record<string, unknown>)["apiKey"]
+              : undefined;
+          if (typeof storedApiKey === "string") {
+            next["apiKey"] = storedApiKey;
+          } else {
+            delete next["apiKey"];
+          }
+        }
+        return { ...record, [id]: next };
+      });
+      const summaries = await state.providerSummaries({ filter: id, probe: false });
+      return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } });
+    })
+    .delete("/providers/:id", async (context) => {
+      if (state.configPath === undefined) {
+        return context.json({ error: "config file path is not configured" }, 409);
+      }
+      const id = context.req.param("id");
+      if (!state.redactedConfig().providers.some((entry) => entry.id === id)) {
+        return context.json({ error: "provider not found" }, 404);
+      }
+      await state.configStore.mutateProviders((record) => {
+        const { [id]: _removed, ...rest } = record;
+        return rest;
+      });
+      return context.json({ ok: true, id });
     })
     .get("/providers/:id", async (context) => {
       const providers = await state.providerSummaries({
