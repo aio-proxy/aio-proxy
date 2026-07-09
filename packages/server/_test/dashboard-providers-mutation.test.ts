@@ -18,6 +18,7 @@ const seedConfig = {
       baseUrl: "https://api.example.com",
       apiKey: "sk-preserved-value",
       enabled: true,
+      alias: { "gpt-4o": "gpt-4o-upstream" },
     },
     "seed-ai": { kind: "ai-sdk", packageName: "@ai-sdk/openai-compatible", enabled: true },
     "seed-oauth": { kind: "oauth", vendor: "github-copilot", enabled: true },
@@ -240,5 +241,25 @@ describe("dashboard provider CRUD", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("config file path is not configured");
+  });
+
+  test("16. PUT preserves stored alias when the mutation body omits it", async () => {
+    const res = await req("PUT", "/providers/seed-api", {
+      kind: "api",
+      id: "seed-api",
+      protocol: "openai-response",
+      baseUrl: "https://changed.example.com",
+    });
+    expect(res.status).toBe(200);
+    expect(onDisk().providers["seed-api"].baseUrl).toBe("https://changed.example.com");
+    expect(onDisk().providers["seed-api"].alias).toEqual({ "gpt-4o": "gpt-4o-upstream" });
+  });
+
+  test("17. GET edit-view includes the alias field for the read-only viewer", async () => {
+    const res = await req("GET", "/providers/seed-api/edit-view");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.alias).toBeDefined();
+    expect(body.provider.alias["gpt-4o"].model).toBe("gpt-4o-upstream");
   });
 });

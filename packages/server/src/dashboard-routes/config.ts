@@ -94,7 +94,7 @@ export const createDashboardRoutes = (state: ServerState) =>
       if (provider === undefined) {
         return context.json({ error: "provider not found" }, 404);
       }
-      const { apiKey, alias: _alias, ...rest } = provider as Record<string, unknown>;
+      const { apiKey, ...rest } = provider as Record<string, unknown>;
       return context.json({
         provider: { ...rest, hasApiKey: typeof apiKey === "string" && apiKey !== "" },
       });
@@ -135,13 +135,15 @@ export const createDashboardRoutes = (state: ServerState) =>
       const providerData: Record<string, unknown> = { ...bodyRest };
       const apiKeyProvided = typeof providerData.apiKey === "string" && providerData.apiKey !== "";
       await state.configStore.mutateProviders((record) => {
+        const previous = record[id];
+        const prev =
+          typeof previous === "object" && previous !== null ? (previous as Record<string, unknown>) : undefined;
         const next: Record<string, unknown> = { ...providerData };
+        if (prev?.alias !== undefined) {
+          next.alias = prev.alias;
+        }
         if (!apiKeyProvided) {
-          const previous = record[id];
-          const storedApiKey =
-            typeof previous === "object" && previous !== null
-              ? (previous as Record<string, unknown>).apiKey
-              : undefined;
+          const storedApiKey = prev?.apiKey;
           if (typeof storedApiKey === "string") {
             next.apiKey = storedApiKey;
           } else {

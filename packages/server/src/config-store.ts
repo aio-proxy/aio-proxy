@@ -21,7 +21,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   let chain = Promise.resolve();
 
   const mutateProviders = (fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> => {
-    chain = chain.then(async () => {
+    const run = chain.then(async () => {
       const configPath = options.getConfigPath();
       if (configPath === undefined) {
         throw new ConfigPathMissingError();
@@ -42,7 +42,9 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       // Reload state to pick up the new config
       await options.reload();
     });
-    return chain;
+    // ponytail: a rejected write must not poison the mutex — swallow it on `chain`, surface it on `run`.
+    chain = run.catch(() => {});
+    return run;
   };
 
   return { mutateProviders };
