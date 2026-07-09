@@ -31,9 +31,11 @@ export const ProviderActionsMenu: React.FC<Props> = ({ provider, onDelete, onPro
             </Link>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem data-testid="provider-action-probe" onClick={onProbe}>
-          {m["dashboard.providers.actions.probe_now"]()}
-        </DropdownMenuItem>
+        {onProbe !== undefined && (
+          <DropdownMenuItem data-testid="provider-action-probe" onClick={onProbe}>
+            {m["dashboard.providers.actions.probe_now"]()}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem data-testid="provider-action-delete" onClick={onDelete} className="text-destructive">
           {m["dashboard.providers.actions.delete"]()}
         </DropdownMenuItem>
