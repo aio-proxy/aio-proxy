@@ -369,6 +369,60 @@ describe("server routes", () => {
     }
   });
 
+  test("Given completion API providers When probed Then generated output is capped per protocol", async () => {
+    // Given
+    const requests = new Map<string, unknown>();
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        requests.set(new URL(request.url).pathname, await request.json());
+        return new Response("", { status: 204 });
+      },
+    });
+    const baseUrl = `http://127.0.0.1:${upstream.port}`;
+    const app = createServer({
+      config: {
+        providers: {
+          chat: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl,
+            models: ["chat-model"],
+          },
+          responses: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAIResponse,
+            baseUrl,
+            models: ["responses-model"],
+          },
+          gemini: {
+            kind: "api",
+            protocol: ProviderProtocol.Gemini,
+            baseUrl,
+            models: ["gemini-model"],
+          },
+        },
+      },
+    });
+
+    try {
+      // When
+      await app.request("/dashboard/api/providers?probe=true&filter=chat");
+      await app.request("/dashboard/api/providers?probe=true&filter=responses");
+      await app.request("/dashboard/api/providers?probe=true&filter=gemini");
+
+      // Then
+      expect(requests.get("/v1/chat/completions")).toMatchObject({ max_tokens: 1 });
+      expect(requests.get("/v1/responses")).toMatchObject({ max_output_tokens: 16 });
+      expect(requests.get("/v1beta/models/gemini-model:generateContent")).toMatchObject({
+        generationConfig: { maxOutputTokens: 1 },
+      });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test("Given configured provider When dashboard provider detail is requested Then one provider is returned", async () => {
     // Given
     const app = createServer({ config });

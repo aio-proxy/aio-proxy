@@ -6,6 +6,9 @@ import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
 
+const probeMaxOutputTokens = 1;
+const openAIResponsesProbeMaxOutputTokens = 16;
+
 export type ProviderRuntime = {
   readonly providers: readonly RuntimeProviderInstance[];
   readonly probes: ReadonlyMap<string, ProviderProbe>;
@@ -142,17 +145,17 @@ function providerProbeRequest(
     case ProviderProtocol.OpenAICompatible:
       url.pathname = "/v1/chat/completions";
       return {
-        body: { messages: [{ role: "user", content: "ping" }], model },
+        body: { max_tokens: probeMaxOutputTokens, messages: [{ role: "user", content: "ping" }], model },
         url,
       };
     case ProviderProtocol.OpenAIResponse:
       url.pathname = "/v1/responses";
-      return { body: { input: "ping", model }, url };
+      return { body: { input: "ping", max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
     case ProviderProtocol.Anthropic:
       url.pathname = "/v1/messages";
       return {
         body: {
-          max_tokens: 1,
+          max_tokens: probeMaxOutputTokens,
           messages: [{ role: "user", content: "ping" }],
           model,
         },
@@ -161,7 +164,10 @@ function providerProbeRequest(
     case ProviderProtocol.Gemini:
       url.pathname = `/v1beta/models/${model}:generateContent`;
       return {
-        body: { contents: [{ role: "user", parts: [{ text: "ping" }] }] },
+        body: {
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: probeMaxOutputTokens },
+        },
         url,
       };
     default:
