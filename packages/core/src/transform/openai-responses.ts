@@ -62,14 +62,7 @@ function transformTool(tool: OpenAIResponsesTool): OpenAIResponsesTransformTool 
 
 function transformSettings(request: OpenAIResponsesRequest): OpenAIResponsesTransformSettings {
   const providerOptions =
-    request.reasoning?.effort === undefined && request.reasoning?.summary === undefined
-      ? undefined
-      : {
-          openai: {
-            ...(request.reasoning.effort === undefined ? {} : { reasoningEffort: request.reasoning.effort }),
-            ...(request.reasoning.summary === undefined ? {} : { reasoningSummary: request.reasoning.summary }),
-          },
-        };
+    request.reasoning?.summary === undefined ? undefined : { openai: { reasoningSummary: request.reasoning.summary } };
 
   return {
     ...(request.stream === undefined ? {} : { stream: request.stream }),
@@ -78,6 +71,7 @@ function transformSettings(request: OpenAIResponsesRequest): OpenAIResponsesTran
     ...(request.max_output_tokens === undefined ? {} : { maxOutputTokens: request.max_output_tokens }),
     ...(request.parallel_tool_calls === undefined ? {} : { parallelToolCalls: request.parallel_tool_calls }),
     ...(request.tool_choice === undefined ? {} : { toolChoice: request.tool_choice }),
+    ...(request.reasoning?.effort === undefined ? {} : { reasoning: request.reasoning.effort }),
     ...(request.reasoning?.summary === undefined ? {} : { reasoningSummary: request.reasoning.summary }),
     ...(providerOptions === undefined ? {} : { providerOptions }),
   };

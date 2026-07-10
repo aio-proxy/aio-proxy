@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Auth } from "../src";
 import { OpenAIChatGPTOAuthProvider } from "../src/openai-chatgpt";
@@ -28,6 +31,9 @@ describe("OpenAIChatGPTOAuthProvider", () => {
   });
 
   test("login stores payload and returns authenticated result", async () => {
+    const previousHome = process.env.AIO_PROXY_HOME;
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-chatgpt-auth-"));
+    process.env.AIO_PROXY_HOME = home;
     const accountId = `account-${crypto.randomUUID()}`;
     const providerId = `chatgpt-${accountId}`;
     const provider = new OpenAIChatGPTOAuthProvider({
@@ -92,7 +98,16 @@ describe("OpenAIChatGPTOAuthProvider", () => {
       });
       expect(Auth.get("openai-chatgpt", providerId)?.accountFingerprint).toBe(providerId);
     } finally {
-      Auth.del("openai-chatgpt", providerId);
+      try {
+        Auth.del("openai-chatgpt", providerId);
+      } finally {
+        if (previousHome === undefined) {
+          delete process.env.AIO_PROXY_HOME;
+        } else {
+          process.env.AIO_PROXY_HOME = previousHome;
+        }
+        rmSync(home, { recursive: true, force: true });
+      }
     }
   });
 

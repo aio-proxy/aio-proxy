@@ -29,17 +29,15 @@ describe("OpenAI Responses transform", () => {
     expect(roundTrip).toEqual(request);
   });
 
-  test("Given reasoning effort When transformed Then OpenAI provider options carry it", async () => {
+  test("Given reasoning effort When transformed Then portable reasoning carries it", async () => {
     const request = await readFixture("reasoning-tools.json");
 
     const converted = openAIResponsesToModelMessages(request);
+    const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
 
-    expect(converted.settings.providerOptions).toEqual({
-      openai: {
-        reasoningEffort: "medium",
-        reasoningSummary: "auto",
-      },
-    });
+    expect(converted.settings.reasoning).toBe("medium");
+    expect(converted.settings.providerOptions).toEqual({ openai: { reasoningSummary: "auto" } });
+    expect(roundTrip.reasoning).toEqual(request.reasoning);
   });
 
   test("Given function and custom tools When transformed Then declarations are preserved", async () => {

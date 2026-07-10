@@ -19,7 +19,7 @@ export type OpenAICompletionsTransformSettings = {
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly responseFormat?: OpenAICompletionsRequest["response_format"];
-  readonly reasoningEffort?: "low" | "medium" | "high";
+  readonly reasoning?: OpenAICompletionsRequest["reasoning_effort"];
 };
 
 export type OpenAICompletionsModelMessages = {
@@ -98,7 +98,7 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
       ...(req.max_completion_tokens !== undefined ? { maxTokens: req.max_completion_tokens } : {}),
       ...(req.max_completion_tokens === undefined && req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
       ...(req.response_format !== undefined ? { responseFormat: req.response_format } : {}),
-      ...(req.reasoning_effort !== undefined ? { reasoningEffort: req.reasoning_effort } : {}),
+      ...(req.reasoning_effort !== undefined ? { reasoning: req.reasoning_effort } : {}),
     },
   };
 }

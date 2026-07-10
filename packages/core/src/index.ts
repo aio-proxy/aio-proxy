@@ -1,7 +1,4 @@
-import type { Provider as ConfigProvider, ProviderProtocol } from "@aio-proxy/types";
-import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
-import type { AiSdkProviderInstance } from "./provider/ai-sdk";
-import type { ApiProviderInstance } from "./provider/api";
+import type { ProviderProtocol } from "@aio-proxy/types";
 
 export type {
   AiSdkLanguageModel,
@@ -122,6 +119,14 @@ export {
 } from "./provider/api";
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
 export {
+  type ModelRoute,
+  modelRoutes,
+  type ProviderInstance,
+  Router,
+  type RouterCandidate,
+  type RouterResolution,
+} from "./router";
+export {
   type AnthropicMessagesFromModelMessages,
   type AnthropicMessagesModelMessages,
   type AnthropicModelMessage,
@@ -160,65 +165,3 @@ export type ProviderSummary = {
   readonly id: string;
   readonly protocol: ProviderProtocol;
 };
-
-export type ProviderInstance = (ConfigProvider & { readonly id: string }) | ApiProviderInstance | AiSdkProviderInstance;
-
-export type RouterResolution<TProvider extends ProviderInstance = ProviderInstance> = {
-  readonly provider: TProvider;
-  readonly modelId: string;
-};
-
-export type RouterCandidate<TProvider extends ProviderInstance = ProviderInstance> = RouterResolution<TProvider>;
-
-export type ModelRoute = {
-  readonly alias: string;
-  readonly modelId: string;
-};
-
-export class Router<TProvider extends ProviderInstance = ProviderInstance> {
-  private readonly aliases = new Map<string, RouterCandidate<TProvider>[]>();
-  private readonly providerAliases = new Map<string, RouterResolution<TProvider>>();
-
-  constructor(providers: readonly TProvider[]) {
-    for (const provider of providers) {
-      if (provider.enabled === false) {
-        continue;
-      }
-      for (const model of modelRoutes(provider)) {
-        this.addRoute(provider, model);
-      }
-    }
-  }
-
-  resolve(model: string): RouterCandidate<TProvider>[] {
-    const route = model.indexOf("/") > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
-
-    if (route === undefined) {
-      throw new RouterModelNotFoundError(model);
-    }
-
-    return Array.isArray(route) ? route : [route];
-  }
-
-  private addRoute(provider: TProvider, model: ModelRoute): void {
-    const route = { provider, modelId: model.modelId };
-    const providerAlias = `${provider.id}/${model.alias}`;
-    const existingProviderRoute = this.providerAliases.get(providerAlias);
-
-    if (existingProviderRoute !== undefined) {
-      throw new RouterModelCollisionError(model.alias, existingProviderRoute.provider.id, provider.id);
-    }
-
-    this.providerAliases.set(providerAlias, route);
-    const routes = this.aliases.get(model.alias) ?? [];
-    routes.push(route);
-    this.aliases.set(model.alias, routes);
-  }
-}
-
-export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
-  return Object.entries(provider.alias ?? {}).flatMap(([alias, config]) => [
-    { alias, modelId: config.model },
-    ...(config.preserve && alias !== config.model ? [{ alias: config.model, modelId: config.model }] : []),
-  ]);
-}

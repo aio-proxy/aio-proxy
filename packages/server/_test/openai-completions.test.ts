@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { type AiSdkProviderInstance, type ApiProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
-import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
+import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
 
 const chatRequest = {
   model: "gpt-4o-mini",
@@ -72,6 +72,40 @@ describe("POST /v1/chat/completions", () => {
     expect(response.headers.get("x-provider")).toBe("openai");
     expect(await response.text()).toBe("provider-bytes");
     expect(bodySeen).toEqual(chatRequest);
+  });
+
+  test("Given an alias variant and native provider When completion is posted Then passthrough receives the variant model", async () => {
+    // Given
+    let bodySeen: unknown;
+    const provider = {
+      id: "openai",
+      kind: "api",
+      models: ["gpt-default", "gpt-high"],
+      alias: {
+        mini: {
+          model: "gpt-default",
+          preserve: false,
+          variants: { high: { model: "gpt-high", preserve: false } },
+        },
+      },
+      protocol: ProviderProtocol.OpenAICompatible,
+      async passthrough(req) {
+        bodySeen = await req.json();
+        return Response.json({ ok: true });
+      },
+    } satisfies ApiProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    // When
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ ...chatRequest, model: "mini", reasoning_effort: "high" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(bodySeen).toEqual({ ...chatRequest, model: "gpt-high", reasoning_effort: "high" });
   });
 
   test("Given openai-compatible api provider When non-stream completion is posted Then passthrough receives original request", async () => {
@@ -165,6 +199,43 @@ describe("POST /v1/chat/completions", () => {
     expect(text).toContain("chat.completion.chunk");
     expect(text).toContain('"content":"pong"');
     expect(text).toContain("data: [DONE]");
+  });
+
+  test("Given an alias variant and ai-sdk provider When completion is posted Then reasoning selects and configures it", async () => {
+    // Given
+    let modelSeen: string | undefined;
+    let settingsSeen: CallSettings | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gpt-default", "gpt-high"],
+      alias: {
+        mini: {
+          model: "gpt-default",
+          preserve: false,
+          variants: { high: { model: "gpt-high", preserve: false } },
+        },
+      },
+      invoke(request) {
+        modelSeen = request.modelId;
+        settingsSeen = request.settings;
+        return textStream([]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    // When
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ ...chatRequest, model: "mini", reasoning_effort: "high" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    await response.text();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(modelSeen).toBe("gpt-high");
+    expect(settingsSeen).toEqual({ reasoning: "high", stream: true });
   });
 
   test("Given ai-sdk provider When non-stream completion is posted Then OpenAI JSON is returned", async () => {
@@ -302,6 +373,75 @@ describe("POST /v1/chat/completions", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).toContain("fallback ok");
+  });
+
+  test("Given first native provider throws When completion is posted Then next provider is used", async () => {
+    const first = {
+      id: "offline",
+      kind: "api",
+      models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
+      protocol: ProviderProtocol.OpenAICompatible,
+      passthrough: async () => {
+        throw new Error("connection refused");
+      },
+    } satisfies ApiProviderInstance;
+    const second = {
+      id: "ok",
+      kind: "api",
+      models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
+      protocol: ProviderProtocol.OpenAICompatible,
+      passthrough: async () => Response.json({ fallback: true }),
+    } satisfies ApiProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5-mini", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ fallback: true });
+  });
+
+  test("Given first AI SDK stream fails before its first event When completion streams Then next provider is used", async () => {
+    const first = {
+      id: "broken-stream",
+      kind: "ai-sdk",
+      models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
+      invoke: () => errorStream(new Error("upstream exploded")),
+    } satisfies AiSdkProviderInstance;
+    const second = {
+      id: "ok",
+      kind: "ai-sdk",
+      models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
+      invoke: () =>
+        textStream([
+          { type: "text-start", id: "fallback" },
+          { type: "text-delta", id: "fallback", text: "fallback ok" },
+          { type: "text-end", id: "fallback" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]),
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5-mini", messages: [{ role: "user", content: "hi" }], stream: true }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("fallback ok");
   });
 
   test("Given first provider returns 400 When completion is posted Then no fallback occurs", async () => {

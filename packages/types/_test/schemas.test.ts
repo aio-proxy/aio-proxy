@@ -401,6 +401,30 @@ describe("ConfigSchema", () => {
       });
     });
 
+    test("Given padded alias and variant names When parsed Then keys are normalized", () => {
+      const result = ProviderMutationBodySchema.parse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+        models: ["gpt-5-mini", "gpt-5"],
+        alias: {
+          " mini ": {
+            model: "gpt-5-mini",
+            variants: { " HIGH ": { model: "gpt-5", preserve: false } },
+          },
+        },
+      });
+
+      expect(result.alias).toEqual({
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: false } },
+        },
+      });
+    });
+
     test("Given api mutation body with alias target outside models When parsed Then rejects at alias.mini.model", () => {
       // Given
       const body = {
@@ -452,6 +476,84 @@ describe("ConfigSchema", () => {
           "model",
         ]);
       }
+    });
+
+    test("Given normalized duplicate variant keys When parsed Then rejects the duplicate", () => {
+      const result = ProviderMutationBodySchema.safeParse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+        models: ["gpt-5-mini"],
+        alias: {
+          mini: {
+            model: "gpt-5-mini",
+            variants: {
+              High: "gpt-5-mini",
+              " high ": "gpt-5-mini",
+            },
+          },
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["alias", "mini", "variants", " high "]);
+      }
+    });
+
+    test("Given normalized duplicate alias names When parsed Then rejects the duplicate", () => {
+      const result = ProviderMutationBodySchema.safeParse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+        models: ["gpt-5-mini"],
+        alias: {
+          mini: "gpt-5-mini",
+          " mini ": "gpt-5-mini",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["alias", " mini "]);
+      }
+    });
+
+    test("Given an explicit alias conflicting with a preserved model id When parsed Then rejects the alias", () => {
+      const result = ProviderMutationBodySchema.safeParse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+        models: ["gpt-default", "gpt-raw"],
+        alias: {
+          "gpt-raw": { model: "gpt-default" },
+          mini: { model: "gpt-raw", preserve: true },
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["alias", "gpt-raw"]);
+      }
+    });
+
+    test("Given repeated preserve declarations for one target When parsed Then accepts them", () => {
+      const result = ProviderMutationBodySchema.safeParse({
+        kind: "api",
+        id: "openai",
+        protocol: "openai-response",
+        baseUrl: "https://api.openai.com",
+        models: ["gpt-raw"],
+        alias: {
+          mini: { model: "gpt-raw", preserve: true },
+          fast: { model: "gpt-raw", preserve: true },
+        },
+      });
+
+      expect(result.success).toBe(true);
     });
   });
 

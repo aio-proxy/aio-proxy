@@ -126,13 +126,16 @@ describe("provider commands", () => {
         },
       });
     } finally {
-      if (previousHome === undefined) {
-        delete process.env.AIO_PROXY_HOME;
-      } else {
-        process.env.AIO_PROXY_HOME = previousHome;
+      try {
+        Auth.del("openai-chatgpt", providerId);
+      } finally {
+        if (previousHome === undefined) {
+          delete process.env.AIO_PROXY_HOME;
+        } else {
+          process.env.AIO_PROXY_HOME = previousHome;
+        }
+        rmSync(dir, { recursive: true, force: true });
       }
-      Auth.del("openai-chatgpt", providerId);
-      rmSync(dir, { recursive: true, force: true });
     }
   });
 

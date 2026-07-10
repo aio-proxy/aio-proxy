@@ -32,13 +32,11 @@ export function modelMessagesToOpenAIResponses({
     ...(settings.maxOutputTokens === undefined ? {} : { max_output_tokens: settings.maxOutputTokens }),
     ...(settings.parallelToolCalls === undefined ? {} : { parallel_tool_calls: settings.parallelToolCalls }),
     ...(settings.toolChoice === undefined ? {} : { tool_choice: settings.toolChoice }),
-    ...(settings.providerOptions?.openai.reasoningEffort === undefined && settings.reasoningSummary === undefined
+    ...(settings.reasoning === undefined && settings.reasoningSummary === undefined
       ? {}
       : {
           reasoning: {
-            ...(settings.providerOptions?.openai.reasoningEffort === undefined
-              ? {}
-              : { effort: settings.providerOptions.openai.reasoningEffort }),
+            ...(settings.reasoning === undefined ? {} : { effort: settings.reasoning }),
             ...(settings.reasoningSummary === undefined ? {} : { summary: settings.reasoningSummary }),
           },
         }),

@@ -71,7 +71,7 @@ async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<s
 }
 
 describe("server reload", () => {
-  test("Given duplicate provider alias config reload When reload is requested Then old provider keeps serving", async () => {
+  test("Given conflicting preserved alias config reload When reload is requested Then old provider keeps serving", async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-reload-"));
     const configPath = join(dir, "config.jsonc");
@@ -97,10 +97,10 @@ describe("server reload", () => {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: "https://duplicate.example.com",
-            models: ["first-model"],
+            models: ["first-model", "second-model"],
             alias: {
+              "first-model": { model: "second-model", preserve: false },
               firstAlias: { model: "first-model", preserve: true },
-              secondAlias: { model: "first-model", preserve: true },
             },
           },
         },

@@ -12,11 +12,11 @@ import {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
 } from "@aio-proxy/core";
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { normalizeVariantKey, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
-import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
+import { preflightStream, resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
 import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
@@ -40,6 +40,7 @@ const aiSdkGenerationConfigSchema = z
     seed: z.number().int().optional(),
   })
   .strip();
+const reasoningSchema = z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
   return new Hono().post("/v1beta/models/*", async (context) => {
@@ -48,14 +49,15 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
       return context.text("404 Not Found", 404);
     }
 
-    const candidates = resolveCandidates(source, target.model);
-    if (candidates instanceof RouterModelNotFoundError) {
-      return geminiError(404, "NOT_FOUND", candidates.message);
-    }
-
     const request = await parseRequest(context.req.raw, target.model);
     if (request instanceof Response) {
       return request;
+    }
+
+    const variantKey = request.generationConfig?.thinkingConfig?.thinkingLevel;
+    const candidates = resolveCandidates(source, target.model, variantKey);
+    if (candidates instanceof RouterModelNotFoundError) {
+      return geminiError(404, "NOT_FOUND", candidates.message);
     }
 
     const transformed = geminiGenerateContentToModelMessages(request);
@@ -64,22 +66,30 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     for (const [index, route] of candidates.entries()) {
       const hasNext = index < candidates.length - 1;
       const provider = route.provider;
-      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Gemini) {
-        const response = await provider.passthrough(context.req.raw.clone());
-        if (hasNext && shouldTryNextResponse(response)) {
-          last = response;
+      try {
+        if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.Gemini) {
+          const upstreamRequest =
+            target.model === route.modelId
+              ? context.req.raw.clone()
+              : rewriteGeminiRequestModel(context.req.raw, route.modelId, target.stream);
+          const response = await provider.passthrough(upstreamRequest);
+          if (hasNext && shouldTryNextResponse(response)) {
+            last = response;
+            continue;
+          }
+          return response;
+        }
+
+        const aiSdkProvider = toAiSdkProvider(provider);
+        if (aiSdkProvider === undefined) {
+          last = geminiError(
+            501,
+            "UNIMPLEMENTED",
+            "Provider does not support Gemini generateContent transform dispatch",
+          );
           continue;
         }
-        return response;
-      }
 
-      const aiSdkProvider = toAiSdkProvider(provider);
-      if (aiSdkProvider === undefined) {
-        last = geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
-        continue;
-      }
-
-      try {
         await ensureAiSdkProviderAvailable(aiSdkProvider);
         const stream = aiSdkProvider.invoke({
           messages: transformed.messages,
@@ -89,7 +99,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
           ...(tools === undefined ? {} : { tools }),
         });
         if (target.stream) {
-          return new Response(writeGeminiGenerateContentSSE(stream), {
+          return new Response(writeGeminiGenerateContentSSE(await preflightStream(stream)), {
             headers: {
               "cache-control": "no-cache",
               "content-type": "text/event-stream; charset=utf-8",
@@ -156,14 +166,19 @@ function routeTarget(pathname: string): { readonly model: string; readonly strea
 }
 
 function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
+  const reasoning = geminiReasoning(settings);
+  const base = {
+    ...aiSdkProviderOptions(settings),
+    ...(reasoning === undefined ? {} : { reasoning }),
+  } satisfies GeminiAiSdkSettings;
   const parsed = aiSdkGenerationConfigSchema.safeParse(settings.generationConfig ?? {});
   if (!parsed.success) {
-    return aiSdkProviderOptions(settings);
+    return base;
   }
 
   const config = parsed.data;
   return {
-    ...aiSdkProviderOptions(settings),
+    ...base,
     ...(config.maxOutputTokens === undefined ? {} : { maxOutputTokens: config.maxOutputTokens }),
     ...(config.temperature === undefined ? {} : { temperature: config.temperature }),
     ...(config.topP === undefined ? {} : { topP: config.topP }),
@@ -171,6 +186,21 @@ function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSett
     ...(config.stopSequences === undefined ? {} : { stopSequences: config.stopSequences }),
     ...(config.seed === undefined ? {} : { seed: config.seed }),
   };
+}
+
+function geminiReasoning(settings: GeminiGenerateContentSettings): CallSettings["reasoning"] {
+  const level = settings.generationConfig?.thinkingConfig?.thinkingLevel;
+  if (level === undefined) {
+    return undefined;
+  }
+  const parsed = reasoningSchema.safeParse(normalizeVariantKey(level));
+  return parsed.success ? parsed.data : undefined;
+}
+
+function rewriteGeminiRequestModel(request: Request, modelId: string, stream: boolean): Request {
+  const url = new URL(request.url);
+  url.pathname = `${routePrefix}${encodeURIComponent(modelId)}${stream ? streamSuffix : generateSuffix}`;
+  return new Request(url, request.clone());
 }
 
 function aiSdkProviderOptions(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {

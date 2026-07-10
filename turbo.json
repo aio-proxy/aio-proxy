@@ -22,6 +22,10 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@aio-proxy/core#test:unit": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
     "@aio-proxy/i18n#test:unit": {
       "dependsOn": ["build"],
       "outputs": []
