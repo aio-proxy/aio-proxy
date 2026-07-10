@@ -10,7 +10,7 @@ const ProviderOptionsSchema = z.record(z.string(), z.unknown());
 
 type ParsedProviderOptions = { readonly ok: true; readonly value: Record<string, unknown> } | { readonly ok: false };
 
-export function parseProviderOptions(value: string): ParsedProviderOptions {
+function parseProviderOptions(value: string): ParsedProviderOptions {
   try {
     const parsed = ProviderOptionsSchema.safeParse(JSON.parse(value));
     return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
