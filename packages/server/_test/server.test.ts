@@ -305,6 +305,70 @@ describe("server routes", () => {
     }
   });
 
+  test("Given an API key When a provider is probed Then the upstream request is authenticated", async () => {
+    let authorization: string | null = null;
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get("authorization");
+        return new Response("", { status: 204 });
+      },
+    });
+    const app = createServer({
+      config: {
+        providers: {
+          authenticated: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            apiKey: "probe-secret",
+            models: ["gpt-test"],
+          },
+        },
+      },
+    });
+
+    try {
+      await app.request("/dashboard/api/providers?probe=true&filter=authenticated");
+      expect(authorization).toBe("Bearer probe-secret");
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test("Given configured models When a provider is probed Then the first real model is used", async () => {
+    let model: unknown;
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const body = await request.json();
+        model = typeof body === "object" && body !== null && "model" in body ? body.model : undefined;
+        return new Response("", { status: 204 });
+      },
+    });
+    const app = createServer({
+      config: {
+        providers: {
+          configured: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            models: ["gpt-real", "gpt-fallback"],
+          },
+        },
+      },
+    });
+
+    try {
+      await app.request("/dashboard/api/providers?probe=true&filter=configured");
+      expect(model).toBe("gpt-real");
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test("Given configured provider When dashboard provider detail is requested Then one provider is returned", async () => {
     // Given
     const app = createServer({ config });

@@ -12,12 +12,13 @@ import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
 import { ConfigReloadRejectedError } from "../config-store";
 import type { ServerState } from "../server-state";
-
-const OPENAI_SECRET_PATTERN = /^sk-[A-Za-z0-9_-]{20,}$/;
-const BEARER_SECRET_PATTERN = /^Bearer\s+.+$/i;
-const TOKEN_SECRET_PATTERN = /^Token\s+.+$/i;
-const API_KEY_TEXT_PATTERN = /("?apiKey"?\s*:\s*")[^"]*(")/gi;
-const SENSITIVE_KEY_PATTERN = /(?:api[-_]?key|authorization|bearer|credential|password|secret|token)/i;
+import {
+  insertProvider,
+  ProviderAlreadyExistsError,
+  ProviderNotFoundError,
+  replaceProvider,
+} from "./provider-mutation";
+import { redactSecrets } from "./provider-secrets";
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
@@ -25,42 +26,7 @@ const ProviderInstallRequestSchema = z.object({
   registry: z.url().optional(),
 });
 
-const maskSecret = (key: string, value: string): string => {
-  if (OPENAI_SECRET_PATTERN.test(value)) {
-    return "sk-****";
-  }
-
-  if (BEARER_SECRET_PATTERN.test(value) || TOKEN_SECRET_PATTERN.test(value)) {
-    return "****";
-  }
-
-  if (SENSITIVE_KEY_PATTERN.test(key) || key.toLowerCase() === "headers") {
-    return "****";
-  }
-
-  return value.replace(API_KEY_TEXT_PATTERN, "$1****$2");
-};
-
-export const redactSecrets = (value: unknown, key = "", insideHeaders = false): unknown => {
-  if (typeof value === "string") {
-    return insideHeaders ? "****" : maskSecret(key, value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => redactSecrets(item, key, insideHeaders));
-  }
-
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([entryKey, entryValue]) => [
-        entryKey,
-        redactSecrets(entryValue, entryKey, insideHeaders || entryKey.toLowerCase() === "headers"),
-      ]),
-    );
-  }
-
-  return value;
-};
+export { redactSecrets } from "./provider-secrets";
 
 type MutationParseResult =
   | { readonly ok: true; readonly body: ProviderMutationBody }
@@ -115,13 +81,13 @@ export const createDashboardRoutes = (state: ServerState) =>
       }
       const body = context.req.valid("json");
       const { id, ...bodyRest } = body;
-      if (state.redactedConfig().providers.some((entry) => entry.id === id)) {
-        return context.json({ error: "provider id already exists", id }, 409);
-      }
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
-        await state.configStore.mutateProviders((record) => ({ ...record, [id]: providerData }));
+        await state.configStore.mutateProviders((record) => insertProvider(record, id, providerData));
       } catch (error) {
+        if (error instanceof ProviderAlreadyExistsError) {
+          return context.json({ error: "provider id already exists", id: error.providerId }, 409);
+        }
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: "config rejected", detail: error.message }, 422);
         }
@@ -143,34 +109,14 @@ export const createDashboardRoutes = (state: ServerState) =>
       if (body.id !== id) {
         return context.json({ error: "provider rename not supported" }, 400);
       }
-      if (!state.redactedConfig().providers.some((entry) => entry.id === id)) {
-        return context.json({ error: "provider not found" }, 404);
-      }
       const { id: _id, ...bodyRest } = body;
       const providerData: Record<string, unknown> = { ...bodyRest };
-      const apiKeyKey = "apiKey";
-      const aliasKey = "alias";
-      const apiKeyProvided = typeof providerData[apiKeyKey] === "string" && providerData[apiKeyKey] !== "";
       try {
-        await state.configStore.mutateProviders((record) => {
-          const previous = record[id];
-          const prev =
-            typeof previous === "object" && previous !== null ? (previous as Record<string, unknown>) : undefined;
-          const next: Record<string, unknown> = { ...providerData };
-          if (providerData[aliasKey] === undefined && prev?.[aliasKey] !== undefined) {
-            next[aliasKey] = prev[aliasKey];
-          }
-          if (!apiKeyProvided) {
-            const storedApiKey = prev?.[apiKeyKey];
-            if (typeof storedApiKey === "string") {
-              next[apiKeyKey] = storedApiKey;
-            } else {
-              delete next[apiKeyKey];
-            }
-          }
-          return { ...record, [id]: next };
-        });
+        await state.configStore.mutateProviders((record) => replaceProvider(record, id, providerData));
       } catch (error) {
+        if (error instanceof ProviderNotFoundError) {
+          return context.json({ error: "provider not found" }, 404);
+        }
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: "config rejected", detail: error.message }, 422);
         }

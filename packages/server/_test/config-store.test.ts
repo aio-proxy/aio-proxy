@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigReloadRejectedError, createConfigStore } from "../src/config-store";
@@ -53,6 +53,22 @@ describe("createConfigStore mutex", () => {
 
     expect(readFileSync(configPath, "utf8")).toBe(original);
 
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("Given a restrictive config mode When providers are mutated Then the rewritten file preserves it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-store-"));
+    const configPath = join(dir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ providers: {} }, null, 2));
+    chmodSync(configPath, 0o600);
+    const store = createConfigStore({
+      getConfigPath: () => configPath,
+      reload: async () => ({ ok: true as const }),
+    });
+
+    await store.mutateProviders((record) => ({ ...record, added: { kind: "api" } }));
+
+    expect(statSync(configPath).mode & 0o777).toBe(0o600);
     rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -1,4 +1,4 @@
-import { createAiSdkProvider, createApiProvider, modelRoutes } from "@aio-proxy/core";
+import { type ApiProviderInstance, createAiSdkProvider, createApiProvider, modelRoutes } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { createOAuthRuntimeProvider } from "./oauth-runtime";
@@ -25,8 +25,8 @@ export function materializeProviders(config: Config): ProviderRuntime {
 
     switch (provider.kind) {
       case ProviderKind.Api: {
-        probes.set(id, () => probeApi(provider, provider.baseUrl));
         const instance = createApiProvider(provider);
+        probes.set(id, () => probeApi(provider, instance));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name));
         break;
@@ -105,16 +105,22 @@ function providerConfigSummary(provider: Provider): DashboardProviderSummary {
 
 async function probeApi(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  baseUrl: string,
+  instance: ApiProviderInstance,
 ): Promise<DashboardProviderProbe> {
   try {
-    const request = providerProbeRequest(provider, baseUrl);
-    const response = await fetch(request.url, {
-      body: JSON.stringify(request.body),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-      signal: AbortSignal.timeout(1_000),
-    });
+    const model = providerProbeModel(provider);
+    if (model === undefined) {
+      return "FAIL";
+    }
+    const request = providerProbeRequest(provider, model);
+    const response = await instance.passthrough(
+      new Request(request.url, {
+        body: JSON.stringify(request.body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: AbortSignal.timeout(1_000),
+      }),
+    );
     if (response.body !== null) {
       await response.body.cancel();
     }
@@ -129,10 +135,9 @@ async function probeApi(
 
 function providerProbeRequest(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  baseUrl: string,
+  model: string,
 ): { readonly body: unknown; readonly url: URL } {
-  const model = "aio-proxy-probe";
-  const url = new URL(baseUrl);
+  const url = new URL(provider.baseUrl);
   switch (provider.protocol) {
     case ProviderProtocol.OpenAICompatible:
       url.pathname = "/v1/chat/completions";
@@ -162,6 +167,11 @@ function providerProbeRequest(
     default:
       return assertNever(provider.protocol);
   }
+}
+
+function providerProbeModel(provider: Extract<Provider, { kind: ProviderKind.Api }>): string | undefined {
+  const aliasTarget = provider.alias === undefined ? undefined : Object.values(provider.alias)[0]?.model;
+  return aliasTarget ?? provider.models?.[0];
 }
 
 async function probeAiSdk(provider: {

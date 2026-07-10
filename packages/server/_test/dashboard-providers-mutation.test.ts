@@ -394,4 +394,66 @@ describe("dashboard provider CRUD", () => {
     const body = await res.json();
     expect(body.error).toBe("validation failed");
   });
+
+  test("26. PUT with redacted nested options retains the stored secret", async () => {
+    const seed = await req("PUT", "/providers/seed-ai", {
+      kind: "ai-sdk",
+      id: "seed-ai",
+      packageName: "@ai-sdk/openai-compatible",
+      options: { headers: { Authorization: "Bearer retained-secret" } },
+    });
+    expect(seed.status).toBe(200);
+    const editView = await req("GET", "/providers/seed-ai/edit-view");
+    const { provider } = await editView.json();
+
+    const save = await req("PUT", "/providers/seed-ai", { ...provider, name: "Renamed without secret loss" });
+
+    expect(save.status).toBe(200);
+    expect(onDisk().providers["seed-ai"].options).toEqual({
+      headers: { Authorization: "Bearer retained-secret" },
+    });
+  });
+
+  test("27. concurrent POST requests for one id allow exactly one create", async () => {
+    const [first, second] = await Promise.all([
+      req("POST", "/providers", {
+        kind: "api",
+        id: "race-create",
+        protocol: "openai-compatible",
+        baseUrl: "https://first.example.com",
+      }),
+      req("POST", "/providers", {
+        kind: "api",
+        id: "race-create",
+        protocol: "openai-compatible",
+        baseUrl: "https://second.example.com",
+      }),
+    ]);
+
+    expect([first.status, second.status].toSorted()).toEqual([201, 409]);
+  });
+
+  test("28. concurrent DELETE then PUT does not recreate the deleted provider", async () => {
+    const create = await req("POST", "/providers", {
+      kind: "api",
+      id: "race-update",
+      protocol: "openai-compatible",
+      baseUrl: "https://before.example.com",
+    });
+    expect(create.status).toBe(201);
+
+    const [removed, updated] = await Promise.all([
+      req("DELETE", "/providers/race-update"),
+      req("PUT", "/providers/race-update", {
+        kind: "api",
+        id: "race-update",
+        protocol: "openai-compatible",
+        baseUrl: "https://after.example.com",
+      }),
+    ]);
+
+    expect(removed.status).toBe(200);
+    expect(updated.status).toBe(404);
+    expect(onDisk().providers["race-update"]).toBeUndefined();
+  });
 });

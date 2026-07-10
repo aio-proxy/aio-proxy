@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, readFile, rename, stat, writeFile } from "node:fs/promises";
 
 export class ConfigPathMissingError extends Error {
   constructor() {
@@ -37,6 +37,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       }
       // Read raw JSON — do NOT reserialize from parsed Config to preserve on-disk field order and future-added fields
       const raw = await readFile(configPath, "utf8");
+      const { mode } = await stat(configPath);
       const parsed: Record<string, unknown> = JSON.parse(raw);
       const providers =
         typeof parsed.providers === "object" && parsed.providers !== null && !Array.isArray(parsed.providers)
@@ -47,11 +48,13 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       const tmpPath = `${configPath}.tmp`;
       // Write to tmp then rename atomically
       await writeFile(tmpPath, JSON.stringify(updated, null, 2), "utf8");
+      await chmod(tmpPath, mode);
       await rename(tmpPath, configPath);
       const result = await options.reload();
       if (!result.ok) {
         // ponytail: reload validates the persisted file; on rejection restore the prior valid config so disk never diverges from the live snapshot.
         await writeFile(tmpPath, raw, "utf8");
+        await chmod(tmpPath, mode);
         await rename(tmpPath, configPath);
         throw new ConfigReloadRejectedError(result.error);
       }
