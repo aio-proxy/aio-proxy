@@ -22,6 +22,9 @@ export function modelMessagesToOpenAIResponses({
     throw new OpenAIResponsesTransformError("model");
   }
 
+  const reasoningEffort = settings.reasoning ?? settings.providerOptions?.openai.reasoningEffort;
+  const reasoningSummary = settings.reasoningSummary ?? settings.providerOptions?.openai.reasoningSummary;
+
   return {
     model,
     input: messages.map((message, messageIndex) => responsesMessage(message, messageIndex)),
@@ -32,12 +35,12 @@ export function modelMessagesToOpenAIResponses({
     ...(settings.maxOutputTokens === undefined ? {} : { max_output_tokens: settings.maxOutputTokens }),
     ...(settings.parallelToolCalls === undefined ? {} : { parallel_tool_calls: settings.parallelToolCalls }),
     ...(settings.toolChoice === undefined ? {} : { tool_choice: settings.toolChoice }),
-    ...(settings.reasoning === undefined && settings.reasoningSummary === undefined
+    ...(reasoningEffort === undefined && reasoningSummary === undefined
       ? {}
       : {
           reasoning: {
-            ...(settings.reasoning === undefined ? {} : { effort: settings.reasoning }),
-            ...(settings.reasoningSummary === undefined ? {} : { summary: settings.reasoningSummary }),
+            ...(reasoningEffort === undefined ? {} : { effort: reasoningEffort }),
+            ...(reasoningSummary === undefined ? {} : { summary: reasoningSummary }),
           },
         }),
   };
