@@ -57,7 +57,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
     if (!optionsJsonValid) {
       return;
     }
-    const issues = aliasEditorIssues(form.getFieldValue("alias") ?? {}, form.getFieldValue("models") ?? []);
+    const issues = aliasEditorIssues(form.getFieldValue("alias") ?? {}, form.getFieldValue("models"));
     const issue = issues[0];
     if (issue !== undefined) {
       setAliasOpen(true);

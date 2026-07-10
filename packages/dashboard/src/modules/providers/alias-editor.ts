@@ -138,6 +138,10 @@ export function aliasSummary(alias: ProviderAlias): AliasSummary {
   return { aliases: Object.keys(alias).length, variants };
 }
 
+export function aliasTargetModels(alias: ProviderAlias): readonly string[] {
+  return Array.from(new Set(Object.values(alias).flatMap(targetModels)));
+}
+
 export function preserveReferenceCount(alias: ProviderAlias, model: string): number {
   let count = 0;
   for (const config of Object.values(alias)) {
@@ -153,9 +157,9 @@ export function preserveReferenceCount(alias: ProviderAlias, model: string): num
   return count;
 }
 
-export function aliasEditorIssues(alias: ProviderAlias, models: readonly string[]): readonly AliasEditorIssue[] {
+export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string[]): readonly AliasEditorIssue[] {
   const issues: AliasEditorIssue[] = [];
-  const availableModels = new Set(models);
+  const availableModels = models === undefined ? undefined : new Set(models);
   const preservedModels = collectPreservedModels(alias);
   const aliasNames = new Set<string>();
 
@@ -171,7 +175,7 @@ export function aliasEditorIssues(alias: ProviderAlias, models: readonly string[
     if (preservedModels.has(normalizedAlias) && targetModels(config).some((model) => model !== normalizedAlias)) {
       issues.push({ code: "preserved-route-conflict", alias: aliasName });
     }
-    if (!availableModels.has(config.model)) {
+    if (availableModels !== undefined && !availableModels.has(config.model)) {
       issues.push({ code: "target-missing", alias: aliasName });
     }
 
@@ -184,7 +188,7 @@ export function aliasEditorIssues(alias: ProviderAlias, models: readonly string[
         issues.push({ code: "variant-name-duplicate", alias: aliasName, variant });
       }
       variants.add(normalizedVariant);
-      if (!availableModels.has(target.model)) {
+      if (availableModels !== undefined && !availableModels.has(target.model)) {
         issues.push({ code: "target-missing", alias: aliasName, variant });
       }
     }

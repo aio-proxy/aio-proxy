@@ -2,7 +2,13 @@ import { m } from "@aio-proxy/i18n";
 import type { FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { aliasEditorIssues, aliasSummary, type ProviderAlias, serializeAlias } from "../../alias-editor";
+import {
+  aliasEditorIssues,
+  aliasSummary,
+  aliasTargetModels,
+  type ProviderAlias,
+  serializeAlias,
+} from "../../alias-editor";
 import { aliasSummaryMessage } from "../../alias-editor-copy";
 import { ProviderFormMode } from "../../constants";
 import type { useProviderForm } from "../../hooks/use-provider-form";
@@ -16,12 +22,13 @@ type Props = {
 };
 
 export const ProviderAliasFields: FC<Props> = ({ form, mode, open, onOpenChange }) => (
-  <form.Subscribe selector={(state) => state.values.models ?? []}>
-    {(models) => (
+  <form.Subscribe selector={(state) => state.values.models}>
+    {(configuredModels) => (
       <form.Field name="alias">
         {(field) => {
           const alias = field.state.value ?? {};
-          const issues = aliasEditorIssues(alias, models);
+          const models = configuredModels ?? aliasTargetModels(alias);
+          const issues = aliasEditorIssues(alias, configuredModels);
           const summary = aliasSummary(alias);
           const update = (next: ProviderAlias) =>
             field.handleChange(serializeAlias(next, mode === ProviderFormMode.Create ? "create" : "edit"));
