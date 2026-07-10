@@ -64,39 +64,69 @@ export const ProvidersPage: React.FC = () => {
       ) : providers.length === 0 ? (
         <Empty>{m["dashboard.providers.empty_state"]()}</Empty>
       ) : (
-        <Table data-testid="providers-table">
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
-                <TableCell>{kindLabels[row.original.kind]()}</TableCell>
-                <TableCell>{row.original.id}</TableCell>
-                <TableCell>{row.original.name ?? startCase(row.original.id)}</TableCell>
-                <TableCell>{row.original.enabled ? "✓" : "—"}</TableCell>
-                <TableCell>{row.original.last_status}</TableCell>
-                <TableCell>
-                  <ProviderModelsCell models={row.original.clientModels ?? []} />
-                </TableCell>
-                <TableCell>
-                  <ProviderActionsMenu
-                    provider={row.original}
-                    onDelete={() => deleteDialogRef.current?.open(row.original)}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="flex flex-col gap-4">
+          <Table data-testid="providers-table">
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
+                  <TableCell>{kindLabels[row.original.kind]()}</TableCell>
+                  <TableCell>{row.original.id}</TableCell>
+                  <TableCell>{row.original.name ?? startCase(row.original.id)}</TableCell>
+                  <TableCell>{row.original.enabled ? "✓" : "—"}</TableCell>
+                  <TableCell>{row.original.last_status}</TableCell>
+                  <TableCell>
+                    <ProviderModelsCell models={row.original.clientModels ?? []} />
+                  </TableCell>
+                  <TableCell>
+                    <ProviderActionsMenu
+                      provider={row.original}
+                      onDelete={() => deleteDialogRef.current?.open(row.original)}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-muted-foreground text-sm">
+              {m["dashboard.providers.table.pagination_summary"]({
+                page: table.getState().pagination.pageIndex + 1,
+                pages: table.getPageCount(),
+              })}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!table.getCanPreviousPage()}
+                onClick={() => table.previousPage()}
+              >
+                {m["dashboard.providers.table.pagination_previous"]()}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!table.getCanNextPage()}
+                onClick={() => table.nextPage()}
+              >
+                {m["dashboard.providers.table.pagination_next"]()}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
       <DeleteProviderDialog ref={deleteDialogRef} />
     </PageContainer>

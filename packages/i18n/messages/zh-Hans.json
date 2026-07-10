@@ -64,6 +64,8 @@
     "providers": {
       "list_title": "提供商",
       "new_provider": "新建提供商",
+      "edit_loading": "正在加载提供商…",
+      "edit_not_found": "未找到提供商",
       "kind_label": {
         "api": "API",
         "ai-sdk": "AI SDK",
@@ -77,7 +79,10 @@
         "col_status": "状态",
         "col_models": "模型",
         "col_weight": "权重",
-        "col_actions": "操作"
+        "col_actions": "操作",
+        "pagination_previous": "上一页",
+        "pagination_next": "下一页",
+        "pagination_summary": "第 {page} 页，共 {pages} 页"
       },
       "badge": {
         "enabled": "已启用",
@@ -97,7 +102,7 @@
         "label_base_url": "Base URL",
         "label_api_key": "API Key",
         "label_package_name": "包名",
-        "label_options": "选项 (JSON)",
+        "label_options": "选项（JSON）",
         "label_parse_reasoning": "解析推理内容",
         "label_models": "模型",
         "label_aliases": "别名",

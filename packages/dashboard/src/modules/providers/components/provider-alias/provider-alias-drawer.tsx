@@ -126,7 +126,7 @@ export const ProviderAliasDrawer: FC<Props> = ({ alias, models, issues, open, on
     <>
       <Drawer open={open} onOpenChange={requestOpenChange} swipeDirection={isMobile ? "down" : "right"}>
         <DrawerContent className="p-0 sm:w-full sm:max-w-[680px]" data-testid="provider-alias-drawer">
-          <DrawerHeader>
+          <DrawerHeader className="pb-3">
             <DrawerTitle>{m["dashboard.providers.form.label_aliases"]()}</DrawerTitle>
             <DrawerDescription>{m["dashboard.providers.form.aliases_drawer_description"]()}</DrawerDescription>
             <div className="flex flex-wrap gap-2 pt-2">

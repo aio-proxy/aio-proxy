@@ -21,6 +21,7 @@ type Props = {
 export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId }) => {
   const navigate = useNavigate();
   const [aliasOpen, setAliasOpen] = useState(false);
+  const [optionsJsonValid, setOptionsJsonValid] = useState(true);
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const isPending = isCreating || isUpdating;
@@ -53,6 +54,9 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
     mode === ProviderFormMode.Create ? m["dashboard.providers.new_title"]() : m["dashboard.providers.edit_title"]();
 
   const submit = () => {
+    if (!optionsJsonValid) {
+      return;
+    }
     const issues = aliasEditorIssues(form.getFieldValue("alias") ?? {}, form.getFieldValue("models") ?? []);
     const issue = issues[0];
     if (issue !== undefined) {
@@ -90,10 +94,11 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
               providerId={providerId}
               aliasOpen={aliasOpen}
               onAliasOpenChange={setAliasOpen}
+              onOptionsValidityChange={setOptionsJsonValid}
             />
           )}
           <div className="mt-6 flex gap-3">
-            <Button type="submit" disabled={isPending} data-testid="provider-save">
+            <Button type="submit" disabled={!optionsJsonValid || isPending} data-testid="provider-save">
               {m["dashboard.providers.actions.save"]()}
             </Button>
             <Button

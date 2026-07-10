@@ -90,6 +90,8 @@
     "providers": {
       "list_title": "Providers",
       "new_provider": "New Provider",
+      "edit_loading": "Loading provider…",
+      "edit_not_found": "Provider not found",
       "kind_label": {
         "api": "API",
         "ai-sdk": "AI SDK",
@@ -103,7 +105,10 @@
         "col_status": "Status",
         "col_models": "Models",
         "col_weight": "Weight",
-        "col_actions": "Actions"
+        "col_actions": "Actions",
+        "pagination_previous": "Previous",
+        "pagination_next": "Next",
+        "pagination_summary": "Page {page} of {pages}"
       },
       "badge": {
         "enabled": "Enabled",

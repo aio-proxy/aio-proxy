@@ -2,7 +2,9 @@ import { m } from "@aio-proxy/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
+import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+import { Empty } from "@/components/ui/empty";
 import {
   DeleteProviderDialog,
   type DeleteProviderDialogRef,
@@ -20,9 +22,21 @@ function EditProviderPage() {
   const { data, isLoading } = useQuery(providerEditViewQueryOptions(id));
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) {
+    return (
+      <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
+        <div className="p-4 text-muted-foreground text-sm">{m["dashboard.providers.edit_loading"]()}</div>
+      </PageContainer>
+    );
+  }
 
-  if (!data || "error" in data || !data.provider) return <div data-testid="not-found">Not Found</div>;
+  if (!data || "error" in data || !data.provider) {
+    return (
+      <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
+        <Empty data-testid="not-found">{m["dashboard.providers.edit_not_found"]()}</Empty>
+      </PageContainer>
+    );
+  }
 
   const provider = data.provider;
 
