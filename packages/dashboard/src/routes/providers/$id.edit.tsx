@@ -1,10 +1,12 @@
 import { m } from "@aio-proxy/i18n";
-import type { DashboardProviderSummary } from "@aio-proxy/types";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { DeleteProviderDialog } from "@/modules/providers/components/delete-provider-dialog";
+import {
+  DeleteProviderDialog,
+  type DeleteProviderDialogRef,
+} from "@/modules/providers/components/delete-provider-dialog";
 import { ProviderFormMode } from "@/modules/providers/constants";
 import { providerEditViewQueryOptions } from "@/modules/providers/services/providers-service";
 import { ProviderFormPage } from "@/modules/providers/templates/provider-form-page";
@@ -16,7 +18,7 @@ export const Route = createFileRoute("/providers/$id/edit")({
 function EditProviderPage() {
   const { id } = Route.useParams();
   const { data, isLoading } = useQuery(providerEditViewQueryOptions(id));
-  const [showDelete, setShowDelete] = useState(false);
+  const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
 
   if (isLoading) return <div>Loading...</div>;
 
@@ -28,16 +30,10 @@ function EditProviderPage() {
     return (
       <div data-testid="provider-oauth-readonly" className="space-y-4 p-4">
         <p>{m["dashboard.providers.oauth_managed_cli"]()}</p>
-        <Button variant="destructive" onClick={() => setShowDelete(true)}>
+        <Button variant="destructive" onClick={() => deleteDialogRef.current?.open(provider)}>
           {m["dashboard.providers.actions.delete"]()}
         </Button>
-        {showDelete && (
-          <DeleteProviderDialog
-            provider={provider as unknown as DashboardProviderSummary}
-            open={showDelete}
-            onOpenChange={setShowDelete}
-          />
-        )}
+        <DeleteProviderDialog ref={deleteDialogRef} />
       </div>
     );
   }

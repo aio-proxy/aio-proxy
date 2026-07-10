@@ -7,16 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TagsInput } from "@/components/ui/tags-input";
 import { API_PROVIDER_PROTOCOLS, ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
-import { ProviderAliasFields } from "./provider-alias-fields";
+import { ProviderAliasFields } from "./provider-alias";
 import { ProviderCommonFields } from "./provider-common-fields";
 
 type Props = {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   providerId?: string | undefined;
+  aliasOpen: boolean;
+  onAliasOpenChange: (open: boolean) => void;
 };
 
-export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode }) => {
+export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, onAliasOpenChange }) => {
   return (
     <div className="space-y-4">
       <ProviderCommonFields form={form} mode={mode} />
@@ -100,7 +102,7 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode }) => {
         </form.Field>
       </div>
 
-      <ProviderAliasFields form={form} mode={mode} />
+      <ProviderAliasFields form={form} mode={mode} open={aliasOpen} onOpenChange={onAliasOpenChange} />
     </div>
   );
 };

@@ -1,11 +1,11 @@
 import { m } from "@aio-proxy/i18n";
-import { type DashboardProviderSummary, ProviderKind } from "@aio-proxy/types";
+import { ProviderKind } from "@aio-proxy/types";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
 import type React from "react";
-import { useState } from "react";
+import { useRef } from "react";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,7 @@ import {
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DeleteProviderDialog } from "../components/delete-provider-dialog";
+import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
 import { ProviderActionsMenu } from "../components/provider-actions-menu";
 import { ProviderModelsCell } from "../components/provider-models-cell";
 import { useProvidersTable } from "../hooks/use-providers-table";
@@ -33,7 +33,7 @@ export const ProvidersPage: React.FC = () => {
   const { data, isLoading } = useQuery(providersQueryOptions());
   const providers = data?.providers ?? [];
   const table = useProvidersTable(providers);
-  const [deleteTarget, setDeleteTarget] = useState<DashboardProviderSummary | null>(null);
+  const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
 
   return (
     <PageContainer
@@ -88,22 +88,17 @@ export const ProvidersPage: React.FC = () => {
                   <ProviderModelsCell models={row.original.clientModels ?? []} />
                 </TableCell>
                 <TableCell>
-                  <ProviderActionsMenu provider={row.original} onDelete={() => setDeleteTarget(row.original)} />
+                  <ProviderActionsMenu
+                    provider={row.original}
+                    onDelete={() => deleteDialogRef.current?.open(row.original)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
-      {deleteTarget && (
-        <DeleteProviderDialog
-          provider={deleteTarget}
-          open={true}
-          onOpenChange={(open) => {
-            if (!open) setDeleteTarget(null);
-          }}
-        />
-      )}
+      <DeleteProviderDialog ref={deleteDialogRef} />
     </PageContainer>
   );
 };

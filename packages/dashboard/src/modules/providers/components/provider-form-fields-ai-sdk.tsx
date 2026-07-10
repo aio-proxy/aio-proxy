@@ -9,13 +9,15 @@ import { TagsInput } from "@/components/ui/tags-input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
-import { ProviderAliasFields } from "./provider-alias-fields";
+import { ProviderAliasFields } from "./provider-alias";
 import { ProviderCommonFields } from "./provider-common-fields";
 
 type Props = {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   providerId?: string | undefined;
+  aliasOpen: boolean;
+  onAliasOpenChange: (open: boolean) => void;
 };
 
 const OptionsTextarea: React.FC<{ field: AnyFieldApi }> = ({ field }) => {
@@ -46,7 +48,7 @@ const OptionsTextarea: React.FC<{ field: AnyFieldApi }> = ({ field }) => {
   );
 };
 
-export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode }) => {
+export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode, aliasOpen, onAliasOpenChange }) => {
   return (
     <div className="space-y-4">
       <ProviderCommonFields form={form} mode={mode} />
@@ -101,7 +103,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode }) => {
           )}
         </form.Field>
       </div>
-      <ProviderAliasFields form={form} mode={mode} />
+      <ProviderAliasFields form={form} mode={mode} open={aliasOpen} onOpenChange={onAliasOpenChange} />
     </div>
   );
 };

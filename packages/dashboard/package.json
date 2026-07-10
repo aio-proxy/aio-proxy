@@ -10,7 +10,8 @@
   },
   "scripts": {
     "dev": "rsbuild",
-    "build": "rsbuild build"
+    "build": "rsbuild build",
+    "test:unit": "cd ../.. && bun test ./packages/dashboard/_test/*.test.ts"
   },
   "dependencies": {
     "@aio-proxy/i18n": "workspace:*",

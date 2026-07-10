@@ -1,9 +1,10 @@
 import { m } from "@aio-proxy/i18n";
 import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from "@aio-proxy/types";
 import { useNavigate } from "@tanstack/react-router";
-import type React from "react";
+import { type FC, useState } from "react";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+import { aliasEditorIssues, aliasIssueControlId } from "../alias-editor";
 import { ProviderFormFieldsAiSdk } from "../components/provider-form-fields-ai-sdk";
 import { ProviderFormFieldsApi } from "../components/provider-form-fields-api";
 import { ProviderFormMode } from "../constants";
@@ -17,8 +18,9 @@ type Props = {
   providerId?: string;
 };
 
-export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, providerId }) => {
+export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId }) => {
   const navigate = useNavigate();
+  const [aliasOpen, setAliasOpen] = useState(false);
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const isPending = isCreating || isUpdating;
@@ -50,6 +52,19 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
   const title =
     mode === ProviderFormMode.Create ? m["dashboard.providers.new_title"]() : m["dashboard.providers.edit_title"]();
 
+  const submit = () => {
+    const issues = aliasEditorIssues(form.getFieldValue("alias") ?? {}, form.getFieldValue("models") ?? []);
+    const issue = issues[0];
+    if (issue !== undefined) {
+      setAliasOpen(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => document.getElementById(aliasIssueControlId(issue))?.focus());
+      });
+      return;
+    }
+    void form.handleSubmit();
+  };
+
   return (
     <PageContainer title={title} backTo="/providers">
       <div className="max-w-lg space-y-6 p-4">
@@ -57,13 +72,25 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            void form.handleSubmit();
+            submit();
           }}
         >
           {kind === "api" ? (
-            <ProviderFormFieldsApi form={form} mode={mode} providerId={providerId} />
+            <ProviderFormFieldsApi
+              form={form}
+              mode={mode}
+              providerId={providerId}
+              aliasOpen={aliasOpen}
+              onAliasOpenChange={setAliasOpen}
+            />
           ) : (
-            <ProviderFormFieldsAiSdk form={form} mode={mode} providerId={providerId} />
+            <ProviderFormFieldsAiSdk
+              form={form}
+              mode={mode}
+              providerId={providerId}
+              aliasOpen={aliasOpen}
+              onAliasOpenChange={setAliasOpen}
+            />
           )}
           <div className="mt-6 flex gap-3">
             <Button type="submit" disabled={isPending} data-testid="provider-save">
