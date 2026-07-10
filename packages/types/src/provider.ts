@@ -80,6 +80,7 @@ export const ApiProviderMutationBodySchema = z.object({
   baseUrl: z.url(),
   apiKey: z.string().optional(),
   models: z.array(z.string()).optional(),
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
 });
 
 export const AiSdkProviderMutationBodySchema = z.object({
@@ -92,12 +93,12 @@ export const AiSdkProviderMutationBodySchema = z.object({
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
 });
 
-export const ProviderMutationBodySchema = z.discriminatedUnion("kind", [
-  ApiProviderMutationBodySchema,
-  AiSdkProviderMutationBodySchema,
-]);
+export const ProviderMutationBodySchema = z
+  .discriminatedUnion("kind", [ApiProviderMutationBodySchema, AiSdkProviderMutationBodySchema])
+  .superRefine(validateAliasTargets);
 
 type ProviderValue =
   | z.output<typeof ApiProviderSchema>

@@ -1,14 +1,15 @@
-import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from "@aio-proxy/types";
+import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from "@aio-proxy/types";
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
+import type { ProviderFormMode } from "../constants";
 
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
 
 type UseProviderFormOptions = {
-  mode: "create" | "edit";
-  kind: "api" | "ai-sdk";
-  initial?: Partial<ApiProviderMutationBody> | Partial<AiSdkProviderMutationBody>;
-  onSubmit?: (value: ProviderFormValues) => void | Promise<void>;
+  mode: ProviderFormMode;
+  kind: ProviderKind;
+  initial?: Partial<ApiProviderMutationBody> | Partial<AiSdkProviderMutationBody> | undefined;
+  onSubmit?: ((value: ProviderFormValues) => void | Promise<void>) | undefined;
 };
 
 // ponytail: @tanstack/zod-form-adapter is not installed; a plain safeParse validator

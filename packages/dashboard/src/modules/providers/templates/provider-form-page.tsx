@@ -1,18 +1,18 @@
 import { m } from "@aio-proxy/i18n";
-import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from "@aio-proxy/types";
+import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from "@aio-proxy/types";
 import { useNavigate } from "@tanstack/react-router";
 import type React from "react";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import { ProviderFormFieldsAiSdk } from "../components/provider-form-fields-ai-sdk";
 import { ProviderFormFieldsApi } from "../components/provider-form-fields-api";
-import { ProviderKindBadge } from "../components/provider-kind-badge";
+import { ProviderFormMode } from "../constants";
 import { useProviderForm } from "../hooks/use-provider-form";
 import { useProviderCreate, useProviderUpdate } from "../hooks/use-provider-mutations";
 
 type Props = {
-  mode: "create" | "edit";
-  kind: "api" | "ai-sdk";
+  mode: ProviderFormMode;
+  kind: ProviderKind;
   initial?: Partial<ApiProviderMutationBody> | Partial<AiSdkProviderMutationBody>;
   providerId?: string;
 };
@@ -28,7 +28,7 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
     kind,
     initial,
     onSubmit: async (value) => {
-      if (mode === "create") {
+      if (mode === ProviderFormMode.Create) {
         createProvider(value, {
           onSuccess: () => {
             void navigate({ to: "/providers" });
@@ -47,14 +47,12 @@ export const ProviderFormPage: React.FC<Props> = ({ mode, kind, initial, provide
     },
   });
 
-  const title = mode === "create" ? m["dashboard.providers.new_title"]() : m["dashboard.providers.edit_title"]();
+  const title =
+    mode === ProviderFormMode.Create ? m["dashboard.providers.new_title"]() : m["dashboard.providers.edit_title"]();
 
   return (
     <PageContainer title={title} backTo="/providers">
       <div className="max-w-lg space-y-6 p-4">
-        <div className="flex items-center gap-2">
-          <ProviderKindBadge kind={kind} />
-        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();

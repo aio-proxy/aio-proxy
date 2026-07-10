@@ -5,6 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DeleteProviderDialog } from "@/modules/providers/components/delete-provider-dialog";
+import { ProviderFormMode } from "@/modules/providers/constants";
 import { providerEditViewQueryOptions } from "@/modules/providers/services/providers-service";
 import { ProviderFormPage } from "@/modules/providers/templates/provider-form-page";
 
@@ -18,13 +19,14 @@ function EditProviderPage() {
   const [showDelete, setShowDelete] = useState(false);
 
   if (isLoading) return <div>Loading...</div>;
-  if (!data?.provider) return <div data-testid="not-found">Not Found</div>;
+
+  if (!data || "error" in data || !data.provider) return <div data-testid="not-found">Not Found</div>;
 
   const provider = data.provider;
 
   if (provider.kind === "oauth") {
     return (
-      <div data-testid="provider-oauth-readonly" className="p-4 space-y-4">
+      <div data-testid="provider-oauth-readonly" className="space-y-4 p-4">
         <p>{m["dashboard.providers.oauth_managed_cli"]()}</p>
         <Button variant="destructive" onClick={() => setShowDelete(true)}>
           {m["dashboard.providers.actions.delete"]()}
@@ -40,5 +42,5 @@ function EditProviderPage() {
     );
   }
 
-  return <ProviderFormPage mode="edit" kind={provider.kind as "api" | "ai-sdk"} initial={provider} providerId={id} />;
+  return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={provider} providerId={id} />;
 }

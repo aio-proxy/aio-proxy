@@ -8,6 +8,7 @@ import {
 } from "@aio-proxy/core";
 import { type ProviderMutationBody, ProviderMutationBodySchema } from "@aio-proxy/types";
 import { Hono } from "hono";
+import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
 import { ConfigReloadRejectedError } from "../config-store";
 import type { ServerState } from "../server-state";
@@ -66,19 +67,24 @@ type MutationParseResult =
   | { readonly ok: false; readonly status: 400; readonly payload: Record<string, unknown> };
 
 // oauth bodies 400 here with no explicit check: ProviderMutationBodySchema's union omits kind "oauth".
-const parseMutationBody = async (readJson: () => Promise<unknown>): Promise<MutationParseResult> => {
-  let raw: unknown;
-  try {
-    raw = await readJson();
-  } catch {
-    return { ok: false, status: 400, payload: { error: "invalid JSON" } };
-  }
+const parseMutationBody = (raw: unknown): MutationParseResult => {
   const parsed = ProviderMutationBodySchema.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, status: 400, payload: { error: "validation failed", details: parsed.error.issues } };
   }
   return { ok: true, body: parsed.data };
 };
+
+const providerMutationValidator = validator("json", (raw, context): ProviderMutationBody | Response => {
+  const parsed = parseMutationBody(raw);
+  return parsed.ok ? parsed.body : context.json(parsed.payload, parsed.status);
+});
+
+const probeKey = "probe";
+
+const providerProbeValidator = validator("query", (raw): { readonly probe?: string } => ({
+  ...(typeof raw[probeKey] === "string" ? { probe: raw[probeKey] } : {}),
+}));
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
@@ -91,24 +97,24 @@ export const createDashboardRoutes = (state: ServerState) =>
     })
     .get("/providers/:id/edit-view", (context) => {
       const id = context.req.param("id");
-      const provider = state.redactedConfig().providers.find((entry) => entry.id === id);
-      if (provider === undefined) {
+      const data = state.redactedConfig().providers.find((entry) => entry.id === id);
+      if (data === undefined) {
         return context.json({ error: "provider not found" }, 404);
       }
-      const { apiKey, ...rest } = provider as Record<string, unknown>;
-      return context.json({
-        provider: { ...rest, hasApiKey: typeof apiKey === "string" && apiKey !== "" },
-      });
+      const provider = redactSecrets(data) as typeof data & { hasApiKey: boolean };
+      provider.hasApiKey = false;
+      if ("apiKey" in provider) {
+        provider.hasApiKey = typeof provider.apiKey === "string" && provider.apiKey !== "";
+        delete provider.apiKey;
+      }
+      return context.json({ provider });
     })
-    .post("/providers", async (context) => {
+    .post("/providers", providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {
         return context.json({ error: "config file path is not configured" }, 409);
       }
-      const parsed = await parseMutationBody(() => context.req.json());
-      if (!parsed.ok) {
-        return context.json(parsed.payload, parsed.status);
-      }
-      const { id, ...bodyRest } = parsed.body;
+      const body = context.req.valid("json");
+      const { id, ...bodyRest } = body;
       if (state.redactedConfig().providers.some((entry) => entry.id === id)) {
         return context.json({ error: "provider id already exists", id }, 409);
       }
@@ -122,41 +128,44 @@ export const createDashboardRoutes = (state: ServerState) =>
         throw error;
       }
       const summaries = await state.providerSummaries({ filter: id, probe: false });
-      return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } }, 201);
+      const provider = summaries[0];
+      if (provider === undefined) {
+        return context.json({ error: "provider summary not found" }, 500);
+      }
+      return context.json({ provider }, 201);
     })
-    .put("/providers/:id", async (context) => {
+    .put("/providers/:id", providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const id = context.req.param("id");
-      const parsed = await parseMutationBody(() => context.req.json());
-      if (!parsed.ok) {
-        return context.json(parsed.payload, parsed.status);
-      }
-      if (parsed.body.id !== id) {
+      const body = context.req.valid("json");
+      if (body.id !== id) {
         return context.json({ error: "provider rename not supported" }, 400);
       }
       if (!state.redactedConfig().providers.some((entry) => entry.id === id)) {
         return context.json({ error: "provider not found" }, 404);
       }
-      const { id: _id, ...bodyRest } = parsed.body;
+      const { id: _id, ...bodyRest } = body;
       const providerData: Record<string, unknown> = { ...bodyRest };
-      const apiKeyProvided = typeof providerData.apiKey === "string" && providerData.apiKey !== "";
+      const apiKeyKey = "apiKey";
+      const aliasKey = "alias";
+      const apiKeyProvided = typeof providerData[apiKeyKey] === "string" && providerData[apiKeyKey] !== "";
       try {
         await state.configStore.mutateProviders((record) => {
           const previous = record[id];
           const prev =
             typeof previous === "object" && previous !== null ? (previous as Record<string, unknown>) : undefined;
           const next: Record<string, unknown> = { ...providerData };
-          if (prev?.alias !== undefined) {
-            next.alias = prev.alias;
+          if (providerData[aliasKey] === undefined && prev?.[aliasKey] !== undefined) {
+            next[aliasKey] = prev[aliasKey];
           }
           if (!apiKeyProvided) {
-            const storedApiKey = prev?.apiKey;
+            const storedApiKey = prev?.[apiKeyKey];
             if (typeof storedApiKey === "string") {
-              next.apiKey = storedApiKey;
+              next[apiKeyKey] = storedApiKey;
             } else {
-              delete next.apiKey;
+              delete next[apiKeyKey];
             }
           }
           return { ...record, [id]: next };
@@ -168,7 +177,11 @@ export const createDashboardRoutes = (state: ServerState) =>
         throw error;
       }
       const summaries = await state.providerSummaries({ filter: id, probe: false });
-      return context.json({ provider: summaries[0] ?? { id, kind: parsed.body.kind } });
+      const provider = summaries[0];
+      if (provider === undefined) {
+        return context.json({ error: "provider summary not found" }, 500);
+      }
+      return context.json({ provider });
     })
     .delete("/providers/:id", async (context) => {
       if (state.configPath === undefined) {
@@ -184,10 +197,11 @@ export const createDashboardRoutes = (state: ServerState) =>
       });
       return context.json({ ok: true, id });
     })
-    .get("/providers/:id", async (context) => {
+    .get("/providers/:id", providerProbeValidator, async (context) => {
+      const query = context.req.valid("query");
       const providers = await state.providerSummaries({
         filter: context.req.param("id"),
-        probe: context.req.query("probe") === "true",
+        probe: query.probe === "true",
       });
       const provider = providers[0];
       if (provider === undefined) {

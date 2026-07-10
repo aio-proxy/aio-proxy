@@ -1,18 +1,20 @@
 import { m } from "@aio-proxy/i18n";
 import type { AnyFieldApi } from "@tanstack/react-form";
-import { Link } from "@tanstack/react-router";
 import React from "react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { TagsInput } from "@/components/ui/tags-input";
 import { Textarea } from "@/components/ui/textarea";
+import type { ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
+import { ProviderAliasFields } from "./provider-alias-fields";
+import { ProviderCommonFields } from "./provider-common-fields";
 
 type Props = {
   form: ReturnType<typeof useProviderForm>;
-  mode: "create" | "edit";
+  mode: ProviderFormMode;
   providerId?: string | undefined;
 };
 
@@ -44,71 +46,10 @@ const OptionsTextarea: React.FC<{ field: AnyFieldApi }> = ({ field }) => {
   );
 };
 
-export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode, providerId }) => {
+export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode }) => {
   return (
     <div className="space-y-4">
-      <div data-testid="provider-form-field-id">
-        <form.Field name="id">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_id"]()}</Label>
-              <Input
-                id={field.name}
-                value={field.state.value ?? ""}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder={m["dashboard.providers.form.placeholder_id"]()}
-                disabled={mode === "edit"}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
-      <div data-testid="provider-form-field-name">
-        <form.Field name="name">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_name"]()}</Label>
-              <Input
-                id={field.name}
-                value={field.state.value ?? ""}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder={m["dashboard.providers.form.placeholder_name"]()}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
-      <div data-testid="provider-form-field-enabled">
-        <form.Field name="enabled">
-          {(field) => (
-            <Field>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id={field.name}
-                  checked={field.state.value ?? true}
-                  onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-                />
-                <Label htmlFor={field.name}>{m["dashboard.providers.form.label_enabled"]()}</Label>
-              </div>
-            </Field>
-          )}
-        </form.Field>
-      </div>
-      <div data-testid="provider-form-field-weight">
-        <form.Field name="weight">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_weight"]()}</Label>
-              <Input
-                id={field.name}
-                type="number"
-                value={field.state.value ?? ""}
-                onChange={(e) => field.handleChange(e.target.value === "" ? undefined : Number(e.target.value))}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
+      <ProviderCommonFields form={form} mode={mode} />
       <div data-testid="provider-form-field-packageName">
         <form.Field name="packageName">
           {(field) => (
@@ -132,7 +73,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode, providerI
           {(field) => (
             <Field>
               <div className="flex items-center gap-2">
-                <Checkbox
+                <Switch
                   id={field.name}
                   checked={field.state.value ?? false}
                   onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
@@ -160,15 +101,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({ form, mode, providerI
           )}
         </form.Field>
       </div>
-      {mode === "edit" && providerId && (
-        <Link
-          to="/providers/$id/aliases"
-          params={{ id: providerId }}
-          className="text-muted-foreground text-sm underline"
-        >
-          {m["dashboard.providers.actions.edit_aliases"]()}
-        </Link>
-      )}
+      <ProviderAliasFields form={form} mode={mode} />
     </div>
   );
 };
