@@ -1,3 +1,0 @@
-32:  '/providers': typeof ProvidersIndexRoute
-43:  to: '/' | '/providers'
-63:      path: '/providers'
