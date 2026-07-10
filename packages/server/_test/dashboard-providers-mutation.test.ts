@@ -456,4 +456,20 @@ describe("dashboard provider CRUD", () => {
     expect(updated.status).toBe(404);
     expect(onDisk().providers["race-update"]).toBeUndefined();
   });
+
+  test("29. POST ai-sdk provider with a blank packageName returns 400 without writing it", async () => {
+    // Given
+    const id = "blank-package";
+
+    // When
+    const response = await req("POST", "/providers", {
+      kind: "ai-sdk",
+      id,
+      packageName: "   ",
+    });
+
+    // Then
+    expect(response.status).toBe(400);
+    expect(onDisk().providers[id]).toBeUndefined();
+  });
 });

@@ -155,6 +155,20 @@ describe("ConfigSchema", () => {
     ]);
   });
 
+  test("Given ai-sdk config with a blank packageName When parsed Then it is rejected", () => {
+    // Given
+    const config = providers({ blank: { kind: "ai-sdk", packageName: "   " } });
+
+    // When
+    const result = ConfigSchema.safeParse(config);
+
+    // Then
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["providers", "blank", "packageName"]);
+    }
+  });
+
   test("accepts mixed provider config", () => {
     const input = {
       openai: apiProvider,
@@ -555,6 +569,20 @@ describe("ConfigSchema", () => {
 
       expect(result.success).toBe(true);
     });
+  });
+
+  test("Given ai-sdk mutation with a blank packageName When parsed Then it is rejected", () => {
+    // Given
+    const body = { kind: "ai-sdk", id: "blank-package", packageName: "   " };
+
+    // When
+    const result = ProviderMutationBodySchema.safeParse(body);
+
+    // Then
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["packageName"]);
+    }
   });
 
   test("rejects object model entries now that aliases are separate", () => {

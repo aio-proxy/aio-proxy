@@ -38,6 +38,8 @@ const modelsField = {
   models: z.array(ModelIdSchema).optional().describe("Upstream model ids available through this provider."),
 } as const;
 
+const AiSdkPackageNameSchema = z.string().trim().min(1, "AI SDK package name cannot be blank");
+
 export const ApiProviderSchema = z.object({
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
   ...SharedProviderSchemaBase,
@@ -57,10 +59,9 @@ export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
   ...SharedProviderSchemaBase,
   ...modelsField,
-  packageName: z
-    .string()
-    .default("@ai-sdk/openai-compatible")
-    .describe("npm package name that exports the AI SDK provider factory."),
+  packageName: AiSdkPackageNameSchema.default("@ai-sdk/openai-compatible").describe(
+    "npm package name that exports the AI SDK provider factory.",
+  ),
   options: z
     .record(z.string(), z.unknown())
     .optional()
@@ -92,7 +93,7 @@ export const AiSdkProviderMutationBodySchema = z.object({
   name: z.string().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
-  packageName: z.string().optional(),
+  packageName: AiSdkPackageNameSchema.optional(),
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
