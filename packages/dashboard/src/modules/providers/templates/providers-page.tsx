@@ -6,6 +6,7 @@ import { flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
 import type React from "react";
 import { useRef } from "react";
+import { DataTablePagination } from "@/components/data-table-pagination";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,34 +99,7 @@ export const ProvidersPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-muted-foreground text-sm">
-              {m["dashboard.providers.table.pagination_summary"]({
-                page: table.getState().pagination.pageIndex + 1,
-                pages: table.getPageCount(),
-              })}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!table.getCanPreviousPage()}
-                onClick={() => table.previousPage()}
-              >
-                {m["dashboard.providers.table.pagination_previous"]()}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!table.getCanNextPage()}
-                onClick={() => table.nextPage()}
-              >
-                {m["dashboard.providers.table.pagination_next"]()}
-              </Button>
-            </div>
-          </div>
+          <DataTablePagination table={table} />
         </div>
       )}
       <DeleteProviderDialog ref={deleteDialogRef} />
