@@ -32,8 +32,10 @@ export const providerOptionsAreValid = (
   phase: UseProviderOptionsSchemaResult["phase"],
   schema: UseProviderOptionsSchemaResult["schema"],
   schemaResolution: UseProviderOptionsSchemaResult["schemaResolution"],
+  value?: JsonValue,
 ) =>
   rootValid &&
+  !(value === undefined && Array.isArray(schema?.required) && schema.required.length > 0) &&
   validation.valid &&
   Object.is(validation.schema, schema) &&
   (phase === "ready" || phase === "schema_unavailable" || phase === "install_error") &&
@@ -44,6 +46,9 @@ export const canConfirmProviderInstall = (
   phase: UseProviderOptionsSchemaResult["phase"],
   currentPackage: string | null,
 ) => dialogPackage !== null && phase === "install_required" && currentPackage === dialogPackage;
+
+export const canRequestProviderInstall = (phase: UseProviderOptionsSchemaResult["phase"]) =>
+  phase === "install_required" || phase === "install_deferred" || phase === "install_error";
 
 type Props = {
   readonly field: AnyFieldApi;
@@ -61,15 +66,18 @@ const initialValidation: JsonEditorValidation = {
 
 export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidityChange }) => {
   const [editorValue, setEditorValue] = useState<JsonValue | undefined>(field.state.value);
-  const [rootValid, setRootValid] = useState(true);
   const [validation, setValidation] = useState(initialValidation);
   const [installDialogPackage, setInstallDialogPackage] = useState<string | null>(null);
+  const rootValid = isProviderOptionsObject(editorValue);
+  const requiredRootMissing =
+    editorValue === undefined && Array.isArray(schemaState.schema?.required) && schemaState.schema.required.length > 0;
   const valid = providerOptionsAreValid(
     rootValid,
     validation,
     schemaState.phase,
     schemaState.schema,
     schemaState.schemaResolution,
+    editorValue,
   );
   const lastValidity = useRef(valid);
 
@@ -108,7 +116,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
     ? m["dashboard.providers.form.options_json_error"]({})
     : !rootValid
       ? m["dashboard.providers.form.options_object_error"]()
-      : hasSchemaError
+      : hasSchemaError || requiredRootMissing
         ? m["dashboard.providers.form.options_schema_error"]()
         : schemaState.schemaResolution === "error"
           ? m["dashboard.providers.form.options_schema_load_error"]()
@@ -124,19 +132,28 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
         id={field.name}
         value={editorValue}
         schema={schemaState.schema}
-        externalInvalid={!rootValid || schemaState.schemaResolution === "error"}
+        externalInvalid={!rootValid || requiredRootMissing || schemaState.schemaResolution === "error"}
         errorDescriptionId={error === null ? undefined : errorId}
         onValueChange={(value) => {
           setEditorValue(value);
           const nextRootValid = isProviderOptionsObject(value);
-          setRootValid(nextRootValid);
           if (nextRootValid) field.handleChange(value);
         }}
         onValidationChange={setValidation}
       />
       {helper !== null && <FieldDescription>{helper}</FieldDescription>}
-      {schemaState.phase === "install_required" && (
-        <Button type="button" variant="outline" onClick={() => setInstallDialogPackage(installRequiredPackage)}>
+      {canRequestProviderInstall(schemaState.phase) && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            if (schemaState.phase === "install_required") {
+              setInstallDialogPackage(installRequiredPackage);
+            } else {
+              schemaState.requestInstall();
+            }
+          }}
+        >
           {m["dashboard.providers.form.options_install_package"]()}
         </Button>
       )}

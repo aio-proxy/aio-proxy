@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { commitProviderPackageOnce } from "../src/modules/providers/components/provider-form-fields-ai-sdk";
 import {
   canConfirmProviderInstall,
+  canRequestProviderInstall,
   isProviderOptionsObject,
   providerOptionsAreValid,
 } from "../src/modules/providers/components/provider-options-editor";
@@ -115,7 +116,9 @@ describe("provider options editor", () => {
     expect(providerOptionsAreValid(true, schemaError, loaded.phase, loaded.schema, loaded.schemaResolution)).toBe(
       false,
     );
-    expect(providerOptionsAreValid(true, schemaValid, loaded.phase, loaded.schema, loaded.schemaResolution)).toBe(true);
+    expect(providerOptionsAreValid(true, schemaValid, loaded.phase, loaded.schema, loaded.schemaResolution, {})).toBe(
+      true,
+    );
 
     const loadedBeforeFailure = providerOptionsSchemaTransition(installing, {
       type: "schema_loaded",
@@ -195,6 +198,25 @@ describe("provider options editor", () => {
     expect(providerOptionsAreValid(true, currentValidation, "ready", schema, "ready")).toBe(true);
   });
 
+  test("blank options are invalid when the loaded schema requires root fields", () => {
+    const schema = { type: "object", required: ["name", "baseURL"] };
+    const optionalSchema = { type: "object", required: [] };
+    const validation = { valid: true, syntaxValid: true, pending: false, markers: [], schema };
+
+    expect(providerOptionsAreValid(true, validation, "ready", schema, "ready", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validation, "ready", schema, "ready", {})).toBe(true);
+    expect(
+      providerOptionsAreValid(
+        true,
+        { ...validation, schema: optionalSchema },
+        "ready",
+        optionalSchema,
+        "ready",
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
   test("only confirms the install-required package currently bound to the dialog", () => {
     expect(canConfirmProviderInstall("community-provider", "install_required", "community-provider")).toBe(true);
     expect(canConfirmProviderInstall("old-provider", "install_required", "new-provider")).toBe(false);
@@ -259,6 +281,18 @@ describe("provider options editor", () => {
         status: { trusted: true, state: "missing", schemaAvailable: true },
       }),
     ).toMatchObject({ phase: "installing", effect: { type: "install", confirmed: false } });
+  });
+
+  test("deferred and failed installs expose an explicit retry action", async () => {
+    const optionsEditorSource = await Bun.file(
+      `${import.meta.dir}/../src/modules/providers/components/provider-options-editor.tsx`,
+    ).text();
+
+    expect(canRequestProviderInstall("install_required")).toBe(true);
+    expect(canRequestProviderInstall("install_deferred")).toBe(true);
+    expect(canRequestProviderInstall("install_error")).toBe(true);
+    expect(canRequestProviderInstall("installing")).toBe(false);
+    expect(optionsEditorSource).toContain("schemaState.requestInstall()");
   });
 });
 

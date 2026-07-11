@@ -239,6 +239,7 @@ export type UseProviderOptionsSchemaResult = {
   readonly packageName: string | null;
   readonly changePackage: (packageName: string) => void;
   readonly commitPackage: (packageName: string, allowAutomaticInstall?: boolean) => void;
+  readonly requestInstall: () => void;
   readonly confirmInstall: () => void;
   readonly errorCode?: string;
 };
@@ -359,6 +360,11 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   const commitPackage = useCallback((nextPackageName: string, allowAutomaticInstall = true) => {
     dispatch({ type: "package_committed", packageName: nextPackageName, allowAutomaticInstall });
   }, []);
+  const requestInstall = useCallback(() => {
+    if (packageName !== null) {
+      dispatch({ type: "package_committed", packageName, allowAutomaticInstall: true });
+    }
+  }, [packageName]);
   const confirmInstall = useCallback(() => dispatch({ type: "install_confirmed" }), []);
 
   return {
@@ -368,6 +374,7 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
     packageName,
     changePackage,
     commitPackage,
+    requestInstall,
     confirmInstall,
     ...(state.schema === undefined ? {} : { schema: state.schema }),
     ...(state.errorCode === undefined ? {} : { errorCode: state.errorCode }),
