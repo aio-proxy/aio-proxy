@@ -17,8 +17,8 @@ import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
 import { preflightStream, resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
+import { isInboundAbort, providerErrorMessage, terminalCompletion } from "../route-observation";
 import type { ProviderRouteSource } from "../runtime";
-import type { UsageCompletion } from "../usage-capture";
 
 const routePrefix = "/v1beta/models/";
 const generateSuffix = ":generateContent";
@@ -249,16 +249,6 @@ function durationMs(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
-function isInboundAbort(error: unknown, signal: AbortSignal): boolean {
-  return signal.aborted && error instanceof Error && error.name === "AbortError";
-}
-
-function terminalCompletion(completion: Promise<UsageCompletion>, signal: AbortSignal): Promise<UsageCompletion> {
-  return completion.then((value) =>
-    value.outcome === "cancelled" && !signal.aborted ? { outcome: "failure" } : value,
-  );
-}
-
 async function parseRequest(
   raw: Request,
   model: string,
@@ -404,9 +394,5 @@ function geminiProviderError(error: unknown): Response {
     return geminiError(503, "UNAVAILABLE", missing.message);
   }
 
-  if (error instanceof Error) {
-    return geminiError(500, "UNAVAILABLE", error.message);
-  }
-
-  throw error;
+  return geminiError(500, "UNAVAILABLE", providerErrorMessage(error));
 }

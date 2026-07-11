@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AiSdkProviderInstance, type ApiProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
+import {
+  AiSdkProviderError,
+  type AiSdkProviderInstance,
+  type ApiProviderInstance,
+  createAiSdkProvider,
+} from "@aio-proxy/core";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -32,10 +37,16 @@ function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<T
   });
 }
 
-function errorStream(error: Error): ReadableStream<TextStreamPart<ToolSet>> {
+function errorStream(
+  error: unknown,
+  beforeError: readonly TextStreamPart<ToolSet>[] = [],
+): ReadableStream<TextStreamPart<ToolSet>> {
+  let index = 0;
   return new ReadableStream({
-    start(controller) {
-      controller.error(error);
+    pull(controller) {
+      const part = beforeError[index++];
+      if (part === undefined) controller.error(error);
+      else controller.enqueue(part);
     },
   });
 }
@@ -738,6 +749,45 @@ describe("POST /v1/chat/completions", () => {
         message: "client closed request",
         type: "invalid_request_error",
       },
+    });
+  });
+
+  test.each([
+    false,
+    true,
+  ])("Given an aborted inbound signal and wrapped AbortError When stream is %s Then request is cancelled", async (stream) => {
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
+      invoke: () =>
+        errorStream(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")), [
+          { type: "text-delta", id: "text-1", text: "partial" },
+        ]),
+    } satisfies AiSdkProviderInstance;
+    const dbHome = tempHome();
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const abort = new AbortController();
+    abort.abort();
+
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({ ...chatRequest, stream }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: abort.signal,
+    });
+    await response.text().catch(() => undefined);
+
+    expect(response.status).toBe(stream ? 200 : 499);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          outcome: "cancelled",
+          attempts: [expect.objectContaining({ outcome: "cancelled" })],
+        }),
+      ],
+      usages: [],
     });
   });
 

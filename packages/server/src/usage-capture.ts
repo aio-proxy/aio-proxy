@@ -6,6 +6,7 @@ import {
 } from "@aio-proxy/core";
 import type { ProviderProtocol, UsageRow } from "@aio-proxy/types";
 import { extractPassthroughUsage } from "./passthrough-usage";
+import { isAbortError } from "./route-observation";
 
 type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: "finish" }>;
 
@@ -196,8 +197,4 @@ function deferred<T>() {
       }
     },
   };
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
 }

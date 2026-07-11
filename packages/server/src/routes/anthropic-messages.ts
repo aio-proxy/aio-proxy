@@ -11,8 +11,8 @@ import { Hono } from "hono";
 import { ZodError } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
 import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
+import { isInboundAbort, providerErrorMessage, terminalCompletion } from "../route-observation";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
-import type { UsageCompletion } from "../usage-capture";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
 
@@ -229,16 +229,6 @@ function durationMs(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
-function isInboundAbort(error: unknown, signal: AbortSignal): boolean {
-  return signal.aborted && error instanceof Error && error.name === "AbortError";
-}
-
-function terminalCompletion(completion: Promise<UsageCompletion>, signal: AbortSignal): Promise<UsageCompletion> {
-  return completion.then((value) =>
-    value.outcome === "cancelled" && !signal.aborted ? { outcome: "failure" } : value,
-  );
-}
-
 async function parseRequest(raw: Request): Promise<ReturnType<typeof parseAnthropicMessages> | Response> {
   try {
     return parseAnthropicMessages(await raw.clone().json());
@@ -336,11 +326,7 @@ function anthropicProviderError(error: unknown): Response {
     return anthropicError(503, "invalid_request_error", missing.message);
   }
 
-  if (error instanceof Error) {
-    return anthropicError(500, "invalid_request_error", error.message);
-  }
-
-  throw error;
+  return anthropicError(500, "invalid_request_error", providerErrorMessage(error));
 }
 
 function assertNever(value: never): never {

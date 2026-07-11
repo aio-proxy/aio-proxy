@@ -2,8 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
-import { createAiSdkProvider } from "@aio-proxy/core";
+import {
+  AiSdkProviderError,
+  type AiSdkProviderInstance,
+  type ApiProviderInstance,
+  createAiSdkProvider,
+} from "@aio-proxy/core";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -48,6 +52,10 @@ function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<T
       controller.close();
     },
   });
+}
+
+class AbortStreamError extends Error {
+  override readonly name = "AbortError";
 }
 
 describe("POST /v1/messages", () => {
@@ -167,6 +175,88 @@ describe("POST /v1/messages", () => {
     expect(await recorded(dbHome)).toEqual({
       requests: [
         expect.objectContaining({ outcome: "failure", attempts: [expect.objectContaining({ outcome: "failure" })] }),
+      ],
+      usages: [],
+    });
+  });
+
+  test.each([
+    false,
+    true,
+  ])("Given an aborted inbound signal and wrapped AbortError When Anthropic stream is %s Then request is cancelled", async (stream) => {
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke: () => {
+        let sent = false;
+        return new ReadableStream<TextStreamPart<ToolSet>>({
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+            } else {
+              controller.error(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")));
+            }
+          },
+        });
+      },
+    } satisfies AiSdkProviderInstance;
+    const dbHome = tempHome();
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const abort = new AbortController();
+    abort.abort();
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({ ...messagesRequest, stream }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: abort.signal,
+    });
+    await response.text().catch(() => undefined);
+
+    expect(response.status).toBe(stream ? 200 : 500);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          outcome: "cancelled",
+          attempts: [expect.objectContaining({ outcome: "cancelled" })],
+        }),
+      ],
+      usages: [],
+    });
+  });
+
+  test.each([
+    "provider rejected",
+    null,
+    { message: "provider rejected" },
+  ])("Given final provider rejects %p When non-stream message is posted Then one failed request is recorded", async (reason) => {
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke: () => new ReadableStream({ pull: (controller) => controller.error(reason) }),
+    } satisfies AiSdkProviderInstance;
+    const dbHome = tempHome();
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({ ...messagesRequest, stream: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(500);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          finalProviderId: "mock-ai",
+          outcome: "failure",
+          attempts: [expect.objectContaining({ index: 0, providerId: "mock-ai", outcome: "failure" })],
+        }),
       ],
       usages: [],
     });

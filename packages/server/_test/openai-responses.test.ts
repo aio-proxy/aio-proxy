@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
+import { AiSdkProviderError, type AiSdkProviderInstance, type ApiProviderInstance } from "@aio-proxy/core";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
@@ -56,6 +56,10 @@ function aiSdkProvider(invoke: AiSdkProviderInstance["invoke"]): AiSdkProviderIn
     alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
     invoke,
   };
+}
+
+class AbortStreamError extends Error {
+  override readonly name = "AbortError";
 }
 
 function unsupportedEnvelope(feature: string) {
@@ -206,6 +210,48 @@ describe("OpenAI Responses routes", () => {
     expect(await recorded(dbHome)).toEqual({
       requests: [
         expect.objectContaining({ outcome: "failure", attempts: [expect.objectContaining({ outcome: "failure" })] }),
+      ],
+      usages: [],
+    });
+  });
+
+  test.each([
+    false,
+    true,
+  ])("Given an aborted inbound signal and wrapped AbortError When Responses stream is %s Then request is cancelled", async (stream) => {
+    const dbHome = tempHome();
+    const provider = aiSdkProvider(() => {
+      let sent = false;
+      return new ReadableStream<TextStreamPart<ToolSet>>({
+        pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+          } else {
+            controller.error(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")));
+          }
+        },
+      });
+    });
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const abort = new AbortController();
+    abort.abort();
+
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({ ...responsesRequest, stream }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: abort.signal,
+    });
+    await response.text().catch(() => undefined);
+
+    expect(response.status).toBe(stream ? 200 : 499);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          outcome: "cancelled",
+          attempts: [expect.objectContaining({ outcome: "cancelled" })],
+        }),
       ],
       usages: [],
     });
