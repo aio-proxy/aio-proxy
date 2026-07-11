@@ -8,15 +8,17 @@ import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from "./themes";
 
 type MonacoEditorProps = React.ComponentProps<typeof Editor>;
 
-interface CodeEditorProps extends Omit<MonacoEditorProps, "beforeMount" | "loading" | "theme"> {}
+interface CodeEditorProps extends Omit<MonacoEditorProps, "beforeMount" | "loading" | "theme"> {
+  readonly invalid?: boolean;
+}
 
 type MonacoOptions = NonNullable<CodeEditorProps["options"]>;
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ className, options, ...rest }) => {
+export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, options, ...rest }) => {
   const { resolvedTheme } = useTheme();
 
   return (
-    <div className={cn(styles["code-editor"], className)}>
+    <div aria-invalid={invalid || undefined} className={cn(styles["code-editor"], className)}>
       <Editor
         {...rest}
         loading={<Spinner />}
