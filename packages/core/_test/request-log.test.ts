@@ -2,8 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequestLogStore, openDb, usage } from "@aio-proxy/core/db";
+import { createRequestLogStore, openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { ProviderKind } from "@aio-proxy/types";
+import { eq } from "drizzle-orm";
 
 const homes: string[] = [];
 const now = new Date("2026-07-11T08:00:00.000Z");
@@ -123,8 +124,8 @@ describe("request log store", () => {
       expect(overview.buckets).toHaveLength(24);
       expect(overview.series.map(({ key }) => key)).toEqual(["openai/gpt-5", "__failed__", "__cancelled__"]);
       expect(overview.series.map(({ kind }) => kind)).toEqual(["dimension", "failed", "cancelled"]);
-      expect(overview.buckets.at(-1)).toEqual({
-        key: "2026-07-11 16:00",
+      expect(overview.buckets[0]).toEqual({
+        key: "2026-07-10 16:00",
         values: { "openai/gpt-5": 0, __failed__: 0, __cancelled__: 0 },
       });
 
@@ -136,6 +137,49 @@ describe("request log store", () => {
         modelId: "openai/gpt-5",
         createdAt: rows[0].completedAt,
       });
+      expect(
+        handle.db.select().from(requestLog).where(eq(requestLog.requestId, rows[0].requestId)).get()?.attempts,
+      ).toEqual(rows[0].attempts);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("rejects usage for non-success outcomes without persisting either row", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const store = createRequestLogStore(handle.db);
+      expect(() =>
+        store.insertFinal({
+          ...rows[1],
+          usage: { providerId: "provider", modelId: "model" },
+        }),
+      ).toThrow("Only successful requests can include usage");
+      expect(handle.sqlite.query("SELECT COUNT(*) AS count FROM request_log").get()).toEqual({ count: 0 });
+      expect(handle.sqlite.query("SELECT COUNT(*) AS count FROM usage").get()).toEqual({ count: 0 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("rejects successful usage whose provider or model differs from the terminal route", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const store = createRequestLogStore(handle.db);
+      expect(() =>
+        store.insertFinal({
+          ...rows[0],
+          usage: { providerId: "different-provider", modelId: rows[0].finalModelId },
+        }),
+      ).toThrow("Usage provider and model must match the final route");
+      expect(() =>
+        store.insertFinal({
+          ...rows[0],
+          usage: { providerId: rows[0].finalProviderId, modelId: "different-model" },
+        }),
+      ).toThrow("Usage provider and model must match the final route");
+      expect(handle.sqlite.query("SELECT COUNT(*) AS count FROM request_log").get()).toEqual({ count: 0 });
+      expect(handle.sqlite.query("SELECT COUNT(*) AS count FROM usage").get()).toEqual({ count: 0 });
     } finally {
       handle.close();
     }
@@ -214,6 +258,57 @@ describe("request log store", () => {
       ]);
       expect(overview.summary.averageRpm).toBe(3 / 9600);
       expect(overview.summary.averageTpm).toBe(150 / 9600);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("anchors rolling hourly buckets at a non-hour range start without losing boundary rows", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const store = createRequestLogStore(handle.db);
+      const rollingNow = new Date("2026-07-11T08:30:00.000Z");
+      const rollingStart = new Date("2026-07-10T08:30:00.000Z");
+      store.insertFinal({
+        requestId: "rolling-early",
+        inboundProtocol: "openai-compatible",
+        requestedModelId: "mini",
+        outcome: "failure",
+        attempts: [],
+        startedAt: new Date(rollingStart.getTime() + 14 * 60_000),
+        completedAt: new Date(rollingStart.getTime() + 15 * 60_000),
+        durationMs: 60_000,
+      });
+      store.insertFinal({
+        requestId: "rolling-end",
+        inboundProtocol: "openai-compatible",
+        requestedModelId: "mini",
+        outcome: "success",
+        finalProviderId: "openrouter",
+        finalModelId: "openai/gpt-5",
+        attempts: [],
+        startedAt: new Date(rollingNow.getTime() - 1_000),
+        completedAt: rollingNow,
+        durationMs: 1_000,
+        usage: {
+          providerId: "openrouter",
+          modelId: "openai/gpt-5",
+          inputTokens: 10,
+          outputTokens: 5,
+        },
+      });
+
+      const requests = store.overview({ range: "24h", metric: "requests", groupBy: "model", now: rollingNow });
+      const tokens = store.overview({ range: "24h", metric: "tokens", groupBy: "model", now: rollingNow });
+      expect(requests.buckets).toHaveLength(24);
+      expect(requests.buckets[0]?.key).toBe("2026-07-10 16:30");
+      expect(requests.buckets.at(-1)?.key).toBe("2026-07-11 15:30");
+      expect(requests.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(
+        requests.summary.requestCount,
+      );
+      expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(
+        tokens.summary.totalTokens,
+      );
     } finally {
       handle.close();
     }

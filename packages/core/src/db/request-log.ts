@@ -12,9 +12,17 @@ import { usage } from "./schema/usage";
 
 export type RequestLogInsert = typeof requestLog.$inferInsert;
 
-export type RequestLogFinal = RequestLogInsert & {
-  readonly usage?: UsageRow;
-};
+type RequestLogFinalBase = Omit<RequestLogInsert, "outcome">;
+
+export type RequestLogFinal =
+  | (RequestLogFinalBase & { readonly outcome: "success"; readonly usage?: undefined })
+  | (RequestLogFinalBase & {
+      readonly outcome: "success";
+      readonly finalProviderId: string;
+      readonly finalModelId: string;
+      readonly usage: UsageRow;
+    })
+  | (RequestLogFinalBase & { readonly outcome: "failure" | "cancelled"; readonly usage?: never });
 
 export type UsageOverviewQuery = {
   readonly range: UsageOverviewRange;
@@ -38,6 +46,15 @@ type ChartRow = {
 export function createRequestLogStore(db: BunSQLiteDatabase): RequestLogStore {
   return {
     insertFinal(input) {
+      if (input.usage !== undefined && input.outcome !== "success") {
+        throw new Error("Only successful requests can include usage");
+      }
+      if (
+        input.usage !== undefined &&
+        (input.usage.providerId !== input.finalProviderId || input.usage.modelId !== input.finalModelId)
+      ) {
+        throw new Error("Usage provider and model must match the final route");
+      }
       db.transaction((tx) => {
         const { usage: usageRow, ...terminal } = input;
         tx.insert(requestLog).values(terminal).run();
@@ -97,7 +114,7 @@ export function createRequestLogStore(db: BunSQLiteDatabase): RequestLogStore {
       const pricingCoverage =
         summaryRow.usageRequestCount === 0 ? null : summaryRow.pricedRequestCount / summaryRow.usageRequestCount;
       const totalTokens = summaryRow.inputTokens + summaryRow.outputTokens;
-      const rows = chartRows(db, query.metric, query.groupBy, bucketUnit, rangeFilter);
+      const rows = chartRows(db, query.metric, query.groupBy, bucketUnit, start, rangeFilter);
       const { series, buckets } = buildChart(rows, query.metric, bucketKeys(query.range, start, end));
 
       return {
@@ -153,11 +170,17 @@ function chartRows(
   metric: UsageOverviewMetric,
   groupBy: UsageOverviewGroupBy,
   bucketUnit: "hour" | "day",
+  start: Date,
   rangeFilter: ReturnType<typeof and>,
 ): readonly ChartRow[] {
   const bucket =
     bucketUnit === "hour"
-      ? sql<string>`strftime('%Y-%m-%d %H:00', ${requestLog.completedAt} / 1000, 'unixepoch', 'localtime')`
+      ? sql<string>`strftime(
+          '%Y-%m-%d %H:%M',
+          (${start.getTime()} + min(23, cast((${requestLog.completedAt} - ${start.getTime()}) / 3600000 as integer)) * 3600000) / 1000,
+          'unixepoch',
+          'localtime'
+        )`
       : sql<string>`strftime('%Y-%m-%d', ${requestLog.completedAt} / 1000, 'unixepoch', 'localtime')`;
   const normalDimension =
     groupBy === "model"
@@ -239,12 +262,9 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, keys
 
 function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly string[] {
   if (range === "24h") {
-    const hour = new Date(end);
-    hour.setMinutes(0, 0, 0);
     return Array.from({ length: 24 }, (_, index) => {
-      const value = new Date(hour);
-      value.setHours(value.getHours() - (23 - index));
-      return `${localDate(value)} ${pad(value.getHours())}:00`;
+      const value = new Date(start.getTime() + index * 60 * 60 * 1000);
+      return `${localDate(value)} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
     });
   }
 
