@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/provider-schemas/_test/*.test.ts"
   },

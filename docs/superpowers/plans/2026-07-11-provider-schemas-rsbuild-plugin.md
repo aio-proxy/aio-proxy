@@ -11,12 +11,13 @@ Use the Rslib/Rsbuild transform as the sole provider-schema generation path and 
 - `provider-schemas-plugin.ts` resolves the target and generator module from `api.context.rootPath`.
 - The transform loads `provider-schemas-build.ts` with `importModule()`, tracks all consumed inputs, and returns deterministic generated source without comparing or writing source files.
 - Package exports resolve `dist/index.d.ts` and `dist/index.js`.
+- Provider schemas expose an Rslib watch task; Turbo dev/serve and direct CLI start/binary paths complete the initial provider build before source consumers run.
 - Turbo build inputs include `scripts/**`.
 - No explicit generation command or committed generated schema artifact remains.
 
 ## Implementation
 
-1. Update focused tests for the placeholder module, non-default root path, transform return value, dependency tracking, dist exports, and real built output. Remove freshness and stale-source expectations.
+1. Update focused tests for the placeholder module, non-default root path, transform return value, dependency tracking, dist exports, real built output, parser overload/alias behavior, and clean-dist startup. Remove freshness and stale-source expectations.
 2. Confirm RED against the former committed-artifact workflow.
 3. Replace `src/generated.ts` with `src/schema-module.ts`, delete the generation CLI, update the plugin and package exports, and add generator scripts to Turbo inputs.
 4. Update provider-schema design and implementation documentation to describe the dist-only workflow.

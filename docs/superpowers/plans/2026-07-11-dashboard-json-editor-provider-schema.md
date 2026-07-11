@@ -160,7 +160,7 @@ Expected: FAIL because the package modules do not exist.
 
 - [ ] **Step 3: Add the package manifest and build-only dependencies**
 
-Create `package.json` with a source-only runtime export and keep all generator dependencies under `devDependencies`:
+Create `package.json` with dist-only runtime exports, an Rslib watch task, and all generator dependencies under `devDependencies`:
 
 ```json
 {
@@ -168,9 +168,15 @@ Create `package.json` with a source-only runtime export and keep all generator d
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/provider-schemas/_test/*.test.ts"
   },
@@ -264,7 +270,7 @@ export type ParsedProviderFactoryDeclaration = {
 };
 ```
 
-Use `parse(source, { sourceType: "module", plugins: ["typescript"] })`. Locate exported `TSDeclareFunction`/`FunctionDeclaration` or an exported variable with a callable type annotation. Follow only relative import/re-export sources, enforce 64 files, depth 16, and 4 MiB total source, and keep a `Set` of real paths. Use Babel `start`/`end` offsets to preserve declaration text and `leadingComments` to normalize JSDoc. Collect referenced local type/interface declarations recursively; leave bare-package references unresolved for Task 2 policy handling.
+Use `parse(source, { sourceType: "module", plugins: ["typescript"] })`. Locate exported `TSDeclareFunction`/`FunctionDeclaration` or an exported variable with a callable type annotation, preserving the first public overload. Follow only relative import/re-export sources, preserve local type aliases in the self-contained output, enforce 64 files, depth 16, and 4 MiB total source, and keep a `Set` of real paths. Use Babel `start`/`end` offsets to preserve declaration text and `leadingComments` to normalize JSDoc. Collect referenced local type/interface declarations recursively; leave bare-package references unresolved for Task 2 policy handling.
 
 - [ ] **Step 7: Run the focused tests**
 
@@ -524,7 +530,7 @@ type ProviderOptionsSchemaResponse = {
 };
 ```
 
-Bundled detection checks `BUNDLED_PROVIDER_PACKAGES`; installed detection calls `findInstalledNpmPackage`; schema availability is always a pure lookup in `@aio-proxy/provider-schemas`.
+Bundled detection checks `BUNDLED_PROVIDER_PACKAGES` and uses the embedded schema entry for the bundled version; installed detection calls `findInstalledNpmPackage`; schema availability is always a pure lookup in `@aio-proxy/provider-schemas`.
 
 - [ ] **Step 5: Wire GET routes and update install confirmation policy**
 

@@ -42,6 +42,7 @@ describe("dashboard provider package metadata", () => {
       npm: "@ai-sdk/openai-compatible",
       trusted: true,
       state: "bundled",
+      version: "3.0.2",
       schemaAvailable: true,
     });
   });

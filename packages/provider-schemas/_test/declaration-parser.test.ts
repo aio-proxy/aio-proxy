@@ -95,6 +95,30 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.sourceFiles).toEqual([realpathSync(entry)]);
   });
 
+  test("selects the first public factory overload", async () => {
+    const root = fixtureRoot("provider-schema-overload-order");
+    const entry = join(root, "index.d.ts");
+    writeFileSync(
+      entry,
+      `
+        export interface FirstOptions { first: string }
+        export interface SecondOptions { second: number }
+        export declare function createFixture(options: FirstOptions): unknown;
+        export declare function createFixture(options: SecondOptions): unknown;
+      `,
+    );
+
+    const parsed = await parseProviderFactoryDeclaration({
+      packageRoot: root,
+      declarationEntry: entry,
+      factoryName: "createFixture",
+    });
+
+    expect(parsed.parameterType).toBe("FirstOptions");
+    expect(parsed.declarations.join("\n")).toContain("interface FirstOptions");
+    expect(parsed.declarations.join("\n")).not.toContain("interface SecondOptions");
+  });
+
   test("extracts property JSDoc from object type aliases", async () => {
     const root = fixtureRoot("provider-schema-type-alias-docs");
     const entry = join(root, "index.d.ts");

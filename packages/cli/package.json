@@ -7,11 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build:binary": "bun scripts/build-binary.ts",
+    "build:binary": "bun run --filter @aio-proxy/provider-schemas build && bun scripts/build-binary.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test _test",
     "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun src/main.ts serve",
-    "start": "bun src/main.ts serve"
+    "start": "bun run --filter @aio-proxy/provider-schemas build && bun src/main.ts serve"
   },
   "dependencies": {
     "@aio-proxy/oauth": "workspace:*",

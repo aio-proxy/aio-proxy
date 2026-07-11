@@ -214,6 +214,56 @@ describe("provider schema generation", () => {
     );
   });
 
+  test("generates schemas for aliased relative factory parameter imports", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-aliased-parameter-"));
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({ name: "fixture-provider", version: "1.0.0", types: "./index.d.ts" }),
+    );
+    writeFileSync(
+      join(packageRoot, "index.d.ts"),
+      `
+        import type { OriginalOptions as LocalOptions } from "./options";
+        export declare function createFixture(options: LocalOptions): unknown;
+      `,
+    );
+    writeFileSync(join(packageRoot, "options.d.ts"), "export interface OriginalOptions { apiKey: string }\n");
+
+    const generated = await generateProviderSchemaEntry(packageRoot, {
+      packageName: "fixture-provider",
+      factoryName: "createFixture",
+    });
+
+    expect(generated.entry.schema).not.toBeNull();
+    expect(generated.entry.schema?.properties).toMatchObject({ apiKey: { type: "string" } });
+  });
+
+  test("generates schemas for nested aliased relative property imports", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-aliased-property-"));
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({ name: "fixture-provider", version: "1.0.0", types: "./index.d.ts" }),
+    );
+    writeFileSync(
+      join(packageRoot, "index.d.ts"),
+      `
+        import type { OriginalOptions as LocalOptions } from "./options";
+        export interface FixtureOptions { nested?: LocalOptions }
+        export declare function createFixture(options: FixtureOptions): unknown;
+      `,
+    );
+    writeFileSync(join(packageRoot, "options.d.ts"), "export interface OriginalOptions { apiKey: string }\n");
+
+    const generated = await generateProviderSchemaEntry(packageRoot, {
+      packageName: "fixture-provider",
+      factoryName: "createFixture",
+    });
+
+    expect(generated.entry.schema).not.toBeNull();
+    expect(JSON.stringify(generated.entry.schema)).toContain('"nested"');
+    expect(JSON.stringify(generated.entry.schema)).toContain('"apiKey"');
+  });
+
   test("canonicalizes package root dependencies", async () => {
     const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-canonical-root-"));
     const canonicalRoot = realpathSync(packageRoot);

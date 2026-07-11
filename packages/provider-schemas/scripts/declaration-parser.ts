@@ -170,8 +170,8 @@ const parseFile = async (
 
     const localFactory = factoryFromDeclaration(declaration);
     if (localFactory) {
-      localFactories.set(localFactory.name, localFactory.node);
-      if (statement.type === "ExportNamedDeclaration") {
+      if (!localFactories.has(localFactory.name)) localFactories.set(localFactory.name, localFactory.node);
+      if (statement.type === "ExportNamedDeclaration" && !exportedFactories.has(localFactory.name)) {
         exportedFactories.set(localFactory.name, localFactory.node);
       }
     }
@@ -249,7 +249,7 @@ const parseFile = async (
       const exported = nodeName(specifier.exported);
       const local = nodeName(specifier.local);
       const factory = local ? localFactories.get(local) : undefined;
-      if (exported && factory) exportedFactories.set(exported, factory);
+      if (exported && factory && !exportedFactories.has(exported)) exportedFactories.set(exported, factory);
       const imported = local ? imports.get(local) : undefined;
       if (exported && imported) record.reexports.set(exported, imported);
     }
@@ -370,6 +370,14 @@ const resolveDeclaration = (
 
   const imported = file.imports.get(name) ?? file.reexports.get(name);
   if (imported) {
+    if (name !== imported.imported) {
+      collected.set(key, {
+        name,
+        node: { type: "TSTypeAliasDeclaration" },
+        text: `type ${name} = ${imported.imported};`,
+        documentation: undefined,
+      });
+    }
     const target = files.get(imported.target);
     if (target) resolveDeclaration(files, target, imported.imported, seenSymbols, collected);
     return;

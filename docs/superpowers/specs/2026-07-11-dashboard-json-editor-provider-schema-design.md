@@ -81,7 +81,7 @@ Babel stays behind a narrow declaration-parser module that returns package-owned
 
 All resolved files must remain inside the allowlisted package directory. Traversal stops after 64 declaration files, relative import depth is limited to 16, total declaration input is limited to 4 MiB, and cycles terminate through a visited-file set.
 
-Supported factory declaration shapes are exported function declarations and exported variables with callable function type annotations. Overloads use the first public call signature. Unsupported declaration shapes produce a deterministic unavailable entry with a build warning rather than guessed schema.
+Supported factory declaration shapes are exported function declarations and exported variables with callable function type annotations. Overloads use the first public call signature, and relative import aliases are preserved in the self-contained generated type module. Unsupported declaration shapes produce a deterministic unavailable entry with a build warning rather than guessed schema.
 
 ### TypeBox normalization
 
