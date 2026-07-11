@@ -72,9 +72,11 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
                 </SelectTrigger>
                 <SelectContent>
                   {API_PROVIDER_PROTOCOLS.map((protocol) => (
-                    <SelectItem key={protocol.value} value={protocol.value} className="flex items-center gap-2">
-                      <protocol.icon />
-                      {protocol.label}
+                    <SelectItem key={protocol.value} value={protocol.value}>
+                      <span className="flex items-center gap-2">
+                        <protocol.icon />
+                        {protocol.label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
