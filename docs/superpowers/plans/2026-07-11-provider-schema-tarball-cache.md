@@ -127,6 +127,15 @@ const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
 
 Use `encodeURIComponent(packageName)` for the registry metadata URL. Parse SRI as `<algorithm>-<base64>`, hash the downloaded bytes with `node:crypto`, and compare decoded bytes with `timingSafeEqual`. Reject missing/invalid metadata and non-2xx responses with errors containing `packageName`.
 
+Load `tar` through the existing build-only bridge rather than a static runtime import so Rslib module execution does not externalize it incorrectly:
+
+```ts
+import { providerSchemasRequire } from "./provider-schemas-require";
+import type * as Tar from "tar";
+
+const tar = providerSchemasRequire("tar") as typeof Tar;
+```
+
 Write the tarball to a temporary sibling directory and call `tar.x` with `strict: true`, `preservePaths: false`, `strip: 1`, and a filter that permits only the package manifest and declaration files and rejects symbolic/hard links. Validate extracted manifest name/version. Atomically rename the version directory, then atomically replace `latest.json` with:
 
 ```json
