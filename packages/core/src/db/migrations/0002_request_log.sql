@@ -1,5 +1,20 @@
 ALTER TABLE `usage` RENAME COLUMN `trace_id` TO `request_id`;
 
+DELETE FROM `usage`
+WHERE `rowid` IN (
+  SELECT `rowid`
+  FROM (
+    SELECT
+      `rowid`,
+      row_number() OVER (
+        PARTITION BY `request_id`
+        ORDER BY `created_at` DESC, `rowid` DESC
+      ) AS `duplicate_rank`
+    FROM `usage`
+  )
+  WHERE `duplicate_rank` > 1
+);
+
 CREATE UNIQUE INDEX `usage_request_id_unique`
   ON `usage` (`request_id`);
 

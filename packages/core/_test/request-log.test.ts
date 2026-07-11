@@ -1,9 +1,10 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestLogStore, openDb, requestLog, usage } from "@aio-proxy/core/db";
-import { ProviderKind } from "@aio-proxy/types";
+import { DashboardUsageOverviewResponseSchema, ProviderKind } from "@aio-proxy/types";
 import { eq } from "drizzle-orm";
 
 const homes: string[] = [];
@@ -100,6 +101,86 @@ function seedBase() {
 }
 
 describe("request log store", () => {
+  test("returns a schema-valid zero summary for an empty database", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const overview = createRequestLogStore(handle.db).overview({
+        range: "24h",
+        metric: "requests",
+        groupBy: "model",
+        now,
+      });
+
+      expect(overview.summary).toEqual({
+        estimatedCostUsd: 0,
+        pricingCoverage: null,
+        pricedRequestCount: 0,
+        usageRequestCount: 0,
+        requestCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        cancelledCount: 0,
+        successRate: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        averageRpm: 0,
+        averageTpm: 0,
+      });
+      expect(DashboardUsageOverviewResponseSchema.parse(overview)).toEqual(overview);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("migrates duplicate legacy trace IDs deterministically before enforcing uniqueness", () => {
+    const home = tempHome();
+    const sqlite = new Database(join(home, "aio-proxy.db"));
+    sqlite.exec(`
+      CREATE TABLE usage (
+        id text PRIMARY KEY NOT NULL,
+        trace_id text NOT NULL,
+        provider_id text NOT NULL,
+        model_id text NOT NULL,
+        price_model_id text,
+        input_tokens integer,
+        output_tokens integer,
+        total_tokens integer,
+        cache_read_tokens integer,
+        cache_write_tokens integer,
+        reasoning_tokens integer,
+        estimated_cost_usd real,
+        created_at integer NOT NULL
+      );
+      INSERT INTO usage (id, trace_id, provider_id, model_id, created_at) VALUES
+        ('older', 'duplicate-by-time', 'older-provider', 'older-model', 1000),
+        ('newer', 'duplicate-by-time', 'newer-provider', 'newer-model', 2000),
+        ('earlier-rowid', 'duplicate-by-rowid', 'earlier-provider', 'earlier-model', 3000),
+        ('later-rowid', 'duplicate-by-rowid', 'later-provider', 'later-model', 3000);
+      PRAGMA user_version = 2;
+    `);
+    sqlite.close();
+
+    const handle = openDb({ home });
+    try {
+      expect(handle.sqlite.query("SELECT request_id, id FROM usage ORDER BY request_id").all()).toEqual([
+        { request_id: "duplicate-by-rowid", id: "later-rowid" },
+        { request_id: "duplicate-by-time", id: "newer" },
+      ]);
+      expect(handle.sqlite.query("SELECT request_id FROM request_log ORDER BY request_id").all()).toEqual([
+        { request_id: "duplicate-by-rowid" },
+        { request_id: "duplicate-by-time" },
+      ]);
+      expect(
+        handle.sqlite
+          .query("SELECT name, [unique] FROM pragma_index_list('usage') WHERE name = 'usage_request_id_unique'")
+          .get(),
+      ).toEqual({ name: "usage_request_id_unique", unique: 1 });
+    } finally {
+      handle.close();
+    }
+  });
+
   test("stores terminal requests with optional successful usage and aggregates the summary", () => {
     const { handle, store } = seedBase();
     try {

@@ -83,33 +83,31 @@ export function createRequestLogStore(db: BunSQLiteDatabase): RequestLogStore {
         .select({
           estimatedCostUsd: sql<number>`coalesce(sum(${usage.estimatedCostUsd}), 0)`.mapWith(Number),
           pricedRequestCount:
-            sql<number>`sum(case when ${usage.estimatedCostUsd} is not null then 1 else 0 end)`.mapWith(Number),
-          usageRequestCount: sql<number>`sum(case when ${usage.requestId} is not null then 1 else 0 end)`.mapWith(
-            Number,
-          ),
+            sql<number>`coalesce(sum(case when ${usage.estimatedCostUsd} is not null then 1 else 0 end), 0)`.mapWith(
+              Number,
+            ),
+          usageRequestCount:
+            sql<number>`coalesce(sum(case when ${usage.requestId} is not null then 1 else 0 end), 0)`.mapWith(Number),
           requestCount: sql<number>`count(*)`.mapWith(Number),
-          successCount: sql<number>`sum(case when ${requestLog.outcome} = 'success' then 1 else 0 end)`.mapWith(Number),
-          failureCount: sql<number>`sum(case when ${requestLog.outcome} = 'failure' then 1 else 0 end)`.mapWith(Number),
-          cancelledCount: sql<number>`sum(case when ${requestLog.outcome} = 'cancelled' then 1 else 0 end)`.mapWith(
-            Number,
-          ),
+          successCount:
+            sql<number>`coalesce(sum(case when ${requestLog.outcome} = 'success' then 1 else 0 end), 0)`.mapWith(
+              Number,
+            ),
+          failureCount:
+            sql<number>`coalesce(sum(case when ${requestLog.outcome} = 'failure' then 1 else 0 end), 0)`.mapWith(
+              Number,
+            ),
+          cancelledCount:
+            sql<number>`coalesce(sum(case when ${requestLog.outcome} = 'cancelled' then 1 else 0 end), 0)`.mapWith(
+              Number,
+            ),
           inputTokens: sql<number>`coalesce(sum(${usage.inputTokens}), 0)`.mapWith(Number),
           outputTokens: sql<number>`coalesce(sum(${usage.outputTokens}), 0)`.mapWith(Number),
         })
         .from(requestLog)
         .leftJoin(usage, and(eq(usage.requestId, requestLog.requestId), eq(requestLog.outcome, "success")))
         .where(rangeFilter)
-        .get() ?? {
-        estimatedCostUsd: 0,
-        pricedRequestCount: 0,
-        usageRequestCount: 0,
-        requestCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        cancelledCount: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-      };
+        .get()!;
 
       const elapsedMinutes = Math.max(1, (end.getTime() - start.getTime()) / 60_000);
       const successRate =
