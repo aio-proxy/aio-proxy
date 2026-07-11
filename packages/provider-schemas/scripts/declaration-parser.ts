@@ -37,6 +37,7 @@ type Declaration = {
   readonly name: string;
   readonly node: AstNode;
   readonly text: string;
+  readonly documentation: string | undefined;
 };
 
 type Factory = {
@@ -155,7 +156,9 @@ const parseFile = async (
     const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
     if (declaration?.type === "TSInterfaceDeclaration" || declaration?.type === "TSTypeAliasDeclaration") {
       const name = nodeName(declaration.id);
-      if (name) declarations.set(name, { name, node: declaration, text: nodeText(source, declaration) });
+      const comment = (declaration.leadingComments ?? statement.leadingComments)?.at(-1);
+      const documentation = comment ? normalizeJsDoc(comment.value) : undefined;
+      if (name) declarations.set(name, { name, node: declaration, text: nodeText(source, declaration), documentation });
     }
 
     const localFactory = factoryFromDeclaration(declaration);
@@ -321,6 +324,7 @@ const isNodeArray = (value: AstNode | readonly AstNode[] | null | undefined): va
 
 const propertyDocumentation = (declaration: Declaration) => {
   const documentation: Record<string, string> = {};
+  if (declaration.documentation) documentation[declaration.name] = declaration.documentation;
   const container =
     declaration.node.type === "TSTypeAliasDeclaration" ? declaration.node.typeAnnotation : declaration.node.body;
   const members = isNodeArray(container) ? container : (container?.body ?? container?.members);

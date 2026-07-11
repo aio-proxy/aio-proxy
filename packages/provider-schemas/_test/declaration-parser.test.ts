@@ -71,6 +71,7 @@ describe("provider schema declaration inputs", () => {
     writeFileSync(
       entry,
       `
+        /** Settings used by the fixture provider. */
         export interface FixtureSettings {
           /** API key used for authentication. */
           apiKey?: string;
@@ -89,6 +90,7 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.optional).toBe(true);
     expect(parsed.declarations).toHaveLength(1);
     expect(parsed.declarations[0]).toContain("interface FixtureSettings");
+    expect(parsed.documentation.FixtureSettings).toBe("Settings used by the fixture provider.");
     expect(parsed.documentation["FixtureSettings.apiKey"]).toBe("API key used for authentication.");
   });
 

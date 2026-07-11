@@ -4,5 +4,5 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "../src/allowlist.ts", "../src/types.ts"]
 }

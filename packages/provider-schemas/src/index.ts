@@ -1,7 +1,10 @@
 import { PROVIDER_OPTIONS_SCHEMAS } from "./generated";
+import type { ProviderOptionsSchemaEntry } from "./types";
+
+export { PROVIDER_OPTIONS_SCHEMAS } from "./generated";
 
 export const providerOptionsSchema = (packageName: string) => {
-  const entry = PROVIDER_OPTIONS_SCHEMAS[packageName];
+  const entry = (PROVIDER_OPTIONS_SCHEMAS as Readonly<Record<string, ProviderOptionsSchemaEntry>>)[packageName];
   return entry?.schema === null ? undefined : entry;
 };
 
