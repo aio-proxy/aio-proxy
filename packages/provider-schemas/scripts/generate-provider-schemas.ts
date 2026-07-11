@@ -177,3 +177,5 @@ export const writeGeneratedProviderSchemas = async () => {
   });
   if (current !== source) await writeFile(generatedPath, source);
 };
+
+if (import.meta.main) await writeGeneratedProviderSchemas();

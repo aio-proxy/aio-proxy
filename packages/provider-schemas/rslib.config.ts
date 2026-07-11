@@ -1,13 +1,4 @@
-import { defineLibraryConfig, type RsbuildPlugin } from "@aio-proxy/infra/rslib";
-import { writeGeneratedProviderSchemas } from "./scripts/generate-provider-schemas";
+import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
+import { pluginProviderSchemas } from "./scripts/provider-schemas-plugin";
 
-const providerSchemasPlugin = (): RsbuildPlugin => ({
-  name: "aio-proxy-provider-schemas",
-  setup(api) {
-    api.onBeforeBuild(async () => {
-      await writeGeneratedProviderSchemas();
-    });
-  },
-});
-
-export default defineLibraryConfig({ plugins: [providerSchemasPlugin()] });
+export default defineLibraryConfig({ plugins: [pluginProviderSchemas()] });

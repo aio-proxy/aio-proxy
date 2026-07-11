@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
 import { Script } from "typebox";
 import {
   compileTypeBoxModule,
@@ -10,8 +11,15 @@ import {
   generateProviderSchemaEntry,
   renderGeneratedProviderSchemas,
 } from "../scripts/generate-provider-schemas";
+import { generatedProviderSchemasPath, pluginProviderSchemas } from "../scripts/provider-schemas-plugin";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
 import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
+
+type PluginApi = Parameters<RsbuildPlugin["setup"]>[0];
+type TransformRegistration = {
+  readonly descriptor: Parameters<PluginApi["transform"]>[0];
+  readonly handler: Parameters<PluginApi["transform"]>[1];
+};
 
 describe("provider schema generation", () => {
   test("TypeBox exposes the non-exported synthetic root alias", () => {
@@ -268,5 +276,72 @@ describe("provider schema generation", () => {
     const expected = renderGeneratedProviderSchemas((await generateProviderSchemaEntries()).entries);
     const actual = await readFile(join(import.meta.dir, "../src/generated.ts"), "utf8");
     expect(actual).toBe(expected);
+  });
+
+  test("registers a build-only transform for the generated module", () => {
+    const plugin = pluginProviderSchemas();
+    let registration: TransformRegistration | undefined;
+    let beforeBuildRegistrations = 0;
+
+    plugin.setup({
+      transform(descriptor, handler) {
+        registration = { descriptor, handler };
+      },
+      onBeforeBuild() {
+        beforeBuildRegistrations++;
+      },
+      logger: { info() {} },
+    } as unknown as PluginApi);
+
+    expect(plugin.name).toBe("aio-proxy:provider-schemas");
+    expect(plugin.apply).toBe("build");
+    expect(registration?.descriptor.test).toBe(generatedProviderSchemasPath);
+    expect(registration?.descriptor.order).toBe("pre");
+    expect(beforeBuildRegistrations).toBe(0);
+  });
+
+  test("returns current source and tracks every generation dependency", async () => {
+    let registration: TransformRegistration | undefined;
+    const logs: string[] = [];
+    pluginProviderSchemas().setup({
+      transform(descriptor, handler) {
+        registration = { descriptor, handler };
+      },
+      logger: {
+        info(message) {
+          logs.push(String(message));
+        },
+      },
+    } as unknown as PluginApi);
+
+    const source = await readFile(generatedProviderSchemasPath, "utf8");
+    const dependencies: string[] = [];
+    const result = await registration?.handler({
+      code: source,
+      addDependency(dependency) {
+        dependencies.push(dependency);
+      },
+    } as Parameters<TransformRegistration["handler"]>[0]);
+    const generated = await generateProviderSchemaEntries();
+
+    expect(result).toBe(source);
+    expect(dependencies).toEqual(generated.dependencies);
+    expect(dependencies).toContainEqual(expect.stringMatching(/package\.json$/));
+    expect(dependencies).toContainEqual(expect.stringMatching(/\.d\.ts$/));
+    expect(logs).toEqual([`provider schemas: ${Object.keys(generated.entries).length} generated`]);
+  });
+
+  test("rejects stale generated source with the generate command", async () => {
+    let registration: TransformRegistration | undefined;
+    pluginProviderSchemas().setup({
+      transform(descriptor, handler) {
+        registration = { descriptor, handler };
+      },
+      logger: { info() {} },
+    } as unknown as PluginApi);
+
+    expect(
+      registration?.handler({ code: "stale", addDependency() {} } as Parameters<TransformRegistration["handler"]>[0]),
+    ).rejects.toThrow("bun run --filter @aio-proxy/provider-schemas generate");
   });
 });

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "rslib",
+    "generate": "bun scripts/generate-provider-schemas.ts",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/provider-schemas/_test/*.test.ts"
   },
