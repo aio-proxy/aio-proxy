@@ -125,7 +125,7 @@ describe("request log store", () => {
       expect(overview.series.map(({ key }) => key)).toEqual(["openai/gpt-5", "__failed__", "__cancelled__"]);
       expect(overview.series.map(({ kind }) => kind)).toEqual(["dimension", "failed", "cancelled"]);
       expect(overview.buckets[0]).toEqual({
-        key: "2026-07-10 16:00",
+        key: "2026-07-10T08:00:00.000Z",
         values: { "openai/gpt-5": 0, __failed__: 0, __cancelled__: 0 },
       });
 
@@ -248,13 +248,13 @@ describe("request log store", () => {
       expect(overview.rangeEnd).toBe(now.toISOString());
       expect(overview.bucketUnit).toBe("day");
       expect(overview.buckets.map(({ key }) => key)).toEqual([
-        "2026-07-05",
-        "2026-07-06",
-        "2026-07-07",
-        "2026-07-08",
-        "2026-07-09",
-        "2026-07-10",
-        "2026-07-11",
+        "2026-07-04T16:00:00.000Z",
+        "2026-07-05T16:00:00.000Z",
+        "2026-07-06T16:00:00.000Z",
+        "2026-07-07T16:00:00.000Z",
+        "2026-07-08T16:00:00.000Z",
+        "2026-07-09T16:00:00.000Z",
+        "2026-07-10T16:00:00.000Z",
       ]);
       expect(overview.summary.averageRpm).toBe(3 / 9600);
       expect(overview.summary.averageTpm).toBe(150 / 9600);
@@ -301,14 +301,68 @@ describe("request log store", () => {
       const requests = store.overview({ range: "24h", metric: "requests", groupBy: "model", now: rollingNow });
       const tokens = store.overview({ range: "24h", metric: "tokens", groupBy: "model", now: rollingNow });
       expect(requests.buckets).toHaveLength(24);
-      expect(requests.buckets[0]?.key).toBe("2026-07-10 16:30");
-      expect(requests.buckets.at(-1)?.key).toBe("2026-07-11 15:30");
+      expect(requests.buckets[0]?.key).toBe("2026-07-10T08:30:00.000Z");
+      expect(requests.buckets.at(-1)?.key).toBe("2026-07-11T07:30:00.000Z");
       expect(requests.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(
         requests.summary.requestCount,
       );
       expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(
         tokens.summary.totalTokens,
       );
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("keeps rolling hourly buckets unique across a DST rollback", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const store = createRequestLogStore(handle.db);
+      const rollbackNow = new Date("2026-11-01T17:30:00.000Z");
+      for (const [requestId, completedAt] of [
+        ["rollback-edt", new Date("2026-11-01T05:45:00.000Z")],
+        ["rollback-est", new Date("2026-11-01T06:45:00.000Z")],
+      ] as const) {
+        store.insertFinal({
+          requestId,
+          inboundProtocol: "openai-compatible",
+          requestedModelId: "mini",
+          outcome: "success",
+          finalProviderId: "openrouter",
+          finalModelId: "openai/gpt-5",
+          attempts: [],
+          startedAt: new Date(completedAt.getTime() - 1_000),
+          completedAt,
+          durationMs: 1_000,
+          usage: {
+            providerId: "openrouter",
+            modelId: "openai/gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+          },
+        });
+      }
+
+      const requests = store.overview({ range: "24h", metric: "requests", groupBy: "model", now: rollbackNow });
+      const tokens = store.overview({ range: "24h", metric: "tokens", groupBy: "model", now: rollbackNow });
+      const expectedKeys = Array.from({ length: 24 }, (_, index) =>
+        new Date(rollbackNow.getTime() - (24 - index) * 60 * 60 * 1_000).toISOString(),
+      );
+      const requestChartTotal = requests.buckets
+        .flatMap(({ values }) => Object.values(values))
+        .reduce((a, b) => a + b, 0);
+      const tokenChartTotal = tokens.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0);
+
+      expect({
+        uniqueKeyCount: new Set(requests.buckets.map(({ key }) => key)).size,
+        requestChartTotal,
+        tokenChartTotal,
+      }).toEqual({
+        uniqueKeyCount: 24,
+        requestChartTotal: requests.summary.requestCount,
+        tokenChartTotal: tokens.summary.totalTokens,
+      });
+      expect(requests.buckets.map(({ key }) => key)).toEqual(expectedKeys);
     } finally {
       handle.close();
     }

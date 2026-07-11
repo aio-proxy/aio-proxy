@@ -38,9 +38,14 @@ export type RequestLogStore = {
 };
 
 type ChartRow = {
-  readonly bucket: string;
+  readonly bucket: string | number;
   readonly dimension: string;
   readonly value: number;
+};
+
+type ChartBucket = {
+  readonly identity: string | number;
+  readonly key: string;
 };
 
 export function createRequestLogStore(db: BunSQLiteDatabase): RequestLogStore {
@@ -175,12 +180,9 @@ function chartRows(
 ): readonly ChartRow[] {
   const bucket =
     bucketUnit === "hour"
-      ? sql<string>`strftime(
-          '%Y-%m-%d %H:%M',
-          (${start.getTime()} + min(23, cast((${requestLog.completedAt} - ${start.getTime()}) / 3600000 as integer)) * 3600000) / 1000,
-          'unixepoch',
-          'localtime'
-        )`
+      ? sql<number>`min(23, cast((${requestLog.completedAt} - ${start.getTime()}) / 3600000 as integer))`.mapWith(
+          Number,
+        )
       : sql<string>`strftime('%Y-%m-%d', ${requestLog.completedAt} / 1000, 'unixepoch', 'localtime')`;
   const normalDimension =
     groupBy === "model"
@@ -217,7 +219,7 @@ function chartRows(
     .all();
 }
 
-function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, keys: readonly string[]) {
+function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, chartBuckets: readonly ChartBucket[]) {
   const pinned = new Set(["__failed__", "__cancelled__"]);
   const totals = new Map<string, number>();
   for (const row of rows) {
@@ -241,7 +243,7 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, keys
       : []),
   ];
   const retainedSet = new Set(retained);
-  const valuesByBucket = new Map<string, Record<string, number>>();
+  const valuesByBucket = new Map<string | number, Record<string, number>>();
   for (const row of rows) {
     const dimension = pinned.has(row.dimension) || retainedSet.has(row.dimension) ? row.dimension : "__other__";
     const values = valuesByBucket.get(row.bucket) ?? {};
@@ -251,27 +253,27 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, keys
 
   return {
     series,
-    buckets: keys.map((key) => ({
+    buckets: chartBuckets.map(({ identity, key }) => ({
       key,
       values: Object.fromEntries(
-        series.map(({ key: seriesKey }) => [seriesKey, valuesByBucket.get(key)?.[seriesKey] ?? 0]),
+        series.map(({ key: seriesKey }) => [seriesKey, valuesByBucket.get(identity)?.[seriesKey] ?? 0]),
       ),
     })),
   };
 }
 
-function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly string[] {
+function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
   if (range === "24h") {
-    return Array.from({ length: 24 }, (_, index) => {
-      const value = new Date(start.getTime() + index * 60 * 60 * 1000);
-      return `${localDate(value)} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
-    });
+    return Array.from({ length: 24 }, (_, index) => ({
+      identity: index,
+      key: new Date(start.getTime() + index * 60 * 60 * 1000).toISOString(),
+    }));
   }
 
-  const keys: string[] = [];
+  const keys: ChartBucket[] = [];
   const day = new Date(start);
   while (day <= end) {
-    keys.push(localDate(day));
+    keys.push({ identity: localDate(day), key: day.toISOString() });
     day.setDate(day.getDate() + 1);
   }
   return keys;
