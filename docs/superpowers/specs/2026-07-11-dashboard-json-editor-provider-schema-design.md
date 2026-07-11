@@ -62,7 +62,7 @@ These npm packages are development dependencies of `@aio-proxy/provider-schemas`
 
 ### Rslib generation plugin
 
-The package's Rslib configuration registers a custom plugin. In `onBeforeBuild`, the plugin:
+The package's Rslib configuration registers a custom build-only `api.transform` plugin. The transform targets the physical `src/schema-module.ts` placeholder and:
 
 1. resolves each allowlisted package's declaration entrypoint from `exports.types`, `types`, or `typings`;
 2. parses declarations with `@babel/parser` and its TypeScript plugin;
@@ -71,9 +71,9 @@ The package's Rslib configuration registers a custom plugin. In `onBeforeBuild`,
 5. collects referenced `type` and `interface` declarations plus JSDoc;
 6. converts the self-contained type module with TypeBox `Script`;
 7. normalizes the resulting JSON Schema and warnings; and
-8. writes the deterministic generated TypeScript module consumed by the package runtime entrypoint.
+8. returns the deterministic generated TypeScript module to Rspack for emission into `dist`.
 
-The generated source file is committed. This lets workspace source consumers and editors work before a build. A test regenerates the file in memory and compares exact output, so package upgrades or allowlist changes cannot leave stale schemas.
+Generated schema data is not committed and no explicit generation command exists. `src/schema-module.ts` contains only an empty typed record needed as transform input; package consumers resolve the built `dist` entrypoints. The transform registers provider manifests and declaration files as dependencies so builds and watch mode regenerate from the real inputs.
 
 Babel stays behind a narrow declaration-parser module that returns package-owned declaration metadata. Babel AST types do not cross that boundary, allowing a future public Bun AST API to replace Babel without changing schema normalization or runtime consumers.
 
@@ -262,4 +262,3 @@ Trusted missing packages install automatically after commit. Untrusted missing p
 ## Verification
 
 Run provider-schemas, core, server, dashboard, and i18n tests; build provider-schemas and dashboard; run the repository check; and perform the browser QA flow against the real dashboard server. Do not claim completion unless all automated and interaction checks pass.
-

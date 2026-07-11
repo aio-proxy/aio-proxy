@@ -4,7 +4,7 @@
 
 **Goal:** Add a schema-aware Monaco JSON editor to the dashboard provider form and serve build-time-generated option schemas for an explicit provider package allowlist without adding declaration parsers to the standalone binary.
 
-**Architecture:** A new `@aio-proxy/provider-schemas` workspace package uses an Rslib `onBeforeBuild` plugin, Babel TypeScript AST, and TypeBox Script to generate a committed runtime-only schema map for eight provider factories. The server exposes pure package-status/schema lookup routes and retains npm installation as a separate command with an `@ai-sdk/**` trust rule. The dashboard layers a reusable `JsonEditor` over `CodeEditor`, then adapts it to TanStack Form provider options.
+**Architecture:** A new `@aio-proxy/provider-schemas` workspace package uses an Rslib `api.transform` plugin, Babel TypeScript AST, and TypeBox Script to generate a runtime-only schema map for eight provider factories directly into `dist`. The server exposes pure package-status/schema lookup routes and retains npm installation as a separate command with an `@ai-sdk/**` trust rule. The dashboard layers a reusable `JsonEditor` over `CodeEditor`, then adapts it to TanStack Form provider options.
 
 **Tech Stack:** Bun 1.3.14, TypeScript 6, Rslib/Rsbuild, `@babel/parser` 7.28.5, `typebox` 1.3.6, Hono, React 19, Monaco Editor, TanStack Query/Form, Zod, Base UI, i18n.
 
@@ -30,20 +30,22 @@
 
 ### New provider schemas package
 
-- `packages/provider-schemas/package.json` — workspace scripts, source export, build-only dependencies, and eight allowlisted provider devDependencies.
+- `packages/provider-schemas/package.json` — workspace scripts, dist exports, build-only dependencies, and eight allowlisted provider devDependencies.
 - `packages/provider-schemas/tsconfig.json` — runtime source compilation settings.
 - `packages/provider-schemas/scripts/tsconfig.json` — build generator settings outside the runtime source tree.
-- `packages/provider-schemas/rslib.config.ts` — Rslib config plus `onBeforeBuild` generation plugin.
+- `packages/provider-schemas/rslib.config.ts` — Rslib config plus the build-only transform plugin.
 - `packages/provider-schemas/src/types.ts` — project-owned runtime schema entry types.
 - `packages/provider-schemas/src/allowlist.ts` — exact `{ packageName, factoryName }` generation list.
-- `packages/provider-schemas/src/generated.ts` — committed deterministic generated schema map.
+- `packages/provider-schemas/src/schema-module.ts` — empty typed physical module transformed to generated data during builds.
 - `packages/provider-schemas/src/index.ts` — runtime-only lookup API.
 - `packages/provider-schemas/scripts/declaration-entry.ts` — safe package/declaration entrypoint resolution.
 - `packages/provider-schemas/scripts/declaration-parser.ts` — Babel AST extraction, relative declaration traversal, and JSDoc collection.
 - `packages/provider-schemas/scripts/schema-normalizer.ts` — TypeBox result normalization and warning policy.
-- `packages/provider-schemas/scripts/generate-provider-schemas.ts` — allowlist orchestration and deterministic source rendering.
+- `packages/provider-schemas/scripts/provider-schemas-generator.ts` — allowlist orchestration and deterministic source rendering.
+- `packages/provider-schemas/scripts/provider-schemas-build.ts` — build-context package resolution entrypoint loaded by the transform.
+- `packages/provider-schemas/scripts/provider-schemas-plugin.ts` — build-only transform and dependency registration.
 - `packages/provider-schemas/_test/declaration-parser.test.ts` — parser/path/traversal tests.
-- `packages/provider-schemas/_test/schema-generator.test.ts` — conversion, JSDoc, allowlist, freshness, and runtime-bundle tests.
+- `packages/provider-schemas/_test/schema-generator.test.ts` — conversion, JSDoc, allowlist, transform, dist-output, and runtime-bundle tests.
 
 ### Server
 
@@ -85,7 +87,7 @@
 - Create: `packages/provider-schemas/src/types.ts`
 - Create: `packages/provider-schemas/src/allowlist.ts`
 - Create: `packages/provider-schemas/src/index.ts`
-- Create: `packages/provider-schemas/src/generated.ts`
+- Create: `packages/provider-schemas/src/schema-module.ts`
 - Create: `packages/provider-schemas/scripts/declaration-entry.ts`
 - Create: `packages/provider-schemas/scripts/declaration-parser.ts`
 - Create: `packages/provider-schemas/_test/declaration-parser.test.ts`
@@ -231,10 +233,10 @@ export const PROVIDER_SCHEMA_ALLOWLIST = [
 export type ProviderSchemaAllowlistEntry = (typeof PROVIDER_SCHEMA_ALLOWLIST)[number];
 ```
 
-Initialize `generated.ts` with `export const PROVIDER_OPTIONS_SCHEMAS: Readonly<Record<string, ProviderOptionsSchemaEntry>> = {};` so tests compile before Task 2 generates content. Export lookup helpers from `index.ts`:
+Initialize `schema-module.ts` with `export const PROVIDER_OPTIONS_SCHEMAS: Readonly<Record<string, ProviderOptionsSchemaEntry>> = {};` as the physical transform input. Export lookup helpers from `index.ts`:
 
 ```ts
-import { PROVIDER_OPTIONS_SCHEMAS } from "./generated";
+import { PROVIDER_OPTIONS_SCHEMAS } from "./schema-module";
 
 export const providerOptionsSchema = (packageName: string) => {
   const entry = PROVIDER_OPTIONS_SCHEMAS[packageName];
@@ -287,26 +289,27 @@ rtk git commit -m "feat(provider-schemas): parse provider declarations" -m "Co-a
 
 **Files:**
 - Create: `packages/provider-schemas/scripts/schema-normalizer.ts`
-- Create: `packages/provider-schemas/scripts/generate-provider-schemas.ts`
+- Create: `packages/provider-schemas/scripts/provider-schemas-generator.ts`
+- Create: `packages/provider-schemas/scripts/provider-schemas-build.ts`
+- Create: `packages/provider-schemas/scripts/provider-schemas-plugin.ts`
 - Create: `packages/provider-schemas/rslib.config.ts`
 - Create: `packages/provider-schemas/_test/schema-generator.test.ts`
-- Modify: `packages/provider-schemas/src/generated.ts`
+- Modify: `packages/provider-schemas/src/schema-module.ts`
 - Modify: `packages/provider-schemas/src/index.ts`
 
 **Interfaces:**
 - Consumes: Task 1 declaration parser, allowlist, and runtime entry types.
-- Produces: `generateProviderSchemaEntries()`, `renderGeneratedProviderSchemas()`, committed `PROVIDER_OPTIONS_SCHEMAS`, and runtime lookup helpers with no build-tool imports.
+- Produces: `generateProviderSchemaEntries()`, `renderGeneratedProviderSchemas()`, dist-only `PROVIDER_OPTIONS_SCHEMAS`, and runtime lookup helpers with no build-tool imports.
 
-- [ ] **Step 1: Write failing normalization and freshness tests**
+- [ ] **Step 1: Write failing normalization and transform tests**
 
 Cover JSON-compatible conversion policy and the real allowlist:
 
 ```ts
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
-import { generateProviderSchemaEntries, renderGeneratedProviderSchemas } from "../scripts/generate-provider-schemas";
+import { generateProviderSchemaEntries } from "../scripts/provider-schemas-build";
+import { renderGeneratedProviderSchemas } from "../scripts/provider-schemas-generator";
 
 describe("provider schema generation", () => {
   test("drops optional functions but rejects required functions", () => {
@@ -329,12 +332,6 @@ describe("provider schema generation", () => {
     });
     expect(required.schema).toBeNull();
   });
-
-  test("committed generated source is current", async () => {
-    const expected = renderGeneratedProviderSchemas(await generateProviderSchemaEntries());
-    const actual = await readFile(join(import.meta.dir, "../src/generated.ts"), "utf8");
-    expect(actual).toBe(expected);
-  });
 });
 ```
 
@@ -344,7 +341,7 @@ describe("provider schema generation", () => {
 rtk bun test ./packages/provider-schemas/_test/schema-generator.test.ts
 ```
 
-Expected: FAIL because normalizer/generator modules do not exist and `generated.ts` is empty.
+Expected: FAIL because the normalizer/generator modules and transform behavior do not exist yet.
 
 - [ ] **Step 3: Implement TypeBox Script conversion**
 
@@ -385,37 +382,40 @@ export function renderGeneratedProviderSchemas(entries: Readonly<Record<string, 
 
 Sort object keys and warning paths before `JSON.stringify(..., null, 2)` so repeated generation is byte-identical.
 
-- [ ] **Step 5: Add the Rslib `onBeforeBuild` plugin**
+- [ ] **Step 5: Add the Rslib module transform plugin**
 
-Create the package config with runtime source restricted to `src` and generation before compilation:
+Create a build-only plugin that targets the physical schema module and loads the generator through transform context:
 
 ```ts
-import { defineLibraryConfig, type RsbuildPlugin } from "@aio-proxy/infra/rslib";
-import { writeGeneratedProviderSchemas } from "./scripts/generate-provider-schemas";
+import { join } from "node:path";
+import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
 
-const providerSchemasPlugin = (): RsbuildPlugin => ({
-  name: "aio-proxy-provider-schemas",
+export const pluginProviderSchemas = (): RsbuildPlugin => ({
+  name: "aio-proxy:provider-schemas",
+  apply: "build",
   setup(api) {
-    api.onBeforeBuild(async () => {
-      await writeGeneratedProviderSchemas();
-    });
+    api.transform(
+      { test: join(api.context.rootPath, "src/schema-module.ts"), order: "pre" },
+      async ({ addDependency, importModule }) => {
+        const generator = await importModule(join(api.context.rootPath, "scripts/provider-schemas-build.ts"));
+        const generated = await generator.generateProviderSchemaEntries(addDependency);
+        return generator.renderGeneratedProviderSchemas(generated.entries);
+      },
+    );
   },
 });
-
-export default defineLibraryConfig({ plugins: [providerSchemasPlugin()] });
 ```
 
-`writeGeneratedProviderSchemas()` writes only when content changes.
+The transform never writes source and always returns the generated module for compilation into `dist`.
 
-- [ ] **Step 6: Generate the committed source and run package tests**
+- [ ] **Step 6: Build generated dist output and run package tests**
 
 ```bash
 rtk bun run --filter @aio-proxy/provider-schemas build
 rtk bun test ./packages/provider-schemas/_test/*.test.ts
-rtk git diff --exit-code -- packages/provider-schemas/src/generated.ts
 ```
 
-Expected: build succeeds, all eight entries exist, tests pass, and a second generation leaves no diff. Add assertions that `@ai-sdk/openai-compatible` requires `name` and `baseURL`, and JSDoc descriptions appear on known fields.
+Expected: build succeeds, `dist` contains all eight entries, `src/schema-module.ts` remains empty, and tests pass. Add assertions that `@ai-sdk/openai-compatible` requires `name` and `baseURL`, and JSDoc descriptions appear on known fields.
 
 - [ ] **Step 7: Prove runtime output contains no build-only imports**
 

@@ -1,7 +1,7 @@
-import { PROVIDER_OPTIONS_SCHEMAS } from "./generated";
+import { PROVIDER_OPTIONS_SCHEMAS } from "./schema-module";
 import type { ProviderOptionsSchemaEntry } from "./types";
 
-export { PROVIDER_OPTIONS_SCHEMAS } from "./generated";
+export { PROVIDER_OPTIONS_SCHEMAS } from "./schema-module";
 
 export const providerOptionsSchema = (packageName: string) => {
   const entry = (PROVIDER_OPTIONS_SCHEMAS as Readonly<Record<string, ProviderOptionsSchemaEntry>>)[packageName];

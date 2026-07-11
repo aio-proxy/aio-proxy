@@ -5,17 +5,13 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
 import { Script } from "typebox";
+import { generateProviderSchemaEntries } from "../scripts/provider-schemas-build";
 import {
   compileTypeBoxModule,
-  generateProviderSchemaEntries,
   generateProviderSchemaEntry,
   renderGeneratedProviderSchemas,
-} from "../scripts/generate-provider-schemas";
-import {
-  generatedProviderSchemasPath,
-  pluginProviderSchemas,
-  providerSchemasGeneratorPath,
-} from "../scripts/provider-schemas-plugin";
+} from "../scripts/provider-schemas-generator";
+import { pluginProviderSchemas } from "../scripts/provider-schemas-plugin";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
 import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
 
@@ -316,14 +312,24 @@ describe("provider schema generation", () => {
     expect(rendered.indexOf('"path": "Z"')).toBeLessThan(rendered.indexOf('"path": "a"'));
   });
 
-  test("committed generated source is current", async () => {
-    const expected = renderGeneratedProviderSchemas((await generateProviderSchemaEntries()).entries);
-    const actual = await readFile(join(import.meta.dir, "../src/generated.ts"), "utf8");
-    expect(actual).toBe(expected);
+  test("uses dist package exports and an empty physical schema module", async () => {
+    const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
+    const source = await readFile(join(import.meta.dir, "../src/schema-module.ts"), "utf8");
+
+    expect(packageJson.exports).toEqual({
+      ".": {
+        types: "./dist/index.d.ts",
+        default: "./dist/index.js",
+      },
+    });
+    expect(packageJson.scripts).not.toHaveProperty("generate");
+    expect(source).toContain("Readonly<Record<string, ProviderOptionsSchemaEntry>> = {};");
+    expect(source).not.toContain("@ai-sdk/openai-compatible");
   });
 
   test("registers a build-only transform for the generated module", () => {
     const plugin = pluginProviderSchemas();
+    const rootPath = mkdtempSync(join(tmpdir(), "provider-schema-plugin-root-"));
     let registration: TransformRegistration | undefined;
     let beforeBuildRegistrations = 0;
 
@@ -334,17 +340,19 @@ describe("provider schema generation", () => {
       onBeforeBuild() {
         beforeBuildRegistrations++;
       },
+      context: { rootPath },
       logger: { info() {} },
     } as unknown as PluginApi);
 
     expect(plugin.name).toBe("aio-proxy:provider-schemas");
     expect(plugin.apply).toBe("build");
-    expect(registration?.descriptor.test).toBe(generatedProviderSchemasPath);
+    expect(registration?.descriptor.test).toBe(join(rootPath, "src/schema-module.ts"));
     expect(registration?.descriptor.order).toBe("pre");
     expect(beforeBuildRegistrations).toBe(0);
   });
 
-  test("returns current source and tracks every generation dependency", async () => {
+  test("returns generated source and tracks every generation dependency", async () => {
+    const rootPath = mkdtempSync(join(tmpdir(), "provider-schema-plugin-handler-root-"));
     let registration: TransformRegistration | undefined;
     const logs: string[] = [];
     const importedModules: string[] = [];
@@ -353,6 +361,7 @@ describe("provider schema generation", () => {
       transform(descriptor, handler) {
         registration = { descriptor, handler };
       },
+      context: { rootPath },
       logger: {
         info(message) {
           logs.push(String(message));
@@ -360,7 +369,7 @@ describe("provider schema generation", () => {
       },
     } as unknown as PluginApi);
 
-    const source = await readFile(generatedProviderSchemasPath, "utf8");
+    const source = "physical placeholder source";
     const dependencies: string[] = [];
     const result = await registration?.handler({
       code: source,
@@ -379,34 +388,30 @@ describe("provider schema generation", () => {
       },
     } as Parameters<TransformRegistration["handler"]>[0]);
     const generated = await generateProviderSchemaEntries();
+    const expected = renderGeneratedProviderSchemas(generated.entries);
 
-    expect(result).toBe(source);
+    expect(result).toBe(expected);
     expect([...dependencies].sort()).toEqual(generated.dependencies);
     expect(new Set(dependencies).size).toBe(dependencies.length);
     expect(dependencies).toContainEqual(expect.stringMatching(/package\.json$/));
     expect(dependencies).toContainEqual(expect.stringMatching(/\.d\.ts$/));
-    expect(importedModules).toEqual([providerSchemasGeneratorPath]);
+    expect(importedModules).toEqual([join(rootPath, "scripts/provider-schemas-build.ts")]);
     expect(importedGeneratorCalls).toBe(1);
     expect(logs).toEqual([`provider schemas: ${Object.keys(generated.entries).length} generated`]);
   });
 
-  test("rejects stale generated source with the generate command", async () => {
-    let registration: TransformRegistration | undefined;
-    pluginProviderSchemas().setup({
-      transform(descriptor, handler) {
-        registration = { descriptor, handler };
-      },
-      logger: { info() {} },
-    } as unknown as PluginApi);
+  test("builds generated schemas only into dist", async () => {
+    const repositoryRoot = join(import.meta.dir, "../../..");
+    const build = Bun.spawnSync(["bun", "run", "--filter", "@aio-proxy/provider-schemas", "build"], {
+      cwd: repositoryRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
 
-    await expect(
-      registration?.handler({
-        code: "stale",
-        addDependency() {},
-        importModule() {
-          return Promise.resolve({ generateProviderSchemaEntries, renderGeneratedProviderSchemas });
-        },
-      } as Parameters<TransformRegistration["handler"]>[0]),
-    ).rejects.toThrow("bun run --filter @aio-proxy/provider-schemas generate");
+    expect(build.exitCode, `${build.stdout.toString()}\n${build.stderr.toString()}`).toBe(0);
+    const built = await readFile(join(import.meta.dir, "../dist/schema-module.js"), "utf8");
+    const source = await readFile(join(import.meta.dir, "../src/schema-module.ts"), "utf8");
+    expect(built).toContain("@ai-sdk/openai-compatible");
+    expect(source).not.toContain("@ai-sdk/openai-compatible");
   });
 });
