@@ -92,6 +92,77 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.documentation["FixtureSettings.apiKey"]).toBe("API key used for authentication.");
   });
 
+  test("extracts property JSDoc from object type aliases", async () => {
+    const root = fixtureRoot("provider-schema-type-alias-docs");
+    const entry = join(root, "index.d.ts");
+    writeFileSync(
+      entry,
+      `
+        export type FixtureSettings = {
+          /** API key used for authentication. */
+          apiKey?: string;
+        };
+        export declare function createFixture(options: FixtureSettings): unknown;
+      `,
+    );
+
+    const parsed = await parseProviderFactoryDeclaration({
+      packageRoot: root,
+      declarationEntry: entry,
+      factoryName: "createFixture",
+    });
+
+    expect(parsed.documentation["FixtureSettings.apiKey"]).toBe("API key used for authentication.");
+  });
+
+  test("does not collect declaration names found only in property keys, comments, or literals", async () => {
+    const root = fixtureRoot("provider-schema-reference-noise");
+    const entry = join(root, "index.d.ts");
+    writeFileSync(
+      entry,
+      `
+        export interface Foo {}
+        export interface FixtureSettings {
+          Foo?: string;
+          /** Foo is mentioned only in documentation. */
+          label?: "Foo";
+        }
+        export declare function createFixture(options: FixtureSettings): unknown;
+      `,
+    );
+
+    const parsed = await parseProviderFactoryDeclaration({
+      packageRoot: root,
+      declarationEntry: entry,
+      factoryName: "createFixture",
+    });
+
+    expect(parsed.declarations).toHaveLength(1);
+    expect(parsed.declarations[0]).toContain("interface FixtureSettings");
+  });
+
+  test("collects declarations referenced by property value types", async () => {
+    const root = fixtureRoot("provider-schema-type-reference");
+    const entry = join(root, "index.d.ts");
+    writeFileSync(
+      entry,
+      `
+        export interface Foo {}
+        export interface FixtureSettings { value?: Foo; }
+        export declare function createFixture(options: FixtureSettings): unknown;
+      `,
+    );
+
+    const parsed = await parseProviderFactoryDeclaration({
+      packageRoot: root,
+      declarationEntry: entry,
+      factoryName: "createFixture",
+    });
+
+    expect(parsed.declarations).toHaveLength(2);
+    expect(parsed.declarations.join("\n")).toContain("interface Foo");
+  });
+
   test("follows relative re-exports and imports while preserving declaration text", async () => {
     const root = fixtureRoot("provider-schema-reexport");
     const entry = join(root, "index.d.ts");

@@ -25,8 +25,11 @@ type AstNode = {
   readonly specifiers?: readonly AstNode[];
   readonly local?: AstNode | null;
   readonly key?: AstNode | null;
+  readonly left?: AstNode | null;
   readonly imported?: AstNode | null;
   readonly exported?: AstNode | null;
+  readonly expression?: AstNode | null;
+  readonly typeName?: AstNode | null;
   readonly leadingComments?: readonly { readonly value: string }[] | null;
 };
 
@@ -274,7 +277,36 @@ const functionParameter = (node: AstNode) => (node.params ?? node.parameters ?? 
 const unwrapTypeAnnotation = (node: AstNode | null | undefined) =>
   node?.type === "TSTypeAnnotation" ? node.typeAnnotation : node;
 
-const identifiers = (source: string) => source.match(/[A-Za-z_$][\w$]*/g) ?? [];
+const referenceRootName = (node: AstNode | null | undefined): string | undefined => {
+  const name = nodeName(node);
+  if (name) return name;
+  return node?.type === "TSQualifiedName" ? referenceRootName(node.left) : undefined;
+};
+
+const typeReferences = (root: AstNode) => {
+  const references = new Set<string>();
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+
+    const node = value as AstNode;
+    if (typeof node.type !== "string") return;
+    if (node.type === "TSTypeReference") {
+      const name = referenceRootName(node.typeName);
+      if (name) references.add(name);
+    } else if (node.type === "TSExpressionWithTypeArguments") {
+      const name = referenceRootName(node.expression);
+      if (name) references.add(name);
+    }
+
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(root);
+  return references;
+};
 
 const normalizeJsDoc = (value: string) =>
   value
@@ -289,8 +321,9 @@ const isNodeArray = (value: AstNode | readonly AstNode[] | null | undefined): va
 
 const propertyDocumentation = (declaration: Declaration) => {
   const documentation: Record<string, string> = {};
-  const body = declaration.node.body;
-  const members = isNodeArray(body) ? body : body?.body;
+  const container =
+    declaration.node.type === "TSTypeAliasDeclaration" ? declaration.node.typeAnnotation : declaration.node.body;
+  const members = isNodeArray(container) ? container : (container?.body ?? container?.members);
   if (!members || !isNodeArray(members)) return documentation;
   for (const member of members) {
     if (member.type !== "TSPropertySignature") continue;
@@ -318,7 +351,7 @@ const resolveDeclaration = (
   const declaration = file.declarations.get(name);
   if (declaration) {
     collected.set(key, declaration);
-    for (const reference of identifiers(declaration.text)) {
+    for (const reference of typeReferences(declaration.node)) {
       if (reference !== name) resolveDeclaration(files, file, reference, seenSymbols, collected);
     }
     return;
@@ -357,8 +390,9 @@ export const parseProviderFactoryDeclaration = async (
   }
   const parameterType = nodeText(factory.file.source, parameterTypeNode);
   const declarations = new Map<string, Declaration>();
-  for (const reference of identifiers(parameterType)) {
-    resolveDeclaration(state.files, factory.file, reference, new Set(), declarations);
+  const seenSymbols = new Set<string>();
+  for (const reference of typeReferences(parameterTypeNode)) {
+    resolveDeclaration(state.files, factory.file, reference, seenSymbols, declarations);
   }
 
   const documentation: Record<string, string> = {};
