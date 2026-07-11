@@ -1,6 +1,7 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-proxy/core";
+import type { AiSdkProviderInstance, ApiProviderInstance, Router, TextStreamPart, ToolSet } from "@aio-proxy/core";
 import type { AliasConfig, ModelId, OAuthVendor, ProviderKind } from "@aio-proxy/types";
-import type { UsageRecorder } from "./usage-recorder";
+import type { RequestRecorder } from "./request-recorder";
+import type { PassthroughUsageOptions, StreamUsageOptions, UsageCapture } from "./usage-capture";
 
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
@@ -22,5 +23,13 @@ export type ProviderRouteSnapshot = {
 
 export type ProviderRouteSource = {
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
-  readonly usageRecorder: UsageRecorder;
+  readonly requestRecorder: RequestRecorder;
+  readonly usageCapture: UsageCapture;
+  /** @deprecated Removed when protocol routes adopt request sessions. */
+  readonly usageRecorder: {
+    readonly recordStreamUsage: (
+      options: StreamUsageOptions & { readonly traceId: string },
+    ) => ReadableStream<TextStreamPart<ToolSet>>;
+    readonly recordPassthroughUsage: (options: PassthroughUsageOptions & { readonly traceId: string }) => Response;
+  };
 };

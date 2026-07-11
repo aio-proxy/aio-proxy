@@ -56,6 +56,52 @@ describe("passthrough usage extraction", () => {
     });
   });
 
+  test("extracts nested OpenAI Responses SSE usage", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        'event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":8,"total_tokens":15}}}\n\n',
+      ),
+    ).toEqual({ inputTokens: 7, outputTokens: 8, totalTokens: 15 });
+  });
+
+  test("accepts CRLF SSE framing", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAICompatible,
+        'data: {"choices":[]}\r\n\r\ndata: {"usage":{"prompt_tokens":4,"completion_tokens":6,"total_tokens":10}}\r\n\r\n',
+      ),
+    ).toEqual({ inputTokens: 4, outputTokens: 6, totalTokens: 10 });
+  });
+
+  test("ignores empty and unparseable usage", () => {
+    expect(extractPassthroughUsage(ProviderProtocol.OpenAICompatible, JSON.stringify({ usage: {} }))).toBeUndefined();
+    expect(extractPassthroughUsage(ProviderProtocol.OpenAICompatible, "data: {not-json}\n\n")).toBeUndefined();
+  });
+
+  test("preserves OpenAI cache and reasoning dimensions", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAICompatible,
+        JSON.stringify({
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+            total_tokens: 14,
+            prompt_tokens_details: { cached_tokens: 6 },
+            completion_tokens_details: { reasoning_tokens: 3 },
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 4,
+      totalTokens: 14,
+      cacheReadTokens: 6,
+      reasoningTokens: 3,
+    });
+  });
+
   test("extracts Anthropic JSON usage", () => {
     expect(
       extractPassthroughUsage(
@@ -71,6 +117,28 @@ describe("passthrough usage extraction", () => {
       inputTokens: 11,
       outputTokens: 13,
       totalTokens: 24,
+    });
+  });
+
+  test("preserves Anthropic cache dimensions", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.Anthropic,
+        JSON.stringify({
+          usage: {
+            input_tokens: 11,
+            output_tokens: 13,
+            cache_read_input_tokens: 7,
+            cache_creation_input_tokens: 5,
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 11,
+      outputTokens: 13,
+      totalTokens: 24,
+      cacheReadTokens: 7,
+      cacheWriteTokens: 5,
     });
   });
 
@@ -90,6 +158,29 @@ describe("passthrough usage extraction", () => {
       inputTokens: 17,
       outputTokens: 19,
       totalTokens: 36,
+    });
+  });
+
+  test("preserves Gemini cache and reasoning dimensions", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.Gemini,
+        JSON.stringify({
+          usageMetadata: {
+            promptTokenCount: 17,
+            candidatesTokenCount: 19,
+            totalTokenCount: 36,
+            cachedContentTokenCount: 7,
+            thoughtsTokenCount: 5,
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 17,
+      outputTokens: 19,
+      totalTokens: 36,
+      cacheReadTokens: 7,
+      reasoningTokens: 5,
     });
   });
 });
