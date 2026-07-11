@@ -166,6 +166,13 @@ describe("usage overview query", () => {
     expect(chart).not.toContain('aria-label={m["dashboard.usage.chart_title"]()}');
   });
 
+  test("decodes escaped dimension keys for chart labels", () => {
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+
+    expect(chart).toContain('series.key.startsWith("dimension:")');
+    expect(chart).toContain('decodeURIComponent(series.key.slice("dimension:".length))');
+  });
+
   test("preserves meaningful USD precision without compacting cost", () => {
     const formatCost = createUsageValueFormatter("cost", "en-US");
 

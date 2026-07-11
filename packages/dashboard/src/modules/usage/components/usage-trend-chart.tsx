@@ -36,7 +36,10 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const locale = getLocale().startsWith("zh") ? zhCN : enUS;
   const formatValue = createUsageValueFormatter(metric, getLocale());
   const seriesLabel = (series: UsageOverviewSeries) => {
-    if (series.kind === "dimension") return series.key;
+    if (series.kind === "dimension")
+      return series.key.startsWith("dimension:")
+        ? decodeURIComponent(series.key.slice("dimension:".length))
+        : series.key;
     if (series.kind === "other") return m["dashboard.usage.series_other"]();
     if (series.kind === "failed") return m["dashboard.usage.series_failed"]();
     return m["dashboard.usage.series_cancelled"]();

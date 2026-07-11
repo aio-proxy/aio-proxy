@@ -321,6 +321,42 @@ describe("request log store", () => {
     }
   });
 
+  test("keeps model ids that match reserved series keys separate from synthetic series", () => {
+    const handle = openDb({ home: tempHome() });
+    try {
+      const store = createRequestLogStore(handle.db);
+      for (const [index, modelId] of ["__failed__", "__cancelled__", "__other__"].entries()) {
+        store.insertFinal({
+          requestId: `reserved-model-${index}`,
+          inboundProtocol: "openai-compatible",
+          requestedModelId: modelId,
+          outcome: "success",
+          finalProviderId: "provider",
+          finalModelId: modelId,
+          attempts: [],
+          startedAt: new Date(now.getTime() - 1_000),
+          completedAt: now,
+          durationMs: 1_000,
+        });
+      }
+      store.insertFinal({ ...rows[1], requestId: "reserved-failure" });
+      store.insertFinal({ ...rows[2], requestId: "reserved-cancelled" });
+
+      const overview = store.overview({ range: "24h", metric: "requests", groupBy: "model", now });
+
+      expect(overview.series).toEqual([
+        { key: "dimension:__cancelled__", kind: "dimension" },
+        { key: "dimension:__failed__", kind: "dimension" },
+        { key: "dimension:__other__", kind: "dimension" },
+        { key: "__failed__", kind: "failed" },
+        { key: "__cancelled__", kind: "cancelled" },
+      ]);
+      expect(overview.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(5);
+    } finally {
+      handle.close();
+    }
+  });
+
   test("uses server-local calendar days and actual elapsed minutes for multi-day ranges", () => {
     const { handle, store } = seedBase();
     try {

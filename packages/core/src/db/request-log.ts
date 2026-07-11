@@ -40,6 +40,7 @@ export type RequestLogStore = {
 type ChartRow = {
   readonly bucket: string | number;
   readonly dimension: string;
+  readonly kind: "dimension" | "failed" | "cancelled";
   readonly value: number;
 };
 
@@ -188,17 +189,17 @@ function chartRows(
       : sql<string>`coalesce(${requestLog.finalProviderId}, ${usage.providerId}, 'unknown')`;
 
   if (metric === "requests") {
-    const dimension = sql<string>`case
-      when ${requestLog.outcome} = 'failure' then '__failed__'
-      when ${requestLog.outcome} = 'cancelled' then '__cancelled__'
-      else ${normalDimension}
+    const kind = sql<ChartRow["kind"]>`case
+      when ${requestLog.outcome} = 'failure' then 'failed'
+      when ${requestLog.outcome} = 'cancelled' then 'cancelled'
+      else 'dimension'
     end`;
     return db
-      .select({ bucket, dimension, value: sql<number>`count(*)`.mapWith(Number) })
+      .select({ bucket, dimension: normalDimension, kind, value: sql<number>`count(*)`.mapWith(Number) })
       .from(requestLog)
       .leftJoin(usage, eq(usage.requestId, requestLog.requestId))
       .where(rangeFilter)
-      .groupBy(bucket, dimension)
+      .groupBy(bucket, normalDimension, kind)
       .all();
   }
 
@@ -209,7 +210,7 @@ function chartRows(
           Number,
         );
   return db
-    .select({ bucket, dimension: normalDimension, value })
+    .select({ bucket, dimension: normalDimension, kind: sql<"dimension">`'dimension'`, value })
     .from(requestLog)
     .innerJoin(usage, eq(usage.requestId, requestLog.requestId))
     .where(and(rangeFilter, eq(requestLog.outcome, "success")))
@@ -218,10 +219,9 @@ function chartRows(
 }
 
 function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, chartBuckets: readonly ChartBucket[]) {
-  const pinned = new Set(["__failed__", "__cancelled__"]);
   const totals = new Map<string, number>();
   for (const row of rows) {
-    if (!pinned.has(row.dimension)) {
+    if (row.kind === "dimension") {
       totals.set(row.dimension, (totals.get(row.dimension) ?? 0) + row.value);
     }
   }
@@ -231,7 +231,7 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
   const retained = ranked.slice(0, 5);
   const hasOther = ranked.length > retained.length;
   const series = [
-    ...retained.map((key) => ({ key, kind: "dimension" as const })),
+    ...retained.map((dimension) => ({ key: chartDimensionKey(dimension), kind: "dimension" as const })),
     ...(hasOther ? [{ key: "__other__", kind: "other" as const }] : []),
     ...(metric === "requests"
       ? [
@@ -243,7 +243,14 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
   const retainedSet = new Set(retained);
   const valuesByBucket = new Map<string | number, Record<string, number>>();
   for (const row of rows) {
-    const dimension = pinned.has(row.dimension) || retainedSet.has(row.dimension) ? row.dimension : "__other__";
+    const dimension =
+      row.kind === "failed"
+        ? "__failed__"
+        : row.kind === "cancelled"
+          ? "__cancelled__"
+          : retainedSet.has(row.dimension)
+            ? chartDimensionKey(row.dimension)
+            : "__other__";
     const values = valuesByBucket.get(row.bucket) ?? {};
     values[dimension] = (values[dimension] ?? 0) + row.value;
     valuesByBucket.set(row.bucket, values);
@@ -258,6 +265,15 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
       ),
     })),
   };
+}
+
+const dimensionKeyPrefix = "dimension:";
+const reservedSeriesKeys = new Set(["__failed__", "__cancelled__", "__other__"]);
+
+function chartDimensionKey(dimension: string): string {
+  return reservedSeriesKeys.has(dimension) || dimension.startsWith(dimensionKeyPrefix)
+    ? `${dimensionKeyPrefix}${encodeURIComponent(dimension)}`
+    : dimension;
 }
 
 function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly ChartBucket[] {

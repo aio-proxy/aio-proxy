@@ -72,7 +72,7 @@ Add one shared server-side recorder instead of duplicating accounting logic in e
 
 For AI SDK and cross-protocol routes, wrap the stream returned by `provider.invoke()`. The wrapper passes every part through unchanged, captures the final usage from the `finish` part, calculates estimated cost, and writes a ledger row after the stream completes.
 
-For raw API passthrough routes, tee the upstream response body before returning it. The returned branch is sent to the client unchanged. The tracing branch is parsed best-effort for protocol usage shapes:
+For raw API passthrough routes, wrap the upstream response body with one pull-driven reader. Forward every chunk and cancellation reason unchanged while accumulating bytes only until normal completion, then parse protocol usage best-effort:
 
 - OpenAI Chat Completions JSON and SSE usage.
 - OpenAI Responses JSON and SSE usage.
@@ -90,4 +90,4 @@ Accounting must never make a successful provider response fail. Database insert 
 - `estimatedCostUsd` is stored as a JavaScript number and SQLite `real`.
 - `models.dev` prices are interpreted as USD per 1 million tokens.
 - Context tier pricing is not applied unless a later implementation has enough request context to choose the tier deterministically.
-- The first version keeps usage rows indefinitely.
+- Request-log and usage rows are retained for 45 days. Pruning runs at startup and at most once per 24 hours during later writes.
