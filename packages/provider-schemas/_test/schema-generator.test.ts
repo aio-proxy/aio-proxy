@@ -220,6 +220,23 @@ describe("provider schema generation", () => {
     );
   });
 
+  test("uses locale-independent code-unit ordering", () => {
+    const entry = {
+      packageName: "fixture",
+      packageVersion: "1.0.0",
+      factoryName: "createFixture",
+      schema: { type: "object", properties: { a: { type: "number" }, Z: { type: "string" } } },
+      warnings: [
+        { code: "unsupported_optional" as const, path: "a" },
+        { code: "unsupported_optional" as const, path: "Z" },
+      ],
+    };
+    const rendered = renderGeneratedProviderSchemas({ a: entry, Z: entry });
+
+    expect(rendered.indexOf('  "Z": {')).toBeLessThan(rendered.indexOf('  "a": {'));
+    expect(rendered.indexOf('"path": "Z"')).toBeLessThan(rendered.indexOf('"path": "a"'));
+  });
+
   test("committed generated source is current", async () => {
     const expected = renderGeneratedProviderSchemas(await generateProviderSchemaEntries());
     const actual = await readFile(join(import.meta.dir, "../src/generated.ts"), "utf8");

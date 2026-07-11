@@ -11,6 +11,7 @@ import { normalizeTypeBoxModule } from "./schema-normalizer";
 
 const ROOT_NAME = "__AioProxyProviderOptions";
 const generatedPath = fileURLToPath(new URL("../src/generated.ts", import.meta.url));
+const compareCodeUnits = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
 
 export const compileTypeBoxModule = (source: string): Readonly<Record<string, unknown>> => {
   // TypeBox 1.3.6 aborts an interface containing `typeof fetch`; a function schema
@@ -67,7 +68,7 @@ const sortValue = (value: unknown): unknown => {
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => compareCodeUnits(left, right))
       .map(([key, item]) => [key, sortValue(item)]),
   );
 };
@@ -130,12 +131,12 @@ export const renderGeneratedProviderSchemas = (
 ): string => {
   const sorted = Object.fromEntries(
     Object.entries(entries)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => compareCodeUnits(left, right))
       .map(([key, entry]) => [
         key,
         sortValue({
           ...entry,
-          warnings: [...entry.warnings].sort((left, right) => left.path.localeCompare(right.path)),
+          warnings: [...entry.warnings].sort((left, right) => compareCodeUnits(left.path, right.path)),
         }),
       ]),
   );

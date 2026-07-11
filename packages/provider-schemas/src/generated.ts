@@ -333,6 +333,10 @@ export const PROVIDER_OPTIONS_SCHEMAS = {
     "schema": {
       "additionalProperties": true,
       "properties": {
+        "apiKey": {
+          "description": "API key for authenticating requests.",
+          "type": "string"
+        },
         "api_keys": {
           "additionalProperties": true,
           "description": "Record of provider slugs to API keys for injecting into provider routing.\nMaps provider slugs (e.g. \"anthropic\", \"openai\") to their respective API keys.",
@@ -344,10 +348,6 @@ export const PROVIDER_OPTIONS_SCHEMAS = {
           "properties": {},
           "type": "object"
         },
-        "apiKey": {
-          "description": "API key for authenticating requests.",
-          "type": "string"
-        },
         "appName": {
           "description": "Your app's display name. Sets the `X-OpenRouter-Title` header on\nevery request for app attribution on the openrouter.ai dashboard.",
           "type": "string"
@@ -356,12 +356,12 @@ export const PROVIDER_OPTIONS_SCHEMAS = {
           "description": "Your app's URL or identifier. Sets the `HTTP-Referer` header on every request,\nused to identify your app on the openrouter.ai dashboard.",
           "type": "string"
         },
-        "baseUrl": {
-          "description": "@deprecated Use `baseURL` instead.",
-          "type": "string"
-        },
         "baseURL": {
           "description": "Base URL for the OpenRouter API calls.",
+          "type": "string"
+        },
+        "baseUrl": {
+          "description": "@deprecated Use `baseURL` instead.",
           "type": "string"
         },
         "compatibility": {

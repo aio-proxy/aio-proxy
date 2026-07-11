@@ -36,7 +36,11 @@ export const normalizeTypeBoxModule = ({
 }: NormalizeTypeBoxModuleOptions): NormalizedTypeBoxModule => {
   const warnings: ProviderOptionsSchemaWarning[] = [];
   const sortedWarnings = () =>
-    warnings.sort((left, right) => left.path.localeCompare(right.path) || left.code.localeCompare(right.code));
+    warnings.sort(
+      (left, right) =>
+        (left.path < right.path ? -1 : left.path > right.path ? 1 : 0) ||
+        (left.code < right.code ? -1 : left.code > right.code ? 1 : 0),
+    );
   const definitions: Record<string, Schema> = {};
   const definitionState = new Map<string, "visiting" | "done" | Failure["failure"]>();
 

@@ -31,11 +31,13 @@ export const providerOptionsAreValid = (
   validation: JsonEditorValidation,
   phase: UseProviderOptionsSchemaResult["phase"],
   schema: UseProviderOptionsSchemaResult["schema"],
+  schemaResolution: UseProviderOptionsSchemaResult["schemaResolution"],
 ) =>
   rootValid &&
   validation.valid &&
   Object.is(validation.schema, schema) &&
-  (phase === "ready" || phase === "schema_unavailable" || phase === "install_error");
+  (phase === "ready" || phase === "schema_unavailable" || phase === "install_error") &&
+  (schemaResolution === "unavailable" || (schemaResolution === "ready" && schema !== undefined));
 
 export const canConfirmProviderInstall = (
   dialogPackage: string | null,
@@ -62,7 +64,13 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
   const [rootValid, setRootValid] = useState(true);
   const [validation, setValidation] = useState(initialValidation);
   const [installDialogPackage, setInstallDialogPackage] = useState<string | null>(null);
-  const valid = providerOptionsAreValid(rootValid, validation, schemaState.phase, schemaState.schema);
+  const valid = providerOptionsAreValid(
+    rootValid,
+    validation,
+    schemaState.phase,
+    schemaState.schema,
+    schemaState.schemaResolution,
+  );
   const lastValidity = useRef(valid);
 
   useEffect(() => {
@@ -102,7 +110,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
       ? m["dashboard.providers.form.options_object_error"]()
       : hasSchemaError
         ? m["dashboard.providers.form.options_schema_error"]()
-        : schemaState.phase === "schema_error"
+        : schemaState.schemaResolution === "error"
           ? m["dashboard.providers.form.options_schema_load_error"]()
           : null;
   const errorId = `${field.name}-error`;
@@ -116,7 +124,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
         id={field.name}
         value={editorValue}
         schema={schemaState.schema}
-        externalInvalid={!rootValid || schemaState.phase === "schema_error"}
+        externalInvalid={!rootValid || schemaState.schemaResolution === "error"}
         errorDescriptionId={error === null ? undefined : errorId}
         onValueChange={(value) => {
           setEditorValue(value);

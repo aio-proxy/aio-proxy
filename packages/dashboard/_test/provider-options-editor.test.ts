@@ -56,17 +56,134 @@ describe("provider options editor", () => {
     const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
     const invalidNoSchema = { ...validNoSchema, valid: false };
 
-    expect(providerOptionsAreValid(true, validNoSchema, "idle", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "checking", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "installing", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "install_required", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "loading_schema", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "schema_error", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "ready", undefined)).toBe(true);
-    expect(providerOptionsAreValid(true, validNoSchema, "schema_unavailable", undefined)).toBe(true);
-    expect(providerOptionsAreValid(true, validNoSchema, "install_error", undefined)).toBe(true);
-    expect(providerOptionsAreValid(false, validNoSchema, "schema_unavailable", undefined)).toBe(false);
-    expect(providerOptionsAreValid(true, invalidNoSchema, "ready", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "idle", undefined, "unknown")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "checking", undefined, "unknown")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "installing", undefined, "loading")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "install_required", undefined, "loading")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "loading_schema", undefined, "loading")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "schema_error", undefined, "error")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "ready", undefined, "ready")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "schema_unavailable", undefined, "unavailable")).toBe(true);
+    expect(providerOptionsAreValid(true, validNoSchema, "install_error", undefined, "unavailable")).toBe(true);
+    expect(providerOptionsAreValid(false, validNoSchema, "schema_unavailable", undefined, "unavailable")).toBe(false);
+    expect(providerOptionsAreValid(true, invalidNoSchema, "schema_unavailable", undefined, "unavailable")).toBe(false);
+  });
+
+  test("keeps embedded schema resolution independent from a failed trusted install", () => {
+    const schema = { type: "object", required: ["apiKey"] };
+    const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+      type: "package_committed",
+      packageName: "@ai-sdk/example",
+    });
+    const missing = providerOptionsSchemaTransition(committed, {
+      type: "status_loaded",
+      packageName: "@ai-sdk/example",
+      generation: 1,
+      status: { trusted: true, state: "missing", schemaAvailable: true },
+    });
+    const installing = providerOptionsSchemaTransition(missing, { type: "install_started" });
+    const failed = providerOptionsSchemaTransition(installing, {
+      type: "install_failed",
+      packageName: "@ai-sdk/example",
+      generation: 1,
+      errorCode: "install_failed",
+    });
+    const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
+
+    expect(failed).toMatchObject({ phase: "install_error", schemaResolution: "loading", schema: undefined });
+    expect(providerOptionsAreValid(true, validNoSchema, failed.phase, failed.schema, failed.schemaResolution)).toBe(
+      false,
+    );
+
+    const loaded = providerOptionsSchemaTransition(failed, {
+      type: "schema_loaded",
+      packageName: "@ai-sdk/example",
+      generation: 1,
+      schema,
+      warnings: [],
+    });
+    const schemaError = {
+      valid: false,
+      syntaxValid: true,
+      pending: false,
+      markers: [{ severity: "error" as const }],
+      schema,
+    };
+    const schemaValid = { ...schemaError, valid: true, markers: [] };
+
+    expect(loaded).toMatchObject({ phase: "install_error", schemaResolution: "ready", schema });
+    expect(providerOptionsAreValid(true, schemaError, loaded.phase, loaded.schema, loaded.schemaResolution)).toBe(
+      false,
+    );
+    expect(providerOptionsAreValid(true, schemaValid, loaded.phase, loaded.schema, loaded.schemaResolution)).toBe(true);
+
+    const loadedBeforeFailure = providerOptionsSchemaTransition(installing, {
+      type: "schema_loaded",
+      packageName: "@ai-sdk/example",
+      generation: 1,
+      schema,
+      warnings: [],
+    });
+    expect(
+      providerOptionsSchemaTransition(loadedBeforeFailure, {
+        type: "install_failed",
+        packageName: "@ai-sdk/example",
+        generation: 1,
+        errorCode: "install_failed",
+      }),
+    ).toMatchObject({ phase: "install_error", schemaResolution: "ready", schema });
+  });
+
+  test("blocks status failures including invalid package names", () => {
+    const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
+    for (const errorCode of ["request_failed", "invalid_package_name"]) {
+      const packageName = errorCode === "invalid_package_name" ? "../bad" : "@ai-sdk/example";
+      const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+        type: "package_committed",
+        packageName,
+      });
+      const failed = providerOptionsSchemaTransition(committed, {
+        type: "status_failed",
+        packageName,
+        generation: 1,
+        errorCode,
+      });
+
+      expect(failed).toMatchObject({ phase: "status_error", schemaResolution: "error", errorCode });
+      expect(providerOptionsAreValid(true, validNoSchema, failed.phase, failed.schema, failed.schemaResolution)).toBe(
+        false,
+      );
+    }
+  });
+
+  test("allows schema-less fallback after a failed install only once unavailability is explicit", () => {
+    const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+      type: "package_committed",
+      packageName: "@ai-sdk/schema-less",
+    });
+    const missing = providerOptionsSchemaTransition(committed, {
+      type: "status_loaded",
+      packageName: "@ai-sdk/schema-less",
+      generation: 1,
+      status: { trusted: true, state: "missing", schemaAvailable: false },
+    });
+    const installing = providerOptionsSchemaTransition(missing, { type: "install_started" });
+    const failed = providerOptionsSchemaTransition(installing, {
+      type: "install_failed",
+      packageName: "@ai-sdk/schema-less",
+      generation: 1,
+      errorCode: "install_failed",
+    });
+    const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
+
+    expect(failed).toMatchObject({
+      phase: "install_error",
+      schemaResolution: "unavailable",
+      errorCode: "install_failed",
+    });
+    expect(providerOptionsAreValid(true, validNoSchema, failed.phase, failed.schema, failed.schemaResolution)).toBe(
+      true,
+    );
   });
 
   test("blocks ready until validation belongs to the loaded schema", () => {
@@ -74,8 +191,8 @@ describe("provider options editor", () => {
     const oldValidation = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
     const currentValidation = { ...oldValidation, schema };
 
-    expect(providerOptionsAreValid(true, oldValidation, "ready", schema)).toBe(false);
-    expect(providerOptionsAreValid(true, currentValidation, "ready", schema)).toBe(true);
+    expect(providerOptionsAreValid(true, oldValidation, "ready", schema, "ready")).toBe(false);
+    expect(providerOptionsAreValid(true, currentValidation, "ready", schema, "ready")).toBe(true);
   });
 
   test("only confirms the install-required package currently bound to the dialog", () => {
@@ -360,6 +477,21 @@ describe("provider options schema workflow", () => {
         status: { trusted: true, state: "installed", schemaAvailable: true },
       }),
     ).toBe(current);
+
+    const installingWithSchema = {
+      ...current,
+      phase: "install_error" as const,
+      schemaResolution: "loading" as const,
+    };
+    expect(
+      providerOptionsSchemaTransition(installingWithSchema, {
+        type: "schema_loaded",
+        packageName: "@ai-sdk/openai",
+        generation: 1,
+        schema: { type: "object" },
+        warnings: [],
+      }),
+    ).toBe(installingWithSchema);
   });
 
   test("phase-inappropriate completions are ignored", () => {

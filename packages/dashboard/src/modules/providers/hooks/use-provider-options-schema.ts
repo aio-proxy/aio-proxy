@@ -17,7 +17,10 @@ export type ProviderOptionsSchemaPhase =
   | "ready"
   | "schema_unavailable"
   | "schema_error"
+  | "status_error"
   | "install_error";
+
+export type ProviderOptionsSchemaResolution = "unknown" | "loading" | "ready" | "unavailable" | "error";
 
 type ProviderPackageStatus = {
   readonly trusted: boolean;
@@ -33,6 +36,7 @@ export type ProviderOptionsSchemaState = {
   readonly commitGeneration: number;
   readonly automaticInstallAttempted: boolean;
   readonly allowAutomaticInstall: boolean;
+  readonly schemaResolution: ProviderOptionsSchemaResolution;
   readonly schemaPackage: string | null;
   readonly schema: Readonly<Record<string, unknown>> | undefined;
   readonly warnings: readonly { readonly code: string; readonly path: string }[];
@@ -85,6 +89,7 @@ export const initialProviderOptionsSchemaState: ProviderOptionsSchemaState = {
   commitGeneration: 0,
   automaticInstallAttempted: false,
   allowAutomaticInstall: false,
+  schemaResolution: "unknown",
   schemaPackage: null,
   schema: undefined,
   warnings: [],
@@ -92,34 +97,43 @@ export const initialProviderOptionsSchemaState: ProviderOptionsSchemaState = {
   effect: undefined,
 };
 
-const completionPhase = (event: ProviderOptionsSchemaEvent): ProviderOptionsSchemaPhase | undefined => {
-  switch (event.type) {
-    case "status_loaded":
-    case "status_failed":
-      return "checking";
-    case "install_succeeded":
-    case "install_failed":
-      return "installing";
-    case "schema_loaded":
-    case "schema_missing":
-    case "schema_failed":
-      return "loading_schema";
-    default:
-      return undefined;
-  }
-};
-
 const rejectsCompletion = (state: ProviderOptionsSchemaState, event: ProviderOptionsSchemaEvent) => {
   if (!("generation" in event)) {
     return false;
   }
-  const expectedPhase = completionPhase(event);
-  return (
-    expectedPhase !== undefined &&
-    (event.packageName !== state.committedPackage ||
-      event.generation !== state.commitGeneration ||
-      state.phase !== expectedPhase)
-  );
+  if (event.packageName !== state.committedPackage || event.generation !== state.commitGeneration) return true;
+  switch (event.type) {
+    case "status_loaded":
+    case "status_failed":
+      return state.phase !== "checking";
+    case "install_succeeded":
+    case "install_failed":
+      return state.phase !== "installing";
+    case "schema_loaded":
+    case "schema_missing":
+    case "schema_failed":
+      return state.schemaResolution !== "loading" && state.phase !== "loading_schema";
+  }
+};
+
+const resolveSchemaAvailability = (state: ProviderOptionsSchemaState, schemaAvailable: boolean) => {
+  if (!schemaAvailable) {
+    return {
+      ...state,
+      schemaResolution: "unavailable" as const,
+      schemaPackage: null,
+      schema: undefined,
+      warnings: [],
+    };
+  }
+  if (state.schemaResolution === "ready" && state.schemaPackage === state.committedPackage) return state;
+  return {
+    ...state,
+    schemaResolution: "loading" as const,
+    schemaPackage: null,
+    schema: undefined,
+    warnings: [],
+  };
 };
 
 export const providerOptionsSchemaTransition = (
@@ -141,21 +155,34 @@ export const providerOptionsSchemaTransition = (
         commitGeneration: state.commitGeneration + 1,
         allowAutomaticInstall: event.allowAutomaticInstall ?? true,
       };
-    case "status_loaded":
+    case "status_loaded": {
+      const schemaState = resolveSchemaAvailability(state, event.status.schemaAvailable);
       if (event.status.state === "missing") {
         if (event.status.trusted && state.automaticInstallAttempted) {
-          return { ...state, phase: "install_error", effect: undefined, errorCode: "package_still_missing" };
+          return { ...schemaState, phase: "install_error", effect: undefined, errorCode: "package_still_missing" };
         }
-        if (!event.status.trusted) return { ...state, phase: "install_required", effect: undefined };
+        if (!event.status.trusted) return { ...schemaState, phase: "install_required", effect: undefined };
         return state.allowAutomaticInstall
-          ? { ...state, phase: "installing", effect: { type: "install", confirmed: false } }
-          : { ...state, phase: "install_deferred", effect: undefined };
+          ? { ...schemaState, phase: "installing", effect: { type: "install", confirmed: false } }
+          : { ...schemaState, phase: "install_deferred", effect: undefined };
       }
-      return event.status.schemaAvailable
-        ? { ...state, phase: "loading_schema", effect: undefined }
-        : { ...state, phase: "schema_unavailable", effect: undefined };
+      return schemaState.schemaResolution === "ready"
+        ? { ...schemaState, phase: "ready", effect: undefined }
+        : event.status.schemaAvailable
+          ? { ...schemaState, phase: "loading_schema", effect: undefined }
+          : { ...schemaState, phase: "schema_unavailable", effect: undefined };
+    }
     case "status_failed":
-      return { ...state, phase: "install_error", effect: undefined, errorCode: event.errorCode };
+      return {
+        ...state,
+        phase: "status_error",
+        schemaResolution: "error",
+        schemaPackage: null,
+        schema: undefined,
+        warnings: [],
+        effect: undefined,
+        errorCode: event.errorCode,
+      };
     case "install_confirmed":
       return state.phase === "install_required"
         ? { ...state, phase: "installing", effect: { type: "install", confirmed: true } }
@@ -175,16 +202,18 @@ export const providerOptionsSchemaTransition = (
     case "schema_loaded":
       return {
         ...state,
-        phase: "ready",
+        phase: state.phase === "loading_schema" ? "ready" : state.phase,
+        schemaResolution: "ready",
         schemaPackage: event.packageName,
         schema: event.schema,
         warnings: event.warnings,
-        errorCode: undefined,
+        errorCode: state.phase === "install_error" ? state.errorCode : undefined,
       };
     case "schema_missing":
       return {
         ...state,
-        phase: "schema_unavailable",
+        phase: state.phase === "loading_schema" ? "schema_unavailable" : state.phase,
+        schemaResolution: "unavailable",
         schemaPackage: null,
         schema: undefined,
         warnings: [],
@@ -192,7 +221,8 @@ export const providerOptionsSchemaTransition = (
     case "schema_failed":
       return {
         ...state,
-        phase: "schema_error",
+        phase: state.phase === "loading_schema" ? "schema_error" : state.phase,
+        schemaResolution: "error",
         schemaPackage: null,
         schema: undefined,
         warnings: [],
@@ -203,6 +233,7 @@ export const providerOptionsSchemaTransition = (
 
 export type UseProviderOptionsSchemaResult = {
   readonly phase: ProviderOptionsSchemaPhase;
+  readonly schemaResolution: ProviderOptionsSchemaResolution;
   readonly schema?: Readonly<Record<string, unknown>>;
   readonly warnings: readonly { code: string; path: string }[];
   readonly packageName: string | null;
@@ -303,11 +334,11 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   }, [generation, packageName, state.phase, statusQuery.refetch]);
 
   useEffect(() => {
-    if (packageName === null || state.phase !== "loading_schema") {
+    if (packageName === null || state.schemaResolution !== "loading") {
       return;
     }
     void schemaQuery.refetch().then((result) => dispatch(providerSchemaRefetchEvent(packageName, generation, result)));
-  }, [generation, packageName, schemaQuery.refetch, state.phase]);
+  }, [generation, packageName, schemaQuery.refetch, state.schemaResolution]);
 
   useEffect(() => {
     if (packageName === null || state.effect?.type !== "install") {
@@ -332,6 +363,7 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
 
   return {
     phase: state.phase,
+    schemaResolution: state.schemaResolution,
     warnings: state.warnings,
     packageName,
     changePackage,
