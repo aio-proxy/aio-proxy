@@ -14,9 +14,15 @@ type MonacoWithJsonDefaults = Monaco & {
         readonly validate: boolean;
         readonly allowComments: boolean;
         readonly trailingCommas: "error";
+        readonly schemaValidation: "error";
         readonly schemas: readonly JsonSchemaRegistration[];
       }): void;
     };
+    getWorker(): Promise<
+      (resource: unknown) => Promise<{
+        doValidation(uri: string): Promise<readonly { readonly severity?: number }[]>;
+      }>
+    >;
   };
 };
 
@@ -45,6 +51,7 @@ const globalRegistry = createJsonSchemaRegistry((schemas) => {
     validate: true,
     allowComments: false,
     trailingCommas: "error",
+    schemaValidation: "error",
     schemas: schemas.map(({ fileMatch, ...registration }) => ({
       ...registration,
       fileMatch: [...fileMatch],
@@ -55,4 +62,15 @@ const globalRegistry = createJsonSchemaRegistry((schemas) => {
 export const registerJsonSchema = (monaco: Monaco, key: string, registration: JsonSchemaRegistration) => {
   activeMonaco = monaco;
   return globalRegistry.set(key, registration);
+};
+
+export const validateJsonModel = async (monaco: Monaco, modelUri: string) => {
+  const json = (monaco as MonacoWithJsonDefaults).json;
+  const getWorker = await json.getWorker();
+  const worker = await getWorker(monaco.Uri.parse(modelUri));
+  const diagnostics = await worker.doValidation(modelUri);
+
+  return diagnostics
+    .filter(({ severity }) => severity === 1 || severity === 2)
+    .map(({ severity }) => ({ severity: severity === 1 ? ("error" as const) : ("warning" as const) }));
 };
