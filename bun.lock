@@ -200,6 +200,7 @@
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/oauth": "workspace:*",
+        "@aio-proxy/provider-schemas": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "es-toolkit": "catalog:",
         "hono": "catalog:",

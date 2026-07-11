@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
 import { ConfigReloadRejectedError } from "../config-store";
+import { isTrustedProviderPackage } from "../provider-package-trust";
 import type { ServerState } from "../server-state";
 import {
   insertProvider,
@@ -18,11 +19,16 @@ import {
   ProviderNotFoundError,
   replaceProvider,
 } from "./provider-mutation";
+import {
+  providerPackageOptionsSchema,
+  providerPackageQueryValidator,
+  providerPackageStatus,
+} from "./provider-package-metadata";
 import { redactSecrets } from "./provider-secrets";
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
-  confirmed: z.literal(true),
+  confirmed: z.literal(true).optional(),
   registry: z.url().optional(),
 });
 
@@ -61,6 +67,8 @@ export const createDashboardRoutes = (state: ServerState) =>
       const providers = await state.providerSummaries({ filter, probe });
       return context.json({ providers });
     })
+    .get("/providers/package-status", providerPackageQueryValidator, providerPackageStatus)
+    .get("/providers/options-schema", providerPackageQueryValidator, providerPackageOptionsSchema)
     .get("/providers/:id/edit-view", (context) => {
       const id = context.req.param("id");
       const data = state.redactedConfig().providers.find((entry) => entry.id === id);
@@ -158,6 +166,9 @@ export const createDashboardRoutes = (state: ServerState) =>
     .post("/providers/install", async (context) => {
       try {
         const request = ProviderInstallRequestSchema.parse(await context.req.json());
+        if (!isTrustedProviderPackage(request.npm) && request.confirmed !== true) {
+          return context.json({ code: "confirmation_required", error: "provider install requires confirmation" }, 400);
+        }
         const installed = await npmAdd(request.npm, request.registry);
         return context.json({ installed });
       } catch (error) {

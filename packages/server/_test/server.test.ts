@@ -465,7 +465,10 @@ describe("server routes", () => {
 
     // Then
     expect(response.status).toBe(400);
-    expect(body.error).toContain("confirmed: true");
+    expect(body).toEqual({
+      code: "confirmation_required",
+      error: "provider install requires confirmation",
+    });
   });
 
   test("Given dashboard install request with invalid package name When posted Then request is rejected", async () => {
