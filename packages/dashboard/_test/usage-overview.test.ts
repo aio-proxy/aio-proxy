@@ -37,8 +37,8 @@ describe("usage overview query", () => {
     const overview = readFileSync(join(dashboardRoot, "modules/usage/templates/usage-overview.tsx"), "utf8");
     const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
 
-    expect(overview).toContain("<UsageRangeTabs />");
-    expect(chart).toContain("<UsageTrendTabs />");
+    expect(overview).toContain("<UsageRangeTabs>");
+    expect(chart).toContain("<UsageTrendTabs>");
     expect(overview).not.toContain("<Select");
   });
 
@@ -57,6 +57,42 @@ describe("usage overview query", () => {
     expect(usageComponents).not.toContain("<Select");
     expect(usageComponents).not.toContain("useState");
     expect(existsSync(join(dashboardRoot, "modules/usage/components/usage-overview-controls.tsx"))).toBe(false);
+  });
+
+  test("associates every range tab with a panel that owns the overview state", () => {
+    const rangeTabs = readFileSync(join(dashboardRoot, "modules/usage/components/usage-range-tabs.tsx"), "utf8");
+    const overview = readFileSync(join(dashboardRoot, "modules/usage/templates/usage-overview.tsx"), "utf8");
+
+    expect(rangeTabs).toContain("TabsContent");
+    expect(rangeTabs).toContain("ranges.map((range) => (");
+    expect(rangeTabs).toContain('<TabsContent key={range} value={range} keepMounted className="grid gap-3">');
+    expect(rangeTabs).toContain("{filters.range === range ? children : null}");
+    expect(overview).toContain("<UsageRangeTabs>{content}</UsageRangeTabs>");
+  });
+
+  test("associates every metric and grouping tab with a panel without duplicating the chart", () => {
+    const trendTabs = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-tabs.tsx"), "utf8");
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+
+    expect(trendTabs).toContain("TabsContent");
+    expect(trendTabs).toContain("metrics.map((metric) => (");
+    expect(trendTabs).toContain("<TabsContent key={metric} value={metric} keepMounted>");
+    expect(trendTabs).toContain("groupings.map((groupBy) => (");
+    expect(trendTabs).toContain("<TabsContent key={groupBy} value={groupBy} keepMounted>");
+    expect(trendTabs).toContain("{filters.groupBy === groupBy ? children : null}");
+    expect(chart).toContain("<UsageTrendTabs>");
+  });
+
+  test("labels and describes the Recharts SVG through the visible chart copy", () => {
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+
+    expect(chart).toContain("const chartTitleId = useId();");
+    expect(chart).toContain("const chartDescriptionId = useId();");
+    expect(chart).toContain("<CardTitle id={chartTitleId}>");
+    expect(chart).toContain("<CardDescription id={chartDescriptionId}>");
+    expect(chart).toContain("aria-labelledby={chartTitleId}");
+    expect(chart).toContain("aria-describedby={chartDescriptionId}");
+    expect(chart).not.toContain('aria-label={m["dashboard.usage.chart_title"]()}');
   });
 
   test("uses the same compact formatter for token/request axes and tooltips", () => {

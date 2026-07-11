@@ -3,6 +3,7 @@ import type { DashboardUsageOverviewResponse, DashboardUsageSeries } from "@aio-
 import { format, parseISO } from "date-fns";
 import { enUS, zhCN } from "date-fns/locale";
 import { useAtomValue } from "jotai";
+import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -29,6 +30,8 @@ const seriesColor = (series: DashboardUsageSeries, index: number) => {
 
 export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const { metric } = useAtomValue(usageOverviewFiltersAtom);
+  const chartTitleId = useId();
+  const chartDescriptionId = useId();
   const locale = getLocale().startsWith("zh") ? zhCN : enUS;
   const compactNumberFormatter = new Intl.NumberFormat(getLocale(), {
     maximumFractionDigits: 0,
@@ -63,56 +66,63 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
     <Card>
       <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-start sm:justify-between">
         <div className="grid gap-1.5">
-          <CardTitle>{m["dashboard.usage.chart_title"]()}</CardTitle>
-          <CardDescription>{m["dashboard.usage.chart_description"]()}</CardDescription>
+          <CardTitle id={chartTitleId}>{m["dashboard.usage.chart_title"]()}</CardTitle>
+          <CardDescription id={chartDescriptionId}>{m["dashboard.usage.chart_description"]()}</CardDescription>
         </div>
-        <UsageTrendTabs />
       </CardHeader>
-      <CardContent>
-        <ChartContainer
-          config={chartConfig}
-          className="min-h-80 w-full"
-          aria-label={m["dashboard.usage.chart_title"]()}
-        >
-          <AreaChart data={chartData} margin={{ left: 8, right: 8 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="bucket"
-              tickLine={false}
-              axisLine={false}
-              minTickGap={24}
-              tickFormatter={(value) => formatBucket(String(value), false)}
-            />
-            <YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(value) => formatValue(Number(value))} />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(value) => formatBucket(String(value), true)}
-                  formatter={(value, name) => (
-                    <div className="flex w-full items-center justify-between gap-4">
-                      <span className="text-muted-foreground">{String(name)}</span>
-                      <span className="font-medium font-mono tabular-nums">{formatValue(Number(value))}</span>
-                    </div>
-                  )}
-                />
-              }
-            />
-            <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
-            {data.series.map((series, index) => (
-              <Area
-                key={series.key}
-                dataKey={series.key}
-                name={seriesLabel(series)}
-                stackId="usage"
-                type="monotone"
-                stroke={seriesColor(series, index)}
-                fill={seriesColor(series, index)}
-                fillOpacity={0.35}
+      <UsageTrendTabs>
+        <CardContent>
+          <ChartContainer config={chartConfig} className="min-h-80 w-full">
+            <AreaChart
+              data={chartData}
+              margin={{ left: 8, right: 8 }}
+              aria-labelledby={chartTitleId}
+              aria-describedby={chartDescriptionId}
+            >
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="bucket"
+                tickLine={false}
+                axisLine={false}
+                minTickGap={24}
+                tickFormatter={(value) => formatBucket(String(value), false)}
               />
-            ))}
-          </AreaChart>
-        </ChartContainer>
-      </CardContent>
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(value) => formatValue(Number(value))}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(value) => formatBucket(String(value), true)}
+                    formatter={(value, name) => (
+                      <div className="flex w-full items-center justify-between gap-4">
+                        <span className="text-muted-foreground">{String(name)}</span>
+                        <span className="font-medium font-mono tabular-nums">{formatValue(Number(value))}</span>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
+              {data.series.map((series, index) => (
+                <Area
+                  key={series.key}
+                  dataKey={series.key}
+                  name={seriesLabel(series)}
+                  stackId="usage"
+                  type="monotone"
+                  stroke={seriesColor(series, index)}
+                  fill={seriesColor(series, index)}
+                  fillOpacity={0.35}
+                />
+              ))}
+            </AreaChart>
+          </ChartContainer>
+        </CardContent>
+      </UsageTrendTabs>
     </Card>
   );
 };
