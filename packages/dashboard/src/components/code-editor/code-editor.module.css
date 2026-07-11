@@ -1,0 +1,14 @@
+/* biome-ignore-all lint/correctness/noUnknownPseudoClass: CSS Modules global selector */
+@reference "../../styles.css";
+
+.code-editor :global(.monaco-editor) {
+  --vscode-button-background: var(--color-primary);
+  --vscode-button-foreground: var(--color-primary-foreground);
+  --vscode-button-hoverBackground: color-mix(in oklab, var(--color-primary) 80%, transparent);
+
+  background-color: transparent;
+}
+
+.code-editor :global(.monaco-editor .overflow-guard) {
+  @apply rounded-3xl;
+}
