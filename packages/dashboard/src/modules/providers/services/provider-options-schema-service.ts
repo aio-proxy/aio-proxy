@@ -13,14 +13,22 @@ export class ProviderPackageRequestError extends Error {
   }
 }
 
-const throwRequestError = async (response: Response): Promise<never> => {
-  const payload: unknown = await response.json();
+export const throwRequestError = async (response: Response): Promise<never> => {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = undefined;
+  }
   const code =
     typeof payload === "object" && payload !== null && "code" in payload && typeof payload.code === "string"
       ? payload.code
       : "request_failed";
   throw new ProviderPackageRequestError(response.status, code);
 };
+
+export const providerInstallRequestBody = (packageName: string, confirmed: boolean) =>
+  confirmed ? { npm: packageName, confirmed: true } : { npm: packageName };
 
 export const providerPackageStatusQueryOptions = (packageName: string) =>
   queryOptions({
@@ -57,7 +65,7 @@ export const installProviderPackage = async ({
   readonly packageName: string;
   readonly confirmed: boolean;
 }) => {
-  const json = confirmed ? { npm: packageName, confirmed: true } : { npm: packageName };
+  const json = providerInstallRequestBody(packageName, confirmed);
   const response = await dashboardClient.dashboard.api.providers.install.$post({ json });
   if (!response.ok) {
     return throwRequestError(response);
