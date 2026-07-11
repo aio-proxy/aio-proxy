@@ -39,7 +39,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
             aria-label={previousLabel}
             aria-disabled={!canPreviousPage || undefined}
             tabIndex={canPreviousPage ? undefined : -1}
-            className={canPreviousPage ? undefined : "pointer-events-none opacity-50"}
+            disabled={!canPreviousPage}
             onClick={(event) => {
               event.preventDefault();
               if (canPreviousPage) table.previousPage();
@@ -78,8 +78,8 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
             text={nextLabel}
             aria-label={nextLabel}
             aria-disabled={!canNextPage || undefined}
+            disabled={!canNextPage}
             tabIndex={canNextPage ? undefined : -1}
-            className={canNextPage ? undefined : "pointer-events-none opacity-50"}
             onClick={(event) => {
               event.preventDefault();
               if (canNextPage) table.nextPage();
