@@ -9,17 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as UsageRouteImport } from './routes/usage'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as ProvidersNewKindRouteImport } from './routes/providers/new.$kind'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
 
-const UsageRoute = UsageRouteImport.update({
-  id: '/usage',
-  path: '/usage',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,14 +37,12 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/usage': typeof UsageRoute
   '/providers/': typeof ProvidersIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/usage': typeof UsageRoute
   '/providers': typeof ProvidersIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
@@ -58,7 +50,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/usage': typeof UsageRoute
   '/providers/': typeof ProvidersIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
@@ -66,22 +57,12 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/usage'
-    | '/providers/'
-    | '/providers/$id/edit'
-    | '/providers/new/$kind'
+    '/' | '/providers/' | '/providers/$id/edit' | '/providers/new/$kind'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/usage'
-    | '/providers'
-    | '/providers/$id/edit'
-    | '/providers/new/$kind'
+  to: '/' | '/providers' | '/providers/$id/edit' | '/providers/new/$kind'
   id:
     | '__root__'
     | '/'
-    | '/usage'
     | '/providers/'
     | '/providers/$id/edit'
     | '/providers/new/$kind'
@@ -89,7 +70,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  UsageRoute: typeof UsageRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
   ProvidersIdEditRoute: typeof ProvidersIdEditRoute
   ProvidersNewKindRoute: typeof ProvidersNewKindRoute
@@ -97,13 +77,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/usage': {
-      id: '/usage'
-      path: '/usage'
-      fullPath: '/usage'
-      preLoaderRoute: typeof UsageRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -137,7 +110,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  UsageRoute: UsageRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
   ProvidersIdEditRoute: ProvidersIdEditRoute,
   ProvidersNewKindRoute: ProvidersNewKindRoute,

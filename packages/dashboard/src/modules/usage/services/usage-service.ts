@@ -1,3 +1,4 @@
+import type { UsageOverviewGroupBy, UsageOverviewMetric, UsageOverviewRange } from "@aio-proxy/types";
 import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
 import { dashboardClient } from "@/lib/dashboard-client";
@@ -15,18 +16,22 @@ export class DashboardUsageRequestError extends Error {
 }
 
 export type UsageQueryInput = {
-  readonly limit?: number;
+  readonly range: UsageOverviewRange;
+  readonly metric: UsageOverviewMetric;
+  readonly groupBy: UsageOverviewGroupBy;
 };
 
-export const usageQueryOptions = (input: UsageQueryInput = {}) =>
+export const usageQueryOptions = (input: UsageQueryInput) =>
   queryOptions({
-    queryKey: ["dashboard", "usage", input.limit ?? 100],
+    queryKey: ["dashboard", "usage", input.range, input.metric, input.groupBy],
     queryFn: () => getUsage(input),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 
 async function getUsage(input: UsageQueryInput): Promise<DashboardUsageResponse> {
   const response = await dashboardClient.dashboard.api.usage.$get({
-    query: { limit: String(input.limit ?? 100) },
+    query: { range: input.range, metric: input.metric, groupBy: input.groupBy },
   });
   if (!response.ok) {
     throw new DashboardUsageRequestError(response.status);
