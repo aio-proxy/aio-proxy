@@ -1,7 +1,8 @@
 import { getLocale, m } from "@aio-proxy/i18n";
-import type { DashboardUsageOverviewResponse, DashboardUsageSeries, UsageOverviewMetric } from "@aio-proxy/types";
+import type { DashboardUsageOverviewResponse, DashboardUsageSeries } from "@aio-proxy/types";
 import { format, parseISO } from "date-fns";
 import { enUS, zhCN } from "date-fns/locale";
+import { useAtomValue } from "jotai";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,10 +13,11 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
+import { UsageTrendTabs } from "./usage-trend-tabs";
 
 type Props = {
   readonly data: DashboardUsageOverviewResponse;
-  readonly metric: UsageOverviewMetric;
 };
 
 const seriesColor = (series: DashboardUsageSeries, index: number) => {
@@ -25,19 +27,17 @@ const seriesColor = (series: DashboardUsageSeries, index: number) => {
   return `var(--chart-${(index % 5) + 1})`;
 };
 
-export const UsageTrendChart: React.FC<Props> = ({ data, metric }) => {
+export const UsageTrendChart: React.FC<Props> = ({ data }) => {
+  const { metric } = useAtomValue(usageOverviewFiltersAtom);
   const locale = getLocale().startsWith("zh") ? zhCN : enUS;
-  const numberFormatter = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0, notation: "compact" });
+  const compactNumberFormatter = new Intl.NumberFormat(getLocale(), {
+    maximumFractionDigits: 0,
+    notation: "compact",
+  });
   const costFormatter = new Intl.NumberFormat(getLocale(), {
     currency: "USD",
     maximumFractionDigits: 2,
     notation: "compact",
-    style: "currency",
-  });
-  const tooltipNumberFormatter = new Intl.NumberFormat(getLocale());
-  const tooltipCostFormatter = new Intl.NumberFormat(getLocale(), {
-    currency: "USD",
-    maximumFractionDigits: 6,
     style: "currency",
   });
   const seriesLabel = (series: DashboardUsageSeries) => {
@@ -54,16 +54,19 @@ export const UsageTrendChart: React.FC<Props> = ({ data, metric }) => {
     format(parseISO(value), data.bucketUnit === "hour" ? "MMM d, HH:mm xxx" : tooltip ? "PP" : "MMM d", {
       locale,
     });
-  const formatValue = (value: number, tooltip = false) => {
-    if (metric === "cost") return (tooltip ? tooltipCostFormatter : costFormatter).format(value);
-    return (tooltip ? tooltipNumberFormatter : numberFormatter).format(value);
+  const formatValue = (value: number) => {
+    if (metric === "cost") return costFormatter.format(value);
+    return compactNumberFormatter.format(value);
   };
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{m["dashboard.usage.chart_title"]()}</CardTitle>
-        <CardDescription>{m["dashboard.usage.chart_description"]()}</CardDescription>
+      <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-1.5">
+          <CardTitle>{m["dashboard.usage.chart_title"]()}</CardTitle>
+          <CardDescription>{m["dashboard.usage.chart_description"]()}</CardDescription>
+        </div>
+        <UsageTrendTabs />
       </CardHeader>
       <CardContent>
         <ChartContainer
@@ -88,7 +91,7 @@ export const UsageTrendChart: React.FC<Props> = ({ data, metric }) => {
                   formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-4">
                       <span className="text-muted-foreground">{String(name)}</span>
-                      <span className="font-medium font-mono tabular-nums">{formatValue(Number(value), true)}</span>
+                      <span className="font-medium font-mono tabular-nums">{formatValue(Number(value))}</span>
                     </div>
                   )}
                 />

@@ -1,31 +1,19 @@
 import { m } from "@aio-proxy/i18n";
-import type { UsageOverviewGroupBy, UsageOverviewMetric, UsageOverviewRange } from "@aio-proxy/types";
+import { useAtomValue } from "jotai";
 import { ReceiptText } from "lucide-react";
-import { useState } from "react";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UsageOverviewControls } from "../components/usage-overview-controls";
+import { UsageRangeTabs } from "../components/usage-range-tabs";
 import { UsageSummaryGrid } from "../components/usage-summary-grid";
 import { UsageTrendChart } from "../components/usage-trend-chart";
 import { useUsageQuery } from "../hooks/use-usage-query";
+import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 
 const loadingMetricIds = ["cost", "requests", "tokens", "rpm", "tpm", "success-rate"] as const;
 
 export const UsageOverview: React.FC = () => {
-  const [range, setRange] = useState<UsageOverviewRange>("24h");
-  const [metric, setMetric] = useState<UsageOverviewMetric>("cost");
-  const [groupBy, setGroupBy] = useState<UsageOverviewGroupBy>("model");
-  const usage = useUsageQuery({ range, metric, groupBy });
-  const controls = (
-    <UsageOverviewControls
-      range={range}
-      metric={metric}
-      groupBy={groupBy}
-      onRangeChange={setRange}
-      onMetricChange={setMetric}
-      onGroupByChange={setGroupBy}
-    />
-  );
+  const filters = useAtomValue(usageOverviewFiltersAtom);
+  const usage = useUsageQuery(filters);
 
   if (usage.isLoading) {
     return (
@@ -33,7 +21,7 @@ export const UsageOverview: React.FC = () => {
         <span className="sr-only" role="status">
           {m["dashboard.usage.loading"]()}
         </span>
-        {controls}
+        <UsageRangeTabs />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {loadingMetricIds.map((id) => (
             <Skeleton key={id} className="h-28 rounded-4xl" />
@@ -47,7 +35,7 @@ export const UsageOverview: React.FC = () => {
   if (usage.isError || usage.data === undefined) {
     return (
       <div className="grid gap-3">
-        {controls}
+        <UsageRangeTabs />
         <Empty className="min-h-80 bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -64,7 +52,7 @@ export const UsageOverview: React.FC = () => {
   if (usage.data.summary.requestCount === 0) {
     return (
       <div className="grid gap-3">
-        {controls}
+        <UsageRangeTabs />
         <Empty className="min-h-80 bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -80,9 +68,9 @@ export const UsageOverview: React.FC = () => {
 
   return (
     <div className="grid gap-3">
-      {controls}
+      <UsageRangeTabs />
       <UsageSummaryGrid summary={usage.data.summary} />
-      <UsageTrendChart data={usage.data} metric={metric} />
+      <UsageTrendChart data={usage.data} />
     </div>
   );
 };

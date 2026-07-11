@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createStore } from "jotai";
 import { usageQueryOptions } from "../src/modules/usage/services/usage-service";
+import { usageOverviewFiltersAtom } from "../src/modules/usage/stores/usage-overview-filters";
 
 const dashboardRoot = join(import.meta.dir, "../src");
 
@@ -21,5 +23,49 @@ describe("usage overview query", () => {
     expect(indexRoute).toContain("<UsageOverview />");
     expect(existsSync(join(dashboardRoot, "routes/usage.tsx"))).toBe(false);
     expect(sideMenu).not.toContain('to: "/usage"');
+  });
+
+  test("stores all overview filters in one Jotai atom", () => {
+    const store = createStore();
+
+    expect(store.get(usageOverviewFiltersAtom)).toEqual({ range: "24h", metric: "cost", groupBy: "model" });
+    store.set(usageOverviewFiltersAtom, (current) => ({ ...current, metric: "requests", groupBy: "provider" }));
+    expect(store.get(usageOverviewFiltersAtom)).toEqual({ range: "24h", metric: "requests", groupBy: "provider" });
+  });
+
+  test("uses range tabs globally and metric/grouping tabs inside the chart", () => {
+    const overview = readFileSync(join(dashboardRoot, "modules/usage/templates/usage-overview.tsx"), "utf8");
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+
+    expect(overview).toContain("<UsageRangeTabs />");
+    expect(chart).toContain("<UsageTrendTabs />");
+    expect(overview).not.toContain("<Select");
+  });
+
+  test("renders exact accessible localized tab values without Select or useState fallbacks", () => {
+    const rangeTabs = readFileSync(join(dashboardRoot, "modules/usage/components/usage-range-tabs.tsx"), "utf8");
+    const trendTabs = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-tabs.tsx"), "utf8");
+    const overview = readFileSync(join(dashboardRoot, "modules/usage/templates/usage-overview.tsx"), "utf8");
+    const usageComponents = `${rangeTabs}\n${trendTabs}\n${overview}`;
+
+    expect(rangeTabs).toContain('["24h", "7d", "14d", "30d"]');
+    expect(trendTabs).toContain('["cost", "tokens", "requests"]');
+    expect(trendTabs).toContain('["model", "provider"]');
+    expect(rangeTabs).toContain('aria-label={m["dashboard.usage.range_label"]()}');
+    expect(trendTabs).toContain('aria-label={m["dashboard.usage.metric_label"]()}');
+    expect(trendTabs).toContain('aria-label={m["dashboard.usage.group_by_label"]()}');
+    expect(usageComponents).not.toContain("<Select");
+    expect(usageComponents).not.toContain("useState");
+    expect(existsSync(join(dashboardRoot, "modules/usage/components/usage-overview-controls.tsx"))).toBe(false);
+  });
+
+  test("uses the same compact formatter for token/request axes and tooltips", () => {
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+
+    expect(chart).toContain('notation: "compact"');
+    expect(chart).toContain("tickFormatter={(value) => formatValue(Number(value))}");
+    expect(chart).toContain("{formatValue(Number(value))}");
+    expect(chart).not.toContain("tooltipNumberFormatter");
+    expect(chart).not.toContain("formatValue(Number(value), true)");
   });
 });
