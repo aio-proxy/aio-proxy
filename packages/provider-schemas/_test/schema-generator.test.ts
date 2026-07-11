@@ -340,7 +340,7 @@ describe("provider schema generation", () => {
       logger: { info() {} },
     } as unknown as PluginApi);
 
-    expect(
+    await expect(
       registration?.handler({ code: "stale", addDependency() {} } as Parameters<TransformRegistration["handler"]>[0]),
     ).rejects.toThrow("bun run --filter @aio-proxy/provider-schemas generate");
   });
