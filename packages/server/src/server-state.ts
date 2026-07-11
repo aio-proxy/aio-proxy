@@ -15,7 +15,7 @@ import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLim
 import { materializeProviders, type ProviderProbe, providerDiff, providerSummary } from "./provider-runtime";
 import { createRequestRecorder } from "./request-recorder";
 import type { ProviderRouteSnapshot, ProviderRouteSource, RuntimeProviderInstance } from "./runtime";
-import { createUsageCapture, type PassthroughUsageOptions, type StreamUsageOptions } from "./usage-capture";
+import { createUsageCapture } from "./usage-capture";
 
 export type ServerStateOptions = {
   readonly config: Config;
@@ -121,14 +121,6 @@ export function createServerState(options: ServerStateOptions): ServerState {
   const requestLog = createRequestLogStore(dbHandle.db);
   const usageCapture = createUsageCapture({ priceCatalogTask: createPriceCatalogTask() });
   const requestRecorder = createRequestRecorder({ store: requestLog });
-  const usageRecorder = {
-    recordStreamUsage: ({ traceId: _traceId, ...captureOptions }: StreamUsageOptions & { readonly traceId: string }) =>
-      usageCapture.stream(captureOptions).value,
-    recordPassthroughUsage: ({
-      traceId: _traceId,
-      ...captureOptions
-    }: PassthroughUsageOptions & { readonly traceId: string }) => usageCapture.passthrough(captureOptions).value,
-  };
   const logger = options.logger ?? defaultLogger;
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
@@ -201,7 +193,6 @@ export function createServerState(options: ServerStateOptions): ServerState {
     requestRecorder,
     usageCapture,
     usageLedger,
-    usageRecorder,
   };
 }
 

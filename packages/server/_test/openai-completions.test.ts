@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AiSdkProviderInstance, type ApiProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
+import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
@@ -78,6 +79,18 @@ async function waitForUsageRow(app: ReturnType<typeof createServer>): Promise<un
   return usageJson(app);
 }
 
+async function recorded(home: string) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const handle = openDb({ home });
+    const requests = handle.db.select().from(requestLog).all();
+    const usages = handle.db.select().from(usage).all();
+    handle.close();
+    if (requests.length > 0) return { requests, usages };
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("request row was not recorded");
+}
+
 describe("POST /v1/chat/completions", () => {
   test("Given openai-compatible api provider When completion is posted Then passthrough receives original request", async () => {
     // Given
@@ -96,8 +109,10 @@ describe("POST /v1/chat/completions", () => {
         });
       },
     } satisfies ApiProviderInstance;
+    const dbHome = tempHome();
     const app = createServer({
       config: { providers: {} },
+      dbHome,
       providerInstances: [provider],
     });
 
@@ -113,6 +128,19 @@ describe("POST /v1/chat/completions", () => {
     expect(response.headers.get("x-provider")).toBe("openai");
     expect(await response.text()).toBe("provider-bytes");
     expect(bodySeen).toEqual(chatRequest);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          inboundProtocol: ProviderProtocol.OpenAICompatible,
+          requestedModelId: "gpt-4o-mini",
+          finalProviderId: "openai",
+          finalModelId: "gpt-4o-mini",
+          outcome: "success",
+          attempts: [expect.objectContaining({ index: 0, providerId: "openai", outcome: "success" })],
+        }),
+      ],
+      usages: [],
+    });
   });
 
   test("Given an alias variant and native provider When completion is posted Then passthrough receives the variant model", async () => {
@@ -472,7 +500,8 @@ describe("POST /v1/chat/completions", () => {
           },
         ]),
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const dbHome = tempHome();
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -483,6 +512,50 @@ describe("POST /v1/chat/completions", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).toContain("fallback ok");
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          outcome: "success",
+          attempts: [
+            expect.objectContaining({ index: 0, providerId: "rate-limited", outcome: "failure" }),
+            expect.objectContaining({ index: 1, providerId: "ok", outcome: "success" }),
+          ],
+        }),
+      ],
+      usages: [expect.objectContaining({ providerId: "ok", inputTokens: 1, outputTokens: 1 })],
+    });
+  });
+
+  test("Given stream emits data then errors When completion streams Then request is failure", async () => {
+    const dbHome = tempHome();
+    const provider = {
+      id: "broken-after-data",
+      kind: "ai-sdk",
+      models: ["gpt-5-mini"],
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: false } },
+      invoke: () =>
+        new ReadableStream<TextStreamPart<ToolSet>>({
+          start(controller) {
+            controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+            controller.error(new Error("stream broke"));
+          },
+        }),
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5-mini", messages: [{ role: "user", content: "hi" }], stream: true }),
+    });
+    await response.text();
+
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({ outcome: "failure", attempts: [expect.objectContaining({ outcome: "failure" })] }),
+      ],
+      usages: [],
+    });
   });
 
   test("Given first native provider throws When completion is posted Then next provider is used", async () => {
