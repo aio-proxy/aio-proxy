@@ -22,6 +22,51 @@ type TransformRegistration = {
 };
 type BeforeBuildHandler = Parameters<PluginApi["onBeforeBuild"]>[0];
 
+const EXPECTED_PROVIDER_SCHEMA_CATALOG = [
+  { packageName: "@ai-sdk/gateway", factoryName: "createGateway" },
+  { packageName: "@ai-sdk/xai", factoryName: "createXai" },
+  { packageName: "@ai-sdk/vercel", factoryName: "createVercel" },
+  { packageName: "@ai-sdk/openai", factoryName: "createOpenAI" },
+  { packageName: "@ai-sdk/azure", factoryName: "createAzure" },
+  { packageName: "@ai-sdk/anthropic", factoryName: "createAnthropic" },
+  { packageName: "@ai-sdk/open-responses", factoryName: "createOpenResponses" },
+  { packageName: "@ai-sdk/anthropic-aws", factoryName: "createAnthropicAws" },
+  { packageName: "@ai-sdk/amazon-bedrock", factoryName: "createAmazonBedrock" },
+  { packageName: "@ai-sdk/groq", factoryName: "createGroq" },
+  { packageName: "@ai-sdk/fal", factoryName: "createFal" },
+  { packageName: "@ai-sdk/deepinfra", factoryName: "createDeepInfra" },
+  { packageName: "@ai-sdk/black-forest-labs", factoryName: "createBlackForestLabs" },
+  { packageName: "@ai-sdk/google", factoryName: "createGoogle" },
+  { packageName: "@ai-sdk/google-vertex", factoryName: "createGoogleVertex" },
+  { packageName: "@ai-sdk/mistral", factoryName: "createMistral" },
+  { packageName: "@ai-sdk/togetherai", factoryName: "createTogetherAI" },
+  { packageName: "@ai-sdk/cohere", factoryName: "createCohere" },
+  { packageName: "@ai-sdk/fireworks", factoryName: "createFireworks" },
+  { packageName: "@ai-sdk/voyage", factoryName: "createVoyage" },
+  { packageName: "@ai-sdk/deepseek", factoryName: "createDeepSeek" },
+  { packageName: "@ai-sdk/moonshotai", factoryName: "createMoonshotAI" },
+  { packageName: "@ai-sdk/alibaba", factoryName: "createAlibaba" },
+  { packageName: "@ai-sdk/cerebras", factoryName: "createCerebras" },
+  { packageName: "@ai-sdk/replicate", factoryName: "createReplicate" },
+  { packageName: "@ai-sdk/prodia", factoryName: "createProdia" },
+  { packageName: "@ai-sdk/perplexity", factoryName: "createPerplexity" },
+  { packageName: "@ai-sdk/luma", factoryName: "createLuma" },
+  { packageName: "@ai-sdk/bytedance", factoryName: "createByteDance" },
+  { packageName: "@ai-sdk/klingai", factoryName: "createKlingAI" },
+  { packageName: "@ai-sdk/elevenlabs", factoryName: "createElevenLabs" },
+  { packageName: "@ai-sdk/assemblyai", factoryName: "createAssemblyAI" },
+  { packageName: "@ai-sdk/deepgram", factoryName: "createDeepgram" },
+  { packageName: "@ai-sdk/gladia", factoryName: "createGladia" },
+  { packageName: "@ai-sdk/lmnt", factoryName: "createLMNT" },
+  { packageName: "@ai-sdk/hume", factoryName: "createHume" },
+  { packageName: "@ai-sdk/revai", factoryName: "createRevai" },
+  { packageName: "@ai-sdk/baseten", factoryName: "createBaseten" },
+  { packageName: "@ai-sdk/huggingface", factoryName: "createHuggingFace" },
+  { packageName: "@ai-sdk/quiverai", factoryName: "createQuiverAI" },
+  { packageName: "@ai-sdk/openai-compatible", factoryName: "createOpenAICompatible" },
+  { packageName: "@openrouter/ai-sdk-provider", factoryName: "createOpenRouter" },
+] as const;
+
 const createFixtureProvider = () => {
   const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-generation-fixture-"));
   const source = { packageName: "fixture-provider", factoryName: "createFixture" } as const;
@@ -57,8 +102,9 @@ const createFixtureProvider = () => {
 
 describe("provider schema generation", () => {
   test("generates the exact allowlist from npm latest without provider dependencies", async () => {
+    expect(PROVIDER_SCHEMA_ALLOWLIST).toEqual(EXPECTED_PROVIDER_SCHEMA_CATALOG);
     const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
-    for (const { packageName } of PROVIDER_SCHEMA_ALLOWLIST) {
+    for (const { packageName } of EXPECTED_PROVIDER_SCHEMA_CATALOG) {
       expect(packageJson.dependencies?.[packageName]).toBeUndefined();
       expect(packageJson.devDependencies?.[packageName]).toBeUndefined();
     }
@@ -67,13 +113,15 @@ describe("provider schema generation", () => {
       cacheRoot: mkdtempSync(join(tmpdir(), "provider-schema-expanded-catalog-")),
       refreshLatest: true,
     });
-    expect(Object.keys(generated.entries)).toEqual(PROVIDER_SCHEMA_ALLOWLIST.map(({ packageName }) => packageName));
-    for (const { packageName } of PROVIDER_SCHEMA_ALLOWLIST) {
-      expect(generated.entries[packageName].packageVersion.length).toBeGreaterThan(0);
-      expect(generated.entries[packageName]).toMatchObject({
-        packageName,
-        packageVersion: expect.any(String),
-      });
+    expect(Object.keys(generated.entries)).toEqual(
+      EXPECTED_PROVIDER_SCHEMA_CATALOG.map(({ packageName }) => packageName),
+    );
+    for (const { packageName, factoryName } of EXPECTED_PROVIDER_SCHEMA_CATALOG) {
+      const entry = generated.entries[packageName];
+      expect(entry.packageName).toBe(packageName);
+      expect(entry.factoryName).toBe(factoryName);
+      expect(entry.packageVersion.length).toBeGreaterThan(0);
+      expect(entry.schema).not.toBeNull();
     }
   }, 120_000);
 
