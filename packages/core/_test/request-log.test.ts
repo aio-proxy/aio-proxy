@@ -324,21 +324,23 @@ describe("request log store", () => {
   test("uses server-local calendar days and actual elapsed minutes for multi-day ranges", () => {
     const { handle, store } = seedBase();
     try {
+      const expectedStart = new Date(now);
+      expectedStart.setHours(0, 0, 0, 0);
+      expectedStart.setDate(expectedStart.getDate() - 6);
+      const expectedBucketKeys = Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(expectedStart);
+        day.setDate(day.getDate() + index);
+        return day.toISOString();
+      });
+      const elapsedMinutes = (now.getTime() - expectedStart.getTime()) / 60_000;
       const overview = store.overview({ range: "7d", metric: "requests", groupBy: "provider", now });
-      expect(overview.rangeStart).toBe("2026-07-04T16:00:00.000Z");
+      expect(overview.rangeStart).toBe(expectedStart.toISOString());
       expect(overview.rangeEnd).toBe(now.toISOString());
       expect(overview.bucketUnit).toBe("day");
-      expect(overview.buckets.map(({ key }) => key)).toEqual([
-        "2026-07-04T16:00:00.000Z",
-        "2026-07-05T16:00:00.000Z",
-        "2026-07-06T16:00:00.000Z",
-        "2026-07-07T16:00:00.000Z",
-        "2026-07-08T16:00:00.000Z",
-        "2026-07-09T16:00:00.000Z",
-        "2026-07-10T16:00:00.000Z",
-      ]);
-      expect(overview.summary.averageRpm).toBe(3 / 9600);
-      expect(overview.summary.averageTpm).toBe(150 / 9600);
+      expect(overview.buckets).toHaveLength(7);
+      expect(overview.buckets.map(({ key }) => key)).toEqual(expectedBucketKeys);
+      expect(overview.summary.averageRpm).toBe(3 / elapsedMinutes);
+      expect(overview.summary.averageTpm).toBe(150 / elapsedMinutes);
     } finally {
       handle.close();
     }
