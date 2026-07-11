@@ -304,6 +304,21 @@ describe("usage capture", () => {
     await expect(captured.completion).resolves.toEqual({ outcome: "failure" });
   });
 
+  test("an abort part cancels a normally closed stream and remains visible", async () => {
+    const parts = [
+      { type: "text-delta", id: "text-1", text: "hello" },
+      { type: "abort" },
+    ] as const satisfies readonly TextStreamPart<ToolSet>[];
+    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+      providerId: "provider",
+      modelId: "model",
+      stream: textStream(parts),
+    });
+
+    expect(await drain(captured.value)).toEqual(parts);
+    await expect(captured.completion).resolves.toEqual({ outcome: "cancelled" });
+  });
+
   test("a normally closed stream with finish is success and priced before completion", async () => {
     const catalog: OpenRouterPriceCatalog = {
       find: () => ({ id: "priced/model", input: 2, output: 10, cacheRead: 3, cacheWrite: 4, reasoning: 5 }),
@@ -370,26 +385,82 @@ describe("usage capture", () => {
     });
   });
 
-  test("passthrough preserves response bytes when pricing fails", async () => {
+  test("passthrough preserves response metadata and bytes while parsing and pricing usage", async () => {
     const body = JSON.stringify({ usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } });
+    const catalog: OpenRouterPriceCatalog = {
+      find: () => ({ id: "priced/model", input: 2, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 }),
+    };
     const captured = createUsageCapture({
-      priceCatalogTask: async () => {
-        throw new Error("pricing unavailable");
-      },
+      priceCatalogTask: async () => catalog,
     }).passthrough({
-      response: new Response(body, { headers: { "content-type": "application/json" }, status: 200 }),
+      response: new Response(body, {
+        headers: { "content-type": "application/json", "x-upstream": "yes" },
+        status: 200,
+        statusText: "Good",
+      }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: "provider",
       modelId: "model",
     });
 
     expect(captured.value.status).toBe(200);
+    expect(captured.value.statusText).toBe("Good");
+    expect(captured.value.headers.get("x-upstream")).toBe("yes");
     expect(await captured.value.text()).toBe(body);
     await expect(captured.completion).resolves.toEqual({
       outcome: "success",
       statusCode: 200,
-      usage: expect.objectContaining({ inputTokens: 3, outputTokens: 2 }),
+      usage: expect.objectContaining({
+        inputTokens: 3,
+        outputTokens: 2,
+        priceModelId: "priced/model",
+        estimatedCostUsd: expect.closeTo(0.000026),
+      }),
     });
+  });
+
+  test("passthrough consumer cancellation forwards the reason and completes as cancelled", async () => {
+    const firstChunk = new TextEncoder().encode("first");
+    const cleanupError = new Error("test cleanup");
+    let sourceController!: ReadableStreamDefaultController<Uint8Array>;
+    let cancelledReason: unknown;
+    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+      response: new Response(
+        new ReadableStream({
+          start(controller) {
+            sourceController = controller;
+            controller.enqueue(firstChunk);
+          },
+          cancel(reason) {
+            cancelledReason = reason;
+          },
+        }),
+        { headers: { "x-upstream": "yes" }, status: 200, statusText: "Good" },
+      ),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: "provider",
+      modelId: "model",
+    });
+    const body = captured.value.body;
+    if (body === null) {
+      throw new Error("expected passthrough response body");
+    }
+    const reader = body.getReader();
+    const reason = new Error("consumer stopped");
+
+    expect(captured.value.status).toBe(200);
+    expect(captured.value.statusText).toBe("Good");
+    expect(captured.value.headers.get("x-upstream")).toBe("yes");
+    expect(await reader.read()).toEqual({ done: false, value: firstChunk });
+    const cancellation = reader.cancel(reason);
+    await Promise.resolve();
+    if (cancelledReason === undefined) {
+      sourceController.error(cleanupError);
+    }
+    await cancellation.catch(() => undefined);
+
+    expect(cancelledReason).toBe(reason);
+    await expect(captured.completion).resolves.toEqual({ outcome: "cancelled", statusCode: 200 });
   });
 
   test("passthrough body errors remain visible and complete as failure", async () => {

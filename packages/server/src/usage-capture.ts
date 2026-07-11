@@ -46,6 +46,7 @@ export function createUsageCapture(options: {
       const terminal = deferred<UsageCompletion>();
       const reader = stream.getReader();
       let cancelled = false;
+      let aborted = false;
       let finished = false;
       let finishUsage: UsageRow | undefined;
 
@@ -60,6 +61,8 @@ export function createUsageCapture(options: {
               if (next.value.type === "finish") {
                 finished = true;
                 finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
+              } else if (next.value.type === "abort") {
+                aborted = true;
               }
               controller.enqueue(next.value);
             }
@@ -68,9 +71,11 @@ export function createUsageCapture(options: {
             }
             controller.close();
             terminal.resolve(
-              finished
-                ? { outcome: "success", ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask)) }
-                : { outcome: "failure" },
+              aborted
+                ? { outcome: "cancelled" }
+                : finished
+                  ? { outcome: "success", ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask)) }
+                  : { outcome: "failure" },
             );
           } catch (error) {
             if (cancelled || isAbortError(error)) {
@@ -103,24 +108,63 @@ export function createUsageCapture(options: {
         return { value: response, completion: Promise.resolve({ outcome: "success", statusCode: response.status }) };
       }
 
-      const [returnedBody, tracedBody] = response.body.tee();
-      const completion = new Response(tracedBody)
-        .text()
-        .then((bodyText) => extractPassthroughUsage(protocol, bodyText))
-        .then((usage) =>
-          priceUsage(usage === undefined ? undefined : { ...usage, providerId, modelId }, options.priceCatalogTask),
-        )
-        .then(
-          (usage): UsageCompletion => ({
-            outcome: "success",
-            statusCode: response.status,
-            ...usageProperty(usage),
-          }),
-          (error): UsageCompletion => ({
-            outcome: isAbortError(error) ? "cancelled" : "failure",
-            statusCode: response.status,
-          }),
-        );
+      const statusCode = response.status;
+      const terminal = deferred<UsageCompletion>();
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let byteLength = 0;
+      let released = false;
+      const releaseReader = () => {
+        if (!released) {
+          released = true;
+          reader.releaseLock();
+        }
+      };
+      const returnedBody = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          let done = false;
+          try {
+            const next = await reader.read();
+            if (!next.done) {
+              chunks.push(next.value);
+              byteLength += next.value.byteLength;
+              controller.enqueue(next.value);
+              return;
+            }
+
+            done = true;
+            controller.close();
+            const bytes = new Uint8Array(byteLength);
+            let offset = 0;
+            for (const chunk of chunks) {
+              bytes.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            const extracted = extractPassthroughUsage(protocol, new TextDecoder().decode(bytes));
+            const usage = await priceUsage(
+              extracted === undefined ? undefined : { ...extracted, providerId, modelId },
+              options.priceCatalogTask,
+            );
+            terminal.resolve({ outcome: "success", statusCode, ...usageProperty(usage) });
+          } catch (error) {
+            done = true;
+            terminal.resolve({ outcome: isAbortError(error) ? "cancelled" : "failure", statusCode });
+            controller.error(error);
+          } finally {
+            if (done) {
+              releaseReader();
+            }
+          }
+        },
+        async cancel(reason) {
+          terminal.resolve({ outcome: "cancelled", statusCode });
+          try {
+            await reader.cancel(reason);
+          } finally {
+            releaseReader();
+          }
+        },
+      });
 
       return {
         value: new Response(returnedBody, {
@@ -128,7 +172,7 @@ export function createUsageCapture(options: {
           status: response.status,
           statusText: response.statusText,
         }),
-        completion,
+        completion: terminal.promise,
       };
     },
   };
