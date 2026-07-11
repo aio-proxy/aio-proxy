@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { Script } from "typebox";
 import {
   compileTypeBoxModule,
@@ -203,6 +203,31 @@ describe("provider schema generation", () => {
     expect(generated.entry.schema).toMatchObject({ description: "Options for the fixture provider." });
     expect(renderGeneratedProviderSchemas({ "fixture-provider": generated.entry })).toContain(
       '"description": "Options for the fixture provider."',
+    );
+  });
+
+  test("canonicalizes package root dependencies", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-canonical-root-"));
+    const canonicalRoot = realpathSync(packageRoot);
+    const linkedRoot = join(mkdtempSync(join(tmpdir(), "provider-schema-linked-root-")), "provider");
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({ name: "fixture-provider", version: "1.0.0", types: "./index.d.ts" }),
+    );
+    writeFileSync(
+      join(packageRoot, "index.d.ts"),
+      "export declare function createFixture(options: { apiKey?: string }): unknown;\n",
+    );
+    symlinkSync(packageRoot, linkedRoot, "dir");
+
+    const generated = await generateProviderSchemaEntry(linkedRoot, {
+      packageName: "fixture-provider",
+      factoryName: "createFixture",
+    });
+
+    expect(generated.dependencies.every(isAbsolute)).toBe(true);
+    expect(generated.dependencies).toEqual(
+      [join(canonicalRoot, "index.d.ts"), join(canonicalRoot, "package.json")].sort(),
     );
   });
 

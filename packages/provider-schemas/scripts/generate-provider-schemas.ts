@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
@@ -92,10 +92,15 @@ export const generateProviderSchemaEntry = async (
   packageRoot: string,
   source: ProviderSchemaSource,
 ): Promise<GeneratedProviderSchemaEntry> => {
-  const declarationEntry = await resolveDeclarationEntry(packageRoot);
+  const canonicalPackageRoot = await realpath(packageRoot);
+  const declarationEntry = await resolveDeclarationEntry(canonicalPackageRoot);
   const [metadata, parsed] = await Promise.all([
-    readProviderPackageMetadata(packageRoot),
-    parseProviderFactoryDeclaration({ packageRoot, declarationEntry, factoryName: source.factoryName }),
+    readProviderPackageMetadata(canonicalPackageRoot),
+    parseProviderFactoryDeclaration({
+      packageRoot: canonicalPackageRoot,
+      declarationEntry,
+      factoryName: source.factoryName,
+    }),
   ]);
   const moduleSource = [`type ${ROOT_NAME} = NonNullable<${parsed.parameterType}>;`, ...parsed.declarations].join(
     "\n\n",
@@ -124,7 +129,7 @@ export const generateProviderSchemaEntry = async (
       schema: normalized.schema,
       warnings: normalized.warnings,
     },
-    dependencies: [join(packageRoot, "package.json"), ...parsed.sourceFiles].sort(compareCodeUnits),
+    dependencies: [join(canonicalPackageRoot, "package.json"), ...parsed.sourceFiles].sort(compareCodeUnits),
   };
 };
 
