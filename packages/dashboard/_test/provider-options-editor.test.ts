@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   initialProviderOptionsSchemaState,
   providerOptionsSchemaTransition,
+  providerSchemaRefetchEvent,
+  providerStatusRefetchEvent,
 } from "../src/modules/providers/hooks/use-provider-options-schema";
 import {
   ProviderPackageRequestError,
@@ -44,6 +46,34 @@ describe("provider options schema service", () => {
 });
 
 describe("provider options schema workflow", () => {
+  test("fresh status errors win over cached status data", () => {
+    expect(
+      providerStatusRefetchEvent("@ai-sdk/openai", 2, {
+        data: { npm: "@ai-sdk/openai", trusted: true, state: "installed", schemaAvailable: true },
+        error: new ProviderPackageRequestError(502, "status_upstream_failed"),
+      }),
+    ).toEqual({
+      type: "status_failed",
+      packageName: "@ai-sdk/openai",
+      generation: 2,
+      errorCode: "status_upstream_failed",
+    });
+  });
+
+  test("fresh schema errors win over cached schema data", () => {
+    expect(
+      providerSchemaRefetchEvent("@ai-sdk/openai", 3, {
+        data: { schema: { type: "object" }, warnings: [] },
+        error: new ProviderPackageRequestError(503, "schema_upstream_failed"),
+      }),
+    ).toEqual({
+      type: "schema_failed",
+      packageName: "@ai-sdk/openai",
+      generation: 3,
+      errorCode: "schema_upstream_failed",
+    });
+  });
+
   test("package change clears schema before the next commit", () => {
     expect(
       providerOptionsSchemaTransition(

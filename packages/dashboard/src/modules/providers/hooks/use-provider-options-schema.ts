@@ -210,6 +210,47 @@ export type UseProviderOptionsSchemaResult = {
 const requestErrorCode = (error: unknown) =>
   error instanceof ProviderPackageRequestError ? error.code : "request_failed";
 
+type RefetchResult<T> = { readonly data: T | undefined; readonly error: unknown };
+
+export const providerStatusRefetchEvent = <T extends ProviderPackageStatus>(
+  packageName: string,
+  generation: number,
+  result: RefetchResult<T>,
+): ProviderOptionsSchemaEvent => {
+  if (result.error !== null && result.error !== undefined) {
+    return { type: "status_failed", packageName, generation, errorCode: requestErrorCode(result.error) };
+  }
+  return result.data === undefined
+    ? { type: "status_failed", packageName, generation, errorCode: "request_failed" }
+    : { type: "status_loaded", packageName, generation, status: result.data };
+};
+
+type ProviderSchemaData = {
+  readonly schema: Readonly<Record<string, unknown>>;
+  readonly warnings: readonly { readonly code: string; readonly path: string }[];
+};
+
+export const providerSchemaRefetchEvent = <T extends ProviderSchemaData>(
+  packageName: string,
+  generation: number,
+  result: RefetchResult<T>,
+): ProviderOptionsSchemaEvent => {
+  if (result.error !== null && result.error !== undefined) {
+    return result.error instanceof ProviderPackageRequestError && result.error.code === "schema_unavailable"
+      ? { type: "schema_missing", packageName, generation }
+      : { type: "schema_failed", packageName, generation, errorCode: requestErrorCode(result.error) };
+  }
+  return result.data === undefined
+    ? { type: "schema_failed", packageName, generation, errorCode: "request_failed" }
+    : {
+        type: "schema_loaded",
+        packageName,
+        generation,
+        schema: result.data.schema,
+        warnings: result.data.warnings,
+      };
+};
+
 export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   const [state, dispatch] = useReducer(providerOptionsSchemaTransition, initialProviderOptionsSchemaState);
   const startedInstalls = useRef(new Set<number>());
@@ -253,28 +294,14 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
     if (packageName === null || state.phase !== "checking") {
       return;
     }
-    void statusQuery
-      .refetch()
-      .then(({ data, error }) =>
-        data === undefined
-          ? dispatch({ type: "status_failed", packageName, generation, errorCode: requestErrorCode(error) })
-          : dispatch({ type: "status_loaded", packageName, generation, status: data }),
-      );
+    void statusQuery.refetch().then((result) => dispatch(providerStatusRefetchEvent(packageName, generation, result)));
   }, [generation, packageName, state.phase, statusQuery.refetch]);
 
   useEffect(() => {
     if (packageName === null || state.phase !== "loading_schema") {
       return;
     }
-    void schemaQuery.refetch().then(({ data, error }) => {
-      if (data !== undefined) {
-        dispatch({ type: "schema_loaded", packageName, generation, schema: data.schema, warnings: data.warnings });
-      } else if (error instanceof ProviderPackageRequestError && error.code === "schema_unavailable") {
-        dispatch({ type: "schema_missing", packageName, generation });
-      } else {
-        dispatch({ type: "schema_failed", packageName, generation, errorCode: requestErrorCode(error) });
-      }
-    });
+    void schemaQuery.refetch().then((result) => dispatch(providerSchemaRefetchEvent(packageName, generation, result)));
   }, [generation, packageName, schemaQuery.refetch, state.phase]);
 
   useEffect(() => {
