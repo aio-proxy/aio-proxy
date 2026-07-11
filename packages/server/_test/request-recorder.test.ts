@@ -392,6 +392,27 @@ describe("usage capture", () => {
     });
   });
 
+  test("passthrough body errors remain visible and complete as failure", async () => {
+    const expected = new Error("upstream body broke");
+    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+      response: new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"));
+            controller.error(expected);
+          },
+        }),
+        { status: 200 },
+      ),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: "provider",
+      modelId: "model",
+    });
+
+    await expect(captured.value.text()).rejects.toBe(expected);
+    await expect(captured.completion).resolves.toEqual({ outcome: "failure", statusCode: 200 });
+  });
+
   test("non-success passthrough completes immediately as failure without consuming the body", async () => {
     const response = new Response("rate limited", { status: 429 });
     const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({

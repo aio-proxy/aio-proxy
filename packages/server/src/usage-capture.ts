@@ -13,7 +13,7 @@ type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: "finish" }>;
 export type UsageCompletion =
   | { readonly outcome: "success"; readonly usage?: UsageRow; readonly statusCode?: number }
   | { readonly outcome: "failure"; readonly statusCode?: number; readonly errorCode?: string }
-  | { readonly outcome: "cancelled" };
+  | { readonly outcome: "cancelled"; readonly statusCode?: number };
 
 export type Captured<T> = {
   readonly value: T;
@@ -116,7 +116,10 @@ export function createUsageCapture(options: {
             statusCode: response.status,
             ...usageProperty(usage),
           }),
-          (): UsageCompletion => ({ outcome: "failure", statusCode: response.status }),
+          (error): UsageCompletion => ({
+            outcome: isAbortError(error) ? "cancelled" : "failure",
+            statusCode: response.status,
+          }),
         );
 
       return {

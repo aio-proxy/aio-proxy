@@ -20,7 +20,7 @@ export function terminalCompletion(
   signal: AbortSignal,
 ): Promise<UsageCompletion> {
   return completion.then((value) =>
-    value.outcome === "cancelled" && !signal.aborted ? { outcome: "failure" } : value,
+    value.outcome === "cancelled" && !signal.aborted ? { ...value, outcome: "failure" } : value,
   );
 }
 
