@@ -11,7 +11,11 @@ import {
   generateProviderSchemaEntry,
   renderGeneratedProviderSchemas,
 } from "../scripts/generate-provider-schemas";
-import { generatedProviderSchemasPath, pluginProviderSchemas } from "../scripts/provider-schemas-plugin";
+import {
+  generatedProviderSchemasPath,
+  pluginProviderSchemas,
+  providerSchemasGeneratorPath,
+} from "../scripts/provider-schemas-plugin";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
 import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
 
@@ -239,6 +243,46 @@ describe("provider schema generation", () => {
     );
   });
 
+  test("registers manifest and traversed declarations before generation failure", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-failure-dependencies-"));
+    const entry = join(packageRoot, "index.d.ts");
+    const factory = join(packageRoot, "factory.d.ts");
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({ name: "fixture-provider", version: "1.0.0", types: "./index.d.ts" }),
+    );
+    writeFileSync(entry, 'export { createFixture } from "./factory";\n');
+    writeFileSync(factory, "export declare function createFixture( invalid syntax\n");
+    const dependencies: string[] = [];
+
+    await expect(
+      generateProviderSchemaEntry(
+        packageRoot,
+        { packageName: "fixture-provider", factoryName: "createFixture" },
+        (dependency) => dependencies.push(dependency),
+      ),
+    ).rejects.toThrow();
+
+    expect(dependencies).toEqual([join(packageRoot, "package.json"), entry, factory].map(realpathSync));
+  });
+
+  test("registers the manifest before malformed package metadata fails", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-malformed-manifest-"));
+    const manifest = join(packageRoot, "package.json");
+    writeFileSync(manifest, "{");
+    const dependencies: string[] = [];
+
+    await expect(
+      generateProviderSchemaEntry(
+        packageRoot,
+        { packageName: "fixture-provider", factoryName: "createFixture" },
+        (dependency) => dependencies.push(dependency),
+      ),
+    ).rejects.toThrow();
+
+    expect(dependencies).toEqual([realpathSync(manifest)]);
+  });
+
   test("renders schemas deterministically", () => {
     const entry = {
       packageName: "fixture",
@@ -303,6 +347,8 @@ describe("provider schema generation", () => {
   test("returns current source and tracks every generation dependency", async () => {
     let registration: TransformRegistration | undefined;
     const logs: string[] = [];
+    const importedModules: string[] = [];
+    let importedGeneratorCalls = 0;
     pluginProviderSchemas().setup({
       transform(descriptor, handler) {
         registration = { descriptor, handler };
@@ -321,13 +367,26 @@ describe("provider schema generation", () => {
       addDependency(dependency) {
         dependencies.push(dependency);
       },
+      importModule(request) {
+        importedModules.push(request);
+        return Promise.resolve({
+          generateProviderSchemaEntries(onDependency?: (dependency: string) => void) {
+            importedGeneratorCalls++;
+            return generateProviderSchemaEntries(onDependency);
+          },
+          renderGeneratedProviderSchemas,
+        });
+      },
     } as Parameters<TransformRegistration["handler"]>[0]);
     const generated = await generateProviderSchemaEntries();
 
     expect(result).toBe(source);
-    expect(dependencies).toEqual(generated.dependencies);
+    expect([...dependencies].sort()).toEqual(generated.dependencies);
+    expect(new Set(dependencies).size).toBe(dependencies.length);
     expect(dependencies).toContainEqual(expect.stringMatching(/package\.json$/));
     expect(dependencies).toContainEqual(expect.stringMatching(/\.d\.ts$/));
+    expect(importedModules).toEqual([providerSchemasGeneratorPath]);
+    expect(importedGeneratorCalls).toBe(1);
     expect(logs).toEqual([`provider schemas: ${Object.keys(generated.entries).length} generated`]);
   });
 
@@ -341,7 +400,13 @@ describe("provider schema generation", () => {
     } as unknown as PluginApi);
 
     await expect(
-      registration?.handler({ code: "stale", addDependency() {} } as Parameters<TransformRegistration["handler"]>[0]),
+      registration?.handler({
+        code: "stale",
+        addDependency() {},
+        importModule() {
+          return Promise.resolve({ generateProviderSchemaEntries, renderGeneratedProviderSchemas });
+        },
+      } as Parameters<TransformRegistration["handler"]>[0]),
     ).rejects.toThrow("bun run --filter @aio-proxy/provider-schemas generate");
   });
 });

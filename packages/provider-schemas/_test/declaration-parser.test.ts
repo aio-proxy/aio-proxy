@@ -258,6 +258,26 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.declarations[0]).toContain("interface FixtureSettings");
   });
 
+  test("registers each canonical declaration before parsing fails", async () => {
+    const root = fixtureRoot("provider-schema-parser-failure-dependencies");
+    const entry = join(root, "index.d.ts");
+    const factory = join(root, "factory.d.ts");
+    writeFileSync(entry, 'export { createFixture } from "./factory";\n');
+    writeFileSync(factory, "export declare function createFixture( invalid syntax\n");
+    const dependencies: string[] = [];
+
+    await expect(
+      parseProviderFactoryDeclaration({
+        packageRoot: root,
+        declarationEntry: entry,
+        factoryName: "createFixture",
+        onDependency: (dependency) => dependencies.push(dependency),
+      }),
+    ).rejects.toThrow();
+
+    expect(dependencies).toEqual([entry, factory].map(realpathSync));
+  });
+
   test("rejects relative traversal deeper than sixteen files", async () => {
     const root = fixtureRoot("provider-schema-depth");
     const entry = join(root, "index.d.ts");

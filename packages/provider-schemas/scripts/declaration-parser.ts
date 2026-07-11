@@ -1,6 +1,8 @@
-import { readFile, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
-import { parse } from "@babel/parser";
+import { providerSchemasRequire } from "./provider-schemas-require";
+
+const { readFile, realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
+const { isAbsolute, relative, resolve, sep } = providerSchemasRequire("node:path") as typeof import("node:path");
+const { parse } = providerSchemasRequire("@babel/parser") as typeof import("@babel/parser");
 
 const MAX_FILES = 64;
 const MAX_DEPTH = 16;
@@ -73,6 +75,7 @@ export type ParseProviderFactoryDeclarationOptions = {
   readonly packageRoot: string;
   readonly declarationEntry: string;
   readonly factoryName: string;
+  readonly onDependency?: (dependency: string) => void;
 };
 
 const compareCodeUnits = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
@@ -135,13 +138,14 @@ const parseFile = async (
   root: string,
   path: string,
   depth: number,
-  state: { files: Map<string, FileRecord>; bytes: number },
+  state: { files: Map<string, FileRecord>; bytes: number; onDependency?: (dependency: string) => void },
 ): Promise<FileRecord> => {
   if (depth > MAX_DEPTH) throw new Error("Declaration traversal depth limit exceeded");
   const existing = state.files.get(path);
   if (existing) return existing;
   if (state.files.size >= MAX_FILES) throw new Error("Declaration traversal file limit exceeded");
 
+  state.onDependency?.(path);
   const source = await readFile(path, "utf8");
   state.bytes += Buffer.byteLength(source);
   if (state.bytes > MAX_SOURCE_BYTES) throw new Error("Declaration traversal source limit exceeded");
@@ -385,7 +389,7 @@ export const parseProviderFactoryDeclaration = async (
     throw new Error("Declaration entry is outside package root");
   }
 
-  const state = { files: new Map<string, FileRecord>(), bytes: 0 };
+  const state = { files: new Map<string, FileRecord>(), bytes: 0, onDependency: options.onDependency };
   const entry = await parseFile(packageRoot, declarationEntry, 0, state);
   const factory = resolveFactory(state.files, entry, options.factoryName);
   if (!factory) throw new Error(`Exported provider factory not found: ${options.factoryName}`);
