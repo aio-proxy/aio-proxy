@@ -27,14 +27,12 @@ Research date: 2026-07-11. Sources are current repository code/schema at these p
 
 ## Recommendation for aio-proxy's overview
 
-Use explicit, separate metric families instead of deriving everything from usage-bearing success logs:
+Adopt one terminal request record as the stable denominator instead of deriving traffic from usage-bearing success logs:
 
-- **Client requests:** increment once per accepted inbound request, keyed by a proxy request ID. Finalize exactly once as `success`, `failure`, `cancelled`, or `excluded`. Retries/fallback never increment this counter again.
-- **Upstream attempts:** increment separately for every provider/channel attempt, with `attempt_index`, requested model, upstream model, provider, channel, protocol and outcome. This is where retry and fallback reliability belongs.
-- **Overview cards:** show `Requests` (all terminal client requests), `Success rate` (`success / (success + failure)`), `RPM (last 60s)` and `TPM (last 60s, completed)`. Show excluded/cancelled counts in a tooltip or secondary breakdown, not silently in either numerator.
-- **Define success operationally:** normal non-stream completion or a stream that reaches its normal terminal event. Do not infer stream success merely because HTTP headers were already sent. Provider availability should exclude client validation/auth/policy/quota rejection and client cancellation, while the system traffic panel should still report them as categorized terminal outcomes.
-- **Token semantics:** define overview TPM as actual upstream-reported input + output tokens from completed requests. Expose cache-read/cache-write tokens separately, and optionally a clearly named `total processed TPM` that includes them. Never mix estimated tokens into the same series without an `estimated` flag.
-- **Windows:** compute live RPM/TPM as a true rolling 60-second window. Persist fixed UTC one-minute buckets for trends, then roll up to hourly/daily buckets; convert labels to the viewer timezone. Label range-derived rates as `average RPM`, never just `RPM`.
-- **Dimensions:** preserve both requested and final routing dimensions: `requested_model`, `upstream_model`, `final_provider`, `final_channel`, inbound protocol, upstream protocol, user/key/tenant, and terminal status. Attempt metrics additionally carry attempted provider/channel. This avoids attributing a recovered fallback to the provider that failed first or losing the user's requested-model view.
+- **Requests and retries:** one routed inbound request produces one terminal `request_log` row with a `success`, `failure`, or `cancelled` outcome. Fallback attempts do not create additional traffic rows; their provider, model, protocol, outcome, and order are retained only as ordered metadata on that request log.
+- **Usage attribution:** only the final successful attempt may produce a usage row keyed by request id. Token and estimated-cost metrics use that final attempt's reported input and output tokens; failed attempts contribute neither tokens nor cost.
+- **Overview cards:** show all terminal requests, `success / (success + failure)`, known estimated cost with pricing coverage, input plus output tokens, Average RPM, and Average TPM. Cancelled requests remain visible but do not enter the success-rate denominator.
+- **Average rates:** calculate Average RPM as terminal requests divided by the selected range's actual elapsed minutes, and Average TPM as final-success input plus output tokens divided by those same elapsed minutes. Rolling 60-second counters used by some compared projects are not adopted for this overview.
+- **Buckets and dimensions:** use hourly buckets for 24h and server-local calendar-day buckets for 7d, 14d, and 30d. Group the stacked chart by the final model or provider. Separate per-attempt counters and attempt-level chart series, although present in some compared systems, are not part of the current design.
 
-This gives aio-proxy a stable overview denominator while retaining the operational detail needed to diagnose routing, fallback and provider health.
+This keeps retries diagnosable without inflating client traffic or attributing failed-attempt usage to the successful routed request.
