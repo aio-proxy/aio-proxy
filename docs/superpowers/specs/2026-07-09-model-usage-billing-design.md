@@ -13,6 +13,16 @@ Add an observational usage ledger for aio-proxy model calls. The ledger records 
 - The Dashboard root shows known estimated cost plus pricing coverage, requests, input+output tokens, Average RPM, Average TPM, success rate, and a metric/grouping-switchable stacked chart.
 - The standalone Usage route and recent-request table are removed.
 
+## Dashboard Filter Controls
+
+- One Jotai atom is the source of truth for `{ range, metric, groupBy }`, with defaults `24h`, `cost`, and `model`.
+- The range control is a Base UI segmented Tabs group above the overview content because range affects both summary cards and the chart.
+- Metric and grouping controls are separate Base UI segmented Tabs groups inside the chart header because they affect only the stacked chart.
+- The exact tab values are `24h/7d/14d/30d`, `cost/tokens/requests`, and `model/provider`.
+- Changing any tab updates the Jotai atom and therefore the TanStack Query key; no submit action or TanStack Form is involved.
+- On narrow screens, each tab list remains one line and can scroll horizontally rather than collapsing into a Select.
+- Dashboard time labels are formatted from canonical ISO bucket keys with `date-fns`; hourly labels include a numeric UTC offset so repeated DST wall-clock hours remain distinct.
+
 Metric naming and retry semantics were compared against `docs/research/usage-metrics-comparison.md`.
 
 ## Price Source
