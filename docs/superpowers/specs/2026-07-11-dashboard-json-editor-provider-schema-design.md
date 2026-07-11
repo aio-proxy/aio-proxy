@@ -228,7 +228,7 @@ Trusted missing packages install automatically after commit. Untrusted missing p
 - Drop optional unresolved/non-JSON fields with warning paths.
 - Reject schemas containing required unresolved/non-JSON fields.
 - Enforce traversal limits.
-- Regenerate all eight initial allowlist entries and compare exact committed output.
+- Generate all eight initial allowlist entries, verify deterministic rendered output, and inspect the built `dist` module without committing a generated artifact.
 - Assert `@ai-sdk/openai-compatible` requires `name` and `baseURL`.
 - Build the package and inspect its runtime bundle to ensure it does not import Babel, TypeBox, or provider packages.
 
