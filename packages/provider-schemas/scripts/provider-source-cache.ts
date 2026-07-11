@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import type * as Tar from "tar";
 import { providerSchemasRequire } from "./provider-schemas-require";
 
@@ -26,14 +26,48 @@ type NpmVersionMetadata = {
 type NpmPackageMetadata = {
   readonly "dist-tags": { readonly latest: string };
   readonly versions: Readonly<Record<string, NpmVersionMetadata>>;
+  readonly time: { readonly modified: string };
+};
+
+type LatestPointer = {
+  readonly version: string;
+  readonly revision: string;
 };
 
 const MAX_TARBALL_BYTES = 32 * 1024 * 1024;
 const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
+const pointerUpdates = new Map<string, Promise<void>>();
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
+
+const validateVersion = (version: unknown): string => {
+  if (
+    typeof version !== "string" ||
+    version.length === 0 ||
+    version === "." ||
+    version === ".." ||
+    version.includes("/") ||
+    version.includes("\\") ||
+    version.includes("\0") ||
+    basename(version) !== version
+  ) {
+    throw new Error("Invalid npm package version");
+  }
+  return version;
+};
+
+const validateRevision = (revision: unknown): string => {
+  if (
+    typeof revision !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(revision) ||
+    Number.isNaN(Date.parse(revision))
+  ) {
+    throw new Error("Invalid npm metadata revision");
+  }
+  return revision;
+};
 
 const validVersionMetadata = (value: unknown): value is NpmVersionMetadata => {
   if (!value || typeof value !== "object") return false;
@@ -54,13 +88,29 @@ const validatePackageRoot = async (packageRoot: string, packageName: string, ver
   }
 };
 
-const readCachedLatest = async (packageCache: string, packageName: string): Promise<string | undefined> => {
+const readLatestPointer = async (packageCache: string): Promise<LatestPointer | undefined> => {
   try {
-    const pointer = (await readJson(join(packageCache, "latest.json"))) as { version?: unknown };
-    if (typeof pointer.version !== "string") return undefined;
-    const packageRoot = join(packageCache, pointer.version, "package");
+    const pointer = (await readJson(join(packageCache, "latest.json"))) as Partial<LatestPointer>;
+    return {
+      version: validateVersion(pointer.version),
+      revision: validateRevision(pointer.revision),
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+};
+
+const readCachedLatest = async (
+  packageCache: string,
+  packageName: string,
+): Promise<{ readonly version: string; readonly packageRoot: string } | undefined> => {
+  const pointer = await readLatestPointer(packageCache);
+  if (!pointer) return undefined;
+  const packageRoot = join(packageCache, pointer.version, "package");
+  try {
     await validatePackageRoot(packageRoot, packageName, pointer.version);
-    return pointer.version;
+    return { version: pointer.version, packageRoot };
   } catch {
     return undefined;
   }
@@ -76,10 +126,13 @@ const fetchMetadata = async (packageName: string, fetchImpl: typeof globalThis.f
     !metadata["dist-tags"] ||
     typeof metadata["dist-tags"].latest !== "string" ||
     !metadata.versions ||
-    typeof metadata.versions !== "object"
+    typeof metadata.versions !== "object" ||
+    !metadata.time ||
+    typeof metadata.time !== "object"
   ) {
     throw new Error("Invalid npm metadata");
   }
+  validateRevision(metadata.time.modified);
   return metadata as NpmPackageMetadata;
 };
 
@@ -91,9 +144,29 @@ const downloadTarball = async (
   const response = await fetchImpl(metadata.dist.tarball);
   if (!response.ok) throw new Error(`Tarball request returned ${response.status}`);
   const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_TARBALL_BYTES) throw new Error("Tarball exceeds 32 MiB");
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > MAX_TARBALL_BYTES) throw new Error("Tarball exceeds 32 MiB");
+  if (Number.isFinite(contentLength) && contentLength > MAX_TARBALL_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("Tarball exceeds 32 MiB");
+  }
+  if (!response.body) throw new Error("Tarball response has no body");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (totalBytes + value.byteLength > MAX_TARBALL_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new Error("Tarball exceeds 32 MiB");
+      }
+      chunks.push(value);
+      totalBytes += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(Buffer.concat(chunks, totalBytes));
 
   const match = /^([a-z0-9]+)-([A-Za-z0-9+/]+={0,2})$/.exec(metadata.dist.integrity);
   if (!match) throw new Error("Invalid tarball integrity");
@@ -116,13 +189,37 @@ const downloadTarball = async (
 const unsafeArchivePath = (path: string) =>
   isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes("..");
 
-const replaceLatestPointer = async (packageCache: string, version: string): Promise<void> => {
-  const temporary = join(packageCache, `.latest-${crypto.randomUUID()}.json`);
+const replaceLatestPointer = async (packageCache: string, candidate: LatestPointer): Promise<void> => {
+  const pointerPath = join(packageCache, "latest.json");
+  const previous = pointerUpdates.get(pointerPath) ?? Promise.resolve();
+  const update = previous
+    .catch(() => {})
+    .then(async () => {
+      const current = await readLatestPointer(packageCache);
+      const candidateRevision = Date.parse(candidate.revision);
+      const currentRevision = current ? Date.parse(current.revision) : undefined;
+      if (
+        current &&
+        currentRevision !== undefined &&
+        (candidateRevision < currentRevision ||
+          (candidateRevision === currentRevision && candidate.version !== current.version))
+      ) {
+        return;
+      }
+
+      const temporary = join(packageCache, `.latest-${crypto.randomUUID()}.json`);
+      try {
+        await writeFile(temporary, JSON.stringify(candidate));
+        await rename(temporary, pointerPath);
+      } finally {
+        await rm(temporary, { force: true });
+      }
+    });
+  pointerUpdates.set(pointerPath, update);
   try {
-    await writeFile(temporary, JSON.stringify({ version }));
-    await rename(temporary, join(packageCache, "latest.json"));
+    await update;
   } finally {
-    await rm(temporary, { force: true });
+    if (pointerUpdates.get(pointerPath) === update) pointerUpdates.delete(pointerPath);
   }
 };
 
@@ -186,16 +283,16 @@ export const resolveProviderSource = async (
 ): Promise<string> => {
   const { packageName } = source;
   try {
-    const packageCache = join(options.cacheRoot, encodeURIComponent(packageName));
+    const packageCache = join(resolve(options.cacheRoot), encodeURIComponent(packageName));
     await mkdir(packageCache, { recursive: true });
     const cachedLatest = await readCachedLatest(packageCache, packageName);
-    if (!options.refreshLatest && cachedLatest) return join(packageCache, cachedLatest, "package");
+    if (!options.refreshLatest && cachedLatest) return cachedLatest.packageRoot;
 
     const metadata = await fetchMetadata(packageName, options.fetch ?? globalThis.fetch);
-    const version = metadata["dist-tags"].latest;
+    const version = validateVersion(metadata["dist-tags"].latest);
+    const revision = validateRevision(metadata.time.modified);
     const versionMetadata = metadata.versions[version];
     if (
-      !version ||
       !validVersionMetadata(versionMetadata) ||
       versionMetadata.name !== packageName ||
       versionMetadata.version !== version
@@ -209,7 +306,7 @@ export const resolveProviderSource = async (
       versionMetadata,
       options.fetch ?? globalThis.fetch,
     );
-    await replaceLatestPointer(packageCache, version);
+    await replaceLatestPointer(packageCache, { version, revision });
     return packageRoot;
   } catch (error) {
     throw new Error(`Failed to resolve ${packageName}: ${errorMessage(error)}`, { cause: error });
