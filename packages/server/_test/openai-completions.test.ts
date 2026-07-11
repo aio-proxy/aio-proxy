@@ -66,7 +66,7 @@ function tempHome(): string {
 }
 
 async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
-  const usageResponse = await app.request("/dashboard/api/usage");
+  const usageResponse = await app.request("/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider");
   expect(usageResponse.status).toBe(200);
   return usageResponse.json();
 }
@@ -469,7 +469,7 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test("Given ai-sdk provider returns usage When completion finishes Then dashboard usage includes the row", async () => {
+  test("Given ai-sdk provider returns usage When completion finishes Then dashboard overview includes it", async () => {
     // Given
     const provider = {
       id: "mock-ai",
@@ -520,21 +520,20 @@ describe("POST /v1/chat/completions", () => {
 
     // Then
     expect(await waitForUsageRow(app)).toEqual({
+      range: "24h",
+      metric: "tokens",
+      groupBy: "provider",
+      rangeStart: expect.any(String),
+      rangeEnd: expect.any(String),
+      bucketUnit: "hour",
       summary: expect.objectContaining({
         inputTokens: 3,
         outputTokens: 2,
         requestCount: 1,
         totalTokens: 5,
       }),
-      rows: [
-        expect.objectContaining({
-          inputTokens: 3,
-          modelId: "gpt-4o-mini",
-          outputTokens: 2,
-          providerId: "mock-ai",
-          totalTokens: 5,
-        }),
-      ],
+      series: [{ key: "mock-ai", kind: "dimension" }],
+      buckets: expect.any(Array),
     });
   });
 

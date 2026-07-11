@@ -44,39 +44,6 @@ export type ServerState = ProviderRouteSource & {
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly redactedConfig: () => Config;
   readonly requestLog: RequestLogStore;
-  readonly usageLedger: LegacyUsageLedger;
-};
-
-type LegacyUsageRow = {
-  readonly id: string;
-  readonly traceId: string;
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly priceModelId?: string;
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly totalTokens?: number;
-  readonly cacheReadTokens?: number;
-  readonly cacheWriteTokens?: number;
-  readonly reasoningTokens?: number;
-  readonly estimatedCostUsd?: number;
-  readonly createdAt: Date;
-};
-
-type LegacyUsageSummary = {
-  readonly requestCount: number;
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly totalTokens: number;
-  readonly cacheReadTokens: number;
-  readonly cacheWriteTokens: number;
-  readonly reasoningTokens: number;
-  readonly estimatedCostUsd: number;
-};
-
-type LegacyUsageLedger = {
-  readonly list: (limit: number) => readonly LegacyUsageRow[];
-  readonly summary: (limit: number) => LegacyUsageSummary;
 };
 
 export type ProviderSummaryOptions = {
@@ -117,7 +84,6 @@ export function createServerState(options: ServerStateOptions): ServerState {
   const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
   const dbHandle = openServerDb(options);
-  const usageLedger = createLegacyUsageLedger(dbHandle);
   const requestLog = createRequestLogStore(dbHandle.db);
   const usageCapture = createUsageCapture({ priceCatalogTask: createPriceCatalogTask() });
   const requestRecorder = createRequestRecorder({ store: requestLog });
@@ -192,81 +158,6 @@ export function createServerState(options: ServerStateOptions): ServerState {
     requestLog,
     requestRecorder,
     usageCapture,
-    usageLedger,
-  };
-}
-
-function createLegacyUsageLedger(handle: OpenDbHandle): LegacyUsageLedger {
-  const list = (limit: number): readonly LegacyUsageRow[] =>
-    handle.sqlite
-      .query<LegacyDbUsageRow, [number]>(
-        `SELECT id, request_id, provider_id, model_id, price_model_id, input_tokens, output_tokens,
-          total_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, estimated_cost_usd, created_at
-        FROM usage ORDER BY created_at DESC LIMIT ?`,
-      )
-      .all(limit)
-      .map(legacyUsageRow);
-
-  return {
-    list,
-    summary(limit) {
-      return list(limit).reduce<LegacyUsageSummary>(
-        (total, row) => ({
-          requestCount: total.requestCount + 1,
-          inputTokens: total.inputTokens + (row.inputTokens ?? 0),
-          outputTokens: total.outputTokens + (row.outputTokens ?? 0),
-          totalTokens: total.totalTokens + (row.totalTokens ?? 0),
-          cacheReadTokens: total.cacheReadTokens + (row.cacheReadTokens ?? 0),
-          cacheWriteTokens: total.cacheWriteTokens + (row.cacheWriteTokens ?? 0),
-          reasoningTokens: total.reasoningTokens + (row.reasoningTokens ?? 0),
-          estimatedCostUsd: total.estimatedCostUsd + (row.estimatedCostUsd ?? 0),
-        }),
-        {
-          requestCount: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
-          reasoningTokens: 0,
-          estimatedCostUsd: 0,
-        },
-      );
-    },
-  };
-}
-
-type LegacyDbUsageRow = {
-  readonly id: string;
-  readonly request_id: string;
-  readonly provider_id: string;
-  readonly model_id: string;
-  readonly price_model_id: string | null;
-  readonly input_tokens: number | null;
-  readonly output_tokens: number | null;
-  readonly total_tokens: number | null;
-  readonly cache_read_tokens: number | null;
-  readonly cache_write_tokens: number | null;
-  readonly reasoning_tokens: number | null;
-  readonly estimated_cost_usd: number | null;
-  readonly created_at: number;
-};
-
-function legacyUsageRow(row: LegacyDbUsageRow): LegacyUsageRow {
-  return {
-    id: row.id,
-    traceId: row.request_id,
-    providerId: row.provider_id,
-    modelId: row.model_id,
-    ...(row.price_model_id === null ? {} : { priceModelId: row.price_model_id }),
-    ...(row.input_tokens === null ? {} : { inputTokens: row.input_tokens }),
-    ...(row.output_tokens === null ? {} : { outputTokens: row.output_tokens }),
-    ...(row.total_tokens === null ? {} : { totalTokens: row.total_tokens }),
-    ...(row.cache_read_tokens === null ? {} : { cacheReadTokens: row.cache_read_tokens }),
-    ...(row.cache_write_tokens === null ? {} : { cacheWriteTokens: row.cache_write_tokens }),
-    ...(row.reasoning_tokens === null ? {} : { reasoningTokens: row.reasoning_tokens }),
-    ...(row.estimated_cost_usd === null ? {} : { estimatedCostUsd: row.estimated_cost_usd }),
-    createdAt: new Date(row.created_at),
   };
 }
 
