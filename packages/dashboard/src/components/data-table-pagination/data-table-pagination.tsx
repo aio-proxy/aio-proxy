@@ -34,7 +34,6 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious
-            href="#"
             text={previousLabel}
             aria-label={previousLabel}
             aria-disabled={!canPreviousPage || undefined}
@@ -58,7 +57,6 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
           ) : (
             <PaginationItem key={item}>
               <PaginationLink
-                href="#"
                 isActive={item === pageIndex}
                 aria-label={m["dashboard.pagination.go_to_page"]({ page: item + 1 })}
                 onClick={(event) => {
@@ -74,7 +72,6 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
 
         <PaginationItem>
           <PaginationNext
-            href="#"
             text={nextLabel}
             aria-label={nextLabel}
             aria-disabled={!canNextPage || undefined}
