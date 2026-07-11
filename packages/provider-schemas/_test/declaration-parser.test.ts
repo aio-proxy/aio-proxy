@@ -92,6 +92,7 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.declarations[0]).toContain("interface FixtureSettings");
     expect(parsed.documentation.FixtureSettings).toBe("Settings used by the fixture provider.");
     expect(parsed.documentation["FixtureSettings.apiKey"]).toBe("API key used for authentication.");
+    expect(parsed.sourceFiles).toEqual([realpathSync(entry)]);
   });
 
   test("extracts property JSDoc from object type aliases", async () => {
@@ -168,9 +169,11 @@ describe("provider schema declaration inputs", () => {
   test("follows relative re-exports and imports while preserving declaration text", async () => {
     const root = fixtureRoot("provider-schema-reexport");
     const entry = join(root, "index.d.ts");
+    const factory = join(root, "factory.d.ts");
+    const shared = join(root, "shared.d.ts");
     writeFileSync(entry, 'export { createFixture } from "./factory";\n');
     writeFileSync(
-      join(root, "factory.d.ts"),
+      factory,
       `
         import type { SharedSettings } from "./shared";
         export interface FixtureSettings extends SharedSettings {
@@ -181,7 +184,7 @@ describe("provider schema declaration inputs", () => {
       `,
     );
     writeFileSync(
-      join(root, "shared.d.ts"),
+      shared,
       `
         export interface SharedSettings {
           /** Shared token. */
@@ -202,6 +205,7 @@ describe("provider schema declaration inputs", () => {
     expect(parsed.declarations.join("\n")).toContain("interface SharedSettings");
     expect(parsed.documentation["FixtureSettings.baseURL"]).toBe("Optional endpoint.");
     expect(parsed.documentation["SharedSettings.token"]).toBe("Shared token.");
+    expect(parsed.sourceFiles).toEqual([entry, factory, shared].map(realpathSync).sort());
   });
 
   test("handles relative declaration cycles", async () => {

@@ -78,10 +78,20 @@ type ProviderSchemaSource = {
   readonly factoryName: string;
 };
 
+export type GeneratedProviderSchemaEntry = {
+  readonly entry: ProviderOptionsSchemaEntry;
+  readonly dependencies: readonly string[];
+};
+
+export type GeneratedProviderSchemas = {
+  readonly entries: Readonly<Record<string, ProviderOptionsSchemaEntry>>;
+  readonly dependencies: readonly string[];
+};
+
 export const generateProviderSchemaEntry = async (
   packageRoot: string,
   source: ProviderSchemaSource,
-): Promise<ProviderOptionsSchemaEntry> => {
+): Promise<GeneratedProviderSchemaEntry> => {
   const declarationEntry = await resolveDeclarationEntry(packageRoot);
   const [metadata, parsed] = await Promise.all([
     readProviderPackageMetadata(packageRoot),
@@ -107,23 +117,27 @@ export const generateProviderSchemaEntry = async (
     documentation,
   });
   return {
-    packageName: metadata.name,
-    packageVersion: metadata.version,
-    factoryName: source.factoryName,
-    schema: normalized.schema,
-    warnings: normalized.warnings,
+    entry: {
+      packageName: metadata.name,
+      packageVersion: metadata.version,
+      factoryName: source.factoryName,
+      schema: normalized.schema,
+      warnings: normalized.warnings,
+    },
+    dependencies: [join(packageRoot, "package.json"), ...parsed.sourceFiles].sort(compareCodeUnits),
   };
 };
 
-export const generateProviderSchemaEntries = async (): Promise<
-  Readonly<Record<string, ProviderOptionsSchemaEntry>>
-> => {
+export const generateProviderSchemaEntries = async (): Promise<GeneratedProviderSchemas> => {
   const entries: Record<string, ProviderOptionsSchemaEntry> = {};
+  const dependencies = new Set<string>();
   for (const allowlisted of PROVIDER_SCHEMA_ALLOWLIST) {
     const packageRoot = await findPackageRoot(allowlisted.packageName);
-    entries[allowlisted.packageName] = await generateProviderSchemaEntry(packageRoot, allowlisted);
+    const generated = await generateProviderSchemaEntry(packageRoot, allowlisted);
+    entries[allowlisted.packageName] = generated.entry;
+    for (const dependency of generated.dependencies) dependencies.add(dependency);
   }
-  return entries;
+  return { entries, dependencies: [...dependencies].sort(compareCodeUnits) };
 };
 
 export const renderGeneratedProviderSchemas = (
@@ -151,7 +165,7 @@ export const renderGeneratedProviderSchemas = (
 };
 
 export const writeGeneratedProviderSchemas = async () => {
-  const source = renderGeneratedProviderSchemas(await generateProviderSchemaEntries());
+  const source = renderGeneratedProviderSchemas((await generateProviderSchemaEntries()).entries);
   const current = await readFile(generatedPath, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;

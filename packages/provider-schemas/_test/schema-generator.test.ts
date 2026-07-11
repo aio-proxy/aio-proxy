@@ -162,10 +162,12 @@ describe("provider schema generation", () => {
   });
 
   test("generates the exact allowlist with required compatible-provider fields and descriptions", async () => {
-    const entries = await generateProviderSchemaEntries();
-    expect(Object.keys(entries)).toEqual(PROVIDER_SCHEMA_ALLOWLIST.map(({ packageName }) => packageName));
+    const generated = await generateProviderSchemaEntries();
+    expect(Object.keys(generated.entries)).toEqual(PROVIDER_SCHEMA_ALLOWLIST.map(({ packageName }) => packageName));
+    expect(generated.dependencies).toContainEqual(expect.stringMatching(/@ai-sdk\/openai-compatible\/package\.json$/));
+    expect(generated.dependencies).toContainEqual(expect.stringMatching(/\.d\.ts$/));
 
-    const compatible = entries["@ai-sdk/openai-compatible"];
+    const compatible = generated.entries["@ai-sdk/openai-compatible"];
     expect(compatible.schema).not.toBeNull();
     expect(compatible.schema?.required).toEqual(expect.arrayContaining(["name", "baseURL"]));
     expect(compatible.schema?.properties).toMatchObject({
@@ -173,7 +175,7 @@ describe("provider schema generation", () => {
       baseURL: { description: expect.any(String) },
     });
 
-    const openRouter = entries["@openrouter/ai-sdk-provider"];
+    const openRouter = generated.entries["@openrouter/ai-sdk-provider"];
     expect(openRouter.schema).not.toBeNull();
     expect(openRouter.warnings).toContainEqual({ code: "unsupported_optional", path: "fetch" });
   });
@@ -193,13 +195,13 @@ describe("provider schema generation", () => {
       `,
     );
 
-    const entry = await generateProviderSchemaEntry(packageRoot, {
+    const generated = await generateProviderSchemaEntry(packageRoot, {
       packageName: "fixture-provider",
       factoryName: "createFixture",
     });
 
-    expect(entry.schema).toMatchObject({ description: "Options for the fixture provider." });
-    expect(renderGeneratedProviderSchemas({ "fixture-provider": entry })).toContain(
+    expect(generated.entry.schema).toMatchObject({ description: "Options for the fixture provider." });
+    expect(renderGeneratedProviderSchemas({ "fixture-provider": generated.entry })).toContain(
       '"description": "Options for the fixture provider."',
     );
   });
@@ -238,7 +240,7 @@ describe("provider schema generation", () => {
   });
 
   test("committed generated source is current", async () => {
-    const expected = renderGeneratedProviderSchemas(await generateProviderSchemaEntries());
+    const expected = renderGeneratedProviderSchemas((await generateProviderSchemaEntries()).entries);
     const actual = await readFile(join(import.meta.dir, "../src/generated.ts"), "utf8");
     expect(actual).toBe(expected);
   });

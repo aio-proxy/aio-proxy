@@ -66,6 +66,7 @@ export type ParsedProviderFactoryDeclaration = {
   readonly optional: boolean;
   readonly declarations: readonly string[];
   readonly documentation: Readonly<Record<string, string>>;
+  readonly sourceFiles: readonly string[];
 };
 
 export type ParseProviderFactoryDeclarationOptions = {
@@ -73,6 +74,8 @@ export type ParseProviderFactoryDeclarationOptions = {
   readonly declarationEntry: string;
   readonly factoryName: string;
 };
+
+const compareCodeUnits = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
 
 const nodeName = (node: AstNode | null | undefined) =>
   node?.type === "Identifier" || node?.type === "StringLiteral" ? (node.name ?? node.value) : undefined;
@@ -409,5 +412,6 @@ export const parseProviderFactoryDeclaration = async (
     optional: parameter.optional === true || parameter.type === "AssignmentPattern",
     declarations: [...declarations.values()].map((declaration) => declaration.text),
     documentation,
+    sourceFiles: [...state.files.keys()].sort(compareCodeUnits),
   };
 };
