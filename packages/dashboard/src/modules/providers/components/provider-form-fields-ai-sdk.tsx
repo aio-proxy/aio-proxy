@@ -1,11 +1,11 @@
 import { m } from "@aio-proxy/i18n";
 import type React from "react";
 import { useEffect, useRef } from "react";
+import { TagsInput } from "@/components/tags-input";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { TagsInput } from "@/components/ui/tags-input";
 import type { ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
 import { useProviderOptionsSchema } from "../hooks/use-provider-options-schema";

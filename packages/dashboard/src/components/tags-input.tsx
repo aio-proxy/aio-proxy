@@ -1,4 +1,5 @@
 import { XIcon } from "lucide-react";
+import type React from "react";
 import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -11,11 +12,27 @@ type Props = {
   className?: string;
   id?: string;
   removeLabel: (tag: string) => string;
+  tokenSeparators?: readonly string[];
 };
 
-const SPLIT = /[,\n]+/;
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export function TagsInput({ value, onValueChange, placeholder, disabled, className, id, removeLabel }: Props) {
+const splitByTokenSeparators = (value: string, tokenSeparators: readonly string[]) => {
+  const separators = tokenSeparators.filter((separator) => separator !== "");
+  if (!separators.some((separator) => value.includes(separator))) return;
+  return value.split(new RegExp(separators.map(escapeRegExp).join("|")));
+};
+
+export const TagsInput: React.FC<Props> = ({
+  value,
+  onValueChange,
+  placeholder,
+  disabled,
+  className,
+  id,
+  removeLabel,
+  tokenSeparators = [",", "\n"],
+}) => {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,7 +55,7 @@ export function TagsInput({ value, onValueChange, placeholder, disabled, classNa
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: container focus proxy; inner input handles keyboard
-    <div
+    <fieldset
       className={cn(
         "flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-3xl border border-transparent bg-input/50 px-2 py-1.5 transition-[color,box-shadow,background-color] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30 has-disabled:pointer-events-none has-disabled:opacity-50",
         className,
@@ -48,7 +65,7 @@ export function TagsInput({ value, onValueChange, placeholder, disabled, classNa
       }}
     >
       {value.map((tag, i) => (
-        <Badge key={tag} variant="outline" className="h-6 gap-0.5 py-0.5 pl-2 pr-1">
+        <Badge key={tag} variant="outline" className="h-6 gap-0.5 py-0.5 pr-1 pl-2">
           <span>{tag}</span>
           <button
             type="button"
@@ -71,7 +88,7 @@ export function TagsInput({ value, onValueChange, placeholder, disabled, classNa
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
+          if (e.key === "Enter" || tokenSeparators.includes(e.key)) {
             e.preventDefault();
             commit();
           } else if (e.key === "Backspace" && draft === "" && value.length > 0) {
@@ -81,11 +98,12 @@ export function TagsInput({ value, onValueChange, placeholder, disabled, classNa
         }}
         onPaste={(e) => {
           const text = e.clipboardData.getData("text");
-          if (!SPLIT.test(text)) return;
+          const parts = splitByTokenSeparators(text, tokenSeparators);
+          if (!parts) return;
           e.preventDefault();
-          addMany(text.split(SPLIT));
+          addMany(parts);
         }}
       />
-    </div>
+    </fieldset>
   );
-}
+};

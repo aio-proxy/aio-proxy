@@ -6,6 +6,9 @@ pre-commit:
       glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css}"
       run: bunx @biomejs/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
       stage_fixed: true
+    bun-check:
+      glob: "bun.lock"
+      run: bun run scripts/bun-lock-check.ts
 
 commit-msg:
   commands:

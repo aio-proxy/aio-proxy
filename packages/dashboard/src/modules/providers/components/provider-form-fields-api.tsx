@@ -1,10 +1,10 @@
 import { m } from "@aio-proxy/i18n";
 import type { ProviderProtocol } from "@aio-proxy/types";
+import { TagsInput } from "@/components/tags-input";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TagsInput } from "@/components/ui/tags-input";
 import { API_PROVIDER_PROTOCOLS, ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
 import { ProviderAliasFields } from "./provider-alias";
@@ -72,9 +72,11 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
                 </SelectTrigger>
                 <SelectContent>
                   {API_PROVIDER_PROTOCOLS.map((protocol) => (
-                    <SelectItem key={protocol.value} value={protocol.value} className="flex items-center gap-2">
-                      <protocol.icon />
-                      {protocol.label}
+                    <SelectItem key={protocol.value} value={protocol.value}>
+                      <span className="flex items-center gap-2">
+                        <protocol.icon />
+                        {protocol.label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

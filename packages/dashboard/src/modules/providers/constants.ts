@@ -1,5 +1,8 @@
 import { ProviderProtocol } from "@aio-proxy/types";
-import { Claude, Codex, Gemini, OpenAI } from "@lobehub/icons";
+import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg?react";
+import Codex from "@lobehub/icons-static-svg/icons/codex-color.svg?react";
+import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?react";
+import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg?react";
 
 export enum ProviderFormMode {
   Create = "create",
@@ -15,16 +18,16 @@ export const API_PROVIDER_PROTOCOLS = [
   {
     value: ProviderProtocol.OpenAIResponse,
     label: "OpenAI Response",
-    icon: Codex.Color,
+    icon: Codex,
   },
   {
     value: ProviderProtocol.Anthropic,
     label: "Anthropic",
-    icon: Claude.Color,
+    icon: Claude,
   },
   {
     value: ProviderProtocol.Gemini,
     label: "Gemini",
-    icon: Gemini.Color,
+    icon: Gemini,
   },
 ];

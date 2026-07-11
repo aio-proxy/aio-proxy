@@ -1,5 +1,6 @@
 import { defineConfig } from "@rsbuild/core";
 import { pluginReact } from "@rsbuild/plugin-react";
+import { pluginSvgr } from "@rsbuild/plugin-svgr";
 import { pluginTailwindcss } from "@rsbuild/plugin-tailwindcss";
 import { tanstackRouter } from "@tanstack/router-plugin/rspack";
 
@@ -9,6 +10,7 @@ export default defineConfig({
     pluginReact({
       reactCompiler: true,
     }),
+    pluginSvgr(),
     pluginTailwindcss(),
   ],
   tools: {
