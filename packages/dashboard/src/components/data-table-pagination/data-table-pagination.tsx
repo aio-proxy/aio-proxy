@@ -1,35 +1,50 @@
 import { m } from "@aio-proxy/i18n";
 import type { Table } from "@tanstack/react-table";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
+import type React from "react";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { getPaginationItems } from "./pagination-items";
 
-interface DataTablePaginationProps<TData> {
-  table: Table<TData>;
+type PaginationTable = Pick<
+  Table<unknown>,
+  "getState" | "getPageOptions" | "getCanPreviousPage" | "getCanNextPage" | "previousPage" | "nextPage" | "setPageIndex"
+>;
+
+interface DataTablePaginationProps {
+  table: PaginationTable;
 }
 
-export function DataTablePagination<TData>({ table }: DataTablePaginationProps<TData>) {
+export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table }) => {
   const pageIndex = table.getState().pagination.pageIndex;
   const items = getPaginationItems(table.getPageOptions(), pageIndex);
   const previousLabel = m["dashboard.pagination.previous"]();
   const nextLabel = m["dashboard.pagination.next"]();
+  const canPreviousPage = table.getCanPreviousPage();
+  const canNextPage = table.getCanNextPage();
 
   return (
     <Pagination className="mx-0 w-auto justify-end">
       <PaginationContent>
         <PaginationItem>
-          <Button
-            type="button"
-            variant="ghost"
-            size="default"
+          <PaginationPrevious
+            href="#"
+            text={previousLabel}
             aria-label={previousLabel}
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
-          >
-            <ChevronLeftIcon data-icon="inline-start" />
-            <span className="hidden sm:block">{previousLabel}</span>
-          </Button>
+            aria-disabled={!canPreviousPage || undefined}
+            tabIndex={canPreviousPage ? undefined : -1}
+            className={canPreviousPage ? undefined : "pointer-events-none opacity-50"}
+            onClick={(event) => {
+              event.preventDefault();
+              if (canPreviousPage) table.previousPage();
+            }}
+          />
         </PaginationItem>
 
         {items.map((item, index) =>
@@ -42,34 +57,36 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
             </PaginationItem>
           ) : (
             <PaginationItem key={item}>
-              <Button
-                type="button"
-                variant={item === pageIndex ? "outline" : "ghost"}
-                size="icon"
-                aria-current={item === pageIndex ? "page" : undefined}
+              <PaginationLink
+                href="#"
+                isActive={item === pageIndex}
                 aria-label={m["dashboard.pagination.go_to_page"]({ page: item + 1 })}
-                onClick={() => table.setPageIndex(item)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  table.setPageIndex(item);
+                }}
               >
                 {item + 1}
-              </Button>
+              </PaginationLink>
             </PaginationItem>
           ),
         )}
 
         <PaginationItem>
-          <Button
-            type="button"
-            variant="ghost"
-            size="default"
+          <PaginationNext
+            href="#"
+            text={nextLabel}
             aria-label={nextLabel}
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
-          >
-            <span className="hidden sm:block">{nextLabel}</span>
-            <ChevronRightIcon data-icon="inline-end" />
-          </Button>
+            aria-disabled={!canNextPage || undefined}
+            tabIndex={canNextPage ? undefined : -1}
+            className={canNextPage ? undefined : "pointer-events-none opacity-50"}
+            onClick={(event) => {
+              event.preventDefault();
+              if (canNextPage) table.nextPage();
+            }}
+          />
         </PaginationItem>
       </PaginationContent>
     </Pagination>
   );
-}
+};
