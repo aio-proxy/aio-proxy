@@ -294,24 +294,11 @@ const installVersion = async (
       if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
       try {
         await validatePackageRoot(packageRoot, packageName, version);
-      } catch {
-        const quarantine = join(packageCache, `.invalid-${version}-${crypto.randomUUID()}`);
-        try {
-          try {
-            await rename(versionRoot, quarantine);
-          } catch (repairError) {
-            if ((repairError as NodeJS.ErrnoException).code !== "ENOENT") throw repairError;
-          }
-          try {
-            await rename(temporaryRoot, versionRoot);
-          } catch (retryError) {
-            const retryCode = (retryError as NodeJS.ErrnoException).code;
-            if (retryCode !== "EEXIST" && retryCode !== "ENOTEMPTY") throw retryError;
-            await validatePackageRoot(packageRoot, packageName, version);
-          }
-        } finally {
-          await rm(quarantine, { recursive: true, force: true });
-        }
+      } catch (validationError) {
+        throw new Error(
+          `Cached provider source ${packageName}@${version} is invalid; remove the provider schema cache and retry`,
+          { cause: validationError },
+        );
       }
     }
     return packageRoot;

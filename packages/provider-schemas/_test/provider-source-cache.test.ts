@@ -632,7 +632,7 @@ describe("resolveProviderSource", () => {
     expect((await readdir(packageCache)).sort()).toEqual(["2.0.0", "observations"]);
   });
 
-  test("repairs a corrupt concurrent destination and remains usable", async () => {
+  test("rejects a corrupt concurrent destination and cleans verified temporary paths", async () => {
     const fixture = await createRegistryFixture({ latest: "2.0.0" });
     const cacheRoot = createCacheRoot();
     const packageCache = packageCachePath(cacheRoot);
@@ -649,16 +649,13 @@ describe("resolveProviderSource", () => {
     );
     tarball.release();
 
-    const roots = await Promise.all(resolutions);
-    const watchedRoot = await resolveProviderSource(source, {
-      cacheRoot,
-      refreshLatest: false,
-      fetch: () => Promise.reject(new Error("registry must not be called")),
-    });
-    expect(new Set(roots).size).toBe(1);
-    expect(watchedRoot).toBe(roots[0]);
-    expect(JSON.parse(await readFile(join(watchedRoot, "package.json"), "utf8"))).toMatchObject({
-      name: PACKAGE_NAME,
+    const results = await Promise.allSettled(resolutions);
+    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    for (const result of results) {
+      if (result.status === "rejected") expect(String(result.reason)).toContain("remove the provider schema cache");
+    }
+    expect(JSON.parse(await readFile(join(packageCache, "2.0.0/package/package.json"), "utf8"))).toMatchObject({
+      name: "@fixture/corrupt",
       version: "2.0.0",
     });
     expect((await readdir(packageCache)).filter((name) => name.startsWith("."))).toEqual([]);
