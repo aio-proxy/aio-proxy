@@ -1,5 +1,4 @@
 import { getLocale, m } from "@aio-proxy/i18n";
-import type { DashboardUsageOverviewResponse, DashboardUsageSeries } from "@aio-proxy/types";
 import { format, parseISO } from "date-fns";
 import { enUS, zhCN } from "date-fns/locale";
 import { useAtomValue } from "jotai";
@@ -14,14 +13,16 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import type { UsageOverviewData, UsageOverviewSeries } from "../services/usage-service";
+import { createUsageValueFormatter } from "../services/usage-value-formatter";
 import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 import { UsageTrendTabs } from "./usage-trend-tabs";
 
 type Props = {
-  readonly data: DashboardUsageOverviewResponse;
+  readonly data: UsageOverviewData;
 };
 
-const seriesColor = (series: DashboardUsageSeries, index: number) => {
+const seriesColor = (series: UsageOverviewSeries, index: number) => {
   if (series.kind === "failed") return "var(--destructive)";
   if (series.kind === "cancelled") return "var(--muted-foreground)";
   if (series.kind === "other") return "var(--chart-5)";
@@ -33,17 +34,8 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const chartTitleId = useId();
   const chartDescriptionId = useId();
   const locale = getLocale().startsWith("zh") ? zhCN : enUS;
-  const compactNumberFormatter = new Intl.NumberFormat(getLocale(), {
-    maximumFractionDigits: 0,
-    notation: "compact",
-  });
-  const costFormatter = new Intl.NumberFormat(getLocale(), {
-    currency: "USD",
-    maximumFractionDigits: 2,
-    notation: "compact",
-    style: "currency",
-  });
-  const seriesLabel = (series: DashboardUsageSeries) => {
+  const formatValue = createUsageValueFormatter(metric, getLocale());
+  const seriesLabel = (series: UsageOverviewSeries) => {
     if (series.kind === "dimension") return series.key;
     if (series.kind === "other") return m["dashboard.usage.series_other"]();
     if (series.kind === "failed") return m["dashboard.usage.series_failed"]();
@@ -57,11 +49,6 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
     format(parseISO(value), data.bucketUnit === "hour" ? "MMM d, HH:mm xxx" : tooltip ? "PP" : "MMM d", {
       locale,
     });
-  const formatValue = (value: number) => {
-    if (metric === "cost") return costFormatter.format(value);
-    return compactNumberFormatter.format(value);
-  };
-
   return (
     <Card>
       <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-start sm:justify-between">

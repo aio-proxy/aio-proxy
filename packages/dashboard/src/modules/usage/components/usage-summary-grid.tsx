@@ -1,10 +1,10 @@
 import { getLocale, m } from "@aio-proxy/i18n";
-import type { DashboardUsageSummary } from "@aio-proxy/types";
 import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { UsageOverviewSummary } from "../services/usage-service";
 
 type Props = {
-  readonly summary: DashboardUsageSummary;
+  readonly summary: UsageOverviewSummary;
 };
 
 export const UsageSummaryGrid: React.FC<Props> = ({ summary }) => {

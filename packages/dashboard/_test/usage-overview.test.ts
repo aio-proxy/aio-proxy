@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createStore } from "jotai";
 import { usageQueryOptions } from "../src/modules/usage/services/usage-service";
+import { createUsageValueFormatter } from "../src/modules/usage/services/usage-value-formatter";
 import { usageOverviewFiltersAtom } from "../src/modules/usage/stores/usage-overview-filters";
 
 const dashboardRoot = join(import.meta.dir, "../src");
@@ -95,13 +96,30 @@ describe("usage overview query", () => {
     expect(chart).not.toContain('aria-label={m["dashboard.usage.chart_title"]()}');
   });
 
-  test("uses the same compact formatter for token/request axes and tooltips", () => {
-    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+  test("preserves meaningful USD precision without compacting cost", () => {
+    const formatCost = createUsageValueFormatter("cost", "en-US");
 
-    expect(chart).toContain('notation: "compact"');
-    expect(chart).toContain("tickFormatter={(value) => formatValue(Number(value))}");
-    expect(chart).toContain("{formatValue(Number(value))}");
-    expect(chart).not.toContain("tooltipNumberFormatter");
-    expect(chart).not.toContain("formatValue(Number(value), true)");
+    expect(formatCost(0.0049)).toBe("$0.0049");
+    expect(formatCost(12_345.67)).toBe("$12,345.67");
+  });
+
+  test("formats token and request metrics as compact integers", () => {
+    const formatTokens = createUsageValueFormatter("tokens", "en-US");
+    const formatRequests = createUsageValueFormatter("requests", "en-US");
+
+    expect(formatTokens(1_200)).toBe("1K");
+    expect(formatRequests(1_234_567)).toBe("1M");
+  });
+
+  test("derives component response shapes from the typed usage service", () => {
+    const service = readFileSync(join(dashboardRoot, "modules/usage/services/usage-service.ts"), "utf8");
+    const chart = readFileSync(join(dashboardRoot, "modules/usage/components/usage-trend-chart.tsx"), "utf8");
+    const summary = readFileSync(join(dashboardRoot, "modules/usage/components/usage-summary-grid.tsx"), "utf8");
+
+    expect(service).toContain("export type UsageOverviewData = Awaited<ReturnType<typeof getUsage>>;");
+    expect(service).toContain('export type UsageOverviewSeries = UsageOverviewData["series"][number];');
+    expect(service).toContain('export type UsageOverviewSummary = UsageOverviewData["summary"];');
+    expect(chart).not.toContain('from "@aio-proxy/types"');
+    expect(summary).not.toContain('from "@aio-proxy/types"');
   });
 });

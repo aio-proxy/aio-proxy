@@ -29,7 +29,7 @@ export const usageQueryOptions = (input: UsageQueryInput) =>
     refetchIntervalInBackground: false,
   });
 
-async function getUsage(input: UsageQueryInput): Promise<DashboardUsageResponse> {
+export const getUsage = async (input: UsageQueryInput): Promise<DashboardUsageResponse> => {
   const response = await dashboardClient.dashboard.api.usage.$get({
     query: { range: input.range, metric: input.metric, groupBy: input.groupBy },
   });
@@ -37,4 +37,8 @@ async function getUsage(input: UsageQueryInput): Promise<DashboardUsageResponse>
     throw new DashboardUsageRequestError(response.status);
   }
   return response.json();
-}
+};
+
+export type UsageOverviewData = Awaited<ReturnType<typeof getUsage>>;
+export type UsageOverviewSeries = UsageOverviewData["series"][number];
+export type UsageOverviewSummary = UsageOverviewData["summary"];
