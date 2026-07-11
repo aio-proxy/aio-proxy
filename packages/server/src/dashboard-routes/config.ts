@@ -28,7 +28,7 @@ import { redactSecrets } from "./provider-secrets";
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
-  confirmed: z.literal(true).optional(),
+  confirmed: z.boolean().optional(),
   registry: z.url().optional(),
 });
 
@@ -67,8 +67,15 @@ export const createDashboardRoutes = (state: ServerState) =>
       const providers = await state.providerSummaries({ filter, probe });
       return context.json({ providers });
     })
-    .get("/providers/package-status", providerPackageQueryValidator, providerPackageStatus)
-    .get("/providers/options-schema", providerPackageQueryValidator, providerPackageOptionsSchema)
+    .get("/providers/package-status", providerPackageQueryValidator, async (context) =>
+      context.json(await providerPackageStatus(context.req.valid("query").npm)),
+    )
+    .get("/providers/options-schema", providerPackageQueryValidator, (context) => {
+      const schema = providerPackageOptionsSchema(context.req.valid("query").npm);
+      return schema === undefined
+        ? context.json({ code: "schema_unavailable", error: "provider options schema unavailable" }, 404)
+        : context.json(schema);
+    })
     .get("/providers/:id/edit-view", (context) => {
       const id = context.req.param("id");
       const data = state.redactedConfig().providers.find((entry) => entry.id === id);

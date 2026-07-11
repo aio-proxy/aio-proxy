@@ -1,6 +1,5 @@
 import { BUNDLED_PROVIDER_PACKAGES, findInstalledNpmPackage } from "@aio-proxy/core";
 import { hasProviderOptionsSchema, providerOptionsSchema } from "@aio-proxy/provider-schemas";
-import type { Context } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { isTrustedProviderPackage } from "../provider-package-trust";
@@ -27,46 +26,43 @@ export type ProviderOptionsSchemaResponse = {
 export const providerPackageQueryValidator = validator("query", (raw, context) => {
   const parsed = ProviderPackageQuerySchema.safeParse(raw);
   if (!parsed.success) {
-    const npm = typeof raw["npm"] === "string" ? raw["npm"] : "";
+    const rawNpm: unknown = Reflect.get(raw, "npm");
+    const npm = typeof rawNpm === "string" ? rawNpm : "";
     return context.json({ code: "invalid_package_name", error: `Invalid npm package name: ${npm}` }, 400);
   }
   return parsed.data;
 });
 
-export const providerPackageStatus = async (context: Context) => {
-  const npm = context.req.query("npm") as string;
-  const schema = providerOptionsSchema(npm);
+export const providerPackageStatus = async (npm: string): Promise<ProviderPackageStatusResponse> => {
   if (BUNDLED_PROVIDER_PACKAGES.includes(npm as (typeof BUNDLED_PROVIDER_PACKAGES)[number])) {
-    return context.json({
+    return {
       npm,
       trusted: isTrustedProviderPackage(npm),
       state: "bundled",
-      ...(schema === undefined ? {} : { version: schema.packageVersion }),
-      schemaAvailable: schema !== undefined,
-    } satisfies ProviderPackageStatusResponse);
+      schemaAvailable: hasProviderOptionsSchema(npm),
+    };
   }
 
   const installed = await findInstalledNpmPackage(npm);
-  return context.json({
+  return {
     npm,
     trusted: isTrustedProviderPackage(npm),
     state: installed === null ? "missing" : "installed",
     ...(installed === null ? {} : { version: installed.version }),
     schemaAvailable: hasProviderOptionsSchema(npm),
-  } satisfies ProviderPackageStatusResponse);
+  };
 };
 
-export const providerPackageOptionsSchema = (context: Context) => {
-  const npm = context.req.query("npm") as string;
+export const providerPackageOptionsSchema = (npm: string): ProviderOptionsSchemaResponse | undefined => {
   const entry = providerOptionsSchema(npm);
   if (entry === undefined || entry.schema === null) {
-    return context.json({ code: "schema_unavailable", error: "provider options schema unavailable" }, 404);
+    return undefined;
   }
-  return context.json({
+  return {
     npm,
     packageVersion: entry.packageVersion,
     factoryName: entry.factoryName,
     schema: entry.schema,
     warnings: entry.warnings,
-  } satisfies ProviderOptionsSchemaResponse);
+  };
 };

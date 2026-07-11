@@ -42,7 +42,6 @@ describe("dashboard provider package metadata", () => {
       npm: "@ai-sdk/openai-compatible",
       trusted: true,
       state: "bundled",
-      version: "3.0.2",
       schemaAvailable: true,
     });
   });
@@ -121,12 +120,43 @@ describe("dashboard provider package metadata", () => {
     expect((await response.json()).error).toContain("Runtime install failed");
   });
 
+  test("trusted packages may install with explicit false confirmation", async () => {
+    const app = createServer({ config: { providers: {} } });
+
+    const response = await app.request(
+      "/dashboard/api/providers/install",
+      installRequest({
+        npm: "@ai-sdk/aio-proxy-missing-provider",
+        confirmed: false,
+        registry: "http://127.0.0.1:9",
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error).toContain("Runtime install failed");
+  });
+
   test("untrusted packages require explicit confirmation", async () => {
     const app = createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
       installRequest({ npm: "aio-proxy-missing-provider" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      code: "confirmation_required",
+      error: "provider install requires confirmation",
+    });
+  });
+
+  test("untrusted packages reject explicit false confirmation", async () => {
+    const app = createServer({ config: { providers: {} } });
+
+    const response = await app.request(
+      "/dashboard/api/providers/install",
+      installRequest({ npm: "aio-proxy-missing-provider", confirmed: false }),
     );
 
     expect(response.status).toBe(400);
