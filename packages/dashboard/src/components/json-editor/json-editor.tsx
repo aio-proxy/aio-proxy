@@ -140,7 +140,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   return (
     <CodeEditor
       {...(className === undefined ? {} : { className })}
-      {...(height === undefined ? {} : { height })}
+      height={height ?? 240}
       invalid={externalInvalid || !validation.valid}
       ariaDescribedBy={errorDescriptionId}
       language="json"

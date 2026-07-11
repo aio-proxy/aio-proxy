@@ -137,5 +137,6 @@ describe("JsonEditor state", () => {
     expect(jsonEditorSource).toContain("onValidate={handleValidationReady}");
     expect(jsonEditorSource).toContain("externalInvalid");
     expect(jsonEditorSource).toContain("ariaDescribedBy={errorDescriptionId}");
+    expect(jsonEditorSource).toContain("height={height ?? 240}");
   });
 });
