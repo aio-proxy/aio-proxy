@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import * as tar from "tar";
 import { resolveProviderSource } from "../scripts/provider-source-cache";
 
@@ -16,6 +16,7 @@ type FailureScenario =
   | "invalid metadata revision"
   | "tarball HTTP failure"
   | "tarball larger than 32 MiB"
+  | "extracted declarations larger than limit"
   | "integrity mismatch"
   | "malformed integrity"
   | "unsupported integrity algorithm"
@@ -30,6 +31,7 @@ type RegistryFixtureOptions = {
   readonly latest: string;
   readonly revision?: string;
   readonly scenario?: FailureScenario;
+  readonly packageName?: string;
 };
 
 type TarballHold = {
@@ -39,6 +41,7 @@ type TarballHold = {
 
 type RegistryFixture = {
   readonly fetch: typeof globalThis.fetch;
+  readonly registryOrigin: string;
   readonly requests: string[];
   readonly close: () => void;
   readonly setLatest: (version: string, revision?: string) => Promise<void>;
@@ -56,6 +59,8 @@ const fileExists = (path: string) =>
   );
 
 const integrity = (bytes: Uint8Array) => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+const packageCachePath = (cacheRoot: string, packageName = PACKAGE_NAME) =>
+  join(cacheRoot, `package-${createHash("sha256").update(packageName).digest("hex")}`);
 
 const asHardLinkArchive = (archive: Uint8Array): Uint8Array => {
   const bytes = Buffer.from(archive);
@@ -84,18 +89,26 @@ const asHardLinkArchive = (archive: Uint8Array): Uint8Array => {
   throw new Error("hard-link fixture entry missing");
 };
 
-async function createTarball(root: string, version: string, scenario?: FailureScenario): Promise<Uint8Array> {
+async function createTarball(
+  root: string,
+  version: string,
+  scenario?: FailureScenario,
+  packageName = PACKAGE_NAME,
+): Promise<Uint8Array> {
   const archiveRoot = join(root, `archive-${version}-${crypto.randomUUID()}`);
   const packageRoot = join(archiveRoot, "package");
   await mkdir(join(packageRoot, "dist"), { recursive: true });
   writeFileSync(
     join(packageRoot, "package.json"),
     JSON.stringify({
-      name: scenario === "package name mismatch" ? "@fixture/wrong" : PACKAGE_NAME,
+      name: scenario === "package name mismatch" ? "@fixture/wrong" : packageName,
       version: scenario === "package version mismatch" ? "0.0.0" : version,
     }),
   );
   writeFileSync(join(packageRoot, "dist/index.d.ts"), "export declare function createFixture(): void;\n");
+  if (scenario === "extracted declarations larger than limit") {
+    writeFileSync(join(packageRoot, "dist/index.d.ts"), `export type Huge = "${"x".repeat(5 * 1024 * 1024)}";\n`);
+  }
   writeFileSync(join(packageRoot, "dist/index.js"), "export function createFixture() {}\n");
   if (scenario === "archive symbolic link") {
     symlinkSync("index.d.ts", join(packageRoot, "dist/link.d.ts"));
@@ -136,11 +149,14 @@ async function createRegistryFixture(options: RegistryFixtureOptions): Promise<R
     }
   >();
   const streamState = { canceled: false, chunks: 0 };
+  const packageName = options.packageName ?? PACKAGE_NAME;
   let latest = options.latest;
   let revision = options.revision ?? "2026-07-11T00:00:00.000Z";
 
   const setLatest = async (version: string, nextRevision = revision) => {
-    if (!tarballs.has(version)) tarballs.set(version, await createTarball(root, version, options.scenario));
+    if (!tarballs.has(version)) {
+      tarballs.set(version, await createTarball(root, version, options.scenario, packageName));
+    }
     latest = version;
     revision = nextRevision;
   };
@@ -164,7 +180,7 @@ async function createRegistryFixture(options: RegistryFixtureOptions): Promise<R
     port: 0,
     async fetch(request) {
       const url = new URL(request.url);
-      if (url.pathname === `/${encodeURIComponent(PACKAGE_NAME)}`) {
+      if (url.pathname === `/${encodeURIComponent(packageName)}`) {
         requests.push("metadata");
         if (options.scenario === "metadata HTTP failure") return new Response("registry failed", { status: 503 });
 
@@ -172,7 +188,7 @@ async function createRegistryFixture(options: RegistryFixtureOptions): Promise<R
           [...tarballs].map(([version, bytes]) => [
             version,
             {
-              name: PACKAGE_NAME,
+              name: packageName,
               version,
               dist: {
                 tarball: `http://127.0.0.1:${server.port}/tarballs/${version}.tgz`,
@@ -231,6 +247,7 @@ async function createRegistryFixture(options: RegistryFixtureOptions): Promise<R
       return globalThis.fetch(url, init);
     },
     requests,
+    registryOrigin: `http://127.0.0.1:${server.port}`,
     close() {
       for (const held of heldTarballs.values()) held.release();
       server.stop(true);
@@ -264,6 +281,44 @@ const createCacheRoot = () => {
   return root;
 };
 
+const observationFileName = (revision: string) => `${createHash("sha256").update(revision).digest("hex")}.json`;
+
+const spawnResolver = (cacheRoot: string, registryOrigin: string) => {
+  const modulePath = join(process.cwd(), "packages/provider-schemas/scripts/provider-source-cache.ts");
+  const code = `
+    import { resolveProviderSource } from ${JSON.stringify(modulePath)};
+    const nativeFetch = globalThis.fetch;
+    const registryOrigin = process.env.REGISTRY_ORIGIN;
+    const fixtureFetch = (input, init) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+      if (url.hostname === "registry.npmjs.org") {
+        const origin = new URL(registryOrigin);
+        url.protocol = origin.protocol;
+        url.host = origin.host;
+      }
+      return nativeFetch(url, init);
+    };
+    await resolveProviderSource(
+      { packageName: ${JSON.stringify(PACKAGE_NAME)}, factoryName: "createFixture" },
+      { cacheRoot: process.env.CACHE_ROOT, refreshLatest: true, fetch: fixtureFetch },
+    );
+  `;
+  return Bun.spawn({
+    cmd: [process.execPath, "-e", code],
+    cwd: process.cwd(),
+    env: { ...process.env, CACHE_ROOT: cacheRoot, REGISTRY_ORIGIN: registryOrigin },
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+};
+
+const expectWorkerSuccess = async (worker: ReturnType<typeof spawnResolver>) => {
+  const stderr = worker.stderr instanceof ReadableStream ? new Response(worker.stderr).text() : Promise.resolve("");
+  const [exitCode, errorOutput] = await Promise.all([worker.exited, stderr]);
+  expect(errorOutput).toBe("");
+  expect(exitCode).toBe(0);
+};
+
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) fixture.close();
   for (const root of cacheRoots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -285,13 +340,16 @@ describe("resolveProviderSource", () => {
     expect(await readFile(join(root, "dist/index.d.ts"), "utf8")).toContain("createFixture");
     expect(await fileExists(join(root, "dist/index.js"))).toBe(false);
     expect(fixture.requests).toEqual(["metadata", "tarball"]);
-    expect(JSON.parse(await readFile(join(root, "../../latest.json"), "utf8"))).toEqual({
+    const observationRoot = join(root, "../../observations");
+    const observations = await readdir(observationRoot);
+    expect(observations).toHaveLength(1);
+    expect(JSON.parse(await readFile(join(observationRoot, observations[0] as string), "utf8"))).toEqual({
       version: "2.0.0",
       revision: "2026-07-11T00:00:00.000Z",
     });
   });
 
-  test("watch mode reuses the cached latest pointer without registry access", async () => {
+  test("watch mode reuses the latest cached observation without registry access", async () => {
     const fixture = await createRegistryFixture({ latest: "2.0.0" });
     const cacheRoot = createCacheRoot();
     await resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch });
@@ -303,6 +361,23 @@ describe("resolveProviderSource", () => {
     });
 
     expect(root).toEndWith("2.0.0/package");
+  });
+
+  test("canonicalizes the registry revision before publishing an observation", async () => {
+    const fixture = await createRegistryFixture({
+      latest: "2.0.0",
+      revision: "2026-07-11T08:00:00+08:00",
+    });
+    const cacheRoot = createCacheRoot();
+    await resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch });
+
+    const observationRoot = join(packageCachePath(cacheRoot), "observations");
+    const observations = await readdir(observationRoot);
+    expect(observations).toEqual([observationFileName("2026-07-11T00:00:00.000Z")]);
+    expect(JSON.parse(await readFile(join(observationRoot, observations[0] as string), "utf8"))).toEqual({
+      version: "2.0.0",
+      revision: "2026-07-11T00:00:00.000Z",
+    });
   });
 
   test("refreshes metadata without redownloading an unchanged latest version", async () => {
@@ -367,13 +442,15 @@ describe("resolveProviderSource", () => {
     expect(tarballCalls).toBe(0);
   });
 
-  test("rejects an unsafe cached latest pointer without registry access", async () => {
+  test("rejects an unsafe cached observation without registry access", async () => {
     const cacheRoot = createCacheRoot();
-    const packageCache = join(cacheRoot, encodeURIComponent(PACKAGE_NAME));
-    await mkdir(packageCache, { recursive: true });
+    const packageCache = packageCachePath(cacheRoot);
+    const observationRoot = join(packageCache, "observations");
+    const revision = "2026-07-11T00:00:00.000Z";
+    await mkdir(observationRoot, { recursive: true });
     writeFileSync(
-      join(packageCache, "latest.json"),
-      JSON.stringify({ version: "../escape", revision: "2026-07-11T00:00:00.000Z" }),
+      join(observationRoot, observationFileName(revision)),
+      JSON.stringify({ version: "../escape", revision }),
     );
 
     let registryCalls = 0;
@@ -419,28 +496,30 @@ describe("resolveProviderSource", () => {
     expect(fixture.streamState.chunks).toBeLessThan(40);
   });
 
-  test("a stale concurrent refresh cannot regress the latest pointer", async () => {
+  test("slow old and fast new cross-process observations coexist and watch selects new", async () => {
     const fixture = await createRegistryFixture({
       latest: "1.0.0",
       revision: "2026-07-11T00:00:01.000Z",
     });
     const cacheRoot = createCacheRoot();
     const olderTarball = fixture.holdTarball("1.0.0");
-    const older = resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch });
+    const older = spawnResolver(cacheRoot, fixture.registryOrigin);
     await olderTarball.waitForRequests(1);
     await fixture.setLatest("2.0.0", "2026-07-11T00:00:02.000Z");
 
-    const newerRoot = await resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch });
+    const newer = spawnResolver(cacheRoot, fixture.registryOrigin);
+    await expectWorkerSuccess(newer);
     olderTarball.release();
-    await older;
+    await expectWorkerSuccess(older);
     const watchedRoot = await resolveProviderSource(source, {
       cacheRoot,
       refreshLatest: false,
       fetch: () => Promise.reject(new Error("registry must not be called")),
     });
 
-    expect(newerRoot).toEndWith("2.0.0/package");
     expect(watchedRoot).toEndWith("2.0.0/package");
+    const observations = await readdir(join(packageCachePath(cacheRoot), "observations"));
+    expect(observations).toHaveLength(2);
   });
 
   test("a newer registry revision may intentionally roll latest back", async () => {
@@ -462,6 +541,18 @@ describe("resolveProviderSource", () => {
     expect(watchedRoot).toEndWith("1.0.0/package");
   });
 
+  test("rejects the same registry revision resolving to a different version", async () => {
+    const revision = "2026-07-11T00:00:02.000Z";
+    const fixture = await createRegistryFixture({ latest: "2.0.0", revision });
+    const cacheRoot = createCacheRoot();
+    await resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch });
+    await fixture.setLatest("1.0.0", revision);
+
+    await expect(
+      resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch }),
+    ).rejects.toThrow(PACKAGE_NAME);
+  });
+
   test("concurrent cache winner is validated and temporary directories are cleaned", async () => {
     const fixture = await createRegistryFixture({ latest: "2.0.0" });
     const cacheRoot = createCacheRoot();
@@ -474,9 +565,31 @@ describe("resolveProviderSource", () => {
     tarball.release();
 
     const roots = await Promise.all(resolutions);
-    const packageCache = join(cacheRoot, encodeURIComponent(PACKAGE_NAME));
+    const packageCache = packageCachePath(cacheRoot);
     expect(new Set(roots).size).toBe(1);
-    expect((await readdir(packageCache)).sort()).toEqual(["2.0.0", "latest.json"]);
+    expect((await readdir(packageCache)).sort()).toEqual(["2.0.0", "observations"]);
+  });
+
+  test("rejects and cleans up when a concurrent destination is corrupt", async () => {
+    const fixture = await createRegistryFixture({ latest: "2.0.0" });
+    const cacheRoot = createCacheRoot();
+    const packageCache = packageCachePath(cacheRoot);
+    const tarball = fixture.holdTarball("2.0.0");
+    const resolutions = [
+      resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch }),
+      resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch }),
+    ];
+    await tarball.waitForRequests(2);
+    await mkdir(join(packageCache, "2.0.0/package"), { recursive: true });
+    writeFileSync(
+      join(packageCache, "2.0.0/package/package.json"),
+      JSON.stringify({ name: "@fixture/corrupt", version: "2.0.0" }),
+    );
+    tarball.release();
+
+    const results = await Promise.allSettled(resolutions);
+    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    expect((await readdir(packageCache)).filter((name) => name.startsWith("."))).toEqual([]);
   });
 
   test("cleans temporary cache entries after extraction validation fails", async () => {
@@ -486,8 +599,34 @@ describe("resolveProviderSource", () => {
       resolveProviderSource(source, { cacheRoot, refreshLatest: true, fetch: fixture.fetch }),
     ).rejects.toThrow(PACKAGE_NAME);
 
-    const packageCache = join(cacheRoot, encodeURIComponent(PACKAGE_NAME));
+    const packageCache = packageCachePath(cacheRoot);
     expect(await readdir(packageCache)).toEqual([]);
+  });
+
+  test.each([".", ".."])('rejects unsafe package name "%s" before cache or registry use', async (packageName) => {
+    const sandbox = mkdtempSync(join(tmpdir(), "provider-package-name-cache-"));
+    cacheRoots.push(sandbox);
+    const cacheRoot = join(sandbox, "cache");
+    await mkdir(cacheRoot);
+    let registryCalls = 0;
+
+    await expect(
+      resolveProviderSource(
+        { packageName, factoryName: "createFixture" },
+        {
+          cacheRoot,
+          refreshLatest: true,
+          fetch: () => {
+            registryCalls += 1;
+            return Promise.reject(new Error("registry must not be called"));
+          },
+        },
+      ),
+    ).rejects.toThrow(packageName);
+
+    expect(registryCalls).toBe(0);
+    expect(await readdir(cacheRoot)).toEqual([]);
+    expect(await readdir(sandbox)).toEqual([basename(cacheRoot)]);
   });
 
   test.each<FailureScenario>([
@@ -496,6 +635,7 @@ describe("resolveProviderSource", () => {
     "invalid metadata revision",
     "tarball HTTP failure",
     "tarball larger than 32 MiB",
+    "extracted declarations larger than limit",
     "integrity mismatch",
     "malformed integrity",
     "unsupported integrity algorithm",

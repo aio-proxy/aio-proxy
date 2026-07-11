@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type * as Tar from "tar";
 import { providerSchemasRequire } from "./provider-schemas-require";
@@ -29,18 +30,27 @@ type NpmPackageMetadata = {
   readonly time: { readonly modified: string };
 };
 
-type LatestPointer = {
+type RegistryObservation = {
   readonly version: string;
   readonly revision: string;
 };
 
 const MAX_TARBALL_BYTES = 32 * 1024 * 1024;
+const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 + 64 * 1024;
 const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
-const pointerUpdates = new Map<string, Promise<void>>();
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
+
+const validatePackageName = (packageName: string): string => {
+  if (!packageName || packageName === "." || packageName === ".." || packageName.includes("\0")) {
+    throw new Error("Invalid npm package name");
+  }
+  return packageName;
+};
+
+const packageCacheName = (packageName: string) => `package-${createHash("sha256").update(packageName).digest("hex")}`;
 
 const validateVersion = (version: unknown): string => {
   if (
@@ -66,7 +76,7 @@ const validateRevision = (revision: unknown): string => {
   ) {
     throw new Error("Invalid npm metadata revision");
   }
-  return revision;
+  return new Date(revision).toISOString();
 };
 
 const validVersionMetadata = (value: unknown): value is NpmVersionMetadata => {
@@ -85,34 +95,6 @@ const validatePackageRoot = async (packageRoot: string, packageName: string, ver
   const manifest = (await readJson(join(packageRoot, "package.json"))) as { name?: unknown; version?: unknown };
   if (manifest.name !== packageName || manifest.version !== version) {
     throw new Error(`Invalid manifest for ${packageName}@${version}`);
-  }
-};
-
-const readLatestPointer = async (packageCache: string): Promise<LatestPointer | undefined> => {
-  try {
-    const pointer = (await readJson(join(packageCache, "latest.json"))) as Partial<LatestPointer>;
-    return {
-      version: validateVersion(pointer.version),
-      revision: validateRevision(pointer.revision),
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-};
-
-const readCachedLatest = async (
-  packageCache: string,
-  packageName: string,
-): Promise<{ readonly version: string; readonly packageRoot: string } | undefined> => {
-  const pointer = await readLatestPointer(packageCache);
-  if (!pointer) return undefined;
-  const packageRoot = join(packageCache, pointer.version, "package");
-  try {
-    await validatePackageRoot(packageRoot, packageName, pointer.version);
-    return { version: pointer.version, packageRoot };
-  } catch {
-    return undefined;
   }
 };
 
@@ -189,38 +171,60 @@ const downloadTarball = async (
 const unsafeArchivePath = (path: string) =>
   isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes("..");
 
-const replaceLatestPointer = async (packageCache: string, candidate: LatestPointer): Promise<void> => {
-  const pointerPath = join(packageCache, "latest.json");
-  const previous = pointerUpdates.get(pointerPath) ?? Promise.resolve();
-  const update = previous
-    .catch(() => {})
-    .then(async () => {
-      const current = await readLatestPointer(packageCache);
-      const candidateRevision = Date.parse(candidate.revision);
-      const currentRevision = current ? Date.parse(current.revision) : undefined;
-      if (
-        current &&
-        currentRevision !== undefined &&
-        (candidateRevision < currentRevision ||
-          (candidateRevision === currentRevision && candidate.version !== current.version))
-      ) {
-        return;
-      }
+const observationFileName = (revision: string) => `${createHash("sha256").update(revision).digest("hex")}.json`;
 
-      const temporary = join(packageCache, `.latest-${crypto.randomUUID()}.json`);
-      try {
-        await writeFile(temporary, JSON.stringify(candidate));
-        await rename(temporary, pointerPath);
-      } finally {
-        await rm(temporary, { force: true });
-      }
-    });
-  pointerUpdates.set(pointerPath, update);
-  try {
-    await update;
-  } finally {
-    if (pointerUpdates.get(pointerPath) === update) pointerUpdates.delete(pointerPath);
+const validateObservation = (value: unknown, fileName: string): RegistryObservation => {
+  if (!value || typeof value !== "object") throw new Error("Invalid registry observation");
+  const observation = value as Partial<RegistryObservation>;
+  const revision = validateRevision(observation.revision);
+  if (observation.revision !== revision || observationFileName(revision) !== fileName) {
+    throw new Error("Invalid registry observation revision");
   }
+  return { revision, version: validateVersion(observation.version) };
+};
+
+const publishObservation = async (packageCache: string, observation: RegistryObservation): Promise<void> => {
+  const observationRoot = join(packageCache, "observations");
+  await mkdir(observationRoot, { recursive: true });
+  const fileName = observationFileName(observation.revision);
+  const destination = join(observationRoot, fileName);
+  const temporary = join(observationRoot, `.observation-${crypto.randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, JSON.stringify(observation));
+    try {
+      await link(temporary, destination);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const existing = validateObservation(await readJson(destination), fileName);
+      if (existing.version !== observation.version) {
+        throw new Error(`Registry revision ${observation.revision} resolved to conflicting versions`);
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
+};
+
+const readLatestObservation = async (packageCache: string): Promise<RegistryObservation | undefined> => {
+  const observationRoot = join(packageCache, "observations");
+  let entries: Dirent[];
+  try {
+    entries = await readdir(observationRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+
+  let latest: RegistryObservation | undefined;
+  for (const entry of entries) {
+    if (entry.name.startsWith(".observation-") && entry.name.endsWith(".tmp")) continue;
+    if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) {
+      throw new Error("Invalid registry observation entry");
+    }
+    const observation = validateObservation(await readJson(join(observationRoot, entry.name)), entry.name);
+    if (!latest || observation.revision > latest.revision) latest = observation;
+  }
+  return latest;
 };
 
 const installVersion = async (
@@ -243,6 +247,7 @@ const installVersion = async (
     await writeFile(archivePath, await downloadTarball(packageName, metadata, fetchImpl));
     await mkdir(join(temporaryRoot, "package"));
     let rejectedEntry: string | undefined;
+    let extractedBytes = 0;
     await tar.x({
       cwd: join(temporaryRoot, "package"),
       file: archivePath,
@@ -258,7 +263,17 @@ const installVersion = async (
           rejectedEntry = "link";
           return false;
         }
-        return declarationPath.test(path);
+        if (!declarationPath.test(path)) return false;
+        if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+          rejectedEntry = "entry size";
+          return false;
+        }
+        extractedBytes += entry.size;
+        if (extractedBytes > MAX_EXTRACTED_BYTES) {
+          rejectedEntry = "extracted size";
+          return false;
+        }
+        return true;
       },
     });
     if (rejectedEntry) throw new Error(`Archive ${rejectedEntry} is not allowed for ${packageName}`);
@@ -281,12 +296,18 @@ export const resolveProviderSource = async (
   source: ProviderSchemaSource,
   options: ResolveProviderSourceOptions,
 ): Promise<string> => {
-  const { packageName } = source;
+  const { packageName: sourcePackageName } = source;
   try {
-    const packageCache = join(resolve(options.cacheRoot), encodeURIComponent(packageName));
+    const packageName = validatePackageName(sourcePackageName);
+    const packageCache = join(resolve(options.cacheRoot), packageCacheName(packageName));
     await mkdir(packageCache, { recursive: true });
-    const cachedLatest = await readCachedLatest(packageCache, packageName);
-    if (!options.refreshLatest && cachedLatest) return cachedLatest.packageRoot;
+    if (!options.refreshLatest) {
+      const observation = await readLatestObservation(packageCache);
+      if (!observation) throw new Error("No cached registry observation");
+      const packageRoot = join(packageCache, observation.version, "package");
+      await validatePackageRoot(packageRoot, packageName, observation.version);
+      return packageRoot;
+    }
 
     const metadata = await fetchMetadata(packageName, options.fetch ?? globalThis.fetch);
     const version = validateVersion(metadata["dist-tags"].latest);
@@ -306,9 +327,9 @@ export const resolveProviderSource = async (
       versionMetadata,
       options.fetch ?? globalThis.fetch,
     );
-    await replaceLatestPointer(packageCache, { version, revision });
+    await publishObservation(packageCache, { version, revision });
     return packageRoot;
   } catch (error) {
-    throw new Error(`Failed to resolve ${packageName}: ${errorMessage(error)}`, { cause: error });
+    throw new Error(`Failed to resolve ${sourcePackageName}: ${errorMessage(error)}`, { cause: error });
   }
 };
