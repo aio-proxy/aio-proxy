@@ -65,7 +65,7 @@ export const OpenAIResponsesRequestSchema = z.object({
   reasoning: z
     .object({
       summary: z.enum(["auto", "concise", "detailed"]).optional(),
-      effort: z.enum(["minimal", "low", "medium", "high"]).optional(),
+      effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
     })
     .optional(),
   stream: z.boolean().optional(),

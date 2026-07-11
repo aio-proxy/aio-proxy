@@ -29,17 +29,55 @@ describe("OpenAI Responses transform", () => {
     expect(roundTrip).toEqual(request);
   });
 
-  test("Given reasoning effort When transformed Then OpenAI provider options carry it", async () => {
+  test("Given reasoning effort When transformed Then portable reasoning carries it", async () => {
     const request = await readFixture("reasoning-tools.json");
 
     const converted = openAIResponsesToModelMessages(request);
+    const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
 
-    expect(converted.settings.providerOptions).toEqual({
-      openai: {
-        reasoningEffort: "medium",
-        reasoningSummary: "auto",
+    expect(converted.settings.reasoning).toBe("medium");
+    expect(converted.settings.providerOptions).toEqual({ openai: { reasoningSummary: "auto" } });
+    expect(roundTrip.reasoning).toEqual(request.reasoning);
+  });
+
+  test("Given provider options reasoning When transformed Then it is used as a fallback", () => {
+    // Given
+    const settings = {
+      providerOptions: {
+        openai: { reasoningEffort: "high", reasoningSummary: "detailed" },
       },
+    } as const;
+
+    // When
+    const request = modelMessagesToOpenAIResponses({
+      model: "gpt-5",
+      messages: [{ role: "user", content: "Solve this." }],
+      settings,
     });
+
+    // Then
+    expect(request.reasoning).toEqual({ effort: "high", summary: "detailed" });
+  });
+
+  test("Given portable and provider options reasoning When transformed Then portable settings win", () => {
+    // Given
+    const settings = {
+      reasoning: "low",
+      reasoningSummary: "concise",
+      providerOptions: {
+        openai: { reasoningEffort: "high", reasoningSummary: "detailed" },
+      },
+    } as const;
+
+    // When
+    const request = modelMessagesToOpenAIResponses({
+      model: "gpt-5",
+      messages: [{ role: "user", content: "Solve this." }],
+      settings,
+    });
+
+    // Then
+    expect(request.reasoning).toEqual({ effort: "low", summary: "concise" });
   });
 
   test("Given function and custom tools When transformed Then declarations are preserved", async () => {

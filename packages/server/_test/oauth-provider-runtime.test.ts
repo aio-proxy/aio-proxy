@@ -14,6 +14,7 @@ describe("OAuth provider runtime", () => {
   let previousHome: string | undefined;
 
   beforeEach(() => {
+    warnSpy.mockClear();
     previousHome = process.env.AIO_PROXY_HOME;
     dir = mkdtempSync(join(tmpdir(), "aio-proxy-oauth-runtime-"));
     process.env.AIO_PROXY_HOME = dir;

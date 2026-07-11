@@ -1,7 +1,5 @@
-import { getLocale } from "@aio-proxy/i18n";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { createRootRoute } from "@tanstack/react-router";
 import { RootLayout } from "@/components/root-layout";
-import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -13,19 +11,5 @@ export const Route = createRootRoute({
       <p>The requested page could not be found.</p>
     </main>
   ),
-  shellComponent: ({ children }) => {
-    return (
-      <html lang={getLocale()}>
-        <head>
-          <HeadContent />
-        </head>
-        <body>
-          {children}
-          <Toaster />
-          <Scripts />
-        </body>
-      </html>
-    );
-  },
   component: RootLayout,
 });

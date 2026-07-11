@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { ProviderInstance } from "../src/index";
-import { Router, RouterModelNotFoundError } from "../src/index";
+import { Router, RouterModelCollisionError, RouterModelNotFoundError } from "../src/index";
 
 const copilot = {
   kind: "oauth",
@@ -58,6 +58,135 @@ describe("Router", () => {
       { provider: openai, modelId: "gpt-5-mini" },
       { provider: other, modelId: "other-mini" },
     ]);
+  });
+
+  test("resolves a normalized variant for every provider candidate without reordering", () => {
+    const primary = {
+      ...openai,
+      alias: {
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: false } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const fallback = {
+      kind: "api",
+      id: "fallback",
+      protocol: ProviderProtocol.OpenAICompatible,
+      models: ["fallback-mini", "fallback-high"],
+      alias: {
+        mini: {
+          model: "fallback-mini",
+          preserve: false,
+          variants: { high: { model: "fallback-high", preserve: false } },
+        },
+      },
+    } satisfies ProviderInstance;
+    const router = new Router([primary, fallback]);
+
+    expect(router.resolve("mini", " High ")).toEqual([
+      { provider: primary, modelId: "gpt-5" },
+      { provider: fallback, modelId: "fallback-high" },
+    ]);
+  });
+
+  test("falls back to each alias default when the variant is missing", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: false } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("mini", "unknown")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+  });
+
+  test("resolves provider-qualified aliases with variants", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: false } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("openai/mini", "high")).toEqual([{ provider, modelId: "gpt-5" }]);
+  });
+
+  test("exposes a preserved variant target under its original model id", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: true } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5")).toEqual([{ provider, modelId: "gpt-5" }]);
+  });
+
+  test("reuses an explicit self-alias for a preserved variant targeting the same model", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        "gpt-5": { model: "gpt-5", preserve: false },
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: true } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5")).toEqual([{ provider, modelId: "gpt-5" }]);
+  });
+
+  test("deduplicates identical preserved routes within a provider", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: { model: "gpt-5-mini", preserve: true },
+        fast: { model: "gpt-5-mini", preserve: true },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+  });
+
+  test("rejects an explicit alias that conflicts with a preserved model id", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        "gpt-5-mini": { model: "gpt-5", preserve: false },
+        mini: { model: "gpt-5-mini", preserve: true },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+
+    expect(() => new Router([provider])).toThrow(RouterModelCollisionError);
   });
 
   test("provider-qualified aliases only return the requested provider", () => {
@@ -129,18 +258,22 @@ describe("Router", () => {
     expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider: selfAlias, modelId: "gpt-5-mini" }]);
   });
 
-  test("rejects duplicate provider-specific aliases", () => {
-    const duplicate = {
+  test("rejects a preserved provider route that conflicts with an explicit alias variant", () => {
+    const conflicting = {
       kind: "api",
       id: "dupe",
       protocol: ProviderProtocol.OpenAIResponse,
       models: ["first", "second"],
       alias: {
+        first: {
+          model: "first",
+          preserve: false,
+          variants: { high: { model: "second", preserve: false } },
+        },
         firstAlias: { model: "first", preserve: true },
-        secondAlias: { model: "first", preserve: true },
       },
     } satisfies ProviderInstance;
 
-    expect(() => new Router([duplicate])).toThrow(/dupe/);
+    expect(() => new Router([conflicting])).toThrow(/dupe/);
   });
 });

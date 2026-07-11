@@ -17,6 +17,14 @@ This file is the frontend authority for `packages/dashboard`.
 - Direct Tailwind is fine for layout, spacing, responsive behavior, and page composition.
 - Control styling belongs in the shared UI components, not one-off lookalikes.
 
+## State Ownership
+
+- Keep state in the closest component that owns its lifecycle and behavior. Transient UI state such as dialog visibility, drafts, expansion, focus, and local selection should not be lifted merely so a parent can trigger it.
+- Lift state only when multiple components must coordinate around it, when it affects rendering outside the owning component, or when the route/URL is the actual source of truth.
+- A component that owns an interaction should close the loop itself: opening, cancellation, successful completion, cleanup, and pending state belong together whenever they do not affect siblings.
+- Prefer declarative props when the parent genuinely owns the state. For isolated commands such as `open(target)`, `reset()`, or `focus()`, a narrow imperative ref or callback API is acceptable and may keep implementation state private.
+- `forwardRef` is a mechanism, not a requirement. Choose props, callbacks, refs, context, or a store according to state ownership; do not introduce any of them solely to move local state upward.
+
 ## Data And Requests
 
 - Mount `QueryClientProvider` globally in `routes/__root.tsx` once the dashboard has server state.

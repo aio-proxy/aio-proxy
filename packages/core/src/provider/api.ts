@@ -60,6 +60,7 @@ export function createApiProvider(
         body: req.body,
         headers,
         method: req.method,
+        signal: req.signal,
       });
 
       if (trace === undefined || response.body === null) {

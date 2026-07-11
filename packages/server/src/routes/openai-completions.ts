@@ -10,7 +10,13 @@ import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { ensureAiSdkProviderAvailable } from "../provider-availability";
-import { resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
+import {
+  preflightStream,
+  resolveCandidates,
+  rewriteJsonRequestModel,
+  shouldTryNextResponse,
+  toAiSdkProvider,
+} from "../route-dispatch";
 import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -27,7 +33,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
       return request;
     }
 
-    const candidates = resolveCandidates(source, request.model);
+    const candidates = resolveCandidates(source, request.model, request.reasoning_effort);
     if (candidates instanceof RouterModelNotFoundError) {
       return openAIError(404, "model_not_found", candidates.message);
     }
@@ -37,22 +43,26 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
     for (const [index, route] of candidates.entries()) {
       const hasNext = index < candidates.length - 1;
       const provider = route.provider;
-      if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAICompatible) {
-        const response = await provider.passthrough(context.req.raw.clone());
-        if (hasNext && shouldTryNextResponse(response)) {
-          last = response;
+      try {
+        if (provider.kind === ProviderKind.Api && provider.protocol === ProviderProtocol.OpenAICompatible) {
+          const upstreamRequest =
+            request.model === route.modelId
+              ? context.req.raw.clone()
+              : await rewriteJsonRequestModel(context.req.raw, route.modelId);
+          const response = await provider.passthrough(upstreamRequest);
+          if (hasNext && shouldTryNextResponse(response)) {
+            last = response;
+            continue;
+          }
+          return response;
+        }
+
+        const aiSdkProvider = toAiSdkProvider(provider);
+        if (aiSdkProvider === undefined) {
+          last = openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
           continue;
         }
-        return response;
-      }
 
-      const aiSdkProvider = toAiSdkProvider(provider);
-      if (aiSdkProvider === undefined) {
-        last = openAIError(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch");
-        continue;
-      }
-
-      try {
         await ensureAiSdkProviderAvailable(aiSdkProvider);
         const stream = aiSdkProvider.invoke({
           messages: transformed.messages,
@@ -64,7 +74,7 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
           return Response.json(await writeOpenAICompletionsResponse(stream));
         }
 
-        return new Response(writeOpenAICompletionsSSE(stream), {
+        return new Response(writeOpenAICompletionsSSE(await preflightStream(stream)), {
           headers: {
             "cache-control": "no-cache",
             "content-type": "text/event-stream; charset=utf-8",
