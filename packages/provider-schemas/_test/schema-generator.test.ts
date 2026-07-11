@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Script } from "typebox";
 import {
   compileTypeBoxModule,
   generateProviderSchemaEntries,
+  generateProviderSchemaEntry,
   renderGeneratedProviderSchemas,
 } from "../scripts/generate-provider-schemas";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
@@ -173,6 +176,32 @@ describe("provider schema generation", () => {
     const openRouter = entries["@openrouter/ai-sdk-provider"];
     expect(openRouter.schema).not.toBeNull();
     expect(openRouter.warnings).toContainEqual({ code: "unsupported_optional", path: "fetch" });
+  });
+
+  test("preserves declaration JSDoc on the generated root schema", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-root-doc-"));
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({ name: "fixture-provider", version: "1.0.0", types: "./index.d.ts" }),
+    );
+    writeFileSync(
+      join(packageRoot, "index.d.ts"),
+      `
+        /** Options for the fixture provider. */
+        export interface FixtureOptions { apiKey?: string }
+        export declare function createFixture(options: FixtureOptions): unknown;
+      `,
+    );
+
+    const entry = await generateProviderSchemaEntry(packageRoot, {
+      packageName: "fixture-provider",
+      factoryName: "createFixture",
+    });
+
+    expect(entry.schema).toMatchObject({ description: "Options for the fixture provider." });
+    expect(renderGeneratedProviderSchemas({ "fixture-provider": entry })).toContain(
+      '"description": "Options for the fixture provider."',
+    );
   });
 
   test("renders schemas deterministically", () => {

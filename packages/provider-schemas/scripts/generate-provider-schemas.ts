@@ -72,41 +72,55 @@ const sortValue = (value: unknown): unknown => {
   );
 };
 
+type ProviderSchemaSource = {
+  readonly packageName: string;
+  readonly factoryName: string;
+};
+
+export const generateProviderSchemaEntry = async (
+  packageRoot: string,
+  source: ProviderSchemaSource,
+): Promise<ProviderOptionsSchemaEntry> => {
+  const declarationEntry = await resolveDeclarationEntry(packageRoot);
+  const [metadata, parsed] = await Promise.all([
+    readProviderPackageMetadata(packageRoot),
+    parseProviderFactoryDeclaration({ packageRoot, declarationEntry, factoryName: source.factoryName }),
+  ]);
+  const moduleSource = [`type ${ROOT_NAME} = NonNullable<${parsed.parameterType}>;`, ...parsed.declarations].join(
+    "\n\n",
+  );
+  const parameterDeclaration = parsed.parameterType.match(/^[$A-Z_a-z][$\w]*/)?.[0];
+  const documentation = { ...parsed.documentation };
+  if (parameterDeclaration) {
+    const rootDescription = parsed.documentation[parameterDeclaration];
+    if (rootDescription) documentation[ROOT_NAME] = rootDescription;
+    for (const [key, description] of Object.entries(parsed.documentation)) {
+      if (key.startsWith(`${parameterDeclaration}.`)) {
+        documentation[`${ROOT_NAME}${key.slice(parameterDeclaration.length)}`] = description;
+      }
+    }
+  }
+  const normalized = normalizeTypeBoxModule({
+    rootName: ROOT_NAME,
+    module: compileTypeBoxModule(moduleSource),
+    documentation,
+  });
+  return {
+    packageName: metadata.name,
+    packageVersion: metadata.version,
+    factoryName: source.factoryName,
+    schema: normalized.schema,
+    warnings: normalized.warnings,
+  };
+};
+
 export const generateProviderSchemaEntries = async (): Promise<
   Readonly<Record<string, ProviderOptionsSchemaEntry>>
 > => {
   const entries: Record<string, ProviderOptionsSchemaEntry> = {};
   for (const allowlisted of PROVIDER_SCHEMA_ALLOWLIST) {
     const packageRoot = await findPackageRoot(allowlisted.packageName);
-    const declarationEntry = await resolveDeclarationEntry(packageRoot);
-    const [metadata, parsed] = await Promise.all([
-      readProviderPackageMetadata(packageRoot),
-      parseProviderFactoryDeclaration({ packageRoot, declarationEntry, factoryName: allowlisted.factoryName }),
-    ]);
-    const moduleSource = [`type ${ROOT_NAME} = NonNullable<${parsed.parameterType}>;`, ...parsed.declarations].join(
-      "\n\n",
-    );
-    const parameterDeclaration = parsed.parameterType.match(/^[$A-Z_a-z][$\w]*/)?.[0];
-    const documentation = { ...parsed.documentation };
-    if (parameterDeclaration) {
-      for (const [key, description] of Object.entries(parsed.documentation)) {
-        if (key.startsWith(`${parameterDeclaration}.`)) {
-          documentation[`${ROOT_NAME}${key.slice(parameterDeclaration.length)}`] = description;
-        }
-      }
-    }
-    const normalized = normalizeTypeBoxModule({
-      rootName: ROOT_NAME,
-      module: compileTypeBoxModule(moduleSource),
-      documentation,
-    });
-    entries[allowlisted.packageName] = {
-      packageName: metadata.name,
-      packageVersion: metadata.version,
-      factoryName: allowlisted.factoryName,
-      schema: normalized.schema,
-      warnings: normalized.warnings,
-    };
+    entries[allowlisted.packageName] = await generateProviderSchemaEntry(packageRoot, allowlisted);
   }
   return entries;
 };
