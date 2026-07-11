@@ -4,7 +4,7 @@ import { enUS, zhCN } from "date-fns/locale";
 import { useAtomValue } from "jotai";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
@@ -51,13 +51,12 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
     });
   return (
     <Card>
-      <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-start sm:justify-between">
-        <div className="grid gap-1.5">
-          <CardTitle id={chartTitleId}>{m["dashboard.usage.chart_title"]()}</CardTitle>
-          <CardDescription id={chartDescriptionId}>{m["dashboard.usage.chart_description"]()}</CardDescription>
-        </div>
-      </CardHeader>
-      <UsageTrendTabs>
+      <UsageTrendTabs
+        title={m["dashboard.usage.chart_title"]()}
+        description={m["dashboard.usage.chart_description"]()}
+        titleId={chartTitleId}
+        descriptionId={chartDescriptionId}
+      >
         <CardContent>
           <ChartContainer config={chartConfig} className="min-h-80 w-full">
             <AreaChart
