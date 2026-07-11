@@ -30,6 +30,7 @@ Light mode uses olive neutrals with teal actions. Dark mode preserves the same r
 ### Rules
 
 - Use semantic tokens only; add a token to `src/styles.css` before introducing a new color role.
+- Monaco syntax highlighting is the exception: its theme API receives fixed Tailwind scale variables converted to hex so token roles stay stable across app themes.
 - Teal is reserved for actions and focus, not decoration.
 - Error meaning uses `destructive`; supporting information uses `muted-foreground`.
 

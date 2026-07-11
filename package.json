@@ -54,5 +54,11 @@
     "lefthook": "^2.1.9",
     "turbo": "^2.10.1",
     "typescript": "^6.0.3"
+  },
+  "patchedDependencies": {
+    "@monaco-editor/react@4.7.0": "patches/@monaco-editor%2Freact@4.7.0.patch"
+  },
+  "overrides": {
+    "dompurify": "3.4.11"
   }
 }
