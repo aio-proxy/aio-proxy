@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isProviderOptionsObject } from "../src/modules/providers/components/provider-options-editor";
 import {
   initialProviderOptionsSchemaState,
   providerOptionsSchemaTransition,
@@ -12,6 +13,35 @@ import {
   providerPackageStatusQueryOptions,
   throwRequestError,
 } from "../src/modules/providers/services/provider-options-schema-service";
+
+describe("provider options editor", () => {
+  test("wires schema workflow, package commit events, and the JSON editor", async () => {
+    const aiSdkFieldsSource = await Bun.file(
+      `${import.meta.dir}/../src/modules/providers/components/provider-form-fields-ai-sdk.tsx`,
+    ).text();
+    const optionsEditorSource = await Bun.file(
+      `${import.meta.dir}/../src/modules/providers/components/provider-options-editor.tsx`,
+    ).text();
+
+    expect(aiSdkFieldsSource).toContain("useProviderOptionsSchema");
+    expect(aiSdkFieldsSource).toContain("onBlur");
+    expect(aiSdkFieldsSource).toContain('event.key === "Enter"');
+    expect(optionsEditorSource).toContain("<JsonEditor");
+    expect(optionsEditorSource).toContain("AlertDialog");
+    expect(optionsEditorSource).not.toContain("Textarea");
+  });
+
+  test("accepts only undefined or a plain object at the provider options root", () => {
+    expect(isProviderOptionsObject(undefined)).toBe(true);
+    expect(isProviderOptionsObject({})).toBe(true);
+    expect(isProviderOptionsObject({ baseURL: "https://example.com" })).toBe(true);
+    expect(isProviderOptionsObject([])).toBe(false);
+    expect(isProviderOptionsObject(null)).toBe(false);
+    expect(isProviderOptionsObject(true)).toBe(false);
+    expect(isProviderOptionsObject(42)).toBe(false);
+    expect(isProviderOptionsObject("value")).toBe(false);
+  });
+});
 
 describe("provider options schema service", () => {
   test("package status and schema query keys include the package", () => {
