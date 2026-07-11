@@ -100,6 +100,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       mergeJsonValidation({
         syntaxValid: parseResult.ok,
         markers: validationState.markers,
+        schema,
         pending:
           externalValuePending ||
           validationState.pending ||

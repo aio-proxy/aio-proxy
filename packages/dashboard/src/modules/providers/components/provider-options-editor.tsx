@@ -28,9 +28,14 @@ export const isProviderOptionsObject = (
 
 export const providerOptionsAreValid = (
   rootValid: boolean,
-  editorValid: boolean,
+  validation: JsonEditorValidation,
   phase: UseProviderOptionsSchemaResult["phase"],
-) => rootValid && editorValid && (phase === "ready" || phase === "schema_unavailable" || phase === "install_error");
+  schema: UseProviderOptionsSchemaResult["schema"],
+) =>
+  rootValid &&
+  validation.valid &&
+  Object.is(validation.schema, schema) &&
+  (phase === "ready" || phase === "schema_unavailable" || phase === "install_error");
 
 export const canConfirmProviderInstall = (
   dialogPackage: string | null,
@@ -49,6 +54,7 @@ const initialValidation: JsonEditorValidation = {
   syntaxValid: true,
   pending: false,
   markers: [],
+  schema: undefined,
 };
 
 export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidityChange }) => {
@@ -56,7 +62,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
   const [rootValid, setRootValid] = useState(true);
   const [validation, setValidation] = useState(initialValidation);
   const [installDialogPackage, setInstallDialogPackage] = useState<string | null>(null);
-  const valid = providerOptionsAreValid(rootValid, validation.valid, schemaState.phase);
+  const valid = providerOptionsAreValid(rootValid, validation, schemaState.phase, schemaState.schema);
   const lastValidity = useRef(valid);
 
   useEffect(() => {
@@ -77,6 +83,8 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
     helper = m["dashboard.providers.form.options_checking_package"]({ packageName });
   } else if (schemaState.phase === "installing") {
     helper = m["dashboard.providers.form.options_installing_trusted_package"]({ packageName });
+  } else if (schemaState.phase === "install_deferred") {
+    helper = m["dashboard.providers.form.options_install_package"]();
   } else if (schemaState.phase === "loading_schema") {
     helper = m["dashboard.providers.form.options_schema_loading"]();
   } else if (schemaState.phase === "schema_unavailable" || schemaState.phase === "schema_error") {

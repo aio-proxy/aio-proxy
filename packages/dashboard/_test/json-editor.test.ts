@@ -33,6 +33,12 @@ describe("JsonEditor state", () => {
     expect(mergeJsonValidation({ syntaxValid: false, markers: [] }).valid).toBe(false);
   });
 
+  test("validation results retain the schema identity they validated", () => {
+    const schema = { type: "object" };
+
+    expect(mergeJsonValidation({ syntaxValid: true, markers: [], schema }).schema).toBe(schema);
+  });
+
   test("ignores a stale validation result after the draft changes", () => {
     const schema = { type: "object" };
     const initial = createJsonValidationState('{"old":true}', schema);

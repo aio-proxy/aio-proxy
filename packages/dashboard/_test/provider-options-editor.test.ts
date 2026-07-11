@@ -48,17 +48,29 @@ describe("provider options editor", () => {
   });
 
   test("blocks pending schema workflow phases but allows warning and unavailable fallbacks", () => {
-    expect(providerOptionsAreValid(true, true, "idle")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "checking")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "installing")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "install_required")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "loading_schema")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "schema_error")).toBe(false);
-    expect(providerOptionsAreValid(true, true, "ready")).toBe(true);
-    expect(providerOptionsAreValid(true, true, "schema_unavailable")).toBe(true);
-    expect(providerOptionsAreValid(true, true, "install_error")).toBe(true);
-    expect(providerOptionsAreValid(false, true, "schema_unavailable")).toBe(false);
-    expect(providerOptionsAreValid(true, false, "ready")).toBe(false);
+    const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
+    const invalidNoSchema = { ...validNoSchema, valid: false };
+
+    expect(providerOptionsAreValid(true, validNoSchema, "idle", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "checking", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "installing", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "install_required", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "loading_schema", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "schema_error", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "ready", undefined)).toBe(true);
+    expect(providerOptionsAreValid(true, validNoSchema, "schema_unavailable", undefined)).toBe(true);
+    expect(providerOptionsAreValid(true, validNoSchema, "install_error", undefined)).toBe(true);
+    expect(providerOptionsAreValid(false, validNoSchema, "schema_unavailable", undefined)).toBe(false);
+    expect(providerOptionsAreValid(true, invalidNoSchema, "ready", undefined)).toBe(false);
+  });
+
+  test("blocks ready until validation belongs to the loaded schema", () => {
+    const schema = { type: "object" };
+    const oldValidation = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
+    const currentValidation = { ...oldValidation, schema };
+
+    expect(providerOptionsAreValid(true, oldValidation, "ready", schema)).toBe(false);
+    expect(providerOptionsAreValid(true, currentValidation, "ready", schema)).toBe(true);
   });
 
   test("only confirms the install-required package currently bound to the dialog", () => {
@@ -88,6 +100,43 @@ describe("provider options editor", () => {
     ).text();
 
     expect(pageSource).toContain('useState(kind === "api")');
+  });
+
+  test("initial package synchronization checks without authorizing trusted auto-install", async () => {
+    const aiSdkFieldsSource = await Bun.file(
+      `${import.meta.dir}/../src/modules/providers/components/provider-form-fields-ai-sdk.tsx`,
+    ).text();
+
+    expect(aiSdkFieldsSource).toContain("initialPackageSynchronized");
+    expect(aiSdkFieldsSource).toContain("commitUserPackage");
+
+    const initialCommit = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+      type: "package_committed",
+      packageName: "@ai-sdk/openai",
+      allowAutomaticInstall: false,
+    });
+    const initialMissing = providerOptionsSchemaTransition(initialCommit, {
+      type: "status_loaded",
+      packageName: "@ai-sdk/openai",
+      generation: 1,
+      status: { trusted: true, state: "missing", schemaAvailable: true },
+    });
+
+    expect(initialMissing).toMatchObject({ phase: "install_deferred", effect: undefined });
+
+    const userCommit = providerOptionsSchemaTransition(initialMissing, {
+      type: "package_committed",
+      packageName: "@ai-sdk/openai",
+      allowAutomaticInstall: true,
+    });
+    expect(
+      providerOptionsSchemaTransition(userCommit, {
+        type: "status_loaded",
+        packageName: "@ai-sdk/openai",
+        generation: 2,
+        status: { trusted: true, state: "missing", schemaAvailable: true },
+      }),
+    ).toMatchObject({ phase: "installing", effect: { type: "install", confirmed: false } });
   });
 });
 
@@ -171,7 +220,12 @@ describe("provider options schema workflow", () => {
   test("trusted missing packages request automatic install", () => {
     expect(
       providerOptionsSchemaTransition(
-        { ...initialProviderOptionsSchemaState, phase: "checking", committedPackage: "@ai-sdk/google" },
+        {
+          ...initialProviderOptionsSchemaState,
+          phase: "checking",
+          committedPackage: "@ai-sdk/google",
+          allowAutomaticInstall: true,
+        },
         {
           type: "status_loaded",
           packageName: "@ai-sdk/google",

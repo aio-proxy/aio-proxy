@@ -11,6 +11,7 @@ export type JsonEditorValidation = {
   readonly syntaxValid: boolean;
   readonly pending: boolean;
   readonly markers: readonly JsonValidationMarker[];
+  readonly schema: JsonSchema | undefined;
 };
 
 export type JsonDraftParseResult =
@@ -68,13 +69,16 @@ export const mergeJsonValidation = ({
   syntaxValid,
   markers,
   pending = false,
+  schema,
 }: {
   readonly syntaxValid: boolean;
   readonly markers: readonly JsonValidationMarker[];
   readonly pending?: boolean;
+  readonly schema?: JsonSchema;
 }): JsonEditorValidation => ({
   valid: syntaxValid && !pending && !markers.some(({ severity }) => severity === "error"),
   syntaxValid,
   pending,
   markers,
+  schema,
 });

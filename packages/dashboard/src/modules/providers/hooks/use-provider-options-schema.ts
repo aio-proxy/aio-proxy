@@ -11,6 +11,7 @@ export type ProviderOptionsSchemaPhase =
   | "idle"
   | "checking"
   | "installing"
+  | "install_deferred"
   | "install_required"
   | "loading_schema"
   | "ready"
@@ -31,6 +32,7 @@ export type ProviderOptionsSchemaState = {
   readonly committedPackage: string | null;
   readonly commitGeneration: number;
   readonly automaticInstallAttempted: boolean;
+  readonly allowAutomaticInstall: boolean;
   readonly schemaPackage: string | null;
   readonly schema: Readonly<Record<string, unknown>> | undefined;
   readonly warnings: readonly { readonly code: string; readonly path: string }[];
@@ -40,7 +42,7 @@ export type ProviderOptionsSchemaState = {
 
 export type ProviderOptionsSchemaEvent =
   | { readonly type: "package_changed"; readonly packageName: string }
-  | { readonly type: "package_committed"; readonly packageName: string }
+  | { readonly type: "package_committed"; readonly packageName: string; readonly allowAutomaticInstall?: boolean }
   | {
       readonly type: "status_loaded";
       readonly packageName: string;
@@ -82,6 +84,7 @@ export const initialProviderOptionsSchemaState: ProviderOptionsSchemaState = {
   committedPackage: null,
   commitGeneration: 0,
   automaticInstallAttempted: false,
+  allowAutomaticInstall: false,
   schemaPackage: null,
   schema: undefined,
   warnings: [],
@@ -136,15 +139,17 @@ export const providerOptionsSchemaTransition = (
         phase: "checking",
         committedPackage: event.packageName,
         commitGeneration: state.commitGeneration + 1,
+        allowAutomaticInstall: event.allowAutomaticInstall ?? true,
       };
     case "status_loaded":
       if (event.status.state === "missing") {
         if (event.status.trusted && state.automaticInstallAttempted) {
           return { ...state, phase: "install_error", effect: undefined, errorCode: "package_still_missing" };
         }
-        return event.status.trusted
+        if (!event.status.trusted) return { ...state, phase: "install_required", effect: undefined };
+        return state.allowAutomaticInstall
           ? { ...state, phase: "installing", effect: { type: "install", confirmed: false } }
-          : { ...state, phase: "install_required", effect: undefined };
+          : { ...state, phase: "install_deferred", effect: undefined };
       }
       return event.status.schemaAvailable
         ? { ...state, phase: "loading_schema", effect: undefined }
@@ -202,7 +207,7 @@ export type UseProviderOptionsSchemaResult = {
   readonly warnings: readonly { code: string; path: string }[];
   readonly packageName: string | null;
   readonly changePackage: (packageName: string) => void;
-  readonly commitPackage: (packageName: string) => void;
+  readonly commitPackage: (packageName: string, allowAutomaticInstall?: boolean) => void;
   readonly confirmInstall: () => void;
   readonly errorCode?: string;
 };
@@ -320,8 +325,8 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   const changePackage = useCallback((nextPackageName: string) => {
     dispatch({ type: "package_changed", packageName: nextPackageName });
   }, []);
-  const commitPackage = useCallback((nextPackageName: string) => {
-    dispatch({ type: "package_committed", packageName: nextPackageName });
+  const commitPackage = useCallback((nextPackageName: string, allowAutomaticInstall = true) => {
+    dispatch({ type: "package_committed", packageName: nextPackageName, allowAutomaticInstall });
   }, []);
   const confirmInstall = useCallback(() => dispatch({ type: "install_confirmed" }), []);
 

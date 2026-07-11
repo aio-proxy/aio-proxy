@@ -46,10 +46,17 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
 }) => {
   const schemaState = useProviderOptionsSchema();
   const initialPackageName = useRef(form.getFieldValue("packageName") ?? DEFAULT_AI_SDK_PACKAGE).current;
+  const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
+  const commitUserPackage = (packageName: string) =>
+    commitProviderPackageOnce(packageName, lastCommittedPackage, (nextPackageName) =>
+      schemaState.commitPackage(nextPackageName, true),
+    );
 
   useEffect(() => {
-    commitProviderPackageOnce(initialPackageName, lastCommittedPackage, schemaState.commitPackage);
+    if (initialPackageSynchronized.current) return;
+    initialPackageSynchronized.current = true;
+    schemaState.commitPackage(initialPackageName, false);
   }, [initialPackageName, schemaState.commitPackage]);
 
   return (
@@ -68,21 +75,11 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
                   lastCommittedPackage.current = null;
                   schemaState.changePackage(event.target.value);
                 }}
-                onBlur={() =>
-                  commitProviderPackageOnce(
-                    field.state.value ?? DEFAULT_AI_SDK_PACKAGE,
-                    lastCommittedPackage,
-                    schemaState.commitPackage,
-                  )
-                }
+                onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    commitProviderPackageOnce(
-                      field.state.value ?? DEFAULT_AI_SDK_PACKAGE,
-                      lastCommittedPackage,
-                      schemaState.commitPackage,
-                    );
+                    commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
                   }
                 }}
                 placeholder={m["dashboard.providers.form.placeholder_package_name"]()}
