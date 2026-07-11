@@ -4,7 +4,7 @@
 
 **Goal:** Add a schema-aware Monaco JSON editor to the dashboard provider form and serve build-time-generated option schemas for an explicit provider package allowlist without adding declaration parsers to the standalone binary.
 
-**Architecture:** A new `@aio-proxy/provider-schemas` workspace package uses an Rslib `api.transform` plugin, Babel TypeScript AST, and TypeBox Script to generate a runtime-only schema map for eight provider factories directly into `dist`. The server exposes pure package-status/schema lookup routes and retains npm installation as a separate command with an `@ai-sdk/**` trust rule. The dashboard layers a reusable `JsonEditor` over `CodeEditor`, then adapts it to TanStack Form provider options.
+**Architecture:** A new `@aio-proxy/provider-schemas` workspace package uses an Rslib `api.transform` plugin, a declaration-only npm-latest tarball cache, Babel TypeScript AST, and TypeBox Script to generate a runtime-only schema map for the explicit provider catalog directly into `dist`. The server exposes pure package-status/schema lookup routes and retains npm installation as a separate command with an `@ai-sdk/**` trust rule. The dashboard layers a reusable `JsonEditor` over `CodeEditor`, then adapts it to TanStack Form provider options.
 
 **Tech Stack:** Bun 1.3.14, TypeScript 6, Rslib/Rsbuild, `@babel/parser` 7.28.5, `typebox` 1.3.6, Hono, React 19, Monaco Editor, TanStack Query/Form, Zod, Base UI, i18n.
 
@@ -12,8 +12,10 @@
 
 - The provider configuration file format does not change.
 - Zod remains the business/API validation source; TypeBox is build-only.
-- `@babel/parser`, `typebox`, and allowlisted provider packages must not enter the runtime dependency graph of the compiled CLI.
-- The initial schema allowlist is exactly the current eight bundled provider packages and configured factory names from the approved spec.
+- `@babel/parser`, `typebox`, `tar`, registry/cache modules, and allowlisted provider packages must not enter the runtime dependency graph of the compiled CLI.
+- The schema allowlist is the versionless package/factory catalog in `packages/provider-schemas/src/allowlist.ts`.
+- Allowlisted providers are not package dependencies. One-shot builds resolve public npm `latest`; watch builds reuse the newest valid cached registry observation and access npm only on cache miss.
+- Bundled package-status versions remain the actual core runtime dependency versions; options-schema versions separately identify the npm-latest declaration source.
 - The runtime trust rule is exactly `new Bun.Glob("@ai-sdk/**")` and is enforced by the server.
 - Trusted missing packages install only after package-name blur or Enter; typing alone has no side effects.
 - Unknown schema properties remain allowed.
@@ -30,7 +32,7 @@
 
 ### New provider schemas package
 
-- `packages/provider-schemas/package.json` — workspace scripts, dist exports, build-only dependencies, and eight allowlisted provider devDependencies.
+- `packages/provider-schemas/package.json` — workspace scripts, dist exports, and build-only parser/archive dependencies; no allowlisted provider dependencies.
 - `packages/provider-schemas/tsconfig.json` — runtime source compilation settings.
 - `packages/provider-schemas/scripts/tsconfig.json` — build generator settings outside the runtime source tree.
 - `packages/provider-schemas/rslib.config.ts` — Rslib config plus the build-only transform plugin.
@@ -42,6 +44,7 @@
 - `packages/provider-schemas/scripts/declaration-parser.ts` — Babel AST extraction, relative declaration traversal, and JSDoc collection.
 - `packages/provider-schemas/scripts/schema-normalizer.ts` — TypeBox result normalization and warning policy.
 - `packages/provider-schemas/scripts/provider-schemas-generator.ts` — allowlist orchestration and deterministic source rendering.
+- `packages/provider-schemas/scripts/provider-source-cache.ts` — verified npm-latest metadata, declaration-only tarball extraction, and immutable local observations.
 - `packages/provider-schemas/scripts/provider-schemas-build.ts` — build-context package resolution entrypoint loaded by the transform.
 - `packages/provider-schemas/scripts/provider-schemas-plugin.ts` — build-only transform and dependency registration.
 - `packages/provider-schemas/_test/declaration-parser.test.ts` — parser/path/traversal tests.
@@ -160,7 +163,7 @@ Expected: FAIL because the package modules do not exist.
 
 - [ ] **Step 3: Add the package manifest and build-only dependencies**
 
-Create `package.json` with dist-only runtime exports, an Rslib watch task, and all generator dependencies under `devDependencies`:
+Create `package.json` with dist-only runtime exports, an Rslib watch task, and build-only generator dependencies under `devDependencies`. Allowlisted provider packages are resolved from verified npm tarballs and are not dependencies:
 
 ```json
 {
@@ -187,14 +190,7 @@ Create `package.json` with dist-only runtime exports, an Rslib watch task, and a
     "@types/bun": "catalog:",
     "typebox": "1.3.6",
     "typescript": "catalog:",
-    "@ai-sdk/openai": "catalog:",
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/google": "catalog:",
-    "@ai-sdk/openai-compatible": "catalog:",
-    "@ai-sdk/mistral": "catalog:",
-    "@ai-sdk/groq": "catalog:",
-    "@ai-sdk/xai": "catalog:",
-    "@openrouter/ai-sdk-provider": "catalog:"
+    "tar": "^7.5.19"
   }
 }
 ```
@@ -222,22 +218,7 @@ export type ProviderOptionsSchemaEntry = {
 };
 ```
 
-Define the allowlist exactly:
-
-```ts
-export const PROVIDER_SCHEMA_ALLOWLIST = [
-  { packageName: "@ai-sdk/openai", factoryName: "createOpenAI" },
-  { packageName: "@ai-sdk/anthropic", factoryName: "createAnthropic" },
-  { packageName: "@ai-sdk/google", factoryName: "createGoogle" },
-  { packageName: "@ai-sdk/openai-compatible", factoryName: "createOpenAICompatible" },
-  { packageName: "@ai-sdk/mistral", factoryName: "createMistral" },
-  { packageName: "@ai-sdk/groq", factoryName: "createGroq" },
-  { packageName: "@ai-sdk/xai", factoryName: "createXai" },
-  { packageName: "@openrouter/ai-sdk-provider", factoryName: "createOpenRouter" },
-] as const;
-
-export type ProviderSchemaAllowlistEntry = (typeof PROVIDER_SCHEMA_ALLOWLIST)[number];
-```
+Define the versionless allowlist exactly in `src/allowlist.ts` as `{ packageName, factoryName }` entries. The source file is the catalog authority; do not duplicate versions or provider dependencies in `package.json`.
 
 Initialize `schema-module.ts` with `export const PROVIDER_OPTIONS_SCHEMAS: Readonly<Record<string, ProviderOptionsSchemaEntry>> = {};` as the physical transform input. Export lookup helpers from `index.ts`:
 
@@ -291,7 +272,7 @@ rtk git commit -m "feat(provider-schemas): parse provider declarations" -m "Co-a
 
 ---
 
-### Task 2: Generate and package the eight build-time option schemas
+### Task 2: Generate and package the allowlisted build-time option schemas
 
 **Files:**
 - Create: `packages/provider-schemas/scripts/schema-normalizer.ts`
@@ -370,7 +351,7 @@ Normalization must recursively:
 
 - [ ] **Step 4: Implement deterministic generation and source rendering**
 
-`generateProviderSchemaEntries()` iterates `PROVIDER_SCHEMA_ALLOWLIST` in source order. For each `entry`, resolve `entry.packageName` through `import.meta.resolve`, locate the nearest matching package root/package.json, parse `entry.factoryName`, convert it, and include the installed version.
+`generateProviderSchemaEntries()` iterates `PROVIDER_SCHEMA_ALLOWLIST` in source order. For each entry, resolve public npm `dist-tags.latest` through the verified declaration-only cache, parse `entry.factoryName`, convert it, and include the resolved package version. One-shot builds refresh latest on every build; watch builds reuse the newest valid cached observation. Output can therefore change when npm latest changes.
 
 Render only serializable data:
 
@@ -421,7 +402,7 @@ rtk bun run --filter @aio-proxy/provider-schemas build
 rtk bun test ./packages/provider-schemas/_test/*.test.ts
 ```
 
-Expected: build succeeds, `dist` contains all eight entries, `src/schema-module.ts` remains empty, and tests pass. Add assertions that `@ai-sdk/openai-compatible` requires `name` and `baseURL`, and JSDoc descriptions appear on known fields.
+Expected: build succeeds, `dist` contains every current allowlist entry, `src/schema-module.ts` remains empty, and tests pass. Add assertions that the generated keys exactly equal the allowlist, each entry records a non-empty resolved version, `@ai-sdk/openai-compatible` requires `name` and `baseURL`, and JSDoc descriptions appear on known fields.
 
 - [ ] **Step 7: Prove runtime output contains no build-only imports**
 
@@ -983,7 +964,7 @@ If no files changed, do not create an empty commit.
 
 ## Completion Criteria
 
-- The new provider-schemas package regenerates all eight allowlisted schemas deterministically.
+- The new provider-schemas package generates every versionless allowlist entry from public npm latest without installing provider dependencies; output records the resolved version and may change when latest moves.
 - Its runtime export contains no Babel, TypeBox, provider package, or filesystem dependency.
 - Server package status distinguishes bundled/installed/missing from schema availability.
 - `@ai-sdk/**` trusted missing packages install automatically only on blur/Enter.

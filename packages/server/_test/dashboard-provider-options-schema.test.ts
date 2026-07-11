@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { npmPackageCacheDir } from "@aio-proxy/core";
+import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from "@aio-proxy/core";
+import { PROVIDER_OPTIONS_SCHEMAS } from "@aio-proxy/provider-schemas";
 import { createServer } from "@aio-proxy/server";
 
 const installRequest = (body: Record<string, unknown>) => ({
@@ -42,7 +43,7 @@ describe("dashboard provider package metadata", () => {
       npm: "@ai-sdk/openai-compatible",
       trusted: true,
       state: "bundled",
-      version: "3.0.2",
+      version: BUNDLED_PROVIDER_VERSIONS["@ai-sdk/openai-compatible"],
       schemaAvailable: true,
     });
   });
@@ -79,7 +80,7 @@ describe("dashboard provider package metadata", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.npm).toBe("@ai-sdk/openai-compatible");
-    expect(body.packageVersion).toBe("3.0.2");
+    expect(body.packageVersion).toBe(PROVIDER_OPTIONS_SCHEMAS["@ai-sdk/openai-compatible"]?.packageVersion);
     expect(body.factoryName).toBe("createOpenAICompatible");
     expect(body.schema.required).toEqual(expect.arrayContaining(["name", "baseURL"]));
     expect(body.warnings).toEqual(expect.any(Array));

@@ -1,5 +1,5 @@
-import { BUNDLED_PROVIDER_PACKAGES, findInstalledNpmPackage } from "@aio-proxy/core";
-import { hasProviderOptionsSchema, PROVIDER_OPTIONS_SCHEMAS, providerOptionsSchema } from "@aio-proxy/provider-schemas";
+import { BUNDLED_PROVIDER_PACKAGES, BUNDLED_PROVIDER_VERSIONS, findInstalledNpmPackage } from "@aio-proxy/core";
+import { hasProviderOptionsSchema, providerOptionsSchema } from "@aio-proxy/provider-schemas";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { isTrustedProviderPackage } from "../provider-package-trust";
@@ -39,7 +39,7 @@ export const providerPackageStatus = async (npm: string): Promise<ProviderPackag
       npm,
       trusted: isTrustedProviderPackage(npm),
       state: "bundled",
-      version: PROVIDER_OPTIONS_SCHEMAS[npm]?.packageVersion,
+      version: BUNDLED_PROVIDER_VERSIONS[npm as (typeof BUNDLED_PROVIDER_PACKAGES)[number]],
       schemaAvailable: hasProviderOptionsSchema(npm),
     };
   }

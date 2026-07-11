@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  BUNDLED_PROVIDER_VERSIONS,
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
   loadAiSdkProvider,
@@ -63,6 +64,18 @@ const expectedProviders: readonly ExpectedProvider[] = [
 ];
 
 describe("loadAiSdkProvider", () => {
+  test("bundled provider versions match installed package metadata", async () => {
+    const corePackageRoot = join(import.meta.dir, "../..");
+    expect(Object.keys(BUNDLED_PROVIDER_VERSIONS).sort()).toEqual(
+      expectedProviders.map((provider) => provider.packageName).sort(),
+    );
+
+    for (const { packageName } of expectedProviders) {
+      const manifest = await Bun.file(join(corePackageRoot, "node_modules", packageName, "package.json")).json();
+      expect(BUNDLED_PROVIDER_VERSIONS[packageName]).toBe(manifest.version);
+    }
+  });
+
   test("loads every bundled provider factory without network calls", async () => {
     expect(Object.keys(BUNDLED_PROVIDERS).sort()).toEqual(
       expectedProviders.map((provider) => provider.packageName).sort(),

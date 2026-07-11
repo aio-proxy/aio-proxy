@@ -32,7 +32,7 @@ Schema support is progressive enhancement. A package without an embedded schema 
 - npm declaration JSDoc is included in JSON Schema descriptions for Monaco hover help.
 - Zod remains the only business and API validation system.
 - Babel TypeScript AST and TypeBox `Script` are build-only tools inside a new schema package. Neither enters the runtime dependency graph.
-- The initial schema generation allowlist contains the current eight bundled provider packages.
+- The schema generation allowlist is the explicit package/factory catalog in `packages/provider-schemas/src/allowlist.ts`; entries do not carry versions.
 - The initial runtime trust allowlist contains only the Bun glob `@ai-sdk/**`.
 - Trusted missing packages install automatically after the package field loses focus or the user presses Enter. Input changes alone never install packages.
 - Other missing packages require explicit installation confirmation.
@@ -47,33 +47,25 @@ The package owns three separate concerns:
 2. build-only declaration parsing and JSON Schema generation; and
 3. a runtime export containing only the generated schema records.
 
-The initial allowlist contains:
+The allowlist is intentionally versionless. Allowlisted providers are not dependencies or development dependencies of `@aio-proxy/provider-schemas`; adding a catalog entry does not install that provider into the workspace.
 
-- `@ai-sdk/openai` → `createOpenAI`
-- `@ai-sdk/anthropic` → `createAnthropic`
-- `@ai-sdk/google` → `createGoogle`
-- `@ai-sdk/openai-compatible` → `createOpenAICompatible`
-- `@ai-sdk/mistral` → `createMistral`
-- `@ai-sdk/groq` → `createGroq`
-- `@ai-sdk/xai` → `createXai`
-- `@openrouter/ai-sdk-provider` → `createOpenRouter`
-
-These npm packages are development dependencies of `@aio-proxy/provider-schemas`, ensuring their declarations are available during generation. Future commonly used packages are added by updating both the allowlist and the package's development dependencies.
+For a one-shot build, the generator resolves each package's public npm `dist-tags.latest`, verifies the tarball integrity, and caches only the package manifest and declaration files. Watch builds reuse the newest valid immutable registry observation already in the local cache and contact npm only when no usable observation exists. Because `latest` can move, schema output is intentionally not reproducible across builds made at different times; the emitted entry records the resolved package version.
 
 ### Rslib generation plugin
 
-The package's Rslib configuration registers a custom build-only `api.transform` plugin. The transform targets the physical `src/schema-module.ts` placeholder and:
+The package's Rslib configuration registers a custom build-only `api.transform` plugin. `onBeforeBuild.isWatch` selects only whether npm latest is refreshed; schema generation remains exclusively in the transform. The transform targets the physical `src/schema-module.ts` placeholder and:
 
-1. resolves each allowlisted package's declaration entrypoint from `exports.types`, `types`, or `typings`;
-2. parses declarations with `@babel/parser` and its TypeScript plugin;
-3. locates the configured factory export and first public call signature;
-4. follows relative imports and re-exports within the package;
-5. collects referenced `type` and `interface` declarations plus JSDoc;
-6. converts the self-contained type module with TypeBox `Script`;
-7. normalizes the resulting JSON Schema and warnings; and
-8. returns the deterministic generated TypeScript module to Rspack for emission into `dist`.
+1. resolves each allowlisted package to its cached npm-latest declaration source;
+2. resolves the declaration entrypoint from `exports.types`, `types`, or `typings`;
+3. parses declarations with `@babel/parser` and its TypeScript plugin;
+4. locates the configured factory export and first public call signature;
+5. follows relative imports and re-exports within the package;
+6. collects referenced `type` and `interface` declarations plus JSDoc;
+7. converts the self-contained type module with TypeBox `Script`;
+8. normalizes the resulting JSON Schema and warnings; and
+9. returns the generated TypeScript module to Rspack for emission into `dist`.
 
-Generated schema data is not committed and no explicit generation command exists. `src/schema-module.ts` contains only an empty typed record needed as transform input; package consumers resolve the built `dist` entrypoints. The transform registers provider manifests and declaration files as dependencies so builds and watch mode regenerate from the real inputs.
+Generated schema data is not committed and no explicit generation command exists. `src/schema-module.ts` contains only an empty typed record needed as transform input; package consumers resolve the built `dist` entrypoints. The transform registers cached provider manifests and declaration files as dependencies so watch mode regenerates from the real inputs without importing registry/cache code into runtime output.
 
 Babel stays behind a narrow declaration-parser module that returns package-owned declaration metadata. Babel AST types do not cross that boundary, allowing a future public Bun AST API to replace Babel without changing schema normalization or runtime consumers.
 
@@ -119,6 +111,8 @@ On package-field blur or Enter:
 - missing untrusted package: show **Install Provider Package** and require an `AlertDialog` confirmation.
 
 Installation status does not control schema availability. A schema may already be embedded for an allowlisted package, while a runtime-installed package outside the schema allowlist may have no schema.
+
+Package-status `version` describes the runtime package: bundled providers use the explicit versions compiled into core, and cached providers use their installed manifest version. Options-schema `packageVersion` separately records the npm-latest declaration version used to generate that embedded schema.
 
 ## Dashboard API
 
@@ -228,7 +222,7 @@ Trusted missing packages install automatically after commit. Untrusted missing p
 - Drop optional unresolved/non-JSON fields with warning paths.
 - Reject schemas containing required unresolved/non-JSON fields.
 - Enforce traversal limits.
-- Generate all eight initial allowlist entries, verify deterministic rendered output, and inspect the built `dist` module without committing a generated artifact.
+- Generate every current allowlist entry from npm latest, verify deterministic rendering for fixed resolved inputs, and inspect the built `dist` module without committing a generated artifact.
 - Assert `@ai-sdk/openai-compatible` requires `name` and `baseURL`.
 - Build the package and inspect its runtime bundle to ensure it does not import Babel, TypeBox, or provider packages.
 

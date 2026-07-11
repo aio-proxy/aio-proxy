@@ -13,6 +13,7 @@ import {
 } from "../scripts/provider-schemas-generator";
 import { pluginProviderSchemas } from "../scripts/provider-schemas-plugin";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
+import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
 
 type PluginApi = Parameters<RsbuildPlugin["setup"]>[0];
 type TransformRegistration = {
@@ -55,6 +56,27 @@ const createFixtureProvider = () => {
 };
 
 describe("provider schema generation", () => {
+  test("generates the exact allowlist from npm latest without provider dependencies", async () => {
+    const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
+    for (const { packageName } of PROVIDER_SCHEMA_ALLOWLIST) {
+      expect(packageJson.dependencies?.[packageName]).toBeUndefined();
+      expect(packageJson.devDependencies?.[packageName]).toBeUndefined();
+    }
+
+    const generated = await generateProviderSchemaEntries({
+      cacheRoot: mkdtempSync(join(tmpdir(), "provider-schema-expanded-catalog-")),
+      refreshLatest: true,
+    });
+    expect(Object.keys(generated.entries)).toEqual(PROVIDER_SCHEMA_ALLOWLIST.map(({ packageName }) => packageName));
+    for (const { packageName } of PROVIDER_SCHEMA_ALLOWLIST) {
+      expect(generated.entries[packageName].packageVersion.length).toBeGreaterThan(0);
+      expect(generated.entries[packageName]).toMatchObject({
+        packageName,
+        packageVersion: expect.any(String),
+      });
+    }
+  }, 120_000);
+
   test("TypeBox exposes the non-exported synthetic root alias", () => {
     const module = Script(`
       type __AioProxyProviderOptions = NonNullable<Options>;
