@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { IdSchema } from "./common";
 import { ProviderKind } from "./provider";
-import { UsageRowSchema } from "./usage";
+import {
+  UsageOverviewGroupBySchema,
+  UsageOverviewMetricSchema,
+  UsageOverviewRangeSchema,
+  UsageRowSchema,
+} from "./usage";
 
 export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
 
@@ -23,25 +28,42 @@ export const DashboardProvidersResponseSchema = z.object({
 });
 
 export const DashboardUsageSummarySchema = z.object({
+  estimatedCostUsd: z.number().min(0),
+  pricingCoverage: z.number().min(0).max(1).nullable(),
+  pricedRequestCount: z.number().int().min(0),
+  usageRequestCount: z.number().int().min(0),
   requestCount: z.number().int().min(0),
+  successCount: z.number().int().min(0),
+  failureCount: z.number().int().min(0),
+  cancelledCount: z.number().int().min(0),
+  successRate: z.number().min(0).max(1).nullable(),
   inputTokens: z.number().int().min(0),
   outputTokens: z.number().int().min(0),
   totalTokens: z.number().int().min(0),
-  cacheReadTokens: z.number().int().min(0),
-  cacheWriteTokens: z.number().int().min(0),
-  reasoningTokens: z.number().int().min(0),
-  estimatedCostUsd: z.number().min(0),
+  averageRpm: z.number().min(0),
+  averageTpm: z.number().min(0),
 });
 
-export const DashboardUsageRowSchema = UsageRowSchema.extend({
-  id: IdSchema,
-  traceId: IdSchema,
-  createdAt: z.string().datetime(),
+export const DashboardUsageSeriesSchema = z.object({
+  key: z.string().min(1),
+  kind: z.enum(["dimension", "other", "failed", "cancelled"]),
 });
 
-export const DashboardUsageResponseSchema = z.object({
+export const DashboardUsageBucketSchema = z.object({
+  key: z.string().min(1),
+  values: z.record(z.string(), z.number().min(0)),
+});
+
+export const DashboardUsageOverviewResponseSchema = z.object({
+  range: UsageOverviewRangeSchema,
+  metric: UsageOverviewMetricSchema,
+  groupBy: UsageOverviewGroupBySchema,
+  rangeStart: z.string().datetime(),
+  rangeEnd: z.string().datetime(),
+  bucketUnit: z.enum(["hour", "day"]),
   summary: DashboardUsageSummarySchema,
-  rows: z.array(DashboardUsageRowSchema),
+  series: z.array(DashboardUsageSeriesSchema),
+  buckets: z.array(DashboardUsageBucketSchema),
 });
 
 export const DashboardEventSchema = z.discriminatedUnion("event", [
@@ -93,9 +115,11 @@ export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersR
 export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;
 export type DashboardUsageSummaryInput = z.input<typeof DashboardUsageSummarySchema>;
 export type DashboardUsageSummary = z.output<typeof DashboardUsageSummarySchema>;
-export type DashboardUsageRowInput = z.input<typeof DashboardUsageRowSchema>;
-export type DashboardUsageRow = z.output<typeof DashboardUsageRowSchema>;
-export type DashboardUsageResponseInput = z.input<typeof DashboardUsageResponseSchema>;
-export type DashboardUsageResponse = z.output<typeof DashboardUsageResponseSchema>;
+export type DashboardUsageSeriesInput = z.input<typeof DashboardUsageSeriesSchema>;
+export type DashboardUsageSeries = z.output<typeof DashboardUsageSeriesSchema>;
+export type DashboardUsageBucketInput = z.input<typeof DashboardUsageBucketSchema>;
+export type DashboardUsageBucket = z.output<typeof DashboardUsageBucketSchema>;
+export type DashboardUsageOverviewResponseInput = z.input<typeof DashboardUsageOverviewResponseSchema>;
+export type DashboardUsageOverviewResponse = z.output<typeof DashboardUsageOverviewResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;

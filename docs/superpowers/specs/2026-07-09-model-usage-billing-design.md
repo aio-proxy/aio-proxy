@@ -6,16 +6,14 @@ Add an observational usage ledger for aio-proxy model calls. The ledger records 
 
 ## Scope
 
-The first version records successful completed requests only when aio-proxy can extract token usage. Failed provider attempts, requests without usage, and responses whose usage cannot be parsed are not written to the ledger.
+- One routed inbound request produces one request-log row, regardless of fallback count.
+- Successful final attempts may additionally produce one usage row keyed by request id.
+- Failed attempts are retained only in ordered request-log metadata and do not contribute token or cost metrics.
+- Dashboard ranges are 24h, 7d, 14d, and 30d; 24h uses hourly buckets and the remaining ranges use server-local calendar-day buckets.
+- The Dashboard root shows known estimated cost plus pricing coverage, requests, input+output tokens, Average RPM, Average TPM, success rate, and a metric/grouping-switchable stacked chart.
+- The standalone Usage route and recent-request table are removed.
 
-The cost is an estimate in USD. It is suitable for dashboards and operational visibility, not financial settlement.
-
-Out of scope:
-
-- User accounts, API key attribution, balances, and invoices.
-- Budget limits or request rejection based on spend.
-- Retention policy, archival, or export.
-- Exact billing for price tiers when aio-proxy lacks the information needed to select the tier.
+Metric naming and retry semantics were compared against `docs/research/usage-metrics-comparison.md`.
 
 ## Price Source
 
@@ -73,70 +71,9 @@ For raw API passthrough routes, tee the upstream response body before returning 
 
 Parsing failures are ignored. A parse failure must not change the client response.
 
-## Storage
-
-Add a SQLite `usage` table through the existing migration system. This is the per-request usage log: each recorded successful request writes one row with both token counts and billing estimate fields.
-
-- `id` text primary key
-- `trace_id` text not null
-- `provider_id` text not null
-- `model_id` text not null
-- `price_model_id` text nullable
-- `input_tokens` integer nullable
-- `output_tokens` integer nullable
-- `total_tokens` integer nullable
-- `cache_read_tokens` integer nullable
-- `cache_write_tokens` integer nullable
-- `reasoning_tokens` integer nullable
-- `estimated_cost_usd` real nullable
-- `created_at` integer timestamp_ms not null
-
-No aggregation tables are created in the first version. Dashboard summaries are computed from recent ledger rows.
-
-## Dashboard
-
-Add `GET /dashboard/api/usage?limit=100`. The response contains:
-
-```ts
-{
-  summary: {
-    requestCount: number;
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-    reasoningTokens: number;
-    estimatedCostUsd: number;
-  };
-  rows: UsageLedgerRow[];
-}
-```
-
-The dashboard gets a Usage page linked from the side menu. The page shows:
-
-- Total estimated cost.
-- Total requests with usage.
-- Token totals.
-- Recent ledger rows grouped by provider and model.
-
-All user-facing copy must come from `packages/i18n/messages/*.json`.
-
 ## Error Handling
 
 Accounting must never make a successful provider response fail. Database insert failures, pricing fetch failures, and passthrough parse failures are swallowed after optional internal logging. The client response path remains the source of truth.
-
-## Testing
-
-Add tests for:
-
-- Usage schema roundtrips with cache, reasoning, price model, and cost fields.
-- Pricing lookup by full OpenRouter id and by bare id.
-- Pricing fetch failure returning usage without cost.
-- AI SDK route recording usage after stream completion.
-- Raw passthrough JSON and SSE usage recording when usage is present.
-- No ledger row for failed provider requests or successful requests without usage.
-- Dashboard usage API empty and populated responses.
 
 ## Assumptions
 

@@ -7,10 +7,15 @@ import {
   ApiProviderMutationBodySchema,
   ConfigSchema,
   DashboardEventSchema,
+  DashboardUsageOverviewResponseSchema,
   OAuthProviderSchema,
   OAuthVendor,
   ProviderMutationBodySchema,
+  RequestOutcomeSchema,
   TraceEventSchema,
+  UsageOverviewGroupBySchema,
+  UsageOverviewMetricSchema,
+  UsageOverviewRangeSchema,
 } from "../src/index";
 
 const apiProvider = {
@@ -721,6 +726,52 @@ describe("DashboardEventSchema", () => {
 
     expect(DashboardEventSchema.parse(event)).toEqual(event);
   });
+});
+
+test("parses usage overview controls and request outcomes", () => {
+  expect(UsageOverviewRangeSchema.parse("24h")).toBe("24h");
+  expect(UsageOverviewMetricSchema.parse("cost")).toBe("cost");
+  expect(UsageOverviewGroupBySchema.parse("model")).toBe("model");
+  expect(RequestOutcomeSchema.parse("cancelled")).toBe("cancelled");
+});
+
+test("roundtrips the usage overview response", () => {
+  const response = {
+    range: "24h",
+    metric: "cost",
+    groupBy: "model",
+    rangeStart: "2026-07-10T08:00:00.000Z",
+    rangeEnd: "2026-07-11T08:00:00.000Z",
+    bucketUnit: "hour",
+    summary: {
+      estimatedCostUsd: 1.25,
+      pricingCoverage: 0.8,
+      pricedRequestCount: 8,
+      usageRequestCount: 10,
+      requestCount: 12,
+      successCount: 10,
+      failureCount: 1,
+      cancelledCount: 1,
+      successRate: 10 / 11,
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+      averageRpm: 12 / 1440,
+      averageTpm: 150 / 1440,
+    },
+    series: [
+      { key: "openai/gpt-5", kind: "dimension" },
+      { key: "__other__", kind: "other" },
+    ],
+    buckets: [
+      {
+        key: "2026-07-11 08:00",
+        values: { "openai/gpt-5": 1.25, __other__: 0 },
+      },
+    ],
+  } as const;
+
+  expect(DashboardUsageOverviewResponseSchema.parse(response)).toEqual(response);
 });
 
 const _message: AioModelMessage = { role: "user", content: "hello" };
