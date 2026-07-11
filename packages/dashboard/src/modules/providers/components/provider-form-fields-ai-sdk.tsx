@@ -15,6 +15,19 @@ import { ProviderOptionsEditor } from "./provider-options-editor";
 
 const DEFAULT_AI_SDK_PACKAGE = "@ai-sdk/openai-compatible";
 
+type PackageCommitRef = { current: string | null };
+
+export const commitProviderPackageOnce = (
+  packageName: string,
+  lastCommitted: PackageCommitRef,
+  commitPackage: (packageName: string) => void,
+) => {
+  if (lastCommitted.current === packageName) return false;
+  lastCommitted.current = packageName;
+  commitPackage(packageName);
+  return true;
+};
+
 type Props = {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
@@ -33,9 +46,10 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
 }) => {
   const schemaState = useProviderOptionsSchema();
   const initialPackageName = useRef(form.getFieldValue("packageName") ?? DEFAULT_AI_SDK_PACKAGE).current;
+  const lastCommittedPackage = useRef<string | null>(null);
 
   useEffect(() => {
-    schemaState.commitPackage(initialPackageName);
+    commitProviderPackageOnce(initialPackageName, lastCommittedPackage, schemaState.commitPackage);
   }, [initialPackageName, schemaState.commitPackage]);
 
   return (
@@ -51,13 +65,24 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
                 value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
                 onChange={(event) => {
                   field.handleChange(event.target.value);
+                  lastCommittedPackage.current = null;
                   schemaState.changePackage(event.target.value);
                 }}
-                onBlur={() => schemaState.commitPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
+                onBlur={() =>
+                  commitProviderPackageOnce(
+                    field.state.value ?? DEFAULT_AI_SDK_PACKAGE,
+                    lastCommittedPackage,
+                    schemaState.commitPackage,
+                  )
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    schemaState.commitPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
+                    commitProviderPackageOnce(
+                      field.state.value ?? DEFAULT_AI_SDK_PACKAGE,
+                      lastCommittedPackage,
+                      schemaState.commitPackage,
+                    );
                   }
                 }}
                 placeholder={m["dashboard.providers.form.placeholder_package_name"]()}

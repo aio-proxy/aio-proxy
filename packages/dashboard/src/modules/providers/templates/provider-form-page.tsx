@@ -21,7 +21,7 @@ type Props = {
 export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId }) => {
   const navigate = useNavigate();
   const [aliasOpen, setAliasOpen] = useState(false);
-  const [optionsValid, setOptionsValid] = useState(true);
+  const [optionsValid, setOptionsValid] = useState(kind === "api");
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const isPending = isCreating || isUpdating;

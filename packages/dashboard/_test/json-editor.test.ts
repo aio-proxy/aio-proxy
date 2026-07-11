@@ -103,7 +103,7 @@ describe("JsonEditor state", () => {
     expect(applied.at(-1)).toHaveLength(2);
   });
 
-  test("mirrors invalid state onto Monaco's focusable textbox", async () => {
+  test("mirrors invalid state and its description onto the wrapper and Monaco textbox", async () => {
     const attributes = new Map<string, string>();
     const textbox = {
       setAttribute: (name: string, value: string) => attributes.set(name, value),
@@ -113,16 +113,23 @@ describe("JsonEditor state", () => {
       getDomNode: () => ({ querySelector: () => textbox }),
     };
 
-    setCodeEditorAriaInvalid(editor, true);
+    setCodeEditorAriaInvalid(editor, true, "options-error");
     expect(attributes.get("aria-invalid")).toBe("true");
-    setCodeEditorAriaInvalid(editor, false);
+    expect(attributes.get("aria-describedby")).toBe("options-error");
+    setCodeEditorAriaInvalid(editor, false, undefined);
     expect(attributes.has("aria-invalid")).toBe(false);
+    expect(attributes.has("aria-describedby")).toBe(false);
 
     const codeEditorSource = await Bun.file(`${import.meta.dir}/../src/components/code-editor/code-editor.tsx`).text();
-    expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editor, invalidRef.current)");
-    expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editorRef.current, invalid)");
+    expect(codeEditorSource).toContain(
+      "setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current)",
+    );
+    expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy)");
+    expect(codeEditorSource).toContain("aria-describedby={ariaDescribedBy}");
 
     const jsonEditorSource = await Bun.file(`${import.meta.dir}/../src/components/json-editor/json-editor.tsx`).text();
     expect(jsonEditorSource).toContain("onValidate={handleValidationReady}");
+    expect(jsonEditorSource).toContain("externalInvalid");
+    expect(jsonEditorSource).toContain("ariaDescribedBy={errorDescriptionId}");
   });
 });

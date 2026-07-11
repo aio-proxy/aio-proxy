@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { isProviderOptionsObject } from "../src/modules/providers/components/provider-options-editor";
+import { commitProviderPackageOnce } from "../src/modules/providers/components/provider-form-fields-ai-sdk";
+import {
+  canConfirmProviderInstall,
+  isProviderOptionsObject,
+  providerOptionsAreValid,
+} from "../src/modules/providers/components/provider-options-editor";
 import {
   initialProviderOptionsSchemaState,
   providerOptionsSchemaTransition,
@@ -40,6 +45,49 @@ describe("provider options editor", () => {
     expect(isProviderOptionsObject(true)).toBe(false);
     expect(isProviderOptionsObject(42)).toBe(false);
     expect(isProviderOptionsObject("value")).toBe(false);
+  });
+
+  test("blocks pending schema workflow phases but allows warning and unavailable fallbacks", () => {
+    expect(providerOptionsAreValid(true, true, "idle")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "checking")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "installing")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "install_required")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "loading_schema")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "schema_error")).toBe(false);
+    expect(providerOptionsAreValid(true, true, "ready")).toBe(true);
+    expect(providerOptionsAreValid(true, true, "schema_unavailable")).toBe(true);
+    expect(providerOptionsAreValid(true, true, "install_error")).toBe(true);
+    expect(providerOptionsAreValid(false, true, "schema_unavailable")).toBe(false);
+    expect(providerOptionsAreValid(true, false, "ready")).toBe(false);
+  });
+
+  test("only confirms the install-required package currently bound to the dialog", () => {
+    expect(canConfirmProviderInstall("community-provider", "install_required", "community-provider")).toBe(true);
+    expect(canConfirmProviderInstall("old-provider", "install_required", "new-provider")).toBe(false);
+    expect(canConfirmProviderInstall("community-provider", "checking", "community-provider")).toBe(false);
+    expect(canConfirmProviderInstall(null, "install_required", "community-provider")).toBe(false);
+  });
+
+  test("routine package commits ignore StrictMode and Enter-then-blur repeats", () => {
+    const committed = { current: null as string | null };
+    const packages: string[] = [];
+    const commit = (packageName: string) => packages.push(packageName);
+
+    expect(commitProviderPackageOnce("@ai-sdk/openai", committed, commit)).toBe(true);
+    expect(commitProviderPackageOnce("@ai-sdk/openai", committed, commit)).toBe(false);
+    expect(packages).toEqual(["@ai-sdk/openai"]);
+
+    committed.current = null;
+    expect(commitProviderPackageOnce("@ai-sdk/openai", committed, commit)).toBe(true);
+    expect(packages).toEqual(["@ai-sdk/openai", "@ai-sdk/openai"]);
+  });
+
+  test("ai-sdk pages start with Save blocked until options validity reports", async () => {
+    const pageSource = await Bun.file(
+      `${import.meta.dir}/../src/modules/providers/templates/provider-form-page.tsx`,
+    ).text();
+
+    expect(pageSource).toContain('useState(kind === "api")');
   });
 });
 

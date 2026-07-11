@@ -19,6 +19,8 @@ export type JsonEditorProps = {
   readonly schema?: JsonSchema;
   readonly onValueChange: (value: JsonValue | undefined) => void;
   readonly onValidationChange?: (validation: JsonEditorValidation) => void;
+  readonly externalInvalid?: boolean;
+  readonly errorDescriptionId?: string;
   readonly id?: string;
   readonly className?: string;
   readonly height?: string | number;
@@ -31,6 +33,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   schema,
   onValueChange,
   onValidationChange,
+  externalInvalid,
+  errorDescriptionId,
   id,
   className,
   height,
@@ -136,7 +140,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     <CodeEditor
       {...(className === undefined ? {} : { className })}
       {...(height === undefined ? {} : { height })}
-      invalid={!validation.valid}
+      invalid={externalInvalid || !validation.valid}
+      ariaDescribedBy={errorDescriptionId}
       language="json"
       onChange={handleChange}
       onMount={handleMount}
