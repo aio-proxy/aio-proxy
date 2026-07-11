@@ -4,8 +4,6 @@ import { GeminiInlineDataTooLargeError } from "../error";
 const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
 
-const looseObjectSchema = z.object({}).catchall(z.unknown());
-
 const inlineDataSchema = z.object({
   mimeType: idSchema,
   data: z.string().min(1),
@@ -69,7 +67,16 @@ const toolSchema = z.object({
   functionDeclarations: z.array(functionDeclarationSchema).min(1),
 });
 
-const generationConfigSchema = looseObjectSchema;
+const generationConfigSchema = z
+  .object({
+    thinkingConfig: z
+      .object({
+        thinkingLevel: idSchema.optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
 
 const safetySettingSchema = z
   .object({

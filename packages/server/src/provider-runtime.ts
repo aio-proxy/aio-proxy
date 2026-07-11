@@ -1,10 +1,13 @@
-import { createAiSdkProvider, createApiProvider } from "@aio-proxy/core";
+import { type ApiProviderInstance, createAiSdkProvider, createApiProvider, modelRoutes } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { createOAuthRuntimeProvider } from "./oauth-runtime";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
+
+const probeMaxOutputTokens = 1;
+const openAIResponsesProbeMaxOutputTokens = 16;
 
 export type ProviderRuntime = {
   readonly providers: readonly RuntimeProviderInstance[];
@@ -25,24 +28,24 @@ export function materializeProviders(config: Config): ProviderRuntime {
 
     switch (provider.kind) {
       case ProviderKind.Api: {
-        probes.set(id, () => probeApi(provider, provider.baseUrl));
         const instance = createApiProvider(provider);
+        probes.set(id, () => probeApi(provider, instance));
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.AiSdk: {
         const instance = createAiSdkProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.OAuth: {
         const instance = createOAuthRuntimeProvider(provider);
         probes.set(id, () => probeAiSdk(instance));
         providers.push(instance);
-        summaries.push(providerSummary(instance));
+        summaries.push(providerSummary(instance, provider.name));
         break;
       }
       default:
@@ -57,7 +60,7 @@ export function materializeProviders(config: Config): ProviderRuntime {
   };
 }
 
-export function providerSummary(provider: RuntimeProviderInstance): DashboardProviderSummary {
+export function providerSummary(provider: RuntimeProviderInstance, name?: string): DashboardProviderSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -65,6 +68,10 @@ export function providerSummary(provider: RuntimeProviderInstance): DashboardPro
     passthrough: isPassthrough(provider),
     last_status: "unknown",
     last_latency: null,
+    // Runtime factories don't carry `name`, so callers pass the config display name through.
+    name: name ?? ("name" in provider ? provider.name : undefined),
+    clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
+    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };
 }
 
@@ -84,6 +91,8 @@ function providerId(provider: Provider): string {
 }
 
 function providerConfigSummary(provider: Provider): DashboardProviderSummary {
+  const models = provider.kind === ProviderKind.OAuth ? [] : (provider.models ?? []);
+  const clientModels = [...new Set(provider.alias ? Object.keys(provider.alias) : models)];
   return {
     id: provider.id,
     kind: provider.kind,
@@ -91,21 +100,30 @@ function providerConfigSummary(provider: Provider): DashboardProviderSummary {
     passthrough: provider.kind === ProviderKind.Api,
     last_status: "unknown",
     last_latency: null,
+    name: provider.name,
+    clientModels,
+    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };
 }
 
 async function probeApi(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  baseUrl: string,
+  instance: ApiProviderInstance,
 ): Promise<DashboardProviderProbe> {
   try {
-    const request = providerProbeRequest(provider, baseUrl);
-    const response = await fetch(request.url, {
-      body: JSON.stringify(request.body),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-      signal: AbortSignal.timeout(1_000),
-    });
+    const model = providerProbeModel(provider);
+    if (model === undefined) {
+      return "FAIL";
+    }
+    const request = providerProbeRequest(provider, model);
+    const response = await instance.passthrough(
+      new Request(request.url, {
+        body: JSON.stringify(request.body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: AbortSignal.timeout(1_000),
+      }),
+    );
     if (response.body !== null) {
       await response.body.cancel();
     }
@@ -120,25 +138,24 @@ async function probeApi(
 
 function providerProbeRequest(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  baseUrl: string,
+  model: string,
 ): { readonly body: unknown; readonly url: URL } {
-  const model = "aio-proxy-probe";
-  const url = new URL(baseUrl);
+  const url = new URL(provider.baseUrl);
   switch (provider.protocol) {
     case ProviderProtocol.OpenAICompatible:
       url.pathname = "/v1/chat/completions";
       return {
-        body: { messages: [{ role: "user", content: "ping" }], model },
+        body: { max_tokens: probeMaxOutputTokens, messages: [{ role: "user", content: "ping" }], model },
         url,
       };
     case ProviderProtocol.OpenAIResponse:
       url.pathname = "/v1/responses";
-      return { body: { input: "ping", model }, url };
+      return { body: { input: "ping", max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
     case ProviderProtocol.Anthropic:
       url.pathname = "/v1/messages";
       return {
         body: {
-          max_tokens: 1,
+          max_tokens: probeMaxOutputTokens,
           messages: [{ role: "user", content: "ping" }],
           model,
         },
@@ -147,12 +164,20 @@ function providerProbeRequest(
     case ProviderProtocol.Gemini:
       url.pathname = `/v1beta/models/${model}:generateContent`;
       return {
-        body: { contents: [{ role: "user", parts: [{ text: "ping" }] }] },
+        body: {
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: probeMaxOutputTokens },
+        },
         url,
       };
     default:
       return assertNever(provider.protocol);
   }
+}
+
+function providerProbeModel(provider: Extract<Provider, { kind: ProviderKind.Api }>): string | undefined {
+  const aliasTarget = provider.alias === undefined ? undefined : Object.values(provider.alias)[0]?.model;
+  return aliasTarget ?? provider.models?.[0];
 }
 
 async function probeAiSdk(provider: {

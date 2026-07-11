@@ -27,6 +27,7 @@ export type OpenAIResponsesTransformSettings = {
   readonly maxOutputTokens?: number;
   readonly parallelToolCalls?: boolean;
   readonly toolChoice?: OpenAIResponsesRequest["tool_choice"];
+  readonly reasoning?: OpenAIResponsesReasoningEffort;
   readonly reasoningSummary?: OpenAIResponsesReasoningSummary;
   readonly providerOptions?: OpenAIResponsesProviderOptions;
 };

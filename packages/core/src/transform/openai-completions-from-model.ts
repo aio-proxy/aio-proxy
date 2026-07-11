@@ -55,7 +55,7 @@ export function modelMessagesToOpenAICompletions({
     ...(settings.temperature === undefined ? {} : { temperature: settings.temperature }),
     ...(settings.maxTokens === undefined ? {} : { max_completion_tokens: settings.maxTokens }),
     ...(settings.responseFormat === undefined ? {} : { response_format: settings.responseFormat }),
-    ...(settings.reasoningEffort === undefined ? {} : { reasoning_effort: settings.reasoningEffort }),
+    ...(settings.reasoning === undefined ? {} : { reasoning_effort: settings.reasoning }),
   };
 }
 

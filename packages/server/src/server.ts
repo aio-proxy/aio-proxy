@@ -1,3 +1,4 @@
+import { modelRoutes } from "@aio-proxy/core";
 import { ConfigSchema } from "@aio-proxy/types";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -107,15 +108,7 @@ const createRoutes = (
 };
 
 function exposedModels(provider: RuntimeProviderInstance): string[] {
-  const alias = provider.alias ?? {};
-  const ids: string[] = [];
-  for (const [clientModel, config] of Object.entries(alias)) {
-    ids.push(clientModel);
-    if (config.preserve) {
-      ids.push(config.model);
-    }
-  }
-  return ids;
+  return modelRoutes(provider).map((route) => route.alias);
 }
 
 const routes = createRoutes(createServerState({ config: defaultConfig }));

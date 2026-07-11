@@ -27,3 +27,20 @@ export type AliasTargetInput = z.input<typeof AliasTargetSchema>;
 export type AliasTarget = z.output<typeof AliasTargetSchema>;
 export type AliasConfigInput = z.input<typeof AliasConfigSchema>;
 export type AliasConfig = z.output<typeof AliasConfigSchema>;
+
+export const normalizeAliasName = (value: string): string => value.trim();
+
+export const normalizeVariantKey = (value: string): string => value.trim().toLowerCase();
+
+export function resolveAliasTarget(config: AliasConfig, variantKey: string | undefined): AliasTarget {
+  if (variantKey !== undefined) {
+    const normalizedKey = normalizeVariantKey(variantKey);
+    for (const [key, target] of Object.entries(config.variants ?? {})) {
+      if (normalizeVariantKey(key) === normalizedKey) {
+        return target;
+      }
+    }
+  }
+
+  return { model: config.model, preserve: config.preserve };
+}

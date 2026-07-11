@@ -17,7 +17,7 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
 }) => {
   return (
     <>
-      <header className="flex h-12 items-center justify-between border-border border-b px-4">
+      <header className="flex h-16 items-center justify-between border-border border-b px-4">
         <div className="flex min-w-0 items-center gap-1 truncate">
           {!!backTo && (
             <Button variant="ghost" size="icon" render={<Link to={backTo} preload="intent" />}>

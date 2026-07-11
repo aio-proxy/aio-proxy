@@ -97,6 +97,71 @@ describe("OpenAI Responses routes", () => {
     expect(bodySeen).toBe(rawRequest);
   });
 
+  test("Given first native provider throws When POST is valid Then next provider is used", async () => {
+    const first = {
+      id: "offline",
+      kind: "api",
+      models: ["gpt-4.1-mini"],
+      alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
+      protocol: ProviderProtocol.OpenAIResponse,
+      passthrough: async () => {
+        throw new Error("connection refused");
+      },
+    } satisfies ApiProviderInstance;
+    const second = {
+      id: "ok",
+      kind: "api",
+      models: ["gpt-4.1-mini"],
+      alias: { "gpt-4.1-mini": { model: "gpt-4.1-mini", preserve: false } },
+      protocol: ProviderProtocol.OpenAIResponse,
+      passthrough: async () => Response.json({ fallback: true }),
+    } satisfies ApiProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({ ...responsesRequest, stream: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ fallback: true });
+  });
+
+  test("Given an alias variant and native provider When POST is valid Then passthrough receives the variant model", async () => {
+    // Given
+    let bodySeen: unknown;
+    const provider = {
+      id: "openai",
+      kind: "api",
+      models: ["gpt-default", "gpt-high"],
+      alias: {
+        mini: {
+          model: "gpt-default",
+          preserve: false,
+          variants: { high: { model: "gpt-high", preserve: false } },
+        },
+      },
+      protocol: ProviderProtocol.OpenAIResponse,
+      async passthrough(req) {
+        bodySeen = await req.json();
+        return Response.json({ ok: true });
+      },
+    } satisfies ApiProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    // When
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({ ...responsesRequest, model: "mini", reasoning: { effort: "high" } }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(bodySeen).toEqual({ ...responsesRequest, model: "gpt-high", reasoning: { effort: "high" } });
+  });
+
   test("Given ai-sdk provider When POST streams text Then Responses SSE events are returned", async () => {
     // Given
     let messagesSeen: readonly ModelMessage[] | undefined;
@@ -146,6 +211,43 @@ describe("OpenAI Responses routes", () => {
     expect(text).toContain("event: response.output_text.delta");
     expect(text).toContain('"delta":"pong"');
     expect(text).toContain("event: response.completed");
+  });
+
+  test("Given an alias variant and ai-sdk provider When POST is valid Then reasoning selects and configures it", async () => {
+    // Given
+    let modelSeen: string | undefined;
+    let settingsSeen: CallSettings | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gpt-default", "gpt-high"],
+      alias: {
+        mini: {
+          model: "gpt-default",
+          preserve: false,
+          variants: { high: { model: "gpt-high", preserve: false } },
+        },
+      },
+      invoke(request) {
+        modelSeen = request.modelId;
+        settingsSeen = request.settings;
+        return textStream([]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    // When
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({ ...responsesRequest, model: "mini", reasoning: { effort: "high" } }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    await response.text();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(modelSeen).toBe("gpt-high");
+    expect(settingsSeen).toEqual({ reasoning: "high", stream: true });
   });
 
   test("Given ai-sdk provider When POST streams reasoning Then reasoning summary deltas are returned", async () => {

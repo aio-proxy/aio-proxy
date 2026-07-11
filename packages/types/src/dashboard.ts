@@ -13,6 +13,9 @@ export const DashboardProviderSummarySchema = z.object({
   last_status: z.string(),
   last_latency: z.number().int().min(0).nullable(),
   probe: DashboardProviderProbeSchema.optional(),
+  name: z.string().optional(),
+  clientModels: z.array(z.string()).readonly(),
+  hasApiKey: z.boolean().optional(),
 });
 
 export const DashboardProvidersResponseSchema = z.object({

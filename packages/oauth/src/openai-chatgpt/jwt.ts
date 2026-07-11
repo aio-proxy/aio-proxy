@@ -14,7 +14,7 @@ export function extractAccountId(token: string): string | undefined {
     throw error;
   }
 
-  const topLevel = payload["chatgpt_account_id"];
+  const topLevel = payload.chatgpt_account_id;
   if (typeof topLevel === "string") {
     return topLevel;
   }
@@ -27,7 +27,7 @@ export function extractAccountId(token: string): string | undefined {
     }
   }
 
-  const organizations = payload["organizations"];
+  const organizations = payload.organizations;
   if (!Array.isArray(organizations) || organizations.length === 0) {
     return undefined;
   }

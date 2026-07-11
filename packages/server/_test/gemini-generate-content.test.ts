@@ -100,6 +100,59 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(bodySeen).toBe(requestBody);
   });
 
+  test("Given first native provider throws When generateContent is posted Then next provider is used", async () => {
+    const first = googleNativeProvider(async () => {
+      throw new Error("connection refused");
+    });
+    const second = {
+      ...googleNativeProvider(async () => Response.json({ fallback: true })),
+      id: "google-fallback",
+    } satisfies ApiProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await postGenerate(app);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ fallback: true });
+  });
+
+  test("Given an alias variant and native provider When generateContent is posted Then passthrough uses the variant path", async () => {
+    // Given
+    let pathnameSeen = "";
+    let bodySeen = "";
+    const provider = {
+      id: "google",
+      kind: "api",
+      models: ["gemini-default", "gemini-high"],
+      alias: {
+        "gemini-alias": {
+          model: "gemini-default",
+          preserve: false,
+          variants: { high: { model: "gemini-high", preserve: false } },
+        },
+      },
+      protocol: ProviderProtocol.Gemini,
+      async passthrough(req) {
+        pathnameSeen = new URL(req.url).pathname;
+        bodySeen = await req.text();
+        return Response.json({ ok: true });
+      },
+    } satisfies ApiProviderInstance;
+    const app = appWith(provider);
+    const body = {
+      ...generateRequest,
+      generationConfig: { thinkingConfig: { thinkingLevel: "HIGH" } },
+    };
+
+    // When
+    const response = await postGenerate(app, body, "gemini-alias");
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(pathnameSeen).toBe("/v1beta/models/gemini-high:generateContent");
+    expect(JSON.parse(bodySeen)).toEqual(body);
+  });
+
   test("Given gemini oversized inlineData When generateContent is posted Then returns 413 without passthrough", async () => {
     // Given
     let invoked = false;
@@ -178,6 +231,46 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         totalTokenCount: 5,
       },
     });
+  });
+
+  test("Given an alias variant and ai-sdk provider When generateContent is posted Then reasoning selects and configures it", async () => {
+    // Given
+    let modelSeen: string | undefined;
+    let settingsSeen: ProviderSeenSettings | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["gemini-default", "gemini-high"],
+      alias: {
+        "gemini-alias": {
+          model: "gemini-default",
+          preserve: false,
+          variants: { high: { model: "gemini-high", preserve: false } },
+        },
+      },
+      invoke(request) {
+        modelSeen = request.modelId;
+        settingsSeen = request.settings;
+        return textStream([]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = appWith(provider);
+
+    // When
+    const response = await postGenerate(
+      app,
+      {
+        ...generateRequest,
+        generationConfig: { thinkingConfig: { thinkingLevel: "HIGH" } },
+      },
+      "gemini-alias",
+    );
+    await response.text();
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(modelSeen).toBe("gemini-high");
+    expect(settingsSeen).toEqual({ reasoning: "high" });
   });
 
   test("Given tools and safetySettings When generateContent is posted Then provider receives them", async () => {

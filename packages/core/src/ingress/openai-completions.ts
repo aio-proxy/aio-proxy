@@ -64,7 +64,7 @@ export const OpenAICompletionsRequestSchema = z.object({
   max_tokens: z.number().int().positive().optional(),
   max_completion_tokens: z.number().int().positive().optional(),
   response_format: LooseObjectSchema.optional(),
-  reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
+  reasoning_effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
 });
 
 export type OpenAICompletionsRequest = z.output<typeof OpenAICompletionsRequestSchema>;

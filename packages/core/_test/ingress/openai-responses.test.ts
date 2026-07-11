@@ -53,6 +53,16 @@ describe("OpenAIResponsesRequestSchema", () => {
     ).toThrow(ZodError);
   });
 
+  test.each(["none", "xhigh"])("Given current reasoning effort %s When parsed Then request is accepted", (effort) => {
+    const result = OpenAIResponsesRequestSchema.safeParse({
+      model: "gpt-5",
+      input: "Hello",
+      reasoning: { effort },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   test.each([
     {
       name: "previous_response_id",

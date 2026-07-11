@@ -44,6 +44,16 @@ describe("OpenAICompletionsRequestSchema", () => {
     });
   }
 
+  test.each(["none", "minimal", "xhigh"])("accepts current reasoning effort %s", (reasoningEffort) => {
+    const result = OpenAICompletionsRequestSchema.safeParse({
+      model: "gpt-5",
+      messages: [{ role: "user", content: "Hello" }],
+      reasoning_effort: reasoningEffort,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   test("parseOpenAICompletions throws ZodError on invalid input", async () => {
     const input = await readFixture("invalid-role.json");
 
