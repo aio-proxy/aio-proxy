@@ -1,4 +1,5 @@
 import { XIcon } from "lucide-react";
+import type React from "react";
 import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ const splitByTokenSeparators = (value: string, tokenSeparators: readonly string[
   return value.split(new RegExp(separators.map(escapeRegExp).join("|")));
 };
 
-export function TagsInput({
+export const TagsInput: React.FC<Props> = ({
   value,
   onValueChange,
   placeholder,
@@ -31,7 +32,7 @@ export function TagsInput({
   id,
   removeLabel,
   tokenSeparators = [",", "\n"],
-}: Props) {
+}) => {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -105,4 +106,4 @@ export function TagsInput({
       />
     </fieldset>
   );
-}
+};

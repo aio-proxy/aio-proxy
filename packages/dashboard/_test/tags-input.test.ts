@@ -10,6 +10,7 @@ describe("tags input component", () => {
     expect(await Bun.file(oldTagsInputPath).exists()).toBe(false);
 
     const source = await Bun.file(tagsInputPath).text();
+    expect(source).toContain("export const TagsInput: React.FC<Props> = (");
     expect(source).toContain("tokenSeparators?: readonly string[];");
     expect(source).toContain('tokenSeparators = [",", "\\n"]');
     expect(source).toContain("splitByTokenSeparators(text, tokenSeparators)");
@@ -20,6 +21,12 @@ describe("tags input component", () => {
 
     expect(instructions).toContain("must not be modified manually");
     expect(instructions).toContain("bunx --bun shadcn@latest add <component> --overwrite");
+  });
+
+  test("documents the dashboard component declaration convention", async () => {
+    const instructions = await Bun.file(`${dashboardSource}/../AGENTS.md`).text();
+
+    expect(instructions).toContain("arrow functions typed as `React.FC<Props>`");
   });
 
   test("provider forms import the migrated component", async () => {
