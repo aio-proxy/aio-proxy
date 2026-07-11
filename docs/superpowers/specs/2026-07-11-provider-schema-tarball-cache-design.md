@@ -46,16 +46,17 @@ The cache lives below `packages/provider-schemas/node_modules/.cache/provider-sc
 For each allowlisted source:
 
 1. In one-shot build mode, fetch the package's public npm metadata and read `dist-tags.latest`.
-2. In watch mode, read the package's cached `latest.json` pointer. If it is absent, fetch metadata and resolve `latest` once.
+2. In watch mode, scan the package's immutable registry-observation records and select the version from the greatest canonical npm `time.modified` revision. If no observation exists, fetch metadata and resolve `latest` once.
 3. Look for a complete cache entry keyed by package name and resolved version.
 4. On a miss, fetch the exact version metadata, then download its `dist.tarball`.
 5. Verify the tarball against npm's `dist.integrity` using Node's crypto implementation before extraction.
 6. Extract only `package/package.json` and `*.d.ts`/`*.d.mts`/`*.d.cts` entries into a temporary sibling directory with the build-only `tar` package. Reject absolute paths, traversal paths, and archive links. Reject compressed responses larger than 32 MiB.
 7. Validate the extracted `package.json` name and version against the resolved package and version.
-8. Write cache metadata, atomically rename the temporary directory to its final versioned cache location, then atomically update the package's `latest.json` pointer.
+8. Write cache metadata and atomically rename the temporary directory to its final versioned cache location.
+9. Canonicalize npm `time.modified` with `new Date(value).toISOString()` and atomically publish an immutable `{ revision, version }` observation keyed by that revision. Publishing the same revision/version is idempotent; the same revision with a different version is an inconsistent-registry error.
 9. Return the absolute extracted package root to the existing generator.
 
-Concurrent cache misses may race. Atomic rename is the seam: one writer wins, and another writer discards its temporary directory after observing the completed destination. No persistent lock protocol is needed for this build-only cache.
+Concurrent cache misses may race. Atomic version-directory rename is the package-source seam: one writer wins, and another writer discards its temporary directory after validating the completed destination. Immutable observation publication prevents stale writers from replacing newer observations across processes. Watch mode derives its selection from the greatest observation revision, so no mutable pointer or persistent lock protocol is needed.
 
 One-shot builds fail when registry refresh, download, integrity verification, extraction, or metadata validation fails. Watch builds with a usable cache do not access the registry. Watch builds without a cache fail with the same actionable package-specific error.
 

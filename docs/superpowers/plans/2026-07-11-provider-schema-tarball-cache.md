@@ -12,7 +12,7 @@
 
 - The schema allowlist remains `{ packageName, factoryName }` and contains no version field.
 - One-shot `rslib build` checks npm `dist-tags.latest` every time.
-- `rslib --watch` uses its cached `latest.json` pointer and accesses npm only when no usable cache exists.
+- `rslib --watch` selects the greatest immutable cached npm `time.modified` observation and accesses npm only when no usable observation exists.
 - Provider packages are not dependencies of `@aio-proxy/provider-schemas` and are not installed into workspace `node_modules` for schema generation.
 - Only package-owned `package.json` and `.d.ts`/`.d.mts`/`.d.cts` files are extracted.
 - Tarballs are limited to 32 MiB compressed, verified against npm `dist.integrity`, and rejected on unsafe paths, links, or package metadata mismatch.
@@ -75,7 +75,7 @@ test("downloads npm latest and caches only declarations", async () => {
   expect(fixture.requests).toEqual(["metadata", "tarball"]);
 });
 
-test("watch mode reuses the cached latest pointer without registry access", async () => {
+test("watch mode reuses the newest cached registry observation without registry access", async () => {
   const root = await resolveProviderSource(source, {
     cacheRoot,
     refreshLatest: false,
@@ -136,13 +136,15 @@ import type * as Tar from "tar";
 const tar = providerSchemasRequire("tar") as typeof Tar;
 ```
 
-Write the tarball to a temporary sibling directory and call `tar.x` with `strict: true`, `preservePaths: false`, `strip: 1`, and a filter that permits only the package manifest and declaration files and rejects symbolic/hard links. Validate extracted manifest name/version. Atomically rename the version directory, then atomically replace `latest.json` with:
+Write the tarball to a temporary sibling directory and call `tar.x` with `strict: true`, `preservePaths: false`, `strip: 1`, and a filter that permits only the package manifest and declaration files and rejects symbolic/hard links. Validate extracted manifest name/version, then atomically rename the version directory.
+
+Canonicalize npm metadata `time.modified` with `new Date(value).toISOString()`. Publish an immutable observation record keyed by a safe hash/encoding of that canonical revision:
 
 ```json
-{ "version": "2.0.0" }
+{ "revision": "2026-07-11T12:00:00.000Z", "version": "2.0.0" }
 ```
 
-Always clean temporary paths in `finally`. Treat `EEXIST`/`ENOTEMPTY` on final rename as a successful concurrent winner only after validating the destination manifest.
+Publish via a complete temporary file plus an atomic no-overwrite filesystem operation. Treat an existing identical revision/version observation as idempotent; reject the same revision with a different version. Watch mode validates every observation, selects the greatest revision, and validates that version's cached manifest before returning it. Always clean temporary paths in `finally`. Treat `EEXIST`/`ENOTEMPTY` on final package-directory rename as a successful concurrent winner only after validating the destination manifest.
 
 - [ ] **Step 5: Add failure tests**
 
