@@ -34,6 +34,11 @@ describe("provider options editor", () => {
     expect(optionsEditorSource).toContain("<JsonEditor");
     expect(optionsEditorSource).toContain("AlertDialog");
     expect(optionsEditorSource).not.toContain("Textarea");
+    expect(optionsEditorSource).toContain('schemaState.phase === "schema_unavailable"');
+    expect(optionsEditorSource).toContain("options_schema_load_error");
+    expect(optionsEditorSource).not.toContain(
+      'schemaState.phase === "schema_unavailable" || schemaState.phase === "schema_error"',
+    );
   });
 
   test("accepts only undefined or a plain object at the provider options root", () => {
