@@ -138,6 +138,8 @@ function safely(task: () => void, logger: ((error: unknown) => void) | undefined
   try {
     task();
   } catch (error) {
-    logger?.(error);
+    try {
+      logger?.(error);
+    } catch {}
   }
 }

@@ -3,12 +3,11 @@ import { ProviderProtocol, type UsageRow } from "@aio-proxy/types";
 type ExtractedUsage = Omit<UsageRow, "providerId" | "modelId">;
 
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
-  const values = sseDataValues(bodyText);
-  for (const value of [...values].reverse()) {
-    const parsed = parseJson(value);
-    if (parsed === undefined) {
-      continue;
-    }
+  const values = sseDataValues(bodyText).map(parseJson).filter(isDefined);
+  if (protocol === ProviderProtocol.Anthropic) {
+    return mergedAnthropicUsage(values);
+  }
+  for (const parsed of [...values].reverse()) {
     const usage = usageFromJson(protocol, parsed);
     if (usage !== undefined) {
       return usage;
@@ -88,10 +87,14 @@ function openAIResponsesUsage(value: unknown): ExtractedUsage | undefined {
 }
 
 function anthropicUsage(value: unknown): ExtractedUsage | undefined {
-  if (!isRecord(value) || !isRecord(value["usage"])) {
+  if (!isRecord(value)) {
     return undefined;
   }
-  const usage = value["usage"];
+  const container = isRecord(value["message"]) ? value["message"] : value;
+  if (!isRecord(container["usage"])) {
+    return undefined;
+  }
+  const usage = container["usage"];
   const inputTokens = numberField(usage, "input_tokens");
   const outputTokens = numberField(usage, "output_tokens");
   return tokenUsage({
@@ -101,6 +104,19 @@ function anthropicUsage(value: unknown): ExtractedUsage | undefined {
     cacheReadTokens: numberField(usage, "cache_read_input_tokens"),
     cacheWriteTokens: numberField(usage, "cache_creation_input_tokens"),
   });
+}
+
+function mergedAnthropicUsage(values: readonly unknown[]): ExtractedUsage | undefined {
+  let merged: ExtractedUsage | undefined;
+  for (const value of values) {
+    const usage = anthropicUsage(value);
+    if (usage !== undefined) {
+      merged = { ...merged, ...usage };
+    }
+  }
+  return merged === undefined
+    ? undefined
+    : tokenUsage({ ...merged, totalTokens: totalTokens(merged.inputTokens, merged.outputTokens) });
 }
 
 function geminiUsage(value: unknown): ExtractedUsage | undefined {
@@ -141,6 +157,10 @@ function nestedNumberField(record: Record<string, unknown>, parent: string, fiel
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
 }
 
 function assertNever(value: never): never {

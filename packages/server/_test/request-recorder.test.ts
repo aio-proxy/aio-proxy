@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { OpenRouterPriceCatalog, TextStreamPart, ToolSet } from "@aio-proxy/core";
 import { createRequestLogStore, openDb, type RequestLogStore, requestLog, usage } from "@aio-proxy/core/db";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { createRequestRecorder } from "../src/request-recorder";
+import { createRequestRecorder, type RequestSession } from "../src/request-recorder";
 import { createUsageCapture } from "../src/usage-capture";
 
 const homes: string[] = [];
@@ -173,6 +173,62 @@ describe("request recorder", () => {
     expect(() => request.finish({ outcome: "success" })).not.toThrow();
   });
 
+  test("a logger failure cannot escape constructor pruning", () => {
+    const store: RequestLogStore = {
+      insertFinal() {},
+      overview() {
+        throw new Error("unused");
+      },
+      prune() {
+        throw new Error("database unavailable");
+      },
+    };
+
+    expect(() =>
+      createRequestRecorder({
+        store,
+        now: () => fixedNow,
+        logger() {
+          throw new Error("logger unavailable");
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  test("a logger failure cannot escape lazy pruning or finish persistence", () => {
+    let current = fixedNow;
+    let pruneCalls = 0;
+    const store: RequestLogStore = {
+      insertFinal() {
+        throw new Error("database unavailable");
+      },
+      overview() {
+        throw new Error("unused");
+      },
+      prune() {
+        pruneCalls += 1;
+        if (pruneCalls > 1) {
+          throw new Error("database unavailable");
+        }
+      },
+    };
+    const recorder = createRequestRecorder({
+      store,
+      now: () => current,
+      logger() {
+        throw new Error("logger unavailable");
+      },
+    });
+    current = new Date(fixedNow.getTime() + 24 * 60 * 60 * 1000);
+    let request: RequestSession | undefined;
+
+    expect(() => {
+      request = recorder.begin({ inboundProtocol: "anthropic", requestedModelId: "mini" });
+    }).not.toThrow();
+    expect(request).toBeDefined();
+    expect(() => request?.finish({ outcome: "failure" })).not.toThrow();
+  });
+
   test("prunes on construction and at most once per 24 hours", () => {
     let current = fixedNow;
     const cutoffs: Date[] = [];
@@ -217,6 +273,24 @@ describe("usage capture", () => {
 
     await expect(drain(captured.value)).rejects.toBe(expected);
     await expect(captured.completion).resolves.toEqual({ outcome: "failure" });
+  });
+
+  test("an upstream AbortError is cancelled and remains visible to the consumer", async () => {
+    const expected = new Error("upstream aborted");
+    expected.name = "AbortError";
+    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+      providerId: "provider",
+      modelId: "model",
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "text-delta", id: "text-1", text: "hello" });
+          controller.error(expected);
+        },
+      }),
+    });
+
+    await expect(drain(captured.value)).rejects.toBe(expected);
+    await expect(captured.completion).resolves.toEqual({ outcome: "cancelled" });
   });
 
   test("a stream without a finish part is failure", async () => {

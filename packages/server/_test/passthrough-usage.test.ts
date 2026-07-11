@@ -142,6 +142,28 @@ describe("passthrough usage extraction", () => {
     });
   });
 
+  test.each([
+    ["LF", "\n"],
+    ["CRLF", "\r\n"],
+  ])("merges split Anthropic SSE usage with %s framing", (_label, newline) => {
+    const body = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":11,"cache_creation_input_tokens":5,"cache_read_input_tokens":7}}}',
+      "",
+      "event: message_delta",
+      'data: {"type":"message_delta","usage":{"output_tokens":13}}',
+      "",
+    ].join(newline);
+
+    expect(extractPassthroughUsage(ProviderProtocol.Anthropic, body)).toEqual({
+      inputTokens: 11,
+      outputTokens: 13,
+      totalTokens: 24,
+      cacheReadTokens: 7,
+      cacheWriteTokens: 5,
+    });
+  });
+
   test("extracts Gemini JSON usage metadata", () => {
     expect(
       extractPassthroughUsage(
