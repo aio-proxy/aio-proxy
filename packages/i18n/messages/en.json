@@ -87,6 +87,11 @@
       "providers": "Providers",
       "models": "Models"
     },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "go_to_page": "Go to page {page}"
+    },
     "providers": {
       "list_title": "Providers",
       "new_provider": "New Provider",
@@ -105,10 +110,7 @@
         "col_status": "Status",
         "col_models": "Models",
         "col_weight": "Weight",
-        "col_actions": "Actions",
-        "pagination_previous": "Previous",
-        "pagination_next": "Next",
-        "pagination_summary": "Page {page} of {pages}"
+        "col_actions": "Actions"
       },
       "badge": {
         "enabled": "Enabled",
