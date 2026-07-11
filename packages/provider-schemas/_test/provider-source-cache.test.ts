@@ -89,6 +89,21 @@ const asHardLinkArchive = (archive: Uint8Array): Uint8Array => {
   throw new Error("hard-link fixture entry missing");
 };
 
+const withCorruptTrailingEntry = (archive: Uint8Array): Uint8Array => {
+  const bytes = Buffer.from(archive);
+  for (let offset = 0; offset < bytes.length; ) {
+    const header = bytes.subarray(offset, offset + 512);
+    const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
+    if (path === "package/dist/z-after-limit.d.ts") {
+      bytes[offset] ^= 1;
+      return bytes;
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error("trailing fixture entry missing");
+};
+
 async function createTarball(
   root: string,
   version: string,
@@ -108,6 +123,7 @@ async function createTarball(
   writeFileSync(join(packageRoot, "dist/index.d.ts"), "export declare function createFixture(): void;\n");
   if (scenario === "extracted declarations larger than limit") {
     writeFileSync(join(packageRoot, "dist/index.d.ts"), `export type Huge = "${"x".repeat(5 * 1024 * 1024)}";\n`);
+    symlinkSync("index.d.ts", join(packageRoot, "dist/z-after-limit.d.ts"));
   }
   writeFileSync(join(packageRoot, "dist/index.js"), "export function createFixture() {}\n");
   if (scenario === "archive symbolic link") {
@@ -122,17 +138,29 @@ async function createTarball(
     {
       cwd: archiveRoot,
       file: archivePath,
-      gzip: scenario !== "archive hard link",
+      gzip: scenario !== "archive hard link" && scenario !== "extracted declarations larger than limit",
+      noDirRecurse: scenario === "extracted declarations larger than limit",
       ...(scenario === "archive traversal path"
         ? { prefix: "../", preservePaths: true }
         : scenario === "archive absolute path"
           ? { prefix: "/", preservePaths: true }
           : {}),
     },
-    ["package"],
+    scenario === "extracted declarations larger than limit"
+      ? [
+          "package",
+          "package/package.json",
+          "package/dist",
+          "package/dist/index.d.ts",
+          "package/dist/z-after-limit.d.ts",
+          "package/dist/index.js",
+        ]
+      : ["package"],
   );
   const bytes = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
-  return scenario === "archive hard link" ? asHardLinkArchive(bytes) : bytes;
+  if (scenario === "archive hard link") return asHardLinkArchive(bytes);
+  if (scenario === "extracted declarations larger than limit") return withCorruptTrailingEntry(bytes);
+  return bytes;
 }
 
 async function createRegistryFixture(options: RegistryFixtureOptions): Promise<RegistryFixture> {
@@ -363,6 +391,25 @@ describe("resolveProviderSource", () => {
     expect(root).toEndWith("2.0.0/package");
   });
 
+  test("cold watch resolves npm latest once then reuses the observation", async () => {
+    const fixture = await createRegistryFixture({ latest: "2.0.0" });
+    const cacheRoot = createCacheRoot();
+
+    const coldRoot = await resolveProviderSource(source, {
+      cacheRoot,
+      refreshLatest: false,
+      fetch: fixture.fetch,
+    });
+    const warmRoot = await resolveProviderSource(source, {
+      cacheRoot,
+      refreshLatest: false,
+      fetch: () => Promise.reject(new Error("registry must not be called")),
+    });
+
+    expect(coldRoot).toBe(warmRoot);
+    expect(fixture.requests).toEqual(["metadata", "tarball"]);
+  });
+
   test("canonicalizes the registry revision before publishing an observation", async () => {
     const fixture = await createRegistryFixture({
       latest: "2.0.0",
@@ -496,6 +543,21 @@ describe("resolveProviderSource", () => {
     expect(fixture.streamState.chunks).toBeLessThan(40);
   });
 
+  test("aborts extraction at the size header before processing trailing entries", async () => {
+    const fixture = await createRegistryFixture({
+      latest: "2.0.0",
+      scenario: "extracted declarations larger than limit",
+    });
+
+    await expect(
+      resolveProviderSource(source, {
+        cacheRoot: createCacheRoot(),
+        refreshLatest: true,
+        fetch: fixture.fetch,
+      }),
+    ).rejects.toThrow(`Extracted declaration size limit exceeded for ${PACKAGE_NAME}`);
+  });
+
   test("slow old and fast new cross-process observations coexist and watch selects new", async () => {
     const fixture = await createRegistryFixture({
       latest: "1.0.0",
@@ -570,7 +632,7 @@ describe("resolveProviderSource", () => {
     expect((await readdir(packageCache)).sort()).toEqual(["2.0.0", "observations"]);
   });
 
-  test("rejects and cleans up when a concurrent destination is corrupt", async () => {
+  test("repairs a corrupt concurrent destination and remains usable", async () => {
     const fixture = await createRegistryFixture({ latest: "2.0.0" });
     const cacheRoot = createCacheRoot();
     const packageCache = packageCachePath(cacheRoot);
@@ -587,8 +649,18 @@ describe("resolveProviderSource", () => {
     );
     tarball.release();
 
-    const results = await Promise.allSettled(resolutions);
-    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    const roots = await Promise.all(resolutions);
+    const watchedRoot = await resolveProviderSource(source, {
+      cacheRoot,
+      refreshLatest: false,
+      fetch: () => Promise.reject(new Error("registry must not be called")),
+    });
+    expect(new Set(roots).size).toBe(1);
+    expect(watchedRoot).toBe(roots[0]);
+    expect(JSON.parse(await readFile(join(watchedRoot, "package.json"), "utf8"))).toMatchObject({
+      name: PACKAGE_NAME,
+      version: "2.0.0",
+    });
     expect((await readdir(packageCache)).filter((name) => name.startsWith("."))).toEqual([]);
   });
 

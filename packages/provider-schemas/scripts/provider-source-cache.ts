@@ -247,35 +247,43 @@ const installVersion = async (
     await writeFile(archivePath, await downloadTarball(packageName, metadata, fetchImpl));
     await mkdir(join(temporaryRoot, "package"));
     let rejectedEntry: string | undefined;
+    let sizeLimitError: Error | undefined;
     let extractedBytes = 0;
-    await tar.x({
-      cwd: join(temporaryRoot, "package"),
-      file: archivePath,
-      preservePaths: false,
-      strict: true,
-      strip: 1,
-      filter(path, entry) {
-        if (unsafeArchivePath(path)) {
-          rejectedEntry = "unsafe path";
-          return false;
-        }
-        if ("type" in entry && (entry.type === "Link" || entry.type === "SymbolicLink")) {
-          rejectedEntry = "link";
-          return false;
-        }
-        if (!declarationPath.test(path)) return false;
-        if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
-          rejectedEntry = "entry size";
-          return false;
-        }
-        extractedBytes += entry.size;
-        if (extractedBytes > MAX_EXTRACTED_BYTES) {
-          rejectedEntry = "extracted size";
-          return false;
-        }
-        return true;
-      },
-    });
+    try {
+      await tar.x({
+        cwd: join(temporaryRoot, "package"),
+        file: archivePath,
+        maxReadSize: 64 * 1024,
+        preservePaths: false,
+        strict: true,
+        strip: 1,
+        filter(this: Tar.Unpack, path, entry) {
+          if (unsafeArchivePath(path)) {
+            rejectedEntry = "unsafe path";
+            return false;
+          }
+          if ("type" in entry && (entry.type === "Link" || entry.type === "SymbolicLink")) {
+            rejectedEntry = "link";
+            return false;
+          }
+          if (!declarationPath.test(path)) return false;
+          if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+            rejectedEntry = "entry size";
+            return false;
+          }
+          extractedBytes += entry.size;
+          if (extractedBytes > MAX_EXTRACTED_BYTES) {
+            sizeLimitError = new Error(`Extracted declaration size limit exceeded for ${packageName}`);
+            this.abort(sizeLimitError);
+            return false;
+          }
+          return true;
+        },
+      });
+    } catch (error) {
+      if (sizeLimitError) throw sizeLimitError;
+      throw error;
+    }
     if (rejectedEntry) throw new Error(`Archive ${rejectedEntry} is not allowed for ${packageName}`);
     await rm(archivePath, { force: true });
     await validatePackageRoot(join(temporaryRoot, "package"), packageName, version);
@@ -284,7 +292,27 @@ const installVersion = async (
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
-      await validatePackageRoot(packageRoot, packageName, version);
+      try {
+        await validatePackageRoot(packageRoot, packageName, version);
+      } catch {
+        const quarantine = join(packageCache, `.invalid-${version}-${crypto.randomUUID()}`);
+        try {
+          try {
+            await rename(versionRoot, quarantine);
+          } catch (repairError) {
+            if ((repairError as NodeJS.ErrnoException).code !== "ENOENT") throw repairError;
+          }
+          try {
+            await rename(temporaryRoot, versionRoot);
+          } catch (retryError) {
+            const retryCode = (retryError as NodeJS.ErrnoException).code;
+            if (retryCode !== "EEXIST" && retryCode !== "ENOTEMPTY") throw retryError;
+            await validatePackageRoot(packageRoot, packageName, version);
+          }
+        } finally {
+          await rm(quarantine, { recursive: true, force: true });
+        }
+      }
     }
     return packageRoot;
   } finally {
@@ -303,10 +331,13 @@ export const resolveProviderSource = async (
     await mkdir(packageCache, { recursive: true });
     if (!options.refreshLatest) {
       const observation = await readLatestObservation(packageCache);
-      if (!observation) throw new Error("No cached registry observation");
-      const packageRoot = join(packageCache, observation.version, "package");
-      await validatePackageRoot(packageRoot, packageName, observation.version);
-      return packageRoot;
+      if (observation) {
+        const packageRoot = join(packageCache, observation.version, "package");
+        try {
+          await validatePackageRoot(packageRoot, packageName, observation.version);
+          return packageRoot;
+        } catch {}
+      }
     }
 
     const metadata = await fetchMetadata(packageName, options.fetch ?? globalThis.fetch);
