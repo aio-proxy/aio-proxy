@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -13,12 +13,45 @@ import {
 } from "../scripts/provider-schemas-generator";
 import { pluginProviderSchemas } from "../scripts/provider-schemas-plugin";
 import { normalizeTypeBoxModule } from "../scripts/schema-normalizer";
-import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
 
 type PluginApi = Parameters<RsbuildPlugin["setup"]>[0];
 type TransformRegistration = {
   readonly descriptor: Parameters<PluginApi["transform"]>[0];
   readonly handler: Parameters<PluginApi["transform"]>[1];
+};
+type BeforeBuildHandler = Parameters<PluginApi["onBeforeBuild"]>[0];
+
+const createFixtureProvider = () => {
+  const packageRoot = mkdtempSync(join(tmpdir(), "provider-schema-generation-fixture-"));
+  const source = { packageName: "fixture-provider", factoryName: "createFixture" } as const;
+  writeFileSync(
+    join(packageRoot, "package.json"),
+    JSON.stringify({ name: source.packageName, version: "1.0.0", types: "./index.d.ts" }),
+  );
+  writeFileSync(
+    join(packageRoot, "index.d.ts"),
+    `
+      /** Options for the fixture provider. */
+      export interface FixtureOptions {
+        /** Provider display name. */
+        name: string;
+        /** Provider API base URL. */
+        baseURL: string;
+        fetch?: typeof fetch;
+      }
+      export declare function createFixture(options: FixtureOptions): unknown;
+    `,
+  );
+  return {
+    packageRoot,
+    source,
+    options: {
+      cacheRoot: join(packageRoot, "cache"),
+      refreshLatest: false,
+      sources: [source],
+      resolveSource: async () => packageRoot,
+    },
+  };
 };
 
 describe("provider schema generation", () => {
@@ -169,23 +202,21 @@ describe("provider schema generation", () => {
     ]);
   });
 
-  test("generates the exact allowlist with required compatible-provider fields and descriptions", async () => {
-    const generated = await generateProviderSchemaEntries();
-    expect(Object.keys(generated.entries)).toEqual(PROVIDER_SCHEMA_ALLOWLIST.map(({ packageName }) => packageName));
-    expect(generated.dependencies).toContainEqual(expect.stringMatching(/@ai-sdk\/openai-compatible\/package\.json$/));
+  test("generates configured sources with required fields and descriptions", async () => {
+    const fixture = createFixtureProvider();
+    const generated = await generateProviderSchemaEntries(fixture.options);
+    expect(Object.keys(generated.entries)).toEqual([fixture.source.packageName]);
+    expect(generated.dependencies).toContain(join(realpathSync(fixture.packageRoot), "package.json"));
     expect(generated.dependencies).toContainEqual(expect.stringMatching(/\.d\.ts$/));
 
-    const compatible = generated.entries["@ai-sdk/openai-compatible"];
-    expect(compatible.schema).not.toBeNull();
-    expect(compatible.schema?.required).toEqual(expect.arrayContaining(["name", "baseURL"]));
-    expect(compatible.schema?.properties).toMatchObject({
+    const entry = generated.entries[fixture.source.packageName];
+    expect(entry.schema).not.toBeNull();
+    expect(entry.schema?.required).toEqual(expect.arrayContaining(["name", "baseURL"]));
+    expect(entry.schema?.properties).toMatchObject({
       name: { description: expect.any(String) },
       baseURL: { description: expect.any(String) },
     });
-
-    const openRouter = generated.entries["@openrouter/ai-sdk-provider"];
-    expect(openRouter.schema).not.toBeNull();
-    expect(openRouter.warnings).toContainEqual({ code: "unsupported_optional", path: "fetch" });
+    expect(entry.warnings).toContainEqual({ code: "unsupported_optional", path: "fetch" });
   });
 
   test("preserves declaration JSDoc on the generated root schema", async () => {
@@ -398,11 +429,67 @@ describe("provider schema generation", () => {
     expect(plugin.apply).toBe("build");
     expect(registration?.descriptor.test).toBe(join(rootPath, "src/schema-module.ts"));
     expect(registration?.descriptor.order).toBe("pre");
-    expect(beforeBuildRegistrations).toBe(0);
+    expect(beforeBuildRegistrations).toBe(1);
+  });
+
+  test("selects latest refresh policy from Rslib watch mode", async () => {
+    const rootPath = mkdtempSync(join(tmpdir(), "provider-schema-plugin-policy-root-"));
+    mkdirSync(join(rootPath, "src"));
+    const physicalModulePath = join(rootPath, "src/schema-module.ts");
+    const physicalSource = "physical placeholder source";
+    writeFileSync(physicalModulePath, physicalSource);
+    let registration: TransformRegistration | undefined;
+    let beforeBuild: BeforeBuildHandler | undefined;
+    const generateCalls: { options: unknown }[] = [];
+
+    pluginProviderSchemas().setup({
+      transform(descriptor, handler) {
+        registration = { descriptor, handler };
+      },
+      onBeforeBuild(handler) {
+        beforeBuild = handler;
+      },
+      context: { rootPath },
+      logger: { info() {} },
+    } as unknown as PluginApi);
+
+    expect(beforeBuild).toBeDefined();
+    expect(await beforeBuild?.({ isWatch: true, isFirstCompile: true })).toBeUndefined();
+    expect(generateCalls).toHaveLength(0);
+    expect(await readFile(physicalModulePath, "utf8")).toBe(physicalSource);
+
+    const transformContext = {
+      code: physicalSource,
+      addDependency() {},
+      importModule() {
+        return Promise.resolve({
+          generateProviderSchemaEntries(options: unknown) {
+            generateCalls.push({ options });
+            return Promise.resolve({ entries: {}, dependencies: [] });
+          },
+          renderGeneratedProviderSchemas,
+        });
+      },
+    } as Parameters<TransformRegistration["handler"]>[0];
+    await registration?.handler(transformContext);
+    expect(generateCalls.at(-1)?.options).toEqual({
+      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas"),
+      refreshLatest: false,
+    });
+
+    expect(await beforeBuild?.({ isWatch: false, isFirstCompile: true })).toBeUndefined();
+    expect(generateCalls).toHaveLength(1);
+    expect(await readFile(physicalModulePath, "utf8")).toBe(physicalSource);
+    await registration?.handler(transformContext);
+    expect(generateCalls.at(-1)?.options).toEqual({
+      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas"),
+      refreshLatest: true,
+    });
   });
 
   test("returns generated source and tracks every generation dependency", async () => {
     const rootPath = mkdtempSync(join(tmpdir(), "provider-schema-plugin-handler-root-"));
+    const fixture = createFixtureProvider();
     let registration: TransformRegistration | undefined;
     const logs: string[] = [];
     const importedModules: string[] = [];
@@ -411,6 +498,7 @@ describe("provider schema generation", () => {
       transform(descriptor, handler) {
         registration = { descriptor, handler };
       },
+      onBeforeBuild() {},
       context: { rootPath },
       logger: {
         info(message) {
@@ -429,15 +517,21 @@ describe("provider schema generation", () => {
       importModule(request) {
         importedModules.push(request);
         return Promise.resolve({
-          generateProviderSchemaEntries(onDependency?: (dependency: string) => void) {
+          generateProviderSchemaEntries(
+            options: { readonly cacheRoot: string; readonly refreshLatest: boolean },
+            onDependency?: (dependency: string) => void,
+          ) {
             importedGeneratorCalls++;
-            return generateProviderSchemaEntries(onDependency);
+            return generateProviderSchemaEntries(
+              { ...options, sources: [fixture.source], resolveSource: async () => fixture.packageRoot },
+              onDependency,
+            );
           },
           renderGeneratedProviderSchemas,
         });
       },
     } as Parameters<TransformRegistration["handler"]>[0]);
-    const generated = await generateProviderSchemaEntries();
+    const generated = await generateProviderSchemaEntries(fixture.options);
     const expected = renderGeneratedProviderSchemas(generated.entries);
 
     expect(result).toBe(expected);
@@ -451,17 +545,59 @@ describe("provider schema generation", () => {
   });
 
   test("builds generated schemas only into dist", async () => {
+    const fixture = createFixtureProvider();
+    const generated = await generateProviderSchemaEntries(fixture.options);
+    const generatedSource = renderGeneratedProviderSchemas(generated.entries);
+    const build = await Bun.build({
+      entrypoints: [join(import.meta.dir, "../src/schema-module.ts")],
+      target: "bun",
+      plugins: [
+        {
+          name: "fixture-provider-schemas",
+          setup(builder) {
+            builder.onLoad({ filter: /schema-module\.ts$/ }, () => ({ contents: generatedSource, loader: "ts" }));
+          },
+        },
+      ],
+    });
+
+    expect(build.success).toBe(true);
+    const built = await build.outputs[0]?.text();
+    const source = await readFile(join(import.meta.dir, "../src/schema-module.ts"), "utf8");
+    expect(built).toContain(fixture.source.packageName);
+    expect(source).not.toContain(fixture.source.packageName);
+  });
+
+  test("loads the source cache through a real Rslib transform", () => {
     const repositoryRoot = join(import.meta.dir, "../../..");
-    const build = Bun.spawnSync(["bun", "run", "--filter", "@aio-proxy/provider-schemas", "build"], {
+    const buildRoot = mkdtempSync(join(tmpdir(), "provider-source-cache-rslib-"));
+    mkdirSync(join(buildRoot, "src"));
+    writeFileSync(join(buildRoot, "src/index.ts"), "export const fixture = true;\n");
+    writeFileSync(
+      join(buildRoot, "rslib.config.ts"),
+      `
+        export default {
+          source: { entry: { index: "./src/index.ts" } },
+          lib: [{ format: "esm" }],
+          output: { target: "node" },
+          plugins: [{
+            name: "fixture:provider-source-cache-import",
+            setup(api) {
+              api.transform({ test: /index\\.ts$/ }, async ({ code, importModule }) => {
+                await importModule(${JSON.stringify(join(import.meta.dir, "../scripts/provider-source-cache.ts"))});
+                return code;
+              });
+            },
+          }],
+        };
+      `,
+    );
+    const build = Bun.spawnSync(["bunx", "rslib", "build", "--root", buildRoot], {
       cwd: repositoryRoot,
       stdout: "pipe",
       stderr: "pipe",
     });
 
     expect(build.exitCode, `${build.stdout.toString()}\n${build.stderr.toString()}`).toBe(0);
-    const built = await readFile(join(import.meta.dir, "../dist/schema-module.js"), "utf8");
-    const source = await readFile(join(import.meta.dir, "../src/schema-module.ts"), "utf8");
-    expect(built).toContain("@ai-sdk/openai-compatible");
-    expect(source).not.toContain("@ai-sdk/openai-compatible");
   });
 });

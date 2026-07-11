@@ -3,10 +3,11 @@ import type { ProviderOptionsSchemaEntry } from "../src/types";
 import { readProviderPackageMetadata, resolveDeclarationEntry } from "./declaration-entry";
 import { parseProviderFactoryDeclaration } from "./declaration-parser";
 import { providerSchemasRequire } from "./provider-schemas-require";
+import { type ProviderSchemaSource, resolveProviderSource } from "./provider-source-cache";
 import { normalizeTypeBoxModule } from "./schema-normalizer";
 
-const { readFile, realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
-const { dirname, join } = providerSchemasRequire("node:path") as typeof import("node:path");
+const { realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
+const { join } = providerSchemasRequire("node:path") as typeof import("node:path");
 const { parse } = providerSchemasRequire("@babel/parser") as typeof import("@babel/parser");
 const { Script } = providerSchemasRequire("typebox") as typeof import("typebox");
 
@@ -14,7 +15,13 @@ const ROOT_NAME = "__AioProxyProviderOptions";
 const compareCodeUnits = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
 
 export type ProviderSchemaDependencyCallback = (dependency: string) => void;
-export type ResolveProviderPackage = (packageName: string) => string;
+
+export type GenerateProviderSchemasOptions = {
+  readonly cacheRoot: string;
+  readonly refreshLatest: boolean;
+  readonly sources?: readonly ProviderSchemaSource[];
+  readonly resolveSource?: typeof resolveProviderSource;
+};
 
 export const compileTypeBoxModule = (source: string): Readonly<Record<string, unknown>> => {
   // TypeBox 1.3.6 aborts an interface containing `typeof fetch`; a function schema
@@ -51,28 +58,6 @@ export const compileTypeBoxModule = (source: string): Readonly<Record<string, un
   return Script(compatibleSource) as unknown as Readonly<Record<string, unknown>>;
 };
 
-export const findProviderPackageRoot = async (
-  packageName: string,
-  resolvePackage: ResolveProviderPackage,
-  onDependency?: ProviderSchemaDependencyCallback,
-) => {
-  let directory = dirname(resolvePackage(packageName));
-  for (;;) {
-    const packageJsonPath = join(directory, "package.json");
-    try {
-      const canonicalPackageJsonPath = await realpath(packageJsonPath);
-      onDependency?.(canonicalPackageJsonPath);
-      const packageJson: unknown = JSON.parse(await readFile(canonicalPackageJsonPath, "utf8"));
-      if ((packageJson as { readonly name?: unknown }).name === packageName) return dirname(canonicalPackageJsonPath);
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-    }
-    const parent = dirname(directory);
-    if (parent === directory) throw new Error(`Cannot locate package root for ${packageName}`);
-    directory = parent;
-  }
-};
-
 const sortValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(sortValue);
   if (typeof value !== "object" || value === null) return value;
@@ -81,11 +66,6 @@ const sortValue = (value: unknown): unknown => {
       .sort(([left], [right]) => compareCodeUnits(left, right))
       .map(([key, item]) => [key, sortValue(item)]),
   );
-};
-
-type ProviderSchemaSource = {
-  readonly packageName: string;
-  readonly factoryName: string;
 };
 
 export type GeneratedProviderSchemaEntry = {
@@ -153,9 +133,11 @@ export const generateProviderSchemaEntry = async (
 };
 
 export const generateProviderSchemaEntries = async (
-  resolvePackage: ResolveProviderPackage,
+  options: GenerateProviderSchemasOptions,
   onDependency?: ProviderSchemaDependencyCallback,
 ): Promise<GeneratedProviderSchemas> => {
+  const sources = options.sources ?? PROVIDER_SCHEMA_ALLOWLIST;
+  const resolveSource = options.resolveSource ?? resolveProviderSource;
   const entries: Record<string, ProviderOptionsSchemaEntry> = {};
   const dependencies = new Set<string>();
   const addDependency = (dependency: string) => {
@@ -163,8 +145,8 @@ export const generateProviderSchemaEntries = async (
     dependencies.add(dependency);
     onDependency?.(dependency);
   };
-  for (const allowlisted of PROVIDER_SCHEMA_ALLOWLIST) {
-    const packageRoot = await findProviderPackageRoot(allowlisted.packageName, resolvePackage, addDependency);
+  for (const allowlisted of sources) {
+    const packageRoot = await resolveSource(allowlisted, options);
     const generated = await generateProviderSchemaEntry(packageRoot, allowlisted, addDependency);
     entries[allowlisted.packageName] = generated.entry;
     for (const dependency of generated.dependencies) dependencies.add(dependency);

@@ -1,10 +1,12 @@
 import {
+  type GenerateProviderSchemasOptions,
   generateProviderSchemaEntries as generateEntries,
   renderGeneratedProviderSchemas,
 } from "./provider-schemas-generator";
-import { providerSchemasRequire } from "./provider-schemas-require";
 
-export const generateProviderSchemaEntries = (onDependency?: (dependency: string) => void) =>
-  generateEntries((packageName) => providerSchemasRequire.resolve(packageName), onDependency);
+export const generateProviderSchemaEntries = (
+  options: GenerateProviderSchemasOptions,
+  onDependency?: (dependency: string) => void,
+) => generateEntries(options, onDependency);
 
 export { renderGeneratedProviderSchemas };

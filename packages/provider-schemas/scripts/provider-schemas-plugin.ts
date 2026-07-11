@@ -8,10 +8,20 @@ export const pluginProviderSchemas = (): RsbuildPlugin => ({
   setup(api) {
     const generatedProviderSchemasPath = join(api.context.rootPath, "src/schema-module.ts");
     const providerSchemasGeneratorPath = join(api.context.rootPath, "scripts/provider-schemas-build.ts");
+    let refreshLatest = true;
+    api.onBeforeBuild(({ isWatch }) => {
+      refreshLatest = !isWatch;
+    });
     api.transform({ test: generatedProviderSchemasPath, order: "pre" }, async ({ addDependency, importModule }) => {
       const { generateProviderSchemaEntries, renderGeneratedProviderSchemas } =
         await importModule<typeof ProviderSchemasGenerator>(providerSchemasGeneratorPath);
-      const generated = await generateProviderSchemaEntries(addDependency);
+      const generated = await generateProviderSchemaEntries(
+        {
+          cacheRoot: join(api.context.rootPath, "node_modules/.cache/provider-schemas"),
+          refreshLatest,
+        },
+        addDependency,
+      );
       const source = renderGeneratedProviderSchemas(generated.entries);
       api.logger.info(`provider schemas: ${Object.keys(generated.entries).length} generated`);
       return source;
