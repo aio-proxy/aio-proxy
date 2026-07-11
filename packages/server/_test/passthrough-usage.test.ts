@@ -183,6 +183,46 @@ describe("passthrough usage extraction", () => {
     });
   });
 
+  test("extracts the last Gemini streamGenerateContent JSON usage metadata", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.Gemini,
+        JSON.stringify([
+          {
+            usageMetadata: {
+              promptTokenCount: 3,
+              candidatesTokenCount: 4,
+              totalTokenCount: 7,
+            },
+          },
+          { candidates: [] },
+          {
+            usageMetadata: {
+              promptTokenCount: 17,
+              candidatesTokenCount: 19,
+              totalTokenCount: 36,
+              cachedContentTokenCount: 7,
+              thoughtsTokenCount: 5,
+            },
+          },
+        ]),
+      ),
+    ).toEqual({
+      inputTokens: 17,
+      outputTokens: 19,
+      totalTokens: 36,
+      cacheReadTokens: 7,
+      reasoningTokens: 5,
+    });
+  });
+
+  test("ignores Gemini streamGenerateContent JSON without usage metadata", () => {
+    expect(extractPassthroughUsage(ProviderProtocol.Gemini, JSON.stringify([]))).toBeUndefined();
+    expect(
+      extractPassthroughUsage(ProviderProtocol.Gemini, JSON.stringify([{ candidates: [] }, { usageMetadata: {} }])),
+    ).toBeUndefined();
+  });
+
   test("preserves Gemini cache and reasoning dimensions", () => {
     expect(
       extractPassthroughUsage(

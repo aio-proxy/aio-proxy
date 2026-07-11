@@ -120,6 +120,14 @@ function mergedAnthropicUsage(values: readonly unknown[]): ExtractedUsage | unde
 }
 
 function geminiUsage(value: unknown): ExtractedUsage | undefined {
+  if (Array.isArray(value)) {
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+      if (isRecord(value[index]) && isRecord(value[index]["usageMetadata"])) {
+        return geminiUsage(value[index]);
+      }
+    }
+    return undefined;
+  }
   if (!isRecord(value) || !isRecord(value["usageMetadata"])) {
     return undefined;
   }
