@@ -61,28 +61,44 @@ describe("Anthropic Messages transform", () => {
     const request = await readFixture("multi-tool.json");
 
     const converted = anthropicMessagesToModelMessages(request);
-    const user = converted.messages[2];
 
-    expect(user?.role).toBe("user");
-    expect(user).toEqual({
+    expect(converted.messages[2]).toEqual({
       role: "user",
       content: [
-        {
+        expect.objectContaining({
           type: "tool-result",
           toolCallId: "toolu_weather",
-          toolName: "",
-          output: {
-            type: "content",
-            value: [{ type: "text", text: "Sunny" }],
-          },
-        },
-        {
+          toolName: "weather",
+        }),
+        expect.objectContaining({
           type: "tool-result",
           toolCallId: "toolu_time",
-          toolName: "",
-          output: { type: "text", value: "14:05" },
-        },
+          toolName: "clock",
+        }),
         { type: "text", text: "Summarize both." },
+      ],
+    });
+  });
+
+  test("Given tool_result without a preceding tool_use When converted Then toolName stays empty", () => {
+    const request = parseAnthropicMessages({
+      model: "claude-sonnet-4-5",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_unknown", content: "orphaned" }],
+        },
+      ],
+    });
+
+    expect(anthropicMessagesToModelMessages(request).messages[0]).toEqual({
+      role: "user",
+      content: [
+        expect.objectContaining({
+          type: "tool-result",
+          toolCallId: "toolu_unknown",
+          toolName: "",
+        }),
       ],
     });
   });

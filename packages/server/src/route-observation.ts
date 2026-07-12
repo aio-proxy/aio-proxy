@@ -23,16 +23,3 @@ export function terminalCompletion(
     value.outcome === "cancelled" && !signal.aborted ? { ...value, outcome: "failure" } : value,
   );
 }
-
-export function providerErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
-    return error.message;
-  }
-  return "Upstream provider error";
-}

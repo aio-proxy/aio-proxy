@@ -281,14 +281,24 @@ describe("OpenAI Responses routes", () => {
 
     // When
     const response = await app.request("/v1/responses", {
-      body: JSON.stringify({ ...responsesRequest, model: "mini", reasoning: { effort: "high" } }),
+      body: JSON.stringify({
+        ...responsesRequest,
+        model: "mini",
+        reasoning: { effort: "high" },
+        future_option: { nested: true },
+      }),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
 
     // Then
     expect(response.status).toBe(200);
-    expect(bodySeen).toEqual({ ...responsesRequest, model: "gpt-high", reasoning: { effort: "high" } });
+    expect(bodySeen).toEqual({
+      ...responsesRequest,
+      model: "gpt-high",
+      reasoning: { effort: "high" },
+      future_option: { nested: true },
+    });
   });
 
   test("Given ai-sdk provider When POST streams text Then Responses SSE events are returned", async () => {
@@ -360,7 +370,14 @@ describe("OpenAI Responses routes", () => {
       invoke(request) {
         modelSeen = request.modelId;
         settingsSeen = request.settings;
-        return textStream([]);
+        return textStream([
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+          },
+        ]);
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
@@ -439,15 +456,17 @@ describe("OpenAI Responses routes", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(body).toEqual({
-      id: "resp-aio-proxy",
+    expect(body.id).toStartWith("resp_");
+    expect(body).toMatchObject({
       object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "Pong",
       output: [
         {
-          id: "msg-aio-proxy",
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "Pong" }],
+          status: "completed",
+          content: [{ type: "output_text", text: "Pong", annotations: [] }],
         },
       ],
       status: "completed",

@@ -12,9 +12,20 @@ import { ZodError } from "zod";
 import { type ConfigStore, createConfigStore } from "./config-store";
 import { watchConfigFile } from "./config-watcher";
 import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLimits } from "./dashboard-events";
-import { materializeProviders, type ProviderProbe, providerDiff, providerSummary } from "./provider-runtime";
+import {
+  materializeProviders,
+  materializeRuntimeProvider,
+  type ProviderProbe,
+  providerDiff,
+  providerSummary,
+} from "./provider-runtime";
 import { createRequestRecorder } from "./request-recorder";
-import type { ProviderRouteSnapshot, ProviderRouteSource, RuntimeProviderInstance } from "./runtime";
+import type {
+  ProviderRouteSnapshot,
+  ProviderRouteSource,
+  RuntimeProviderInput,
+  RuntimeProviderInstance,
+} from "./runtime";
 import { createUsageCapture } from "./usage-capture";
 
 export type ServerStateOptions = {
@@ -23,7 +34,7 @@ export type ServerStateOptions = {
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly logger?: (entry: ConfigReloadLog) => void;
-  readonly providerInstances?: readonly RuntimeProviderInstance[];
+  readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;
 };
 
@@ -76,10 +87,10 @@ const defaultLogger = (entry: ConfigReloadLog): void => {
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerState(options: ServerStateOptions): ServerState {
-  let snapshot = buildSnapshotFromConfig(options.config);
-  if (options.providerInstances !== undefined) {
-    snapshot = buildSnapshotWithProviders(snapshot.config, options.providerInstances);
-  }
+  let snapshot =
+    options.providerInstances === undefined
+      ? buildSnapshotFromConfig(options.config)
+      : buildSnapshotWithProviders(options.config, options.providerInstances);
 
   const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
@@ -209,12 +220,13 @@ function buildSnapshotFromConfig(config: Config): Snapshot {
   return buildSnapshot(config, runtime.providers, runtime.probes, runtime.summaries);
 }
 
-function buildSnapshotWithProviders(config: Config, providers: readonly RuntimeProviderInstance[]): Snapshot {
+function buildSnapshotWithProviders(config: Config, providers: readonly RuntimeProviderInput[]): Snapshot {
+  const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
   return buildSnapshot(
     config,
-    providers,
+    materialized,
     new Map<string, ProviderProbe>(),
-    providers.map((provider) => providerSummary(provider)),
+    materialized.map((provider) => providerSummary(provider)),
   );
 }
 

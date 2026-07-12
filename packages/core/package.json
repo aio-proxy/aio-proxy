@@ -39,8 +39,11 @@
     "@ai-sdk/groq": "catalog:",
     "@ai-sdk/xai": "catalog:",
     "@ai-sdk/provider": "catalog:",
+    "@anthropic-ai/sdk": "catalog:",
+    "@google/genai": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "drizzle-orm": "catalog:",
+    "openai": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

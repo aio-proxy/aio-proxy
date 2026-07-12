@@ -1,11 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import type { TextStreamPart, ToolSet } from "ai";
-import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from "../../src/index";
+import {
+  writeOpenAICompletionsResponse as writeOpenAICompletionsResponseRaw,
+  writeOpenAICompletionsSSE as writeOpenAICompletionsSSERaw,
+} from "../../src/index";
+
+const defaultEgress = { modelId: "test-model" };
+const writeOpenAICompletionsResponse = (
+  stream: Parameters<typeof writeOpenAICompletionsResponseRaw>[0],
+  context = defaultEgress,
+) => writeOpenAICompletionsResponseRaw(stream, context);
+const writeOpenAICompletionsSSE = (
+  stream: Parameters<typeof writeOpenAICompletionsSSERaw>[0],
+  context = defaultEgress,
+) => writeOpenAICompletionsSSERaw(stream, context);
 
 const doneFrame = "data: [DONE]\n\n";
 
-async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function collectSSE(stream: ReadableStream<Uint8Array>, compactOfficialFields = true): Promise<string> {
   const chunks: string[] = [];
   const decoder = new TextDecoder();
 
@@ -14,7 +27,13 @@ async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
   }
 
   chunks.push(decoder.decode());
-  return chunks.join("").replaceAll(/chatcmpl-[^"]+/g, "chatcmpl-test");
+  const value = chunks.join("").replaceAll(/chatcmpl-[^"]+/g, "chatcmpl-test");
+  return compactOfficialFields
+    ? value
+        .replaceAll(/,"created":\d+,"model":"test-model"/g, "")
+        .replaceAll(',"finish_reason":null', "")
+        .replaceAll('{"prompt_tokens":0,"completion_tokens":0,"total_tokens":9}', '{"total_tokens":9}')
+    : value;
 }
 
 function partStream(parts: readonly LanguageModelV2StreamPart[]): ReadableStream<LanguageModelV2StreamPart> {
@@ -51,6 +70,73 @@ function runtimePartStream(parts: readonly object[]) {
 }
 
 describe("writeOpenAICompletionsSSE", () => {
+  test("Given finish-step metadata When encoded as response Then upstream metadata is reused", async () => {
+    const response = await writeOpenAICompletionsResponse(
+      runtimePartStream([
+        { type: "text-delta", id: "text-1", text: "pong" },
+        {
+          type: "finish-step",
+          response: {
+            id: "chatcmpl-upstream",
+            modelId: "gpt-upstream",
+            timestamp: new Date("2026-07-12T00:00:05.000Z"),
+          },
+        },
+        { type: "finish", finishReason: "stop", totalUsage: {} },
+      ]) as never,
+      { modelId: "gpt-fallback" },
+    );
+
+    expect(response).toMatchObject({ id: "chatcmpl-upstream", model: "gpt-upstream", created: 1_783_814_405 });
+  });
+
+  test("Given tool-call stream When encoded as response Then assistant tool calls are preserved", async () => {
+    const response = await writeOpenAICompletionsResponse(
+      partStream([
+        { type: "tool-input-start", id: "call_1", toolName: "lookup" },
+        { type: "tool-input-delta", id: "call_1", delta: '{"q":"pizza"}' },
+        { type: "tool-input-end", id: "call_1" },
+        {
+          type: "finish",
+          finishReason: "tool-calls",
+          usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+        },
+      ]),
+    );
+
+    expect(response.choices[0]).toMatchObject({
+      finish_reason: "tool_calls",
+      message: {
+        content: null,
+        role: "assistant",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "lookup", arguments: '{"q":"pizza"}' },
+          },
+        ],
+      },
+    });
+  });
+
+  test("Given stream egress context When encoded Then chunks include resolved model and creation time", async () => {
+    const value = await collectSSE(
+      writeOpenAICompletionsSSE(
+        aiSdkPartStream([
+          { type: "text-delta", id: "text-1", text: "pong" },
+          { type: "finish", finishReason: "stop", rawFinishReason: "stop", totalUsage: {} },
+        ]),
+        { modelId: "gpt-routed" },
+      ),
+      false,
+    );
+    const first = JSON.parse(value.split("\n")[0]?.slice("data: ".length) ?? "null") as Record<string, unknown>;
+
+    expect(first.model).toBe("gpt-routed");
+    expect(first.created).toBeNumber();
+  });
+
   test("Given text stream When encoded as response Then id does not expose aio-proxy", async () => {
     const response = await writeOpenAICompletionsResponse(
       aiSdkPartStream([

@@ -384,6 +384,54 @@ describe("POST /v1/chat/completions", () => {
     expect(text).toContain("data: [DONE]");
   });
 
+  test("Given cross-protocol provider with model capability When completion has function tools Then model receives tools", async () => {
+    let toolsSeen: ToolSet | undefined;
+    const provider = {
+      id: "anthropic-bridge",
+      kind: "api",
+      models: ["gpt-4o-mini"],
+      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
+      protocol: ProviderProtocol.Anthropic,
+      passthrough: async () => Response.json({ transport: "raw" }),
+      model: {
+        invoke(request) {
+          toolsSeen = request.tools;
+          return textStream([
+            {
+              type: "finish",
+              finishReason: "stop",
+              rawFinishReason: "stop",
+              totalUsage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+            },
+          ]);
+        },
+      },
+    } satisfies ApiProviderInstance & { model: { invoke: AiSdkProviderInstance["invoke"] } };
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({
+        ...chatRequest,
+        stream: false,
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "lookup",
+              description: "Look up a value",
+              parameters: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
+            },
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(Object.keys(toolsSeen ?? {})).toEqual(["lookup"]);
+    expect(response.status).toBe(200);
+  });
+
   test("Given an alias variant and ai-sdk provider When completion is posted Then reasoning selects and configures it", async () => {
     // Given
     let modelSeen: string | undefined;
@@ -402,7 +450,14 @@ describe("POST /v1/chat/completions", () => {
       invoke(request) {
         modelSeen = request.modelId;
         settingsSeen = request.settings;
-        return textStream([]);
+        return textStream([
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+          },
+        ]);
       },
     } satisfies AiSdkProviderInstance;
     const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
@@ -460,14 +515,14 @@ describe("POST /v1/chat/completions", () => {
     expect(response.status).toBe(200);
     expect(body.id).toStartWith("chatcmpl-");
     expect(body.id).not.toContain("aio-proxy");
-    expect(body).toEqual({
-      ...body,
+    expect(body).toMatchObject({
       object: "chat.completion",
       choices: [
         {
           finish_reason: "stop",
           index: 0,
-          message: { role: "assistant", content: "Hello" },
+          logprobs: null,
+          message: { role: "assistant", content: "Hello", refusal: null },
         },
       ],
       usage: {

@@ -149,6 +149,129 @@ describe("POST /v1/messages", () => {
     });
   });
 
+  test("Given first model provider fails before its first event When message is posted Then next provider is used", async () => {
+    const first = {
+      id: "broken-model",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke: () => new ReadableStream({ start: (controller) => controller.error(new Error("preflight failed")) }),
+    } satisfies AiSdkProviderInstance;
+    const second = {
+      ...first,
+      id: "fallback-model",
+      invoke: () =>
+        textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-delta", id: "text-1", text: "fallback" },
+          { type: "text-end", id: "text-1" },
+        ]),
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify(messagesRequest),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"text":"fallback"');
+  });
+
+  test("Given tool-use and tool-result history When message is posted Then model receives complete tool parts", async () => {
+    let messagesSeen: readonly ModelMessage[] | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke(request) {
+        messagesSeen = request.messages;
+        return textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-end", id: "text-1" },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    await app.request("/v1/messages", {
+      body: JSON.stringify({
+        ...messagesRequest,
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "toolu_weather", name: "weather", input: { city: "Paris" } }],
+          },
+          {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "toolu_weather", content: "Sunny" }],
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(messagesSeen).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "toolu_weather", toolName: "weather", input: { city: "Paris" } }],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "toolu_weather",
+            toolName: "weather",
+            output: { type: "text", value: "Sunny" },
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("Given Anthropic tool definitions When routed through AI SDK Then model receives tools", async () => {
+    let toolsSeen: ToolSet | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke(request) {
+        toolsSeen = request.tools;
+        return textStream([{ type: "finish", finishReason: "stop", rawFinishReason: "stop", totalUsage: {} }]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({
+        ...messagesRequest,
+        stream: false,
+        tools: [
+          {
+            name: "get_weather",
+            description: "Returns weather for a city.",
+            input_schema: {
+              type: "object",
+              properties: { city: { type: "string" } },
+              required: ["city"],
+            },
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(toolsSeen ?? {})).toEqual(["get_weather"]);
+    expect(toolsSeen?.get_weather?.description).toBe("Returns weather for a city.");
+  });
+
   test("Given stream emits data then errors When message streams Then request is failure", async () => {
     const provider = {
       id: "broken-after-data",
@@ -415,5 +538,20 @@ describe("POST /v1/messages/count_tokens", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({ input_tokens: 2 });
     expect(typeof body.input_tokens).toBe("number");
+  });
+
+  test("Given oversized Content-Length When token count is posted Then rejects before parsing", async () => {
+    const app = createServer({ config: { providers: {} } });
+
+    const response = await app.request("/v1/messages/count_tokens", {
+      body: JSON.stringify(messagesRequest),
+      headers: {
+        "content-length": String(8 * 1_024 * 1_024 + 1),
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(413);
   });
 });

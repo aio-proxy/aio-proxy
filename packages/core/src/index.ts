@@ -14,8 +14,11 @@ export type {
   ToolSet,
 } from "./ai-sdk-bridge";
 export { jsonSchema } from "./ai-sdk-bridge";
-export { writeAnthropicMessagesSSE } from "./egress/anthropic-messages";
-export { type IngressError, toIngressError } from "./egress/error";
+export {
+  type AnthropicMessageResponse,
+  writeAnthropicMessagesResponse,
+  writeAnthropicMessagesSSE,
+} from "./egress/anthropic-messages";
 export {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,
@@ -95,6 +98,7 @@ export {
   listInstalledNpmPackages,
 } from "./npm-list";
 export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths";
+export * from "./protocol";
 export {
   type AiSdkProviderFactoryOptions,
   type AiSdkProviderInstance,
