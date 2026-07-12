@@ -128,6 +128,7 @@
         "@rsbuild/plugin-react": "^2.1.0",
         "@rsbuild/plugin-svgr": "^2.0.5",
         "@rsbuild/plugin-tailwindcss": "^2.0.3",
+        "@rstest/adapter-rsbuild": "^0.11.1",
         "@rstest/core": "^0.11.1",
         "@tanstack/router-plugin": "^1.168.19",
         "@testing-library/jest-dom": "^6.9.1",
@@ -670,6 +671,8 @@
     "@rspack/core": ["@rspack/core@2.1.2", "", { "dependencies": { "@rspack/binding": "2.1.2" }, "peerDependencies": { "@module-federation/runtime-tools": "^0.24.1 || ^2.0.0", "@swc/helpers": "^0.5.23" }, "optionalPeers": ["@module-federation/runtime-tools", "@swc/helpers"] }, "sha512-crpNQKhHfnzrIl4Sa4fjH30Ho5aAPgyqpmJZ41SkUFOzyKHdZKYfE5LF3CMh7MiFQFPPxiiKf5BcpxmtZZx4MQ=="],
 
     "@rspack/plugin-react-refresh": ["@rspack/plugin-react-refresh@2.0.2", "", { "peerDependencies": { "@rspack/core": "^2.0.0", "react-refresh": ">=0.10.0 <1.0.0" }, "optionalPeers": ["@rspack/core"] }, "sha512-dGNZiCxQxgAUI9sah7gd8u+O7OJZRCmqtEJNDOd8xW5RqcieC86F7p5qcShyw6onH5pKf57evpr2VjGbaFGkZg=="],
+
+    "@rstest/adapter-rsbuild": ["@rstest/adapter-rsbuild@0.11.1", "", { "peerDependencies": { "@rsbuild/core": "^1.0.0 || ^2.0.0", "@rstest/core": "^0.11.1" } }, "sha512-LaS/Ziq6mesdZL1ApxAPcRh46TZ8rtmR/+dBjlNYrSrgoYCOqi3gfz6FbEBobZdm35TMGquDhQhQHUKrMbRUGQ=="],
 
     "@rstest/core": ["@rstest/core@0.11.1", "", { "dependencies": { "@rsbuild/core": "~2.1.4", "@types/chai": "^5.2.3" }, "peerDependencies": { "happy-dom": "^20.8.3", "jsdom": "*" }, "optionalPeers": ["happy-dom", "jsdom"], "bin": { "rstest": "./bin/rstest.js" } }, "sha512-9iJnDrM/zYuHyk1//CMr/Jer2XughgN3fYagGb1YWpMLUke+E+WXlUPgACwf7OkmIB47/TttbLFK+4zwGDNOFg=="],
 
