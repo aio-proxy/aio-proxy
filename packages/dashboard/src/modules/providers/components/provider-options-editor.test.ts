@@ -1,33 +1,30 @@
-import { describe, expect, test } from "bun:test";
-import { commitProviderPackageOnce } from "../src/modules/providers/components/provider-form-fields-ai-sdk";
-import {
-  canConfirmProviderInstall,
-  canRequestProviderInstall,
-  isProviderOptionsObject,
-  providerOptionsAreValid,
-} from "../src/modules/providers/components/provider-options-editor";
+import { readFile } from "node:fs/promises";
+import { describe, expect, test } from "@rstest/core";
 import {
   initialProviderOptionsSchemaState,
   providerOptionsSchemaTransition,
   providerSchemaRefetchEvent,
   providerStatusRefetchEvent,
-} from "../src/modules/providers/hooks/use-provider-options-schema";
+} from "../hooks/use-provider-options-schema";
 import {
   ProviderPackageRequestError,
   providerInstallRequestBody,
   providerOptionsSchemaQueryOptions,
   providerPackageStatusQueryOptions,
   throwRequestError,
-} from "../src/modules/providers/services/provider-options-schema-service";
+} from "../services/provider-options-schema-service";
+import { commitProviderPackageOnce } from "./provider-form-fields-ai-sdk";
+import {
+  canConfirmProviderInstall,
+  canRequestProviderInstall,
+  isProviderOptionsObject,
+  providerOptionsAreValid,
+} from "./provider-options-editor";
 
 describe("provider options editor", () => {
   test("wires schema workflow, package commit events, and the JSON editor", async () => {
-    const aiSdkFieldsSource = await Bun.file(
-      `${import.meta.dir}/../src/modules/providers/components/provider-form-fields-ai-sdk.tsx`,
-    ).text();
-    const optionsEditorSource = await Bun.file(
-      `${import.meta.dir}/../src/modules/providers/components/provider-options-editor.tsx`,
-    ).text();
+    const aiSdkFieldsSource = await readFile(new URL("./provider-form-fields-ai-sdk.tsx", import.meta.url), "utf8");
+    const optionsEditorSource = await readFile(new URL("./provider-options-editor.tsx", import.meta.url), "utf8");
 
     expect(aiSdkFieldsSource).toContain("useProviderOptionsSchema");
     expect(aiSdkFieldsSource).toContain("onBlur");
@@ -239,17 +236,13 @@ describe("provider options editor", () => {
   });
 
   test("ai-sdk pages start with Save blocked until options validity reports", async () => {
-    const pageSource = await Bun.file(
-      `${import.meta.dir}/../src/modules/providers/templates/provider-form-page.tsx`,
-    ).text();
+    const pageSource = await readFile(new URL("../templates/provider-form-page.tsx", import.meta.url), "utf8");
 
     expect(pageSource).toContain('useState(kind === "api")');
   });
 
   test("initial package synchronization checks without authorizing trusted auto-install", async () => {
-    const aiSdkFieldsSource = await Bun.file(
-      `${import.meta.dir}/../src/modules/providers/components/provider-form-fields-ai-sdk.tsx`,
-    ).text();
+    const aiSdkFieldsSource = await readFile(new URL("./provider-form-fields-ai-sdk.tsx", import.meta.url), "utf8");
 
     expect(aiSdkFieldsSource).toContain("initialPackageSynchronized");
     expect(aiSdkFieldsSource).toContain("commitUserPackage");

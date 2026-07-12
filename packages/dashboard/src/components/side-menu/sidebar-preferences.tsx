@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { reloadDashboard } from "./reload-dashboard";
 
 const themes = [
   ["system", () => m["dashboard.preferences.theme_system"]()],
@@ -27,7 +28,7 @@ export const SidebarPreferences: React.FC = () => {
   const changeLocale = async (locale: Locale) => {
     if (locale === getLocale()) return;
     await setLocale(locale);
-    window.location.reload();
+    reloadDashboard();
   };
 
   return (

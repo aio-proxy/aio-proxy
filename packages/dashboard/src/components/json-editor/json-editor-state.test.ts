@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { setCodeEditorAriaInvalid } from "../src/components/code-editor/code-editor-accessibility";
+import { readFile } from "node:fs/promises";
+import { describe, expect, test } from "@rstest/core";
+import { setCodeEditorAriaInvalid } from "../code-editor/code-editor-accessibility";
 import {
   beginJsonValidation,
   completeJsonValidation,
@@ -7,8 +8,8 @@ import {
   createJsonValidationState,
   mergeJsonValidation,
   parseJsonDraft,
-} from "../src/components/json-editor/json-editor-state";
-import { createJsonSchemaRegistry } from "../src/components/json-editor/json-schema-registry";
+} from "./json-editor-state";
+import { createJsonSchemaRegistry } from "./json-schema-registry";
 
 describe("JsonEditor state", () => {
   test("distinguishes empty, null, valid JSON, and invalid JSON", () => {
@@ -126,14 +127,14 @@ describe("JsonEditor state", () => {
     expect(attributes.has("aria-invalid")).toBe(false);
     expect(attributes.has("aria-describedby")).toBe(false);
 
-    const codeEditorSource = await Bun.file(`${import.meta.dir}/../src/components/code-editor/code-editor.tsx`).text();
+    const codeEditorSource = await readFile(new URL("../code-editor/code-editor.tsx", import.meta.url), "utf8");
     expect(codeEditorSource).toContain(
       "setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current)",
     );
     expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy)");
     expect(codeEditorSource).toContain("aria-describedby={ariaDescribedBy}");
 
-    const jsonEditorSource = await Bun.file(`${import.meta.dir}/../src/components/json-editor/json-editor.tsx`).text();
+    const jsonEditorSource = await readFile(new URL("./json-editor.tsx", import.meta.url), "utf8");
     expect(jsonEditorSource).toContain("onValidate={handleValidationReady}");
     expect(jsonEditorSource).toContain("externalInvalid");
     expect(jsonEditorSource).toContain("ariaDescribedBy={errorDescriptionId}");

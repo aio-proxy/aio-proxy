@@ -1,13 +1,13 @@
-import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, test } from "@rstest/core";
 import { createStore } from "jotai";
 import ts from "typescript";
-import { usageQueryOptions } from "../src/modules/usage/services/usage-service";
-import { createUsageValueFormatter } from "../src/modules/usage/services/usage-value-formatter";
-import { usageOverviewFiltersAtom } from "../src/modules/usage/stores/usage-overview-filters";
+import { usageQueryOptions } from "../services/usage-service";
+import { createUsageValueFormatter } from "../services/usage-value-formatter";
+import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 
-const dashboardRoot = join(import.meta.dir, "../src");
+const dashboardRoot = join(import.meta.dirname, "../../..");
 
 const parseTsx = (path: string) =>
   ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

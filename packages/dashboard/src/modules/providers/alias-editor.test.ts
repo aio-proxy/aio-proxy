@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "@rstest/core";
 import {
   aliasEditorIssues,
   aliasIssueControlId,
@@ -9,8 +9,8 @@ import {
   renameAlias,
   renameVariant,
   serializeAlias,
-} from "../src/modules/providers/alias-editor";
-import { aliasSummaryMessage } from "../src/modules/providers/alias-editor-copy";
+} from "./alias-editor";
+import { aliasSummaryMessage } from "./alias-editor-copy";
 
 const alias = {
   mini: {

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { getPaginationItems } from "../src/components/data-table-pagination/pagination-items";
+import { describe, expect, test } from "@rstest/core";
+import { getPaginationItems } from "./pagination-items";
 
 describe("data table pagination", () => {
   test("shows every page when the page count fits", () => {
