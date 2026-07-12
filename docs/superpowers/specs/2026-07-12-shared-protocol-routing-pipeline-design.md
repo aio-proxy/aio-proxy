@@ -38,7 +38,7 @@ aio-proxy 的首要产品契约是“协议兼容代理”：客户端使用 Ope
 | AI SDK / OAuth provider | 使用 model transport |
 | 编排位置 | server 中唯一的 shared routing pipeline |
 | 协议知识位置 | 每个 inbound protocol adapter |
-| Adapter 实现形状 | 无状态对象组合，使用 `satisfies ProtocolAdapter` 校验 |
+| Adapter 实现形状 | 通过小型 `defineProtocolAdapter()` 工厂创建无状态对象 |
 | provider 选择 | model-first，保持 Router 返回的候选顺序 |
 | 旧重构分支 | 只参考设计和测试，不直接 merge |
 
@@ -76,15 +76,44 @@ type ProtocolAdapter<TRequest, TContext> = {
 };
 ```
 
-每个 adapter 是一个无状态对象，而不是继承 `BaseProtocolAdapter` 的 class：
+每个 adapter 是由小型工厂创建的无状态对象，而不是继承 `BaseProtocolAdapter` 的 class：
 
 ```ts
-export const anthropicMessagesAdapter = {
+export const anthropicMessagesAdapter = defineProtocolAdapter<
+  AnthropicMessagesRequest,
+  AnthropicRouteContext
+>({
   protocol: ProviderProtocol.Anthropic,
   parse: parseAnthropicRequest,
   model: (request) => request.model,
   // 其余协议函数
-} satisfies ProtocolAdapter<AnthropicMessagesRequest, AnthropicRouteContext>;
+});
+```
+
+工厂的职责被限定为：
+
+- 为对象字面量提供统一的 construction point 和 `ProtocolAdapter<TRequest, TContext>` contextual typing；允许显式传入泛型，不为追求自动推断增加 builder 层次。
+- 未提供 `variant` 时补充 `() => undefined`。
+- 对返回的 adapter 做浅冻结，防止运行时替换协议或方法。
+
+概念形状如下：
+
+```ts
+type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
+  ProtocolAdapter<TRequest, TContext>,
+  "variant"
+> & {
+  variant?: ProtocolAdapter<TRequest, TContext>["variant"];
+};
+
+function defineProtocolAdapter<TRequest, TContext>(
+  definition: ProtocolAdapterDefinition<TRequest, TContext>,
+): ProtocolAdapter<TRequest, TContext> {
+  return Object.freeze({
+    ...definition,
+    variant: definition.variant ?? (() => undefined),
+  });
+}
 ```
 
 公共行为按职责放置：
@@ -93,7 +122,9 @@ export const anthropicMessagesAdapter = {
 - JSON 读取、JSON Schema 映射、model 字段改写等局部复用使用普通纯函数。
 - parse、transform、egress 和协议错误形状留在各 adapter。
 
-本轮不增加 `defineProtocolAdapter()` 工厂。如果实现阶段发现 `satisfies` 无法清晰表达类型关系，应先回到设计评审，而不是自行引入工厂。adapter 不得在对象或闭包中保存单次请求的可变状态；并发请求所需状态全部通过方法参数传递。
+`defineProtocolAdapter()` 不执行 JSON 读取、parse、transform、fallback、preflight、记录、usage capture 或 provider 选择，也不接受 pipeline 生命周期 hooks。协议间复用的小型纯函数由 adapter 显式引用，避免工厂逐渐变成函数形式的基类。
+
+adapter 不得在对象或闭包中保存单次请求的可变状态；并发请求所需状态全部通过方法参数传递。
 
 不采用抽象基类的原因是 adapter 没有共享生命周期或实例状态。把 pipeline 策略放进 base class 会形成第二个公共算法中心；只把小 helper 放进 base class 又会得到一个删除后几乎不增加调用方复杂度的浅模块。项目中的 `BaseOAuthProvider` 有 vendor、store 和登录生命周期，因此 class 合理，但这个条件不适用于 protocol adapter。
 
@@ -277,6 +308,7 @@ shared pipeline 的接口是主要测试表面。
 
 ### Protocol adapter tests
 
+- `defineProtocolAdapter()` 提供默认 `variant`，并返回冻结对象。
 - 四个协议各自的 parse、model、variant、stream 默认值。
 - alias model rewrite 保留未知字段。
 - model invocation 保留已支持的 tools、tool results、reasoning 和 provider options。
@@ -297,7 +329,7 @@ shared pipeline 的接口是主要测试表面。
 - 不增加新的入站协议。
 - 不增加 weighted random、健康评分、circuit breaker 或可配置 retry policy。
 - 不增加 transport 选择配置。
-- 不增加 `BaseProtocolAdapter` 继承层次或仅用于包装对象字面量的 adapter 工厂。
+- 不增加 `BaseProtocolAdapter` 继承层次；`defineProtocolAdapter()` 不演变成 template-method pipeline。
 - 不重做 Router 的 alias/variant 语义。
 - 不重新定义 raw transport 的 `baseUrl` 与 credential 配置契约；另行设计和修复。
 - 不把 AI SDK 类型加入公共配置 ABI。
@@ -307,7 +339,7 @@ shared pipeline 的接口是主要测试表面。
 
 - 四个代理端点使用同一个 routing pipeline。
 - route 文件不再实现候选循环、provider kind 分支、fallback、usage capture 或 request recording。
-- protocol adapters 是通过 `satisfies ProtocolAdapter` 校验的无状态对象，不保存请求级可变状态。
+- protocol adapters 由职责受限的 `defineProtocolAdapter()` 创建，不保存请求级可变状态。
 - 同协议 API provider 仍走 raw transport，未知请求字段与原始响应流得到保留。
 - 跨协议 API provider 使用 materialize 时创建的 model transport，不按请求重新 bridge。
 - AI SDK 和 OAuth provider 只通过 model transport 调用。
