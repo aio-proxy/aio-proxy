@@ -14,6 +14,9 @@ export type LogsSearch = {
   readonly finalStatusCode?: number;
 };
 
+type LogsFilterPatch = { [Key in keyof Omit<LogsSearch, "page">]?: LogsSearch[Key] | undefined };
+type RawLogsSearch = Record<string, unknown> & Partial<Record<keyof LogsSearch, unknown>>;
+
 const pageSizes = new Set([10, 20, 50, 100]);
 const outcomes = new Set(["success", "failure", "cancelled"]);
 
@@ -26,7 +29,7 @@ export function createDefaultLogsSearch(now = new Date()): LogsSearch {
   };
 }
 
-export function parseLogsSearch(raw: Record<string, unknown>, now = new Date()): LogsSearch {
+export function parseLogsSearch(raw: RawLogsSearch, now = new Date()): LogsSearch {
   const defaults = createDefaultLogsSearch(now);
   const startedAfter = isoString(raw.startedAfter);
   const completedBefore = isoString(raw.completedBefore);
@@ -66,8 +69,10 @@ export function parseLogsSearch(raw: Record<string, unknown>, now = new Date()):
   };
 }
 
-export function withLogsFilters(search: LogsSearch, patch: Partial<Omit<LogsSearch, "page">>): LogsSearch {
-  return { ...search, ...patch, page: 1 };
+export function withLogsFilters(search: LogsSearch, patch: LogsFilterPatch): LogsSearch {
+  const next = { ...search, ...patch, page: 1 } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
+  return next as LogsSearch;
 }
 
 const integer = (value: unknown) => {
