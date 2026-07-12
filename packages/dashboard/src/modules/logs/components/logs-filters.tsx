@@ -2,13 +2,16 @@ import { m } from "@aio-proxy/i18n";
 import type { DashboardRequestLogsPageSize, RequestOutcome } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
 import { RefreshCw } from "lucide-react";
+import { useEffect } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createDefaultLogsSearch, isWithinRetention, type LogsSearch, withLogsFilters } from "../logs-search";
+import { toPickerRange, toQueryRange } from "../log-date-range";
+import { createDefaultLogsSearch, type LogsSearch, withLogsFilters } from "../logs-search";
+import { LogsDateRangePicker } from "./logs-date-range-picker";
 
 type Props = {
   readonly search: LogsSearch;
@@ -26,8 +29,7 @@ const schema = z.object({
   finalProviderId: z.string(),
   finalModelId: z.string(),
   finalStatusCode: z.string(),
-  startedAfter: z.string(),
-  completedBefore: z.string(),
+  dateRange: z.object({ from: z.date().optional(), to: z.date().optional() }),
   pageSize: z.number(),
   autoRefresh: z.boolean(),
 });
@@ -50,14 +52,17 @@ export const LogsFilters: React.FC<Props> = ({
       finalProviderId: search.finalProviderId ?? "",
       finalModelId: search.finalModelId ?? "",
       finalStatusCode: search.finalStatusCode?.toString() ?? "",
-      startedAfter: toLocalInput(search.startedAfter),
-      completedBefore: toLocalInput(search.completedBefore),
+      dateRange: toPickerRange(search),
       pageSize: search.pageSize,
       autoRefresh,
     },
     validators: { onChange: schema },
   });
   const patch = (value: Partial<Omit<LogsSearch, "page">>) => onChange(withLogsFilters(search, value));
+  const { startedAfter, completedBefore } = search;
+  useEffect(() => {
+    form.setFieldValue("dateRange", toPickerRange({ startedAfter, completedBefore }));
+  }, [form, startedAfter, completedBefore]);
   const textField = (name: "requestId" | "requestedModelId" | "finalProviderId" | "finalModelId", label: string) => (
     <form.Field name={name}>
       {(field) => (
@@ -75,63 +80,19 @@ export const LogsFilters: React.FC<Props> = ({
       )}
     </form.Field>
   );
-  const min = toLocalInput(new Date(Date.now() - 45 * 24 * 60 * 60 * 1_000).toISOString());
-  const preset = (days: number) => {
-    const end = new Date();
-    patch({
-      startedAfter: new Date(end.getTime() - days * 86_400_000).toISOString(),
-      completedBefore: end.toISOString(),
-    });
-  };
-
   return (
     <div className="space-y-3 rounded-2xl border p-3">
-      <div className="flex flex-wrap gap-2">
-        {[
-          [1, m["dashboard.logs.range_24h"]()],
-          [7, m["dashboard.logs.range_7d"]()],
-          [14, m["dashboard.logs.range_14d"]()],
-          [30, m["dashboard.logs.range_30d"]()],
-          [45, m["dashboard.logs.range_45d"]()],
-        ].map(([days, label]) => (
-          <Button key={label} size="sm" variant="outline" onClick={() => preset(days as number)}>
-            {label}
-          </Button>
-        ))}
-      </div>
       <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
-        <form.Field name="startedAfter">
+        <form.Field name="dateRange">
           {(field) => (
             <Field>
-              <FieldLabel htmlFor="logs-start">{m["dashboard.logs.start"]()}</FieldLabel>
-              <Input
-                id="logs-start"
-                type="datetime-local"
-                min={min}
+              <FieldLabel>{m["dashboard.logs.range"]()}</FieldLabel>
+              <LogsDateRangePicker
                 value={field.state.value}
-                onChange={(event) => {
-                  const value = event.target.value;
+                onChange={(value) => {
                   field.handleChange(value);
-                  if (value && isWithinRetention(new Date(value).toISOString()))
-                    patch({ startedAfter: new Date(value).toISOString() });
-                }}
-              />
-            </Field>
-          )}
-        </form.Field>
-        <form.Field name="completedBefore">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor="logs-end">{m["dashboard.logs.end"]()}</FieldLabel>
-              <Input
-                id="logs-end"
-                type="datetime-local"
-                min={min}
-                value={field.state.value}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  field.handleChange(value);
-                  if (value) patch({ completedBefore: new Date(value).toISOString() });
+                  const query = toQueryRange(value);
+                  if (query) patch(query);
                 }}
               />
             </Field>
@@ -270,9 +231,4 @@ export const LogsFilters: React.FC<Props> = ({
       </div>
     </div>
   );
-};
-
-const toLocalInput = (iso: string) => {
-  const date = new Date(iso);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 };

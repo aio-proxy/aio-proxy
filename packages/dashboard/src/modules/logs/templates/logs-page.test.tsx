@@ -87,6 +87,16 @@ describe("logs page", () => {
     expect(onSearchChange).not.toHaveBeenCalled();
   });
 
+  test("uses one accessible date range picker without custom presets", () => {
+    const { container } = render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByRole("button", { name: /Time range|时间范围/u })).toBeTruthy();
+    expect(container.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: /Last 7 days|近 7 天/u })).toBeNull();
+  });
+
   test.each([
     ["loading", /Loading request logs|正在加载请求日志/u],
     ["empty", /No matching requests|没有匹配的请求/u],
