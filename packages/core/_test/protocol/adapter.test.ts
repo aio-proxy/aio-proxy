@@ -61,3 +61,10 @@ test("functionToolSet converts function definitions without mutating schemas", (
   expect(tools?.weather).toMatchObject({ type: "function", description: "Weather" });
   expect(schema).toEqual({ type: "object", properties: { city: { type: "string" } } });
 });
+
+test("functionToolSet preserves __proto__ as an own enumerable tool entry", () => {
+  const tools = functionToolSet([{ name: "__proto__" }]);
+
+  expect(Object.keys(tools ?? {})).toEqual(["__proto__"]);
+  expect(Object.hasOwn(tools ?? {}, "__proto__")).toBe(true);
+});

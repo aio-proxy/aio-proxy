@@ -15,7 +15,7 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
     return undefined;
   }
 
-  const result: ToolSet = {};
+  const result: ToolSet = Object.create(null);
   for (const tool of tools) {
     result[tool.name] = {
       type: "function",
