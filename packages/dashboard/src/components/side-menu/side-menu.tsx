@@ -1,6 +1,6 @@
 import { m } from "@aio-proxy/i18n";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Boxes, ChartNoAxesCombined, HandPlatter } from "lucide-react";
+import { Boxes, ChartNoAxesCombined, HandPlatter, List } from "lucide-react";
 import type { ComponentProps, ComponentType } from "react";
 import {
   Sidebar,
@@ -41,6 +41,13 @@ export const SideMenu: React.FC = () => {
           icon: ChartNoAxesCombined,
           to: "/",
           isActive: (pathname) => pathname === "/",
+        },
+        {
+          id: "logs",
+          label: m["dashboard.menus.logs"](),
+          icon: List,
+          to: "/logs",
+          isActive: (pathname) => pathname.startsWith("/logs"),
         },
       ],
     },

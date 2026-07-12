@@ -38,7 +38,9 @@ const renderPreferences = () =>
 
 describe("sidebar preferences", () => {
   test("changes the appearance from the sidebar footer", async () => {
-    renderPreferences();
+    const { container } = renderPreferences();
+
+    expect(container.querySelector(".lucide-eclipse")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Dark" }));

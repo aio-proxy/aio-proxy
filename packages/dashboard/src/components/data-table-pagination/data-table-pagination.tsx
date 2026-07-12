@@ -1,4 +1,5 @@
 import { m } from "@aio-proxy/i18n";
+import { useForm } from "@tanstack/react-form";
 import type { Table } from "@tanstack/react-table";
 import type React from "react";
 import {
@@ -10,19 +11,29 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getPaginationItems } from "./pagination-items";
 
 type PaginationTable = Pick<
   Table<unknown>,
-  "getState" | "getPageOptions" | "getCanPreviousPage" | "getCanNextPage" | "previousPage" | "nextPage" | "setPageIndex"
+  | "getState"
+  | "getPageOptions"
+  | "getCanPreviousPage"
+  | "getCanNextPage"
+  | "previousPage"
+  | "nextPage"
+  | "setPageIndex"
+  | "setPageSize"
 >;
 
 interface DataTablePaginationProps {
   table: PaginationTable;
+  pageSizeOptions?: readonly number[];
 }
 
-export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table }) => {
-  const pageIndex = table.getState().pagination.pageIndex;
+export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table, pageSizeOptions }) => {
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const form = useForm({ defaultValues: { pageSize } });
   const items = getPaginationItems(table.getPageOptions(), pageIndex);
   const previousLabel = m["dashboard.pagination.previous"]();
   const nextLabel = m["dashboard.pagination.next"]();
@@ -30,7 +41,33 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table 
   const canNextPage = table.getCanNextPage();
 
   return (
-    <Pagination className="mx-0 w-auto justify-end">
+    <Pagination className="mx-0 w-auto flex-wrap justify-end gap-2">
+      {pageSizeOptions && (
+        <form.Field name="pageSize">
+          {(field) => (
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => {
+                if (value === null) return;
+                const next = Number(value);
+                field.handleChange(next);
+                table.setPageSize(next);
+              }}
+            >
+              <SelectTrigger aria-label={m["dashboard.pagination.page_size"]()} className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </form.Field>
+      )}
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious
