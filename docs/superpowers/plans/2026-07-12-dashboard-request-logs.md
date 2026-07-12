@@ -520,3 +520,86 @@ rtk git commit -m "fix(dashboard): address request log review" -m "Co-authored-b
 ```
 
 Skip this commit when the review produces no code changes. Preserve the user's existing `.gitignore` modification throughout every task.
+
+---
+
+### Task 6: Replace Datetime Inputs with the Official Date-Range Picker
+
+**Files:**
+- Create: `packages/dashboard/src/components/ui/calendar.tsx`
+- Create: `packages/dashboard/src/components/ui/popover.tsx`
+- Create: `packages/dashboard/src/modules/logs/components/logs-date-range-picker.tsx`
+- Create: `packages/dashboard/src/modules/logs/log-date-range.test.ts`
+- Create: `packages/dashboard/src/modules/logs/log-date-range.ts`
+- Modify: `packages/dashboard/src/modules/logs/components/logs-filters.tsx`
+- Modify: `packages/i18n/messages/en.json`
+- Modify: `packages/i18n/messages/zh-Hans.json`
+
+**Interfaces:**
+- Consumes: `LogsSearch.startedAfter`, `LogsSearch.completedBefore`, `isWithinRetention()`, and the existing `onChange(withLogsFilters(...))` URL update path
+- Produces: `toPickerRange(search): DateRange`, `toQueryRange(range): { startedAfter: string; completedBefore: string } | undefined`, and a single `LogsDateRangePicker` TanStack Form field
+
+- [ ] **Step 1: Write failing date-boundary tests**
+
+Add tests proving that an ISO query range becomes calendar dates, an incomplete range returns `undefined`, and a complete range becomes local start-of-day/end-of-day ISO instants.
+
+- [ ] **Step 2: Run the focused test and verify RED**
+
+Run:
+
+```bash
+rtk bun run --filter @aio-proxy/dashboard test:unit -- src/modules/logs/log-date-range.test.ts
+```
+
+Expected: FAIL because `log-date-range.ts` does not exist.
+
+- [ ] **Step 3: Implement the minimal pure date-range conversion**
+
+Use `startOfDay` and `endOfDay` from the already-installed `date-fns`. Keep retention-date disabling in the UI because the server accepts arbitrary valid instants.
+
+- [ ] **Step 4: Run the focused test and verify GREEN**
+
+Run the Step 2 command again. Expected: all tests in the file pass.
+
+- [ ] **Step 5: Add official shadcn Base Calendar and Popover components**
+
+Run from `packages/dashboard`:
+
+```bash
+rtk bunx shadcn@latest add calendar popover --yes
+```
+
+Expected: `src/components/ui/calendar.tsx` and `src/components/ui/popover.tsx` match the configured `base-luma`/Base UI registry and no unrelated component is overwritten.
+
+- [ ] **Step 6: Write a failing page interaction test**
+
+Extend the logs page test to open the date-range button and assert that the two native `datetime-local` inputs and preset buttons no longer render. Assert that the range button has an accessible localized label.
+
+- [ ] **Step 7: Replace the controls with one range picker**
+
+Create `LogsDateRangePicker` as the only React component in its file. Render a shadcn `Button` as `PopoverTrigger` and `Calendar mode="range"` inside `PopoverContent`. Initialize the field from the active URL instants, retain incomplete selections in the TanStack Form field, and call `onChange` only after both `from` and `to` exist. Disable days before the local calendar day containing `now - 45 days` and after today. Remove the custom 24h/7d/14d/30d/45d preset buttons and both native datetime inputs.
+
+- [ ] **Step 8: Add localized picker copy and compile i18n**
+
+Add the range label and empty-selection text to both locale message files, then run:
+
+```bash
+rtk bun run i18n:compile
+```
+
+Expected: Paraglide compilation exits 0.
+
+- [ ] **Step 9: Run focused tests and Dashboard build**
+
+Run:
+
+```bash
+rtk bun run --filter @aio-proxy/dashboard test:unit -- src/modules/logs
+rtk bun run --filter @aio-proxy/dashboard build
+```
+
+Expected: logs tests pass and the Dashboard build exits 0.
+
+- [ ] **Step 10: Commit and run repository verification**
+
+Commit the picker change, then run `rtk bun run check`, `rtk bun run test:unit`, and `rtk bun run build`. Push the verified commit to the existing draft PR branch.
