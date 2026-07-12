@@ -5,10 +5,15 @@ import {
   type ToolSet,
 } from "@aio-proxy/core";
 import type { ProviderProtocol, UsageRow } from "@aio-proxy/types";
-import { extractPassthroughUsage } from "./passthrough-usage";
+import {
+  createPassthroughSseUsageObserver,
+  extractPassthroughUsage,
+  type PassthroughSseUsageObserver,
+} from "./passthrough-usage";
 import { isAbortError } from "./route-observation";
 
 type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: "finish" }>;
+const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
 export type UsageCompletion =
   | { readonly outcome: "success"; readonly usage?: UsageRow; readonly statusCode?: number }
@@ -111,8 +116,12 @@ export function createUsageCapture(options: {
       const statusCode = response.status;
       const terminal = deferred<UsageCompletion>();
       const reader = response.body.getReader();
+      const isSse = response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true;
+      const sseObserver = isSse ? createPassthroughSseUsageObserver(protocol) : undefined;
+      const decoder = isSse ? new TextDecoder() : undefined;
       const chunks: Uint8Array[] = [];
       let byteLength = 0;
+      let captureJson = !isSse;
       let released = false;
       const releaseReader = () => {
         if (!released) {
@@ -126,21 +135,31 @@ export function createUsageCapture(options: {
           try {
             const next = await reader.read();
             if (!next.done) {
-              chunks.push(next.value);
-              byteLength += next.value.byteLength;
+              if (sseObserver !== undefined && decoder !== undefined) {
+                sseObserver.feed(decoder.decode(next.value, { stream: true }));
+              } else if (captureJson) {
+                const nextByteLength = byteLength + next.value.byteLength;
+                if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
+                  chunks.push(next.value);
+                  byteLength = nextByteLength;
+                } else {
+                  chunks.length = 0;
+                  byteLength = 0;
+                  captureJson = false;
+                }
+              }
               controller.enqueue(next.value);
               return;
             }
 
             done = true;
             controller.close();
-            const bytes = new Uint8Array(byteLength);
-            let offset = 0;
-            for (const chunk of chunks) {
-              bytes.set(chunk, offset);
-              offset += chunk.byteLength;
-            }
-            const extracted = extractPassthroughUsage(protocol, new TextDecoder().decode(bytes));
+            const extracted =
+              sseObserver !== undefined && decoder !== undefined
+                ? finishSseObservation(sseObserver, decoder)
+                : captureJson
+                  ? extractPassthroughUsage(protocol, decodeChunks(chunks, byteLength))
+                  : undefined;
             const usage = await priceUsage(
               extracted === undefined ? undefined : { ...extracted, providerId, modelId },
               options.priceCatalogTask,
@@ -176,6 +195,21 @@ export function createUsageCapture(options: {
       };
     },
   };
+}
+
+function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder) {
+  observer.feed(decoder.decode());
+  return observer.finish();
+}
+
+function decodeChunks(chunks: readonly Uint8Array[], byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelId: string): UsageRow | undefined {

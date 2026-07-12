@@ -1,31 +1,87 @@
 import { ProviderProtocol, type UsageRow } from "@aio-proxy/types";
+import { createParser } from "eventsource-parser";
 
 type ExtractedUsage = Omit<UsageRow, "providerId" | "modelId">;
+const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
+
+export type PassthroughSseUsageObserver = {
+  readonly feed: (chunk: string) => void;
+  readonly finish: () => ExtractedUsage | undefined;
+};
 
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
-  const values = sseDataValues(bodyText).map(parseJson).filter(isDefined);
-  if (protocol === ProviderProtocol.Anthropic) {
-    return mergedAnthropicUsage(values);
+  const parsed = parseJson(bodyText);
+  if (parsed !== undefined) {
+    return usageFromJson(protocol, parsed);
   }
-  for (const parsed of [...values].reverse()) {
-    const usage = usageFromJson(protocol, parsed);
-    if (usage !== undefined) {
-      return usage;
-    }
-  }
-  return undefined;
+
+  const observer = createPassthroughSseUsageObserver(protocol);
+  observer.feed(bodyText);
+  return observer.finish();
 }
 
-function sseDataValues(bodyText: string): readonly string[] {
-  const frames = bodyText.split(/\r?\n\r?\n/u);
-  const values = frames.flatMap((frame) => {
-    const dataLines = frame
-      .split(/\r?\n/u)
-      .filter((line) => line.startsWith("data: "))
-      .map((line) => line.slice("data: ".length));
-    return dataLines.length === 0 ? [frame] : [dataLines.join("\n")];
+export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): PassthroughSseUsageObserver {
+  let active = true;
+  let observed: ExtractedUsage | undefined;
+  const parser = createParser({
+    maxBufferSize: MAX_SSE_BUFFER_CHARS,
+    onError(error) {
+      if (error.type === "max-buffer-size-exceeded") {
+        active = false;
+      }
+    },
+    onEvent(event) {
+      if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
+        active = false;
+        return;
+      }
+      const parsed = parseJson(event.data);
+      if (parsed === undefined) {
+        return;
+      }
+      const next = usageFromJson(protocol, parsed);
+      if (next !== undefined) {
+        observed = mergeObservedUsage(protocol, observed, next);
+      }
+    },
   });
-  return values.map((value) => value.trim()).filter((value) => value !== "" && value !== "[DONE]");
+
+  return {
+    feed(chunk) {
+      if (!active || chunk === "") {
+        return;
+      }
+      try {
+        parser.feed(chunk);
+      } catch {
+        active = false;
+      }
+    },
+    finish() {
+      if (active) {
+        try {
+          parser.feed("\n\n");
+          parser.reset();
+        } catch {
+          active = false;
+        }
+      }
+      return active ? observed : undefined;
+    },
+  };
+}
+
+function mergeObservedUsage(
+  protocol: ProviderProtocol,
+  current: ExtractedUsage | undefined,
+  next: ExtractedUsage,
+): ExtractedUsage {
+  if (protocol !== ProviderProtocol.Anthropic) {
+    return next;
+  }
+  const merged = { ...current, ...next };
+  const total = totalTokens(merged.inputTokens, merged.outputTokens);
+  return total === undefined ? merged : { ...merged, totalTokens: total };
 }
 
 function parseJson(value: string): unknown | undefined {
@@ -106,19 +162,6 @@ function anthropicUsage(value: unknown): ExtractedUsage | undefined {
   });
 }
 
-function mergedAnthropicUsage(values: readonly unknown[]): ExtractedUsage | undefined {
-  let merged: ExtractedUsage | undefined;
-  for (const value of values) {
-    const usage = anthropicUsage(value);
-    if (usage !== undefined) {
-      merged = { ...merged, ...usage };
-    }
-  }
-  return merged === undefined
-    ? undefined
-    : tokenUsage({ ...merged, totalTokens: totalTokens(merged.inputTokens, merged.outputTokens) });
-}
-
 function geminiUsage(value: unknown): ExtractedUsage | undefined {
   if (Array.isArray(value)) {
     for (let index = value.length - 1; index >= 0; index -= 1) {
@@ -165,10 +208,6 @@ function nestedNumberField(record: Record<string, unknown>, parent: string, fiel
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isDefined<T>(value: T | undefined): value is T {
-  return value !== undefined;
 }
 
 function assertNever(value: never): never {

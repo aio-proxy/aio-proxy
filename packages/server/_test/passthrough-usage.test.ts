@@ -37,6 +37,15 @@ describe("passthrough usage extraction", () => {
     });
   });
 
+  test("accepts SSE data fields without a space after the colon", () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAICompatible,
+        'data:{"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":6,"total_tokens":10}}\n\n',
+      ),
+    ).toEqual({ inputTokens: 4, outputTokens: 6, totalTokens: 10 });
+  });
+
   test("extracts OpenAI Responses JSON usage", () => {
     expect(
       extractPassthroughUsage(

@@ -16,6 +16,7 @@
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "es-toolkit": "catalog:",
+    "eventsource-parser": "catalog:",
     "hono": "catalog:",
     "zod": "catalog:"
   },
