@@ -17,7 +17,7 @@ export const pluginProviderSchemas = (): RsbuildPlugin => ({
         await importModule<typeof ProviderSchemasGenerator>(providerSchemasGeneratorPath);
       const generated = await generateProviderSchemaEntries(
         {
-          cacheRoot: join(api.context.rootPath, "node_modules/.cache/provider-schemas"),
+          cacheRoot: join(api.context.rootPath, "node_modules/.cache/provider-schemas/v2"),
           refreshLatest,
         },
         addDependency,

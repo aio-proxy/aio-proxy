@@ -328,7 +328,7 @@ rtk git commit -m "refactor(provider-schemas): resolve cached npm sources" -m "C
 
 - [ ] **Step 1: Write the dependency-boundary and expanded-catalog assertions**
 
-Add tests that read `packages/provider-schemas/package.json` and assert none of the allowlisted package names appears in its dependencies or devDependencies. Assert the generated keys exactly match the expanded allowlist and each generated entry reports the same package name and a non-empty `packageVersion`.
+Add hermetic unit tests that read `packages/provider-schemas/package.json`, assert none of the literal 42 allowlisted package names appears in dependencies or devDependencies, and assert the source allowlist exactly matches the independent package/factory fixture. Put live npm-latest generation in an explicitly named non-`*.test.ts` integration file.
 
 ```ts
 for (const { packageName } of PROVIDER_SCHEMA_ALLOWLIST) {
@@ -348,7 +348,7 @@ Do not weaken generation by skipping missing packages or converting failures int
 Run:
 
 ```bash
-rtk bun test packages/provider-schemas/_test/schema-generator.test.ts -t "generates the exact allowlist"
+rtk bun test packages/provider-schemas/_test/schema-generator.test.ts -t "pins the exact allowlist"
 ```
 
 Expected: FAIL because the current expanded entries are not available through the old installed-package resolver and old provider devDependencies remain.
@@ -388,7 +388,7 @@ rtk bun --cwd /tmp/aio-proxy-provider-cache-verify install --frozen-lockfile
 rtk bun --cwd /tmp/aio-proxy-provider-cache-verify run --filter @aio-proxy/provider-schemas build
 ```
 
-Expected: each allowlisted package resolves from npm latest; `dist/schema-module.js` contains all allowlist package keys. No provider package is added to provider-schemas dependencies.
+Expected: the explicit `test:integration` workflow resolves each allowlisted package from npm latest, `dist/schema-module.js` contains all allowlist package keys, clean-dist setup succeeds, and runtime leakage scans are empty. Normal `test:unit` remains fixture-only and does not contact public npm.
 
 - [ ] **Step 5: Verify watch cache semantics**
 
@@ -405,7 +405,8 @@ Replace statements that every schema package is a provider-schemas devDependency
 Run:
 
 ```bash
-rtk bun test packages/provider-schemas/_test/*.test.ts
+rtk bun run --filter @aio-proxy/provider-schemas test:unit
+rtk bun run --filter @aio-proxy/provider-schemas test:integration
 rtk bun test packages/server/_test/dashboard-provider-options-schema.test.ts packages/server/_test/config-store.test.ts
 rtk bun run --filter @aio-proxy/provider-schemas build
 rtk bun build packages/cli/src/main.ts --target=bun --outfile=/tmp/aio-proxy-provider-source-cache.js

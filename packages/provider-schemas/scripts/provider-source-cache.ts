@@ -35,6 +35,20 @@ type NpmPackageMetadata = {
 type RegistryObservation = {
   readonly version: string;
   readonly revision: string;
+  readonly integrity: string;
+};
+
+type CompletionFile = {
+  readonly path: string;
+  readonly size: number;
+  readonly sha256: string;
+};
+
+type CompletionManifest = {
+  readonly packageName: string;
+  readonly version: string;
+  readonly integrity: string;
+  readonly files: readonly CompletionFile[];
 };
 
 const MAX_TARBALL_BYTES = 32 * 1024 * 1024;
@@ -93,11 +107,118 @@ const validVersionMetadata = (value: unknown): value is NpmVersionMetadata => {
   );
 };
 
-const validatePackageRoot = async (packageRoot: string, packageName: string, version: string): Promise<void> => {
+const validatePackageManifest = async (packageRoot: string, packageName: string, version: string): Promise<void> => {
   const manifest = (await readJson(join(packageRoot, "package.json"))) as { name?: unknown; version?: unknown };
   if (manifest.name !== packageName || manifest.version !== version) {
     throw new Error(`Invalid manifest for ${packageName}@${version}`);
   }
+};
+
+const listPackageFiles = async (packageRoot: string): Promise<string[]> => {
+  const files: string[] = [];
+  const visit = async (directory: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await visit(join(directory, entry.name), relativePath);
+      else if (entry.isFile()) files.push(relativePath);
+      else throw new Error(`Invalid cached provider source entry ${relativePath}`);
+    }
+  };
+  await visit(packageRoot, "");
+  return files.sort();
+};
+
+const fileMetadata = async (packageRoot: string, path: string): Promise<CompletionFile> => {
+  const bytes = await readFile(join(packageRoot, path));
+  return {
+    path,
+    size: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+};
+
+const createCompletionManifest = async (
+  packageRoot: string,
+  packageName: string,
+  version: string,
+  integrity: string,
+): Promise<CompletionManifest> => ({
+  packageName,
+  version,
+  integrity,
+  files: await Promise.all((await listPackageFiles(packageRoot)).map((path) => fileMetadata(packageRoot, path))),
+});
+
+const validateCompletionManifest = (value: unknown): CompletionManifest => {
+  if (!value || typeof value !== "object") throw new Error("Invalid provider source completion manifest");
+  const completion = value as Partial<CompletionManifest>;
+  if (
+    typeof completion.packageName !== "string" ||
+    typeof completion.version !== "string" ||
+    typeof completion.integrity !== "string" ||
+    !Array.isArray(completion.files)
+  ) {
+    throw new Error("Invalid provider source completion manifest");
+  }
+  const files = completion.files.map((value): CompletionFile => {
+    if (!value || typeof value !== "object") throw new Error("Invalid provider source completion file");
+    const file = value as Partial<CompletionFile>;
+    if (
+      typeof file.path !== "string" ||
+      file.path.length === 0 ||
+      unsafeArchivePath(file.path) ||
+      !Number.isSafeInteger(file.size) ||
+      (file.size as number) < 0 ||
+      typeof file.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(file.sha256)
+    ) {
+      throw new Error("Invalid provider source completion file");
+    }
+    return { path: file.path, size: file.size as number, sha256: file.sha256 };
+  });
+  const paths = files.map(({ path }) => path);
+  if (paths.length === 0 || paths[0] === undefined || !paths.includes("package.json")) {
+    throw new Error("Invalid provider source completion files");
+  }
+  if (
+    new Set(paths).size !== paths.length ||
+    paths.some((path, index) => {
+      const previous = paths[index - 1];
+      return previous !== undefined && path < previous;
+    })
+  ) {
+    throw new Error("Invalid provider source completion file order");
+  }
+  return {
+    packageName: completion.packageName,
+    version: completion.version,
+    integrity: completion.integrity,
+    files,
+  };
+};
+
+const validatePackageRoot = async (
+  packageRoot: string,
+  packageName: string,
+  version: string,
+  integrity: string,
+): Promise<void> => {
+  const completion = validateCompletionManifest(await readJson(resolve(packageRoot, "../completion.json")));
+  if (completion.packageName !== packageName || completion.version !== version || completion.integrity !== integrity) {
+    throw new Error(`Invalid completion manifest for ${packageName}@${version}`);
+  }
+  const actualPaths = await listPackageFiles(packageRoot);
+  const expectedPaths = completion.files.map(({ path }) => path);
+  if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
+    throw new Error(`Cached provider source file set mismatch for ${packageName}@${version}`);
+  }
+  for (const expected of completion.files) {
+    const actual = await fileMetadata(packageRoot, expected.path);
+    if (actual.size !== expected.size || actual.sha256 !== expected.sha256) {
+      throw new Error(`Cached provider source digest mismatch for ${packageName}@${version}:${expected.path}`);
+    }
+  }
+  await validatePackageManifest(packageRoot, packageName, version);
 };
 
 const fetchMetadata = async (packageName: string, fetchImpl: typeof globalThis.fetch): Promise<NpmPackageMetadata> => {
@@ -182,7 +303,10 @@ const validateObservation = (value: unknown, fileName: string): RegistryObservat
   if (observation.revision !== revision || observationFileName(revision) !== fileName) {
     throw new Error("Invalid registry observation revision");
   }
-  return { revision, version: validateVersion(observation.version) };
+  if (typeof observation.integrity !== "string" || observation.integrity.length === 0) {
+    throw new Error("Invalid registry observation integrity");
+  }
+  return { revision, version: validateVersion(observation.version), integrity: observation.integrity };
 };
 
 const publishObservation = async (packageCache: string, observation: RegistryObservation): Promise<void> => {
@@ -201,32 +325,46 @@ const publishObservation = async (packageCache: string, observation: RegistryObs
       if (existing.version !== observation.version) {
         throw new Error(`Registry revision ${observation.revision} resolved to conflicting versions`);
       }
+      if (existing.integrity !== observation.integrity) {
+        throw new Error(`Registry revision ${observation.revision} resolved to conflicting integrities`);
+      }
     }
   } finally {
     await rm(temporary, { force: true });
   }
 };
 
-const readLatestObservation = async (packageCache: string): Promise<RegistryObservation | undefined> => {
+const readObservations = async (packageCache: string): Promise<RegistryObservation[]> => {
   const observationRoot = join(packageCache, "observations");
   let entries: Dirent[];
   try {
     entries = await readdir(observationRoot, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
 
-  let latest: RegistryObservation | undefined;
+  const observations: RegistryObservation[] = [];
   for (const entry of entries) {
     if (entry.name.startsWith(".observation-") && entry.name.endsWith(".tmp")) continue;
     if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) {
       throw new Error("Invalid registry observation entry");
     }
     const observation = validateObservation(await readJson(join(observationRoot, entry.name)), entry.name);
-    if (!latest || observation.revision > latest.revision) latest = observation;
+    observations.push(observation);
   }
-  return latest;
+  return observations.sort((left, right) => right.revision.localeCompare(left.revision));
+};
+
+const assertObservationCompatible = async (packageCache: string, candidate: RegistryObservation): Promise<void> => {
+  const existing = (await readObservations(packageCache)).find(({ revision }) => revision === candidate.revision);
+  if (!existing) return;
+  if (existing.version !== candidate.version) {
+    throw new Error(`Registry revision ${candidate.revision} resolved to conflicting versions`);
+  }
+  if (existing.integrity !== candidate.integrity) {
+    throw new Error(`Registry revision ${candidate.revision} resolved to conflicting integrities`);
+  }
 };
 
 const installVersion = async (
@@ -239,7 +377,7 @@ const installVersion = async (
   const versionRoot = join(packageCache, version);
   const packageRoot = join(versionRoot, "package");
   try {
-    await validatePackageRoot(packageRoot, packageName, version);
+    await validatePackageRoot(packageRoot, packageName, version, metadata.dist.integrity);
     return packageRoot;
   } catch {}
 
@@ -288,14 +426,25 @@ const installVersion = async (
     }
     if (rejectedEntry) throw new Error(`Archive ${rejectedEntry} is not allowed for ${packageName}`);
     await rm(archivePath, { force: true });
-    await validatePackageRoot(join(temporaryRoot, "package"), packageName, version);
+    const extractedPackageRoot = join(temporaryRoot, "package");
+    await validatePackageManifest(extractedPackageRoot, packageName, version);
+    const completion = await createCompletionManifest(
+      extractedPackageRoot,
+      packageName,
+      version,
+      metadata.dist.integrity,
+    );
+    const completionTemporary = join(temporaryRoot, `.completion-${crypto.randomUUID()}.tmp`);
+    await writeFile(completionTemporary, JSON.stringify(completion));
+    await rename(completionTemporary, join(temporaryRoot, "completion.json"));
+    await validatePackageRoot(extractedPackageRoot, packageName, version, metadata.dist.integrity);
     try {
       await rename(temporaryRoot, versionRoot);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
       try {
-        await validatePackageRoot(packageRoot, packageName, version);
+        await validatePackageRoot(packageRoot, packageName, version, metadata.dist.integrity);
       } catch (validationError) {
         throw new Error(
           `Cached provider source ${packageName}@${version} is invalid; remove the provider schema cache and retry`,
@@ -319,11 +468,10 @@ export const resolveProviderSource = async (
     const packageCache = join(resolve(options.cacheRoot), packageCacheName(packageName));
     await mkdir(packageCache, { recursive: true });
     if (!options.refreshLatest) {
-      const observation = await readLatestObservation(packageCache);
-      if (observation) {
+      for (const observation of await readObservations(packageCache)) {
         const packageRoot = join(packageCache, observation.version, "package");
         try {
-          await validatePackageRoot(packageRoot, packageName, observation.version);
+          await validatePackageRoot(packageRoot, packageName, observation.version, observation.integrity);
           return packageRoot;
         } catch {}
       }
@@ -340,6 +488,8 @@ export const resolveProviderSource = async (
     ) {
       throw new Error("Invalid npm latest version metadata");
     }
+    const observation = { version, revision, integrity: versionMetadata.dist.integrity };
+    await assertObservationCompatible(packageCache, observation);
     const packageRoot = await installVersion(
       packageCache,
       packageName,
@@ -347,7 +497,7 @@ export const resolveProviderSource = async (
       versionMetadata,
       options.fetch ?? globalThis.fetch,
     );
-    await publishObservation(packageCache, { version, revision });
+    await publishObservation(packageCache, observation);
     return packageRoot;
   } catch (error) {
     throw new Error(`Failed to resolve ${sourcePackageName}: ${errorMessage(error)}`, { cause: error });

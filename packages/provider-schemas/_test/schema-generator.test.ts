@@ -101,29 +101,22 @@ const createFixtureProvider = () => {
 };
 
 describe("provider schema generation", () => {
-  test("generates the exact allowlist from npm latest without provider dependencies", async () => {
+  test("pins the exact allowlist without provider dependencies", async () => {
     expect(PROVIDER_SCHEMA_ALLOWLIST).toEqual(EXPECTED_PROVIDER_SCHEMA_CATALOG);
     const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
     for (const { packageName } of EXPECTED_PROVIDER_SCHEMA_CATALOG) {
       expect(packageJson.dependencies?.[packageName]).toBeUndefined();
       expect(packageJson.devDependencies?.[packageName]).toBeUndefined();
     }
+  });
 
-    const generated = await generateProviderSchemaEntries({
-      cacheRoot: mkdtempSync(join(tmpdir(), "provider-schema-expanded-catalog-")),
-      refreshLatest: true,
-    });
-    expect(Object.keys(generated.entries)).toEqual(
-      EXPECTED_PROVIDER_SCHEMA_CATALOG.map(({ packageName }) => packageName),
-    );
-    for (const { packageName, factoryName } of EXPECTED_PROVIDER_SCHEMA_CATALOG) {
-      const entry = generated.entries[packageName];
-      expect(entry.packageName).toBe(packageName);
-      expect(entry.factoryName).toBe(factoryName);
-      expect(entry.packageVersion.length).toBeGreaterThan(0);
-      expect(entry.schema).not.toBeNull();
-    }
-  }, 120_000);
+  test("disables Turbo caching for npm-latest provider schema builds", async () => {
+    const turbo = JSON.parse(await readFile(join(import.meta.dir, "../../../turbo.json"), "utf8"));
+    const genericBuild = turbo.tasks.build;
+    const providerBuild = turbo.tasks["@aio-proxy/provider-schemas#build"];
+
+    expect(providerBuild).toEqual({ ...genericBuild, cache: false });
+  });
 
   test("TypeBox exposes the non-exported synthetic root alias", () => {
     const module = Script(`
@@ -524,10 +517,6 @@ describe("provider schema generation", () => {
     } as unknown as PluginApi);
 
     expect(beforeBuild).toBeDefined();
-    expect(await beforeBuild?.({ isWatch: true, isFirstCompile: true })).toBeUndefined();
-    expect(generateCalls).toHaveLength(0);
-    expect(await readFile(physicalModulePath, "utf8")).toBe(physicalSource);
-
     const transformContext = {
       code: physicalSource,
       addDependency() {},
@@ -543,16 +532,25 @@ describe("provider schema generation", () => {
     } as Parameters<TransformRegistration["handler"]>[0];
     await registration?.handler(transformContext);
     expect(generateCalls.at(-1)?.options).toEqual({
-      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas"),
-      refreshLatest: false,
+      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas/v2"),
+      refreshLatest: true,
     });
 
-    expect(await beforeBuild?.({ isWatch: false, isFirstCompile: true })).toBeUndefined();
+    expect(await beforeBuild?.({ isWatch: true, isFirstCompile: true })).toBeUndefined();
     expect(generateCalls).toHaveLength(1);
     expect(await readFile(physicalModulePath, "utf8")).toBe(physicalSource);
     await registration?.handler(transformContext);
     expect(generateCalls.at(-1)?.options).toEqual({
-      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas"),
+      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas/v2"),
+      refreshLatest: false,
+    });
+
+    expect(await beforeBuild?.({ isWatch: false, isFirstCompile: true })).toBeUndefined();
+    expect(generateCalls).toHaveLength(2);
+    expect(await readFile(physicalModulePath, "utf8")).toBe(physicalSource);
+    await registration?.handler(transformContext);
+    expect(generateCalls.at(-1)?.options).toEqual({
+      cacheRoot: join(rootPath, "node_modules/.cache/provider-schemas/v2"),
       refreshLatest: true,
     });
   });
@@ -638,11 +636,12 @@ describe("provider schema generation", () => {
     expect(source).not.toContain(fixture.source.packageName);
   });
 
-  test("loads the source cache through a real Rslib transform", () => {
+  test("loads the production provider schema build graph through a real Rslib transform", async () => {
     const repositoryRoot = join(import.meta.dir, "../../..");
-    const buildRoot = mkdtempSync(join(tmpdir(), "provider-source-cache-rslib-"));
+    const buildRoot = mkdtempSync(join(tmpdir(), "provider-schema-build-rslib-"));
     mkdirSync(join(buildRoot, "src"));
     writeFileSync(join(buildRoot, "src/index.ts"), "export const fixture = true;\n");
+    const fixture = createFixtureProvider();
     writeFileSync(
       join(buildRoot, "rslib.config.ts"),
       `
@@ -654,8 +653,14 @@ describe("provider schema generation", () => {
             name: "fixture:provider-source-cache-import",
             setup(api) {
               api.transform({ test: /index\\.ts$/ }, async ({ code, importModule }) => {
-                await importModule(${JSON.stringify(join(import.meta.dir, "../scripts/provider-source-cache.ts"))});
-                return code;
+                const generator = await importModule(${JSON.stringify(join(import.meta.dir, "../scripts/provider-schemas-build.ts"))});
+                const generated = await generator.generateProviderSchemaEntries({
+                  cacheRoot: ${JSON.stringify(join(buildRoot, "cache"))},
+                  refreshLatest: false,
+                  sources: [{ packageName: ${JSON.stringify(fixture.source.packageName)}, factoryName: ${JSON.stringify(fixture.source.factoryName)} }],
+                  resolveSource: async () => ${JSON.stringify(fixture.packageRoot)},
+                });
+                return "export const fixture = " + JSON.stringify(generated.entries) + ";";
               });
             },
           }],
@@ -669,5 +674,6 @@ describe("provider schema generation", () => {
     });
 
     expect(build.exitCode, `${build.stdout.toString()}\n${build.stderr.toString()}`).toBe(0);
+    expect(await readFile(join(buildRoot, "dist/index.js"), "utf8")).toContain(fixture.source.packageName);
   });
 });

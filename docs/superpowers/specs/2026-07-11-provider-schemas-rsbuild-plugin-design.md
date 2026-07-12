@@ -15,7 +15,7 @@ The physical schema module exports an empty typed `PROVIDER_OPTIONS_SCHEMAS` rec
 
 The package exports only `./dist/index.d.ts` and `./dist/index.js`. There is no generation script, committed generated artifact, freshness comparison, or supported source-import consumer path.
 
-Source-mode consumers therefore require an initial provider-schemas build. The package exposes `dev` through Rslib watch, Turbo completes upstream builds before persistent dev/serve tasks, and direct CLI `start`/`build:binary` commands run the provider-schemas build prerequisite before loading source consumers.
+Source-mode consumers therefore require an initial provider-schemas build. The package exposes `dev` through Rslib watch, Turbo completes upstream builds before persistent `serve:dev`, and `build:binary` explicitly runs the build prerequisite. Runtime `start` remains the pure `bun src/main.ts serve` command and never loads Rslib, Babel, TypeBox, tar, or npm-latest generation as a startup side effect; callers that remove dependency dist must run the supported build setup explicitly first.
 
 ## Error Handling and Watch Behavior
 
@@ -28,7 +28,7 @@ Source-mode consumers therefore require an initial provider-schemas build. The p
 - Verify a non-default `api.context.rootPath` controls both the transform target and generator load path.
 - Verify the transform returns generated source and registers provider manifests and declarations.
 - Verify package exports point to `dist`, source remains an empty placeholder, and a real build emits the schemas.
-- Verify a clean provider-schemas `dist` is rebuilt by the supported CLI start prerequisite before package resolution.
+- Verify explicit provider dependency build setup recreates a clean provider-schemas `dist`, after which pure CLI source start and package resolution succeed without hiding a build inside `start`.
 - Preserve deterministic rendering, failure-path dependency, watch, server integration, runtime leakage, and preflight checks.
 
 ## Non-Goals
