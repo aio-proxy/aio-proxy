@@ -149,6 +149,90 @@ describe("POST /v1/messages", () => {
     });
   });
 
+  test("Given first model provider fails before its first event When message is posted Then next provider is used", async () => {
+    const first = {
+      id: "broken-model",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke: () => new ReadableStream({ start: (controller) => controller.error(new Error("preflight failed")) }),
+    } satisfies AiSdkProviderInstance;
+    const second = {
+      ...first,
+      id: "fallback-model",
+      invoke: () =>
+        textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-delta", id: "text-1", text: "fallback" },
+          { type: "text-end", id: "text-1" },
+        ]),
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify(messagesRequest),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"text":"fallback"');
+  });
+
+  test("Given tool-use and tool-result history When message is posted Then model receives complete tool parts", async () => {
+    let messagesSeen: readonly ModelMessage[] | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke(request) {
+        messagesSeen = request.messages;
+        return textStream([
+          { type: "text-start", id: "text-1" },
+          { type: "text-end", id: "text-1" },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    await app.request("/v1/messages", {
+      body: JSON.stringify({
+        ...messagesRequest,
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "toolu_weather", name: "weather", input: { city: "Paris" } }],
+          },
+          {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "toolu_weather", content: "Sunny" }],
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(messagesSeen).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "toolu_weather", toolName: "weather", input: { city: "Paris" } }],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "toolu_weather",
+            toolName: "weather",
+            output: { type: "text", value: "Sunny" },
+          },
+        ],
+      },
+    ]);
+  });
+
   test("Given stream emits data then errors When message streams Then request is failure", async () => {
     const provider = {
       id: "broken-after-data",

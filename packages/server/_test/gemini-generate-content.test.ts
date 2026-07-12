@@ -516,59 +516,35 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(invoked).toBe(false);
   });
 
-  test("Given 9MiB inlineData with large Content-Length When generateContent is posted Then provider receives it", async () => {
+  test("Given forged oversized Content-Length When generateContent is posted Then returns 413 before provider invocation", async () => {
     // Given
-    let messagesSeen: readonly ModelMessage[] | undefined;
-    const provider = aiSdkProvider((request) => {
-      messagesSeen = request.messages;
-      return textStream([
-        { type: "text-start", id: "text-1" },
-        { type: "text-delta", id: "text-1", text: "accepted" },
-        { type: "text-end", id: "text-1" },
-      ]);
+    let invoked = false;
+    const provider = aiSdkProvider(() => {
+      invoked = true;
+      return textStream([]);
     });
     const app = appWith(provider);
-    const data = "A".repeat(12_582_912);
-    const body = JSON.stringify({
-      contents: [
-        {
-          parts: [{ inlineData: { mimeType: "image/png", data } }],
-        },
-      ],
-    });
 
     // When
     const response = await app.request("/v1beta/models/gemini-2.5-flash:generateContent", {
-      body,
+      body: JSON.stringify(generateRequest),
       headers: {
         ...jsonHeaders,
-        "content-length": String(body.length),
+        "content-length": "8388609",
       },
       method: "POST",
     });
 
     // Then
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(413);
     expect(await response.json()).toEqual({
-      candidates: [
-        {
-          content: { role: "model", parts: [{ text: "accepted" }] },
-          finishReason: "OTHER",
-        },
-      ],
-    });
-    expect(messagesSeen).toEqual([
-      {
-        role: "user",
-        content: [
-          {
-            type: "file",
-            mediaType: "image/png",
-            data: { type: "data", data },
-          },
-        ],
+      error: {
+        code: 413,
+        message: "Request body too large",
+        status: "RESOURCE_EXHAUSTED",
       },
-    ]);
+    });
+    expect(invoked).toBe(false);
   });
 
   test("Given oversized inlineData When generateContent is posted Then returns 413 Gemini error envelope", async () => {
