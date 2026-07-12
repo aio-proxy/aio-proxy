@@ -145,6 +145,20 @@ describe("shared protocol routing pipeline", () => {
     );
   });
 
+  test.each([false, true])("passes the resolved model to %s model egress", async (stream) => {
+    const egress: unknown[] = [];
+    const provider = modelProvider({ id: "model", invoke: () => textStream("model") });
+    const adapter = defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+      onModelEgress: (value) => egress.push(value),
+    });
+    const harness = pipeline([provider], { adapter });
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
+    await response.body?.cancel();
+
+    expect(egress).toEqual([{ modelId: "model-model" }]);
+  });
+
   test.each([429, 503])("falls back after raw status %d", async (status) => {
     const primary = rawProvider({
       id: "primary",

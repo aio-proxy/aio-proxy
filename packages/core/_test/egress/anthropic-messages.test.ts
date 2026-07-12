@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import type { TextStreamPart, ToolSet } from "ai";
-import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "../../src/index";
+import {
+  writeAnthropicMessagesResponse as writeAnthropicMessagesResponseRaw,
+  writeAnthropicMessagesSSE as writeAnthropicMessagesSSERaw,
+} from "../../src/index";
+
+const defaultEgress = { modelId: "test-model" };
+const writeAnthropicMessagesResponse = (
+  stream: Parameters<typeof writeAnthropicMessagesResponseRaw>[0],
+  context = defaultEgress,
+) => writeAnthropicMessagesResponseRaw(stream, context);
+const writeAnthropicMessagesSSE = (
+  stream: Parameters<typeof writeAnthropicMessagesSSERaw>[0],
+  context = defaultEgress,
+) => writeAnthropicMessagesSSERaw(stream, context);
 
 const toolParts = [
   { type: "tool-input-start", id: "tool-1", toolName: "weather" },
@@ -14,7 +27,7 @@ const toolParts = [
   },
 ] satisfies readonly TextStreamPart<ToolSet>[];
 
-async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function collectSSE(stream: ReadableStream<Uint8Array>, normalizeId = true): Promise<string> {
   const chunks: string[] = [];
   const decoder = new TextDecoder();
 
@@ -23,11 +36,12 @@ async function collectSSE(stream: ReadableStream<Uint8Array>): Promise<string> {
   }
 
   chunks.push(decoder.decode());
-  return chunks.join("");
+  const value = chunks.join("");
+  return normalizeId ? value.replaceAll(/msg_[0-9a-f-]{36}/g, "msg-test") : value;
 }
 
-async function collectSSEFrames(stream: ReadableStream<Uint8Array>) {
-  return (await collectSSE(stream))
+async function collectSSEFrames(stream: ReadableStream<Uint8Array>, normalizeId = true) {
+  return (await collectSSE(stream, normalizeId))
     .trim()
     .split("\n\n")
     .map((frame) => {
@@ -62,9 +76,29 @@ function runtimePartStream(parts: readonly object[]) {
 }
 
 describe("writeAnthropicMessagesResponse", () => {
+  test("Given finish-step metadata When encoded Then upstream id and model are reused", async () => {
+    const response = await writeAnthropicMessagesResponse(
+      runtimePartStream([
+        { type: "text-delta", id: "text-1", text: "Hello" },
+        {
+          type: "finish-step",
+          response: {
+            id: "msg_upstream",
+            modelId: "claude-upstream",
+            timestamp: new Date("2026-07-12T00:00:00.000Z"),
+          },
+        },
+        { type: "finish", finishReason: "stop", totalUsage: { inputTokens: 1, outputTokens: 1 } },
+      ]) as never,
+      { modelId: "claude-fallback" },
+    );
+
+    expect(response.id).toBe("msg_upstream");
+    expect(response.model).toBe("claude-upstream");
+  });
+
   test("Given tool input stream When encoded Then emits Anthropic tool_use content", async () => {
-    await expect(writeAnthropicMessagesResponse(partStream(toolParts))).resolves.toEqual({
-      id: "msg_aio_proxy",
+    await expect(writeAnthropicMessagesResponse(partStream(toolParts))).resolves.toMatchObject({
       type: "message",
       role: "assistant",
       content: [
@@ -75,7 +109,7 @@ describe("writeAnthropicMessagesResponse", () => {
           input: { city: "Paris" },
         },
       ],
-      model: "aio-proxy",
+      model: "test-model",
       stop_reason: "tool_use",
       stop_sequence: null,
       usage: { input_tokens: 3, output_tokens: 4 },
@@ -107,8 +141,7 @@ describe("writeAnthropicMessagesResponse", () => {
       },
     ]);
 
-    await expect(writeAnthropicMessagesResponse(stream)).resolves.toEqual({
-      id: "msg_aio_proxy",
+    await expect(writeAnthropicMessagesResponse(stream)).resolves.toMatchObject({
       type: "message",
       role: "assistant",
       content: [
@@ -127,7 +160,7 @@ describe("writeAnthropicMessagesResponse", () => {
         },
         { type: "text", text: " Done." },
       ],
-      model: "aio-proxy",
+      model: "test-model",
       stop_reason: "tool_use",
       stop_sequence: null,
       usage: { input_tokens: 5, output_tokens: 8 },
@@ -136,6 +169,28 @@ describe("writeAnthropicMessagesResponse", () => {
 });
 
 describe("writeAnthropicMessagesSSE", () => {
+  test("Given independent streams When encoded Then each uses one unique response-local id and resolved model", async () => {
+    const encode = () =>
+      collectSSEFrames(
+        writeAnthropicMessagesSSE(
+          partStream([
+            { type: "text-delta", id: "text-1", text: "Hello" },
+            { type: "finish", finishReason: "stop", rawFinishReason: "stop", totalUsage: {} },
+          ]),
+          { modelId: "claude-routed" },
+        ),
+        false,
+      );
+
+    const [first, second] = await Promise.all([encode(), encode()]);
+    const firstMessage = (first[0]?.data as { message: { id: string; model: string } }).message;
+    const secondMessage = (second[0]?.data as { message: { id: string; model: string } }).message;
+
+    expect(firstMessage.id).toStartWith("msg_");
+    expect(firstMessage.id).not.toBe(secondMessage.id);
+    expect(firstMessage.model).toBe("claude-routed");
+  });
+
   test("Given an empty text block When encoded Then start and stop are preserved", async () => {
     const frames = await collectSSEFrames(
       writeAnthropicMessagesSSE(
@@ -155,7 +210,11 @@ describe("writeAnthropicMessagesSSE", () => {
     expect(frames.filter((frame) => frame.event.startsWith("content_block_"))).toEqual([
       {
         event: "content_block_start",
-        data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        data: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "", citations: null },
+        },
       },
       { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
     ]);
@@ -208,15 +267,25 @@ describe("writeAnthropicMessagesSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeAnthropicMessagesSSE(stream))).resolves.toBe(
-      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_aio_proxy","type":"message","role":"assistant","content":[],"model":"aio-proxy","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n' +
-        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
-        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}\n\n' +
-        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}\n\n' +
-        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n' +
-        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":3,"output_tokens":2}}\n\n' +
-        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
-    );
+    const frames = await collectSSEFrames(writeAnthropicMessagesSSE(stream));
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[0]?.data).toMatchObject({
+      type: "message_start",
+      message: { id: "msg-test", model: "test-model", container: null, stop_details: null },
+    });
+    expect(frames[5]?.data).toMatchObject({
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      usage: { input_tokens: 3, output_tokens: 2 },
+    });
   });
 
   test("Given unknown raw parts When encoded Then skips them without crashing", async () => {
@@ -232,25 +301,29 @@ describe("writeAnthropicMessagesSSE", () => {
       },
     ]);
 
-    await expect(collectSSE(writeAnthropicMessagesSSE(stream))).resolves.toBe(
-      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_aio_proxy","type":"message","role":"assistant","content":[],"model":"aio-proxy","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n' +
-        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
-        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"safe"}}\n\n' +
-        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n' +
-        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}\n\n' +
-        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
-    );
+    const frames = await collectSSEFrames(writeAnthropicMessagesSSE(stream));
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[2]?.data).toMatchObject({ delta: { type: "text_delta", text: "safe" } });
   });
 
   test("Given tool input stream When encoded Then emits Anthropic tool_use SSE", async () => {
-    await expect(collectSSE(writeAnthropicMessagesSSE(partStream(toolParts)))).resolves.toBe(
-      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_aio_proxy","type":"message","role":"assistant","content":[],"model":"aio-proxy","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n' +
-        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool-1","name":"weather","input":{}}}\n\n' +
-        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Paris\\"}"}}\n\n' +
-        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n' +
-        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":3,"output_tokens":4}}\n\n' +
-        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
-    );
+    const frames = await collectSSEFrames(writeAnthropicMessagesSSE(partStream(toolParts)));
+    expect(frames[1]?.data).toMatchObject({
+      type: "content_block_start",
+      content_block: { type: "tool_use", id: "tool-1", name: "weather", caller: { type: "direct" } },
+    });
+    expect(frames[4]?.data).toMatchObject({
+      type: "message_delta",
+      delta: { stop_reason: "tool_use" },
+      usage: { input_tokens: 3, output_tokens: 4 },
+    });
   });
 
   test("Given interleaved open blocks When finished Then indices stay associated and all blocks close", async () => {
@@ -276,18 +349,18 @@ describe("writeAnthropicMessagesSSE", () => {
     );
 
     expect(frames.filter((frame) => frame.event === "content_block_start").map((frame) => frame.data)).toEqual([
-      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } },
       {
         type: "content_block_start",
         index: 1,
-        content_block: { type: "tool_use", id: "tool-1", name: "weather", input: {} },
+        content_block: { type: "tool_use", id: "tool-1", name: "weather", input: {}, caller: { type: "direct" } },
       },
       {
         type: "content_block_start",
         index: 2,
-        content_block: { type: "tool_use", id: "tool-2", name: "clock", input: {} },
+        content_block: { type: "tool_use", id: "tool-2", name: "clock", input: {}, caller: { type: "direct" } },
       },
-      { type: "content_block_start", index: 3, content_block: { type: "text", text: "" } },
+      { type: "content_block_start", index: 3, content_block: { type: "text", text: "", citations: null } },
     ]);
     expect(
       frames

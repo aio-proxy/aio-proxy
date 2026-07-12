@@ -18,6 +18,10 @@ export type ModelInvocation = {
   readonly tools?: ToolSet;
 };
 
+export type ModelEgressContext = {
+  readonly modelId: string;
+};
+
 export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   protocol: ProviderProtocol;
   parse: (raw: Request, context: TContext) => Promise<TRequest>;
@@ -26,8 +30,8 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   modelInvocation: (request: TRequest, context: TContext) => ModelInvocation;
-  modelJson: (stream: ModelEventStream) => Promise<unknown>;
-  modelSse: (stream: ModelEventStream) => ReadableStream<Uint8Array>;
+  modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
+  modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ReadableStream<Uint8Array>;
   errors: ProtocolErrorMapper;
 }>;
 

@@ -515,14 +515,14 @@ describe("POST /v1/chat/completions", () => {
     expect(response.status).toBe(200);
     expect(body.id).toStartWith("chatcmpl-");
     expect(body.id).not.toContain("aio-proxy");
-    expect(body).toEqual({
-      ...body,
+    expect(body).toMatchObject({
       object: "chat.completion",
       choices: [
         {
           finish_reason: "stop",
           index: 0,
-          message: { role: "assistant", content: "Hello" },
+          logprobs: null,
+          message: { role: "assistant", content: "Hello", refusal: null },
         },
       ],
       usage: {

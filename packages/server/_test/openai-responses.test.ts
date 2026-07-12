@@ -456,15 +456,17 @@ describe("OpenAI Responses routes", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(body).toEqual({
-      id: "resp-aio-proxy",
+    expect(body.id).toStartWith("resp_");
+    expect(body).toMatchObject({
       object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "Pong",
       output: [
         {
-          id: "msg-aio-proxy",
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "Pong" }],
+          status: "completed",
+          content: [{ type: "output_text", text: "Pong", annotations: [] }],
         },
       ],
       status: "completed",

@@ -1,4 +1,5 @@
 import {
+  type ModelEgressContext,
   type ModelInvocation,
   type ProtocolAdapter,
   RouterModelNotFoundError,
@@ -147,12 +148,13 @@ async function attemptCandidates<TRequest, TContext>({
             ...(invocation.tools === undefined ? {} : { tools: invocation.tools }),
           }),
         });
+        const egressContext = { modelId: candidate.modelId } satisfies ModelEgressContext;
 
         if (adapter.wantsStream(request, context)) {
           const stream = await preflightStream(captured.value);
           let response: Response;
           try {
-            response = new Response(adapter.modelSse(stream), SSE_RESPONSE_INIT);
+            response = new Response(adapter.modelSse(stream, egressContext), SSE_RESPONSE_INIT);
           } catch (error) {
             try {
               await stream.cancel(error);
@@ -166,7 +168,7 @@ async function attemptCandidates<TRequest, TContext>({
           return response;
         }
 
-        const value = await adapter.modelJson(captured.value);
+        const value = await adapter.modelJson(captured.value, egressContext);
         const response = Response.json(value);
         session.finishFrom(
           attemptBase(provider, candidate.modelId, startedAt),

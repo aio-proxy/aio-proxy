@@ -333,7 +333,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
 
     // Then
     expect(response.status).toBe(413);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       error: {
         code: 413,
         message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
@@ -376,7 +376,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(messagesSeen).toEqual([{ role: "user", content: [{ type: "text", text: "Hello proxy" }] }]);
     expect(modelSeen).toBe("gemini-2.5-flash");
     expect(settingsSeen).toEqual({});
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       candidates: [
         {
           content: { role: "model", parts: [{ text: "Hello" }] },
@@ -388,7 +388,9 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         candidatesTokenCount: 2,
         totalTokenCount: 5,
       },
+      modelVersion: "gemini-2.5-flash",
     });
+    expect(body.responseId).toStartWith("resp_");
   });
 
   test("Given an alias variant and ai-sdk provider When generateContent is posted Then reasoning selects and configures it", async () => {
@@ -659,11 +661,28 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     // Then
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(text).toBe(
-      'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hel"}]}}]}\n\n' +
-        'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}\n\n' +
-        'data: {"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}\n\n',
-    );
+    const frames = text
+      .trim()
+      .split("\n\n")
+      .map(
+        (frame) =>
+          JSON.parse(frame.slice("data: ".length)) as {
+            readonly candidates: readonly {
+              readonly content: { readonly parts: readonly unknown[] };
+              readonly finishReason?: string;
+            }[];
+            readonly modelVersion: string;
+            readonly responseId: string;
+            readonly usageMetadata?: Record<string, number>;
+          },
+      );
+    expect(frames.map((frame) => frame.candidates[0].content.parts)).toEqual([[{ text: "Hel" }], [{ text: "lo" }], []]);
+    expect(new Set(frames.map((frame) => frame.responseId)).size).toBe(1);
+    expect(frames.every((frame) => frame.modelVersion === "gemini-2.5-flash")).toBe(true);
+    expect(frames[2]).toMatchObject({
+      candidates: [{ finishReason: "STOP" }],
+      usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2, totalTokenCount: 5 },
+    });
   });
 });
 

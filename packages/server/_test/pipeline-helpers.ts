@@ -52,7 +52,10 @@ export function createProtocolContext(): TestProtocolContext {
   return { modelInvocationCalls: 0, parseCalls: 0, rawRequestCalls: 0 };
 }
 
-export function defineProtocolAdapter(protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible) {
+export function defineProtocolAdapter(
+  protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible,
+  options: { readonly onModelEgress?: (value: unknown) => void } = {},
+) {
   return defineCoreProtocolAdapter<TestProtocolRequest, TestProtocolContext>({
     protocol,
     async parse(raw, context) {
@@ -88,10 +91,12 @@ export function defineProtocolAdapter(protocol: ProviderProtocol = ProviderProto
       context.modelInvocationCalls += 1;
       return { messages: [{ role: "user", content: request.prompt }] };
     },
-    async modelJson(stream) {
+    async modelJson(stream, ...args: unknown[]) {
+      options.onModelEgress?.(args[0]);
       return { output: await streamText(stream) };
     },
-    modelSse(stream) {
+    modelSse(stream, ...args: unknown[]) {
+      options.onModelEgress?.(args[0]);
       const encoder = new TextEncoder();
       return stream.pipeThrough(
         new TransformStream<ModelPart, Uint8Array>({
