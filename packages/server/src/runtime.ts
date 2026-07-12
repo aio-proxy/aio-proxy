@@ -24,10 +24,9 @@ export type ModelTransport = {
   readonly invoke: AiSdkProviderInstance["invoke"];
 };
 
-export type RuntimeCapabilities = {
-  readonly raw?: RawTransport;
-  readonly model?: ModelTransport;
-};
+export type RuntimeCapabilities =
+  | { readonly raw: RawTransport; readonly model?: ModelTransport }
+  | { readonly raw?: RawTransport; readonly model: ModelTransport };
 
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;
 export type RuntimeProviderInstance = LegacyRuntimeProviderInstance & RuntimeCapabilities;

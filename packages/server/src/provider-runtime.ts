@@ -30,7 +30,7 @@ export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
   options: { readonly apiBridge?: AiSdkProviderInstance } = {},
 ): RuntimeProviderInstance {
-  if ("raw" in provider || "model" in provider) {
+  if (isMaterializedRuntimeProvider(provider)) {
     return provider;
   }
 
@@ -58,6 +58,13 @@ export function materializeRuntimeProvider(
       invoke: provider.invoke,
     },
   };
+}
+
+function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
+  return (
+    ("raw" in provider && Object.hasOwn(provider, "raw") && provider.raw !== undefined) ||
+    ("model" in provider && Object.hasOwn(provider, "model") && provider.model !== undefined)
+  );
 }
 
 export function materializeProviders(config: Config, options: MaterializeProvidersOptions = {}): ProviderRuntime {

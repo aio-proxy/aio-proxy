@@ -87,10 +87,10 @@ const defaultLogger = (entry: ConfigReloadLog): void => {
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerState(options: ServerStateOptions): ServerState {
-  let snapshot = buildSnapshotFromConfig(options.config);
-  if (options.providerInstances !== undefined) {
-    snapshot = buildSnapshotWithProviders(snapshot.config, options.providerInstances);
-  }
+  let snapshot =
+    options.providerInstances === undefined
+      ? buildSnapshotFromConfig(options.config)
+      : buildSnapshotWithProviders(options.config, options.providerInstances);
 
   const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
