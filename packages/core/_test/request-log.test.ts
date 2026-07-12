@@ -321,11 +321,11 @@ describe("request log store", () => {
     }
   });
 
-  test("keeps model ids that match reserved series keys separate from synthetic series", () => {
+  test("keeps reserved and path-like model ids separate with chart-safe keys", () => {
     const handle = openDb({ home: tempHome() });
     try {
       const store = createRequestLogStore(handle.db);
-      for (const [index, modelId] of ["__failed__", "__cancelled__", "__other__"].entries()) {
+      for (const [index, modelId] of ["__failed__", "__cancelled__", "__other__", "gpt-4.1"].entries()) {
         store.insertFinal({
           requestId: `reserved-model-${index}`,
           inboundProtocol: "openai-compatible",
@@ -348,10 +348,11 @@ describe("request log store", () => {
         { key: "dimension:__cancelled__", kind: "dimension" },
         { key: "dimension:__failed__", kind: "dimension" },
         { key: "dimension:__other__", kind: "dimension" },
+        { key: "dimension:gpt-4%2E1", kind: "dimension" },
         { key: "__failed__", kind: "failed" },
         { key: "__cancelled__", kind: "cancelled" },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(5);
+      expect(overview.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(6);
     } finally {
       handle.close();
     }

@@ -145,20 +145,15 @@ export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {
         });
         if (request.stream !== true) {
           const value = await writeOpenAICompletionsResponse(captured.value);
-          const completion = await terminalCompletion(captured.completion, context.req.raw.signal);
-          requestSession.finish({
-            outcome: completion.outcome,
-            finalProviderId: provider.id,
-            finalModelId: route.modelId,
-            attempt: {
+          requestSession.finishFrom(
+            {
               providerId: provider.id,
               modelId: route.modelId,
               providerKind: provider.kind,
-              outcome: completion.outcome,
               durationMs: durationMs(attemptStartedAt),
             },
-            ...(completion.outcome === "success" && completion.usage !== undefined ? { usage: completion.usage } : {}),
-          });
+            terminalCompletion(captured.completion, context.req.raw.signal),
+          );
           return Response.json(value);
         }
 

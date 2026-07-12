@@ -271,9 +271,13 @@ const dimensionKeyPrefix = "dimension:";
 const reservedSeriesKeys = new Set(["__failed__", "__cancelled__", "__other__"]);
 
 function chartDimensionKey(dimension: string): string {
-  return reservedSeriesKeys.has(dimension) || dimension.startsWith(dimensionKeyPrefix)
-    ? `${dimensionKeyPrefix}${encodeURIComponent(dimension)}`
-    : dimension;
+  const needsEncoding =
+    reservedSeriesKeys.has(dimension) ||
+    dimension.startsWith(dimensionKeyPrefix) ||
+    dimension.includes(".") ||
+    dimension.includes("[") ||
+    dimension.includes("]");
+  return needsEncoding ? `${dimensionKeyPrefix}${encodeURIComponent(dimension).replaceAll(".", "%2E")}` : dimension;
 }
 
 function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
