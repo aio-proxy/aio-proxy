@@ -326,7 +326,12 @@
       "cache_read_tokens": "Cache read tokens",
       "cache_write_tokens": "Cache write tokens",
       "reasoning_tokens": "Reasoning tokens",
-      "page_size": "Rows per page"
+      "page_size": "Rows per page",
+      "not_available": "—",
+      "duration_ms": "{value} ms",
+      "duration_s": "{value} s",
+      "usage_provider": "Usage provider",
+      "usage_model": "Usage model"
     }
   }
 }

@@ -1,0 +1,113 @@
+import { m } from "@aio-proxy/i18n";
+import type { DashboardRequestLog, RequestOutcome } from "@aio-proxy/types";
+import { Clipboard } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
+
+type Props = { readonly log: DashboardRequestLog | undefined; readonly onClose: () => void };
+
+export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
+  const missing = m["dashboard.logs.not_available"]();
+  const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
+  const rows: readonly (readonly [string, unknown])[] = log
+    ? [
+        [m["dashboard.logs.outcome"](), outcomeLabel(log.outcome)],
+        [m["dashboard.logs.protocol"](), log.inboundProtocol],
+        [m["dashboard.logs.requested_model"](), log.requestedModelId],
+        [m["dashboard.logs.final_provider"](), log.finalProviderId],
+        [m["dashboard.logs.final_model"](), log.finalModelId],
+        [m["dashboard.logs.status"](), log.finalStatusCode],
+        [m["dashboard.logs.error_code"](), log.errorCode],
+        [m["dashboard.logs.started_at"](), new Date(log.startedAt).toLocaleString()],
+        [m["dashboard.logs.completed_at"](), new Date(log.completedAt).toLocaleString()],
+        [m["dashboard.logs.duration"](), formatDuration(log.durationMs)],
+      ]
+    : [];
+  const usageRows: readonly (readonly [string, unknown])[] = log
+    ? [
+        [m["dashboard.logs.usage_provider"](), log.usage?.providerId],
+        [m["dashboard.logs.usage_model"](), log.usage?.modelId],
+        [m["dashboard.logs.input_tokens"](), log.usage?.inputTokens],
+        [m["dashboard.logs.output_tokens"](), log.usage?.outputTokens],
+        [m["dashboard.logs.tokens"](), displayTotalTokens(log.usage)],
+        [m["dashboard.logs.cache_read_tokens"](), log.usage?.cacheReadTokens],
+        [m["dashboard.logs.cache_write_tokens"](), log.usage?.cacheWriteTokens],
+        [m["dashboard.logs.reasoning_tokens"](), log.usage?.reasoningTokens],
+        [m["dashboard.logs.cost"](), formatLogCost(log.usage?.estimatedCostUsd)],
+      ]
+    : [];
+  return (
+    <Drawer
+      open={log !== undefined}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      swipeDirection="right"
+    >
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>{m["dashboard.logs.details"]()}</DrawerTitle>
+          <DrawerDescription>{log?.requestId}</DrawerDescription>
+        </DrawerHeader>
+        {log && (
+          <ScrollArea className="min-h-0 flex-1 p-4">
+            <div className="space-y-5">
+              <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(log.requestId)}>
+                <Clipboard />
+                {m["dashboard.logs.copy_id"]()}
+              </Button>
+              {[
+                [m["dashboard.logs.summary"](), rows],
+                [m["dashboard.logs.usage"](), usageRows],
+              ].map(([title, items]) => (
+                <section key={title as string}>
+                  <h3 className="mb-2 font-medium">{title as string}</h3>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                    {(items as typeof rows).map(([label, value]) => (
+                      <div className="contents" key={label}>
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className="min-w-0 break-words text-right">
+                          {value === undefined ? missing : String(value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+              <section>
+                <h3 className="mb-2 font-medium">{m["dashboard.logs.attempts"]()}</h3>
+                <div className="space-y-2">
+                  {log.attempts.map((attempt) => (
+                    <div className="rounded-xl border p-3 text-sm" key={attempt.index}>
+                      <div className="font-medium">
+                        #{attempt.index + 1} · {attempt.providerId} / {attempt.modelId}
+                      </div>
+                      <div className="mt-1 text-muted-foreground">
+                        {attempt.providerKind} · {attempt.protocol ?? missing} · {outcomeLabel(attempt.outcome)} ·{" "}
+                        {attempt.statusCode ?? missing} · {formatDuration(attempt.durationMs)}
+                        {attempt.errorCode ? ` · ${attempt.errorCode}` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </ScrollArea>
+        )}
+        <DrawerFooter>
+          <DrawerClose render={<Button variant="outline" />}>{m["dashboard.logs.close"]()}</DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  );
+};

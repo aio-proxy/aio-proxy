@@ -106,11 +106,12 @@ export function createRequestLogStore(db: BunSQLiteDatabase): RequestLogStore {
         query.finalModelId === undefined ? undefined : eq(requestLog.finalModelId, query.finalModelId),
         query.finalStatusCode === undefined ? undefined : eq(requestLog.finalStatusCode, query.finalStatusCode),
       );
-      const total = db
-        .select({ value: sql<number>`count(*)`.mapWith(Number) })
-        .from(requestLog)
-        .where(filter)
-        .get()!.value;
+      const total =
+        db
+          .select({ value: sql<number>`count(*)`.mapWith(Number) })
+          .from(requestLog)
+          .where(filter)
+          .get()?.value ?? 0;
       const rows = db
         .select({ request: requestLog, usage })
         .from(requestLog)

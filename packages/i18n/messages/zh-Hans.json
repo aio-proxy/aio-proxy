@@ -304,7 +304,12 @@
       "cache_read_tokens": "缓存读取 Token",
       "cache_write_tokens": "缓存写入 Token",
       "reasoning_tokens": "推理 Token",
-      "page_size": "每页行数"
+      "page_size": "每页行数",
+      "not_available": "—",
+      "duration_ms": "{value} 毫秒",
+      "duration_s": "{value} 秒",
+      "usage_provider": "用量提供商",
+      "usage_model": "用量模型"
     }
   }
 }
