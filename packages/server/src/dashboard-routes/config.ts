@@ -7,8 +7,10 @@ import {
   npmAdd,
 } from "@aio-proxy/core";
 import {
+  DashboardRequestLogsPageSizeSchema,
   type ProviderMutationBody,
   ProviderMutationBodySchema,
+  RequestOutcomeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
@@ -72,6 +74,31 @@ const UsageOverviewQuerySchema = z.object({
 
 const usageOverviewValidator = validator("query", (raw, context) => {
   const parsed = UsageOverviewQuerySchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
+});
+
+const RequestLogsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().pipe(DashboardRequestLogsPageSizeSchema).default(50),
+  startedAfter: z.iso
+    .datetime()
+    .transform((value) => new Date(value))
+    .optional(),
+  completedBefore: z.iso
+    .datetime()
+    .transform((value) => new Date(value))
+    .optional(),
+  requestId: z.string().trim().min(1).optional(),
+  outcome: RequestOutcomeSchema.optional(),
+  inboundProtocol: z.string().trim().min(1).optional(),
+  requestedModelId: z.string().trim().min(1).optional(),
+  finalProviderId: z.string().trim().min(1).optional(),
+  finalModelId: z.string().trim().min(1).optional(),
+  finalStatusCode: z.coerce.number().int().min(100).max(599).optional(),
+});
+
+const requestLogsValidator = validator("query", (raw, context) => {
+  const parsed = RequestLogsQuerySchema.safeParse(raw);
   return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
 });
 
@@ -191,6 +218,7 @@ export const createDashboardRoutes = (state: ServerState) =>
       const query = context.req.valid("query");
       return context.json(state.requestLog.overview(query));
     })
+    .get("/logs", requestLogsValidator, (context) => context.json(state.requestLog.list(context.req.valid("query"))))
     .post("/providers/install", async (context) => {
       try {
         const request = ProviderInstallRequestSchema.parse(await context.req.json());
