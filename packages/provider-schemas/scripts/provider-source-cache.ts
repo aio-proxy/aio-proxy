@@ -1,13 +1,13 @@
 import type { Dirent } from "node:fs";
-import type * as Tar from "tar";
 import { providerSchemasRequire } from "./provider-schemas-require";
 
 const { createHash, timingSafeEqual } = providerSchemasRequire("node:crypto") as typeof import("node:crypto");
 const { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } = providerSchemasRequire(
   "node:fs/promises",
 ) as typeof import("node:fs/promises");
-const { basename, isAbsolute, join, resolve } = providerSchemasRequire("node:path") as typeof import("node:path");
-const tar = providerSchemasRequire("tar") as typeof Tar;
+const { basename, dirname, isAbsolute, join, resolve } = providerSchemasRequire(
+  "node:path",
+) as typeof import("node:path");
 
 export type ProviderSchemaSource = {
   readonly packageName: string;
@@ -54,7 +54,7 @@ type CompletionManifest = {
 const MAX_TARBALL_BYTES = 32 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 + 64 * 1024;
 const MAX_EXTRACTED_FILES = 65;
-const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
+const declarationPath = /^package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -295,6 +295,34 @@ const downloadTarball = async (
 const unsafeArchivePath = (path: string) =>
   isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path) || path.split(/[\\/]/).includes("..");
 
+type SelectedArchiveFile = {
+  readonly path: string;
+  readonly file: File;
+};
+
+const selectArchiveFiles = async (packageName: string, bytes: Uint8Array): Promise<SelectedArchiveFile[]> => {
+  const files = await new Bun.Archive(bytes).files();
+  const selected: SelectedArchiveFile[] = [];
+  let selectedBytes = 0;
+
+  for (const [path, file] of files) {
+    if (unsafeArchivePath(path)) throw new Error(`Archive unsafe path is not allowed for ${packageName}`);
+    if (!declarationPath.test(path)) continue;
+    selected.push({ path, file });
+    if (selected.length > MAX_EXTRACTED_FILES) {
+      throw new Error(`Extracted file count limit exceeded for ${packageName}`);
+    }
+    if (!Number.isSafeInteger(file.size) || file.size < 0) {
+      throw new Error(`Archive entry size is not allowed for ${packageName}`);
+    }
+    selectedBytes += file.size;
+    if (selectedBytes > MAX_EXTRACTED_BYTES) {
+      throw new Error(`Extracted declaration size limit exceeded for ${packageName}`);
+    }
+  }
+  return selected;
+};
+
 const observationFileName = (revision: string) => `${createHash("sha256").update(revision).digest("hex")}.json`;
 
 const validateObservation = (value: unknown, fileName: string): RegistryObservation => {
@@ -386,50 +414,14 @@ const installVersion = async (
   const archivePath = join(temporaryRoot, "package.tgz");
   try {
     await writeFile(archivePath, await downloadTarball(packageName, metadata, fetchImpl));
-    await mkdir(join(temporaryRoot, "package"));
-    let rejectedEntry: string | undefined;
-    let extractedBytes = 0;
-    let extractedFiles = 0;
-    await tar.x({
-      cwd: join(temporaryRoot, "package"),
-      file: archivePath,
-      maxReadSize: 64 * 1024,
-      preservePaths: false,
-      strict: true,
-      strip: 1,
-      filter(this: Tar.Unpack, path, entry) {
-        if (unsafeArchivePath(path)) {
-          rejectedEntry = "unsafe path";
-          return false;
-        }
-        if ("type" in entry && (entry.type === "Link" || entry.type === "SymbolicLink")) {
-          rejectedEntry = "link";
-          return false;
-        }
-        if ("type" in entry && (entry.type === "Directory" || entry.type === "GNUDumpDir")) return false;
-        if (!declarationPath.test(path)) return false;
-        extractedFiles += 1;
-        if (extractedFiles > MAX_EXTRACTED_FILES) {
-          const error = new Error(`Extracted file count limit exceeded for ${packageName}`);
-          this.abort(error);
-          return false;
-        }
-        if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
-          rejectedEntry = "entry size";
-          return false;
-        }
-        extractedBytes += entry.size;
-        if (extractedBytes > MAX_EXTRACTED_BYTES) {
-          const error = new Error(`Extracted declaration size limit exceeded for ${packageName}`);
-          this.abort(error);
-          return false;
-        }
-        return true;
-      },
-    });
-    if (rejectedEntry) throw new Error(`Archive ${rejectedEntry} is not allowed for ${packageName}`);
-    await rm(archivePath, { force: true });
     const extractedPackageRoot = join(temporaryRoot, "package");
+    for (const { path, file } of await selectArchiveFiles(packageName, await readFile(archivePath))) {
+      const relativePath = path.slice("package/".length);
+      const destination = join(extractedPackageRoot, relativePath);
+      await mkdir(dirname(destination), { recursive: true });
+      await writeFile(destination, new Uint8Array(await file.arrayBuffer()));
+    }
+    await rm(archivePath, { force: true });
     await validatePackageManifest(extractedPackageRoot, packageName, version);
     const completion = await createCompletionManifest(
       extractedPackageRoot,

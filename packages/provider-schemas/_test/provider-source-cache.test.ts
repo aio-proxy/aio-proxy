@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import * as tar from "tar";
 import { resolveProviderSource } from "../scripts/provider-source-cache";
 
 const PACKAGE_NAME = "@fixture/provider";
@@ -64,159 +63,114 @@ const integrity = (bytes: Uint8Array) => `sha512-${createHash("sha512").update(b
 const packageCachePath = (cacheRoot: string, packageName = PACKAGE_NAME) =>
   join(cacheRoot, `package-${createHash("sha256").update(packageName).digest("hex")}`);
 
-const asHardLinkArchive = (archive: Uint8Array): Uint8Array => {
-  const bytes = Buffer.from(archive);
-  for (let offset = 0; offset < bytes.length; ) {
-    const header = bytes.subarray(offset, offset + 512);
-    const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
-    const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
-    const dataBytes = Math.ceil(size / 512) * 512;
-    if (path === "package/dist/hard.d.ts") {
-      const replacement = Buffer.from(header);
-      replacement[156] = "1".charCodeAt(0);
-      replacement.fill(0, 157, 257);
-      replacement.write("package/dist/index.d.ts", 157, "utf8");
-      replacement.fill(0, 124, 136);
-      replacement.write("00000000000\0", 124, "ascii");
-      replacement.fill(0x20, 148, 156);
-      const checksum = [...replacement]
-        .reduce((sum, byte) => sum + byte, 0)
-        .toString(8)
-        .padStart(6, "0");
-      replacement.write(`${checksum}\0 `, 148, "ascii");
-      return Buffer.concat([bytes.subarray(0, offset), replacement, bytes.subarray(offset + 512 + dataBytes)]);
-    }
-    offset += 512 + dataBytes;
-  }
-  throw new Error("hard-link fixture entry missing");
+const archiveBytes = async (
+  files: Readonly<Record<string, string | Uint8Array>>,
+  mutate?: (archive: Uint8Array) => Uint8Array,
+) => {
+  const raw = new Uint8Array(await new Bun.Archive(files).bytes());
+  return Bun.gzipSync(mutate ? mutate(raw) : raw);
 };
 
-const withCorruptTrailingEntry = (
+const mutateTarHeader = (
   archive: Uint8Array,
-  trailingPath = "package/dist/z-after-limit.d.ts",
+  selectedPath: string,
+  mutate: (header: Buffer) => void,
+  removeData = false,
 ): Uint8Array => {
   const bytes = Buffer.from(archive);
   for (let offset = 0; offset < bytes.length; ) {
     const header = bytes.subarray(offset, offset + 512);
     const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
     const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
-    if (path === trailingPath) {
-      bytes[offset] ^= 1;
-      return bytes;
-    }
-    offset += 512 + Math.ceil(size / 512) * 512;
-  }
-  throw new Error("trailing fixture entry missing");
-};
-
-const withDirectoryPathWithoutTrailingSlash = (archive: Uint8Array): Uint8Array => {
-  const bytes = Buffer.from(archive);
-  for (let offset = 0; offset < bytes.length; ) {
-    const header = bytes.subarray(offset, offset + 512);
-    const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
-    const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
-    if (path === "package/dist/empty.d.ts/") {
+    const dataBytes = Math.ceil(size / 512) * 512;
+    if (path === selectedPath) {
       const replacement = Buffer.from(header);
-      replacement.fill(0, 0, 100);
-      replacement.write("package/dist/empty.d.ts", 0, "utf8");
+      mutate(replacement);
       replacement.fill(0x20, 148, 156);
       const checksum = [...replacement]
         .reduce((sum, byte) => sum + byte, 0)
         .toString(8)
         .padStart(6, "0");
       replacement.write(`${checksum}\0 `, 148, "ascii");
-      return Buffer.concat([bytes.subarray(0, offset), replacement, bytes.subarray(offset + 512)]);
+      return Buffer.concat([
+        bytes.subarray(0, offset),
+        replacement,
+        bytes.subarray(offset + 512 + (removeData ? dataBytes : 0)),
+      ]);
     }
-    offset += 512 + Math.ceil(size / 512) * 512;
+    offset += 512 + dataBytes;
   }
-  throw new Error("declaration-shaped directory fixture entry missing");
+  throw new Error(`fixture entry missing: ${selectedPath}`);
+};
+
+const asLinkArchive = (archive: Uint8Array, path: string, type: "1" | "2"): Uint8Array => {
+  return mutateTarHeader(
+    archive,
+    path,
+    (header) => {
+      header[156] = type.charCodeAt(0);
+      header.fill(0, 157, 257);
+      header.write("package/dist/index.d.ts", 157, "utf8");
+      header.fill(0, 124, 136);
+      header.write("00000000000\0", 124, "ascii");
+    },
+    true,
+  );
+};
+
+const withDirectoryPathWithoutTrailingSlash = (archive: Uint8Array): Uint8Array => {
+  return mutateTarHeader(archive, "package/dist/empty.d.ts/", (header) => {
+    header.fill(0, 0, 100);
+    header.write("package/dist/empty.d.ts", 0, "utf8");
+    header[156] = "5".charCodeAt(0);
+  });
 };
 
 async function createTarball(
-  root: string,
+  _root: string,
   version: string,
   scenario?: FailureScenario,
   packageName = PACKAGE_NAME,
 ): Promise<Uint8Array> {
-  const archiveRoot = join(root, `archive-${version}-${crypto.randomUUID()}`);
-  const packageRoot = join(archiveRoot, "package");
-  await mkdir(join(packageRoot, "dist"), { recursive: true });
-  writeFileSync(
-    join(packageRoot, "package.json"),
-    JSON.stringify({
+  const rootPrefix =
+    scenario === "archive traversal path"
+      ? "../package"
+      : scenario === "archive absolute path"
+        ? "/package"
+        : "package";
+  const files: Record<string, string | Uint8Array> = {
+    [`${rootPrefix}/package.json`]: JSON.stringify({
       name: scenario === "package name mismatch" ? "@fixture/wrong" : packageName,
       version: scenario === "package version mismatch" ? "0.0.0" : version,
     }),
-  );
-  writeFileSync(join(packageRoot, "dist/index.d.ts"), "export declare function createFixture(): void;\n");
+    [`${rootPrefix}/dist/index.d.ts`]: "export declare function createFixture(): void;\n",
+    [`${rootPrefix}/dist/index.js`]: "export function createFixture() {}\n",
+  };
   if (scenario === "extracted declarations larger than limit") {
-    writeFileSync(join(packageRoot, "dist/index.d.ts"), `export type Huge = "${"x".repeat(5 * 1024 * 1024)}";\n`);
-    symlinkSync("index.d.ts", join(packageRoot, "dist/z-after-limit.d.ts"));
+    files[`${rootPrefix}/dist/index.d.ts`] = `export type Huge = "${"x".repeat(5 * 1024 * 1024)}";\n`;
   }
   if (scenario === "more than 65 extracted files") {
     for (let index = 0; index < 64; index += 1) {
-      writeFileSync(join(packageRoot, `dist/entry-${index.toString().padStart(2, "0")}.d.ts`), "");
+      files[`${rootPrefix}/dist/entry-${index.toString().padStart(2, "0")}.d.ts`] = "";
     }
-    writeFileSync(join(packageRoot, "dist/zz-corrupt-trailing.d.ts"), "");
+    files[`${rootPrefix}/dist/zz-after-limit.d.ts`] = "";
   }
-  writeFileSync(join(packageRoot, "dist/index.js"), "export function createFixture() {}\n");
   if (scenario === "archive symbolic link") {
-    symlinkSync("index.d.ts", join(packageRoot, "dist/link.d.ts"));
+    files["package/dist/link.d.ts"] = "link placeholder";
   }
   if (scenario === "archive hard link") {
-    writeFileSync(join(packageRoot, "dist/hard.d.ts"), "export declare function createFixture(): void;\n");
+    files["package/dist/hard.d.ts"] = "link placeholder";
   }
   if (scenario === "declaration-shaped directory") {
-    await mkdir(join(packageRoot, "dist/empty.d.ts"));
+    files["package/dist/empty.d.ts/"] = "";
   }
 
-  const archivePath = join(root, `${version}-${crypto.randomUUID()}.tgz`);
-  await tar.create(
-    {
-      cwd: archiveRoot,
-      file: archivePath,
-      gzip:
-        scenario !== "archive hard link" &&
-        scenario !== "extracted declarations larger than limit" &&
-        scenario !== "more than 65 extracted files" &&
-        scenario !== "declaration-shaped directory",
-      noDirRecurse:
-        scenario === "extracted declarations larger than limit" || scenario === "more than 65 extracted files",
-      ...(scenario === "archive traversal path"
-        ? { prefix: "../", preservePaths: true }
-        : scenario === "archive absolute path"
-          ? { prefix: "/", preservePaths: true }
-          : {}),
-    },
-    scenario === "extracted declarations larger than limit"
-      ? [
-          "package",
-          "package/package.json",
-          "package/dist",
-          "package/dist/index.d.ts",
-          "package/dist/z-after-limit.d.ts",
-          "package/dist/index.js",
-        ]
-      : scenario === "more than 65 extracted files"
-        ? [
-            "package",
-            "package/package.json",
-            "package/dist",
-            "package/dist/index.d.ts",
-            ...Array.from({ length: 64 }, (_, index) => `package/dist/entry-${index.toString().padStart(2, "0")}.d.ts`),
-            "package/dist/zz-corrupt-trailing.d.ts",
-            "package/dist/index.js",
-          ]
-        : ["package"],
-  );
-  const bytes = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
-  if (scenario === "archive hard link") return asHardLinkArchive(bytes);
-  if (scenario === "extracted declarations larger than limit") return withCorruptTrailingEntry(bytes);
-  if (scenario === "more than 65 extracted files") {
-    return withCorruptTrailingEntry(bytes, "package/dist/zz-corrupt-trailing.d.ts");
-  }
-  if (scenario === "declaration-shaped directory") return withDirectoryPathWithoutTrailingSlash(bytes);
-  return bytes;
+  return archiveBytes(files, (archive) => {
+    if (scenario === "archive symbolic link") return asLinkArchive(archive, "package/dist/link.d.ts", "2");
+    if (scenario === "archive hard link") return asLinkArchive(archive, "package/dist/hard.d.ts", "1");
+    if (scenario === "declaration-shaped directory") return withDirectoryPathWithoutTrailingSlash(archive);
+    return archive;
+  });
 }
 
 async function createRegistryFixture(options: RegistryFixtureOptions): Promise<RegistryFixture> {
@@ -680,7 +634,7 @@ describe("resolveProviderSource", () => {
     expect(fixture.streamState.chunks).toBeLessThan(40);
   });
 
-  test("aborts extraction at the size header before processing trailing entries", async () => {
+  test("rejects extracted declarations larger than the byte limit", async () => {
     const fixture = await createRegistryFixture({
       latest: "2.0.0",
       scenario: "extracted declarations larger than limit",
@@ -695,7 +649,7 @@ describe("resolveProviderSource", () => {
     ).rejects.toThrow(`Extracted declaration size limit exceeded for ${PACKAGE_NAME}`);
   });
 
-  test("aborts extraction after 65 allowed files before processing trailing entries", async () => {
+  test("rejects more than 65 extracted files and cleans temporary entries", async () => {
     const fixture = await createRegistryFixture({
       latest: "2.0.0",
       scenario: "more than 65 extracted files",
@@ -725,6 +679,20 @@ describe("resolveProviderSource", () => {
     });
 
     expect(await fileExists(join(root, "dist/empty.d.ts"))).toBe(false);
+  });
+
+  test.each([
+    ["archive symbolic link", "dist/link.d.ts"],
+    ["archive hard link", "dist/hard.d.ts"],
+  ] as const)("omits %s entries from the cache", async (scenario, relativePath) => {
+    const fixture = await createRegistryFixture({ latest: "2.0.0", scenario });
+    const root = await resolveProviderSource(source, {
+      cacheRoot: createCacheRoot(),
+      refreshLatest: true,
+      fetch: fixture.fetch,
+    });
+
+    expect(await fileExists(join(root, relativePath))).toBe(false);
   });
 
   test("slow old and fast new cross-process observations coexist and watch selects new", async () => {
@@ -922,8 +890,6 @@ describe("resolveProviderSource", () => {
     "unsupported integrity algorithm",
     "archive traversal path",
     "archive absolute path",
-    "archive symbolic link",
-    "archive hard link",
     "package name mismatch",
     "package version mismatch",
   ])("rejects %s", async (scenario) => {
