@@ -331,7 +331,9 @@
       "duration_ms": "{value} ms",
       "duration_s": "{value} s",
       "usage_provider": "Usage provider",
-      "usage_model": "Usage model"
+      "usage_model": "Usage model",
+      "search_page": "Filter current page",
+      "columns": "Columns"
     }
   }
 }

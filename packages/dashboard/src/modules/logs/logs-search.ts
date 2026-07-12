@@ -75,6 +75,11 @@ export function withLogsFilters(search: LogsSearch, patch: LogsFilterPatch): Log
   return next as LogsSearch;
 }
 
+export const isWithinRetention = (value: string, now = new Date()) => {
+  const time = Date.parse(value);
+  return !Number.isNaN(time) && time >= now.getTime() - 45 * 24 * 60 * 60 * 1_000;
+};
+
 const integer = (value: unknown) => {
   const parsed =
     typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
-import { createDefaultLogsSearch, parseLogsSearch, withLogsFilters } from "./logs-search";
+import { createDefaultLogsSearch, isWithinRetention, parseLogsSearch, withLogsFilters } from "./logs-search";
 
 describe("logs search", () => {
   test("creates an explicit rolling 24 hour default range", () => {
@@ -47,5 +47,11 @@ describe("logs search", () => {
         { finalProviderId: "openrouter" },
       ),
     ).toMatchObject({ page: 1, finalProviderId: "openrouter" });
+  });
+
+  test("rejects custom dates older than the retention window", () => {
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    expect(isWithinRetention("2026-05-01T00:00:00.000Z", now)).toBe(false);
+    expect(isWithinRetention("2026-06-01T12:00:00.000Z", now)).toBe(true);
   });
 });

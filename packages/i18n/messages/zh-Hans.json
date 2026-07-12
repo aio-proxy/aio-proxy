@@ -309,7 +309,9 @@
       "duration_ms": "{value} 毫秒",
       "duration_s": "{value} 秒",
       "usage_provider": "用量提供商",
-      "usage_model": "用量模型"
+      "usage_model": "用量模型",
+      "search_page": "筛选当前页",
+      "columns": "列"
     }
   }
 }

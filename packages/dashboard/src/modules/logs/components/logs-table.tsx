@@ -1,5 +1,6 @@
 import { m } from "@aio-proxy/i18n";
 import type { DashboardRequestLog, DashboardRequestLogsResponse, RequestOutcome } from "@aio-proxy/types";
+import { useForm } from "@tanstack/react-form";
 import {
   type CellContext,
   type ColumnDef,
@@ -9,8 +10,19 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { ArrowDown, ArrowUp, Check } from "lucide-react";
+import { useState } from "react";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { displayTotalTokens, formatDuration, formatLogCost, formatLogNumber } from "../log-formatters";
 import type { LogsSearch } from "../logs-search";
@@ -23,6 +35,18 @@ type Props = {
 };
 
 const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
+const columnLabels: Record<string, () => string> = {
+  completedAt: () => m["dashboard.logs.completed_at"](),
+  outcome: () => m["dashboard.logs.outcome"](),
+  inboundProtocol: () => m["dashboard.logs.protocol"](),
+  requestedModelId: () => m["dashboard.logs.requested_model"](),
+  finalProviderId: () => m["dashboard.logs.final_provider"](),
+  finalModelId: () => m["dashboard.logs.final_model"](),
+  finalStatusCode: () => m["dashboard.logs.status"](),
+  durationMs: () => m["dashboard.logs.duration"](),
+  tokens: () => m["dashboard.logs.tokens"](),
+  cost: () => m["dashboard.logs.cost"](),
+};
 const columns: ColumnDef<DashboardRequestLog>[] = [
   {
     accessorKey: "completedAt",
@@ -75,10 +99,20 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
 ];
 
 export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSelect }) => {
+  const [sorting, setSorting] = useState<import("@tanstack/react-table").SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<import("@tanstack/react-table").VisibilityState>({});
+  const form = useForm({ defaultValues: { tableFilter: "" } });
   const table = useReactTable({
     data: data.items as DashboardRequestLog[],
     columns,
-    state: { pagination: { pageIndex: search.page - 1, pageSize: search.pageSize } },
+    state: {
+      pagination: { pageIndex: search.page - 1, pageSize: search.pageSize },
+      sorting,
+      columnVisibility,
+      globalFilter: form.state.values.tableFilter,
+    },
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
     manualPagination: true,
     pageCount: data.pageCount,
     onPaginationChange: (updater) => {
@@ -92,6 +126,33 @@ export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSel
   });
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <form.Field name="tableFilter">
+          {(field) => (
+            <Field className="max-w-xs">
+              <FieldLabel htmlFor="logs-page-filter">{m["dashboard.logs.search_page"]()}</FieldLabel>
+              <Input
+                id="logs-page-filter"
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+            </Field>
+          )}
+        </form.Field>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" />}>
+            {m["dashboard.logs.columns"]()}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table.getAllLeafColumns().map((column) => (
+              <DropdownMenuItem key={column.id} onClick={() => column.toggleVisibility()}>
+                {column.getIsVisible() && <Check />}
+                {columnLabels[column.id]?.() ?? m["dashboard.logs.columns"]()}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="overflow-x-auto rounded-2xl border">
         <Table>
           <TableHeader>
@@ -99,7 +160,16 @@ export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSel
               <TableRow key={group.id}>
                 {group.headers.map((header) => (
                   <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.isPlaceholder ? null : (
+                      <Button variant="ghost" size="sm" onClick={header.column.getToggleSortingHandler()}>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getIsSorted() === "asc" ? (
+                          <ArrowUp />
+                        ) : header.column.getIsSorted() === "desc" ? (
+                          <ArrowDown />
+                        ) : null}
+                      </Button>
+                    )}
                   </TableHead>
                 ))}
               </TableRow>

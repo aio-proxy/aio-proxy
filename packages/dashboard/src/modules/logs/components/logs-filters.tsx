@@ -8,7 +8,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createDefaultLogsSearch, type LogsSearch, withLogsFilters } from "../logs-search";
+import { createDefaultLogsSearch, isWithinRetention, type LogsSearch, withLogsFilters } from "../logs-search";
 
 type Props = {
   readonly search: LogsSearch;
@@ -112,7 +112,8 @@ export const LogsFilters: React.FC<Props> = ({
                 onChange={(event) => {
                   const value = event.target.value;
                   field.handleChange(value);
-                  if (value) patch({ startedAfter: new Date(value).toISOString() });
+                  if (value && isWithinRetention(new Date(value).toISOString()))
+                    patch({ startedAfter: new Date(value).toISOString() });
                 }}
               />
             </Field>
