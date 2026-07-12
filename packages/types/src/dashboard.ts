@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { IdSchema } from "./common";
-import { ProviderKind } from "./provider";
+import { ProviderKind, ProviderProtocolSchema } from "./provider";
 import {
+  RequestOutcomeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
@@ -66,6 +67,49 @@ export const DashboardUsageOverviewResponseSchema = z.object({
   buckets: z.array(DashboardUsageBucketSchema),
 });
 
+export const DashboardRequestLogsPageSizeSchema = z.union([
+  z.literal(10),
+  z.literal(20),
+  z.literal(50),
+  z.literal(100),
+]);
+
+export const DashboardRequestAttemptSchema = z.object({
+  index: z.number().int().min(0),
+  providerId: z.string().min(1),
+  modelId: z.string().min(1),
+  providerKind: z.enum(ProviderKind),
+  protocol: ProviderProtocolSchema.optional(),
+  outcome: RequestOutcomeSchema,
+  statusCode: z.number().int().optional(),
+  errorCode: z.string().optional(),
+  durationMs: z.number().int().min(0),
+});
+
+export const DashboardRequestLogSchema = z.object({
+  requestId: z.string().min(1),
+  inboundProtocol: z.string().min(1),
+  requestedModelId: z.string().min(1),
+  outcome: RequestOutcomeSchema,
+  finalProviderId: z.string().optional(),
+  finalModelId: z.string().optional(),
+  finalStatusCode: z.number().int().optional(),
+  errorCode: z.string().optional(),
+  attempts: z.array(DashboardRequestAttemptSchema),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime(),
+  durationMs: z.number().int().min(0),
+  usage: UsageRowSchema.optional(),
+});
+
+export const DashboardRequestLogsResponseSchema = z.object({
+  items: z.array(DashboardRequestLogSchema),
+  page: z.number().int().min(1),
+  pageSize: DashboardRequestLogsPageSizeSchema,
+  total: z.number().int().min(0),
+  pageCount: z.number().int().min(0),
+});
+
 export const DashboardEventSchema = z.discriminatedUnion("event", [
   z.object({
     event: z.literal("config.changed"),
@@ -121,5 +165,9 @@ export type DashboardUsageBucketInput = z.input<typeof DashboardUsageBucketSchem
 export type DashboardUsageBucket = z.output<typeof DashboardUsageBucketSchema>;
 export type DashboardUsageOverviewResponseInput = z.input<typeof DashboardUsageOverviewResponseSchema>;
 export type DashboardUsageOverviewResponse = z.output<typeof DashboardUsageOverviewResponseSchema>;
+export type DashboardRequestLogsPageSize = z.output<typeof DashboardRequestLogsPageSizeSchema>;
+export type DashboardRequestAttempt = z.output<typeof DashboardRequestAttemptSchema>;
+export type DashboardRequestLog = z.output<typeof DashboardRequestLogSchema>;
+export type DashboardRequestLogsResponse = z.output<typeof DashboardRequestLogsResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;

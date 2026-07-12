@@ -32,5 +32,10 @@ export const requestLog = sqliteTable(
   (table) => [
     index("request_log_completed_at_idx").on(table.completedAt),
     index("request_log_outcome_completed_at_idx").on(table.outcome, table.completedAt),
+    index("request_log_final_provider_completed_at_idx").on(table.finalProviderId, table.completedAt),
+    index("request_log_requested_model_completed_at_idx").on(table.requestedModelId, table.completedAt),
+    index("request_log_final_model_completed_at_idx").on(table.finalModelId, table.completedAt),
+    index("request_log_protocol_completed_at_idx").on(table.inboundProtocol, table.completedAt),
+    index("request_log_status_completed_at_idx").on(table.finalStatusCode, table.completedAt),
   ],
 );
