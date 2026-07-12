@@ -8,11 +8,27 @@
         "../infra/src/rslib.ts",
         "../infra/tsconfig/base.json",
         "src/**",
+        "scripts/**",
         "package.json",
         "rslib.config.ts",
         "tsconfig.json"
       ],
       "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**", "src/db/migrations.manifest.ts"]
+    },
+    "@aio-proxy/provider-schemas#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "../infra/package.json",
+        "../infra/src/rslib.ts",
+        "../infra/tsconfig/base.json",
+        "src/**",
+        "scripts/**",
+        "package.json",
+        "rslib.config.ts",
+        "tsconfig.json"
+      ],
+      "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**", "src/db/migrations.manifest.ts"],
+      "cache": false
     },
     "test": {
       "dependsOn": ["build", "^build"],
@@ -36,17 +52,20 @@
       "outputs": []
     },
     "dev": {
+      "dependsOn": ["^build"],
       "persistent": true,
       "cache": false,
       "outputs": []
     },
     "@aio-proxy/cli#dev": {
+      "dependsOn": ["^build"],
       "persistent": true,
       "cache": false,
       "outputs": [],
       "with": ["@aio-proxy/cli#serve:dev"]
     },
-    "serve:dev": {
+    "@aio-proxy/cli#serve:dev": {
+      "dependsOn": ["^build"],
       "persistent": true,
       "cache": false,
       "outputs": []

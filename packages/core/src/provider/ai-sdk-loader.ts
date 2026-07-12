@@ -16,6 +16,17 @@ export const BUNDLED_PROVIDER_PACKAGES = [
 
 export type BundledAiSdkProviderPackage = (typeof BUNDLED_PROVIDER_PACKAGES)[number];
 
+export const BUNDLED_PROVIDER_VERSIONS = {
+  "@ai-sdk/openai": "4.0.4",
+  "@ai-sdk/anthropic": "4.0.3",
+  "@ai-sdk/google": "4.0.3",
+  "@ai-sdk/openai-compatible": "3.0.2",
+  "@ai-sdk/mistral": "4.0.2",
+  "@ai-sdk/groq": "4.0.2",
+  "@ai-sdk/xai": "4.0.3",
+  "@openrouter/ai-sdk-provider": "2.10.0",
+} as const satisfies Record<BundledAiSdkProviderPackage, string>;
+
 export type AiSdkProviderLoadOptions = {
   readonly apiKey?: string;
   readonly baseURL?: string;

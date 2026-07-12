@@ -7,131 +7,135 @@ Improve the dashboard provider form by:
 1. making `CodeEditor` focus and invalid states visually match the shared `Input` control;
 2. adding a reusable Monaco-based `JsonEditor` that accepts JSON Schema;
 3. replacing the AI SDK provider `options` textarea with the JSON editor; and
-4. deriving the options schema from the selected npm provider factory's first parameter type.
+4. generating provider option schemas at build time from an explicit npm package allowlist.
 
-The schema feature is progressive enhancement. A package that has no usable schema must still be configurable with valid object-shaped JSON.
+Schema support is progressive enhancement. A package without an embedded schema remains configurable with valid object-shaped JSON.
 
 ## Non-goals
 
 - Changing the provider configuration format.
 - Replacing Zod as the application's validation and schema source.
-- Supporting JavaScript functions or other non-JSON values in provider options.
-- Adding registry selection or npm version ranges to the dashboard form.
-- Guaranteeing semantic conversion of every possible TypeScript declaration. Unsupported declarations degrade cleanly.
+- Supporting functions or other non-JSON values in provider options.
+- Parsing npm declaration files inside the standalone aio-proxy binary.
+- Generating schemas for arbitrary runtime-installed packages.
+- Adding registry selection, npm version ranges, or user-configurable trust patterns to the dashboard.
 
 ## Confirmed Decisions
 
 - `JsonEditor` supports every JSON root value. The provider options adapter separately requires a plain object.
 - Empty editor content represents `undefined`; JSON `null` remains distinct.
 - Unknown object properties remain allowed in generated schemas.
-- Schema errors for required fields, types, and enums block provider submission once a schema has loaded. Warnings do not block submission.
-- If schema extraction fails, submission falls back to JSON syntax plus provider root-object validation.
+- Loaded schema errors for required fields, types, and enums block provider submission. Warnings do not.
+- A package without an embedded schema falls back to JSON syntax plus provider root-object validation.
 - Changing `packageName` preserves the current options text, clears the previous schema immediately, and revalidates when a new schema arrives.
-- Runtime loading and schema extraction select the same provider factory.
-- Optional non-JSON or unresolved fields are omitted with warnings. A required non-JSON or unresolved field makes the schema unavailable.
+- Optional non-JSON or unresolved fields are omitted with warnings. A required non-JSON or unresolved field makes that package's generated schema unavailable.
 - npm declaration JSDoc is included in JSON Schema descriptions for Monaco hover help.
-- Zod remains the only business and API validation system. TypeBox is used only as an external TypeScript-syntax-to-JSON-Schema adapter.
-- The initial trusted package allowlist contains only the Bun glob `@ai-sdk/**`.
-- Trusted packages install, dynamically import, and load their schema automatically after the package field loses focus or the user presses Enter.
-- Other packages require explicit confirmation before installation or dynamic execution.
+- Zod remains the only business and API validation system.
+- Babel TypeScript AST and TypeBox `Script` are build-only tools inside a new schema package. Neither enters the runtime dependency graph.
+- The schema generation allowlist is the explicit package/factory catalog in `packages/provider-schemas/src/allowlist.ts`; entries do not carry versions.
+- The initial runtime trust allowlist contains only the Bun glob `@ai-sdk/**`.
+- Trusted missing packages install automatically after the package field loses focus or the user presses Enter. Input changes alone never install packages.
+- Other missing packages require explicit installation confirmation.
 
-## Architecture
+## Provider Schemas Package
 
-### Package metadata and factory selection
+Create a new workspace package named `@aio-proxy/provider-schemas`.
 
-Extend the npm package metadata resolver in `@aio-proxy/core` to return:
+The package owns three separate concerns:
 
-- package name and installed version;
-- JavaScript entrypoint;
-- TypeScript declaration entrypoint resolved from `exports.types`, `types`, or `typings`; and
-- cache directory.
+1. an explicit schema generation allowlist containing `{ packageName, factoryName }` entries;
+2. build-only declaration parsing and JSON Schema generation; and
+3. a runtime export containing only the generated schema records.
 
-All resolved paths must remain inside the installed package directory.
+The allowlist is intentionally versionless. Allowlisted providers are not dependencies or development dependencies of `@aio-proxy/provider-schemas`; adding a catalog entry does not install that provider into the workspace.
 
-The resolver supports both package locations used by aio-proxy: bundled dependencies resolved from the compiled application and third-party dependencies installed under the aio-proxy package cache.
+For a one-shot build, the generator resolves each package's public npm `dist-tags.latest`, verifies the tarball integrity, and caches only the package manifest and declaration files. Watch builds reuse the newest valid immutable registry observation already in the local cache and contact npm only when no usable observation exists. Because `latest` can move, schema output is intentionally not reproducible across builds made at different times; the emitted entry records the resolved package version.
 
-Refactor provider factory selection into a shared helper. Bundled providers declare their factory export name explicitly. A cached third-party module keeps the current behavior of selecting the first callable export whose name starts with `create`. Runtime invocation and schema extraction both call this helper so editor guidance cannot target a different factory from the one that will run.
+### Rslib generation plugin
 
-### Trust policy
+The package's Rslib configuration registers a custom build-only `api.transform` plugin. `onBeforeBuild.isWatch` selects only whether npm latest is refreshed; schema generation remains exclusively in the transform. The transform targets the physical `src/schema-module.ts` placeholder and:
 
-Define the trusted package patterns in server-side code:
+1. resolves each allowlisted package to its cached npm-latest declaration source;
+2. resolves the declaration entrypoint from `exports.types`, `types`, or `typings`;
+3. parses declarations with `@babel/parser` and its TypeScript plugin;
+4. locates the configured factory export and first public call signature;
+5. follows relative imports and re-exports within the package;
+6. collects referenced `type` and `interface` declarations plus JSDoc;
+7. converts the self-contained type module with TypeBox `Script`;
+8. normalizes the resulting JSON Schema and warnings; and
+9. returns the generated TypeScript module to Rspack for emission into `dist`.
+
+Generated schema data is not committed and no explicit generation command exists. `src/schema-module.ts` contains only an empty typed record needed as transform input; package consumers resolve the built `dist` entrypoints. The transform registers cached provider manifests and declaration files as dependencies so watch mode regenerates from the real inputs without importing registry/cache code into runtime output.
+
+Babel stays behind a narrow declaration-parser module that returns package-owned declaration metadata. Babel AST types do not cross that boundary, allowing a future public Bun AST API to replace Babel without changing schema normalization or runtime consumers.
+
+### Generation limits
+
+All resolved files must remain inside the allowlisted package directory. Traversal stops after 64 declaration files, relative import depth is limited to 16, total declaration input is limited to 4 MiB, and cycles terminate through a visited-file set.
+
+Supported factory declaration shapes are exported function declarations and exported variables with callable function type annotations. Overloads use the first public call signature, and relative import aliases are preserved in the self-contained generated type module. Unsupported declaration shapes produce a deterministic unavailable entry with a build warning rather than guessed schema.
+
+### TypeBox normalization
+
+Use TypeBox 1.x `Script` only in the build generator. Do not use TypeBox validators, `Static`, compiler APIs, or schema builders elsewhere.
+
+Normalization:
+
+- selects the factory parameter root schema;
+- removes `undefined` from an optional parameter;
+- sets `additionalProperties: true` on generated object schemas;
+- detects unresolved `$ref` and non-JSON nodes;
+- removes optional unsupported properties and returns their paths as warnings;
+- rejects a package schema when an unsupported property is required; and
+- attaches Babel-extracted JSDoc as `description` values.
+
+The runtime export contains ordinary serializable JSON Schema data and warning paths only. It has no Babel, TypeBox, provider package, or filesystem dependency.
+
+## Runtime Package Trust and Installation
+
+Runtime trust is independent from schema generation coverage.
+
+Define the trusted package pattern in server-side code:
 
 ```ts
 const TRUSTED_PROVIDER_PACKAGE_GLOBS = [new Bun.Glob("@ai-sdk/**")];
 ```
 
-Trust is computed only by the server with `Glob.match(packageName)`. The dashboard cannot assert that a package is trusted. The list is a constant for this iteration; adding configuration UI or user-defined patterns is out of scope.
+Trust is computed only by the server with `Glob.match(packageName)`. The dashboard cannot assert trust.
 
-For trusted packages, package-field blur or Enter triggers installation when missing, dynamic import, and schema extraction without a confirmation dialog. Input changes alone never install packages.
+On package-field blur or Enter:
 
-For untrusted packages, the dashboard first performs a side-effect-free status request. It shows either **Load Schema** for an installed package or **Install and Load Schema** for a missing package. Both actions use an `AlertDialog` that explains that third-party code will execute in the aio-proxy server process.
+- bundled package: no installation action;
+- installed package: no installation action;
+- missing trusted package: automatically call the existing npm installation primitive;
+- missing untrusted package: show **Install Provider Package** and require an `AlertDialog` confirmation.
 
-### Declaration extraction
+Installation status does not control schema availability. A schema may already be embedded for an allowlisted package, while a runtime-installed package outside the schema allowlist may have no schema.
 
-Use `@babel/parser` with the TypeScript plugin to parse declaration files. Babel is used only for syntax AST, source spans, imports/exports, and attached comments; it does not provide TypeScript type checking.
-
-Keep Babel behind a narrow declaration-parser module that returns project-owned declaration metadata. No Babel AST type crosses that boundary, allowing a future public Bun AST API to replace Babel without changing schema conversion, server routes, or dashboard code.
-
-The declaration extractor:
-
-1. locates the selected exported factory declaration;
-2. obtains its first parameter type and optionality;
-3. follows relative import and re-export declarations within the installed package;
-4. collects referenced local `type` and `interface` declarations;
-5. records declaration and property JSDoc by symbol and field path; and
-6. emits a self-contained TypeScript type module for TypeBox.
-
-Supported factory declaration shapes are exported function declarations and exported variables with callable function type annotations. Overloads use the first public call signature, matching the first callable factory contract exposed by the declaration. Other shapes return an unsupported-declaration result.
-
-Bare-package semantic resolution, compiler-only conditional evaluation, and unsupported declaration constructs return a controlled unavailable result rather than guessed schema.
-
-The extractor must enforce bounded work: paths stay inside the package directory, visited files are deduplicated, traversal stops after 64 declaration files, relative import depth is limited to 16, total declaration input is limited to 4 MiB, and cycles terminate through the visited-file set.
-
-### TypeBox conversion
-
-Use `typebox` 1.x `Script` only in the npm schema extraction module. Do not use TypeBox validators, schema builders, `Static`, or compiler APIs elsewhere.
-
-The TypeBox result is immediately normalized to the project's JSON Schema transport type:
-
-- select the factory parameter root schema;
-- remove `undefined` from an optional parameter;
-- set `additionalProperties: true` on generated object schemas;
-- detect unresolved `$ref` and non-JSON schema nodes;
-- drop optional unsupported properties and return their paths as warnings;
-- reject the schema if an unsupported property is required; and
-- attach Babel-extracted JSDoc as `description` values.
-
-The normalized result contains no TypeBox-specific runtime types.
-
-### Cache
-
-Cache successful and unavailable extraction results in memory by:
-
-```text
-packageName + installedVersion + factoryExportName
-```
-
-The cache is not written to provider configuration or disk. Installing a different version naturally produces a new key.
+Package-status `version` describes the runtime package: bundled providers use the explicit versions compiled into core, and cached providers use their installed manifest version. Options-schema `packageVersion` separately records the npm-latest declaration version used to generate that embedded schema.
 
 ## Dashboard API
 
 Add `GET /dashboard/api/providers/package-status?npm=<packageName>`. It is side-effect-free and returns:
 
-- whether it is trusted;
-- whether it is bundled, installed, or missing; and
-- the installed version when available.
+- whether the package is trusted;
+- whether it is bundled, installed, or missing;
+- the installed or bundled version when available; and
+- whether an embedded options schema exists.
 
 An invalid package name returns HTTP 400 with the stable `invalid_package_name` code.
 
-Add `POST /dashboard/api/providers/options-schema` with JSON body `{ npm: string, confirmed?: true }`. Its behavior is server-enforced:
+Add `GET /dashboard/api/providers/options-schema?npm=<packageName>`. It performs a pure lookup in `@aio-proxy/provider-schemas` and returns either:
 
-- trusted package: install if missing, import, and extract;
-- untrusted installed package: require `confirmed: true`, then import and extract;
-- untrusted missing package: require `confirmed: true`, install, import, and extract.
+```ts
+{ npm, factoryName, schema, warnings }
+```
 
-A successful response is `{ npm, version, factoryName, schema, warnings }`. Controlled failures use stable error codes for invalid names, confirmation required, install failure, import failure, missing factory, missing declarations, unsupported declarations, and extraction limits. Internal stacks and package option values are never returned.
+or HTTP 404 with `schema_unavailable`.
 
-The existing npm installation primitive remains the single implementation of download, locking, registry handling, and package-name validation.
+Keep `POST /dashboard/api/providers/install` as the only installation command and implementation of download, locking, registry handling, and package-name validation. Extend its server-side policy so missing trusted packages may be installed by the dashboard workflow without an additional user confirmation, while untrusted packages still require `confirmed: true`.
+
+Schema requests contain only the package name. Provider option values and secrets never participate.
 
 ## CodeEditor
 
@@ -143,25 +147,25 @@ Style the `CodeEditor` wrapper as the shared control boundary:
 - `:focus-within` border and ring matching `Input`'s `focus-visible` state; and
 - matching destructive border/ring behavior when `aria-invalid` is true.
 
-Monaco's internal background remains transparent so the wrapper owns the control appearance.
+Monaco's internal background remains transparent so the wrapper owns the appearance.
 
 ## JsonEditor
 
-Create a reusable dashboard component above `CodeEditor` with no provider, TanStack Form, or Zod dependency.
+Create a reusable dashboard component above `CodeEditor` with no provider, TanStack Form, Zod, or schema-package dependency.
 
 Its public behavior is:
 
 - accepts a JSON value or `undefined`;
 - accepts an optional ordinary JSON Schema;
 - emits parsed value changes only for valid JSON or empty content;
-- emits validation state containing syntax and schema errors and warnings; and
+- emits syntax and schema errors and warnings; and
 - retains its raw text draft while the user temporarily types invalid JSON.
 
-The component synchronously parses content changes so syntax failure invalidates the form immediately. Monaco's `onValidate` supplies asynchronous JSON Schema markers. Syntax or schema errors make the editor invalid; warnings do not.
+The component synchronously parses changes so syntax failure invalidates the form immediately. Monaco's `onValidate` supplies schema markers. Syntax or schema errors make the editor invalid; warnings do not.
 
-Each editor receives a stable, unique Monaco model URI. Monaco JSON diagnostics configuration is global, so a module-level registry tracks every mounted editor's schema URI and model URI. Registration, schema updates, and unmounting rebuild the combined diagnostics configuration so multiple editors cannot overwrite each other.
+Each editor receives a stable unique Monaco model URI. Monaco JSON diagnostics configuration is global, so a module-level registry tracks every mounted editor's schema URI and model URI. Registration, updates, and unmounting rebuild the combined diagnostics configuration so multiple editors cannot overwrite each other.
 
-`JsonEditor` respects the supplied schema without changing unknown-property behavior. Schema normalization belongs to the npm extractor.
+`JsonEditor` respects the supplied schema without changing unknown-property behavior. Schema normalization belongs to the build generator.
 
 ## Provider Form Integration
 
@@ -170,20 +174,20 @@ Replace `ProviderOptionsTextarea` with a provider-specific adapter around `JsonE
 The adapter:
 
 - binds to the TanStack Form `options` field;
-- serializes the initial options with two-space indentation;
+- serializes initial options with two-space indentation;
 - requires a non-array object when content is present;
-- exposes validity to the page's save button;
+- exposes validity to the page's Save button;
 - renders `FieldError` for syntax, root-value, and loaded-schema errors;
-- renders schema loading, unavailable, and warning states using i18n copy; and
-- never sends current options to package status or schema endpoints.
+- renders schema unavailable and warning states using i18n copy; and
+- never sends current options to package endpoints.
 
-The package-name field performs only local name-shape checks while typing. Blur and Enter start the server workflow. A package-name change clears the active schema and invalidates any older request token immediately, but leaves the editor draft untouched.
+The package-name field performs local shape checks while typing. Blur and Enter commit the package name to the package-status workflow. A package-name change clears the active schema and invalidates older requests immediately while retaining the editor draft.
 
-Trusted packages proceed automatically. Untrusted packages display the appropriate explicit action and confirmation dialog. A stale response for an older package name is ignored.
+When an embedded schema exists, the dashboard fetches it without executing the provider package. When no embedded schema exists, the editor remains in schema-less JSON mode.
+
+Trusted missing packages install automatically after commit. Untrusted missing packages display the explicit install action and confirmation dialog. Stale status, install, or schema responses for an older package name are ignored.
 
 ## Failure Behavior
-
-Schema support must never make a previously valid JSON provider impossible to configure merely because metadata is unavailable.
 
 | Failure | Dashboard behavior | Save behavior |
 | --- | --- | --- |
@@ -191,61 +195,64 @@ Schema support must never make a previously valid JSON provider impossible to co
 | JSON root is not an object | Show provider options error | Blocked |
 | Loaded schema error | Show Monaco marker and field error | Blocked |
 | Loaded schema warning | Show marker/status warning | Allowed |
-| Install/import/declaration/extraction failure | Show schema unavailable status | Allowed for valid object JSON |
-| Optional unsupported field | Omit field and list warning path | Allowed |
-| Required unsupported field | Mark schema unavailable | Allowed for valid object JSON |
+| Package has no embedded schema | Show schema unavailable helper | Allowed for valid object JSON |
+| Package installation fails | Show install error; preserve editor | Allowed for valid object JSON |
+| Optional unsupported field at schema build | Omit field and embed warning path | Allowed |
+| Required unsupported field at schema build | Embed unavailable package entry | Allowed for valid object JSON |
 
 ## Security
 
 - Package names use the existing strict npm-name validation.
-- All declaration and entrypoint paths remain under the installed package directory.
-- Status requests never install or import packages.
-- Automatic side effects apply only to the server-owned `@ai-sdk/**` allowlist and only on blur or Enter.
-- Untrusted installation and execution require explicit confirmation.
-- Declaration traversal is bounded by file count/depth/bytes and protects against cycles.
-- Schema requests contain only package names; provider option values and secrets never participate.
+- Schema lookup is pure data access and never imports provider code.
+- Automatic installation applies only to the server-owned `@ai-sdk/**` trust pattern and only on blur or Enter.
+- Untrusted installation requires explicit confirmation.
+- Build-time declaration traversal is path-contained, bounded, and cycle-safe.
+- Babel, TypeBox, and provider declaration files are absent from the runtime dependency graph.
+- Schema and status requests never contain provider options or secrets.
 
 ## Testing
 
-### Core
+### Provider schemas package
 
 - Resolve `exports.types`, `types`, and `typings` while rejecting path escapes.
-- Prove runtime loading and schema extraction choose the same factory.
 - Parse relative imports/re-exports and terminate cycles.
 - Convert nested objects, arrays, records, literal unions, required fields, and optional fields.
 - Preserve declaration and property JSDoc as schema descriptions.
 - Allow unknown properties on generated objects.
 - Drop optional unresolved/non-JSON fields with warning paths.
 - Reject schemas containing required unresolved/non-JSON fields.
-- Enforce traversal limits and version-aware cache keys.
-- Smoke-test every bundled provider declaration, including required `name` and `baseURL` for `@ai-sdk/openai-compatible`.
+- Enforce traversal limits.
+- Generate every current allowlist entry from npm latest, verify deterministic rendering for fixed resolved inputs, and inspect the built `dist` module without committing a generated artifact.
+- Assert `@ai-sdk/openai-compatible` requires `name` and `baseURL`.
+- Build the package and inspect its runtime bundle to ensure it does not import Babel, TypeBox, or provider packages.
 
 ### Server
 
-- Return trusted/bundled/installed/missing package status without executing module code.
-- Automatically install and execute a matching `@ai-sdk/**` fixture after the committed trigger.
-- Reject unconfirmed untrusted install or execution.
-- Install and load an untrusted fixture after confirmation.
-- Return stable controlled errors for install, import, factory, declaration, and extraction failures.
-- Use a top-level side-effect sentinel to prove status requests do not import packages.
+- Return trusted/bundled/installed/missing status without installing or importing packages.
+- Report embedded schema availability independently from installation state.
+- Return embedded schema records and `schema_unavailable` for unknown packages.
+- Automatically install a matching missing `@ai-sdk/**` fixture after the committed trigger request.
+- Reject unconfirmed untrusted installation.
+- Preserve existing install error behavior.
 
 ### Dashboard
 
 - Unit-test JSON parsing, empty-versus-null behavior, and provider root-object validation as pure functions.
 - Test Monaco schema registry registration, replacement, and unmount behavior.
-- Test provider form wiring and stale-response guards using the repository's existing source/component test style.
+- Test package workflow stale-response guards, trusted automatic install, untrusted confirmation, and schema-less fallback.
+- Test provider form wiring using the repository's existing source/component test style.
 - Build the dashboard successfully.
 
 ### Browser QA
 
 - CodeEditor focus and invalid rings visually match Input.
-- JSON completion, type/required/enum diagnostics, and JSDoc hover work.
+- JSON completion, required/type/enum diagnostics, and JSDoc hover work.
 - Schema errors disable Save; warnings do not.
-- Schema unavailable falls back to valid object JSON.
-- Trusted packages act only after blur or Enter.
-- Untrusted packages do not execute before explicit confirmation.
+- Packages without embedded schemas fall back to valid object JSON.
+- Trusted packages install only after blur or Enter.
+- Untrusted packages do not install before confirmation.
 - Switching package names preserves options and removes the previous schema immediately.
 
 ## Verification
 
-Run the relevant core, server, and dashboard unit tests, the dashboard build, and the repository check command. Perform the browser QA flow against the real dashboard server. Do not claim completion unless all automated verification and the required interaction checks pass.
+Run provider-schemas, core, server, dashboard, and i18n tests; build provider-schemas and dashboard; run the repository check; and perform the browser QA flow against the real dashboard server. Do not claim completion unless all automated and interaction checks pass.
