@@ -116,6 +116,7 @@ export function writeAnthropicMessagesSSE(
     async start(controller) {
       let nextIndex = 0;
       let text: { readonly id: string; readonly index: number } | undefined;
+      const texts = new Map<string, number>();
       const tools = new Map<string, number>();
       const openBlocks = new Set<number>();
 
@@ -137,30 +138,51 @@ export function writeAnthropicMessagesSSE(
 
       for await (const part of stream) {
         switch (part.type) {
-          case "text-delta":
-            if (text === undefined || text.id !== part.id) {
+          case "text-start":
+            if (!texts.has(part.id)) {
               if (text !== undefined && openBlocks.delete(text.index)) {
                 controller.enqueue(contentBlockStop(text.index));
               }
               text = { id: part.id, index: nextIndex };
               nextIndex += 1;
+              texts.set(part.id, text.index);
               openBlocks.add(text.index);
               controller.enqueue(textStart(text.index));
             }
+            break;
+          case "text-delta": {
+            let index = texts.get(part.id);
+            if (index === undefined) {
+              if (text !== undefined && openBlocks.delete(text.index)) {
+                controller.enqueue(contentBlockStop(text.index));
+              }
+              text = { id: part.id, index: nextIndex };
+              nextIndex += 1;
+              index = text.index;
+              texts.set(part.id, index);
+              openBlocks.add(index);
+              controller.enqueue(textStart(index));
+            }
+            if (!openBlocks.has(index)) break;
             controller.enqueue(
               event("content_block_delta", {
                 type: "content_block_delta",
-                index: text.index,
+                index,
                 delta: { type: "text_delta", text: textDelta(part) },
               }),
             );
             break;
-          case "text-end":
-            if (text?.id === part.id && openBlocks.delete(text.index)) {
-              controller.enqueue(contentBlockStop(text.index));
+          }
+          case "text-end": {
+            const index = texts.get(part.id);
+            if (index !== undefined && openBlocks.delete(index)) {
+              controller.enqueue(contentBlockStop(index));
+            }
+            if (text?.id === part.id) {
               text = undefined;
             }
             break;
+          }
           case "tool-input-start": {
             if (text !== undefined && openBlocks.delete(text.index)) {
               controller.enqueue(contentBlockStop(text.index));

@@ -136,6 +136,64 @@ describe("writeAnthropicMessagesResponse", () => {
 });
 
 describe("writeAnthropicMessagesSSE", () => {
+  test("Given an empty text block When encoded Then start and stop are preserved", async () => {
+    const frames = await collectSSEFrames(
+      writeAnthropicMessagesSSE(
+        partStream([
+          { type: "text-start", id: "text-empty" },
+          { type: "text-end", id: "text-empty" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+          },
+        ]),
+      ),
+    );
+
+    expect(frames.filter((frame) => frame.event.startsWith("content_block_"))).toEqual([
+      {
+        event: "content_block_start",
+        data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      },
+      { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+    ]);
+  });
+
+  test("Given empty text and tool blocks When encoded Then first-appearance order determines indices", async () => {
+    const frames = await collectSSEFrames(
+      writeAnthropicMessagesSSE(
+        partStream([
+          { type: "text-start", id: "text-empty" },
+          { type: "tool-input-start", id: "tool-1", toolName: "weather" },
+          { type: "text-end", id: "text-empty" },
+          { type: "tool-input-end", id: "tool-1" },
+          { type: "text-start", id: "text-after" },
+          { type: "text-delta", id: "text-after", text: "done" },
+          { type: "text-end", id: "text-after" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]),
+      ),
+    );
+
+    expect(
+      frames
+        .filter((frame) => frame.event === "content_block_start")
+        .map((frame) => (frame.data as { index: number }).index),
+    ).toEqual([0, 1, 2]);
+    expect(
+      frames
+        .filter((frame) => frame.event === "content_block_stop")
+        .map((frame) => (frame.data as { index: number }).index),
+    ).toEqual([0, 1, 2]);
+  });
+
   test("Given text stream When encoded Then emits Anthropic Messages SSE", async () => {
     const stream = partStream([
       { type: "text-start", id: "text-1" },
@@ -304,5 +362,45 @@ describe("writeAnthropicMessagesSSE", () => {
       { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "current" } },
       { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "!" } },
     ]);
+  });
+
+  test("Given duplicate and stale text lifecycle events When encoded Then blocks start and stop once", async () => {
+    const frames = await collectSSEFrames(
+      writeAnthropicMessagesSSE(
+        partStream([
+          { type: "text-start", id: "text-old" },
+          { type: "text-start", id: "text-old" },
+          { type: "text-end", id: "text-old" },
+          { type: "text-start", id: "text-current" },
+          { type: "text-start", id: "text-old" },
+          { type: "text-end", id: "text-old" },
+          { type: "text-delta", id: "text-current", text: "current" },
+          { type: "text-end", id: "text-current" },
+          { type: "text-end", id: "text-current" },
+          {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+            totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        ]),
+      ),
+    );
+
+    expect(
+      frames
+        .filter((frame) => frame.event === "content_block_start")
+        .map((frame) => (frame.data as { index: number }).index),
+    ).toEqual([0, 1]);
+    expect(
+      frames
+        .filter((frame) => frame.event === "content_block_stop")
+        .map((frame) => (frame.data as { index: number }).index),
+    ).toEqual([0, 1]);
+    expect(frames.find((frame) => frame.event === "content_block_delta")?.data).toEqual({
+      type: "content_block_delta",
+      index: 1,
+      delta: { type: "text_delta", text: "current" },
+    });
   });
 });

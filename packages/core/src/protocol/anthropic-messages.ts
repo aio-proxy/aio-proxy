@@ -55,7 +55,7 @@ function aiSdkMessages(messages: readonly AnthropicModelMessage[]): readonly Mod
       case "user":
         return userMessages(message.content);
       default:
-        throw new Error(`Unsupported Anthropic message role: ${String(message)}`);
+        return assertNever(message);
     }
   });
 }
@@ -113,4 +113,8 @@ function toolResultPart(part: AnthropicToolResultPart) {
         ? { ...part.output }
         : { ...part.output, value: part.output.value.map((value) => ({ ...value })) },
   };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported Anthropic message role: ${String(value)}`);
 }

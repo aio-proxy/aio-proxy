@@ -19,7 +19,9 @@ describe("openAICompletionsAdapter", () => {
 
     expect(openAICompletionsAdapter.model(parsed, {})).toBe("alias");
     expect(openAICompletionsAdapter.variant(parsed, {})).toBe("high");
-    expect(Object.keys(openAICompletionsAdapter.modelInvocation(parsed, {}).tools ?? {})).toEqual(["weather"]);
+    const invocation = openAICompletionsAdapter.modelInvocation(parsed, {});
+    expect(Object.keys(invocation.tools ?? {})).toEqual(["weather"]);
+    expect(invocation.settings).toEqual({ reasoning: "high" });
     expect(await (await openAICompletionsAdapter.rawRequest(raw, parsed, "upstream", {})).json()).toMatchObject({
       model: "upstream",
       beta_field: true,

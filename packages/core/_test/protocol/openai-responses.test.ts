@@ -25,7 +25,9 @@ describe("openAIResponsesAdapter", () => {
     expect(openAIResponsesAdapter.model(parsed, {})).toBe("alias");
     expect(openAIResponsesAdapter.variant(parsed, {})).toBe("high");
     expect(openAIResponsesAdapter.wantsStream(parsed, {})).toBe(false);
-    expect(Object.keys(openAIResponsesAdapter.modelInvocation(parsed, {}).tools ?? {})).toEqual(["weather"]);
+    const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
+    expect(Object.keys(invocation.tools ?? {})).toEqual(["weather"]);
+    expect(invocation.settings).toEqual({ reasoning: "high" });
     expect(await (await openAIResponsesAdapter.rawRequest(raw, parsed, "upstream", {})).json()).toMatchObject({
       model: "upstream",
       beta_field: true,
@@ -48,7 +50,15 @@ describe("openAIResponsesAdapter", () => {
       {},
     );
 
-    expect(() => openAIResponsesAdapter.modelInvocation(parsed, {})).toThrow(OpenAIResponsesUnsupportedFeatureError);
+    try {
+      openAIResponsesAdapter.modelInvocation(parsed, {});
+      throw new Error("expected custom tool rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(OpenAIResponsesUnsupportedFeatureError);
+      const { feature, path: field } = error as OpenAIResponsesUnsupportedFeatureError;
+      expect(feature).toBe("custom_tool");
+      expect(field).toBe("tools");
+    }
   });
 
   test("clones the raw request when the resolved model is unchanged", async () => {

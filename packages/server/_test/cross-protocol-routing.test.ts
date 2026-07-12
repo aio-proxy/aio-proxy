@@ -56,6 +56,9 @@ describe("cross-protocol HTTP routing", () => {
           model: inbound.protocol === providerProtocol ? 0 : 1,
           raw: inbound.protocol === providerProtocol ? 1 : 0,
         });
+        if (inbound.protocol !== providerProtocol) {
+          expectModelResponse(inbound.protocol, await response.json(), `model:${providerProtocol}`);
+        }
       });
     }
   }
@@ -161,4 +164,24 @@ async function recordedAttempts(home: string) {
     await Bun.sleep(1);
   }
   throw new Error("request row was not recorded");
+}
+
+function expectModelResponse(protocol: ProviderProtocol, body: unknown, text: string): void {
+  switch (protocol) {
+    case ProviderProtocol.OpenAICompatible:
+      expect(body).toMatchObject({ choices: [{ message: { role: "assistant", content: text } }] });
+      break;
+    case ProviderProtocol.OpenAIResponse:
+      expect(body).toMatchObject({
+        object: "response",
+        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
+      });
+      break;
+    case ProviderProtocol.Anthropic:
+      expect(body).toMatchObject({ type: "message", role: "assistant", content: [{ type: "text", text }] });
+      break;
+    case ProviderProtocol.Gemini:
+      expect(body).toMatchObject({ candidates: [{ content: { role: "model", parts: [{ text }] } }] });
+      break;
+  }
 }

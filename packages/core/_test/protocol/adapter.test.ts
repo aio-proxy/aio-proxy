@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { asSchema } from "ai";
 import { defineProtocolAdapter, functionToolSet, type ProtocolAdapter, rewriteJsonRequestModel } from "../../src/index";
 
 type RequestValue = { readonly model: string };
@@ -53,12 +54,13 @@ test("rewriteJsonRequestModel preserves unknown fields and removes content-lengt
   });
 });
 
-test("functionToolSet converts function definitions without mutating schemas", () => {
+test("functionToolSet converts function definitions without mutating schemas", async () => {
   const schema = { type: "object", properties: { city: { type: "string" } } };
   const tools = functionToolSet([{ name: "weather", description: "Weather", inputSchema: schema }]);
 
   expect(Object.keys(tools ?? {})).toEqual(["weather"]);
   expect(tools?.weather).toMatchObject({ type: "function", description: "Weather" });
+  expect(await asSchema(tools?.weather?.inputSchema).jsonSchema).toEqual(schema);
   expect(schema).toEqual({ type: "object", properties: { city: { type: "string" } } });
 });
 

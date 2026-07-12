@@ -263,4 +263,16 @@ describe("anthropicMessagesAdapter", () => {
     expect(forwarded).not.toBe(raw);
     expect(await forwarded.json()).toEqual(body);
   });
+
+  test("preserves an empty user content array as an empty user message", async () => {
+    const parsed = await anthropicMessagesAdapter.parse(
+      request({
+        model: "claude-sonnet-4-5",
+        messages: [{ role: "user", content: [] }],
+      }),
+      {},
+    );
+
+    expect(anthropicMessagesAdapter.modelInvocation(parsed, {}).messages).toEqual([{ role: "user", content: [] }]);
+  });
 });
