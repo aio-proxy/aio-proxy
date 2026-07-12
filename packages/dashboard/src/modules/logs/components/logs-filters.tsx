@@ -1,5 +1,5 @@
 import { m } from "@aio-proxy/i18n";
-import type { DashboardRequestLogsPageSize, RequestOutcome } from "@aio-proxy/types";
+import type { RequestOutcome } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
 import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
@@ -30,7 +30,6 @@ const schema = z.object({
   finalModelId: z.string(),
   finalStatusCode: z.string(),
   dateRange: z.object({ from: z.date().optional(), to: z.date().optional() }),
-  pageSize: z.number(),
   autoRefresh: z.boolean(),
 });
 const protocols = ["openai-compatible", "openai-response", "anthropic", "gemini"];
@@ -53,7 +52,6 @@ export const LogsFilters: React.FC<Props> = ({
       finalModelId: search.finalModelId ?? "",
       finalStatusCode: search.finalStatusCode?.toString() ?? "",
       dateRange: toPickerRange(search),
-      pageSize: search.pageSize,
       autoRefresh,
     },
     validators: { onChange: schema },
@@ -172,33 +170,6 @@ export const LogsFilters: React.FC<Props> = ({
                   });
                 }}
               />
-            </Field>
-          )}
-        </form.Field>
-        <form.Field name="pageSize">
-          {(field) => (
-            <Field>
-              <FieldLabel>{m["dashboard.logs.page_size"]()}</FieldLabel>
-              <Select
-                value={String(field.state.value)}
-                onValueChange={(value) => {
-                  if (value === null) return;
-                  const size = Number(value) as DashboardRequestLogsPageSize;
-                  field.handleChange(size);
-                  patch({ pageSize: size });
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 20, 50, 100].map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </Field>
           )}
         </form.Field>

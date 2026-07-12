@@ -97,7 +97,8 @@
     "pagination": {
       "previous": "Previous",
       "next": "Next",
-      "go_to_page": "Go to page {page}"
+      "go_to_page": "Go to page {page}",
+      "page_size": "Rows per page"
     },
     "providers": {
       "list_title": "Providers",
@@ -326,7 +327,6 @@
       "cache_read_tokens": "Cache read tokens",
       "cache_write_tokens": "Cache write tokens",
       "reasoning_tokens": "Reasoning tokens",
-      "page_size": "Rows per page",
       "not_available": "—",
       "duration_ms": "{value} ms",
       "duration_s": "{value} s",

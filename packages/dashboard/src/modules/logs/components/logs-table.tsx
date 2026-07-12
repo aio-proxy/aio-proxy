@@ -118,7 +118,11 @@ export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSel
     onPaginationChange: (updater) => {
       const current = { pageIndex: search.page - 1, pageSize: search.pageSize };
       const next = typeof updater === "function" ? updater(current) : updater;
-      onSearchChange({ ...search, page: next.pageIndex + 1 });
+      onSearchChange({
+        ...search,
+        page: next.pageSize === current.pageSize ? next.pageIndex + 1 : 1,
+        pageSize: next.pageSize as LogsSearch["pageSize"],
+      });
     },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -199,7 +203,7 @@ export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSel
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      <DataTablePagination table={table} pageSizeOptions={[10, 20, 50, 100]} />
     </div>
   );
 };

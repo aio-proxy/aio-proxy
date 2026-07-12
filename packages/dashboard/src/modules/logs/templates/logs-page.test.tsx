@@ -97,6 +97,14 @@ describe("logs page", () => {
     expect(screen.queryByRole("button", { name: /Last 7 days|近 7 天/u })).toBeNull();
   });
 
+  test("renders rows per page inside the table pagination", () => {
+    render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByRole("combobox", { name: /Rows per page|每页行数/u })).toBeTruthy();
+  });
+
   test.each([
     ["loading", /Loading request logs|正在加载请求日志/u],
     ["empty", /No matching requests|没有匹配的请求/u],

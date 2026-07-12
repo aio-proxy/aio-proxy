@@ -75,7 +75,8 @@
     "pagination": {
       "previous": "上一页",
       "next": "下一页",
-      "go_to_page": "前往第 {page} 页"
+      "go_to_page": "前往第 {page} 页",
+      "page_size": "每页行数"
     },
     "providers": {
       "list_title": "提供商",
@@ -304,7 +305,6 @@
       "cache_read_tokens": "缓存读取 Token",
       "cache_write_tokens": "缓存写入 Token",
       "reasoning_tokens": "推理 Token",
-      "page_size": "每页行数",
       "not_available": "—",
       "duration_ms": "{value} 毫秒",
       "duration_s": "{value} 秒",
