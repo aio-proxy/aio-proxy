@@ -32,12 +32,15 @@ Rslib `api.transform().importModule()` remains the sole schema-generation loader
 
 Package-scoped error wrapping remains unchanged. Archive parsing, unsafe selected paths, excessive file count, excessive extracted bytes, invalid package metadata, and integrity mismatch must fail before cache publication. Temporary extraction roots are removed on every failure.
 
-`Bun.Archive.files()` may parse the archive before application-level limits are evaluated. The existing 32 MiB compressed download limit remains the outer memory bound; tests must verify current Bun behavior for traversal, archive links/directories, excessive selected files, and excessive selected bytes. If Bun exposes unsafe selected paths or materializes links as ordinary files, the implementation must reject them rather than weakening the existing boundary.
+`Bun.Archive.files()` parses the archive before application-level file and byte limits are evaluated and does not expose a per-entry abort callback. The existing 32 MiB compressed download limit remains the outer input bound. This intentionally replaces streaming early abort with validation of the complete `files()` result before any selected file is written.
+
+Current Bun omits directory, symbolic-link, and hard-link entries from `files()`. Tests must verify that these entries are never materialized in the cache. If a future Bun release exposes them as ordinary files, the selected-path and file-set assertions must fail rather than silently writing them.
 
 ## Testing
 
 - Add a Bun Archive regression that proves npm `.tgz` input exposes only the intended manifest/declaration files to the writer.
-- Preserve failures for traversal paths, links, declaration-shaped directories, more than 65 files, and more than four MiB of selected content.
+- Preserve failures for traversal paths, more than 65 selected files, and more than four MiB of selected content.
+- Verify that symbolic links, hard links, and declaration-shaped directories are omitted and never materialized in the cache.
 - Preserve cleanup, package identity, integrity, immutable observation, completion-manifest, and concurrency coverage.
 - Run the provider unit suite, live provider integration suite, clean-dist smoke, runtime leakage smoke, real Rslib transform test, and repository preflight.
 - Update leakage assertions and package metadata so `tar` and `provider-schemas-require` are absent from build and runtime artifacts.
