@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
@@ -186,6 +186,48 @@ test("keeps the model capability reference stable across snapshot reads", () => 
     const second = state.currentProviderSnapshot().providers[0]?.model;
 
     expect(second).toBe(first);
+  } finally {
+    state.close();
+    rmSync(dbHome, { force: true, recursive: true });
+  }
+});
+
+test("replaces the model capability object only after config reload", async () => {
+  const dbHome = mkdtempSync(join(tmpdir(), "aio-proxy-provider-capabilities-"));
+  const configPath = join(dbHome, "config.json");
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseUrl: "https://before.example.com",
+        kind: ProviderKind.Api,
+        models: ["model"],
+        protocol: ProviderProtocol.OpenAICompatible,
+      },
+    },
+  });
+  writeFileSync(configPath, JSON.stringify(config));
+  const state = createServerState({ config, configPath, dbHome, watchConfig: false });
+
+  try {
+    const before = state.currentProviderSnapshot().providers[0]?.model;
+    expect(state.currentProviderSnapshot().providers[0]?.model).toBe(before);
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        providers: {
+          api: {
+            baseUrl: "https://after.example.com",
+            kind: ProviderKind.Api,
+            models: ["model"],
+            protocol: ProviderProtocol.OpenAICompatible,
+          },
+        },
+      }),
+    );
+    expect((await state.reload()).ok).toBe(true);
+
+    expect(state.currentProviderSnapshot().providers[0]?.model).not.toBe(before);
   } finally {
     state.close();
     rmSync(dbHome, { force: true, recursive: true });

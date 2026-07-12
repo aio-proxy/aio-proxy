@@ -19,7 +19,6 @@ export {
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from "./egress/anthropic-messages";
-export { type IngressError, toIngressError } from "./egress/error";
 export {
   writeGeminiGenerateContentResponse,
   writeGeminiGenerateContentSSE,

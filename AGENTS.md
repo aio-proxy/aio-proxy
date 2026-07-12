@@ -45,3 +45,12 @@ providers:
 The implementation should therefore keep same-protocol passthrough simple while
 moving fallback selection and cross-protocol conversion into shared routing
 logic, not duplicating ad hoc conversions in individual route files.
+
+## Protocol Routing Architecture
+
+- `packages/core/src/protocol/` owns one stateless adapter per inbound protocol.
+- Adapters are created with `defineProtocolAdapter()` and contain only parse, model/variant extraction, raw request rewriting, model invocation conversion, egress, and protocol-shaped errors.
+- `packages/server/src/routes/pipeline.ts` is the only candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight.
+- Runtime providers expose `raw` and/or `model` capabilities. Dispatch uses capabilities, not provider kind.
+- Same-protocol raw capability wins. All other supported calls use the materialized model capability.
+- Adding an inbound protocol requires one core adapter, one thin route registration, adapter tests, and dispatch-matrix coverage.
