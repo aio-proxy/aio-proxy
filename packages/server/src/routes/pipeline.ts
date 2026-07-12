@@ -40,8 +40,7 @@ export async function handleProtocolRequest<TRequest, TContext>({
   rawRequest,
   source,
 }: HandleProtocolRequestOptions<TRequest, TContext>): Promise<Response> {
-  const contentLength = rawRequest.headers.get("content-length");
-  if (contentLength !== null && Number.parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+  if (hasInvalidOrOversizedContentLength(rawRequest)) {
     return adapter.errors.tooLarge();
   }
 
@@ -132,7 +131,7 @@ async function attemptCandidates<TRequest, TContext>({
           } catch (error) {
             const mapped = adapter.errors.requestError(error);
             if (mapped === undefined) throw error;
-            session.finish({ outcome: "failure", finalStatusCode: mapped.status });
+            session.finish(finalFailure(provider, candidate.modelId, mapped.status, startedAt));
             return mapped;
           }
         }
@@ -228,6 +227,11 @@ async function attemptCandidates<TRequest, TContext>({
 
   session.finish({ outcome: "failure" });
   return lastFailure ?? adapter.errors.unsupported("transform_dispatch");
+}
+
+export function hasInvalidOrOversizedContentLength(request: Request): boolean {
+  const contentLength = request.headers.get("content-length");
+  return contentLength !== null && (!/^\d+$/u.test(contentLength) || Number(contentLength) > MAX_BODY_BYTES);
 }
 
 function attemptBase(

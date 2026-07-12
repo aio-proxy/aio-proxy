@@ -57,6 +57,18 @@ describe("shared protocol routing pipeline", () => {
     expect(provider.calls.raw).toEqual([]);
   });
 
+  test("rejects malformed Content-Length before parse, recording, or provider dispatch", async () => {
+    const provider = rawProvider({ id: "raw" });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }, { contentLength: "invalid" }));
+
+    expect(response.status).toBe(413);
+    expect(harness.context.parseCalls).toBe(0);
+    expect(harness.recording.begins).toEqual([]);
+    expect(provider.calls.raw).toEqual([]);
+  });
+
   test("maps parse errors without beginning a provider attempt", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
@@ -143,6 +155,35 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: "hybrid", outcome: "success" }),
     );
+  });
+
+  test("records the selected candidate when model invocation rejects the request", async () => {
+    const primary = modelProvider({ id: "primary", invoke: () => textStream("unused") });
+    const backup = modelProvider({ id: "backup", invoke: () => textStream("unused") });
+    const adapter = defineProtocolAdapter(ProviderProtocol.OpenAICompatible, {
+      modelInvocationError: new SyntaxError("invalid invocation"),
+    });
+    const harness = pipeline([primary, backup], { adapter });
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+
+    expect(response.status).toBe(400);
+    expect(primary.calls.model).toHaveLength(0);
+    expect(backup.calls.model).toHaveLength(0);
+    expect(harness.recording.finals).toEqual([
+      expect.objectContaining({
+        finalModelId: "primary-model",
+        finalProviderId: "primary",
+        finalStatusCode: 400,
+        outcome: "failure",
+        attempt: expect.objectContaining({
+          modelId: "primary-model",
+          outcome: "failure",
+          providerId: "primary",
+          statusCode: 400,
+        }),
+      }),
+    ]);
   });
 
   test.each([false, true])("passes the resolved model to %s model egress", async (stream) => {

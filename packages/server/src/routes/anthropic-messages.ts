@@ -1,7 +1,7 @@
 import { anthropicMessagesAdapter } from "@aio-proxy/core";
 import { Hono } from "hono";
 import type { ProviderRouteSource } from "../runtime";
-import { handleProtocolRequest } from "./pipeline";
+import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from "./pipeline";
 
 export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
   return new Hono()
@@ -14,6 +14,9 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
       }),
     )
     .post("/v1/messages/count_tokens", async (context) => {
+      if (hasInvalidOrOversizedContentLength(context.req.raw)) {
+        return anthropicMessagesAdapter.errors.tooLarge();
+      }
       try {
         const request = await anthropicMessagesAdapter.parse(context.req.raw, {});
         return Response.json({ input_tokens: tokenEstimate(request) });

@@ -90,6 +90,36 @@ describe("writeOpenAICompletionsSSE", () => {
     expect(response).toMatchObject({ id: "chatcmpl-upstream", model: "gpt-upstream", created: 1_783_814_405 });
   });
 
+  test("Given tool-call stream When encoded as response Then assistant tool calls are preserved", async () => {
+    const response = await writeOpenAICompletionsResponse(
+      partStream([
+        { type: "tool-input-start", id: "call_1", toolName: "lookup" },
+        { type: "tool-input-delta", id: "call_1", delta: '{"q":"pizza"}' },
+        { type: "tool-input-end", id: "call_1" },
+        {
+          type: "finish",
+          finishReason: "tool-calls",
+          usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+        },
+      ]),
+    );
+
+    expect(response.choices[0]).toMatchObject({
+      finish_reason: "tool_calls",
+      message: {
+        content: null,
+        role: "assistant",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "lookup", arguments: '{"q":"pizza"}' },
+          },
+        ],
+      },
+    });
+  });
+
   test("Given stream egress context When encoded Then chunks include resolved model and creation time", async () => {
     const value = await collectSSE(
       writeOpenAICompletionsSSE(

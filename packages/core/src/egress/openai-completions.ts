@@ -1,4 +1,8 @@
-import type { ChatCompletion, ChatCompletionChunk } from "openai/resources/chat/completions/completions";
+import type {
+  ChatCompletion,
+  ChatCompletionChunk,
+  ChatCompletionMessageToolCall,
+} from "openai/resources/chat/completions/completions";
 import type { CompletionUsage } from "openai/resources/completions";
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
@@ -82,6 +86,7 @@ export async function writeOpenAICompletionsResponse(
   context: ModelEgressContext,
 ): Promise<ChatCompletion> {
   const text: string[] = [];
+  const tools = new Map<string, ToolState>();
   let finishReason: ChatCompletion.Choice["finish_reason"] = "stop";
   let usage: CompletionUsage | undefined;
   let metadata = fallbackMetadata(context.modelId);
@@ -91,6 +96,14 @@ export async function writeOpenAICompletionsResponse(
       case "text-delta":
         text.push(textDelta(part));
         break;
+      case "tool-input-start":
+        tools.set(part.id, { index: tools.size, id: part.id, toolName: part.toolName, arguments: "" });
+        break;
+      case "tool-input-delta": {
+        const tool = tools.get(part.id);
+        if (tool !== undefined) tool.arguments += part.delta;
+        break;
+      }
       case "finish-step":
         metadata = upstreamMetadata(part, metadata);
         break;
@@ -113,7 +126,12 @@ export async function writeOpenAICompletionsResponse(
         finish_reason: finishReason,
         index: 0,
         logprobs: null,
-        message: { role: "assistant", content: text.join(""), refusal: null },
+        message: {
+          role: "assistant",
+          content: text.length === 0 && tools.size > 0 ? null : text.join(""),
+          refusal: null,
+          ...(tools.size === 0 ? {} : { tool_calls: [...tools.values()].map(messageToolCall) }),
+        },
       },
     ],
     ...(usage === undefined ? {} : { usage }),
@@ -165,6 +183,14 @@ function completionId(): string {
 function toolDelta(tool: ToolState): ChatCompletionChunk.Choice.Delta.ToolCall {
   return {
     index: tool.index,
+    id: tool.id,
+    type: "function",
+    function: { name: tool.toolName, arguments: tool.arguments },
+  };
+}
+
+function messageToolCall(tool: ToolState): ChatCompletionMessageToolCall {
+  return {
     id: tool.id,
     type: "function",
     function: { name: tool.toolName, arguments: tool.arguments },

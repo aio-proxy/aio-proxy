@@ -500,4 +500,19 @@ describe("POST /v1/messages/count_tokens", () => {
     expect(body).toEqual({ input_tokens: 2 });
     expect(typeof body.input_tokens).toBe("number");
   });
+
+  test("Given oversized Content-Length When token count is posted Then rejects before parsing", async () => {
+    const app = createServer({ config: { providers: {} } });
+
+    const response = await app.request("/v1/messages/count_tokens", {
+      body: JSON.stringify(messagesRequest),
+      headers: {
+        "content-length": String(8 * 1_024 * 1_024 + 1),
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(413);
+  });
 });

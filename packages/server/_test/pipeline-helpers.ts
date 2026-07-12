@@ -54,7 +54,10 @@ export function createProtocolContext(): TestProtocolContext {
 
 export function defineProtocolAdapter(
   protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible,
-  options: { readonly onModelEgress?: (value: unknown) => void } = {},
+  options: {
+    readonly modelInvocationError?: Error;
+    readonly onModelEgress?: (value: unknown) => void;
+  } = {},
 ) {
   return defineCoreProtocolAdapter<TestProtocolRequest, TestProtocolContext>({
     protocol,
@@ -89,6 +92,7 @@ export function defineProtocolAdapter(
     },
     modelInvocation(request, context) {
       context.modelInvocationCalls += 1;
+      if (options.modelInvocationError !== undefined) throw options.modelInvocationError;
       return { messages: [{ role: "user", content: request.prompt }] };
     },
     async modelJson(stream, ...args: unknown[]) {
@@ -210,7 +214,7 @@ export function defineProviderRouteSource(
 
 export function jsonRequest(
   body: unknown,
-  options: { readonly contentLength?: number; readonly signal?: AbortSignal } = {},
+  options: { readonly contentLength?: number | string; readonly signal?: AbortSignal } = {},
 ): Request {
   const headers = new Headers({ "content-type": "application/json" });
   if (options.contentLength !== undefined) {
