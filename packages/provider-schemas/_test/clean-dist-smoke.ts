@@ -11,7 +11,7 @@ test("explicit dependency build supports source start from a clean provider dist
   const cliPackage = JSON.parse(await readFile(join(repositoryRoot, "packages/cli/package.json"), "utf8"));
   const turbo = JSON.parse(await readFile(join(repositoryRoot, "turbo.json"), "utf8"));
 
-  expect(providerPackage.scripts.dev).toBe("rslib --watch --no-clean");
+  expect(providerPackage.scripts.dev).toBe("bun --bun rslib --watch --no-clean");
   expect(cliPackage.scripts.start).toBe("bun src/main.ts serve");
   expect(cliPackage.scripts["build:binary"]).toStartWith("bun run --filter @aio-proxy/provider-schemas build && ");
   expect(turbo.tasks.dev.dependsOn).toContain("^build");

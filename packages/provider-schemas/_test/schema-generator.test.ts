@@ -122,6 +122,9 @@ describe("provider schema generation", () => {
     const sourceCache = await readFile(join(scriptsRoot, "provider-source-cache.ts"), "utf8");
     expect(sourceCache).toContain('import { Archive } from "bun";');
     expect(sourceCache).not.toContain("new Bun.Archive");
+    const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
+    expect(packageJson.scripts.build).toBe("bun --bun rslib");
+    expect(packageJson.scripts.dev).toBe("bun --bun rslib --watch --no-clean");
   });
 
   test("pins the exact allowlist without provider dependencies", async () => {
@@ -691,7 +694,7 @@ describe("provider schema generation", () => {
         };
       `,
     );
-    const build = Bun.spawnSync(["bunx", "rslib", "build", "--root", buildRoot], {
+    const build = Bun.spawnSync(["bunx", "--bun", "rslib", "build", "--root", buildRoot], {
       cwd: repositoryRoot,
       stdout: "pipe",
       stderr: "pipe",

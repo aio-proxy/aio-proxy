@@ -10,8 +10,8 @@
     }
   },
   "scripts": {
-    "build": "rslib",
-    "dev": "rslib --watch --no-clean",
+    "build": "bun --bun rslib",
+    "dev": "bun --bun rslib --watch --no-clean",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/provider-schemas/_test/*.test.ts",
     "test:integration": "cd ../.. && bun test ./packages/provider-schemas/_test/provider-schemas.integration.ts && bun test ./packages/provider-schemas/_test/clean-dist-smoke.ts && bun test ./packages/provider-schemas/_test/runtime-leakage-smoke.ts"
