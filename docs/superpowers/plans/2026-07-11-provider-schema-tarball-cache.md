@@ -15,7 +15,7 @@
 - `rslib --watch` selects the greatest immutable cached npm `time.modified` observation and accesses npm only when no usable observation exists.
 - Provider packages are not dependencies of `@aio-proxy/provider-schemas` and are not installed into workspace `node_modules` for schema generation.
 - Only package-owned `package.json` and `.d.ts`/`.d.mts`/`.d.cts` files are extracted.
-- Tarballs are limited to 32 MiB compressed, verified against npm `dist.integrity`, and rejected on unsafe paths, links, or package metadata mismatch.
+- Tarballs are limited to 32 MiB compressed and 65 extracted manifest/declaration files, verified against npm `dist.integrity`, and rejected on unsafe paths, links, or package metadata mismatch. Directories do not consume the extracted-file limit.
 - `api.onBeforeBuild` selects refresh policy only. Schema generation and returned module source occur only inside `api.transform`.
 - No explicit `generate` command, committed generated schema artifact, runtime schema parser, private registry support, or fallback to stale cache in one-shot build.
 - Babel, TypeBox, tar, registry, generator, and plugin modules must not enter `packages/provider-schemas/dist` or the CLI binary.
@@ -420,6 +420,7 @@ Expected:
 - provider build generates the expanded catalog;
 - leakage scan returns no matches;
 - preflight completes all Turbo tasks, with only the pre-existing dashboard non-null assertion warning if it still exists.
+- a clean preflight may perform one latest-refreshing provider build because downstream tests consume `provider-schemas/dist`; provider unit tests remain hermetic, and CI must not run the unit graph again after preflight.
 
 After verification, remove the temporary worktree from the main repository root:
 

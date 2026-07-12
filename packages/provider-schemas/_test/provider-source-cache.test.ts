@@ -17,6 +17,7 @@ type FailureScenario =
   | "tarball HTTP failure"
   | "tarball larger than 32 MiB"
   | "extracted declarations larger than limit"
+  | "more than 65 extracted files"
   | "integrity mismatch"
   | "malformed integrity"
   | "unsupported integrity algorithm"
@@ -24,6 +25,7 @@ type FailureScenario =
   | "archive absolute path"
   | "archive symbolic link"
   | "archive hard link"
+  | "declaration-shaped directory"
   | "package name mismatch"
   | "package version mismatch";
 
@@ -89,19 +91,45 @@ const asHardLinkArchive = (archive: Uint8Array): Uint8Array => {
   throw new Error("hard-link fixture entry missing");
 };
 
-const withCorruptTrailingEntry = (archive: Uint8Array): Uint8Array => {
+const withCorruptTrailingEntry = (
+  archive: Uint8Array,
+  trailingPath = "package/dist/z-after-limit.d.ts",
+): Uint8Array => {
   const bytes = Buffer.from(archive);
   for (let offset = 0; offset < bytes.length; ) {
     const header = bytes.subarray(offset, offset + 512);
     const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
     const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
-    if (path === "package/dist/z-after-limit.d.ts") {
+    if (path === trailingPath) {
       bytes[offset] ^= 1;
       return bytes;
     }
     offset += 512 + Math.ceil(size / 512) * 512;
   }
   throw new Error("trailing fixture entry missing");
+};
+
+const withDirectoryPathWithoutTrailingSlash = (archive: Uint8Array): Uint8Array => {
+  const bytes = Buffer.from(archive);
+  for (let offset = 0; offset < bytes.length; ) {
+    const header = bytes.subarray(offset, offset + 512);
+    const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
+    if (path === "package/dist/empty.d.ts/") {
+      const replacement = Buffer.from(header);
+      replacement.fill(0, 0, 100);
+      replacement.write("package/dist/empty.d.ts", 0, "utf8");
+      replacement.fill(0x20, 148, 156);
+      const checksum = [...replacement]
+        .reduce((sum, byte) => sum + byte, 0)
+        .toString(8)
+        .padStart(6, "0");
+      replacement.write(`${checksum}\0 `, 148, "ascii");
+      return Buffer.concat([bytes.subarray(0, offset), replacement, bytes.subarray(offset + 512)]);
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error("declaration-shaped directory fixture entry missing");
 };
 
 async function createTarball(
@@ -125,6 +153,12 @@ async function createTarball(
     writeFileSync(join(packageRoot, "dist/index.d.ts"), `export type Huge = "${"x".repeat(5 * 1024 * 1024)}";\n`);
     symlinkSync("index.d.ts", join(packageRoot, "dist/z-after-limit.d.ts"));
   }
+  if (scenario === "more than 65 extracted files") {
+    for (let index = 0; index < 64; index += 1) {
+      writeFileSync(join(packageRoot, `dist/entry-${index.toString().padStart(2, "0")}.d.ts`), "");
+    }
+    writeFileSync(join(packageRoot, "dist/zz-corrupt-trailing.d.ts"), "");
+  }
   writeFileSync(join(packageRoot, "dist/index.js"), "export function createFixture() {}\n");
   if (scenario === "archive symbolic link") {
     symlinkSync("index.d.ts", join(packageRoot, "dist/link.d.ts"));
@@ -132,14 +166,22 @@ async function createTarball(
   if (scenario === "archive hard link") {
     writeFileSync(join(packageRoot, "dist/hard.d.ts"), "export declare function createFixture(): void;\n");
   }
+  if (scenario === "declaration-shaped directory") {
+    await mkdir(join(packageRoot, "dist/empty.d.ts"));
+  }
 
   const archivePath = join(root, `${version}-${crypto.randomUUID()}.tgz`);
   await tar.create(
     {
       cwd: archiveRoot,
       file: archivePath,
-      gzip: scenario !== "archive hard link" && scenario !== "extracted declarations larger than limit",
-      noDirRecurse: scenario === "extracted declarations larger than limit",
+      gzip:
+        scenario !== "archive hard link" &&
+        scenario !== "extracted declarations larger than limit" &&
+        scenario !== "more than 65 extracted files" &&
+        scenario !== "declaration-shaped directory",
+      noDirRecurse:
+        scenario === "extracted declarations larger than limit" || scenario === "more than 65 extracted files",
       ...(scenario === "archive traversal path"
         ? { prefix: "../", preservePaths: true }
         : scenario === "archive absolute path"
@@ -155,11 +197,25 @@ async function createTarball(
           "package/dist/z-after-limit.d.ts",
           "package/dist/index.js",
         ]
-      : ["package"],
+      : scenario === "more than 65 extracted files"
+        ? [
+            "package",
+            "package/package.json",
+            "package/dist",
+            "package/dist/index.d.ts",
+            ...Array.from({ length: 64 }, (_, index) => `package/dist/entry-${index.toString().padStart(2, "0")}.d.ts`),
+            "package/dist/zz-corrupt-trailing.d.ts",
+            "package/dist/index.js",
+          ]
+        : ["package"],
   );
   const bytes = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
   if (scenario === "archive hard link") return asHardLinkArchive(bytes);
   if (scenario === "extracted declarations larger than limit") return withCorruptTrailingEntry(bytes);
+  if (scenario === "more than 65 extracted files") {
+    return withCorruptTrailingEntry(bytes, "package/dist/zz-corrupt-trailing.d.ts");
+  }
+  if (scenario === "declaration-shaped directory") return withDirectoryPathWithoutTrailingSlash(bytes);
   return bytes;
 }
 
@@ -637,6 +693,38 @@ describe("resolveProviderSource", () => {
         fetch: fixture.fetch,
       }),
     ).rejects.toThrow(`Extracted declaration size limit exceeded for ${PACKAGE_NAME}`);
+  });
+
+  test("aborts extraction after 65 allowed files before processing trailing entries", async () => {
+    const fixture = await createRegistryFixture({
+      latest: "2.0.0",
+      scenario: "more than 65 extracted files",
+    });
+    const cacheRoot = createCacheRoot();
+
+    await expect(
+      resolveProviderSource(source, {
+        cacheRoot,
+        refreshLatest: true,
+        fetch: fixture.fetch,
+      }),
+    ).rejects.toThrow(`Extracted file count limit exceeded for ${PACKAGE_NAME}`);
+    expect((await readdir(packageCachePath(cacheRoot))).filter((name) => name.startsWith("."))).toEqual([]);
+  });
+
+  test("does not extract declaration-shaped archive directories", async () => {
+    const fixture = await createRegistryFixture({
+      latest: "2.0.0",
+      scenario: "declaration-shaped directory",
+    });
+
+    const root = await resolveProviderSource(source, {
+      cacheRoot: createCacheRoot(),
+      refreshLatest: true,
+      fetch: fixture.fetch,
+    });
+
+    expect(await fileExists(join(root, "dist/empty.d.ts"))).toBe(false);
   });
 
   test("slow old and fast new cross-process observations coexist and watch selects new", async () => {

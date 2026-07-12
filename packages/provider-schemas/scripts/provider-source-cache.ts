@@ -53,6 +53,7 @@ type CompletionManifest = {
 
 const MAX_TARBALL_BYTES = 32 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 + 64 * 1024;
+const MAX_EXTRACTED_FILES = 65;
 const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -387,43 +388,45 @@ const installVersion = async (
     await writeFile(archivePath, await downloadTarball(packageName, metadata, fetchImpl));
     await mkdir(join(temporaryRoot, "package"));
     let rejectedEntry: string | undefined;
-    let sizeLimitError: Error | undefined;
     let extractedBytes = 0;
-    try {
-      await tar.x({
-        cwd: join(temporaryRoot, "package"),
-        file: archivePath,
-        maxReadSize: 64 * 1024,
-        preservePaths: false,
-        strict: true,
-        strip: 1,
-        filter(this: Tar.Unpack, path, entry) {
-          if (unsafeArchivePath(path)) {
-            rejectedEntry = "unsafe path";
-            return false;
-          }
-          if ("type" in entry && (entry.type === "Link" || entry.type === "SymbolicLink")) {
-            rejectedEntry = "link";
-            return false;
-          }
-          if (!declarationPath.test(path)) return false;
-          if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
-            rejectedEntry = "entry size";
-            return false;
-          }
-          extractedBytes += entry.size;
-          if (extractedBytes > MAX_EXTRACTED_BYTES) {
-            sizeLimitError = new Error(`Extracted declaration size limit exceeded for ${packageName}`);
-            this.abort(sizeLimitError);
-            return false;
-          }
-          return true;
-        },
-      });
-    } catch (error) {
-      if (sizeLimitError) throw sizeLimitError;
-      throw error;
-    }
+    let extractedFiles = 0;
+    await tar.x({
+      cwd: join(temporaryRoot, "package"),
+      file: archivePath,
+      maxReadSize: 64 * 1024,
+      preservePaths: false,
+      strict: true,
+      strip: 1,
+      filter(this: Tar.Unpack, path, entry) {
+        if (unsafeArchivePath(path)) {
+          rejectedEntry = "unsafe path";
+          return false;
+        }
+        if ("type" in entry && (entry.type === "Link" || entry.type === "SymbolicLink")) {
+          rejectedEntry = "link";
+          return false;
+        }
+        if ("type" in entry && (entry.type === "Directory" || entry.type === "GNUDumpDir")) return false;
+        if (!declarationPath.test(path)) return false;
+        extractedFiles += 1;
+        if (extractedFiles > MAX_EXTRACTED_FILES) {
+          const error = new Error(`Extracted file count limit exceeded for ${packageName}`);
+          this.abort(error);
+          return false;
+        }
+        if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+          rejectedEntry = "entry size";
+          return false;
+        }
+        extractedBytes += entry.size;
+        if (extractedBytes > MAX_EXTRACTED_BYTES) {
+          const error = new Error(`Extracted declaration size limit exceeded for ${packageName}`);
+          this.abort(error);
+          return false;
+        }
+        return true;
+      },
+    });
     if (rejectedEntry) throw new Error(`Archive ${rejectedEntry} is not allowed for ${packageName}`);
     await rm(archivePath, { force: true });
     const extractedPackageRoot = join(temporaryRoot, "package");

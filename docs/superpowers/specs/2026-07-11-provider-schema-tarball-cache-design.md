@@ -50,7 +50,7 @@ For each allowlisted source:
 3. Look for a complete cache entry keyed by package name and resolved version.
 4. On a miss, fetch the exact version metadata, then download its `dist.tarball`.
 5. Verify the tarball against npm's `dist.integrity` using Node's crypto implementation before extraction.
-6. Extract only `package/package.json` and `*.d.ts`/`*.d.mts`/`*.d.cts` entries into a temporary sibling directory with the build-only `tar` package. Reject absolute paths, traversal paths, and archive links. Reject compressed responses larger than 32 MiB.
+6. Extract only `package/package.json` and `*.d.ts`/`*.d.mts`/`*.d.cts` entries into a temporary sibling directory with the build-only `tar` package. Reject absolute paths, traversal paths, archive links, more than 65 extracted files, and compressed responses larger than 32 MiB. Directories do not consume the file limit.
 7. Validate the extracted `package.json` name and version against the resolved package and version.
 8. Hash every extracted manifest/declaration with SHA-256 and atomically create a completion manifest inside the unpublished version root. It records package name, version, registry tarball integrity, and a sorted exact file list with size and digest.
 9. Validate the completion identity, registry integrity, exact file set, sizes, and digests, then atomically rename the temporary directory to its final versioned cache location.
@@ -88,6 +88,8 @@ The `tar` archive library is a direct devDependency of `@aio-proxy/provider-sche
 - Plugin tests verify `onBeforeBuild({ isWatch })` only selects resolution policy and that schema generation still occurs exclusively inside `api.transform`.
 - Hermetic `test:unit` keeps the independent literal 42-pair catalog and dependency-boundary assertions but uses only local HTTP/package fixtures.
 - Explicit `test:integration` performs the live 42-package npm-latest catalog check, clean-dist source-mode setup, and actual provider-dist/CLI runtime leakage scan. It is intentionally outside normal unit/preflight discovery.
+
+A clean `preflight` may perform one latest-refreshing provider build because downstream tests consume `provider-schemas` output from `dist`. The provider unit tests themselves remain hermetic. CI runs `preflight` as the unit graph and must not invoke `test:unit` a second time.
 
 ## Non-Goals
 
