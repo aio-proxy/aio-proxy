@@ -15,6 +15,8 @@ rs.mock("next-themes", () => ({
 
 rs.mock("@aio-proxy/i18n", () => ({
   getLocale: () => "en",
+  getLocaleName: (locale: string) => (locale === "en" ? "English" : "简体中文"),
+  locales: ["en", "zh-Hans"],
   setLocale: mocks.setLocale,
   m: {
     "dashboard.preferences.appearance": () => "Appearance",
@@ -22,8 +24,6 @@ rs.mock("@aio-proxy/i18n", () => ({
     "dashboard.preferences.theme_system": () => "System",
     "dashboard.preferences.theme_light": () => "Light",
     "dashboard.preferences.theme_dark": () => "Dark",
-    "dashboard.preferences.language_zh_hans": () => "简体中文",
-    "dashboard.preferences.language_en": () => "English",
   },
 }));
 

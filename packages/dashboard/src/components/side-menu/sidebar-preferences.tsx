@@ -1,4 +1,4 @@
-import { getLocale, type Locale, m, setLocale } from "@aio-proxy/i18n";
+import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from "@aio-proxy/i18n";
 import { Languages, MonitorCog } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -15,11 +15,6 @@ const themes = [
   ["system", () => m["dashboard.preferences.theme_system"]()],
   ["light", () => m["dashboard.preferences.theme_light"]()],
   ["dark", () => m["dashboard.preferences.theme_dark"]()],
-] as const;
-
-const languages = [
-  ["zh-Hans", () => m["dashboard.preferences.language_zh_hans"]()],
-  ["en", () => m["dashboard.preferences.language_en"]()],
 ] as const;
 
 export const SidebarPreferences: React.FC = () => {
@@ -59,9 +54,9 @@ export const SidebarPreferences: React.FC = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="end">
               <DropdownMenuRadioGroup value={getLocale()} onValueChange={(value) => void changeLocale(value as Locale)}>
-                {languages.map(([value, label]) => (
-                  <DropdownMenuRadioItem key={value} value={value}>
-                    {label()}
+                {locales.map((locale) => (
+                  <DropdownMenuRadioItem key={locale} value={locale}>
+                    {getLocaleName(locale)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>

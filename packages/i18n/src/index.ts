@@ -7,6 +7,7 @@ export {
   StaleProviderGenerationError,
 } from "./errors";
 export { type FormattedUserError, formatUserError } from "./format-error";
+export { getLocaleName } from "./locale-name";
 export { m } from "./paraglide/messages";
 export { getLocale, locales } from "./paraglide/runtime";
 export {
