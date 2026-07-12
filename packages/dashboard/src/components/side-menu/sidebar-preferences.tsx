@@ -1,5 +1,5 @@
 import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from "@aio-proxy/i18n";
-import { Languages, MonitorCog } from "lucide-react";
+import { Eclipse, Languages } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
   DropdownMenu,
@@ -32,7 +32,7 @@ export const SidebarPreferences: React.FC = () => {
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger render={<SidebarMenuButton />}>
-              <MonitorCog />
+              <Eclipse />
               <span>{m["dashboard.preferences.appearance"]()}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="end">
