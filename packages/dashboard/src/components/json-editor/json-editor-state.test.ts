@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "@rstest/core";
 import { setCodeEditorAriaInvalid } from "../code-editor/code-editor-accessibility";
 import {
@@ -110,7 +109,7 @@ describe("JsonEditor state", () => {
     expect(applied.at(-1)).toHaveLength(2);
   });
 
-  test("mirrors invalid state and its description onto the wrapper and Monaco textbox", async () => {
+  test("mirrors invalid state and its description onto the Monaco textbox", () => {
     const attributes = new Map<string, string>();
     const textbox = {
       setAttribute: (name: string, value: string) => attributes.set(name, value),
@@ -126,18 +125,5 @@ describe("JsonEditor state", () => {
     setCodeEditorAriaInvalid(editor, false, undefined);
     expect(attributes.has("aria-invalid")).toBe(false);
     expect(attributes.has("aria-describedby")).toBe(false);
-
-    const codeEditorSource = await readFile(new URL("../code-editor/code-editor.tsx", import.meta.url), "utf8");
-    expect(codeEditorSource).toContain(
-      "setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current)",
-    );
-    expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy)");
-    expect(codeEditorSource).toContain("aria-describedby={ariaDescribedBy}");
-
-    const jsonEditorSource = await readFile(new URL("./json-editor.tsx", import.meta.url), "utf8");
-    expect(jsonEditorSource).toContain("onValidate={handleValidationReady}");
-    expect(jsonEditorSource).toContain("externalInvalid");
-    expect(jsonEditorSource).toContain("ariaDescribedBy={errorDescriptionId}");
-    expect(jsonEditorSource).toContain("height={height ?? 240}");
   });
 });

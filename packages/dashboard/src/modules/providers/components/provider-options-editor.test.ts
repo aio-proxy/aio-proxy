@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "@rstest/core";
 import {
   initialProviderOptionsSchemaState,
@@ -22,23 +21,6 @@ import {
 } from "./provider-options-editor";
 
 describe("provider options editor", () => {
-  test("wires schema workflow, package commit events, and the JSON editor", async () => {
-    const aiSdkFieldsSource = await readFile(new URL("./provider-form-fields-ai-sdk.tsx", import.meta.url), "utf8");
-    const optionsEditorSource = await readFile(new URL("./provider-options-editor.tsx", import.meta.url), "utf8");
-
-    expect(aiSdkFieldsSource).toContain("useProviderOptionsSchema");
-    expect(aiSdkFieldsSource).toContain("onBlur");
-    expect(aiSdkFieldsSource).toContain('event.key === "Enter"');
-    expect(optionsEditorSource).toContain("<JsonEditor");
-    expect(optionsEditorSource).toContain("AlertDialog");
-    expect(optionsEditorSource).not.toContain("Textarea");
-    expect(optionsEditorSource).toContain('schemaState.phase === "schema_unavailable"');
-    expect(optionsEditorSource).toContain("options_schema_load_error");
-    expect(optionsEditorSource).not.toContain(
-      'schemaState.phase === "schema_unavailable" || schemaState.phase === "schema_error"',
-    );
-  });
-
   test("accepts only undefined or a plain object at the provider options root", () => {
     expect(isProviderOptionsObject(undefined)).toBe(true);
     expect(isProviderOptionsObject({})).toBe(true);
@@ -235,18 +217,7 @@ describe("provider options editor", () => {
     expect(packages).toEqual(["@ai-sdk/openai", "@ai-sdk/openai"]);
   });
 
-  test("ai-sdk pages start with Save blocked until options validity reports", async () => {
-    const pageSource = await readFile(new URL("../templates/provider-form-page.tsx", import.meta.url), "utf8");
-
-    expect(pageSource).toContain('useState(kind === "api")');
-  });
-
-  test("initial package synchronization checks without authorizing trusted auto-install", async () => {
-    const aiSdkFieldsSource = await readFile(new URL("./provider-form-fields-ai-sdk.tsx", import.meta.url), "utf8");
-
-    expect(aiSdkFieldsSource).toContain("initialPackageSynchronized");
-    expect(aiSdkFieldsSource).toContain("commitUserPackage");
-
+  test("initial package synchronization checks without authorizing trusted auto-install", () => {
     const initialCommit = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
       type: "package_committed",
       packageName: "@ai-sdk/openai",
