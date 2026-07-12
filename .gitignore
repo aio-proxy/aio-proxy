@@ -20,3 +20,4 @@ packages/cli/src/main.compiled.gen.ts
 npm/cli-*/bin/
 .playwright-mcp
 .worktrees/
+.reference/
