@@ -106,6 +106,7 @@ describe("provider schema generation", () => {
     const scriptsRoot = join(import.meta.dir, "../scripts");
     expect(existsSync(join(scriptsRoot, "provider-schemas-require.ts"))).toBe(false);
     expect(PROVIDER_SCHEMAS_BUILD_EXTERNALS).toEqual({
+      bun: 'var process.getBuiltinModule("bun")',
       "node:crypto": 'var process.getBuiltinModule("node:crypto")',
       "node:fs/promises": 'var process.getBuiltinModule("node:fs/promises")',
       "node:path": 'var process.getBuiltinModule("node:path")',
@@ -118,6 +119,9 @@ describe("provider schema generation", () => {
     ]) {
       expect(await readFile(join(scriptsRoot, name), "utf8")).not.toContain("providerSchemasRequire");
     }
+    const sourceCache = await readFile(join(scriptsRoot, "provider-source-cache.ts"), "utf8");
+    expect(sourceCache).toContain('import { Archive } from "bun";');
+    expect(sourceCache).not.toContain("new Bun.Archive");
   });
 
   test("pins the exact allowlist without provider dependencies", async () => {

@@ -24,7 +24,7 @@ After validation, the resolver strips the `package/` prefix, creates parent dire
 
 ## Module Loading
 
-Delete `provider-schemas-require.ts`. Build modules use standard ESM imports for Bun/Node built-ins, `@babel/parser`, and `typebox`. `Bun.Archive` is referenced directly from the Bun global. The Rslib configuration maps only `node:crypto`, `node:fs/promises`, and `node:path` to `process.getBuiltinModule(...)` for Rspack's `importModule()` VM, which cannot execute its default ESM externals; this is a VM configuration boundary, not a source-level loading abstraction.
+Delete `provider-schemas-require.ts`. Build modules use standard ESM imports for Bun/Node built-ins, `@babel/parser`, and `typebox`; the source resolver imports `{ Archive }` from `bun` instead of relying on an implicit VM global. The Rslib configuration maps the `bun` module plus `node:crypto`, `node:fs/promises`, and `node:path` to `process.getBuiltinModule(...)` for Rspack's `importModule()` VM, which cannot execute its default externals or expose the Bun global consistently; this is a VM configuration boundary, not a source-level loading abstraction.
 
 Rslib `api.transform().importModule()` remains the sole schema-generation loader. The existing real-Rslib-transform integration test is the acceptance boundary for removing the custom resolver. No alternate generator command, committed generated source, or test-specific generation path is added.
 

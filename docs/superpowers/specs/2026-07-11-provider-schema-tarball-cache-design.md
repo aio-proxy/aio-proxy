@@ -63,7 +63,7 @@ One-shot builds fail when registry refresh, download, integrity verification, ex
 
 ## Rslib Integration
 
-`provider-schemas-plugin.ts` keeps its existing `api.transform` target and build-only `importModule()` loader graph. It adds an `onBeforeBuild` callback solely to update a closure containing `isWatch` before compilation. Build modules use standard ESM imports. The Rslib configuration maps only the three Node built-ins used by the imported build graph (`node:crypto`, `node:fs/promises`, and `node:path`) to `process.getBuiltinModule(...)` because Rspack's `importModule()` VM cannot execute its default ESM externals; no custom module-resolution bridge remains.
+`provider-schemas-plugin.ts` keeps its existing `api.transform` target and build-only `importModule()` loader graph. It adds an `onBeforeBuild` callback solely to update a closure containing `isWatch` before compilation. Build modules use standard ESM imports, including `{ Archive }` from `bun`. The Rslib configuration maps the `bun` module and the three Node built-ins used by the imported build graph (`node:crypto`, `node:fs/promises`, and `node:path`) to `process.getBuiltinModule(...)` because Rspack's `importModule()` VM cannot execute its default externals or expose the Bun global consistently; no custom module-resolution bridge remains.
 
 The generator entry receives the source-resolution mode and cache root from the plugin. Every extracted `package.json` and traversed declaration remains registered through the existing dependency callback, so changes in the cached package source participate in Rspack's module/watch graph.
 

@@ -2,6 +2,7 @@ import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
 import { pluginProviderSchemas } from "./scripts/provider-schemas-plugin";
 
 export const PROVIDER_SCHEMAS_BUILD_EXTERNALS = {
+  bun: 'var process.getBuiltinModule("bun")',
   "node:crypto": 'var process.getBuiltinModule("node:crypto")',
   "node:fs/promises": 'var process.getBuiltinModule("node:fs/promises")',
   "node:path": 'var process.getBuiltinModule("node:path")',

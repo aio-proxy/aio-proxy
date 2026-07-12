@@ -6,7 +6,7 @@
 
 **Architecture:** A build-only `resolveProviderSource()` module owns npm metadata, integrity verification, safe declaration-only extraction, and a versioned local cache. The existing schema generator receives an absolute cached package root. The Rsbuild plugin uses `onBeforeBuild.isWatch` only to select refresh policy; `api.transform` remains the sole schema-generation entry.
 
-Build modules use standard ESM imports; the former `providerSchemasRequire` bridge does not exist. Rslib config maps only `node:crypto`, `node:fs/promises`, and `node:path` to `process.getBuiltinModule(...)` for Rspack's `importModule()` VM, whose default ESM externals are not executable in that context.
+Build modules use standard ESM imports, including `{ Archive }` from `bun`; the former `providerSchemasRequire` bridge does not exist. Rslib config maps the `bun` module plus `node:crypto`, `node:fs/promises`, and `node:path` to `process.getBuiltinModule(...)` for Rspack's `importModule()` VM, whose default externals are not executable and whose Bun global is not consistently exposed in that context.
 
 **Tech Stack:** TypeScript, Rslib/Rsbuild plugin hooks, Node `fetch`/`crypto`/`fs`, Bun 1.3.14+ `Archive`, Bun tests.
 

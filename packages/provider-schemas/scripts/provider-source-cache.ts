@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { Archive } from "bun";
 
 export type ProviderSchemaSource = {
   readonly packageName: string;
@@ -295,7 +296,7 @@ type SelectedArchiveFile = {
 };
 
 const selectArchiveFiles = async (packageName: string, bytes: Uint8Array): Promise<SelectedArchiveFile[]> => {
-  const files = await new Bun.Archive(bytes).files();
+  const files = await new Archive(bytes).files();
   const selected: SelectedArchiveFile[] = [];
   let selectedBytes = 0;
 
