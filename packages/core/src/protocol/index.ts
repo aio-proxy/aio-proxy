@@ -1,4 +1,5 @@
 export * from "./adapter";
+export * from "./anthropic-messages";
 export * from "./errors";
 export * from "./openai-completions";
 export * from "./openai-responses";
