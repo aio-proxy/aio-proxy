@@ -80,6 +80,29 @@ describe("Anthropic Messages transform", () => {
     });
   });
 
+  test("Given tool_result without a preceding tool_use When converted Then toolName stays empty", () => {
+    const request = parseAnthropicMessages({
+      model: "claude-sonnet-4-5",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_unknown", content: "orphaned" }],
+        },
+      ],
+    });
+
+    expect(anthropicMessagesToModelMessages(request).messages[0]).toEqual({
+      role: "user",
+      content: [
+        expect.objectContaining({
+          type: "tool-result",
+          toolCallId: "toolu_unknown",
+          toolName: "",
+        }),
+      ],
+    });
+  });
+
   test("Given model messages without model When reversed Then typed error names path", () => {
     const converted: AnthropicMessagesModelMessages = {
       messages: [{ role: "user", content: "hello" }],

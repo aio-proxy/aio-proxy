@@ -38,19 +38,42 @@ type TokenUsage = {
 export async function writeAnthropicMessagesResponse(
   stream: ReadableStream<AnthropicMessagesStreamPart>,
 ): Promise<AnthropicMessageResponse> {
-  const text: string[] = [];
-  const tools = new Map<string, { readonly id: string; readonly name: string; input: string }>();
+  type TextState = { readonly type: "text"; readonly id: string; text: string };
+  type ToolState = { readonly type: "tool_use"; readonly id: string; readonly name: string; input: string };
+
+  const content: (TextState | ToolState)[] = [];
+  const texts = new Map<string, TextState>();
+  const tools = new Map<string, ToolState>();
   let stopReason: AnthropicStopReason = "end_turn";
   let usage: AnthropicUsage | undefined;
 
   for await (const part of stream) {
     switch (part.type) {
-      case "text-delta":
-        text.push(textDelta(part));
+      case "text-start": {
+        const text = { type: "text" as const, id: part.id, text: "" };
+        texts.set(part.id, text);
+        content.push(text);
         break;
-      case "tool-input-start":
-        tools.set(part.id, { id: part.id, name: part.toolName, input: "" });
+      }
+      case "text-delta": {
+        let text = texts.get(part.id);
+        if (text === undefined) {
+          text = { type: "text", id: part.id, text: "" };
+          texts.set(part.id, text);
+          content.push(text);
+        }
+        text.text += textDelta(part);
         break;
+      }
+      case "text-end":
+        texts.delete(part.id);
+        break;
+      case "tool-input-start": {
+        const tool = { type: "tool_use" as const, id: part.id, name: part.toolName, input: "" };
+        tools.set(part.id, tool);
+        content.push(tool);
+        break;
+      }
       case "tool-input-delta": {
         const tool = tools.get(part.id);
         if (tool !== undefined) {
@@ -58,6 +81,9 @@ export async function writeAnthropicMessagesResponse(
         }
         break;
       }
+      case "tool-input-end":
+        tools.delete(part.id);
+        break;
       case "finish":
         stopReason = anthropicStopReason(part.finishReason);
         usage = anthropicUsage(finishUsage(part)).usage;
@@ -71,15 +97,11 @@ export async function writeAnthropicMessagesResponse(
     id: messageId,
     type: "message",
     role: "assistant",
-    content: [
-      ...(text.length === 0 ? [] : [{ type: "text" as const, text: text.join("") }]),
-      ...Array.from(tools.values(), (tool) => ({
-        type: "tool_use" as const,
-        id: tool.id,
-        name: tool.name,
-        input: parseJson(tool.input),
-      })),
-    ],
+    content: content.map((part) =>
+      part.type === "text"
+        ? { type: "text", text: part.text }
+        : { type: "tool_use", id: part.id, name: part.name, input: parseJson(part.input) },
+    ),
     model,
     stop_reason: stopReason,
     stop_sequence: null,
@@ -93,7 +115,7 @@ export function writeAnthropicMessagesSSE(
   return new ReadableStream({
     async start(controller) {
       let nextIndex = 0;
-      let textIndex: number | undefined;
+      let text: { readonly id: string; readonly index: number } | undefined;
       const tools = new Map<string, number>();
       const openBlocks = new Set<number>();
 
@@ -116,30 +138,33 @@ export function writeAnthropicMessagesSSE(
       for await (const part of stream) {
         switch (part.type) {
           case "text-delta":
-            if (textIndex === undefined) {
-              textIndex = nextIndex;
+            if (text === undefined || text.id !== part.id) {
+              if (text !== undefined && openBlocks.delete(text.index)) {
+                controller.enqueue(contentBlockStop(text.index));
+              }
+              text = { id: part.id, index: nextIndex };
               nextIndex += 1;
-              openBlocks.add(textIndex);
-              controller.enqueue(textStart(textIndex));
+              openBlocks.add(text.index);
+              controller.enqueue(textStart(text.index));
             }
             controller.enqueue(
               event("content_block_delta", {
                 type: "content_block_delta",
-                index: textIndex,
+                index: text.index,
                 delta: { type: "text_delta", text: textDelta(part) },
               }),
             );
             break;
           case "text-end":
-            if (textIndex !== undefined && openBlocks.delete(textIndex)) {
-              controller.enqueue(contentBlockStop(textIndex));
-              textIndex = undefined;
+            if (text?.id === part.id && openBlocks.delete(text.index)) {
+              controller.enqueue(contentBlockStop(text.index));
+              text = undefined;
             }
             break;
           case "tool-input-start": {
-            if (textIndex !== undefined && openBlocks.delete(textIndex)) {
-              controller.enqueue(contentBlockStop(textIndex));
-              textIndex = undefined;
+            if (text !== undefined && openBlocks.delete(text.index)) {
+              controller.enqueue(contentBlockStop(text.index));
+              text = undefined;
             }
             const index = nextIndex;
             nextIndex += 1;
@@ -179,7 +204,7 @@ export function writeAnthropicMessagesSSE(
               controller.enqueue(contentBlockStop(index));
             }
             openBlocks.clear();
-            textIndex = undefined;
+            text = undefined;
             controller.enqueue(
               event("message_delta", {
                 type: "message_delta",
