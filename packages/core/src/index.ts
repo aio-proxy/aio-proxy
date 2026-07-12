@@ -14,7 +14,11 @@ export type {
   ToolSet,
 } from "./ai-sdk-bridge";
 export { jsonSchema } from "./ai-sdk-bridge";
-export { writeAnthropicMessagesSSE } from "./egress/anthropic-messages";
+export {
+  type AnthropicMessageResponse,
+  writeAnthropicMessagesResponse,
+  writeAnthropicMessagesSSE,
+} from "./egress/anthropic-messages";
 export { type IngressError, toIngressError } from "./egress/error";
 export {
   writeGeminiGenerateContentResponse,

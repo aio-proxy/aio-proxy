@@ -95,11 +95,14 @@ export type AnthropicMessagesFromModelMessages = AnthropicMessagesModelMessages 
 };
 
 export function anthropicMessagesToModelMessages(req: AnthropicMessagesRequest): AnthropicMessagesModelMessages {
+  const toolNames = new Map<string, string>();
+  const messages: AnthropicModelMessage[] = [];
+  for (const message of req.messages) {
+    messages.push(messageToModelMessage(message, toolNames));
+  }
+
   return {
-    messages: [
-      ...(req.system === undefined ? [] : [systemToModelMessage(req.system)]),
-      ...req.messages.map(messageToModelMessage),
-    ],
+    messages: [...(req.system === undefined ? [] : [systemToModelMessage(req.system)]), ...messages],
     settings: {
       ...(req.stream !== undefined ? { stream: req.stream } : {}),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
@@ -159,17 +162,18 @@ export function modelMessagesToAnthropicMessages({
 
 function messageToModelMessage(
   message: AnthropicMessagesRequest["messages"][number],
+  toolNames: Map<string, string>,
 ): AnthropicUserMessage | AnthropicAssistantMessage {
   switch (message.role) {
     case "user":
       return {
         role: "user",
-        content: userContentToModelParts(message.content),
+        content: userContentToModelParts(message.content, toolNames),
       } satisfies AnthropicUserMessage;
     case "assistant":
       return {
         role: "assistant",
-        content: assistantContentToModelParts(message.content),
+        content: assistantContentToModelParts(message.content, toolNames),
       } satisfies AnthropicAssistantMessage;
     default:
       return assertNever(message);
@@ -190,6 +194,7 @@ function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest["syst
 
 function userContentToModelParts(
   content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
+  toolNames: ReadonlyMap<string, string>,
 ): string | readonly (TextPart | ToolResultPart)[] {
   return typeof content === "string"
     ? content
@@ -198,7 +203,7 @@ function userContentToModelParts(
           case "text":
             return textPart(part);
           case "tool_result":
-            return toolResultPart(part);
+            return toolResultPart(part, toolNames);
           default:
             return assertNever(part);
         }
@@ -207,6 +212,7 @@ function userContentToModelParts(
 
 function assistantContentToModelParts(
   content: Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"],
+  toolNames: Map<string, string>,
 ): string | readonly (TextPart | ToolCallPart | ReasoningPart)[] {
   return typeof content === "string"
     ? content
@@ -214,8 +220,10 @@ function assistantContentToModelParts(
         switch (part.type) {
           case "text":
             return textPart(part);
-          case "tool_use":
+          case "tool_use": {
+            toolNames.set(part.id, part.name);
             return toolCallPart(part);
+          }
           case "thinking":
             return {
               type: "reasoning",
@@ -286,11 +294,11 @@ function toolCallPart(part: AnthropicToolUseBlock): ToolCallPart {
   };
 }
 
-function toolResultPart(part: AnthropicToolResultBlock): ToolResultPart {
+function toolResultPart(part: AnthropicToolResultBlock, toolNames: ReadonlyMap<string, string>): ToolResultPart {
   return {
     type: "tool-result",
     toolCallId: part.tool_use_id,
-    toolName: "",
+    toolName: toolNames.get(part.tool_use_id) ?? "",
     output:
       typeof part.content === "string"
         ? { type: "text", value: part.content }

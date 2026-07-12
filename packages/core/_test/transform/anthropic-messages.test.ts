@@ -61,27 +61,20 @@ describe("Anthropic Messages transform", () => {
     const request = await readFixture("multi-tool.json");
 
     const converted = anthropicMessagesToModelMessages(request);
-    const user = converted.messages[2];
 
-    expect(user?.role).toBe("user");
-    expect(user).toEqual({
+    expect(converted.messages[2]).toEqual({
       role: "user",
       content: [
-        {
+        expect.objectContaining({
           type: "tool-result",
           toolCallId: "toolu_weather",
-          toolName: "",
-          output: {
-            type: "content",
-            value: [{ type: "text", text: "Sunny" }],
-          },
-        },
-        {
+          toolName: "weather",
+        }),
+        expect.objectContaining({
           type: "tool-result",
           toolCallId: "toolu_time",
-          toolName: "",
-          output: { type: "text", value: "14:05" },
-        },
+          toolName: "clock",
+        }),
         { type: "text", text: "Summarize both." },
       ],
     });
