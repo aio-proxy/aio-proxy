@@ -1,8 +1,6 @@
-import { providerSchemasRequire } from "./provider-schemas-require";
-
-const { readFile, realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
-const { isAbsolute, relative, resolve, sep } = providerSchemasRequire("node:path") as typeof import("node:path");
-const { parse } = providerSchemasRequire("@babel/parser") as typeof import("@babel/parser");
+import { readFile, realpath } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { parse } from "@babel/parser";
 
 const MAX_FILES = 64;
 const MAX_DEPTH = 16;

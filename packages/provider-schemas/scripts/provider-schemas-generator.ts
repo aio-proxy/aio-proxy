@@ -1,15 +1,13 @@
+import { realpath } from "node:fs/promises";
+import { join } from "node:path";
+import { parse } from "@babel/parser";
+import { Script } from "typebox";
 import { PROVIDER_SCHEMA_ALLOWLIST } from "../src/allowlist";
 import type { ProviderOptionsSchemaEntry } from "../src/types";
 import { readProviderPackageMetadata, resolveDeclarationEntry } from "./declaration-entry";
 import { parseProviderFactoryDeclaration } from "./declaration-parser";
-import { providerSchemasRequire } from "./provider-schemas-require";
 import { type ProviderSchemaSource, resolveProviderSource } from "./provider-source-cache";
 import { normalizeTypeBoxModule } from "./schema-normalizer";
-
-const { realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
-const { join } = providerSchemasRequire("node:path") as typeof import("node:path");
-const { parse } = providerSchemasRequire("@babel/parser") as typeof import("@babel/parser");
-const { Script } = providerSchemasRequire("typebox") as typeof import("typebox");
 
 const ROOT_NAME = "__AioProxyProviderOptions";
 const compareCodeUnits = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);

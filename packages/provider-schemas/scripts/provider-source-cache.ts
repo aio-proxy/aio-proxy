@@ -1,13 +1,7 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { providerSchemasRequire } from "./provider-schemas-require";
-
-const { createHash, timingSafeEqual } = providerSchemasRequire("node:crypto") as typeof import("node:crypto");
-const { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } = providerSchemasRequire(
-  "node:fs/promises",
-) as typeof import("node:fs/promises");
-const { basename, dirname, isAbsolute, join, resolve } = providerSchemasRequire(
-  "node:path",
-) as typeof import("node:path");
+import { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 export type ProviderSchemaSource = {
   readonly packageName: string;

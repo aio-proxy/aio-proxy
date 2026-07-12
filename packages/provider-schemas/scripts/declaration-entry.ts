@@ -1,7 +1,5 @@
-import { providerSchemasRequire } from "./provider-schemas-require";
-
-const { readFile, realpath } = providerSchemasRequire("node:fs/promises") as typeof import("node:fs/promises");
-const { isAbsolute, join, relative, resolve, sep } = providerSchemasRequire("node:path") as typeof import("node:path");
+import { readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 type PackageJson = {
   readonly name: string;

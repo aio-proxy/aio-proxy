@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
 import { Script } from "typebox";
+import { PROVIDER_SCHEMAS_BUILD_EXTERNALS } from "../rslib.config";
 import { generateProviderSchemaEntries } from "../scripts/provider-schemas-build";
 import {
   compileTypeBoxModule,
@@ -101,6 +102,24 @@ const createFixtureProvider = () => {
 };
 
 describe("provider schema generation", () => {
+  test("uses standard ESM imports for provider schema build dependencies", async () => {
+    const scriptsRoot = join(import.meta.dir, "../scripts");
+    expect(existsSync(join(scriptsRoot, "provider-schemas-require.ts"))).toBe(false);
+    expect(PROVIDER_SCHEMAS_BUILD_EXTERNALS).toEqual({
+      "node:crypto": 'var process.getBuiltinModule("node:crypto")',
+      "node:fs/promises": 'var process.getBuiltinModule("node:fs/promises")',
+      "node:path": 'var process.getBuiltinModule("node:path")',
+    });
+    for (const name of [
+      "declaration-entry.ts",
+      "declaration-parser.ts",
+      "provider-schemas-generator.ts",
+      "provider-source-cache.ts",
+    ]) {
+      expect(await readFile(join(scriptsRoot, name), "utf8")).not.toContain("providerSchemasRequire");
+    }
+  });
+
   test("pins the exact allowlist without provider dependencies", async () => {
     expect(PROVIDER_SCHEMA_ALLOWLIST).toEqual(EXPECTED_PROVIDER_SCHEMA_CATALOG);
     const packageJson = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
@@ -647,8 +666,9 @@ describe("provider schema generation", () => {
       `
         export default {
           source: { entry: { index: "./src/index.ts" } },
-          lib: [{ format: "esm" }],
+          lib: [{ format: "esm", bundle: false }],
           output: { target: "node" },
+          tools: { rspack: { externals: ${JSON.stringify(PROVIDER_SCHEMAS_BUILD_EXTERNALS)} } },
           plugins: [{
             name: "fixture:provider-source-cache-import",
             setup(api) {
