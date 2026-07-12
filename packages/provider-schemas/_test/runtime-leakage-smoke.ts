@@ -6,8 +6,8 @@ import { join } from "node:path";
 
 const repositoryRoot = join(import.meta.dir, "../../..");
 const providerSchemasDist = join(import.meta.dir, "../dist");
-const forbidden =
-  /@babel\/parser|typebox|\btar\b|provider-source-cache|provider-schemas-generator|provider-schemas-build|provider-schemas-plugin/iu;
+const BUILD_ONLY_PATTERN =
+  /@babel\/parser|typebox|\btar\b|provider-schemas-require|provider-source-cache|provider-schemas-generator|provider-schemas-build|provider-schemas-plugin/iu;
 
 const readTree = async (root: string): Promise<string> => {
   const contents: string[] = [];
@@ -39,7 +39,7 @@ test("builds runtime artifacts without provider schema build tooling", async () 
     expect(cliBuild.exitCode, `${cliBuild.stdout}\n${cliBuild.stderr}`).toBe(0);
 
     const runtimeSource = `${await readTree(providerSchemasDist)}\n${await readFile(cliBundle, "utf8")}`;
-    expect(runtimeSource.match(forbidden)).toBeNull();
+    expect(runtimeSource.match(BUILD_ONLY_PATTERN)).toBeNull();
   } finally {
     rmSync(cliBundle, { force: true });
   }

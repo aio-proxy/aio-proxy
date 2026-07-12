@@ -6,7 +6,9 @@
 
 **Architecture:** A build-only `resolveProviderSource()` module owns npm metadata, integrity verification, safe declaration-only extraction, and a versioned local cache. The existing schema generator receives an absolute cached package root. The Rsbuild plugin uses `onBeforeBuild.isWatch` only to select refresh policy; `api.transform` remains the sole schema-generation entry.
 
-**Tech Stack:** TypeScript, Rslib/Rsbuild plugin hooks, Node `fetch`/`crypto`/`fs`, `tar`, Bun tests.
+Build modules use standard ESM imports; the former `providerSchemasRequire` bridge does not exist. Rslib config maps only `node:crypto`, `node:fs/promises`, and `node:path` to `process.getBuiltinModule(...)` for Rspack's `importModule()` VM, whose default ESM externals are not executable in that context.
+
+**Tech Stack:** TypeScript, Rslib/Rsbuild plugin hooks, Node `fetch`/`crypto`/`fs`, Bun 1.3.14+ `Archive`, Bun tests.
 
 ## Global Constraints
 
@@ -15,10 +17,10 @@
 - `rslib --watch` selects the greatest immutable cached npm `time.modified` observation and accesses npm only when no usable observation exists.
 - Provider packages are not dependencies of `@aio-proxy/provider-schemas` and are not installed into workspace `node_modules` for schema generation.
 - Only package-owned `package.json` and `.d.ts`/`.d.mts`/`.d.cts` files are extracted.
-- Tarballs are limited to 32 MiB compressed and 65 extracted manifest/declaration files, verified against npm `dist.integrity`, and rejected on unsafe paths, links, or package metadata mismatch. Directories do not consume the extracted-file limit.
+- Tarballs are limited to 32 MiB compressed and verified against npm `dist.integrity` before `Bun.Archive.files()` enumeration. Application code rejects unsafe returned paths, more than 65 selected manifest/declaration files, excessive selected bytes, or package metadata mismatch before writing. Bun omits directories and links, so they are never materialized; selected-file and byte limits are evaluated after enumeration because Bun exposes no per-entry abort callback.
 - `api.onBeforeBuild` selects refresh policy only. Schema generation and returned module source occur only inside `api.transform`.
 - No explicit `generate` command, committed generated schema artifact, runtime schema parser, private registry support, or fallback to stale cache in one-shot build.
-- Babel, TypeBox, tar, registry, generator, and plugin modules must not enter `packages/provider-schemas/dist` or the CLI binary.
+- Babel, TypeBox, archive/cache, generator, plugin, and removed compatibility-loader modules must not enter `packages/provider-schemas/dist` or the CLI binary.
 - Preserve the user's expanded `packages/provider-schemas/src/allowlist.ts` entries; do not add versions or silently drop failing packages.
 - Do not touch or stage `output/`. Do not pop or drop the existing safety stash.
 
@@ -56,7 +58,7 @@ export const resolveProviderSource: (
 
 - [ ] **Step 1: Add failing cache-miss and watch-cache tests**
 
-Create `createRegistryFixture()` in the test file. It returns `{ fetch, requests, close }`, serves package metadata and a tarball created with `tar.create`, and closes its Bun server in `afterEach`. The tarball contains `package/package.json`, `package/dist/index.d.ts`, and `package/dist/index.js`. Add a local `fileExists(path)` helper implemented with `stat(path).then(() => true, () => false)`. Tests assert that only the manifest and declaration are extracted.
+Create `createRegistryFixture()` in the test file. It returns `{ fetch, requests, close }`, serves package metadata and a gzipped tar archive created with `new Bun.Archive(files).bytes()`, and closes its Bun server in `afterEach`. The tarball contains `package/package.json`, `package/dist/index.d.ts`, and `package/dist/index.js`. Add a local `fileExists(path)` helper implemented with `stat(path).then(() => true, () => false)`. Tests assert that only the manifest and declaration are written.
 
 ```ts
 test("downloads npm latest and caches only declarations", async () => {
@@ -93,17 +95,17 @@ Run:
 rtk bun test packages/provider-schemas/_test/provider-source-cache.test.ts
 ```
 
-Expected: FAIL because `provider-source-cache.ts` and the `tar` dependency do not exist.
+Expected: FAIL because `provider-source-cache.ts` does not exist.
 
-- [ ] **Step 3: Add the one build-only archive dependency**
+- [ ] **Step 3: Keep archive handling dependency-free**
 
-Run:
+Require Bun 1.3.14+ for this build path and use its built-in `Bun.Archive`; do not add a third-party archive dependency. Run:
 
 ```bash
-rtk bun add --dev --filter @aio-proxy/provider-schemas tar
+rtk rg -n '"tar"' packages/provider-schemas/package.json
 ```
 
-Expected: `tar` is added only to `@aio-proxy/provider-schemas` devDependencies and `bun.lock` changes; no provider package is added.
+Expected: no direct `tar` dependency is added to `@aio-proxy/provider-schemas`.
 
 - [ ] **Step 4: Implement metadata resolution, integrity verification, and declaration-only extraction**
 
@@ -127,16 +129,7 @@ const declarationPath = /(?:^|\/)package\/(?:package\.json|.*\.d\.[cm]?ts)$/;
 
 Use `encodeURIComponent(packageName)` for the registry metadata URL. Parse SRI as `<algorithm>-<base64>`, hash the downloaded bytes with `node:crypto`, and compare decoded bytes with `timingSafeEqual`. Reject missing/invalid metadata and non-2xx responses with errors containing `packageName`.
 
-Load `tar` through the existing build-only bridge rather than a static runtime import so Rslib module execution does not externalize it incorrectly:
-
-```ts
-import { providerSchemasRequire } from "./provider-schemas-require";
-import type * as Tar from "tar";
-
-const tar = providerSchemasRequire("tar") as typeof Tar;
-```
-
-Write the tarball to a temporary sibling directory and call `tar.x` with `strict: true`, `preservePaths: false`, `strip: 1`, and a filter that permits only the package manifest and declaration files and rejects symbolic/hard links. Validate extracted manifest name/version, then atomically rename the version directory.
+After integrity verification, enumerate the archive with `Bun.Archive.files()`. Select the package manifest and declaration blobs, validate every returned path plus the complete selected count and byte total before writing anything, then write only those files to a temporary sibling directory. Bun omits directories and symbolic/hard links from `files()`, so application code never materializes them. The selected-file and byte limits are intentionally post-enumeration because Bun exposes no per-entry abort callback. Validate the written manifest name/version, then atomically rename the version directory.
 
 Canonicalize npm metadata `time.modified` with `new Date(value).toISOString()`. Publish an immutable observation record keyed by a safe hash/encoding of that canonical revision:
 
@@ -158,13 +151,14 @@ test.each([
   "tarball larger than 32 MiB",
   "integrity mismatch",
   "archive traversal path",
-  "archive symbolic link",
   "package name mismatch",
   "package version mismatch",
 ])("rejects %s", async (scenario) => {
   await expect(runScenario(scenario)).rejects.toThrow("@fixture/provider");
 });
 ```
+
+Add successful-resolution tests for symbolic-link, hard-link, and declaration-shaped directory entries. Assert that Bun omits each entry and that none of their paths is materialized in the returned cache root.
 
 Also assert that `refreshLatest: true` performs a metadata request on each call but does not redownload when `latest` remains unchanged, and downloads a second version when `latest` changes.
 
@@ -259,7 +253,7 @@ const generated = await generateProviderSchemaEntry(packageRoot, allowlisted, ad
 
 Keep `generateProviderSchemaEntry`, dependency deduplication, rendering, and normalization unchanged. Export `GenerateProviderSchemasOptions`.
 
-Update `provider-schemas-build.ts` to forward options directly; it must no longer resolve provider packages through `providerSchemasRequire.resolve`.
+Update `provider-schemas-build.ts` to forward options directly; it must no longer resolve installed provider packages itself.
 
 - [ ] **Step 4: Use `onBeforeBuild.isWatch` only as transform policy**
 
@@ -368,7 +362,7 @@ Keep every current allowlist entry and its factory name without adding versions.
 @openrouter/ai-sdk-provider
 ```
 
-Keep build dependencies and `tar`. Run:
+Keep the parser and build dependencies; archive handling remains provided by Bun. Run:
 
 ```bash
 rtk bun install

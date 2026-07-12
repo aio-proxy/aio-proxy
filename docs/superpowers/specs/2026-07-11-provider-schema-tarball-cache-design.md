@@ -49,8 +49,8 @@ For each allowlisted source:
 2. In watch mode, scan immutable registry-observation records by descending canonical npm `time.modified` revision. Each observation contains `{ revision, version, integrity }`; select the first source that fully validates, falling back past corrupt or missing newer sources before fetching metadata.
 3. Look for a complete cache entry keyed by package name and resolved version.
 4. On a miss, fetch the exact version metadata, then download its `dist.tarball`.
-5. Verify the tarball against npm's `dist.integrity` using Node's crypto implementation before extraction.
-6. Extract only `package/package.json` and `*.d.ts`/`*.d.mts`/`*.d.cts` entries into a temporary sibling directory with the build-only `tar` package. Reject absolute paths, traversal paths, archive links, more than 65 extracted files, and compressed responses larger than 32 MiB. Directories do not consume the file limit.
+5. Verify the tarball against npm's `dist.integrity` using Node's crypto implementation before archive enumeration.
+6. Open the verified bytes with `Bun.Archive.files()`. Application code selects only `package/package.json` and `*.d.ts`/`*.d.mts`/`*.d.cts`, validates every returned path plus the selected-file and selected-byte limits, then writes the validated files into a temporary sibling directory. Bun omits directories and links, so they are never materialized. The 32 MiB compressed-response limit is enforced while downloading; file and byte limits are evaluated after enumeration because Bun exposes no per-entry abort callback.
 7. Validate the extracted `package.json` name and version against the resolved package and version.
 8. Hash every extracted manifest/declaration with SHA-256 and atomically create a completion manifest inside the unpublished version root. It records package name, version, registry tarball integrity, and a sorted exact file list with size and digest.
 9. Validate the completion identity, registry integrity, exact file set, sizes, and digests, then atomically rename the temporary directory to its final versioned cache location.
@@ -63,7 +63,7 @@ One-shot builds fail when registry refresh, download, integrity verification, ex
 
 ## Rslib Integration
 
-`provider-schemas-plugin.ts` keeps its existing `api.transform` target and build-only `importModule()` loader graph. It adds an `onBeforeBuild` callback solely to update a closure containing `isWatch` before compilation.
+`provider-schemas-plugin.ts` keeps its existing `api.transform` target and build-only `importModule()` loader graph. It adds an `onBeforeBuild` callback solely to update a closure containing `isWatch` before compilation. Build modules use standard ESM imports. The Rslib configuration maps only the three Node built-ins used by the imported build graph (`node:crypto`, `node:fs/promises`, and `node:path`) to `process.getBuiltinModule(...)` because Rspack's `importModule()` VM cannot execute its default ESM externals; no custom module-resolution bridge remains.
 
 The generator entry receives the source-resolution mode and cache root from the plugin. Every extracted `package.json` and traversed declaration remains registered through the existing dependency callback, so changes in the cached package source participate in Rspack's module/watch graph.
 
@@ -75,7 +75,7 @@ No explicit `generate` command, standalone writer, committed generated schema ar
 
 Provider packages removed from `@aio-proxy/provider-schemas` devDependencies are no longer installed into the workspace solely for schema extraction. Packages needed elsewhere in the repository remain declared by their actual runtime consumers.
 
-The `tar` archive library is a direct devDependency of `@aio-proxy/provider-schemas`. Registry, archive, parser, TypeBox, generator, and plugin modules remain build-only and must not appear in `packages/provider-schemas/dist` or the CLI binary.
+The build requires Bun 1.3.14+ and uses its built-in archive reader, so `@aio-proxy/provider-schemas` has no separate archive dependency. Registry, archive, parser, TypeBox, generator, plugin, and removed compatibility-loader names remain build-only and must not appear in `packages/provider-schemas/dist` or the CLI binary.
 
 ## Testing
 
