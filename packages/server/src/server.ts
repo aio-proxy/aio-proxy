@@ -9,7 +9,7 @@ import { createAnthropicMessagesRoutes } from "./routes/anthropic-messages";
 import { createGeminiGenerateContentRoutes } from "./routes/gemini-generate-content";
 import { createOpenAICompletionsRoutes } from "./routes/openai-completions";
 import { createOpenAIResponsesRoutes } from "./routes/openai-responses";
-import type { RuntimeProviderInstance } from "./runtime";
+import type { RuntimeProviderInput, RuntimeProviderInstance } from "./runtime";
 import { createServerState, type ServerState } from "./server-state";
 
 export const serverDefaults = {
@@ -27,7 +27,7 @@ export type CreateServerOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
-  readonly providerInstances?: readonly RuntimeProviderInstance[];
+  readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly port?: number;
   readonly host?: string;
   readonly dashboardAssets?: DashboardAssets;

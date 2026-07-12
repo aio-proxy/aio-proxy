@@ -1,10 +1,21 @@
-import { type ApiProviderInstance, createAiSdkProvider, createApiProvider, modelRoutes } from "@aio-proxy/core";
+import {
+  type AiSdkProviderInstance,
+  type ApiProviderInstance,
+  bridgeApiProviderToAiSdk,
+  createAiSdkProvider,
+  createApiProvider,
+  modelRoutes,
+} from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { createOAuthRuntimeProvider } from "./oauth-runtime";
-import type { RuntimeProviderInstance } from "./runtime";
+import type { RuntimeProviderInput, RuntimeProviderInstance } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
+
+export type MaterializeProvidersOptions = {
+  readonly bridgeApiProvider?: typeof bridgeApiProviderToAiSdk;
+};
 
 const probeMaxOutputTokens = 1;
 const openAIResponsesProbeMaxOutputTokens = 16;
@@ -15,7 +26,42 @@ export type ProviderRuntime = {
   readonly summaries: readonly DashboardProviderSummary[];
 };
 
-export function materializeProviders(config: Config): ProviderRuntime {
+export function materializeRuntimeProvider(
+  provider: RuntimeProviderInput,
+  options: { readonly apiBridge?: AiSdkProviderInstance } = {},
+): RuntimeProviderInstance {
+  if ("raw" in provider || "model" in provider) {
+    return provider;
+  }
+
+  if (provider.kind === ProviderKind.Api) {
+    return {
+      ...provider,
+      raw: { protocol: provider.protocol, invoke: provider.passthrough },
+      ...(options.apiBridge === undefined
+        ? {}
+        : {
+            model: {
+              ...(options.apiBridge.ensureAvailable === undefined
+                ? {}
+                : { ensureAvailable: options.apiBridge.ensureAvailable }),
+              invoke: options.apiBridge.invoke,
+            },
+          }),
+    };
+  }
+
+  return {
+    ...provider,
+    model: {
+      ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
+      invoke: provider.invoke,
+    },
+  };
+}
+
+export function materializeProviders(config: Config, options: MaterializeProvidersOptions = {}): ProviderRuntime {
+  const bridgeApiProvider = options.bridgeApiProvider ?? bridgeApiProviderToAiSdk;
   const probes = new Map<string, ProviderProbe>();
   const providers: RuntimeProviderInstance[] = [];
   const summaries: DashboardProviderSummary[] = [];
@@ -28,22 +74,25 @@ export function materializeProviders(config: Config): ProviderRuntime {
 
     switch (provider.kind) {
       case ProviderKind.Api: {
-        const instance = createApiProvider(provider);
-        probes.set(id, () => probeApi(provider, instance));
+        const api = createApiProvider(provider);
+        const instance = materializeRuntimeProvider(api, { apiBridge: bridgeApiProvider(provider) });
+        probes.set(id, () => probeApi(provider, api));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.AiSdk: {
-        const instance = createAiSdkProvider(provider);
-        probes.set(id, () => probeAiSdk(instance));
+        const aiSdk = createAiSdkProvider(provider);
+        const instance = materializeRuntimeProvider(aiSdk);
+        probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.OAuth: {
-        const instance = createOAuthRuntimeProvider(provider);
-        probes.set(id, () => probeAiSdk(instance));
+        const oauth = createOAuthRuntimeProvider(provider);
+        const instance = materializeRuntimeProvider(oauth);
+        probes.set(id, () => probeAiSdk(oauth));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name));
         break;
@@ -65,7 +114,7 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
     id: provider.id,
     kind: provider.kind,
     enabled: provider.enabled,
-    passthrough: isPassthrough(provider),
+    passthrough: provider.raw !== undefined,
     last_status: "unknown",
     last_latency: null,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
@@ -196,10 +245,6 @@ async function probeAiSdk(provider: {
     }
     throw error;
   }
-}
-
-function isPassthrough(provider: RuntimeProviderInstance): boolean {
-  return provider.kind === ProviderKind.Api;
 }
 
 function assertNever(value: never): never {
