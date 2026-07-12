@@ -102,6 +102,9 @@ async function attemptCandidates<TRequest, TContext>({
         if (hasNext && shouldFallbackStatus(response.status)) {
           session.attempt(failedAttempt(provider, candidate.modelId, response.status, startedAt));
           lastFailure = response;
+          try {
+            await response.body?.cancel();
+          } catch {}
           continue;
         }
         if (response.status < 200 || response.status >= 400) {
@@ -147,19 +150,29 @@ async function attemptCandidates<TRequest, TContext>({
 
         if (adapter.wantsStream(request, context)) {
           const stream = await preflightStream(captured.value);
+          let response: Response;
+          try {
+            response = new Response(adapter.modelSse(stream), SSE_RESPONSE_INIT);
+          } catch (error) {
+            try {
+              await stream.cancel(error);
+            } catch {}
+            throw error;
+          }
           session.finishFrom(
             attemptBase(provider, candidate.modelId, startedAt),
             terminalCompletion(captured.completion, rawRequest.signal),
           );
-          return new Response(adapter.modelSse(stream), SSE_RESPONSE_INIT);
+          return response;
         }
 
         const value = await adapter.modelJson(captured.value);
+        const response = Response.json(value);
         session.finishFrom(
           attemptBase(provider, candidate.modelId, startedAt),
           terminalCompletion(captured.completion, rawRequest.signal),
         );
-        return Response.json(value);
+        return response;
       }
 
       const unsupported = adapter.errors.unsupported("transform_dispatch");
@@ -172,7 +185,19 @@ async function attemptCandidates<TRequest, TContext>({
       return unsupported;
     } catch (error) {
       const mapped = adapter.errors.provider(error);
-      if (mapped === undefined) throw error;
+      if (mapped === undefined) {
+        const attempt = {
+          ...attemptBase(provider, candidate.modelId, startedAt),
+          outcome: "failure" as const,
+        };
+        session.finish({
+          outcome: "failure",
+          finalProviderId: provider.id,
+          finalModelId: candidate.modelId,
+          attempt,
+        });
+        throw error;
+      }
 
       const cancelled = isInboundAbort(error, rawRequest.signal);
       const outcome = cancelled ? ("cancelled" as const) : ("failure" as const);
@@ -251,8 +276,25 @@ function shouldFallbackStatus(status: number): boolean {
 
 async function preflightStream<T>(stream: ReadableStream<T>): Promise<ReadableStream<T>> {
   const reader = stream.getReader();
-  const first = await reader.read();
-  let firstPending = !first.done;
+  let released = false;
+  const releaseReader = () => {
+    if (!released) {
+      reader.releaseLock();
+      released = true;
+    }
+  };
+  let first: ReadableStreamReadResult<T>;
+  try {
+    first = await reader.read();
+  } catch (error) {
+    releaseReader();
+    throw error;
+  }
+  if (first.done) {
+    releaseReader();
+    throw new Error("Upstream model stream ended before the first event");
+  }
+  let firstPending = true;
 
   return new ReadableStream<T>({
     async pull(controller) {
@@ -263,14 +305,21 @@ async function preflightStream<T>(stream: ReadableStream<T>): Promise<ReadableSt
       }
       try {
         const next = await reader.read();
-        if (next.done) controller.close();
-        else controller.enqueue(next.value);
+        if (next.done) {
+          releaseReader();
+          controller.close();
+        } else controller.enqueue(next.value);
       } catch (error) {
+        releaseReader();
         controller.error(error);
       }
     },
-    cancel(reason) {
-      return reader.cancel(reason);
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
     },
   });
 }

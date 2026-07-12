@@ -8,7 +8,13 @@ import {
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import type { RequestAttemptInput, RequestFinishInput, RequestRecorder, RequestSession } from "../src/request-recorder";
 import type { ModelTransport, ProviderRouteSource, RawTransport, RuntimeProviderInstance } from "../src/runtime";
-import type { PassthroughUsageOptions, StreamUsageOptions, UsageCapture, UsageCompletion } from "../src/usage-capture";
+import {
+  createUsageCapture,
+  type PassthroughUsageOptions,
+  type StreamUsageOptions,
+  type UsageCapture,
+  type UsageCompletion,
+} from "../src/usage-capture";
 
 export const REQUESTED_MODEL = "test-model";
 
@@ -159,10 +165,15 @@ export function modelProvider(options: {
   return { calls, provider };
 }
 
-export function defineProviderRouteSource(fixtures: readonly FakeProvider[]) {
+export function defineProviderRouteSource(
+  fixtures: readonly FakeProvider[],
+  immediateStreamCompletion?: UsageCompletion,
+) {
   const providers = fixtures.map((fixture) => fixture.provider);
   const recording = createRecording();
+  const realUsageCapture = createUsageCapture({ priceCatalogTask: async () => undefined });
   const usage = {
+    capturedStreams: [] as ModelEventStream[],
     passthrough: [] as PassthroughUsageOptions[],
     stream: [] as StreamUsageOptions[],
   };
@@ -176,7 +187,12 @@ export function defineProviderRouteSource(fixtures: readonly FakeProvider[]) {
     },
     stream(options) {
       usage.stream.push(options);
-      return { value: options.stream, completion: Promise.resolve({ outcome: "success" }) };
+      const captured =
+        immediateStreamCompletion === undefined
+          ? realUsageCapture.stream(options)
+          : { value: options.stream, completion: Promise.resolve(immediateStreamCompletion) };
+      usage.capturedStreams.push(captured.value);
+      return captured;
     },
   };
   const source = {
@@ -207,6 +223,15 @@ export function textStream(text: string): ModelEventStream {
   return new ReadableStream<ModelPart>({
     start(controller) {
       controller.enqueue({ type: "text-delta", id: "text-1", text });
+      controller.enqueue(finishPart());
+      controller.close();
+    },
+  });
+}
+
+export function emptyStream(): ModelEventStream {
+  return new ReadableStream<ModelPart>({
+    start(controller) {
       controller.close();
     },
   });
@@ -234,13 +259,38 @@ export function textThenErrorStream(text: string, error: unknown): ModelEventStr
   });
 }
 
+export function cancellableTextStream(text: string, onCancel: (reason: unknown) => void): ModelEventStream {
+  return new ReadableStream<ModelPart>({
+    start(controller) {
+      controller.enqueue({ type: "text-delta", id: "text-1", text });
+    },
+    cancel(reason) {
+      onCancel(reason);
+    },
+  });
+}
+
 export async function settleRecording(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function providerCalls(): FakeProvider["calls"] {
   return { ensure: 0, model: [], raw: [] };
+}
+
+function finishPart(): ModelPart {
+  return {
+    type: "finish",
+    finishReason: "stop",
+    rawFinishReason: "stop",
+    totalUsage: {
+      inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
+      inputTokens: 0,
+      outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
+      outputTokens: 0,
+      totalTokens: 0,
+    },
+  };
 }
 
 function instrumentModel(
