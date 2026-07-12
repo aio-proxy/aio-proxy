@@ -15,11 +15,11 @@
       "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**", "src/db/migrations.manifest.ts"]
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["build", "^build"],
       "outputs": []
     },
     "test:unit": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["build", "^build"],
       "outputs": []
     },
     "@aio-proxy/core#test:unit": {

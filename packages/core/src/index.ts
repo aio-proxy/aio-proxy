@@ -160,6 +160,15 @@ export {
   type OpenAIResponsesTransformTool,
   openAIResponsesToModelMessages,
 } from "./transform/openai-responses";
+export {
+  calculateEstimatedCost,
+  createOpenRouterPriceCatalog,
+  type FetchOpenRouterPrices,
+  type OpenRouterModelPrice,
+  type OpenRouterPriceCatalog,
+  type UsageCostResult,
+  type UsagePricingInput,
+} from "./usage-pricing";
 
 export type ProviderSummary = {
   readonly id: string;

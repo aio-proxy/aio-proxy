@@ -19,3 +19,5 @@ if (rootEl) {
   const root = ReactDOM.createRoot(rootEl);
   root.render(<RouterProvider router={router} />);
 }
+
+export { createDashboardClient } from "./lib/dashboard-client";

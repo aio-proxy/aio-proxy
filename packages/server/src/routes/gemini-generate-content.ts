@@ -17,6 +17,7 @@ import { Hono } from "hono";
 import { ZodError, z } from "zod";
 import { ensureAiSdkProviderAvailable, providerNotInstalled } from "../provider-availability";
 import { preflightStream, resolveCandidates, shouldTryNextResponse, toAiSdkProvider } from "../route-dispatch";
+import { isInboundAbort, providerErrorMessage, terminalCompletion } from "../route-observation";
 import type { ProviderRouteSource } from "../runtime";
 
 const routePrefix = "/v1beta/models/";
@@ -62,8 +63,13 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
 
     const transformed = geminiGenerateContentToModelMessages(request);
     const tools = aiSdkTools(transformed.tools);
+    const requestSession = source.requestRecorder.begin({
+      inboundProtocol: ProviderProtocol.Gemini,
+      requestedModelId: target.model,
+    });
     let last = geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch");
     for (const [index, route] of candidates.entries()) {
+      const attemptStartedAt = performance.now();
       const hasNext = index < candidates.length - 1;
       const provider = route.provider;
       try {
@@ -74,10 +80,53 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
               : rewriteGeminiRequestModel(context.req.raw, route.modelId, target.stream);
           const response = await provider.passthrough(upstreamRequest);
           if (hasNext && shouldTryNextResponse(response)) {
+            requestSession.attempt({
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              protocol: provider.protocol,
+              outcome: "failure",
+              statusCode: response.status,
+              durationMs: durationMs(attemptStartedAt),
+            });
             last = response;
             continue;
           }
-          return response;
+          if (response.status < 200 || response.status >= 400) {
+            requestSession.finish({
+              outcome: "failure",
+              finalProviderId: provider.id,
+              finalModelId: route.modelId,
+              finalStatusCode: response.status,
+              attempt: {
+                providerId: provider.id,
+                modelId: route.modelId,
+                providerKind: provider.kind,
+                protocol: provider.protocol,
+                outcome: "failure",
+                statusCode: response.status,
+                durationMs: durationMs(attemptStartedAt),
+              },
+            });
+            return response;
+          }
+          const captured = source.usageCapture.passthrough({
+            response,
+            protocol: provider.protocol,
+            providerId: provider.id,
+            modelId: route.modelId,
+          });
+          requestSession.finishFrom(
+            {
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              protocol: provider.protocol,
+              durationMs: durationMs(attemptStartedAt),
+            },
+            terminalCompletion(captured.completion, context.req.raw.signal),
+          );
+          return captured.value;
         }
 
         const aiSdkProvider = toAiSdkProvider(provider);
@@ -87,19 +136,53 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
             "UNIMPLEMENTED",
             "Provider does not support Gemini generateContent transform dispatch",
           );
+          const attempt = {
+            providerId: provider.id,
+            modelId: route.modelId,
+            providerKind: provider.kind,
+            ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+            outcome: "failure" as const,
+            statusCode: last.status,
+            durationMs: durationMs(attemptStartedAt),
+          };
+          if (hasNext) {
+            requestSession.attempt(attempt);
+            continue;
+          }
+          requestSession.finish({
+            outcome: "failure",
+            finalProviderId: provider.id,
+            finalModelId: route.modelId,
+            finalStatusCode: last.status,
+            attempt,
+          });
           continue;
         }
 
         await ensureAiSdkProviderAvailable(aiSdkProvider);
-        const stream = aiSdkProvider.invoke({
-          messages: transformed.messages,
+        const captured = source.usageCapture.stream({
+          providerId: provider.id,
           modelId: route.modelId,
-          settings: aiSdkSettings(transformed.settings),
-          signal: context.req.raw.signal,
-          ...(tools === undefined ? {} : { tools }),
+          stream: aiSdkProvider.invoke({
+            messages: transformed.messages,
+            modelId: route.modelId,
+            settings: aiSdkSettings(transformed.settings),
+            signal: context.req.raw.signal,
+            ...(tools === undefined ? {} : { tools }),
+          }),
         });
         if (target.stream) {
-          return new Response(writeGeminiGenerateContentSSE(await preflightStream(stream)), {
+          const stream = await preflightStream(captured.value);
+          requestSession.finishFrom(
+            {
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              durationMs: durationMs(attemptStartedAt),
+            },
+            terminalCompletion(captured.completion, context.req.raw.signal),
+          );
+          return new Response(writeGeminiGenerateContentSSE(stream), {
             headers: {
               "cache-control": "no-cache",
               "content-type": "text/event-stream; charset=utf-8",
@@ -107,19 +190,58 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
           });
         }
 
-        return Response.json(await writeGeminiGenerateContentResponse(stream));
+        const value = await writeGeminiGenerateContentResponse(captured.value);
+        requestSession.finishFrom(
+          {
+            providerId: provider.id,
+            modelId: route.modelId,
+            providerKind: provider.kind,
+            durationMs: durationMs(attemptStartedAt),
+          },
+          terminalCompletion(captured.completion, context.req.raw.signal),
+        );
+        return Response.json(value);
       } catch (error) {
         // no-excuse-ok: catch - HTTP boundary converts provider failures.
         last = geminiProviderError(error);
         if (hasNext && shouldTryNextResponse(last)) {
+          requestSession.attempt({
+            providerId: provider.id,
+            modelId: route.modelId,
+            providerKind: provider.kind,
+            ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+            outcome: "failure",
+            statusCode: last.status,
+            durationMs: durationMs(attemptStartedAt),
+          });
           continue;
         }
+        const outcome = isInboundAbort(error, context.req.raw.signal) ? "cancelled" : "failure";
+        requestSession.finish({
+          outcome,
+          finalProviderId: provider.id,
+          finalModelId: route.modelId,
+          finalStatusCode: last.status,
+          attempt: {
+            providerId: provider.id,
+            modelId: route.modelId,
+            providerKind: provider.kind,
+            ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+            outcome,
+            statusCode: last.status,
+            durationMs: durationMs(attemptStartedAt),
+          },
+        });
         return last;
       }
     }
 
     return last;
   });
+}
+
+function durationMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 async function parseRequest(
@@ -267,9 +389,5 @@ function geminiProviderError(error: unknown): Response {
     return geminiError(503, "UNAVAILABLE", missing.message);
   }
 
-  if (error instanceof Error) {
-    return geminiError(500, "UNAVAILABLE", error.message);
-  }
-
-  throw error;
+  return geminiError(500, "UNAVAILABLE", providerErrorMessage(error));
 }

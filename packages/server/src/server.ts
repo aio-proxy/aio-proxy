@@ -25,6 +25,7 @@ const defaultConfig = ConfigSchema.parse({ providers: {} });
 export type CreateServerOptions = {
   readonly config: unknown;
   readonly configPath?: string;
+  readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly providerInstances?: readonly RuntimeProviderInstance[];
   readonly port?: number;
@@ -128,6 +129,7 @@ export const createServer = (options: CreateServerOptions): AppType => {
     createServerState({
       config,
       ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
+      ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
       ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
       ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
       ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),

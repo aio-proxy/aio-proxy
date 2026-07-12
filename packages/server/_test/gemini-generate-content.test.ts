@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AiSdkProviderError, type AiSdkProviderInstance, type ApiProviderInstance } from "@aio-proxy/core";
+import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { CallSettings, JSONValue, ModelMessage, TextStreamPart, ToolSet } from "ai";
@@ -9,6 +13,7 @@ const generateRequest = {
   contents: [{ role: "user", parts: [{ text: "Hello proxy" }] }],
 };
 const jsonHeaders = { "content-type": "application/json" } as const;
+const homes: string[] = [];
 type ProviderSeenSettings = CallSettings & {
   readonly providerOptions?: {
     readonly google: {
@@ -16,6 +21,28 @@ type ProviderSeenSettings = CallSettings & {
     };
   };
 };
+
+afterEach(() => {
+  for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
+});
+
+function tempHome(): string {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-gemini-usage-"));
+  homes.push(home);
+  return home;
+}
+
+async function recorded(home: string) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const handle = openDb({ home });
+    const requests = handle.db.select().from(requestLog).all();
+    const usages = handle.db.select().from(usage).all();
+    handle.close();
+    if (requests.length > 0) return { requests, usages };
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("request row was not recorded");
+}
 
 function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
@@ -28,9 +55,17 @@ function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<T
   });
 }
 
-function appWith(provider?: ApiProviderInstance | AiSdkProviderInstance): ReturnType<typeof createServer> {
+class AbortStreamError extends Error {
+  override readonly name = "AbortError";
+}
+
+function appWith(
+  provider?: ApiProviderInstance | AiSdkProviderInstance,
+  dbHome?: string,
+): ReturnType<typeof createServer> {
   return createServer({
     config: { providers: {} },
+    ...(dbHome === undefined ? {} : { dbHome }),
     providerInstances: provider === undefined ? [] : [provider],
   });
 }
@@ -88,7 +123,8 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         status: 202,
       });
     });
-    const app = appWith(provider);
+    const dbHome = tempHome();
+    const app = appWith(provider, dbHome);
 
     // When
     const response = await postGenerate(app, requestBody);
@@ -98,6 +134,19 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(response.headers.get("x-provider")).toBe("google");
     expect(await response.text()).toBe("provider-bytes");
     expect(bodySeen).toBe(requestBody);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          inboundProtocol: ProviderProtocol.Gemini,
+          requestedModelId: "gemini-2.5-flash",
+          finalProviderId: "google",
+          finalModelId: "gemini-2.5-flash",
+          outcome: "success",
+          attempts: [expect.objectContaining({ index: 0, providerId: "google", outcome: "success" })],
+        }),
+      ],
+      usages: [],
+    });
   });
 
   test("Given first native provider throws When generateContent is posted Then next provider is used", async () => {
@@ -108,12 +157,121 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       ...googleNativeProvider(async () => Response.json({ fallback: true })),
       id: "google-fallback",
     } satisfies ApiProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const dbHome = tempHome();
+    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
 
     const response = await postGenerate(app);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ fallback: true });
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          attempts: [
+            expect.objectContaining({ index: 0, providerId: "google", outcome: "failure" }),
+            expect.objectContaining({ index: 1, providerId: "google-fallback", outcome: "success" }),
+          ],
+          outcome: "success",
+        }),
+      ],
+      usages: [],
+    });
+  });
+
+  test("Given stream emits data then errors When streamGenerateContent runs Then request is failure", async () => {
+    const provider = aiSdkProvider(
+      () =>
+        new ReadableStream<TextStreamPart<ToolSet>>({
+          start(controller) {
+            controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+            controller.error(new Error("stream broke"));
+          },
+        }),
+    );
+    const dbHome = tempHome();
+    const app = appWith(provider, dbHome);
+
+    const response = await postStream(app);
+    await response.text();
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({ outcome: "failure", attempts: [expect.objectContaining({ outcome: "failure" })] }),
+      ],
+      usages: [],
+    });
+  });
+
+  test.each([
+    false,
+    true,
+  ])("Given an aborted inbound signal and wrapped AbortError When Gemini stream is %s Then request is cancelled", async (stream) => {
+    const provider = aiSdkProvider(() => {
+      let sent = false;
+      return new ReadableStream<TextStreamPart<ToolSet>>({
+        pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+          } else {
+            controller.error(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")));
+          }
+        },
+      });
+    });
+    const dbHome = tempHome();
+    const app = appWith(provider, dbHome);
+    const abort = new AbortController();
+    abort.abort();
+
+    const response = stream
+      ? await app.request("/v1beta/models/gemini-2.5-flash:streamGenerateContent", {
+          body: JSON.stringify(generateRequest),
+          headers: jsonHeaders,
+          method: "POST",
+          signal: abort.signal,
+        })
+      : await app.request("/v1beta/models/gemini-2.5-flash:generateContent", {
+          body: JSON.stringify(generateRequest),
+          headers: jsonHeaders,
+          method: "POST",
+          signal: abort.signal,
+        });
+    await response.text().catch(() => undefined);
+
+    expect(response.status).toBe(stream ? 200 : 500);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          outcome: "cancelled",
+          attempts: [expect.objectContaining({ outcome: "cancelled" })],
+        }),
+      ],
+      usages: [],
+    });
+  });
+
+  test.each([
+    "provider rejected",
+    null,
+    { message: "provider rejected" },
+  ])("Given final provider rejects %p When generateContent is posted Then one failed request is recorded", async (reason) => {
+    const provider = aiSdkProvider(() => new ReadableStream({ pull: (controller) => controller.error(reason) }));
+    const dbHome = tempHome();
+    const app = appWith(provider, dbHome);
+
+    const response = await postGenerate(app);
+
+    expect(response.status).toBe(500);
+    expect(await recorded(dbHome)).toEqual({
+      requests: [
+        expect.objectContaining({
+          finalProviderId: "mock-ai",
+          outcome: "failure",
+          attempts: [expect.objectContaining({ index: 0, providerId: "mock-ai", outcome: "failure" })],
+        }),
+      ],
+      usages: [],
+    });
   });
 
   test("Given an alias variant and native provider When generateContent is posted Then passthrough uses the variant path", async () => {

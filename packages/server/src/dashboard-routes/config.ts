@@ -6,7 +6,13 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
-import { type ProviderMutationBody, ProviderMutationBodySchema } from "@aio-proxy/types";
+import {
+  type ProviderMutationBody,
+  ProviderMutationBodySchema,
+  UsageOverviewGroupBySchema,
+  UsageOverviewMetricSchema,
+  UsageOverviewRangeSchema,
+} from "@aio-proxy/types";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
@@ -51,6 +57,17 @@ const probeKey = "probe";
 const providerProbeValidator = validator("query", (raw): { readonly probe?: string } => ({
   ...(typeof raw[probeKey] === "string" ? { probe: raw[probeKey] } : {}),
 }));
+
+const UsageOverviewQuerySchema = z.object({
+  range: UsageOverviewRangeSchema.default("24h"),
+  metric: UsageOverviewMetricSchema.default("cost"),
+  groupBy: UsageOverviewGroupBySchema.default("model"),
+});
+
+const usageOverviewValidator = validator("query", (raw, context) => {
+  const parsed = UsageOverviewQuerySchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
+});
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
@@ -154,6 +171,10 @@ export const createDashboardRoutes = (state: ServerState) =>
         return context.json({ error: "provider not found" }, 404);
       }
       return context.json({ provider });
+    })
+    .get("/usage", usageOverviewValidator, (context) => {
+      const query = context.req.valid("query");
+      return context.json(state.requestLog.overview(query));
     })
     .post("/providers/install", async (context) => {
       try {

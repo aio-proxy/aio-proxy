@@ -95,7 +95,7 @@ export const SideMenu: React.FC = () => {
                   const isActive = item.isActive ? item.isActive(location.pathname) : false;
                   return (
                     <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton isActive={isActive} render={<Link to={item.to!} />}>
+                      <SidebarMenuButton isActive={isActive} render={<Link to={item.to} />}>
                         <item.icon />
                         <span>{item.label}</span>
                       </SidebarMenuButton>

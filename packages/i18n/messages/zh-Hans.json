@@ -45,7 +45,6 @@
   "dashboard_routes_providers_placeholder": "TODO: Providers dashboard placeholder.",
   "dashboard_routes_models_placeholder": "TODO: Models dashboard placeholder.",
   "dashboard_routes_traces_placeholder": "TODO: Traces dashboard placeholder.",
-  "dashboard_routes_usage_placeholder": "TODO: Usage dashboard placeholder.",
   "dashboard_routes_settings_placeholder": "TODO: Settings dashboard placeholder.",
   "common_cancel": "取消",
   "common_confirm": "确认",
@@ -53,6 +52,10 @@
   "common_save": "保存",
   "common_delete": "删除",
   "common_close": "关闭",
+  "brand": {
+    "name": "AIO Proxy",
+    "tagline": "一站式网关"
+  },
   "dashboard": {
     "menus": {
       "overview": "概览",
@@ -194,6 +197,43 @@
       "aliases_readonly_note": "请编辑配置文件来修改别名",
       "oauth_managed_cli": "OAuth 提供商通过 CLI 管理，请使用 CLI 配置此提供商。",
       "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商"
+    },
+    "usage": {
+      "range_label": "时间范围",
+      "range_24h": "最近 24 小时",
+      "range_7d": "最近 7 天",
+      "range_14d": "最近 14 天",
+      "range_30d": "最近 30 天",
+      "metric_label": "指标",
+      "group_by_label": "分组方式",
+      "group_by_model": "模型",
+      "group_by_provider": "提供商",
+      "metric_cost": "费用",
+      "metric_tokens": "Token",
+      "metric_requests": "请求数",
+      "summary_cost": "预估费用",
+      "summary_requests": "请求数",
+      "summary_tokens": "Token",
+      "summary_average_rpm": "平均 RPM",
+      "summary_average_tpm": "平均 TPM",
+      "summary_success_rate": "成功率",
+      "pricing_coverage": "计价覆盖率：{coverage}",
+      "requests_description": "{success} 成功 / {failure} 失败 / {cancelled} 已取消",
+      "tokens_description": "{input} 输入 / {output} 输出",
+      "average_rpm_description": "所选时间范围内每分钟的平均请求数",
+      "average_tpm_description": "所选时间范围内每分钟的平均 Token 数",
+      "success_rate_description": "成功请求占已完成请求的比例",
+      "not_available": "暂无",
+      "chart_title": "用量趋势",
+      "chart_description": "按所选时间范围堆叠展示用量。",
+      "series_other": "其他",
+      "series_failed": "失败",
+      "series_cancelled": "已取消",
+      "loading": "正在加载用量概览",
+      "empty_title": "此时间范围内暂无用量",
+      "empty_description": "模型请求被记录后会显示在这里。",
+      "error_title": "无法加载用量",
+      "error_description": "控制台无法读取用量数据。"
     }
   }
 }

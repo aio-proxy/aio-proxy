@@ -22,6 +22,7 @@ import {
   shouldTryNextResponse,
   toAiSdkProvider,
 } from "../route-dispatch";
+import { isInboundAbort, terminalCompletion } from "../route-observation";
 import type { ProviderRouteSource } from "../runtime";
 
 const maxBodyBytes = 8 * 1_024 * 1_024;
@@ -51,8 +52,13 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         return tools;
       }
 
+      const requestSession = source.requestRecorder.begin({
+        inboundProtocol: ProviderProtocol.OpenAIResponse,
+        requestedModelId: request.model,
+      });
       let last = unsupportedFeature("openai_responses_transform_dispatch");
       for (const [index, route] of candidates.entries()) {
+        const attemptStartedAt = performance.now();
         const hasNext = index < candidates.length - 1;
         const provider = route.provider;
         try {
@@ -63,31 +69,118 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
                 : await rewriteJsonRequestModel(context.req.raw, route.modelId);
             const response = await provider.passthrough(upstreamRequest);
             if (hasNext && shouldTryNextResponse(response)) {
+              requestSession.attempt({
+                providerId: provider.id,
+                modelId: route.modelId,
+                providerKind: provider.kind,
+                protocol: provider.protocol,
+                outcome: "failure",
+                statusCode: response.status,
+                durationMs: durationMs(attemptStartedAt),
+              });
               last = response;
               continue;
             }
-            return response;
+            if (response.status < 200 || response.status >= 400) {
+              requestSession.finish({
+                outcome: "failure",
+                finalProviderId: provider.id,
+                finalModelId: route.modelId,
+                finalStatusCode: response.status,
+                attempt: {
+                  providerId: provider.id,
+                  modelId: route.modelId,
+                  providerKind: provider.kind,
+                  protocol: provider.protocol,
+                  outcome: "failure",
+                  statusCode: response.status,
+                  durationMs: durationMs(attemptStartedAt),
+                },
+              });
+              return response;
+            }
+            const captured = source.usageCapture.passthrough({
+              response,
+              protocol: provider.protocol,
+              providerId: provider.id,
+              modelId: route.modelId,
+            });
+            requestSession.finishFrom(
+              {
+                providerId: provider.id,
+                modelId: route.modelId,
+                providerKind: provider.kind,
+                protocol: provider.protocol,
+                durationMs: durationMs(attemptStartedAt),
+              },
+              terminalCompletion(captured.completion, context.req.raw.signal),
+            );
+            return captured.value;
           }
 
           const aiSdkProvider = toAiSdkProvider(provider);
           if (aiSdkProvider === undefined) {
             last = unsupportedFeature("openai_responses_transform_dispatch");
+            const attempt = {
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+              outcome: "failure" as const,
+              statusCode: last.status,
+              durationMs: durationMs(attemptStartedAt),
+            };
+            if (hasNext) {
+              requestSession.attempt(attempt);
+              continue;
+            }
+            requestSession.finish({
+              outcome: "failure",
+              finalProviderId: provider.id,
+              finalModelId: route.modelId,
+              finalStatusCode: last.status,
+              attempt,
+            });
             continue;
           }
 
           await ensureAiSdkProviderAvailable(aiSdkProvider);
-          const stream = aiSdkProvider.invoke({
-            messages: transformed.messages,
+          const captured = source.usageCapture.stream({
+            providerId: provider.id,
             modelId: route.modelId,
-            settings: transformed.settings,
-            signal: context.req.raw.signal,
-            ...(tools === undefined ? {} : { tools }),
+            stream: aiSdkProvider.invoke({
+              messages: transformed.messages,
+              modelId: route.modelId,
+              settings: transformed.settings,
+              signal: context.req.raw.signal,
+              ...(tools === undefined ? {} : { tools }),
+            }),
           });
           if (request.stream !== true) {
-            return Response.json(await writeOpenAIResponsesResponse(stream));
+            const value = await writeOpenAIResponsesResponse(captured.value);
+            requestSession.finishFrom(
+              {
+                providerId: provider.id,
+                modelId: route.modelId,
+                providerKind: provider.kind,
+                durationMs: durationMs(attemptStartedAt),
+              },
+              terminalCompletion(captured.completion, context.req.raw.signal),
+            );
+            return Response.json(value);
           }
 
-          return new Response(writeOpenAIResponsesSSE(await preflightStream(stream)), {
+          const stream = await preflightStream(captured.value);
+          requestSession.finishFrom(
+            {
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              durationMs: durationMs(attemptStartedAt),
+            },
+            terminalCompletion(captured.completion, context.req.raw.signal),
+          );
+          return new Response(writeOpenAIResponsesSSE(stream), {
             headers: {
               "cache-control": "no-cache",
               "content-type": "text/event-stream; charset=utf-8",
@@ -98,8 +191,33 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
           const ingressError = toIngressError(error, "openai");
           last = Response.json(ingressError.body, { status: ingressError.status });
           if (hasNext && shouldTryNextResponse(last)) {
+            requestSession.attempt({
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+              outcome: "failure",
+              statusCode: last.status,
+              durationMs: durationMs(attemptStartedAt),
+            });
             continue;
           }
+          const outcome = isInboundAbort(error, context.req.raw.signal) ? "cancelled" : "failure";
+          requestSession.finish({
+            outcome,
+            finalProviderId: provider.id,
+            finalModelId: route.modelId,
+            finalStatusCode: last.status,
+            attempt: {
+              providerId: provider.id,
+              modelId: route.modelId,
+              providerKind: provider.kind,
+              ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+              outcome,
+              statusCode: last.status,
+              durationMs: durationMs(attemptStartedAt),
+            },
+          });
           return last;
         }
       }
@@ -107,6 +225,10 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
       return last;
     })
     .get("/v1/responses/:id", () => unsupportedFeature("response_retrieval"));
+}
+
+function durationMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 async function parseRequest(raw: Request): Promise<ReturnType<typeof parseOpenAIResponses> | Response> {
