@@ -14,6 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { SidebarPreferences } from "./sidebar-preferences";
 
 interface SideMenuItem {
   id: string;
@@ -108,6 +109,7 @@ export const SideMenu: React.FC = () => {
           </SidebarGroup>
         ))}
       </SidebarContent>
+      <SidebarPreferences />
     </Sidebar>
   );
 };

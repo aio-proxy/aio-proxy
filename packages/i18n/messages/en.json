@@ -86,6 +86,13 @@
       "providers": "Providers",
       "models": "Models"
     },
+    "preferences": {
+      "appearance": "Appearance",
+      "language": "Language",
+      "theme_system": "System",
+      "theme_light": "Light",
+      "theme_dark": "Dark"
+    },
     "pagination": {
       "previous": "Previous",
       "next": "Next",

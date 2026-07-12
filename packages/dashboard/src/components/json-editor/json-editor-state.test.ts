@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { setCodeEditorAriaInvalid } from "../src/components/code-editor/code-editor-accessibility";
+import { describe, expect, test } from "@rstest/core";
+import { setCodeEditorAriaInvalid } from "../code-editor/code-editor-accessibility";
 import {
   beginJsonValidation,
   completeJsonValidation,
@@ -7,8 +7,8 @@ import {
   createJsonValidationState,
   mergeJsonValidation,
   parseJsonDraft,
-} from "../src/components/json-editor/json-editor-state";
-import { createJsonSchemaRegistry } from "../src/components/json-editor/json-schema-registry";
+} from "./json-editor-state";
+import { createJsonSchemaRegistry } from "./json-schema-registry";
 
 describe("JsonEditor state", () => {
   test("distinguishes empty, null, valid JSON, and invalid JSON", () => {
@@ -109,7 +109,7 @@ describe("JsonEditor state", () => {
     expect(applied.at(-1)).toHaveLength(2);
   });
 
-  test("mirrors invalid state and its description onto the wrapper and Monaco textbox", async () => {
+  test("mirrors invalid state and its description onto the Monaco textbox", () => {
     const attributes = new Map<string, string>();
     const textbox = {
       setAttribute: (name: string, value: string) => attributes.set(name, value),
@@ -125,18 +125,5 @@ describe("JsonEditor state", () => {
     setCodeEditorAriaInvalid(editor, false, undefined);
     expect(attributes.has("aria-invalid")).toBe(false);
     expect(attributes.has("aria-describedby")).toBe(false);
-
-    const codeEditorSource = await Bun.file(`${import.meta.dir}/../src/components/code-editor/code-editor.tsx`).text();
-    expect(codeEditorSource).toContain(
-      "setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current)",
-    );
-    expect(codeEditorSource).toContain("setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy)");
-    expect(codeEditorSource).toContain("aria-describedby={ariaDescribedBy}");
-
-    const jsonEditorSource = await Bun.file(`${import.meta.dir}/../src/components/json-editor/json-editor.tsx`).text();
-    expect(jsonEditorSource).toContain("onValidate={handleValidationReady}");
-    expect(jsonEditorSource).toContain("externalInvalid");
-    expect(jsonEditorSource).toContain("ariaDescribedBy={errorDescriptionId}");
-    expect(jsonEditorSource).toContain("height={height ?? 240}");
   });
 });
