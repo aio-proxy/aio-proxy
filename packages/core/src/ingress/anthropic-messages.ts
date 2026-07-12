@@ -1,3 +1,4 @@
+import type { Tool } from "@anthropic-ai/sdk/resources/messages/messages";
 import { z } from "zod";
 
 const IdSchema = z.string().min(1);
@@ -93,10 +94,25 @@ const AssistantMessageSchema = z.object({
   content: z.union([z.string(), z.array(AssistantContentBlockSchema)]),
 });
 
+const ToolSchema = z.object({
+  name: IdSchema,
+  description: z.string().optional(),
+  input_schema: z
+    .object({
+      type: z.literal("object"),
+    })
+    .catchall(z.unknown()),
+}) satisfies z.ZodType<{
+  name: Tool["name"];
+  description?: Tool["description"] | undefined;
+  input_schema: Tool["input_schema"];
+}>;
+
 export const AnthropicMessagesRequestSchema = z.object({
   model: IdSchema,
   system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
   messages: z.array(z.discriminatedUnion("role", [UserMessageSchema, AssistantMessageSchema])).min(1),
+  tools: z.array(ToolSchema).optional(),
   stream: z.boolean().optional(),
   max_tokens: z.number().int().positive().optional(),
   temperature: z.number().optional(),

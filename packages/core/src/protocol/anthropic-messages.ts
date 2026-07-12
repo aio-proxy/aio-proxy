@@ -6,6 +6,7 @@ import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "..
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { anthropicMessagesErrors } from "./errors";
 import { readJsonRequest, rewriteJsonRequestModel } from "./request";
+import { functionToolSet } from "./tools";
 
 type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: "assistant" }>["content"], string>[number];
 type AnthropicUserContent = Extract<AnthropicModelMessage, { role: "user" }>["content"];
@@ -25,7 +26,18 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
   },
   modelInvocation(request) {
     const transformed = anthropicMessagesToModelMessages(request);
-    return { messages: aiSdkMessages(transformed.messages), settings: transformed.settings };
+    const tools = functionToolSet(
+      request.tools?.map((tool) => ({
+        name: tool.name,
+        ...(tool.description === undefined ? {} : { description: tool.description }),
+        inputSchema: tool.input_schema,
+      })),
+    );
+    return {
+      messages: aiSdkMessages(transformed.messages),
+      settings: transformed.settings,
+      ...(tools === undefined ? {} : { tools }),
+    };
   },
   modelJson: writeAnthropicMessagesResponse,
   modelSse: writeAnthropicMessagesSSE,

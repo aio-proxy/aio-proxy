@@ -233,6 +233,45 @@ describe("POST /v1/messages", () => {
     ]);
   });
 
+  test("Given Anthropic tool definitions When routed through AI SDK Then model receives tools", async () => {
+    let toolsSeen: ToolSet | undefined;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke(request) {
+        toolsSeen = request.tools;
+        return textStream([{ type: "finish", finishReason: "stop", rawFinishReason: "stop", totalUsage: {} }]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({
+        ...messagesRequest,
+        stream: false,
+        tools: [
+          {
+            name: "get_weather",
+            description: "Returns weather for a city.",
+            input_schema: {
+              type: "object",
+              properties: { city: { type: "string" } },
+              required: ["city"],
+            },
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(toolsSeen ?? {})).toEqual(["get_weather"]);
+    expect(toolsSeen?.get_weather?.description).toBe("Returns weather for a city.");
+  });
+
   test("Given stream emits data then errors When message streams Then request is failure", async () => {
     const provider = {
       id: "broken-after-data",
