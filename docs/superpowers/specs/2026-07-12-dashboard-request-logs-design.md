@@ -77,7 +77,9 @@ type DashboardRequestLogsResponse = {
 
 Rows sort by `completed_at DESC, request_id DESC` so pagination is deterministic when multiple requests complete in the same millisecond. A requested page beyond the final page returns an empty `items` array with the actual `total` and `pageCount`; the client returns to page 1 whenever filters or page size change.
 
-The default UI range is the rolling 24 hours ending when the route first loads. Presets include 24 hours, 7 days, 14 days, 30 days, and 45 days, plus a custom start/end range. The browser URL stores explicit instants rather than only the preset name so reloads and shared URLs reproduce the same query. The UI prevents selecting data older than 45 days but the server remains correct for arbitrary valid instants.
+The default UI range is the rolling 24 hours ending when the route first loads. A single shadcn/ui Base date-range picker replaces separate start/end datetime inputs. The picker follows the official `Popover` plus `Calendar` composition with `mode="range"`; shadcn/ui does not define a standard preset footer, so the page does not add custom shortcut buttons.
+
+Selecting a complete calendar range converts the first day to local `00:00:00.000` and the last day to local `23:59:59.999` before storing the corresponding ISO instants in the URL. An incomplete range remains local picker state and does not change the active query. The initial rolling 24-hour range remains exact even though its button label displays the covered calendar dates. The browser URL stores explicit instants so reloads and shared URLs reproduce the same query. Dates older than the 45-day retention boundary are disabled in the picker, while the server remains correct for arbitrary valid instants.
 
 ## Storage and Indexes
 
@@ -97,7 +99,7 @@ Create a `/logs` Dashboard route under the overview navigation group. The page u
 
 The filter area contains:
 
-- time preset and custom range controls;
+- one shadcn/ui Base date-range picker with no custom shortcut presets;
 - request ID text input;
 - outcome, inbound protocol, requested model, final provider, final model, and final status controls;
 - reset and manual refresh actions;
@@ -173,6 +175,7 @@ Server tests cover:
 Dashboard tests cover:
 
 - URL search parameters map to query inputs and invalid values fall back safely;
+- the date-range picker displays the active range, keeps incomplete selections local, commits complete selections as local-day boundaries, and disables dates outside retention;
 - changing filters or page size resets the page;
 - table fields and missing-value rendering;
 - drawer request, usage, and attempt details;
