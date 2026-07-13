@@ -245,47 +245,35 @@ describe("Router", () => {
     expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
   });
 
-  test("lists aliases and every configured model from one shared route set", () => {
+  test("hides non-preserved targets for added aliases", () => {
     const provider = {
       ...openai,
-      models: ["default", "high", "untouched", "preserved"],
+      id: "anthropic-aliases",
+      models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46", "untouched"],
       alias: {
-        mini: {
-          model: "default",
+        "claude-opus-4-8": { model: "upstream-opus-48", preserve: false },
+        "claude-opus-4-6": { model: "upstream-opus-46", preserve: false },
+        "claude-sonnet-4-6": {
+          model: "upstream-sonnet-46",
           preserve: false,
-          variants: { high: { model: "high", preserve: false } },
-        },
-        keep: { model: "preserved", preserve: true },
-      },
-    } satisfies ProviderInstance;
-
-    expect(modelRoutes(provider)).toEqual([
-      { alias: "mini", modelId: "default" },
-      { alias: "keep", modelId: "preserved" },
-      { alias: "default", modelId: "default" },
-      { alias: "high", modelId: "high" },
-      { alias: "untouched", modelId: "untouched" },
-      { alias: "preserved", modelId: "preserved" },
-    ]);
-  });
-
-  test("keeps configured alias and variant targets routable by original id", () => {
-    const provider = {
-      ...openai,
-      models: ["default", "high"],
-      alias: {
-        mini: {
-          model: "default",
-          preserve: false,
-          variants: { high: { model: "high", preserve: false } },
+          variants: { fast: { model: "upstream-opus-46", preserve: false } },
         },
       },
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve("default")).toEqual([{ provider, modelId: "default" }]);
-    expect(router.resolve("high")).toEqual([{ provider, modelId: "high" }]);
-    expect(router.resolve("mini", "high")).toEqual([{ provider, modelId: "high" }]);
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "claude-opus-4-8", modelId: "upstream-opus-48" },
+      { alias: "claude-opus-4-6", modelId: "upstream-opus-46" },
+      { alias: "claude-sonnet-4-6", modelId: "upstream-sonnet-46" },
+      { alias: "untouched", modelId: "untouched" },
+    ]);
+    expect(router.resolve("claude-opus-4-8")).toEqual([{ provider, modelId: "upstream-opus-48" }]);
+    expect(router.resolve("claude-sonnet-4-6", "fast")).toEqual([{ provider, modelId: "upstream-opus-46" }]);
+    expect(() => router.resolve("upstream-opus-48")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-opus-46")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-sonnet-46")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("untouched")).toEqual([{ provider, modelId: "untouched" }]);
   });
 
   test("lets an alias shadow a same-named configured model while keeping its target routable", () => {

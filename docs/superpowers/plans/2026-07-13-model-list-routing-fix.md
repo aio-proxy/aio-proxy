@@ -169,10 +169,11 @@ Run:
 
 ```bash
 rtk bun test packages/core/_test/router.test.ts --test-name-pattern "configured model when no alias|hides non-preserved targets|same-named configured model"
+rtk bun run --filter @aio-proxy/core build
 rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models only|added Anthropic aliases|configured providers"
 ```
 
-Expected: all matching tests pass with zero failures. The models-only case still lists configured ids, the added-alias case lists only aliases, and the override case keeps both ids.
+Expected: core tests and build pass, then all matching server tests pass with zero failures. The build is required because the server imports `@aio-proxy/core` from `dist`. The models-only case still lists configured ids, the added-alias case lists only aliases, and the override case keeps both ids.
 
 - [ ] **Step 5: Run the complete core router test file**
 
