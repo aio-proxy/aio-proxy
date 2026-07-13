@@ -24,6 +24,10 @@ export type OpenRouterPriceCatalog = {
   readonly find: (modelId: string) => OpenRouterModelPrice | undefined;
 };
 
+export type ModelsDevCatalog = OpenRouterPriceCatalog & {
+  readonly displayName: (modelId: string) => string | undefined;
+};
+
 export type FetchOpenRouterPrices = () => Promise<unknown>;
 
 const modelsDevApiUrl = "https://models.dev/api.json";
@@ -33,11 +37,32 @@ const defaultFetch: FetchOpenRouterPrices = async () => {
   return response.json();
 };
 
+export async function createModelsDevCatalog(
+  fetchJson: FetchOpenRouterPrices = defaultFetch,
+): Promise<ModelsDevCatalog> {
+  const value = await fetchJson();
+  const prices = parsePrices(value);
+  const byId = new Map(prices.map((price) => [price.id, price]));
+  const byBareId = uniqueBarePrices(prices);
+  const displayNames = parseDisplayNames(value);
+
+  return {
+    displayName(modelId) {
+      return displayNames.get(modelId);
+    },
+    find(modelId) {
+      return byId.get(modelId) ?? byBareId.get(modelId);
+    },
+  };
+}
+
 export async function createOpenRouterPriceCatalog(
   fetchJson: FetchOpenRouterPrices = defaultFetch,
 ): Promise<OpenRouterPriceCatalog> {
-  const prices = parsePrices(await fetchJson());
-  const byId = new Map(prices.map((price) => [price.id, price]));
+  return createModelsDevCatalog(fetchJson);
+}
+
+function uniqueBarePrices(prices: readonly OpenRouterModelPrice[]): ReadonlyMap<string, OpenRouterModelPrice> {
   const byBareId = new Map<string, OpenRouterModelPrice>();
   const duplicateBareIds = new Set<string>();
 
@@ -52,12 +77,7 @@ export async function createOpenRouterPriceCatalog(
       byBareId.set(bareId, price);
     }
   }
-
-  return {
-    find(modelId) {
-      return byId.get(modelId) ?? byBareId.get(modelId);
-    },
-  };
+  return byBareId;
 }
 
 export function calculateEstimatedCost(
@@ -112,6 +132,41 @@ function parsePrice(model: unknown): readonly OpenRouterModelPrice[] {
       ...(typeof cost["reasoning"] === "number" ? { reasoning: cost["reasoning"] } : {}),
     },
   ];
+}
+
+function parseDisplayNames(value: unknown): ReadonlyMap<string, string> {
+  const candidates = new Map<string, Set<string>>();
+  if (!isRecord(value)) {
+    return new Map();
+  }
+
+  for (const provider of Object.values(value)) {
+    if (!isRecord(provider) || !isRecord(provider["models"])) {
+      continue;
+    }
+    for (const model of Object.values(provider["models"])) {
+      if (!isRecord(model) || typeof model["id"] !== "string" || typeof model["name"] !== "string") {
+        continue;
+      }
+      if (model["name"] === model["id"]) {
+        continue;
+      }
+      addDisplayName(candidates, model["id"], model["name"]);
+      addDisplayName(candidates, model["id"].split("/").at(-1) ?? model["id"], model["name"]);
+    }
+  }
+
+  return new Map(
+    [...candidates].flatMap(([modelId, names]) =>
+      names.size === 1 ? [[modelId, [...names][0] as string] as const] : [],
+    ),
+  );
+}
+
+function addDisplayName(candidates: Map<string, Set<string>>, modelId: string, name: string): void {
+  const names = candidates.get(modelId) ?? new Set<string>();
+  names.add(name);
+  candidates.set(modelId, names);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

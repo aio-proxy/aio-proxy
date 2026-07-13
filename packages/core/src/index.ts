@@ -167,8 +167,10 @@ export {
 } from "./transform/openai-responses";
 export {
   calculateEstimatedCost,
+  createModelsDevCatalog,
   createOpenRouterPriceCatalog,
   type FetchOpenRouterPrices,
+  type ModelsDevCatalog,
   type OpenRouterModelPrice,
   type OpenRouterPriceCatalog,
   type UsageCostResult,
