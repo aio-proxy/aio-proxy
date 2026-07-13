@@ -23,8 +23,11 @@ type ModelsDevModelMetadata = {
   readonly displayName?: string;
   readonly maxInputTokens?: number;
   readonly maxTokens?: number;
+  readonly capabilities?: ModelsDevCapabilities;
 };
 ```
+
+`ModelsDevCapabilities` is an explicit subset of Anthropic's `ModelCapabilities` containing only `effort`, `image_input`, `pdf_input`, `structured_outputs`, and `thinking`. The model-list item type replaces the SDK's full `capabilities` field with this subset-or-null type; it does not claim that the partial object is a complete Anthropic capability record.
 
 Pricing lookup remains unchanged. OpenRouter prices still come from `catalog.providers.openrouter`.
 
@@ -43,7 +46,16 @@ When catalog data is available:
 - `max_input_tokens` is the resolved `maxInputTokens` or `null`;
 - `max_tokens` is the resolved `maxTokens` or `null`.
 
-`capabilities` remains `null`. models.dev exposes useful generic flags such as reasoning, tool calling, structured output, and modalities, but those do not completely represent Anthropic's `ModelCapabilities` structure. The proxy must not convert unknown capability fields into false support claims.
+When catalog data supplies the relevant signals, `capabilities` contains only fields that can be mapped without inventing support:
+
+- `effort` comes from the `effort` reasoning option and its accepted values;
+- `image_input` and `pdf_input` come from input modalities;
+- `structured_outputs` comes from `structured_output`;
+- `thinking.supported` comes from `reasoning`;
+- `thinking.types.adaptive` comes from the `effort` reasoning option;
+- `thinking.types.enabled` comes from `budget_tokens` or `toggle` reasoning options.
+
+The response omits `batch`, `citations`, `code_execution`, and `context_management` because models.dev does not publish those signals. It must not emit `supported: false` for unknown capabilities. If no trustworthy catalog metadata is available, `capabilities` remains `null`.
 
 An empty model list does not trigger a catalog request. Catalog errors do not fail the endpoint.
 
@@ -57,9 +69,9 @@ This is closest to the current `api.json` request but keeps the existing cross-p
 
 This removes network access but changes freshness semantics and can lag the live database by up to 24 hours.
 
-### Infer Anthropic capabilities
+### Return a complete Anthropic capability object
 
-Generic models.dev flags cover only part of Anthropic's capability schema. Returning a partially inferred structure would blur the distinction between unknown and unsupported, so capability enrichment is out of scope.
+models.dev does not publish enough information for `batch`, `citations`, `code_execution`, or `context_management`. Filling those required SDK fields with `supported: false` would confuse unknown with unsupported, so the response intentionally exposes only the reliable subset.
 
 ## Testing
 
@@ -68,6 +80,8 @@ Tests will verify the red-green behavior for:
 - typed catalog fixtures supplying canonical display names and token limits;
 - `limit.input` taking precedence over `limit.context`;
 - `limit.context` acting as the input-limit fallback;
+- capability subsets mapping effort values, image/PDF modalities, structured output, and thinking modes;
+- unavailable capability signals being omitted rather than reported as unsupported;
 - OpenRouter pricing continuing to resolve from the same catalog;
 - `/v1/models` returning token limits for canonical aliases and upstream IDs;
 - OAuth display names remaining authoritative while limits come from models.dev;
