@@ -9,6 +9,7 @@ import type {
 } from "openai/resources/responses/responses";
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();
 
@@ -39,89 +40,86 @@ export function writeOpenAIResponsesSSE(
   stream: ReadableStream<OpenAIResponsesStreamPart>,
   context: ModelEgressContext,
 ): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    async start(controller) {
-      const state: ResponseState = { text: [], reasoning: [], metadata: fallbackMetadata(context.modelId) };
-      let textItemAdded = false;
-      let reasoningItemAdded = false;
-      let sequenceNumber = 0;
-      const send = (value: ResponseStreamEvent) => {
-        controller.enqueue(frame(value));
-        sequenceNumber += 1;
-      };
+  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+    const state: ResponseState = { text: [], reasoning: [], metadata: fallbackMetadata(context.modelId) };
+    let textItemAdded = false;
+    let reasoningItemAdded = false;
+    let sequenceNumber = 0;
+    const send = (value: ResponseStreamEvent) => {
+      enqueue(frame(value));
+      sequenceNumber += 1;
+    };
 
-      send({
-        type: "response.created",
-        sequence_number: sequenceNumber,
-        response: responseObject("in_progress", state),
-      });
+    send({
+      type: "response.created",
+      sequence_number: sequenceNumber,
+      response: responseObject("in_progress", state),
+    });
 
-      for await (const part of stream) {
-        switch (part.type) {
-          case "reasoning-delta": {
-            const outputIndex = 0;
-            if (!reasoningItemAdded) {
-              reasoningItemAdded = true;
-              send({
-                type: "response.output_item.added",
-                sequence_number: sequenceNumber,
-                output_index: outputIndex,
-                item: reasoningItem(state, "in_progress"),
-              });
-            }
-            const delta = reasoningDelta(part);
-            state.reasoning.push(delta);
+    for await (const part of parts) {
+      switch (part.type) {
+        case "reasoning-delta": {
+          const outputIndex = 0;
+          if (!reasoningItemAdded) {
+            reasoningItemAdded = true;
             send({
-              type: "response.reasoning_summary_text.delta",
+              type: "response.output_item.added",
               sequence_number: sequenceNumber,
-              item_id: state.metadata.reasoningId,
               output_index: outputIndex,
-              summary_index: 0,
-              delta,
+              item: reasoningItem(state, "in_progress"),
             });
-            break;
           }
-          case "text-delta": {
-            const outputIndex = reasoningItemAdded ? 1 : 0;
-            if (!textItemAdded) {
-              textItemAdded = true;
-              send({
-                type: "response.output_item.added",
-                sequence_number: sequenceNumber,
-                output_index: outputIndex,
-                item: messageItem(state, "in_progress"),
-              });
-            }
-            const delta = textDelta(part);
-            state.text.push(delta);
-            send({
-              type: "response.output_text.delta",
-              sequence_number: sequenceNumber,
-              item_id: state.metadata.messageId,
-              output_index: outputIndex,
-              content_index: 0,
-              delta,
-              logprobs: [],
-            });
-            break;
-          }
-          case "finish": {
-            const usage = openAIUsage(finishUsage(part));
-            if (usage !== undefined) state.usage = usage;
-            break;
-          }
-          default:
-            break;
+          const delta = reasoningDelta(part);
+          state.reasoning.push(delta);
+          send({
+            type: "response.reasoning_summary_text.delta",
+            sequence_number: sequenceNumber,
+            item_id: state.metadata.reasoningId,
+            output_index: outputIndex,
+            summary_index: 0,
+            delta,
+          });
+          break;
         }
+        case "text-delta": {
+          const outputIndex = reasoningItemAdded ? 1 : 0;
+          if (!textItemAdded) {
+            textItemAdded = true;
+            send({
+              type: "response.output_item.added",
+              sequence_number: sequenceNumber,
+              output_index: outputIndex,
+              item: messageItem(state, "in_progress"),
+            });
+          }
+          const delta = textDelta(part);
+          state.text.push(delta);
+          send({
+            type: "response.output_text.delta",
+            sequence_number: sequenceNumber,
+            item_id: state.metadata.messageId,
+            output_index: outputIndex,
+            content_index: 0,
+            delta,
+            logprobs: [],
+          });
+          break;
+        }
+        case "finish": {
+          const usage = openAIUsage(finishUsage(part));
+          if (usage !== undefined) state.usage = usage;
+          break;
+        }
+        default:
+          break;
       }
+    }
 
-      send({
-        type: "response.completed",
-        sequence_number: sequenceNumber,
-        response: responseObject("completed", state),
-      });
-      controller.close();
-    },
+    send({
+      type: "response.completed",
+      sequence_number: sequenceNumber,
+      response: responseObject("completed", state),
+    });
   });
 }
 

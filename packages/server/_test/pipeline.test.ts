@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { handleProtocolRequest } from "../src/routes/pipeline";
 import type { UsageCompletion } from "../src/usage-capture";
@@ -491,6 +492,35 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: "provider", outcome: "failure" }),
     );
+  });
+
+  test("cancels the provider model stream through the real protocol egress", async () => {
+    let cancelCalls = 0;
+    const provider = modelProvider({
+      id: "provider",
+      invoke: () =>
+        cancellableTextStream("partial", () => {
+          cancelCalls += 1;
+        }),
+    });
+    const route = defineProviderRouteSource([provider], { outcome: "success" });
+    const response = await handleProtocolRequest({
+      adapter: openAICompletionsAdapter,
+      context: {},
+      rawRequest: new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: REQUESTED_MODEL, messages: [{ role: "user", content: "ping" }], stream: true }),
+      }),
+      source: route.source,
+    });
+
+    const reader = response.body?.getReader();
+    expect((await reader?.read())?.done).toBe(false);
+    await reader?.cancel("client stopped");
+    await settleRecording();
+
+    expect(cancelCalls).toBe(1);
   });
 
   test("records inbound abort as cancelled and does not fall back", async () => {

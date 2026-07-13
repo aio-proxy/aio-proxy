@@ -6,6 +6,7 @@ import type {
 import type { CompletionUsage } from "openai/resources/completions";
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();
 
@@ -37,47 +38,42 @@ export function writeOpenAICompletionsSSE(
   context: ModelEgressContext,
 ): ReadableStream<Uint8Array> {
   const metadata = fallbackMetadata(context.modelId);
-  return new ReadableStream({
-    async start(controller) {
-      const tools = new Map<string, ToolState>();
+  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+    const tools = new Map<string, ToolState>();
 
-      for await (const part of stream) {
-        switch (part.type) {
-          case "text-delta":
-            controller.enqueue(frame(metadata, { content: textDelta(part) }));
-            break;
-          case "tool-input-start": {
-            const tool = { index: tools.size, id: part.id, toolName: part.toolName, arguments: "" };
-            tools.set(part.id, tool);
-            controller.enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
-            break;
-          }
-          case "tool-input-delta": {
-            const tool = tools.get(part.id);
-            if (tool !== undefined) {
-              tool.arguments += part.delta;
-              controller.enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
-            }
-            break;
-          }
-          case "tool-input-end": {
-            const tool = tools.get(part.id);
-            if (tool !== undefined) controller.enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
-            break;
-          }
-          case "finish":
-            controller.enqueue(
-              frame(metadata, {}, openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))),
-            );
-            break;
-          default:
-            break;
+    for await (const part of parts) {
+      switch (part.type) {
+        case "text-delta":
+          enqueue(frame(metadata, { content: textDelta(part) }));
+          break;
+        case "tool-input-start": {
+          const tool = { index: tools.size, id: part.id, toolName: part.toolName, arguments: "" };
+          tools.set(part.id, tool);
+          enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
+          break;
         }
+        case "tool-input-delta": {
+          const tool = tools.get(part.id);
+          if (tool !== undefined) {
+            tool.arguments += part.delta;
+            enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
+          }
+          break;
+        }
+        case "tool-input-end": {
+          const tool = tools.get(part.id);
+          if (tool !== undefined) enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
+          break;
+        }
+        case "finish":
+          enqueue(frame(metadata, {}, openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))));
+          break;
+        default:
+          break;
       }
+    }
 
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      controller.close();
-    },
+    enqueue(encoder.encode("data: [DONE]\n\n"));
   });
 }
 
