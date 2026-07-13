@@ -1,7 +1,9 @@
 import { type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resources/models";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import type { Model as OpenAIModel } from "openai/resources/models";
 import type { DashboardAssets } from "./dashboard-assets";
 import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
@@ -96,6 +98,7 @@ const createRoutes = (
 };
 
 const unknownCreatedAt = "1970-01-01T00:00:00Z";
+type ModelListItem = OpenAIModel & AnthropicModelInfo;
 
 async function listModels(state: ServerState) {
   const selected = new Map<string, { readonly modelId: string; readonly provider: RuntimeProviderInstance }>();
@@ -113,7 +116,7 @@ async function listModels(state: ServerState) {
 
   const needsCatalog = [...selected.values()].some(({ provider }) => provider.kind !== ProviderKind.OAuth);
   const catalog = needsCatalog ? await state.modelsDevCatalog().catch(() => undefined) : undefined;
-  const data = [...selected].map(([id, route]) => ({
+  const data = [...selected].map<ModelListItem>(([id, route]) => ({
     capabilities: null,
     created: 0,
     created_at: unknownCreatedAt,
