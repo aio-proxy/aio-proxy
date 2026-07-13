@@ -377,7 +377,7 @@ describe("POST /v1/messages", () => {
     });
     await response.text().catch(() => undefined);
 
-    expect(response.status).toBe(stream ? 200 : 500);
+    expect(response.status).toBe(stream ? 200 : 499);
     expect(await recorded(dbHome)).toEqual({
       requests: [
         expect.objectContaining({
