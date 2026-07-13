@@ -1,5 +1,5 @@
 import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
-import { type Catalog, type Model, type ModelMetadata, Models } from "@opencode-ai/models";
+import { type Model, Models, type ProviderMap } from "@opencode-ai/models";
 
 export type OpenRouterModelPrice = {
   readonly id: string;
@@ -45,26 +45,28 @@ export type ModelsDevModelMetadata = {
   readonly releaseDate?: string;
 };
 
-export type FetchModelsDevCatalog = () => Promise<Catalog>;
-export type FetchOpenRouterPrices = FetchModelsDevCatalog;
+export type FetchModelsDevProviders = () => Promise<ProviderMap>;
+export type FetchOpenRouterPrices = FetchModelsDevProviders;
 
 type MetadataCatalog = {
-  readonly byCanonicalId: ReadonlyMap<string, ModelsDevModelMetadata>;
   readonly byModelId: ReadonlyMap<string, ModelsDevModelMetadata>;
+  readonly byOpenRouterBareId: ReadonlyMap<string, ModelsDevModelMetadata>;
+  readonly byOpenRouterId: ReadonlyMap<string, ModelsDevModelMetadata>;
   readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, ModelsDevModelMetadata>>;
 };
 
 const modelsDev = Models.make();
-const defaultFetch: FetchModelsDevCatalog = () => modelsDev.catalog();
+const openRouterProviderId = "openrouter";
+const defaultFetch: FetchModelsDevProviders = () => modelsDev.providers();
 
 export async function createModelsDevCatalog(
-  fetchCatalog: FetchModelsDevCatalog = defaultFetch,
+  fetchProviders: FetchModelsDevProviders = defaultFetch,
 ): Promise<ModelsDevCatalog> {
-  const value = await fetchCatalog();
-  const prices = parsePrices(value);
+  const providers = await fetchProviders();
+  const prices = parsePrices(providers);
   const byId = new Map(prices.map((price) => [price.id, price]));
-  const byBareId = uniqueBarePrices(prices);
-  const metadata = parseMetadata(value);
+  const byBareId = uniqueBareEntries(byId);
+  const metadata = parseMetadata(providers);
 
   return {
     displayName(modelId) {
@@ -80,24 +82,24 @@ export async function createModelsDevCatalog(
 }
 
 export async function createOpenRouterPriceCatalog(
-  fetchCatalog: FetchModelsDevCatalog = defaultFetch,
+  fetchProviders: FetchModelsDevProviders = defaultFetch,
 ): Promise<OpenRouterPriceCatalog> {
-  return createModelsDevCatalog(fetchCatalog);
+  return createModelsDevCatalog(fetchProviders);
 }
 
-function uniqueBarePrices(prices: readonly OpenRouterModelPrice[]): ReadonlyMap<string, OpenRouterModelPrice> {
-  const byBareId = new Map<string, OpenRouterModelPrice>();
+function uniqueBareEntries<T>(byId: ReadonlyMap<string, T>): ReadonlyMap<string, T> {
+  const byBareId = new Map<string, T>();
   const duplicateBareIds = new Set<string>();
 
-  for (const price of prices) {
-    const bareId = price.id.split("/").at(-1) ?? price.id;
+  for (const [id, value] of byId) {
+    const bareId = id.split("/").at(-1) ?? id;
     if (byBareId.has(bareId)) {
       duplicateBareIds.add(bareId);
       byBareId.delete(bareId);
       continue;
     }
     if (!duplicateBareIds.has(bareId)) {
-      byBareId.set(bareId, price);
+      byBareId.set(bareId, value);
     }
   }
   return byBareId;
@@ -127,8 +129,8 @@ export function calculateEstimatedCost(
   return priced ? { estimatedCostUsd: cost, priceModelId: price.id } : undefined;
 }
 
-function parsePrices(value: Catalog): readonly OpenRouterModelPrice[] {
-  const openrouter = value.providers.openrouter;
+function parsePrices(providers: ProviderMap): readonly OpenRouterModelPrice[] {
+  const openrouter = providers[openRouterProviderId];
   return openrouter === undefined ? [] : Object.values(openrouter.models).flatMap(parsePrice);
 }
 
@@ -150,25 +152,23 @@ function parsePrice(model: Model): readonly OpenRouterModelPrice[] {
   ];
 }
 
-function parseMetadata(value: Catalog): MetadataCatalog {
+function parseMetadata(providers: ProviderMap): MetadataCatalog {
   const candidates = new Map<string, Map<string, ModelsDevModelMetadata>>();
-  const byCanonicalId = new Map<string, ModelsDevModelMetadata>();
+  const byOpenRouterId = new Map<string, ModelsDevModelMetadata>();
   const byProvider = new Map<string, ReadonlyMap<string, ModelsDevModelMetadata>>();
 
-  for (const [canonicalId, model] of Object.entries(value.models)) {
-    byCanonicalId.set(canonicalId, metadataFromCanonical(model));
-  }
-
-  for (const [providerId, provider] of Object.entries(value.providers)) {
+  for (const [providerId, provider] of Object.entries(providers)) {
     const providerMetadata = new Map<string, ModelsDevModelMetadata>();
     for (const model of Object.values(provider.models)) {
       const bareId = model.id.split("/").at(-1) ?? model.id;
-      const canonicalId = canonicalModelId(providerId, model.id);
-      const metadata = metadataFromProvider(model, canonicalId === undefined ? undefined : value.models[canonicalId]);
+      const metadata = metadataFromProvider(model);
       providerMetadata.set(model.id, metadata);
       providerMetadata.set(bareId, metadata);
       addMetadataCandidate(candidates, model.id, metadata);
       addMetadataCandidate(candidates, bareId, metadata);
+      if (providerId === openRouterProviderId) {
+        byOpenRouterId.set(model.id, metadata);
+      }
     }
     byProvider.set(providerId, providerMetadata);
   }
@@ -180,19 +180,24 @@ function parseMetadata(value: Catalog): MetadataCatalog {
       if (metadata !== undefined) byModelId.set(modelId, metadata);
     }
   }
-  return { byCanonicalId, byModelId, byProvider };
+  return {
+    byModelId,
+    byOpenRouterBareId: uniqueBareEntries(byOpenRouterId),
+    byOpenRouterId,
+    byProvider,
+  };
 }
 
 function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevModelMetadata | undefined {
   const slashIndex = modelId.indexOf("/");
   const bareId = modelId.split("/").at(-1) ?? modelId;
   const providerId = slashIndex > 0 ? modelId.slice(0, slashIndex) : canonicalProviderId(bareId);
-  const canonicalId = providerId === undefined ? undefined : `${providerId}/${bareId}`;
   const providerMetadata = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
   return (
+    catalog.byOpenRouterId.get(modelId) ??
+    catalog.byOpenRouterBareId.get(modelId) ??
     providerMetadata?.get(modelId) ??
     providerMetadata?.get(bareId) ??
-    (canonicalId === undefined ? undefined : catalog.byCanonicalId.get(canonicalId)) ??
     catalog.byModelId.get(modelId) ??
     catalog.byModelId.get(bareId)
   );
@@ -208,34 +213,13 @@ function canonicalProviderId(modelId: string): "anthropic" | "openai" | undefine
   return undefined;
 }
 
-function canonicalModelId(providerId: string, modelId: string): string | undefined {
-  if (modelId.includes("/")) return modelId;
-  const canonicalProvider =
-    providerId === "anthropic" || providerId === "openai" ? providerId : canonicalProviderId(modelId);
-  return canonicalProvider === undefined ? undefined : `${canonicalProvider}/${modelId}`;
-}
-
-function metadataFromCanonical(model: ModelMetadata): ModelsDevModelMetadata {
-  return {
-    ...(model.name === model.id ? {} : { displayName: model.name }),
-    ...(model.limit === undefined
-      ? {}
-      : {
-          maxInputTokens: model.limit.input ?? model.limit.context,
-          ...(model.limit.output === undefined ? {} : { maxTokens: model.limit.output }),
-        }),
-    ...(model.release_date === undefined ? {} : { releaseDate: model.release_date }),
-  };
-}
-
-function metadataFromProvider(model: Model, canonical: ModelMetadata | undefined): ModelsDevModelMetadata {
-  const displayName = canonical?.name ?? model.name;
+function metadataFromProvider(model: Model): ModelsDevModelMetadata {
   return {
     capabilities: modelCapabilities(model),
-    ...(displayName === model.id ? {} : { displayName }),
+    ...(model.name === model.id ? {} : { displayName: model.name }),
     maxInputTokens: model.limit.input ?? model.limit.context,
     maxTokens: model.limit.output,
-    releaseDate: canonical?.release_date ?? model.release_date,
+    releaseDate: model.release_date,
   };
 }
 

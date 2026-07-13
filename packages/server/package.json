@@ -16,6 +16,7 @@
     "@aio-proxy/oauth": "workspace:*",
     "@aio-proxy/provider-schemas": "workspace:*",
     "@aio-proxy/types": "workspace:*",
+    "date-fns": "^4.4.0",
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:",
     "hono": "catalog:",

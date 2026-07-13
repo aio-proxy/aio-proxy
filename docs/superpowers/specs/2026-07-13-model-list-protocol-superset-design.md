@@ -44,20 +44,20 @@ Each model entry contains the union of OpenAI `Model` and Anthropic `ModelInfo`:
   type: "model",
   display_name: string,
   created_at: string,
-  capabilities: null,
-  max_input_tokens: null,
-  max_tokens: null,
+  capabilities: ModelsDevCapabilities | null,
+  max_input_tokens: number | null,
+  max_tokens: number | null,
 }
 ```
 
-The proxy does not currently normalize release timestamps, capability descriptions, or token limits for general configured providers. Unknown timestamps use Unix epoch values: `created: 0` and `created_at: "1970-01-01T00:00:00Z"`. Unknown capability and token-limit fields are `null`, which the installed Anthropic SDK types allow.
+When models.dev metadata is available, the proxy fills release timestamps, token limits, and the reliable capability subset documented in [Typed models.dev Catalog Design](./2026-07-13-models-sdk-catalog-design.md). Unknown timestamps use Unix epoch values: `created: 0` and `created_at: "1970-01-01T00:00:00Z"`. Unknown capability and token-limit fields remain `null`.
 
 ## Model Display Names
 
 Display-name resolution is provider-aware and follows this order:
 
-1. For OAuth providers, use vendor metadata for the route's upstream `modelId`.
-2. For non-OAuth providers, query the cached models.dev catalog by the client-facing alias first, then by the upstream `modelId`.
+1. For OAuth providers, prefer vendor metadata for the route's upstream `modelId`.
+2. Query the cached models.dev catalog by the client-facing alias first, then by the upstream `modelId`; OAuth vendor names remain authoritative when present.
 3. If no trustworthy metadata is available, use the client-facing model id.
 
 ### OAuth Metadata
@@ -74,7 +74,7 @@ The endpoint iterates `modelRoutes(provider)`. For each OAuth route, it exposes 
 
 Generalize the existing six-hour models.dev price catalog task into one cached catalog task that serves both usage pricing and display-name lookup. `/v1/models` and usage capture share the same fetch result and refresh lifecycle; the model-list endpoint must not introduce a second models.dev request path.
 
-models.dev often contains the same bare model id under many providers with differently formatted names. For recognized OpenAI and Anthropic model ids, lookup first uses the catalog's canonical `openai` or `anthropic` provider entry. Other models use a human-readable name only when matching providers agree; conflicting fallback names remain unresolved instead of being chosen arbitrarily.
+OpenRouter publishes complete model records under qualified IDs. Lookup first uses an exact OpenRouter ID, then the existing unique bare-ID index produced by splitting qualified IDs on `/`. If OpenRouter does not contain the model, recognized OpenAI and Anthropic IDs use their canonical provider entry; other models use metadata only when matching providers agree. Conflicting fallback metadata remains unresolved instead of being chosen arbitrarily.
 
 Lookup checks the client-facing alias before the upstream id. This lets an API provider expose a canonical alias such as `claude-opus-4-6` for an opaque upstream target while still receiving the catalog name `Claude Opus 4.6`.
 
@@ -84,7 +84,7 @@ Keep aggregation and response shaping in `packages/server/src/server.ts`, becaus
 
 Extend the core models.dev catalog with display-name lookup while preserving its existing pricing interface. Expose the same cached catalog task to the model-list route and usage capture. The route awaits the catalog task, but catalog failure degrades to OAuth metadata or the model id rather than failing the request. The catalog task remains injectable for hermetic server tests.
 
-Extend only the server runtime OAuth type and the two OAuth runtime constructors to carry vendor model metadata. Do not change provider configuration schemas, core router behavior, raw provider model definitions, or add dependencies.
+The server runtime OAuth type and the two OAuth runtime constructors carry vendor model metadata. Provider configuration schemas, core router behavior, and raw provider model definitions remain unchanged. The typed models.dev SDK and date-fns additions are isolated to catalog loading and release-date conversion.
 
 ## Error Behavior
 
@@ -121,8 +121,10 @@ Regression tests will prove that:
 - every entry contains all required OpenAI and Anthropic fields;
 - ChatGPT and GitHub Copilot OAuth display names are preserved;
 - an OAuth alias inherits its target model's display name;
-- OpenAI and Anthropic ids prefer their canonical models.dev provider names;
+- exact and unique-bare OpenRouter metadata wins when available;
+- OpenAI and Anthropic ids fall back to their canonical models.dev provider metadata;
 - other non-OAuth aliases and model ids use unambiguous models.dev names;
+- limits, partial capabilities, and release timestamps come from the same selected metadata record;
 - conflicting fallback or missing models.dev names fall back to the client-facing id;
 - models.dev failure still returns a valid model list;
 - model listing and usage pricing share one cached catalog task;

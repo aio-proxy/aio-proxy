@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TextStreamPart, ToolSet } from "@aio-proxy/core";
+import type { FetchModelsDevProviders, TextStreamPart, ToolSet } from "@aio-proxy/core";
 import { ConfigSchema } from "@aio-proxy/types";
 import { createModelsDevCatalogTask, createServerState } from "../src/server-state";
 
@@ -16,28 +16,49 @@ afterEach(() => {
 
 test("model listing and usage pricing share one cached models.dev fetch", async () => {
   let fetches = 0;
+  const providers = {
+    openrouter: {
+      doc: "https://openrouter.ai/models",
+      env: ["OPENROUTER_API_KEY"],
+      id: "openrouter",
+      models: {
+        "openai/gpt-5.5": {
+          attachment: true,
+          cost: { input: 2, output: 10 },
+          description: "",
+          id: "openai/gpt-5.5",
+          last_updated: "2026-01-15",
+          limit: { context: 128_000, input: 120_000, output: 8_000 },
+          modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+          name: "GPT-5.5",
+          open_weights: false,
+          reasoning: true,
+          reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
+          release_date: "2026-01-15",
+          structured_output: true,
+          tool_call: true,
+        },
+      },
+      name: "OpenRouter",
+      npm: "@openrouter/ai-sdk-provider",
+    },
+  } satisfies Awaited<ReturnType<FetchModelsDevProviders>>;
   const state = createServerState({
     config: ConfigSchema.parse({ providers: {} }),
     dbHome: tempHome(),
     modelsDevCatalogTask: createModelsDevCatalogTask(async () => {
       fetches += 1;
-      return {
-        openai: { models: { "gpt-5.5": { id: "gpt-5.5", name: "GPT-5.5" } } },
-        openrouter: {
-          models: {
-            "openai/gpt-5.5": {
-              id: "openai/gpt-5.5",
-              name: "GPT-5.5",
-              cost: { input: 2, output: 10 },
-            },
-          },
-        },
-      };
+      return providers;
     }),
   });
 
   try {
-    expect((await state.modelsDevCatalog())?.displayName("gpt-5.5")).toBe("GPT-5.5");
+    expect((await state.modelsDevCatalog())?.metadata("gpt-5.5")).toMatchObject({
+      displayName: "GPT-5.5",
+      maxInputTokens: 120_000,
+      maxTokens: 8_000,
+      releaseDate: "2026-01-15",
+    });
     const captured = state.usageCapture.stream({
       providerId: "provider",
       modelId: "gpt-5.5",

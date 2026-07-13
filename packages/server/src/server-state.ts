@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createModelsDevCatalog, type FetchOpenRouterPrices, type ModelsDevCatalog, Router } from "@aio-proxy/core";
+import { createModelsDevCatalog, type FetchModelsDevProviders, type ModelsDevCatalog, Router } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb, type RequestLogStore } from "@aio-proxy/core/db";
 import {
   type Config,
@@ -181,7 +181,7 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
 }
 
 export function createModelsDevCatalogTask(
-  fetchJson?: FetchOpenRouterPrices,
+  fetchProviders?: FetchModelsDevProviders,
 ): () => Promise<ModelsDevCatalog | undefined> {
   let catalog:
     | {
@@ -195,7 +195,7 @@ export function createModelsDevCatalogTask(
     if (catalog === undefined || catalog.expiresAt <= now) {
       catalog = {
         expiresAt: now + PRICE_CATALOG_TTL_MS,
-        task: createModelsDevCatalog(fetchJson).catch((error: unknown) => {
+        task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
           if (error instanceof Error) {
             return undefined;
           }

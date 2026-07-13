@@ -4,13 +4,14 @@
 
 **Goal:** Replace manual models.dev JSON fetching with `@opencode-ai/models`, then enrich `/v1/models` with typed limits, partial capabilities, and release timestamps.
 
-**Architecture:** Core owns one typed `Catalog` loader and converts SDK records into the existing shared pricing catalog plus normalized model metadata. Server keeps the existing six-hour shared promise cache, resolves metadata once per winning route, and shapes OpenAI/Anthropic-compatible response fields. Catalog failure remains non-fatal.
+**Architecture:** Core owns one typed `ProviderMap` loader for the existing `/api.json` data and converts SDK records into the shared pricing catalog plus normalized model metadata. Server keeps the existing six-hour shared promise cache, resolves metadata once per winning route, and shapes OpenAI/Anthropic-compatible response fields. Catalog failure remains non-fatal.
 
 **Tech Stack:** Bun 1.3.14, TypeScript 6, `@opencode-ai/models@0.0.11`, `date-fns@^4.4.0`, Anthropic/OpenAI SDK response types, Bun test.
 
 ## Global Constraints
 
-- Use `Models.make().catalog()`; do not fetch models.dev URLs directly.
+- Use `Models.make().providers()`; do not fetch models.dev URLs directly.
+- Resolve complete OpenRouter metadata by exact ID and then unique bare ID before canonical/provider fallbacks.
 - Preserve the existing six-hour server cache and shared pricing/model-list task.
 - Use `limit.input ?? limit.context` for `max_input_tokens` and `limit.output` for `max_tokens`.
 - Return only reliable capability fields: `effort`, `image_input`, `pdf_input`, `structured_outputs`, and `thinking`.
@@ -31,12 +32,12 @@
 - Modify: `bun.lock`
 
 **Interfaces:**
-- Consumes: `Catalog`, `Model`, `ModelMetadata`, and `Models.make()` from `@opencode-ai/models`.
-- Produces: `FetchModelsDevCatalog`, `ModelsDevCapabilities`, `ModelsDevModelMetadata`, and `ModelsDevCatalog.metadata(modelId)`.
+- Consumes: `Model`, `ProviderMap`, and `Models.make()` from `@opencode-ai/models`.
+- Produces: `FetchModelsDevProviders`, `ModelsDevCapabilities`, `ModelsDevModelMetadata`, and `ModelsDevCatalog.metadata(modelId)`.
 
 - [ ] **Step 1: Add failing typed metadata tests**
 
-Replace the untyped `api` fixtures with `Catalog` fixtures. Add assertions equivalent to:
+Replace the untyped `api` fixtures with `ProviderMap` fixtures. Add assertions equivalent to:
 
 ```ts
 const metadata = catalog.metadata("gpt-5.5");
@@ -105,10 +106,10 @@ rtk bun install
 In `usage-pricing.ts`, define:
 
 ```ts
-import { Models, type Catalog, type Model, type ModelMetadata } from "@opencode-ai/models";
+import { Models, type Model, type ProviderMap } from "@opencode-ai/models";
 import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
 
-export type FetchModelsDevCatalog = () => Promise<Catalog>;
+export type FetchModelsDevProviders = () => Promise<ProviderMap>;
 export type ModelsDevCapabilities = Pick<
   ModelCapabilities,
   "effort" | "image_input" | "pdf_input" | "structured_outputs" | "thinking"
@@ -129,10 +130,10 @@ Create one stateless SDK client and typed default loader:
 
 ```ts
 const modelsDev = Models.make();
-const defaultFetch: FetchModelsDevCatalog = () => modelsDev.catalog();
+const defaultFetch: FetchModelsDevProviders = () => modelsDev.providers();
 ```
 
-Use `catalog.providers.openrouter?.models` for pricing. Resolve metadata by canonical key first (`openai/<id>`, `anthropic/<id>`, or an already-qualified ID), then use provider-scoped candidates with the existing first-provider/canonical and unambiguous-fallback rules.
+Use `providers["openrouter"]?.models` for pricing and complete metadata. Resolve exact OpenRouter IDs first, then reuse the existing unique bare-ID index; only then use provider-scoped candidates with the existing canonical OpenAI/Anthropic preference and unambiguous-fallback rules.
 
 Map provider records with helpers equivalent to:
 
@@ -167,7 +168,7 @@ function modelCapabilities(model: Model): ModelsDevCapabilities {
 }
 ```
 
-Prefer provider-agnostic `ModelMetadata` for canonical name and release date, and provider `Model` for limits and reasoning options. Export the new types from `packages/core/src/index.ts`; replace `FetchOpenRouterPrices` usages with `FetchModelsDevCatalog`.
+Use provider `Model` records for name, release date, limits, and reasoning options. Export the new types from `packages/core/src/index.ts`; replace `FetchOpenRouterPrices` usages with `FetchModelsDevProviders`.
 
 - [ ] **Step 5: Run the core test and verify GREEN**
 
@@ -177,7 +178,7 @@ Run:
 rtk bun test packages/core/_test/usage-pricing.test.ts
 ```
 
-Expected: all tests pass, including pricing, canonical metadata, context fallback, and capability mapping.
+Expected: all tests pass, including pricing, OpenRouter priority, canonical/provider fallback, context fallback, and capability mapping.
 
 - [ ] **Step 6: Commit the typed catalog**
 
@@ -328,25 +329,15 @@ rtk git commit -m "feat(server): enrich model catalog metadata" -m "Co-authored-
 - Modify: `docs/superpowers/specs/2026-07-13-model-list-protocol-superset-design.md`
 
 **Interfaces:**
-- Consumes: `FetchModelsDevCatalog` and the SDK `Catalog` fixture shape.
+- Consumes: `FetchModelsDevProviders` and the SDK `ProviderMap` fixture shape.
 - Produces: one six-hour shared live-catalog request for pricing and model metadata.
 
 - [ ] **Step 1: Update the cache test to a typed catalog fixture**
 
-Change `createModelsDevCatalogTask` to accept `FetchModelsDevCatalog`. Update the injected fixture to return:
+Change `createModelsDevCatalogTask` to accept `FetchModelsDevProviders`. Update the injected fixture to return:
 
 ```ts
 {
-  models: {
-    "openai/gpt-5.5": {
-      id: "openai/gpt-5.5",
-      name: "GPT-5.5",
-      description: "",
-      release_date: "2026-01-15",
-      limit: { context: 128_000, input: 120_000, output: 8_000 },
-    },
-  },
-  providers: {
     openai: {
       id: "openai",
       env: ["OPENAI_API_KEY"],
@@ -398,8 +389,7 @@ Change `createModelsDevCatalogTask` to accept `FetchModelsDevCatalog`. Update th
         },
       },
     },
-  },
-} satisfies Catalog
+} satisfies ProviderMap
 ```
 
 Assert metadata lookup and usage pricing still cause exactly one loader call.

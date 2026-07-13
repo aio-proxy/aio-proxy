@@ -1,6 +1,12 @@
-import { type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
+import {
+  type ModelsDevCapabilities,
+  type ModelsDevCatalog,
+  type ModelsDevModelMetadata,
+  modelRoutes,
+} from "@aio-proxy/core";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
 import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resources/models";
+import { getUnixTime, isValid, parseISO } from "date-fns";
 import { filter, flatMap, map, pipe, uniqBy } from "es-toolkit/fp";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -99,7 +105,10 @@ const createRoutes = (
 };
 
 const unknownCreatedAt = "1970-01-01T00:00:00Z";
-type ModelListItem = OpenAIModel & AnthropicModelInfo;
+type ModelListItem = OpenAIModel &
+  Omit<AnthropicModelInfo, "capabilities"> & {
+    readonly capabilities: ModelsDevCapabilities | null;
+  };
 
 async function listModels(state: ServerState) {
   const selected = pipe(
@@ -111,25 +120,26 @@ async function listModels(state: ServerState) {
     uniqBy(({ id }) => id),
   );
 
-  const needsCatalog = selected.some(({ provider }) => provider.kind !== ProviderKind.OAuth);
-  const catalog = needsCatalog ? await state.modelsDevCatalog().catch(() => undefined) : undefined;
+  const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
 
   return pipe(
     selected,
-    map(
-      ({ id, modelId, provider }): ModelListItem => ({
-        capabilities: null,
-        created: 0,
-        created_at: unknownCreatedAt,
-        display_name: modelDisplayName(id, modelId, provider, catalog),
+    map(({ id, modelId, provider }): ModelListItem => {
+      const metadata = catalog?.metadata(id) ?? catalog?.metadata(modelId);
+      const timestamps = modelTimestamps(metadata?.releaseDate);
+      return {
+        capabilities: metadata?.capabilities ?? null,
+        created: timestamps.created,
+        created_at: timestamps.createdAt,
+        display_name: modelDisplayName(id, modelId, provider, metadata),
         id,
-        max_input_tokens: null,
-        max_tokens: null,
+        max_input_tokens: metadata?.maxInputTokens ?? null,
+        max_tokens: metadata?.maxTokens ?? null,
         object: "model",
         owned_by: provider.id,
         type: "model",
-      }),
-    ),
+      };
+    }),
     (data) => ({
       data,
       first_id: data[0]?.id ?? null,
@@ -144,12 +154,24 @@ function modelDisplayName(
   id: string,
   modelId: string,
   provider: RuntimeProviderInstance,
-  catalog: ModelsDevCatalog | undefined,
+  metadata: ModelsDevModelMetadata | undefined,
 ): string {
   if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? id;
+    return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? id;
   }
-  return catalog?.displayName(id) ?? catalog?.displayName(modelId) ?? id;
+  return metadata?.displayName ?? id;
+}
+
+function modelTimestamps(releaseDate: string | undefined): { readonly created: number; readonly createdAt: string } {
+  if (releaseDate === undefined) {
+    return { created: 0, createdAt: unknownCreatedAt };
+  }
+  const normalizedDate = releaseDate.length === 7 ? `${releaseDate}-01` : releaseDate;
+  const date = parseISO(`${normalizedDate}T00:00:00Z`);
+  if (!isValid(date)) {
+    return { created: 0, createdAt: unknownCreatedAt };
+  }
+  return { created: getUnixTime(date), createdAt: date.toISOString() };
 }
 
 const routes = createRoutes(createServerState({ config: defaultConfig }));

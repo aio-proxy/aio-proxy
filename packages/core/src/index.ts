@@ -169,7 +169,7 @@ export {
   calculateEstimatedCost,
   createModelsDevCatalog,
   createOpenRouterPriceCatalog,
-  type FetchModelsDevCatalog,
+  type FetchModelsDevProviders,
   type FetchOpenRouterPrices,
   type ModelsDevCapabilities,
   type ModelsDevCatalog,

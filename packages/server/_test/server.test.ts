@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelsDevCatalog } from "@aio-proxy/core";
+import type { ModelsDevCapabilities, ModelsDevCatalog } from "@aio-proxy/core";
 import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { AppType } from "@aio-proxy/server";
 import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
@@ -43,14 +43,45 @@ const config = {
 
 const noModelsDevCatalog = async () => undefined;
 
-const expectedModel = (id: string, ownedBy: string, displayName: string = id) => ({
-  capabilities: null,
-  created: 0,
-  created_at: "1970-01-01T00:00:00Z",
+const testCapabilities: ModelsDevCapabilities = {
+  effort: {
+    high: { supported: true },
+    low: { supported: true },
+    max: { supported: false },
+    medium: { supported: true },
+    supported: true,
+    xhigh: { supported: false },
+  },
+  image_input: { supported: true },
+  pdf_input: { supported: true },
+  structured_outputs: { supported: true },
+  thinking: {
+    supported: true,
+    types: { adaptive: { supported: true }, enabled: { supported: true } },
+  },
+};
+
+type ExpectedModelMetadata = {
+  readonly capabilities?: ModelsDevCapabilities;
+  readonly created?: number;
+  readonly createdAt?: string;
+  readonly maxInputTokens?: number;
+  readonly maxTokens?: number;
+};
+
+const expectedModel = (
+  id: string,
+  ownedBy: string,
+  displayName: string = id,
+  metadata: ExpectedModelMetadata = {},
+) => ({
+  capabilities: metadata.capabilities ?? null,
+  created: metadata.created ?? 0,
+  created_at: metadata.createdAt ?? "1970-01-01T00:00:00Z",
   display_name: displayName,
   id,
-  max_input_tokens: null,
-  max_tokens: null,
+  max_input_tokens: metadata.maxInputTokens ?? null,
+  max_tokens: metadata.maxTokens ?? null,
   object: "model",
   owned_by: ownedBy,
   type: "model",
@@ -193,6 +224,19 @@ describe("server routes", () => {
       find() {
         return undefined;
       },
+      metadata(modelId) {
+        return {
+          "claude-sonnet-4-6": {
+            capabilities: testCapabilities,
+            displayName: "Claude Sonnet 4.6",
+            maxInputTokens: 1_000_000,
+            maxTokens: 128_000,
+            releaseDate: "2026-01-15",
+          },
+          "gpt-only": { displayName: "GPT Only", releaseDate: "2026-02-30" },
+          shared: { displayName: "Shared Model" },
+        }[modelId];
+      },
     };
     const app = createServer({
       modelsDevCatalogTask: async () => catalog,
@@ -221,7 +265,13 @@ describe("server routes", () => {
 
     expect(await response.json()).toEqual(
       expectedModelList([
-        expectedModel("claude-sonnet-4-6", "high", "Claude Sonnet 4.6"),
+        expectedModel("claude-sonnet-4-6", "high", "Claude Sonnet 4.6", {
+          capabilities: testCapabilities,
+          created: 1_768_435_200,
+          createdAt: "2026-01-15T00:00:00.000Z",
+          maxInputTokens: 1_000_000,
+          maxTokens: 128_000,
+        }),
         expectedModel("shared", "high", "Shared Model"),
         expectedModel("gpt-only", "low", "GPT Only"),
       ]),
@@ -289,6 +339,7 @@ describe("server routes", () => {
     });
     const app = createServer({
       config: { providers: { "chatgpt-xxx": { kind: "oauth", vendor: "openai-chatgpt" } } },
+      modelsDevCatalogTask: noModelsDevCatalog,
     });
 
     // When
@@ -313,6 +364,20 @@ describe("server routes", () => {
       models: OPENAI_CHATGPT_MODELS,
     });
     const app = createServer({
+      modelsDevCatalogTask: async () => ({
+        displayName: () => "Catalog Name Must Not Win",
+        find: () => undefined,
+        metadata: (modelId) =>
+          modelId === "gpt5" || modelId === "gpt-5.5"
+            ? {
+                capabilities: testCapabilities,
+                displayName: "Catalog Name Must Not Win",
+                maxInputTokens: 120_000,
+                maxTokens: 8_000,
+                releaseDate: "2026-01-15",
+              }
+            : undefined,
+      }),
       config: {
         providers: {
           "chatgpt-xxx": {
@@ -327,7 +392,15 @@ describe("server routes", () => {
     const response = await app.request("/v1/models");
     const body = (await response.json()) as { data: ReturnType<typeof expectedModel>[] };
 
-    expect(body.data.find((model) => model.id === "gpt5")).toEqual(expectedModel("gpt5", "chatgpt-xxx", "GPT-5.5"));
+    expect(body.data.find((model) => model.id === "gpt5")).toEqual(
+      expectedModel("gpt5", "chatgpt-xxx", "GPT-5.5", {
+        capabilities: testCapabilities,
+        created: 1_768_435_200,
+        createdAt: "2026-01-15T00:00:00.000Z",
+        maxInputTokens: 120_000,
+        maxTokens: 8_000,
+      }),
+    );
   });
 
   test("Given Copilot OAuth metadata When models are requested Then display names reach the HTTP response", async () => {
@@ -346,6 +419,7 @@ describe("server routes", () => {
     });
     const app = createServer({
       config: { providers: { "copilot-xxx": { kind: "oauth", vendor: "github-copilot" } } },
+      modelsDevCatalogTask: noModelsDevCatalog,
     });
 
     const response = await app.request("/v1/models");

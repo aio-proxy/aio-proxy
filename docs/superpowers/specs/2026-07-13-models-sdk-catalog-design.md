@@ -6,7 +6,7 @@ The shared models.dev catalog currently fetches `api.json` directly and manually
 
 ## Decision
 
-Add `@opencode-ai/models@0.0.11` to the workspace catalog and core package. The default catalog loader will call `Models.make().catalog()`, which returns the typed `Catalog` shape containing both provider offers and provider-agnostic model metadata. Add `date-fns@^4.4.0` as a direct server dependency for release-date parsing and Unix timestamp conversion.
+Add `@opencode-ai/models@0.0.11` to the workspace catalog and core package. The default catalog loader will call `Models.make().providers()`, the typed SDK operation for the existing `GET /api.json` request, and receive a `ProviderMap`. Add `date-fns@^4.4.0` as a direct server dependency for release-date parsing and Unix timestamp conversion.
 
 Keep the server's existing six-hour promise cache. The SDK client is stateless and performs one request per call, so cache ownership remains in `createModelsDevCatalogTask()` and usage pricing and model listing continue to share one refresh lifecycle.
 
@@ -14,7 +14,7 @@ Do not use the package snapshot. Runtime behavior remains live-data-first, and a
 
 ## Catalog Interface
 
-Replace the `unknown` fetch seam with a typed `() => Promise<Catalog>` loader so tests can inject catalog fixtures without manual runtime parsing.
+Replace the `unknown` fetch seam with a typed `() => Promise<ProviderMap>` loader so tests can inject provider fixtures without manual runtime parsing.
 
 Extend `ModelsDevCatalog` with one metadata lookup that returns:
 
@@ -30,9 +30,9 @@ type ModelsDevModelMetadata = {
 
 `ModelsDevCapabilities` is an explicit subset of Anthropic's `ModelCapabilities` containing only `effort`, `image_input`, `pdf_input`, `structured_outputs`, and `thinking`. The model-list item type replaces the SDK's full `capabilities` field with this subset-or-null type; it does not claim that the partial object is a complete Anthropic capability record.
 
-Pricing lookup remains unchanged. OpenRouter prices still come from `catalog.providers.openrouter`.
+Pricing lookup remains unchanged. OpenRouter prices still come from `providers["openrouter"]` and resolve by exact qualified ID before the existing unique bare-ID fallback.
 
-Metadata lookup prefers provider-agnostic canonical entries from `catalog.models`, then provider-scoped entries from `catalog.providers` using the existing canonical OpenAI/Anthropic resolution and conflict rules. For token limits:
+Metadata lookup uses the same complete OpenRouter records first: exact qualified ID, then the existing unique bare-ID index produced by splitting OpenRouter IDs on `/`. When OpenRouter has no match, lookup preserves the existing canonical OpenAI/Anthropic provider preference and unambiguous cross-provider fallback rules. For token limits:
 
 - `maxInputTokens` uses `limit.input ?? limit.context`;
 - `maxTokens` uses `limit.output` when published;
@@ -46,7 +46,7 @@ When catalog data is available:
 
 - `max_input_tokens` is the resolved `maxInputTokens` or `null`;
 - `max_tokens` is the resolved `maxTokens` or `null`.
-- `created_at` parses models.dev `release_date` (`YYYY-MM-DD`) at UTC midnight with date-fns `parseISO`, validates it with `isValid`, and serializes the parsed date with `toISOString()`;
+- `created_at` parses models.dev `release_date` (`YYYY-MM` or `YYYY-MM-DD`) at UTC midnight with date-fns `parseISO`, using the first day for month-only values, validates it with `isValid`, and serializes the parsed date with `toISOString()`;
 - `created` uses date-fns `getUnixTime` for the same parsed instant.
 
 If `release_date` is missing or malformed, both timestamp fields retain their existing Unix epoch fallback. The OpenAI and Anthropic timestamp fields must always describe the same instant. Do not implement custom calendar parsing or manual Unix timestamp arithmetic.
@@ -60,15 +60,15 @@ When catalog data supplies the relevant signals, `capabilities` contains only fi
 - `thinking.types.adaptive` comes from the `effort` reasoning option;
 - `thinking.types.enabled` comes from `budget_tokens` or `toggle` reasoning options.
 
-The response omits `batch`, `citations`, `code_execution`, and `context_management` because models.dev does not publish those signals. It must not emit `supported: false` for unknown capabilities. If no trustworthy catalog metadata is available, `capabilities` remains `null`.
+The response omits `batch`, `citations`, `code_execution`, and `context_management` because models.dev does not publish those signals. It reports `supported: false` only for the five mapped signals when models.dev explicitly provides the source field; unknown capability groups are omitted. If no trustworthy catalog metadata is available, `capabilities` remains `null`.
 
 An empty model list does not trigger a catalog request. Catalog errors do not fail the endpoint.
 
 ## Alternatives
 
-### Use `Models.make().providers()`
+### Use `Models.make().catalog()`
 
-This is closest to the current `api.json` request but keeps the existing cross-provider canonicalization burden and ignores the package's provider-agnostic metadata.
+This combines `/api.json` with provider-agnostic `/models.json` metadata, but it changes the current fetch contract and retrieves data the existing pricing/name path does not require. The implementation keeps the exact `/api.json` semantics through `providers()`.
 
 ### Use `@opencode-ai/models/snapshot`
 
@@ -82,7 +82,8 @@ models.dev does not publish enough information for `batch`, `citations`, `code_e
 
 Tests will verify the red-green behavior for:
 
-- typed catalog fixtures supplying canonical display names and token limits;
+- typed provider fixtures supplying OpenRouter-first display names and token limits;
+- exact and unique-bare OpenRouter lookup before canonical/provider fallback;
 - `limit.input` taking precedence over `limit.context`;
 - `limit.context` acting as the input-limit fallback;
 - capability subsets mapping effort values, image/PDF modalities, structured output, and thinking modes;

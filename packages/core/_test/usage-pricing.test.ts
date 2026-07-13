@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Catalog, Model, Provider } from "@opencode-ai/models";
+import type { Model, Provider, ProviderMap } from "@opencode-ai/models";
 import { calculateEstimatedCost, createModelsDevCatalog, createOpenRouterPriceCatalog } from "../src/usage-pricing";
 
 const model = (id: string, name: string, overrides: Partial<Model> = {}): Model => ({
@@ -26,68 +26,48 @@ const provider = (id: string, models: Record<string, Model>): Provider => ({
   npm: `@ai-sdk/${id}`,
 });
 
-const api: Catalog = {
-  models: {
-    "anthropic/claude-sonnet-4-6": {
-      description: "",
-      id: "anthropic/claude-sonnet-4-6",
+const api: ProviderMap = {
+  anthropic: provider("anthropic", {
+    "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4.6", {
+      attachment: true,
       limit: { context: 1_000_000, output: 128_000 },
-      name: "Claude Sonnet 4.6",
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      reasoning: true,
+      reasoning_options: [
+        { type: "effort", values: ["low", "medium", "high", "max"] },
+        { type: "budget_tokens", min: 1_024 },
+      ],
       release_date: "2026-02-17",
-    },
-    "openai/gpt-5.5": {
-      description: "",
-      id: "openai/gpt-5.5",
+      structured_output: true,
+      tool_call: true,
+    }),
+  }),
+  openai: provider("openai", {
+    "gpt-5.5": model("gpt-5.5", "Direct OpenAI Name", {
+      limit: { context: 64_000, output: 4_000 },
+    }),
+  }),
+  openrouter: provider("openrouter", {
+    "openai/gpt-5.5": model("openai/gpt-5.5", "GPT-5.5", {
+      attachment: true,
+      cost: { cache_read: 0.5, cache_write: 1, input: 2, output: 10, reasoning: 10 },
       limit: { context: 128_000, input: 120_000, output: 8_000 },
-      name: "GPT-5.5",
-      release_date: "2026-01-15",
-    },
-  },
-  providers: {
-    anthropic: provider("anthropic", {
-      "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4.6", {
-        attachment: true,
-        limit: { context: 1_000_000, output: 128_000 },
-        modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-        reasoning: true,
-        reasoning_options: [
-          { type: "effort", values: ["low", "medium", "high", "max"] },
-          { type: "budget_tokens", min: 1_024 },
-        ],
-        release_date: "2026-02-17",
-        structured_output: true,
-        tool_call: true,
-      }),
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      reasoning: true,
+      reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
+      structured_output: true,
+      tool_call: true,
     }),
-    openai: provider("openai", {
-      "gpt-5.5": model("gpt-5.5", "GPT-5.5", {
-        attachment: true,
-        limit: { context: 128_000, input: 120_000, output: 8_000 },
-        modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-        reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
-        structured_output: true,
-        tool_call: true,
-      }),
-    }),
-    openrouter: provider("openrouter", {
-      "openai/gpt-5.5": model("openai/gpt-5.5", "GPT-5.5", {
-        cost: { cache_read: 0.5, cache_write: 1, input: 2, output: 10, reasoning: 10 },
-      }),
-    }),
-    proxy: provider("proxy", {
-      "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4-6"),
-      "gpt-5.5": model("gpt-5.5", "GPT 5.5"),
-    }),
-  },
+  }),
+  proxy: provider("proxy", {
+    "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4-6"),
+    "gpt-5.5": model("gpt-5.5", "GPT 5.5"),
+  }),
 };
 
-const conflictingApi: Catalog = {
-  models: {},
-  providers: {
-    first: provider("first", { shared: model("shared-model", "Shared Model") }),
-    second: provider("second", { shared: model("shared-model", "Different Shared Model") }),
-  },
+const conflictingApi: ProviderMap = {
+  first: provider("first", { shared: model("shared-model", "Shared Model") }),
+  second: provider("second", { shared: model("shared-model", "Different Shared Model") }),
 };
 
 describe("OpenRouter usage pricing", () => {
@@ -98,7 +78,7 @@ describe("OpenRouter usage pricing", () => {
     expect(catalog.find("gpt-5.5")?.id).toBe("openai/gpt-5.5");
   });
 
-  test("returns canonical typed model metadata", async () => {
+  test("prefers complete OpenRouter metadata and keeps provider fallbacks", async () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
     expect(catalog.metadata("gpt-5.5")).toEqual({
@@ -130,6 +110,7 @@ describe("OpenRouter usage pricing", () => {
       maxTokens: 128_000,
       releaseDate: "2026-02-17",
     });
+    expect(catalog.metadata("openai/gpt-5.5")).toEqual(catalog.metadata("gpt-5.5"));
     expect(catalog.metadata("anthropic/claude-sonnet-4-6")).toEqual(catalog.metadata("claude-sonnet-4-6"));
   });
 
