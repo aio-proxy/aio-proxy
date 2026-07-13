@@ -128,6 +128,38 @@ describe("server routes", () => {
     });
   });
 
+  test("Given added Anthropic aliases When models are requested Then upstream targets are hidden", async () => {
+    const app = createServer({
+      config: {
+        providers: {
+          "anthropic-aliases": {
+            kind: "api",
+            protocol: ProviderProtocol.Anthropic,
+            baseUrl: "https://anthropic.example.com",
+            models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46"],
+            alias: {
+              "claude-opus-4-8": "upstream-opus-48",
+              "claude-opus-4-6": "upstream-opus-46",
+              "claude-sonnet-4-6": "upstream-sonnet-46",
+            },
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      object: "list",
+      data: [
+        { id: "claude-opus-4-8", object: "model", owned_by: "anthropic-aliases" },
+        { id: "claude-opus-4-6", object: "model", owned_by: "anthropic-aliases" },
+        { id: "claude-sonnet-4-6", object: "model", owned_by: "anthropic-aliases" },
+      ],
+    });
+  });
+
   test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {
     // Given
     Auth.set("openai-chatgpt", "chatgpt-xxx", {
@@ -184,7 +216,7 @@ describe("server routes", () => {
           passthrough: true,
           last_status: "unknown",
           last_latency: null,
-          clientModels: ["disabled", "gpt-disabled", "gpt-untouched"],
+          clientModels: ["disabled", "gpt-untouched"],
           hasApiKey: false,
         },
       ],
