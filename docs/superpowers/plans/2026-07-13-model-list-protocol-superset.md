@@ -4,7 +4,7 @@
 
 **Goal:** Make `GET /v1/models` return a deduplicated OpenAI/Anthropic response superset whose owner follows provider routing priority and whose display names come from OAuth metadata or the shared models.dev catalog.
 
-**Architecture:** Extend the existing models.dev pricing parser into a general catalog that also resolves unambiguous display names, then share its existing six-hour server cache with `/v1/models`. Preserve OAuth vendor model records on runtime providers, and keep HTTP aggregation in `server.ts` while continuing to consume core `modelRoutes()`.
+**Architecture:** Extend the existing models.dev pricing parser into a general catalog that prefers canonical OpenAI/Anthropic names and otherwise resolves unambiguous display names, then share its existing six-hour server cache with `/v1/models`. Preserve OAuth vendor model records on runtime providers, and keep HTTP aggregation in `server.ts` while continuing to consume core `modelRoutes()`.
 
 **Tech Stack:** TypeScript 6, Bun test runner, Hono, Zod-normalized provider configuration.
 
@@ -16,7 +16,8 @@
 - Return the complete field union of OpenAI `Model`/`Page` and Anthropic `ModelInfo`/`Page`.
 - OAuth display names come from vendor metadata keyed by upstream model id.
 - Non-OAuth display names use models.dev alias-first, then upstream-id lookup.
-- Missing, conflicting, or failed metadata lookup falls back to the client-facing id.
+- Canonical OpenAI/Anthropic catalog entries win over differently formatted proxy names.
+- Missing, conflicting fallback, or failed metadata lookup falls back to the client-facing id.
 - Reuse one models.dev fetch/cache path for pricing and model metadata.
 - Add no dependencies and do no unrelated refactoring.
 
@@ -54,7 +55,7 @@
 Add a models.dev fixture with canonical, raw, qualified, and conflicting names, then add:
 
 ```ts
-test("resolves one human-readable name across duplicate provider entries", async () => {
+test("prefers the canonical provider name across conflicting provider entries", async () => {
   const catalog = await createModelsDevCatalog(async () => modelsDevApi);
 
   expect(catalog.displayName("gpt-5.5")).toBe("GPT-5.5");
@@ -146,6 +147,8 @@ function addDisplayName(candidates: Map<string, Set<string>>, modelId: string, n
   candidates.set(modelId, names);
 }
 ```
+
+Retain provider-scoped name maps while parsing. `displayName()` first resolves qualified ids by their provider prefix, maps recognized `gpt-*`, `o*`, and other OpenAI families to the canonical `openai` entry, maps `claude-*` to `anthropic`, and only then uses the unambiguous cross-provider fallback map.
 
 Export `createModelsDevCatalog` and `ModelsDevCatalog` from `packages/core/src/index.ts`.
 

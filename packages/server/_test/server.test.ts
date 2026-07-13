@@ -76,6 +76,7 @@ describe("server routes", () => {
 
   afterEach(() => {
     Auth.del("openai-chatgpt", "chatgpt-xxx");
+    Auth.del("github-copilot", "copilot-xxx");
     if (previousHome === undefined) {
       delete process.env.AIO_PROXY_HOME;
     } else {
@@ -300,6 +301,57 @@ describe("server routes", () => {
       expectedModelList(
         OPENAI_CHATGPT_MODELS.map((model) => expectedModel(model.id, "chatgpt-xxx", model.displayName)),
       ),
+    );
+  });
+
+  test("Given a renamed OAuth model When models are requested Then the alias inherits the vendor display name", async () => {
+    Auth.set("openai-chatgpt", "chatgpt-xxx", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      accountId: "xxx",
+      models: OPENAI_CHATGPT_MODELS,
+    });
+    const app = createServer({
+      config: {
+        providers: {
+          "chatgpt-xxx": {
+            kind: "oauth",
+            vendor: "openai-chatgpt",
+            alias: { gpt5: "gpt-5.5" },
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+    const body = (await response.json()) as { data: ReturnType<typeof expectedModel>[] };
+
+    expect(body.data.find((model) => model.id === "gpt5")).toEqual(expectedModel("gpt5", "chatgpt-xxx", "GPT-5.5"));
+  });
+
+  test("Given Copilot OAuth metadata When models are requested Then display names reach the HTTP response", async () => {
+    Auth.set("github-copilot", "copilot-xxx", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      baseUrl: "https://api.individual.githubcopilot.com",
+      models: [
+        {
+          id: "claude-sonnet-4-6",
+          displayName: "Claude Sonnet 4.6",
+          transport: ProviderProtocol.Anthropic,
+        },
+      ],
+    });
+    const app = createServer({
+      config: { providers: { "copilot-xxx": { kind: "oauth", vendor: "github-copilot" } } },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(
+      expectedModelList([expectedModel("claude-sonnet-4-6", "copilot-xxx", "Claude Sonnet 4.6")]),
     );
   });
 

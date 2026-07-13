@@ -74,7 +74,7 @@ The endpoint iterates `modelRoutes(provider)`. For each OAuth route, it exposes 
 
 Generalize the existing six-hour models.dev price catalog task into one cached catalog task that serves both usage pricing and display-name lookup. `/v1/models` and usage capture share the same fetch result and refresh lifecycle; the model-list endpoint must not introduce a second models.dev request path.
 
-models.dev often contains the same bare model id under many providers. Display-name lookup collects matching entries and prefers a single human-readable name that differs from the raw id. If multiple conflicting human-readable names remain, the lookup is ambiguous and returns no name instead of choosing arbitrarily.
+models.dev often contains the same bare model id under many providers with differently formatted names. For recognized OpenAI and Anthropic model ids, lookup first uses the catalog's canonical `openai` or `anthropic` provider entry. Other models use a human-readable name only when matching providers agree; conflicting fallback names remain unresolved instead of being chosen arbitrarily.
 
 Lookup checks the client-facing alias before the upstream id. This lets an API provider expose a canonical alias such as `claude-opus-4-6` for an opaque upstream target while still receiving the catalog name `Claude Opus 4.6`.
 
@@ -121,8 +121,9 @@ Regression tests will prove that:
 - every entry contains all required OpenAI and Anthropic fields;
 - ChatGPT and GitHub Copilot OAuth display names are preserved;
 - an OAuth alias inherits its target model's display name;
-- non-OAuth aliases and model ids use unambiguous models.dev names;
-- conflicting or missing models.dev names fall back to the client-facing id;
+- OpenAI and Anthropic ids prefer their canonical models.dev provider names;
+- other non-OAuth aliases and model ids use unambiguous models.dev names;
+- conflicting fallback or missing models.dev names fall back to the client-facing id;
 - models.dev failure still returns a valid model list;
 - model listing and usage pricing share one cached catalog task;
 - empty results contain valid pagination boundary fields.

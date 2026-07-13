@@ -98,18 +98,26 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     return undefined;
   }
 
-  return value.filter((model): model is CachedCopilotModel => {
+  return value.flatMap((model): CachedCopilotModel[] => {
     if (typeof model !== "object" || model === null) {
-      return false;
+      return [];
     }
     const candidate = model as Partial<CachedCopilotModel>;
-    return (
-      typeof candidate.id === "string" &&
-      (candidate.displayName === undefined || typeof candidate.displayName === "string") &&
-      (candidate.transport === ProviderProtocol.OpenAICompatible ||
-        candidate.transport === ProviderProtocol.Anthropic ||
-        candidate.transport === ProviderProtocol.OpenAIResponse)
-    );
+    if (
+      typeof candidate.id !== "string" ||
+      (candidate.transport !== ProviderProtocol.OpenAICompatible &&
+        candidate.transport !== ProviderProtocol.Anthropic &&
+        candidate.transport !== ProviderProtocol.OpenAIResponse)
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: candidate.id,
+        transport: candidate.transport,
+        ...(typeof candidate.displayName === "string" ? { displayName: candidate.displayName } : {}),
+      },
+    ];
   });
 }
 

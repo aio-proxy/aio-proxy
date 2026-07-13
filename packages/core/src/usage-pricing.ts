@@ -30,6 +30,11 @@ export type ModelsDevCatalog = OpenRouterPriceCatalog & {
 
 export type FetchOpenRouterPrices = () => Promise<unknown>;
 
+type DisplayNameCatalog = {
+  readonly byModelId: ReadonlyMap<string, string>;
+  readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, string>>;
+};
+
 const modelsDevApiUrl = "https://models.dev/api.json";
 
 const defaultFetch: FetchOpenRouterPrices = async () => {
@@ -48,7 +53,7 @@ export async function createModelsDevCatalog(
 
   return {
     displayName(modelId) {
-      return displayNames.get(modelId);
+      return resolveDisplayName(displayNames, modelId);
     },
     find(modelId) {
       return byId.get(modelId) ?? byBareId.get(modelId);
@@ -134,16 +139,18 @@ function parsePrice(model: unknown): readonly OpenRouterModelPrice[] {
   ];
 }
 
-function parseDisplayNames(value: unknown): ReadonlyMap<string, string> {
+function parseDisplayNames(value: unknown): DisplayNameCatalog {
   const candidates = new Map<string, Set<string>>();
+  const byProvider = new Map<string, ReadonlyMap<string, string>>();
   if (!isRecord(value)) {
-    return new Map();
+    return { byModelId: new Map(), byProvider };
   }
 
-  for (const provider of Object.values(value)) {
+  for (const [providerId, provider] of Object.entries(value)) {
     if (!isRecord(provider) || !isRecord(provider["models"])) {
       continue;
     }
+    const providerNames = new Map<string, string>();
     for (const model of Object.values(provider["models"])) {
       if (!isRecord(model) || typeof model["id"] !== "string" || typeof model["name"] !== "string") {
         continue;
@@ -152,21 +159,45 @@ function parseDisplayNames(value: unknown): ReadonlyMap<string, string> {
         continue;
       }
       addDisplayName(candidates, model["id"], model["name"]);
-      addDisplayName(candidates, model["id"].split("/").at(-1) ?? model["id"], model["name"]);
+      const bareId = model["id"].split("/").at(-1) ?? model["id"];
+      addDisplayName(candidates, bareId, model["name"]);
+      providerNames.set(model["id"], model["name"]);
+      providerNames.set(bareId, model["name"]);
+    }
+    if (providerNames.size > 0) {
+      byProvider.set(providerId, providerNames);
     }
   }
 
-  const displayNames = new Map<string, string>();
+  const byModelId = new Map<string, string>();
   for (const [modelId, names] of candidates) {
     if (names.size !== 1) {
       continue;
     }
     const name = names.values().next().value;
     if (name !== undefined) {
-      displayNames.set(modelId, name);
+      byModelId.set(modelId, name);
     }
   }
-  return displayNames;
+  return { byModelId, byProvider };
+}
+
+function resolveDisplayName(catalog: DisplayNameCatalog, modelId: string): string | undefined {
+  const slashIndex = modelId.indexOf("/");
+  const bareId = modelId.split("/").at(-1) ?? modelId;
+  const providerId = slashIndex > 0 ? modelId.slice(0, slashIndex) : canonicalProviderId(bareId);
+  const providerNames = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
+  return providerNames?.get(modelId) ?? providerNames?.get(bareId) ?? catalog.byModelId.get(modelId);
+}
+
+function canonicalProviderId(modelId: string): "anthropic" | "openai" | undefined {
+  if (modelId.startsWith("claude-")) {
+    return "anthropic";
+  }
+  if (/^(?:chatgpt-|codex-|dall-e-|gpt-|o[1-9](?:-|$)|text-embedding-|tts-|whisper-)/u.test(modelId)) {
+    return "openai";
+  }
+  return undefined;
 }
 
 function addDisplayName(candidates: Map<string, Set<string>>, modelId: string, name: string): void {

@@ -29,7 +29,7 @@ const api = {
     models: {
       "gpt-5.5": {
         id: "gpt-5.5",
-        name: "gpt-5.5",
+        name: "GPT 5.5",
       },
     },
   },
@@ -56,7 +56,7 @@ describe("OpenRouter usage pricing", () => {
     expect(catalog.find("gpt-5.5")?.id).toBe("openai/gpt-5.5");
   });
 
-  test("resolves one human-readable name across duplicate provider entries", async () => {
+  test("prefers the canonical provider name across conflicting provider entries", async () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
     expect(catalog.displayName("gpt-5.5")).toBe("GPT-5.5");

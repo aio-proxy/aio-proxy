@@ -103,6 +103,25 @@ describe("OAuth provider runtime", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  test("keeps cached models when optional display names are malformed", () => {
+    Auth.set("github-copilot", "copilot-malformed-name", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      baseUrl: "https://api.individual.githubcopilot.com",
+      models: [{ id: "gpt-5-mini", displayName: null, transport: ProviderProtocol.OpenAICompatible }],
+    });
+
+    const runtime = materializeProviders(
+      ConfigSchema.parse({
+        providers: { "copilot-malformed-name": { kind: "oauth", vendor: "github-copilot" } },
+      }),
+    );
+
+    expect(runtime.providers[0]?.models).toEqual(["gpt-5-mini"]);
+    expect(runtime.providers[0]?.modelMetadata?.["gpt-5-mini"]).toEqual({});
+  });
+
   test("warns and exposes config-alias-only routes when the payload has no cached models", async () => {
     Auth.set("github-copilot", "copilot-nomodels", {
       access: "tok",
