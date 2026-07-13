@@ -1,62 +1,92 @@
 import { describe, expect, test } from "bun:test";
+import type { Catalog, Model, Provider } from "@opencode-ai/models";
 import { calculateEstimatedCost, createModelsDevCatalog, createOpenRouterPriceCatalog } from "../src/usage-pricing";
 
-const api = {
-  anthropic: {
-    models: {
-      "claude-sonnet-4-6": {
-        id: "claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6",
-      },
+const model = (id: string, name: string, overrides: Partial<Model> = {}): Model => ({
+  attachment: false,
+  description: "",
+  id,
+  last_updated: "2026-01-15",
+  limit: { context: 128_000, output: 8_000 },
+  modalities: { input: ["text"], output: ["text"] },
+  name,
+  open_weights: false,
+  reasoning: false,
+  release_date: "2026-01-15",
+  tool_call: false,
+  ...overrides,
+});
+
+const provider = (id: string, models: Record<string, Model>): Provider => ({
+  doc: `https://example.com/${id}`,
+  env: [],
+  id,
+  models,
+  name: id,
+  npm: `@ai-sdk/${id}`,
+});
+
+const api: Catalog = {
+  models: {
+    "anthropic/claude-sonnet-4-6": {
+      description: "",
+      id: "anthropic/claude-sonnet-4-6",
+      limit: { context: 1_000_000, output: 128_000 },
+      name: "Claude Sonnet 4.6",
+      release_date: "2026-02-17",
+    },
+    "openai/gpt-5.5": {
+      description: "",
+      id: "openai/gpt-5.5",
+      limit: { context: 128_000, input: 120_000, output: 8_000 },
+      name: "GPT-5.5",
+      release_date: "2026-01-15",
     },
   },
-  openai: {
-    models: {
-      "gpt-5.5": {
-        id: "gpt-5.5",
-        name: "GPT-5.5",
-      },
-    },
-  },
-  openrouter: {
-    models: {
-      "openai/gpt-5.5": {
-        id: "openai/gpt-5.5",
-        name: "GPT-5.5",
-        cost: {
-          input: 2,
-          output: 10,
-          cache_read: 0.5,
-          cache_write: 1,
-          reasoning: 10,
-        },
-      },
-    },
-  },
-  proxy: {
-    models: {
-      "claude-sonnet-4-6": {
-        id: "claude-sonnet-4-6",
-        name: "Claude Sonnet 4-6",
-      },
-      "gpt-5.5": {
-        id: "gpt-5.5",
-        name: "GPT 5.5",
-      },
-    },
+  providers: {
+    anthropic: provider("anthropic", {
+      "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4.6", {
+        attachment: true,
+        limit: { context: 1_000_000, output: 128_000 },
+        modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+        reasoning: true,
+        reasoning_options: [
+          { type: "effort", values: ["low", "medium", "high", "max"] },
+          { type: "budget_tokens", min: 1_024 },
+        ],
+        release_date: "2026-02-17",
+        structured_output: true,
+        tool_call: true,
+      }),
+    }),
+    openai: provider("openai", {
+      "gpt-5.5": model("gpt-5.5", "GPT-5.5", {
+        attachment: true,
+        limit: { context: 128_000, input: 120_000, output: 8_000 },
+        modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
+        structured_output: true,
+        tool_call: true,
+      }),
+    }),
+    openrouter: provider("openrouter", {
+      "openai/gpt-5.5": model("openai/gpt-5.5", "GPT-5.5", {
+        cost: { cache_read: 0.5, cache_write: 1, input: 2, output: 10, reasoning: 10 },
+      }),
+    }),
+    proxy: provider("proxy", {
+      "claude-sonnet-4-6": model("claude-sonnet-4-6", "Claude Sonnet 4-6"),
+      "gpt-5.5": model("gpt-5.5", "GPT 5.5"),
+    }),
   },
 };
 
-const conflictingApi = {
-  first: {
-    models: {
-      shared: { id: "shared-model", name: "Shared Model" },
-    },
-  },
-  second: {
-    models: {
-      shared: { id: "shared-model", name: "Different Shared Model" },
-    },
+const conflictingApi: Catalog = {
+  models: {},
+  providers: {
+    first: provider("first", { shared: model("shared-model", "Shared Model") }),
+    second: provider("second", { shared: model("shared-model", "Different Shared Model") }),
   },
 };
 
@@ -68,19 +98,45 @@ describe("OpenRouter usage pricing", () => {
     expect(catalog.find("gpt-5.5")?.id).toBe("openai/gpt-5.5");
   });
 
-  test("prefers canonical OpenAI and Anthropic names across conflicting providers", async () => {
+  test("returns canonical typed model metadata", async () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
-    expect(catalog.displayName("claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
-    expect(catalog.displayName("anthropic/claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
-    expect(catalog.displayName("gpt-5.5")).toBe("GPT-5.5");
-    expect(catalog.displayName("openai/gpt-5.5")).toBe("GPT-5.5");
+    expect(catalog.metadata("gpt-5.5")).toEqual({
+      capabilities: {
+        effort: {
+          high: { supported: true },
+          low: { supported: true },
+          max: { supported: false },
+          medium: { supported: true },
+          supported: true,
+          xhigh: { supported: false },
+        },
+        image_input: { supported: true },
+        pdf_input: { supported: true },
+        structured_outputs: { supported: true },
+        thinking: {
+          supported: true,
+          types: { adaptive: { supported: true }, enabled: { supported: false } },
+        },
+      },
+      displayName: "GPT-5.5",
+      maxInputTokens: 120_000,
+      maxTokens: 8_000,
+      releaseDate: "2026-01-15",
+    });
+    expect(catalog.metadata("claude-sonnet-4-6")).toMatchObject({
+      displayName: "Claude Sonnet 4.6",
+      maxInputTokens: 1_000_000,
+      maxTokens: 128_000,
+      releaseDate: "2026-02-17",
+    });
+    expect(catalog.metadata("anthropic/claude-sonnet-4-6")).toEqual(catalog.metadata("claude-sonnet-4-6"));
   });
 
   test("rejects conflicting human-readable names", async () => {
     const catalog = await createModelsDevCatalog(async () => conflictingApi);
 
-    expect(catalog.displayName("shared-model")).toBeUndefined();
+    expect(catalog.metadata("shared-model")).toBeUndefined();
   });
 
   test("calculates cost from known token dimensions", () => {

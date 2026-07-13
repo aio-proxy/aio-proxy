@@ -1,3 +1,6 @@
+import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
+import { type Catalog, type Model, type ModelMetadata, Models } from "@opencode-ai/models";
+
 export type OpenRouterModelPrice = {
   readonly id: string;
   readonly input?: number;
@@ -26,45 +29,60 @@ export type OpenRouterPriceCatalog = {
 
 export type ModelsDevCatalog = OpenRouterPriceCatalog & {
   readonly displayName: (modelId: string) => string | undefined;
+  readonly metadata: (modelId: string) => ModelsDevModelMetadata | undefined;
 };
 
-export type FetchOpenRouterPrices = () => Promise<unknown>;
+export type ModelsDevCapabilities = Pick<
+  ModelCapabilities,
+  "effort" | "image_input" | "pdf_input" | "structured_outputs" | "thinking"
+>;
 
-type DisplayNameCatalog = {
-  readonly byModelId: ReadonlyMap<string, string>;
-  readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, string>>;
+export type ModelsDevModelMetadata = {
+  readonly capabilities?: ModelsDevCapabilities;
+  readonly displayName?: string;
+  readonly maxInputTokens?: number;
+  readonly maxTokens?: number;
+  readonly releaseDate?: string;
 };
 
-const modelsDevApiUrl = "https://models.dev/api.json";
+export type FetchModelsDevCatalog = () => Promise<Catalog>;
+export type FetchOpenRouterPrices = FetchModelsDevCatalog;
 
-const defaultFetch: FetchOpenRouterPrices = async () => {
-  const response = await fetch(modelsDevApiUrl);
-  return response.json();
+type MetadataCatalog = {
+  readonly byCanonicalId: ReadonlyMap<string, ModelsDevModelMetadata>;
+  readonly byModelId: ReadonlyMap<string, ModelsDevModelMetadata>;
+  readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, ModelsDevModelMetadata>>;
 };
+
+const modelsDev = Models.make();
+const defaultFetch: FetchModelsDevCatalog = () => modelsDev.catalog();
 
 export async function createModelsDevCatalog(
-  fetchJson: FetchOpenRouterPrices = defaultFetch,
+  fetchCatalog: FetchModelsDevCatalog = defaultFetch,
 ): Promise<ModelsDevCatalog> {
-  const value = await fetchJson();
+  const value = await fetchCatalog();
   const prices = parsePrices(value);
   const byId = new Map(prices.map((price) => [price.id, price]));
   const byBareId = uniqueBarePrices(prices);
-  const displayNames = parseDisplayNames(value);
+  const metadata = parseMetadata(value);
 
   return {
     displayName(modelId) {
-      return resolveDisplayName(displayNames, modelId);
+      return resolveMetadata(metadata, modelId)?.displayName;
     },
     find(modelId) {
       return byId.get(modelId) ?? byBareId.get(modelId);
+    },
+    metadata(modelId) {
+      return resolveMetadata(metadata, modelId);
     },
   };
 }
 
 export async function createOpenRouterPriceCatalog(
-  fetchJson: FetchOpenRouterPrices = defaultFetch,
+  fetchCatalog: FetchModelsDevCatalog = defaultFetch,
 ): Promise<OpenRouterPriceCatalog> {
-  return createModelsDevCatalog(fetchJson);
+  return createModelsDevCatalog(fetchCatalog);
 }
 
 function uniqueBarePrices(prices: readonly OpenRouterModelPrice[]): ReadonlyMap<string, OpenRouterModelPrice> {
@@ -109,85 +127,75 @@ export function calculateEstimatedCost(
   return priced ? { estimatedCostUsd: cost, priceModelId: price.id } : undefined;
 }
 
-function parsePrices(value: unknown): readonly OpenRouterModelPrice[] {
-  if (!isRecord(value)) {
-    return [];
-  }
-  const openrouter = value["openrouter"];
-  if (!isRecord(openrouter) || !isRecord(openrouter["models"])) {
-    return [];
-  }
-
-  return Object.values(openrouter["models"]).flatMap(parsePrice);
+function parsePrices(value: Catalog): readonly OpenRouterModelPrice[] {
+  const openrouter = value.providers.openrouter;
+  return openrouter === undefined ? [] : Object.values(openrouter.models).flatMap(parsePrice);
 }
 
-function parsePrice(model: unknown): readonly OpenRouterModelPrice[] {
-  if (!isRecord(model) || typeof model["id"] !== "string" || !isRecord(model["cost"])) {
+function parsePrice(model: Model): readonly OpenRouterModelPrice[] {
+  if (model.cost === undefined) {
     return [];
   }
-  const cost = model["cost"];
+  const cost = model.cost;
 
   return [
     {
-      id: model["id"],
-      ...(typeof cost["input"] === "number" ? { input: cost["input"] } : {}),
-      ...(typeof cost["output"] === "number" ? { output: cost["output"] } : {}),
-      ...(typeof cost["cache_read"] === "number" ? { cacheRead: cost["cache_read"] } : {}),
-      ...(typeof cost["cache_write"] === "number" ? { cacheWrite: cost["cache_write"] } : {}),
-      ...(typeof cost["reasoning"] === "number" ? { reasoning: cost["reasoning"] } : {}),
+      id: model.id,
+      input: cost.input,
+      output: cost.output,
+      ...(cost.cache_read === undefined ? {} : { cacheRead: cost.cache_read }),
+      ...(cost.cache_write === undefined ? {} : { cacheWrite: cost.cache_write }),
+      ...(cost.reasoning === undefined ? {} : { reasoning: cost.reasoning }),
     },
   ];
 }
 
-function parseDisplayNames(value: unknown): DisplayNameCatalog {
-  const candidates = new Map<string, Set<string>>();
-  const byProvider = new Map<string, ReadonlyMap<string, string>>();
-  if (!isRecord(value)) {
-    return { byModelId: new Map(), byProvider };
+function parseMetadata(value: Catalog): MetadataCatalog {
+  const candidates = new Map<string, Map<string, ModelsDevModelMetadata>>();
+  const byCanonicalId = new Map<string, ModelsDevModelMetadata>();
+  const byProvider = new Map<string, ReadonlyMap<string, ModelsDevModelMetadata>>();
+
+  for (const [canonicalId, model] of Object.entries(value.models)) {
+    byCanonicalId.set(canonicalId, metadataFromCanonical(model));
   }
 
-  for (const [providerId, provider] of Object.entries(value)) {
-    if (!isRecord(provider) || !isRecord(provider["models"])) {
-      continue;
+  for (const [providerId, provider] of Object.entries(value.providers)) {
+    const providerMetadata = new Map<string, ModelsDevModelMetadata>();
+    for (const model of Object.values(provider.models)) {
+      const bareId = model.id.split("/").at(-1) ?? model.id;
+      const canonicalId = canonicalModelId(providerId, model.id);
+      const metadata = metadataFromProvider(model, canonicalId === undefined ? undefined : value.models[canonicalId]);
+      providerMetadata.set(model.id, metadata);
+      providerMetadata.set(bareId, metadata);
+      addMetadataCandidate(candidates, model.id, metadata);
+      addMetadataCandidate(candidates, bareId, metadata);
     }
-    const providerNames = new Map<string, string>();
-    for (const model of Object.values(provider["models"])) {
-      if (!isRecord(model) || typeof model["id"] !== "string" || typeof model["name"] !== "string") {
-        continue;
-      }
-      if (model["name"] === model["id"]) {
-        continue;
-      }
-      addDisplayName(candidates, model["id"], model["name"]);
-      const bareId = model["id"].split("/").at(-1) ?? model["id"];
-      addDisplayName(candidates, bareId, model["name"]);
-      providerNames.set(model["id"], model["name"]);
-      providerNames.set(bareId, model["name"]);
-    }
-    if (providerNames.size > 0) {
-      byProvider.set(providerId, providerNames);
-    }
+    byProvider.set(providerId, providerMetadata);
   }
 
-  const byModelId = new Map<string, string>();
-  for (const [modelId, names] of candidates) {
-    if (names.size !== 1) {
-      continue;
-    }
-    const name = names.values().next().value;
-    if (name !== undefined) {
-      byModelId.set(modelId, name);
+  const byModelId = new Map<string, ModelsDevModelMetadata>();
+  for (const [modelId, values] of candidates) {
+    if (values.size === 1) {
+      const metadata = values.values().next().value;
+      if (metadata !== undefined) byModelId.set(modelId, metadata);
     }
   }
-  return { byModelId, byProvider };
+  return { byCanonicalId, byModelId, byProvider };
 }
 
-function resolveDisplayName(catalog: DisplayNameCatalog, modelId: string): string | undefined {
+function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevModelMetadata | undefined {
   const slashIndex = modelId.indexOf("/");
   const bareId = modelId.split("/").at(-1) ?? modelId;
   const providerId = slashIndex > 0 ? modelId.slice(0, slashIndex) : canonicalProviderId(bareId);
-  const providerNames = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
-  return providerNames?.get(modelId) ?? providerNames?.get(bareId) ?? catalog.byModelId.get(modelId);
+  const canonicalId = providerId === undefined ? undefined : `${providerId}/${bareId}`;
+  const providerMetadata = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
+  return (
+    providerMetadata?.get(modelId) ??
+    providerMetadata?.get(bareId) ??
+    (canonicalId === undefined ? undefined : catalog.byCanonicalId.get(canonicalId)) ??
+    catalog.byModelId.get(modelId) ??
+    catalog.byModelId.get(bareId)
+  );
 }
 
 function canonicalProviderId(modelId: string): "anthropic" | "openai" | undefined {
@@ -200,12 +208,73 @@ function canonicalProviderId(modelId: string): "anthropic" | "openai" | undefine
   return undefined;
 }
 
-function addDisplayName(candidates: Map<string, Set<string>>, modelId: string, name: string): void {
-  const names = candidates.get(modelId) ?? new Set<string>();
-  names.add(name);
-  candidates.set(modelId, names);
+function canonicalModelId(providerId: string, modelId: string): string | undefined {
+  if (modelId.includes("/")) return modelId;
+  const canonicalProvider =
+    providerId === "anthropic" || providerId === "openai" ? providerId : canonicalProviderId(modelId);
+  return canonicalProvider === undefined ? undefined : `${canonicalProvider}/${modelId}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function metadataFromCanonical(model: ModelMetadata): ModelsDevModelMetadata {
+  return {
+    ...(model.name === model.id ? {} : { displayName: model.name }),
+    ...(model.limit === undefined
+      ? {}
+      : {
+          maxInputTokens: model.limit.input ?? model.limit.context,
+          ...(model.limit.output === undefined ? {} : { maxTokens: model.limit.output }),
+        }),
+    ...(model.release_date === undefined ? {} : { releaseDate: model.release_date }),
+  };
+}
+
+function metadataFromProvider(model: Model, canonical: ModelMetadata | undefined): ModelsDevModelMetadata {
+  const displayName = canonical?.name ?? model.name;
+  return {
+    capabilities: modelCapabilities(model),
+    ...(displayName === model.id ? {} : { displayName }),
+    maxInputTokens: model.limit.input ?? model.limit.context,
+    maxTokens: model.limit.output,
+    releaseDate: canonical?.release_date ?? model.release_date,
+  };
+}
+
+function modelCapabilities(model: Model): ModelsDevCapabilities {
+  const options = model.reasoning_options ?? [];
+  const effort = options.find((option) => option.type === "effort");
+  const values = effort?.values ?? [];
+  return {
+    effort: {
+      high: support(values.includes("high")),
+      low: support(values.includes("low")),
+      max: support(values.includes("max")),
+      medium: support(values.includes("medium")),
+      supported: effort !== undefined,
+      xhigh: support(values.includes("xhigh")),
+    },
+    image_input: support(model.modalities.input.includes("image")),
+    pdf_input: support(model.modalities.input.includes("pdf")),
+    structured_outputs: support(model.structured_output === true),
+    thinking: {
+      supported: model.reasoning,
+      types: {
+        adaptive: support(effort !== undefined),
+        enabled: support(options.some((option) => option.type === "budget_tokens" || option.type === "toggle")),
+      },
+    },
+  };
+}
+
+function support(supported: boolean): { readonly supported: boolean } {
+  return { supported };
+}
+
+function addMetadataCandidate(
+  candidates: Map<string, Map<string, ModelsDevModelMetadata>>,
+  modelId: string,
+  metadata: ModelsDevModelMetadata,
+): void {
+  const values = candidates.get(modelId) ?? new Map<string, ModelsDevModelMetadata>();
+  values.set(JSON.stringify(metadata), metadata);
+  candidates.set(modelId, values);
 }
