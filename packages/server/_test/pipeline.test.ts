@@ -530,7 +530,7 @@ describe("shared protocol routing pipeline", () => {
           cancelCalls += 1;
         }),
     });
-    const route = defineProviderRouteSource([provider], { outcome: "success" });
+    const route = defineProviderRouteSource([provider]);
     const response = await handleProtocolRequest({
       adapter: openAICompletionsAdapter,
       context: {},
@@ -548,6 +548,7 @@ describe("shared protocol routing pipeline", () => {
     await settleRecording();
 
     expect(cancelCalls).toBe(1);
+    expect(route.usage.capturedStreams[0]?.locked).toBe(false);
   });
 
   test("records inbound abort as cancelled and does not fall back", async () => {

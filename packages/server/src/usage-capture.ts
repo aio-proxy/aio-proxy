@@ -54,35 +54,40 @@ export function createUsageCapture(options: {
       let aborted = false;
       let finished = false;
       let finishUsage: UsageRow | undefined;
+      let released = false;
+      const releaseReader = () => {
+        if (!released) {
+          released = true;
+          reader.releaseLock();
+        }
+      };
 
       const value = new ReadableStream<TextStreamPart<ToolSet>>({
-        async start(controller) {
+        async pull(controller) {
           try {
-            while (true) {
-              const next = await reader.read();
-              if (next.done) {
-                break;
-              }
-              if (next.value.type === "finish") {
-                finished = true;
-                finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
-              } else if (next.value.type === "abort") {
-                aborted = true;
-              }
-              controller.enqueue(next.value);
-            }
-            if (cancelled) {
+            const next = await reader.read();
+            if (next.done) {
+              releaseReader();
+              if (cancelled) return;
+              controller.close();
+              terminal.resolve(
+                aborted
+                  ? { outcome: "cancelled" }
+                  : finished
+                    ? { outcome: "success", ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask)) }
+                    : { outcome: "failure" },
+              );
               return;
             }
-            controller.close();
-            terminal.resolve(
-              aborted
-                ? { outcome: "cancelled" }
-                : finished
-                  ? { outcome: "success", ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask)) }
-                  : { outcome: "failure" },
-            );
+            if (next.value.type === "finish") {
+              finished = true;
+              finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
+            } else if (next.value.type === "abort") {
+              aborted = true;
+            }
+            controller.enqueue(next.value);
           } catch (error) {
+            releaseReader();
             if (cancelled || isAbortError(error)) {
               terminal.resolve({ outcome: "cancelled" });
             } else {
@@ -91,14 +96,16 @@ export function createUsageCapture(options: {
             if (!cancelled) {
               controller.error(error);
             }
-          } finally {
-            reader.releaseLock();
           }
         },
         async cancel(reason) {
           cancelled = true;
           terminal.resolve({ outcome: "cancelled" });
-          await reader.cancel(reason);
+          try {
+            await reader.cancel(reason);
+          } finally {
+            releaseReader();
+          }
         },
       });
 
