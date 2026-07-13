@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make configured API and AI SDK `models` routable and visible unless an alias or variant deliberately replaces the original model id without preservation.
+**Goal:** Make configured API and AI SDK `models` routable and visible, with alias keys overriding same-named model self-routes.
 
 **Architecture:** Keep client-facing model route construction in `packages/core/src/router.ts`. Both runtime routing and all model-list consumers use `modelRoutes()` or the same direct-model helper, while the server removes its remaining summary-specific interpretation.
 
@@ -10,8 +10,9 @@
 
 ## Global Constraints
 
-- Final client routes are `(models - alias and variant targets) + alias keys + preserve:true targets`.
-- Alias default and variant targets use the same `preserve` rule.
+- Final client ids are `models + alias keys + preserve:true targets`; an alias key wins over a same-named model self-route.
+- Configured alias default and variant targets remain directly routable even when `preserve` is false.
+- OAuth derived-alias exposure remains unchanged.
 - Runtime routing, `/v1/models`, and dashboard `clientModels` must use the same route set.
 - Disabled providers remain excluded from runtime routing and `/v1/models`.
 - Do not synthesize or mutate provider alias configuration.
@@ -62,7 +63,7 @@ Replace the test named `does not expose raw model strings unless preserved` with
     expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
   });
 
-  test("lists aliases, unaliased models, and preserved targets from one shared route set", () => {
+  test("lists aliases and every configured model from one shared route set", () => {
     const provider = {
       ...openai,
       models: ["default", "high", "untouched", "preserved"],
@@ -79,12 +80,14 @@ Replace the test named `does not expose raw model strings unless preserved` with
     expect(modelRoutes(provider)).toEqual([
       { alias: "mini", modelId: "default" },
       { alias: "keep", modelId: "preserved" },
+      { alias: "default", modelId: "default" },
+      { alias: "high", modelId: "high" },
       { alias: "untouched", modelId: "untouched" },
       { alias: "preserved", modelId: "preserved" },
     ]);
   });
 
-  test("does not route non-preserved alias and variant targets by original id", () => {
+  test("keeps configured alias and variant targets routable by original id", () => {
     const provider = {
       ...openai,
       models: ["default", "high"],
@@ -98,9 +101,25 @@ Replace the test named `does not expose raw model strings unless preserved` with
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(() => router.resolve("default")).toThrow(RouterModelNotFoundError);
-    expect(() => router.resolve("high")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("default")).toEqual([{ provider, modelId: "default" }]);
+    expect(router.resolve("high")).toEqual([{ provider, modelId: "high" }]);
     expect(router.resolve("mini", "high")).toEqual([{ provider, modelId: "high" }]);
+  });
+
+  test("lets an alias shadow a same-named configured model while keeping its target routable", () => {
+    const provider = {
+      ...openai,
+      models: ["old", "new"],
+      alias: { old: { model: "new", preserve: false } },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "old", modelId: "new" },
+      { alias: "new", modelId: "new" },
+    ]);
+    expect(router.resolve("old")).toEqual([{ provider, modelId: "new" }]);
+    expect(router.resolve("new")).toEqual([{ provider, modelId: "new" }]);
   });
 ```
 
@@ -149,7 +168,7 @@ rtk bun test packages/core/_test/router.test.ts
 rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models only"
 ```
 
-Expected: both commands FAIL because the router and `/v1/models` omit models-only providers, while `modelRoutes()` also omits `untouched`.
+Expected: both commands FAIL because the router and `/v1/models` omit models-only providers; the core tests also show configured alias targets disappearing and a same-named alias colliding with its model self-route.
 
 - [ ] **Step 3: Implement the shared direct-model helper**
 
@@ -171,14 +190,15 @@ In `packages/core/src/router.ts`, replace both loops over `preservedModelIds(pro
 
 Add this helper immediately before `preservedModelIds()`:
 
+Update the `@aio-proxy/types` import to include `ProviderKind`, then add:
+
 ```ts
 function directModelIds(provider: ProviderInstance): string[] {
-  const modelIds = new Set<string>("models" in provider ? (provider.models ?? []) : []);
-  for (const config of Object.values(provider.alias ?? {})) {
-    modelIds.delete(config.model);
-    for (const target of Object.values(config.variants ?? {})) {
-      modelIds.delete(target.model);
-    }
+  const modelIds = new Set<string>(
+    provider.kind === ProviderKind.OAuth || !("models" in provider) ? [] : (provider.models ?? []),
+  );
+  for (const alias of Object.keys(provider.alias ?? {})) {
+    modelIds.delete(alias);
   }
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);
@@ -243,7 +263,7 @@ Extend the disabled-provider test configuration so the provider has a replaced m
 Keep the `/v1/models` expectation empty and change its dashboard summary expectation to:
 
 ```ts
-          clientModels: ["disabled", "gpt-untouched"],
+          clientModels: ["disabled", "gpt-disabled", "gpt-untouched"],
 ```
 
 - [ ] **Step 2: Run focused server tests and verify RED**

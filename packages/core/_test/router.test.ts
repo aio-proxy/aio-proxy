@@ -245,7 +245,7 @@ describe("Router", () => {
     expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
   });
 
-  test("lists aliases, unaliased models, and preserved targets from one shared route set", () => {
+  test("lists aliases and every configured model from one shared route set", () => {
     const provider = {
       ...openai,
       models: ["default", "high", "untouched", "preserved"],
@@ -262,12 +262,14 @@ describe("Router", () => {
     expect(modelRoutes(provider)).toEqual([
       { alias: "mini", modelId: "default" },
       { alias: "keep", modelId: "preserved" },
+      { alias: "default", modelId: "default" },
+      { alias: "high", modelId: "high" },
       { alias: "untouched", modelId: "untouched" },
       { alias: "preserved", modelId: "preserved" },
     ]);
   });
 
-  test("does not route non-preserved alias and variant targets by original id", () => {
+  test("keeps configured alias and variant targets routable by original id", () => {
     const provider = {
       ...openai,
       models: ["default", "high"],
@@ -281,9 +283,25 @@ describe("Router", () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(() => router.resolve("default")).toThrow(RouterModelNotFoundError);
-    expect(() => router.resolve("high")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("default")).toEqual([{ provider, modelId: "default" }]);
+    expect(router.resolve("high")).toEqual([{ provider, modelId: "high" }]);
     expect(router.resolve("mini", "high")).toEqual([{ provider, modelId: "high" }]);
+  });
+
+  test("lets an alias shadow a same-named configured model while keeping its target routable", () => {
+    const provider = {
+      ...openai,
+      models: ["old", "new"],
+      alias: { old: { model: "new", preserve: false } },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "old", modelId: "new" },
+      { alias: "new", modelId: "new" },
+    ]);
+    expect(router.resolve("old")).toEqual([{ provider, modelId: "new" }]);
+    expect(router.resolve("new")).toEqual([{ provider, modelId: "new" }]);
   });
 
   test("resolves a fully-qualified preserved original model id", () => {

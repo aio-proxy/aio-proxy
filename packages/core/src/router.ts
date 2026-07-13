@@ -1,4 +1,4 @@
-import { type AliasConfig, type Provider as ConfigProvider, resolveAliasTarget } from "@aio-proxy/types";
+import { type AliasConfig, type Provider as ConfigProvider, ProviderKind, resolveAliasTarget } from "@aio-proxy/types";
 import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
@@ -89,12 +89,11 @@ export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
 }
 
 function directModelIds(provider: ProviderInstance): string[] {
-  const modelIds = new Set<string>("models" in provider ? (provider.models ?? []) : []);
-  for (const config of Object.values(provider.alias ?? {})) {
-    modelIds.delete(config.model);
-    for (const target of Object.values(config.variants ?? {})) {
-      modelIds.delete(target.model);
-    }
+  const modelIds = new Set<string>(
+    provider.kind === ProviderKind.OAuth || !("models" in provider) ? [] : (provider.models ?? []),
+  );
+  for (const alias of Object.keys(provider.alias ?? {})) {
+    modelIds.delete(alias);
   }
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);

@@ -32,7 +32,7 @@ const config = {
         },
         name: "compatible",
       },
-      models: ["compatible-test"],
+      models: ["compatible", "compatible-test"],
       alias: {
         compatible: { model: "compatible-test", preserve: false },
       },
@@ -91,6 +91,7 @@ describe("server routes", () => {
         { id: "gpt-alias", object: "model", owned_by: "openai-compatible" },
         { id: "gpt-test", object: "model", owned_by: "openai-compatible" },
         { id: "compatible", object: "model", owned_by: "compatible" },
+        { id: "compatible-test", object: "model", owned_by: "compatible" },
       ],
     });
   });
@@ -183,7 +184,7 @@ describe("server routes", () => {
           passthrough: true,
           last_status: "unknown",
           last_latency: null,
-          clientModels: ["disabled", "gpt-untouched"],
+          clientModels: ["disabled", "gpt-disabled", "gpt-untouched"],
           hasApiKey: false,
         },
       ],
