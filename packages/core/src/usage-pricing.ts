@@ -141,26 +141,32 @@ function parseDisplayNames(value: unknown): ReadonlyMap<string, string> {
   }
 
   for (const provider of Object.values(value)) {
-    if (!isRecord(provider) || !isRecord(provider["models"])) {
+    if (!isRecord(provider) || !isRecord(provider.models)) {
       continue;
     }
-    for (const model of Object.values(provider["models"])) {
-      if (!isRecord(model) || typeof model["id"] !== "string" || typeof model["name"] !== "string") {
+    for (const model of Object.values(provider.models)) {
+      if (!isRecord(model) || typeof model.id !== "string" || typeof model.name !== "string") {
         continue;
       }
-      if (model["name"] === model["id"]) {
+      if (model.name === model.id) {
         continue;
       }
-      addDisplayName(candidates, model["id"], model["name"]);
-      addDisplayName(candidates, model["id"].split("/").at(-1) ?? model["id"], model["name"]);
+      addDisplayName(candidates, model.id, model.name);
+      addDisplayName(candidates, model.id.split("/").at(-1) ?? model.id, model.name);
     }
   }
 
-  return new Map(
-    [...candidates].flatMap(([modelId, names]) =>
-      names.size === 1 ? [[modelId, [...names][0] as string] as const] : [],
-    ),
-  );
+  const displayNames = new Map<string, string>();
+  for (const [modelId, names] of candidates) {
+    if (names.size !== 1) {
+      continue;
+    }
+    const name = names.values().next().value;
+    if (name !== undefined) {
+      displayNames.set(modelId, name);
+    }
+  }
+  return displayNames;
 }
 
 function addDisplayName(candidates: Map<string, Set<string>>, modelId: string, name: string): void {
