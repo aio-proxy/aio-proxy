@@ -1,4 +1,4 @@
-import type { ApiProvider } from "@aio-proxy/types";
+import { type ApiProvider, ProviderProtocol } from "@aio-proxy/types";
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -15,6 +15,14 @@ export type ApiProviderTraceSink = {
 };
 
 type ApiProviderTraceTarget = ApiProviderTraceSink | ApiProviderTrace[];
+
+const CLIENT_CREDENTIAL_HEADERS = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "x-api-key",
+  "x-goog-api-key",
+] as const;
 
 export type ApiProviderConfig = ApiProvider & {
   readonly trace?: ApiProviderTraceTarget;
@@ -46,15 +54,7 @@ export function createApiProvider(
     protocol: config.protocol,
     async passthrough(req) {
       const upstreamUrl = rewrittenUrl(baseUrl, req.url);
-      const headers = new Headers(req.headers);
-      headers.delete("host");
-      headers.set("accept-encoding", "identity");
-      headers.set("x-forwarded-by", "aio-proxy/0.0.0");
-
-      const apiKey = resolveApiKey(config.apiKey);
-      if (apiKey !== undefined) {
-        headers.set("authorization", `Bearer ${apiKey}`);
-      }
+      const headers = upstreamHeaders(req.headers, config.protocol, resolveApiKey(config.apiKey));
 
       const response = await fetch(upstreamUrl, {
         body: req.body,
@@ -73,6 +73,19 @@ export function createApiProvider(
       return new Response(returnedBody, decodedBodyResponseInit(response));
     },
   };
+}
+
+function upstreamHeaders(inbound: Headers, protocol: ProviderProtocol, apiKey: string | undefined): Headers {
+  const headers = new Headers(inbound);
+  headers.delete("host");
+  for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
+  headers.set("accept-encoding", "identity");
+  headers.set("x-forwarded-by", "aio-proxy/0.0.0");
+  if (apiKey === undefined) return headers;
+  if (protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
+  else if (protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
+  else headers.set("authorization", `Bearer ${apiKey}`);
+  return headers;
 }
 
 function decodedBodyResponseInit(response: Response): ResponseInit {
