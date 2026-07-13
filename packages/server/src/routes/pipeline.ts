@@ -2,6 +2,7 @@ import {
   type ModelEgressContext,
   type ModelInvocation,
   type ProtocolAdapter,
+  RequestBodyTooLargeError,
   RouterModelNotFoundError,
   type RouterResolution,
 } from "@aio-proxy/core";
@@ -48,6 +49,7 @@ export async function handleProtocolRequest<TRequest, TContext>({
   try {
     request = await adapter.parse(rawRequest, context);
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return adapter.errors.tooLarge();
     const mapped = adapter.errors.requestError(error);
     if (mapped !== undefined) return mapped;
     throw error;

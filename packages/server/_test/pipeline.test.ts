@@ -70,6 +70,33 @@ describe("shared protocol routing pipeline", () => {
     expect(provider.calls.raw).toEqual([]);
   });
 
+  test("rejects a chunked body above 8 MiB before recording or provider dispatch", async () => {
+    const provider = rawProvider({ id: "raw", modelId: REQUESTED_MODEL });
+    const route = defineProviderRouteSource([provider]);
+    let chunks = 0;
+    const response = await handleProtocolRequest({
+      adapter: openAICompletionsAdapter,
+      context: {},
+      rawRequest: new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: new ReadableStream<Uint8Array>({
+          pull(controller) {
+            chunks += 1;
+            controller.enqueue(new Uint8Array(1_024 * 1_024));
+            if (chunks === 9) controller.close();
+          },
+        }),
+      }),
+      source: route.source,
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: { code: "request_too_large" } });
+    expect(route.recording.begins).toEqual([]);
+    expect(provider.calls.raw).toEqual([]);
+  });
+
   test("maps parse errors without beginning a provider attempt", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
