@@ -35,7 +35,7 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
       for (const [alias, config] of Object.entries(provider.alias ?? {})) {
         this.addRoute(provider, alias, config);
       }
-      for (const modelId of preservedModelIds(provider)) {
+      for (const modelId of directModelIds(provider)) {
         this.addRoute(provider, modelId, { model: modelId, preserve: false });
       }
     }
@@ -80,12 +80,26 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
 
 export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
   const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
-  for (const modelId of preservedModelIds(provider)) {
+  for (const modelId of directModelIds(provider)) {
     if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
       routes.push({ alias: modelId, modelId });
     }
   }
   return routes;
+}
+
+function directModelIds(provider: ProviderInstance): string[] {
+  const modelIds = new Set<string>("models" in provider ? (provider.models ?? []) : []);
+  for (const config of Object.values(provider.alias ?? {})) {
+    modelIds.delete(config.model);
+    for (const target of Object.values(config.variants ?? {})) {
+      modelIds.delete(target.model);
+    }
+  }
+  for (const modelId of preservedModelIds(provider)) {
+    modelIds.add(modelId);
+  }
+  return [...modelIds];
 }
 
 function preservedModelIds(provider: ProviderInstance): string[] {

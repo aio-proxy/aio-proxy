@@ -95,27 +95,36 @@ describe("server routes", () => {
     });
   });
 
-  test("Given api provider with models-only and no alias When OpenAI models are requested Then no models are listed", async () => {
-    // Given
+  test("Given API and AI SDK providers with models only When models are requested Then every model is listed", async () => {
     const app = createServer({
       config: {
         providers: {
-          openai: {
+          api: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.openai.com/v1",
-            models: ["gpt-5.5", "gpt-5.4"],
+            baseUrl: "https://api.example.com/v1",
+            models: ["api-model"],
+          },
+          sdk: {
+            kind: "ai-sdk",
+            packageName: "@ai-sdk/openai-compatible",
+            options: { baseURL: "https://sdk.example.com/v1", name: "sdk" },
+            models: ["sdk-model"],
           },
         },
       },
     });
 
-    // When
     const response = await app.request("/v1/models");
 
-    // Then
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ object: "list", data: [] });
+    expect(await response.json()).toEqual({
+      object: "list",
+      data: [
+        { id: "api-model", object: "model", owned_by: "api" },
+        { id: "sdk-model", object: "model", owned_by: "sdk" },
+      ],
+    });
   });
 
   test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {

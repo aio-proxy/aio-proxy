@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
 import type { ProviderInstance } from "../src/index";
-import { Router, RouterModelCollisionError, RouterModelNotFoundError } from "../src/index";
+import { modelRoutes, Router, RouterModelCollisionError, RouterModelNotFoundError } from "../src/index";
 
 const copilot = {
   kind: "oauth",
@@ -233,10 +233,57 @@ describe("Router", () => {
     expect(resolved).toEqual([{ provider: copilot, modelId: "claude-sonnet-4-5" }]);
   });
 
-  test("does not expose raw model strings unless preserved", () => {
-    const router = new Router([{ ...openai, alias: { mini: { model: "gpt-5-mini", preserve: false } } }]);
+  test("routes a configured model when no alias is present", () => {
+    const provider = {
+      ...openai,
+      alias: undefined,
+      models: ["gpt-5-mini"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
 
-    expect(() => router.resolve("gpt-5-mini")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+    expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+  });
+
+  test("lists aliases, unaliased models, and preserved targets from one shared route set", () => {
+    const provider = {
+      ...openai,
+      models: ["default", "high", "untouched", "preserved"],
+      alias: {
+        mini: {
+          model: "default",
+          preserve: false,
+          variants: { high: { model: "high", preserve: false } },
+        },
+        keep: { model: "preserved", preserve: true },
+      },
+    } satisfies ProviderInstance;
+
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "mini", modelId: "default" },
+      { alias: "keep", modelId: "preserved" },
+      { alias: "untouched", modelId: "untouched" },
+      { alias: "preserved", modelId: "preserved" },
+    ]);
+  });
+
+  test("does not route non-preserved alias and variant targets by original id", () => {
+    const provider = {
+      ...openai,
+      models: ["default", "high"],
+      alias: {
+        mini: {
+          model: "default",
+          preserve: false,
+          variants: { high: { model: "high", preserve: false } },
+        },
+      },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(() => router.resolve("default")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("high")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("mini", "high")).toEqual([{ provider, modelId: "high" }]);
   });
 
   test("resolves a fully-qualified preserved original model id", () => {
