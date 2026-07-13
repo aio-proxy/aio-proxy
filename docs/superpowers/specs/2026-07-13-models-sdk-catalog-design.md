@@ -16,6 +16,8 @@ Do not use the package snapshot. Runtime behavior remains live-data-first, and a
 
 Replace the `unknown` fetch seam with a typed `() => Promise<ProviderMap>` loader so tests can inject provider fixtures without manual runtime parsing.
 
+Core keeps catalog loading, OpenRouter lookup, and model metadata normalization in `models-dev-catalog.ts`. `usage-pricing.ts` contains only token-price value types and cost calculation; the public package exports remain unchanged.
+
 Extend `ModelsDevCatalog` with one metadata lookup that returns:
 
 ```ts

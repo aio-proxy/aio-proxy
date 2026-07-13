@@ -26,8 +26,10 @@
 **Files:**
 - Modify: `package.json`
 - Modify: `packages/core/package.json`
+- Add: `packages/core/src/models-dev-catalog.ts`
 - Modify: `packages/core/src/usage-pricing.ts`
 - Modify: `packages/core/src/index.ts`
+- Add: `packages/core/_test/models-dev-catalog.test.ts`
 - Modify: `packages/core/_test/usage-pricing.test.ts`
 - Modify: `bun.lock`
 
@@ -37,7 +39,7 @@
 
 - [ ] **Step 1: Add failing typed metadata tests**
 
-Replace the untyped `api` fixtures with `ProviderMap` fixtures. Add assertions equivalent to:
+Move catalog coverage to `models-dev-catalog.test.ts`, replace the untyped `api` fixtures with `ProviderMap` fixtures, and add assertions equivalent to:
 
 ```ts
 const metadata = catalog.metadata("gpt-5.5");
@@ -76,7 +78,7 @@ Add a Claude fixture without `limit.input` and assert `maxInputTokens` falls bac
 Run:
 
 ```bash
-rtk bun test packages/core/_test/usage-pricing.test.ts
+rtk bun test packages/core/_test/models-dev-catalog.test.ts packages/core/_test/usage-pricing.test.ts
 ```
 
 Expected: FAIL because `ModelsDevCatalog.metadata` does not exist and the loader still accepts the old `api.json` shape.
@@ -103,7 +105,7 @@ rtk bun install
 
 - [ ] **Step 4: Implement the typed catalog loader**
 
-In `usage-pricing.ts`, define:
+In `models-dev-catalog.ts`, define:
 
 ```ts
 import { Models, type Model, type ProviderMap } from "@opencode-ai/models";
@@ -175,7 +177,7 @@ Use provider `Model` records for name, release date, limits, and reasoning optio
 Run:
 
 ```bash
-rtk bun test packages/core/_test/usage-pricing.test.ts
+rtk bun test packages/core/_test/models-dev-catalog.test.ts packages/core/_test/usage-pricing.test.ts
 ```
 
 Expected: all tests pass, including pricing, OpenRouter priority, canonical/provider fallback, context fallback, and capability mapping.
@@ -183,7 +185,7 @@ Expected: all tests pass, including pricing, OpenRouter priority, canonical/prov
 - [ ] **Step 6: Commit the typed catalog**
 
 ```bash
-rtk git add package.json packages/core/package.json packages/core/src/usage-pricing.ts packages/core/src/index.ts packages/core/_test/usage-pricing.test.ts bun.lock
+rtk git add package.json packages/core/package.json packages/core/src/models-dev-catalog.ts packages/core/src/usage-pricing.ts packages/core/src/index.ts packages/core/_test/models-dev-catalog.test.ts packages/core/_test/usage-pricing.test.ts bun.lock
 rtk git commit -m "feat(core): use typed models.dev catalog" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -411,7 +413,7 @@ Revise the earlier response-shape section so token limits, partial capabilities,
 - [ ] **Step 4: Run focused regression tests**
 
 ```bash
-rtk bun test packages/core/_test/usage-pricing.test.ts packages/server/_test/models-dev-catalog.test.ts packages/server/_test/server.test.ts
+rtk bun test packages/core/_test/models-dev-catalog.test.ts packages/core/_test/usage-pricing.test.ts packages/server/_test/models-dev-catalog.test.ts packages/server/_test/server.test.ts
 ```
 
 Expected: all focused tests pass.
