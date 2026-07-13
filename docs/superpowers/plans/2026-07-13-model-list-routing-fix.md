@@ -2,32 +2,34 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make configured API and AI SDK `models` routable and visible, with alias keys overriding same-named model self-routes.
+**Goal:** Expose models-only providers, hide non-preserved upstream targets for added aliases, and keep targets visible when an alias overrides a configured model id.
 
-**Architecture:** Keep client-facing model route construction in `packages/core/src/router.ts`. Both runtime routing and all model-list consumers use `modelRoutes()` or the same direct-model helper, while the server removes its remaining summary-specific interpretation.
+**Architecture:** Keep the complete exposure rule in `packages/core/src/router.ts`. `directModelIds()` will distinguish an added alias from an override by checking whether the alias key belongs to the provider's original `models` set; both runtime routing and model-list consumers continue to share that helper.
 
-**Tech Stack:** TypeScript, Bun test runner, Zod provider types.
+**Tech Stack:** TypeScript, Bun test runner, Zod-normalized provider configuration.
 
 ## Global Constraints
 
-- Final client ids are `models + alias keys + preserve:true targets`; an alias key wins over a same-named model self-route.
-- Configured alias default and variant targets remain directly routable even when `preserve` is false.
-- OAuth derived-alias exposure remains unchanged.
-- Runtime routing, `/v1/models`, and dashboard `clientModels` must use the same route set.
-- Disabled providers remain excluded from runtime routing and `/v1/models`.
-- Do not synthesize or mutate provider alias configuration.
+- With no aliases, every API or AI SDK `models` entry is directly routable and listed.
+- An alias key absent from `models` hides each non-preserved default or variant target under its upstream id.
+- An alias key present in `models` overrides that model's self-route without hiding its targets.
+- `preserve: true` keeps a target directly exposed.
+- Alias keys always win over same-named self-routes.
+- OAuth derived-alias behavior remains unchanged.
+- Runtime routing, `/v1/models`, and dashboard `clientModels` use the same route set.
+- Tests and documentation use neutral provider names; do not use real provider nicknames or credentials.
 - Add no dependencies and do no unrelated refactoring.
 
 ---
 
 ## File Structure
 
-- `packages/core/src/router.ts`: owns alias routes and directly exposed original model ids.
-- `packages/core/_test/router.test.ts`: proves route-set algebra and runtime resolution.
-- `packages/server/src/provider-runtime.ts`: derives dashboard summaries from the shared core route set.
-- `packages/server/_test/server.test.ts`: proves API/AI SDK listing and disabled-provider summaries.
+- `packages/core/_test/router.test.ts`: proves models-only, added-alias, override-alias, variant, and preserve behavior.
+- `packages/core/src/router.ts`: owns the shared direct-model exposure calculation.
+- `packages/server/_test/server.test.ts`: proves `/v1/models` exposes only client-facing ids for an Anthropic API provider with added aliases.
+- `docs/superpowers/specs/2026-07-13-model-list-routing-fix-design.md`: records the approved rename-versus-override rule.
 
-### Task 1: Share Direct Model Exposure In Core Routing
+### Task 1: Correct Core Exposure Algebra
 
 **Files:**
 
@@ -37,110 +39,65 @@
 
 **Interfaces:**
 
-- Consumes: `ProviderInstance.models`, `ProviderInstance.alias`, and existing `AliasConfig.preserve` values.
-- Produces: unchanged public `Router.resolve(model, variantKey?)` and `modelRoutes(provider)` APIs with corrected route contents.
+- Consumes: `ProviderInstance.models`, `ProviderInstance.alias`, `AliasConfig.preserve`, and variant target `preserve` values.
+- Produces: unchanged `Router.resolve(model, variantKey?)` and `modelRoutes(provider)` APIs with corrected route contents, plus `/v1/models` regression coverage.
 
-- [ ] **Step 1: Write failing core regression tests**
+- [ ] **Step 1: Write the failing added-alias regression test**
 
-Update the import in `packages/core/_test/router.test.ts`:
-
-```ts
-import { Router, RouterModelCollisionError, RouterModelNotFoundError, modelRoutes } from "../src/index";
-```
-
-Replace the test named `does not expose raw model strings unless preserved` with these tests:
+Replace the current tests named `lists aliases and every configured model from one shared route set` and `keeps configured alias and variant targets routable by original id` in `packages/core/_test/router.test.ts` with:
 
 ```ts
-  test("routes a configured model when no alias is present", () => {
+  test("hides non-preserved targets for added aliases", () => {
     const provider = {
       ...openai,
-      alias: undefined,
-      models: ["gpt-5-mini"],
+      id: "anthropic-aliases",
+      models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46", "untouched"],
+      alias: {
+        "claude-opus-4-8": { model: "upstream-opus-48", preserve: false },
+        "claude-opus-4-6": { model: "upstream-opus-46", preserve: false },
+        "claude-sonnet-4-6": {
+          model: "upstream-sonnet-46",
+          preserve: false,
+          variants: { fast: { model: "upstream-opus-46", preserve: false } },
+        },
+      },
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve("gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
-    expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
-  });
-
-  test("lists aliases and every configured model from one shared route set", () => {
-    const provider = {
-      ...openai,
-      models: ["default", "high", "untouched", "preserved"],
-      alias: {
-        mini: {
-          model: "default",
-          preserve: false,
-          variants: { high: { model: "high", preserve: false } },
-        },
-        keep: { model: "preserved", preserve: true },
-      },
-    } satisfies ProviderInstance;
-
     expect(modelRoutes(provider)).toEqual([
-      { alias: "mini", modelId: "default" },
-      { alias: "keep", modelId: "preserved" },
-      { alias: "default", modelId: "default" },
-      { alias: "high", modelId: "high" },
+      { alias: "claude-opus-4-8", modelId: "upstream-opus-48" },
+      { alias: "claude-opus-4-6", modelId: "upstream-opus-46" },
+      { alias: "claude-sonnet-4-6", modelId: "upstream-sonnet-46" },
       { alias: "untouched", modelId: "untouched" },
-      { alias: "preserved", modelId: "preserved" },
     ]);
-  });
-
-  test("keeps configured alias and variant targets routable by original id", () => {
-    const provider = {
-      ...openai,
-      models: ["default", "high"],
-      alias: {
-        mini: {
-          model: "default",
-          preserve: false,
-          variants: { high: { model: "high", preserve: false } },
-        },
-      },
-    } satisfies ProviderInstance;
-    const router = new Router([provider]);
-
-    expect(router.resolve("default")).toEqual([{ provider, modelId: "default" }]);
-    expect(router.resolve("high")).toEqual([{ provider, modelId: "high" }]);
-    expect(router.resolve("mini", "high")).toEqual([{ provider, modelId: "high" }]);
-  });
-
-  test("lets an alias shadow a same-named configured model while keeping its target routable", () => {
-    const provider = {
-      ...openai,
-      models: ["old", "new"],
-      alias: { old: { model: "new", preserve: false } },
-    } satisfies ProviderInstance;
-    const router = new Router([provider]);
-
-    expect(modelRoutes(provider)).toEqual([
-      { alias: "old", modelId: "new" },
-      { alias: "new", modelId: "new" },
-    ]);
-    expect(router.resolve("old")).toEqual([{ provider, modelId: "new" }]);
-    expect(router.resolve("new")).toEqual([{ provider, modelId: "new" }]);
+    expect(router.resolve("claude-opus-4-8")).toEqual([{ provider, modelId: "upstream-opus-48" }]);
+    expect(router.resolve("claude-sonnet-4-6", "fast")).toEqual([{ provider, modelId: "upstream-opus-46" }]);
+    expect(() => router.resolve("upstream-opus-48")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-opus-46")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-sonnet-46")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("untouched")).toEqual([{ provider, modelId: "untouched" }]);
   });
 ```
 
-Also replace `Given api provider with models-only and no alias When OpenAI models are requested Then no models are listed` in `packages/server/_test/server.test.ts` with:
+Keep the existing `routes a configured model when no alias is present` and `lets an alias shadow a same-named configured model while keeping its target routable` tests unchanged. Together they prove the no-alias and override branches.
+
+Add this test after the models-only provider test in `packages/server/_test/server.test.ts`:
 
 ```ts
-  test("Given API and AI SDK providers with models only When models are requested Then every model is listed", async () => {
+  test("Given added Anthropic aliases When models are requested Then upstream targets are hidden", async () => {
     const app = createServer({
       config: {
         providers: {
-          api: {
+          "anthropic-aliases": {
             kind: "api",
-            protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.example.com/v1",
-            models: ["api-model"],
-          },
-          sdk: {
-            kind: "ai-sdk",
-            packageName: "@ai-sdk/openai-compatible",
-            options: { baseURL: "https://sdk.example.com/v1", name: "sdk" },
-            models: ["sdk-model"],
+            protocol: ProviderProtocol.Anthropic,
+            baseUrl: "https://anthropic.example.com",
+            models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46"],
+            alias: {
+              "claude-opus-4-8": "upstream-opus-48",
+              "claude-opus-4-6": "upstream-opus-46",
+              "claude-sonnet-4-6": "upstream-sonnet-46",
+            },
           },
         },
       },
@@ -152,54 +109,51 @@ Also replace `Given api provider with models-only and no alias When OpenAI model
     expect(await response.json()).toEqual({
       object: "list",
       data: [
-        { id: "api-model", object: "model", owned_by: "api" },
-        { id: "sdk-model", object: "model", owned_by: "sdk" },
+        { id: "claude-opus-4-8", object: "model", owned_by: "anthropic-aliases" },
+        { id: "claude-opus-4-6", object: "model", owned_by: "anthropic-aliases" },
+        { id: "claude-sonnet-4-6", object: "model", owned_by: "anthropic-aliases" },
       ],
     });
   });
 ```
 
-- [ ] **Step 2: Run the focused core tests and verify RED**
+- [ ] **Step 2: Run the focused test and verify RED**
 
 Run:
 
 ```bash
-rtk bun test packages/core/_test/router.test.ts
-rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models only"
+rtk bun test packages/core/_test/router.test.ts --test-name-pattern "hides non-preserved targets for added aliases"
+rtk bun test packages/server/_test/server.test.ts --test-name-pattern "added Anthropic aliases"
 ```
 
-Expected: both commands FAIL because the router and `/v1/models` omit models-only providers; the core tests also show configured alias targets disappearing and a same-named alias colliding with its model self-route.
+Expected: both commands FAIL because core routing and `/v1/models` include the three upstream target ids.
 
-- [ ] **Step 3: Implement the shared direct-model helper**
+- [ ] **Step 3: Implement the minimal conditional hiding rule**
 
-In `packages/core/src/router.ts`, replace both loops over `preservedModelIds(provider)` with loops over `directModelIds(provider)`:
-
-```ts
-      for (const modelId of directModelIds(provider)) {
-        this.addRoute(provider, modelId, { model: modelId, preserve: false });
-      }
-```
-
-```ts
-  for (const modelId of directModelIds(provider)) {
-    if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
-      routes.push({ alias: modelId, modelId });
-    }
-  }
-```
-
-Add this helper immediately before `preservedModelIds()`:
-
-Update the `@aio-proxy/types` import to include `ProviderKind`, then add:
+Replace `directModelIds()` in `packages/core/src/router.ts` with:
 
 ```ts
 function directModelIds(provider: ProviderInstance): string[] {
-  const modelIds = new Set<string>(
+  const configuredModelIds = new Set<string>(
     provider.kind === ProviderKind.OAuth || !("models" in provider) ? [] : (provider.models ?? []),
   );
-  for (const alias of Object.keys(provider.alias ?? {})) {
+  const modelIds = new Set(configuredModelIds);
+
+  for (const [alias, config] of Object.entries(provider.alias ?? {})) {
     modelIds.delete(alias);
+    if (configuredModelIds.has(alias)) {
+      continue;
+    }
+    if (!config.preserve) {
+      modelIds.delete(config.model);
+    }
+    for (const target of Object.values(config.variants ?? {})) {
+      if (!target.preserve) {
+        modelIds.delete(target.model);
+      }
+    }
   }
+
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);
   }
@@ -207,148 +161,20 @@ function directModelIds(provider: ProviderInstance): string[] {
 }
 ```
 
-Do not change `addRoute()`, `preservedModelIds()`, or variant resolution.
+Do not change `addRoute()`, `preservedModelIds()`, alias normalization, or variant resolution.
 
-- [ ] **Step 4: Run the focused core tests and verify GREEN**
-
-Run:
-
-```bash
-rtk bun test packages/core/_test/router.test.ts
-rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models only"
-```
-
-Expected: both commands PASS.
-
-- [ ] **Step 5: Run the complete core unit suite**
+- [ ] **Step 4: Run focused core tests and verify GREEN**
 
 Run:
 
 ```bash
-rtk bun run --filter @aio-proxy/core test:unit
+rtk bun test packages/core/_test/router.test.ts --test-name-pattern "configured model when no alias|hides non-preserved targets|same-named configured model"
+rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models only|added Anthropic aliases|configured providers"
 ```
 
-Expected: PASS with zero failures.
+Expected: all matching tests pass with zero failures. The models-only case still lists configured ids, the added-alias case lists only aliases, and the override case keeps both ids.
 
-- [ ] **Step 6: Commit the core fix**
-
-Run:
-
-```bash
-rtk git add packages/core/src/router.ts packages/core/_test/router.test.ts packages/server/_test/server.test.ts
-rtk git commit -m "fix(core): expose unaliased provider models" -m "Co-authored-by: Codex <noreply@openai.com>"
-```
-
-### Task 2: Align Server Listing And Dashboard Summaries
-
-**Files:**
-
-- Modify: `packages/server/_test/server.test.ts`
-- Modify: `packages/server/src/provider-runtime.ts`
-
-**Interfaces:**
-
-- Consumes: corrected `modelRoutes(provider)` from Task 1.
-- Produces: `/v1/models` entries and `DashboardProviderSummary.clientModels` with identical client-facing ids.
-
-- [ ] **Step 1: Write failing server regression tests**
-
-Extend the disabled-provider test configuration so the provider has a replaced model and an untouched model:
-
-```ts
-            models: ["gpt-disabled", "gpt-untouched"],
-            alias: { disabled: { model: "gpt-disabled", preserve: false } },
-```
-
-Keep the `/v1/models` expectation empty and change its dashboard summary expectation to:
-
-```ts
-          clientModels: ["disabled", "gpt-disabled", "gpt-untouched"],
-```
-
-- [ ] **Step 2: Run focused server tests and verify RED**
-
-Run:
-
-```bash
-rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models|disabled provider"
-```
-
-Expected: the models-only listing passes through Task 1, while the disabled-provider dashboard assertion FAILS because `providerConfigSummary()` drops the untouched model whenever `alias` exists.
-
-- [ ] **Step 3: Reuse `modelRoutes()` for disabled-provider summaries**
-
-In `packages/server/src/provider-runtime.ts`, replace `providerConfigSummary()` with:
-
-```ts
-function providerConfigSummary(provider: Provider): DashboardProviderSummary {
-  const clientModels = [...new Set(modelRoutes(provider).map((route) => route.alias))];
-  return {
-    id: provider.id,
-    kind: provider.kind,
-    enabled: provider.enabled,
-    passthrough: provider.kind === ProviderKind.Api,
-    last_status: "unknown",
-    last_latency: null,
-    name: provider.name,
-    clientModels,
-    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
-  };
-}
-```
-
-- [ ] **Step 4: Run focused server tests and verify GREEN**
-
-Run:
-
-```bash
-rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models|disabled provider"
-```
-
-Expected: PASS with all matching tests green.
-
-- [ ] **Step 5: Run the complete server unit suite**
-
-Run:
-
-```bash
-rtk bun run --filter @aio-proxy/server test:unit
-```
-
-Expected: PASS with zero failures.
-
-- [ ] **Step 6: Run repository checks**
-
-Run:
-
-```bash
-rtk bun run check
-rtk bun run build
-```
-
-Expected: both commands exit 0 with no diagnostics caused by the change.
-
-- [ ] **Step 7: Commit the server alignment**
-
-Run:
-
-```bash
-rtk git add packages/server/src/provider-runtime.ts packages/server/_test/server.test.ts
-rtk git commit -m "fix(server): align model summaries with routing" -m "Co-authored-by: Codex <noreply@openai.com>"
-```
-
-### Task 3: Final Regression Verification
-
-**Files:**
-
-- Verify only; no source changes expected.
-
-**Interfaces:**
-
-- Consumes: Tasks 1 and 2 commits.
-- Produces: fresh evidence that the requested behavior and repository checks pass together.
-
-- [ ] **Step 1: Run focused regression tests together**
+- [ ] **Step 5: Run the complete core router test file**
 
 Run:
 
@@ -356,25 +182,43 @@ Run:
 rtk bun test packages/core/_test/router.test.ts packages/server/_test/server.test.ts
 ```
 
-Expected: PASS with zero failures.
+Expected: all tests pass with zero failures.
 
-- [ ] **Step 2: Run the repository unit suite**
+### Task 2: Verify And Publish The Correction
+
+**Files:**
+
+- Verify: `packages/core/src/router.ts`
+- Verify: `packages/core/_test/router.test.ts`
+- Verify: `packages/server/_test/server.test.ts`
+
+**Interfaces:**
+
+- Consumes: corrected core routing and server regression tests from Task 1.
+- Produces: fresh repository-wide verification and an updated PR branch.
+
+- [ ] **Step 1: Run full verification**
 
 Run:
 
 ```bash
+rtk bun test packages/core/_test/router.test.ts packages/server/_test/server.test.ts
 rtk bun run test:unit
+rtk bun run check
+rtk bun run build
+rtk git diff --check
 ```
 
-Expected: PASS with zero failures.
+Expected: every command exits 0; tests report zero failures; `check` has no new diagnostics; the diff has no whitespace errors.
 
-- [ ] **Step 3: Confirm the worktree contains only intended changes**
+- [ ] **Step 2: Commit and push the correction**
 
 Run:
 
 ```bash
-rtk git status --short
-rtk git log -4 --oneline
+rtk git add packages/core/src/router.ts packages/core/_test/router.test.ts packages/server/_test/server.test.ts docs/superpowers/specs/2026-07-13-model-list-routing-fix-design.md docs/superpowers/plans/2026-07-13-model-list-routing-fix.md
+rtk git commit -m "fix(core): distinguish alias renames from overrides" -m "Co-authored-by: Codex <noreply@openai.com>"
+rtk git push
 ```
 
-Expected: no uncommitted source changes; the recent history contains the design, implementation plan, core fix, and server alignment commits.
+Expected: the branch push succeeds and PR #24 updates to the new commit.

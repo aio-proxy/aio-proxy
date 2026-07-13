@@ -85,7 +85,7 @@ Tests will cover:
 - API and AI SDK providers with only `models` are listed and routable.
 - Added aliases hide non-preserved configured default and variant targets under their original ids.
 - An alias key overrides a same-named configured model while the target model remains routable.
-- The three added aliases in the `neeko`-shaped example expose only their three client-facing Claude ids, not the three upstream ids.
+- Three added Anthropic aliases expose only their three client-facing Claude ids, not the three upstream ids.
 - A preserved target not otherwise configured remains visible under its original id.
 - OAuth derived-alias routing remains unchanged.
 - `/v1/models` and dashboard `clientModels` reflect the shared route set.
