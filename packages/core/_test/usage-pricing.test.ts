@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { calculateEstimatedCost, createModelsDevCatalog, createOpenRouterPriceCatalog } from "../src/usage-pricing";
 
 const api = {
+  anthropic: {
+    models: {
+      "claude-sonnet-4-6": {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+      },
+    },
+  },
   openai: {
     models: {
       "gpt-5.5": {
@@ -27,6 +35,10 @@ const api = {
   },
   proxy: {
     models: {
+      "claude-sonnet-4-6": {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4-6",
+      },
       "gpt-5.5": {
         id: "gpt-5.5",
         name: "GPT 5.5",
@@ -56,9 +68,11 @@ describe("OpenRouter usage pricing", () => {
     expect(catalog.find("gpt-5.5")?.id).toBe("openai/gpt-5.5");
   });
 
-  test("prefers the canonical provider name across conflicting provider entries", async () => {
+  test("prefers canonical OpenAI and Anthropic names across conflicting providers", async () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
+    expect(catalog.displayName("claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
+    expect(catalog.displayName("anthropic/claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
     expect(catalog.displayName("gpt-5.5")).toBe("GPT-5.5");
     expect(catalog.displayName("openai/gpt-5.5")).toBe("GPT-5.5");
   });

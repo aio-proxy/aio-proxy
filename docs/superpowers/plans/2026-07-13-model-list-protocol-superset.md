@@ -50,7 +50,7 @@
 - Consumes: the existing `FetchOpenRouterPrices` callback and models.dev JSON payload.
 - Produces: `ModelsDevCatalog extends OpenRouterPriceCatalog` with `displayName(modelId: string): string | undefined`, plus `createModelsDevCatalog(fetchJson?)`.
 
-- [ ] **Step 1: Write failing display-name catalog tests**
+- [x] **Step 1: Write failing display-name catalog tests**
 
 Add a models.dev fixture with canonical, raw, qualified, and conflicting names, then add:
 
@@ -71,7 +71,7 @@ test("rejects conflicting human-readable names", async () => {
 
 Keep the existing full-id and bare-id price assertions unchanged.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -81,7 +81,7 @@ rtk bun test packages/core/_test/usage-pricing.test.ts
 
 Expected: FAIL because `createModelsDevCatalog` is not exported.
 
-- [ ] **Step 3: Implement the general catalog**
+- [x] **Step 3: Implement the general catalog**
 
 Add these public types and constructor in `usage-pricing.ts`:
 
@@ -152,7 +152,7 @@ Retain provider-scoped name maps while parsing. `displayName()` first resolves q
 
 Export `createModelsDevCatalog` and `ModelsDevCatalog` from `packages/core/src/index.ts`.
 
-- [ ] **Step 4: Run tests and build core to verify GREEN**
+- [x] **Step 4: Run tests and build core to verify GREEN**
 
 Run:
 
@@ -163,7 +163,7 @@ rtk bun run --filter @aio-proxy/core build
 
 Expected: all usage-pricing tests pass and the core build exits 0.
 
-- [ ] **Step 5: Commit the catalog change**
+- [x] **Step 5: Commit the catalog change**
 
 ```bash
 rtk git add packages/core/src/usage-pricing.ts packages/core/src/index.ts packages/core/_test/usage-pricing.test.ts
@@ -185,7 +185,7 @@ rtk git commit -m "feat(core): expose models.dev model metadata" -m "Co-authored
 - Consumes: OAuth provider model records containing `id` and optional `displayName`.
 - Produces: `RuntimeProviderInstance.modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>`.
 
-- [ ] **Step 1: Write failing OAuth metadata tests**
+- [x] **Step 1: Write failing OAuth metadata tests**
 
 For ChatGPT runtime, add:
 
@@ -202,7 +202,7 @@ expect(provider?.modelMetadata).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -213,7 +213,7 @@ rtk bun test packages/server/_test/oauth-provider-runtime.test.ts --test-name-pa
 
 Expected: FAIL because runtime providers do not expose `modelMetadata`.
 
-- [ ] **Step 3: Add runtime metadata types and populate ChatGPT metadata**
+- [x] **Step 3: Add runtime metadata types and populate ChatGPT metadata**
 
 Add in `runtime.ts`:
 
@@ -242,7 +242,7 @@ modelMetadata: Object.fromEntries(
 ),
 ```
 
-- [ ] **Step 4: Preserve cached Copilot display names**
+- [x] **Step 4: Preserve cached Copilot display names**
 
 Extend `CachedCopilotModel`:
 
@@ -254,7 +254,7 @@ type CachedCopilotModel = {
 };
 ```
 
-Require `displayName` to be absent or a string in `cachedCopilotModels()`, then add to the returned provider:
+Accept `displayName` only when it is a string in `cachedCopilotModels()`. Ignore malformed values while retaining entries with a valid `id` and `transport` as routable, then add valid names to the returned provider:
 
 ```ts
 modelMetadata: Object.fromEntries(
@@ -265,7 +265,7 @@ modelMetadata: Object.fromEntries(
 ),
 ```
 
-- [ ] **Step 5: Run OAuth tests and verify GREEN**
+- [x] **Step 5: Run OAuth tests and verify GREEN**
 
 Run:
 
@@ -275,7 +275,7 @@ rtk bun test packages/server/_test/oauth-chatgpt-runtime.test.ts packages/server
 
 Expected: all OAuth runtime tests pass.
 
-- [ ] **Step 6: Commit OAuth metadata**
+- [x] **Step 6: Commit OAuth metadata**
 
 ```bash
 rtk git add packages/server/src/runtime.ts packages/server/src/oauth-chatgpt-runtime.ts packages/server/src/oauth-runtime.ts packages/server/_test/oauth-chatgpt-runtime.test.ts packages/server/_test/oauth-provider-runtime.test.ts
@@ -295,7 +295,7 @@ rtk git commit -m "feat(server): preserve oauth model metadata" -m "Co-authored-
 - Consumes: `ModelsDevCatalog`, `RuntimeProviderInstance.modelMetadata`, and `modelRoutes(provider)`.
 - Produces: `ServerState.modelsDevCatalog(): Promise<ModelsDevCatalog | undefined>` and the final `/v1/models` response.
 
-- [ ] **Step 1: Add expected-response test helpers**
+- [x] **Step 1: Add expected-response test helpers**
 
 Add in `server.test.ts`:
 
@@ -324,7 +324,7 @@ const expectedModelList = (data: ReturnType<typeof expectedModel>[]) => ({
 
 Update existing exact `/v1/models` assertions to use these helpers and inject `modelsDevCatalogTask: async () => undefined` for non-OAuth cases.
 
-- [ ] **Step 2: Write the failing aggregation and metadata tests**
+- [x] **Step 2: Write the failing aggregation and metadata tests**
 
 Add one test with a lower-weight provider declared first and a higher-weight provider declared second. Both expose `shared`; the higher provider also exposes a canonical Claude alias for an opaque target, while the lower provider exposes an OpenAI-only model. Inject this catalog:
 
@@ -355,7 +355,7 @@ expectedModelList([
 
 Add a same-weight duplicate test that expects the first configured provider to own the model. Add a catalog-rejection test that still returns `expectedModel(id, owner)`. Update the ChatGPT OAuth endpoint test to assert `GPT-5.4 mini` is returned from OAuth metadata. Update the disabled-provider test to expect `expectedModelList([])`.
 
-- [ ] **Step 3: Run the server model tests and verify RED**
+- [x] **Step 3: Run the server model tests and verify RED**
 
 Run:
 
@@ -365,7 +365,7 @@ rtk bun test packages/server/_test/server.test.ts --test-name-pattern "models ar
 
 Expected: FAIL because duplicates remain and superset/catalog fields are missing.
 
-- [ ] **Step 4: Share the cached models.dev task through server state**
+- [x] **Step 4: Share the cached models.dev task through server state**
 
 Import `createModelsDevCatalog` and `ModelsDevCatalog` in `server-state.ts`. Add to `ServerStateOptions`:
 
@@ -412,7 +412,7 @@ function createModelsDevCatalogTask(): () => Promise<ModelsDevCatalog | undefine
 
 Add `modelsDevCatalogTask` to `CreateServerOptions` and pass it through to `createServerState()`.
 
-- [ ] **Step 5: Implement model aggregation and response shaping**
+- [x] **Step 5: Implement model aggregation and response shaping**
 
 Replace the inline route body with an async helper:
 
@@ -479,7 +479,7 @@ function displayName(
 
 Change the existing core import in `server.ts` to import `modelRoutes` plus `type ModelsDevCatalog`, and change the types import to import `ProviderKind` alongside `ConfigSchema`. Import `type ModelsDevCatalog` and `createModelsDevCatalog` from `@aio-proxy/core` in `server-state.ts`.
 
-- [ ] **Step 6: Run focused server tests and verify GREEN**
+- [x] **Step 6: Run focused server tests and verify GREEN**
 
 Run:
 
@@ -490,7 +490,7 @@ rtk bun test packages/server/_test/server.test.ts
 
 Expected: all server route tests pass with no live models.dev dependency.
 
-- [ ] **Step 7: Commit the endpoint change**
+- [x] **Step 7: Commit the endpoint change**
 
 ```bash
 rtk git add packages/server/src/server-state.ts packages/server/src/server.ts packages/server/_test/server.test.ts
@@ -508,7 +508,7 @@ rtk git commit -m "feat(server): return model list protocol superset" -m "Co-aut
 - Consumes: completed core catalog, OAuth metadata, and model-list endpoint.
 - Produces: fresh verification evidence for the final handoff.
 
-- [ ] **Step 1: Run focused regression tests**
+- [x] **Step 1: Run focused regression tests**
 
 ```bash
 rtk bun test packages/core/_test/usage-pricing.test.ts packages/server/_test/oauth-chatgpt-runtime.test.ts packages/server/_test/oauth-provider-runtime.test.ts packages/server/_test/server.test.ts
@@ -516,7 +516,7 @@ rtk bun test packages/core/_test/usage-pricing.test.ts packages/server/_test/oau
 
 Expected: all focused tests pass with zero failures.
 
-- [ ] **Step 2: Run repository verification**
+- [x] **Step 2: Run repository verification**
 
 ```bash
 rtk bun run test:unit
@@ -527,7 +527,7 @@ rtk git diff --check
 
 Expected: every command exits 0; tests report zero failures; formatting/type/build checks report no new diagnostics.
 
-- [ ] **Step 3: Inspect final state**
+- [x] **Step 3: Inspect final state**
 
 ```bash
 rtk git status --short
