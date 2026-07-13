@@ -24,6 +24,7 @@ type ModelsDevModelMetadata = {
   readonly maxInputTokens?: number;
   readonly maxTokens?: number;
   readonly capabilities?: ModelsDevCapabilities;
+  readonly releaseDate?: string;
 };
 ```
 
@@ -45,6 +46,10 @@ When catalog data is available:
 
 - `max_input_tokens` is the resolved `maxInputTokens` or `null`;
 - `max_tokens` is the resolved `maxTokens` or `null`.
+- `created_at` converts models.dev `release_date` (`YYYY-MM-DD`) to UTC midnight (`YYYY-MM-DDT00:00:00Z`);
+- `created` is the Unix timestamp in seconds for the same UTC instant.
+
+If `release_date` is missing or malformed, both timestamp fields retain their existing Unix epoch fallback. The OpenAI and Anthropic timestamp fields must always describe the same instant.
 
 When catalog data supplies the relevant signals, `capabilities` contains only fields that can be mapped without inventing support:
 
@@ -82,6 +87,8 @@ Tests will verify the red-green behavior for:
 - `limit.context` acting as the input-limit fallback;
 - capability subsets mapping effort values, image/PDF modalities, structured output, and thinking modes;
 - unavailable capability signals being omitted rather than reported as unsupported;
+- release dates producing matching RFC 3339 and Unix-second timestamp fields;
+- missing or malformed release dates retaining the epoch fallback;
 - OpenRouter pricing continuing to resolve from the same catalog;
 - `/v1/models` returning token limits for canonical aliases and upstream IDs;
 - OAuth display names remaining authoritative while limits come from models.dev;
