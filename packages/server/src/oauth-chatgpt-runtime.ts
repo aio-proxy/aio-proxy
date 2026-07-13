@@ -56,6 +56,7 @@ export function createOpenAIChatGPTRuntimeProvider(config: OAuthProvider): ChatG
     id: config.id,
     kind: ProviderKind.OAuth,
     models: modelIds,
+    modelMetadata: Object.fromEntries(OPENAI_CHATGPT_MODELS.map(({ id, displayName }) => [id, { displayName }])),
     alias: derivedAlias,
     vendor: config.vendor,
     async ensureAvailable() {

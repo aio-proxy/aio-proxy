@@ -37,8 +37,8 @@ describe("OAuth provider runtime", () => {
       expires: Date.now() + 60_000,
       baseUrl: "https://api.individual.githubcopilot.com",
       models: [
-        { id: "gpt-5-mini", transport: ProviderProtocol.OpenAICompatible },
-        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", displayName: "Claude Sonnet 4", transport: ProviderProtocol.Anthropic },
       ],
     });
 
@@ -54,6 +54,10 @@ describe("OAuth provider runtime", () => {
     expect(provider?.alias).toMatchObject({
       "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
       "claude-sonnet-4": { model: "claude-sonnet-4", preserve: false },
+    });
+    expect(provider?.modelMetadata).toMatchObject({
+      "gpt-5-mini": { displayName: "GPT 5 Mini" },
+      "claude-sonnet-4": { displayName: "Claude Sonnet 4" },
     });
 
     const router = new Router(runtime.providers);

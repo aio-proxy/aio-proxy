@@ -189,6 +189,7 @@ describe("OpenAI ChatGPT OAuth runtime wrapper", () => {
 
     // Then
     expect(instance.models).toEqual(OPENAI_CHATGPT_MODELS.map((model) => model.id));
+    expect(instance.modelMetadata?.["gpt-5.4-mini"]).toEqual({ displayName: "GPT-5.4 mini" });
     const router = new Router([instance]);
     for (const model of OPENAI_CHATGPT_MODELS) {
       expect(instance.alias?.[model.id]).toEqual({ model: model.id, preserve: false });

@@ -68,6 +68,9 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
     id: config.id,
     kind: ProviderKind.OAuth,
     models: modelIds,
+    modelMetadata: Object.fromEntries(
+      (cachedModels ?? []).map(({ id, displayName }) => [id, displayName === undefined ? {} : { displayName }]),
+    ),
     alias: derivedAlias,
     vendor: config.vendor,
     async ensureAvailable() {
@@ -86,6 +89,7 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
 
 type CachedCopilotModel = {
   readonly id: string;
+  readonly displayName?: string;
   readonly transport: CopilotTransport;
 };
 
@@ -101,6 +105,7 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     const candidate = model as Partial<CachedCopilotModel>;
     return (
       typeof candidate.id === "string" &&
+      (candidate.displayName === undefined || typeof candidate.displayName === "string") &&
       (candidate.transport === ProviderProtocol.OpenAICompatible ||
         candidate.transport === ProviderProtocol.Anthropic ||
         candidate.transport === ProviderProtocol.OpenAIResponse)
