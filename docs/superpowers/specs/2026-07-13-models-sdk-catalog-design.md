@@ -6,7 +6,7 @@ The shared models.dev catalog currently fetches `api.json` directly and manually
 
 ## Decision
 
-Add `@opencode-ai/models@0.0.11` to the workspace catalog and core package. The default catalog loader will call `Models.make().catalog()`, which returns the typed `Catalog` shape containing both provider offers and provider-agnostic model metadata.
+Add `@opencode-ai/models@0.0.11` to the workspace catalog and core package. The default catalog loader will call `Models.make().catalog()`, which returns the typed `Catalog` shape containing both provider offers and provider-agnostic model metadata. Add `date-fns@^4.4.0` as a direct server dependency for release-date parsing and Unix timestamp conversion.
 
 Keep the server's existing six-hour promise cache. The SDK client is stateless and performs one request per call, so cache ownership remains in `createModelsDevCatalogTask()` and usage pricing and model listing continue to share one refresh lifecycle.
 
@@ -46,10 +46,10 @@ When catalog data is available:
 
 - `max_input_tokens` is the resolved `maxInputTokens` or `null`;
 - `max_tokens` is the resolved `maxTokens` or `null`.
-- `created_at` converts models.dev `release_date` (`YYYY-MM-DD`) to UTC midnight (`YYYY-MM-DDT00:00:00Z`);
-- `created` is the Unix timestamp in seconds for the same UTC instant.
+- `created_at` parses models.dev `release_date` (`YYYY-MM-DD`) at UTC midnight with date-fns `parseISO`, validates it with `isValid`, and serializes the parsed date with `toISOString()`;
+- `created` uses date-fns `getUnixTime` for the same parsed instant.
 
-If `release_date` is missing or malformed, both timestamp fields retain their existing Unix epoch fallback. The OpenAI and Anthropic timestamp fields must always describe the same instant.
+If `release_date` is missing or malformed, both timestamp fields retain their existing Unix epoch fallback. The OpenAI and Anthropic timestamp fields must always describe the same instant. Do not implement custom calendar parsing or manual Unix timestamp arithmetic.
 
 When catalog data supplies the relevant signals, `capabilities` contains only fields that can be mapped without inventing support:
 
