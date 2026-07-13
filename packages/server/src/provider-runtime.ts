@@ -147,8 +147,7 @@ function providerId(provider: Provider): string {
 }
 
 function providerConfigSummary(provider: Provider): DashboardProviderSummary {
-  const models = provider.kind === ProviderKind.OAuth ? [] : (provider.models ?? []);
-  const clientModels = [...new Set(provider.alias ? Object.keys(provider.alias) : models)];
+  const clientModels = [...new Set(modelRoutes(provider).map((route) => route.alias))];
   return {
     id: provider.id,
     kind: provider.kind,
