@@ -3,6 +3,10 @@ import type { AliasConfig, ModelId, OAuthVendor, ProviderKind, ProviderProtocol 
 import type { RequestRecorder } from "./request-recorder";
 import type { UsageCapture } from "./usage-capture";
 
+export type RuntimeModelMetadata = {
+  readonly displayName?: string;
+};
+
 export type OAuthProviderInstance = {
   readonly enabled: boolean;
   readonly ensureAvailable?: () => Promise<void>;
@@ -10,6 +14,7 @@ export type OAuthProviderInstance = {
   readonly invoke: AiSdkProviderInstance["invoke"];
   readonly kind: ProviderKind.OAuth;
   readonly models?: ModelId[];
+  readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
   readonly alias?: Readonly<Record<string, AliasConfig>>;
   readonly vendor: OAuthVendor.GitHubCopilot | OAuthVendor.OpenAIChatGPT;
 };
@@ -29,7 +34,10 @@ export type RuntimeCapabilities =
   | { readonly raw?: RawTransport; readonly model: ModelTransport };
 
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;
-export type RuntimeProviderInstance = LegacyRuntimeProviderInstance & RuntimeCapabilities;
+export type RuntimeProviderInstance = LegacyRuntimeProviderInstance &
+  RuntimeCapabilities & {
+    readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
+  };
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 
 export type ProviderRouteSnapshot = {

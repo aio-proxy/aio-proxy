@@ -41,6 +41,7 @@
     "@ai-sdk/provider": "catalog:",
     "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",
+    "@opencode-ai/models": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "drizzle-orm": "catalog:",
     "openai": "catalog:",

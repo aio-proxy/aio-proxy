@@ -68,6 +68,9 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
     id: config.id,
     kind: ProviderKind.OAuth,
     models: modelIds,
+    modelMetadata: Object.fromEntries(
+      (cachedModels ?? []).map(({ id, displayName }) => [id, displayName === undefined ? {} : { displayName }]),
+    ),
     alias: derivedAlias,
     vendor: config.vendor,
     async ensureAvailable() {
@@ -86,6 +89,7 @@ export function createGitHubCopilotRuntimeProvider(config: OAuthProvider): OAuth
 
 type CachedCopilotModel = {
   readonly id: string;
+  readonly displayName?: string;
   readonly transport: CopilotTransport;
 };
 
@@ -94,17 +98,26 @@ function cachedCopilotModels(value: unknown): CachedCopilotModel[] | undefined {
     return undefined;
   }
 
-  return value.filter((model): model is CachedCopilotModel => {
+  return value.flatMap((model): CachedCopilotModel[] => {
     if (typeof model !== "object" || model === null) {
-      return false;
+      return [];
     }
     const candidate = model as Partial<CachedCopilotModel>;
-    return (
-      typeof candidate.id === "string" &&
-      (candidate.transport === ProviderProtocol.OpenAICompatible ||
-        candidate.transport === ProviderProtocol.Anthropic ||
-        candidate.transport === ProviderProtocol.OpenAIResponse)
-    );
+    if (
+      typeof candidate.id !== "string" ||
+      (candidate.transport !== ProviderProtocol.OpenAICompatible &&
+        candidate.transport !== ProviderProtocol.Anthropic &&
+        candidate.transport !== ProviderProtocol.OpenAIResponse)
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: candidate.id,
+        transport: candidate.transport,
+        ...(typeof candidate.displayName === "string" ? { displayName: candidate.displayName } : {}),
+      },
+    ];
   });
 }
 

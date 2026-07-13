@@ -88,6 +88,16 @@ export {
   safeParseOpenAIResponses,
 } from "./ingress/openai-responses";
 export {
+  createModelsDevCatalog,
+  createOpenRouterPriceCatalog,
+  type FetchModelsDevProviders,
+  type FetchOpenRouterPrices,
+  type ModelsDevCapabilities,
+  type ModelsDevCatalog,
+  type ModelsDevModelMetadata,
+  type OpenRouterPriceCatalog,
+} from "./models-dev-catalog";
+export {
   findInstalledNpmPackage,
   type NpmPackageInfo,
   npmAdd,
@@ -167,10 +177,7 @@ export {
 } from "./transform/openai-responses";
 export {
   calculateEstimatedCost,
-  createOpenRouterPriceCatalog,
-  type FetchOpenRouterPrices,
   type OpenRouterModelPrice,
-  type OpenRouterPriceCatalog,
   type UsageCostResult,
   type UsagePricingInput,
 } from "./usage-pricing";

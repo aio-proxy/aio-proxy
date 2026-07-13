@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createOpenRouterPriceCatalog, type OpenRouterPriceCatalog, Router } from "@aio-proxy/core";
+import { createModelsDevCatalog, type FetchModelsDevProviders, type ModelsDevCatalog, Router } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb, type RequestLogStore } from "@aio-proxy/core/db";
 import {
   type Config,
@@ -34,6 +34,7 @@ export type ServerStateOptions = {
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly logger?: (entry: ConfigReloadLog) => void;
+  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;
 };
@@ -51,6 +52,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
+  readonly modelsDevCatalog: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
@@ -96,7 +98,8 @@ export function createServerState(options: ServerStateOptions): ServerState {
   const events = createDashboardEventHub(options.eventLimits);
   const dbHandle = openServerDb(options);
   const requestLog = createRequestLogStore(dbHandle.db);
-  const usageCapture = createUsageCapture({ priceCatalogTask: createPriceCatalogTask() });
+  const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
+  const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
   const requestRecorder = createRequestRecorder({ store: requestLog });
   const logger = options.logger ?? defaultLogger;
   const watcher =
@@ -165,6 +168,7 @@ export function createServerState(options: ServerStateOptions): ServerState {
     currentConfig() {
       return snapshot.config;
     },
+    modelsDevCatalog,
     reload,
     requestLog,
     requestRecorder,
@@ -176,20 +180,22 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   return options.dbHome === undefined ? openDb() : openDb({ home: options.dbHome });
 }
 
-function createPriceCatalogTask(): () => Promise<OpenRouterPriceCatalog | undefined> {
-  let priceCatalog:
+export function createModelsDevCatalogTask(
+  fetchProviders?: FetchModelsDevProviders,
+): () => Promise<ModelsDevCatalog | undefined> {
+  let catalog:
     | {
         readonly expiresAt: number;
-        readonly task: Promise<OpenRouterPriceCatalog | undefined>;
+        readonly task: Promise<ModelsDevCatalog | undefined>;
       }
     | undefined;
 
   return () => {
     const now = Date.now();
-    if (priceCatalog === undefined || priceCatalog.expiresAt <= now) {
-      priceCatalog = {
+    if (catalog === undefined || catalog.expiresAt <= now) {
+      catalog = {
         expiresAt: now + PRICE_CATALOG_TTL_MS,
-        task: createOpenRouterPriceCatalog().catch((error: unknown) => {
+        task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
           if (error instanceof Error) {
             return undefined;
           }
@@ -197,7 +203,7 @@ function createPriceCatalogTask(): () => Promise<OpenRouterPriceCatalog | undefi
         }),
       };
     }
-    return priceCatalog.task;
+    return catalog.task;
   };
 }
 

@@ -78,6 +78,7 @@
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
+        "@opencode-ai/models": "catalog:",
         "@openrouter/ai-sdk-provider": "catalog:",
         "ai": "catalog:",
         "drizzle-orm": "catalog:",
@@ -207,6 +208,7 @@
         "@aio-proxy/oauth": "workspace:*",
         "@aio-proxy/provider-schemas": "workspace:*",
         "@aio-proxy/types": "workspace:*",
+        "date-fns": "^4.4.0",
         "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
         "hono": "catalog:",
@@ -214,8 +216,10 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
+        "@anthropic-ai/sdk": "catalog:",
         "@types/bun": "catalog:",
         "ai": "catalog:",
+        "openai": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -247,6 +251,7 @@
     "@anthropic-ai/sdk": "0.111.0",
     "@google/genai": "2.11.0",
     "@inlang/paraglide-js": "2.20.2",
+    "@opencode-ai/models": "0.0.11",
     "@openrouter/ai-sdk-provider": "2.10.0",
     "@rslib/core": "^0.23.1",
     "@types/bun": "^1.3.14",
@@ -640,6 +645,8 @@
     "@nodelib/fs.stat": ["@nodelib/fs.stat@2.0.5", "", {}, "sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A=="],
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
+
+    "@opencode-ai/models": ["@opencode-ai/models@0.0.11", "", { "peerDependencies": { "effect": "4.0.0-beta.83" }, "optionalPeers": ["effect"] }, "sha512-0pCLMGWfbIqbhocVVCsuKuahf4T3asYjb49ohTP21irC6iqHV+8xPBKl6RZoblbsLPimMAptGmwckibdER+S/g=="],
 
     "@openrouter/ai-sdk-provider": ["@openrouter/ai-sdk-provider@2.10.0", "", { "peerDependencies": { "ai": "^6.0.0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-FMsAEjLUt5pWuRE2LDC/LCvVrFjLlrEzUITH5+5SZtfq7KZ2wrOHjQVxzz92sju8S9ltpzW87CLW8/b0oBXVCw=="],
 

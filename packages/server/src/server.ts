@@ -1,7 +1,11 @@
-import { modelRoutes } from "@aio-proxy/core";
-import { ConfigSchema } from "@aio-proxy/types";
+import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
+import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resources/models";
+import { getUnixTime, isValid, parseISO } from "date-fns";
+import { filter, flatMap, map, pipe, uniqBy } from "es-toolkit/fp";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import type { Model as OpenAIModel } from "openai/resources/models";
 import type { DashboardAssets } from "./dashboard-assets";
 import type { DashboardEventLimits } from "./dashboard-events";
 import { createDashboardRoutes } from "./dashboard-routes/config";
@@ -27,6 +31,7 @@ export type CreateServerOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
+  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly port?: number;
   readonly host?: string;
@@ -46,21 +51,7 @@ const createRoutes = (
       version: "0.0.0",
     }),
   );
-  app.get("/v1/models", (context) =>
-    context.json({
-      object: "list",
-      data: state
-        .currentProviderSnapshot()
-        .providers.filter((provider) => provider.enabled)
-        .flatMap((provider) =>
-          exposedModels(provider).map((model) => ({
-            id: model,
-            object: "model",
-            owned_by: provider.id,
-          })),
-        ),
-    }),
-  );
+  app.get("/v1/models", async (context) => context.json(await listModels(state)));
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
 
   app.use("/dashboard/api/*", async (context, next) => {
@@ -108,8 +99,82 @@ const createRoutes = (
   return routes;
 };
 
-function exposedModels(provider: RuntimeProviderInstance): string[] {
-  return modelRoutes(provider).map((route) => route.alias);
+const unknownCreatedAt = "1970-01-01T00:00:00Z";
+type ModelListItem = OpenAIModel &
+  Omit<AnthropicModelInfo, "capabilities"> & {
+    readonly capabilities: ModelsDevCapabilities | null;
+  };
+
+async function listModels(state: ServerState) {
+  const selected = pipe(
+    state.currentProviderSnapshot().providers,
+    filter((provider) => provider.enabled),
+    flatMap((provider) =>
+      modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
+    ),
+    uniqBy(({ id }) => id),
+  );
+
+  const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
+
+  return pipe(
+    selected,
+    map(({ id, modelId, provider }): ModelListItem => {
+      const aliasMetadata = catalog?.metadata(id);
+      const upstreamMetadata =
+        id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
+      const metadata = aliasMetadata ?? upstreamMetadata;
+      const timestamps = modelTimestamps(metadata?.releaseDate);
+      return {
+        capabilities: metadata?.capabilities ?? null,
+        created: timestamps.created,
+        created_at: timestamps.createdAt,
+        display_name: modelDisplayName(
+          id,
+          modelId,
+          provider,
+          aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
+        ),
+        id,
+        max_input_tokens: metadata?.maxInputTokens ?? null,
+        max_tokens: metadata?.maxTokens ?? null,
+        object: "model",
+        owned_by: provider.id,
+        type: "model",
+      };
+    }),
+    (data) => ({
+      data,
+      first_id: data[0]?.id ?? null,
+      has_more: false,
+      last_id: data.at(-1)?.id ?? null,
+      object: "list" as const,
+    }),
+  );
+}
+
+function modelDisplayName(
+  id: string,
+  modelId: string,
+  provider: RuntimeProviderInstance,
+  catalogDisplayName: string | undefined,
+): string {
+  if (provider.kind === ProviderKind.OAuth) {
+    return provider.modelMetadata?.[modelId]?.displayName ?? catalogDisplayName ?? id;
+  }
+  return catalogDisplayName ?? id;
+}
+
+function modelTimestamps(releaseDate: string | undefined): { readonly created: number; readonly createdAt: string } {
+  if (releaseDate === undefined) {
+    return { created: 0, createdAt: unknownCreatedAt };
+  }
+  const normalizedDate = releaseDate.length === 7 ? `${releaseDate}-01` : releaseDate;
+  const date = parseISO(`${normalizedDate}T00:00:00Z`);
+  if (!isValid(date)) {
+    return { created: 0, createdAt: unknownCreatedAt };
+  }
+  return { created: getUnixTime(date), createdAt: date.toISOString() };
 }
 
 const routes = createRoutes(createServerState({ config: defaultConfig }));
@@ -131,6 +196,7 @@ export const createServer = (options: CreateServerOptions): AppType => {
       ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
       ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
       ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
+      ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
       ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
       ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
     }),

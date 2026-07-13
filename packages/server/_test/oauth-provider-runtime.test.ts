@@ -37,8 +37,8 @@ describe("OAuth provider runtime", () => {
       expires: Date.now() + 60_000,
       baseUrl: "https://api.individual.githubcopilot.com",
       models: [
-        { id: "gpt-5-mini", transport: ProviderProtocol.OpenAICompatible },
-        { id: "claude-sonnet-4", transport: ProviderProtocol.Anthropic },
+        { id: "gpt-5-mini", displayName: "GPT 5 Mini", transport: ProviderProtocol.OpenAICompatible },
+        { id: "claude-sonnet-4", displayName: "Claude Sonnet 4", transport: ProviderProtocol.Anthropic },
       ],
     });
 
@@ -54,6 +54,10 @@ describe("OAuth provider runtime", () => {
     expect(provider?.alias).toMatchObject({
       "gpt-5-mini": { model: "gpt-5-mini", preserve: false },
       "claude-sonnet-4": { model: "claude-sonnet-4", preserve: false },
+    });
+    expect(provider?.modelMetadata).toMatchObject({
+      "gpt-5-mini": { displayName: "GPT 5 Mini" },
+      "claude-sonnet-4": { displayName: "Claude Sonnet 4" },
     });
 
     const router = new Router(runtime.providers);
@@ -97,6 +101,25 @@ describe("OAuth provider runtime", () => {
     expect(router.resolve("mini")[0]?.modelId).toBe("gpt-5-mini");
     expect(() => router.resolve("gpt-5-mini")).toThrow();
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test("keeps cached models when optional display names are malformed", () => {
+    Auth.set("github-copilot", "copilot-malformed-name", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      baseUrl: "https://api.individual.githubcopilot.com",
+      models: [{ id: "gpt-5-mini", displayName: null, transport: ProviderProtocol.OpenAICompatible }],
+    });
+
+    const runtime = materializeProviders(
+      ConfigSchema.parse({
+        providers: { "copilot-malformed-name": { kind: "oauth", vendor: "github-copilot" } },
+      }),
+    );
+
+    expect(runtime.providers[0]?.models).toEqual(["gpt-5-mini"]);
+    expect(runtime.providers[0]?.modelMetadata?.["gpt-5-mini"]).toEqual({});
   });
 
   test("warns and exposes config-alias-only routes when the payload has no cached models", async () => {

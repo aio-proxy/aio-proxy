@@ -1,31 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { calculateEstimatedCost, createOpenRouterPriceCatalog } from "../src/usage-pricing";
-
-const api = {
-  openrouter: {
-    models: {
-      "openai/gpt-5.5": {
-        id: "openai/gpt-5.5",
-        cost: {
-          input: 2,
-          output: 10,
-          cache_read: 0.5,
-          cache_write: 1,
-          reasoning: 10,
-        },
-      },
-    },
-  },
-};
+import { calculateEstimatedCost } from "../src/usage-pricing";
 
 describe("OpenRouter usage pricing", () => {
-  test("matches full and bare model ids", async () => {
-    const catalog = await createOpenRouterPriceCatalog(async () => api);
-
-    expect(catalog.find("openai/gpt-5.5")?.id).toBe("openai/gpt-5.5");
-    expect(catalog.find("gpt-5.5")?.id).toBe("openai/gpt-5.5");
-  });
-
   test("calculates cost from known token dimensions", () => {
     expect(
       calculateEstimatedCost(

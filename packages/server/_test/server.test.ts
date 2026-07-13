@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ModelsDevCapabilities, ModelsDevCatalog } from "@aio-proxy/core";
 import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { AppType } from "@aio-proxy/server";
 import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
@@ -40,6 +41,60 @@ const config = {
   },
 };
 
+const noModelsDevCatalog = async () => undefined;
+
+const testCapabilities: ModelsDevCapabilities = {
+  effort: {
+    high: { supported: true },
+    low: { supported: true },
+    max: { supported: false },
+    medium: { supported: true },
+    supported: true,
+    xhigh: { supported: false },
+  },
+  image_input: { supported: true },
+  pdf_input: { supported: true },
+  structured_outputs: { supported: true },
+  thinking: {
+    supported: true,
+    types: { adaptive: { supported: true }, enabled: { supported: true } },
+  },
+};
+
+type ExpectedModelMetadata = {
+  readonly capabilities?: ModelsDevCapabilities;
+  readonly created?: number;
+  readonly createdAt?: string;
+  readonly maxInputTokens?: number;
+  readonly maxTokens?: number;
+};
+
+const expectedModel = (
+  id: string,
+  ownedBy: string,
+  displayName: string = id,
+  metadata: ExpectedModelMetadata = {},
+) => ({
+  capabilities: metadata.capabilities ?? null,
+  created: metadata.created ?? 0,
+  created_at: metadata.createdAt ?? "1970-01-01T00:00:00Z",
+  display_name: displayName,
+  id,
+  max_input_tokens: metadata.maxInputTokens ?? null,
+  max_tokens: metadata.maxTokens ?? null,
+  object: "model",
+  owned_by: ownedBy,
+  type: "model",
+});
+
+const expectedModelList = (data: ReturnType<typeof expectedModel>[]) => ({
+  data,
+  first_id: data[0]?.id ?? null,
+  has_more: false,
+  last_id: data.at(-1)?.id ?? null,
+  object: "list",
+});
+
 describe("server routes", () => {
   let dir: string;
   let previousHome: string | undefined;
@@ -52,6 +107,7 @@ describe("server routes", () => {
 
   afterEach(() => {
     Auth.del("openai-chatgpt", "chatgpt-xxx");
+    Auth.del("github-copilot", "copilot-xxx");
     if (previousHome === undefined) {
       delete process.env.AIO_PROXY_HOME;
     } else {
@@ -77,7 +133,7 @@ describe("server routes", () => {
 
   test("Given configured providers When OpenAI models are requested Then model list is returned", async () => {
     // Given
-    const app = createServer({ config });
+    const app = createServer({ config, modelsDevCatalogTask: noModelsDevCatalog });
 
     // When
     const response = await app.request("/v1/models");
@@ -85,19 +141,19 @@ describe("server routes", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(body).toEqual({
-      object: "list",
-      data: [
-        { id: "gpt-alias", object: "model", owned_by: "openai-compatible" },
-        { id: "gpt-test", object: "model", owned_by: "openai-compatible" },
-        { id: "compatible", object: "model", owned_by: "compatible" },
-        { id: "compatible-test", object: "model", owned_by: "compatible" },
-      ],
-    });
+    expect(body).toEqual(
+      expectedModelList([
+        expectedModel("gpt-alias", "openai-compatible"),
+        expectedModel("gpt-test", "openai-compatible"),
+        expectedModel("compatible", "compatible"),
+        expectedModel("compatible-test", "compatible"),
+      ]),
+    );
   });
 
   test("Given API and AI SDK providers with models only When models are requested Then every model is listed", async () => {
     const app = createServer({
+      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           api: {
@@ -119,17 +175,14 @@ describe("server routes", () => {
     const response = await app.request("/v1/models");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      object: "list",
-      data: [
-        { id: "api-model", object: "model", owned_by: "api" },
-        { id: "sdk-model", object: "model", owned_by: "sdk" },
-      ],
-    });
+    expect(await response.json()).toEqual(
+      expectedModelList([expectedModel("api-model", "api"), expectedModel("sdk-model", "sdk")]),
+    );
   });
 
   test("Given added Anthropic aliases When models are requested Then upstream targets are hidden", async () => {
     const app = createServer({
+      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           "anthropic-aliases": {
@@ -150,14 +203,166 @@ describe("server routes", () => {
     const response = await app.request("/v1/models");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      object: "list",
-      data: [
-        { id: "claude-opus-4-8", object: "model", owned_by: "anthropic-aliases" },
-        { id: "claude-opus-4-6", object: "model", owned_by: "anthropic-aliases" },
-        { id: "claude-sonnet-4-6", object: "model", owned_by: "anthropic-aliases" },
-      ],
+    expect(await response.json()).toEqual(
+      expectedModelList([
+        expectedModel("claude-opus-4-8", "anthropic-aliases"),
+        expectedModel("claude-opus-4-6", "anthropic-aliases"),
+        expectedModel("claude-sonnet-4-6", "anthropic-aliases"),
+      ]),
+    );
+  });
+
+  test("Given alias metadata without a name When models are requested Then the upstream name is used", async () => {
+    const app = createServer({
+      modelsDevCatalogTask: async () => ({
+        displayName: () => undefined,
+        find: () => undefined,
+        metadata(modelId) {
+          return {
+            "friendly-alias": { maxInputTokens: 100, maxTokens: 10 },
+            "upstream-model": { displayName: "Upstream Model", maxInputTokens: 200, maxTokens: 20 },
+          }[modelId];
+        },
+      }),
+      config: {
+        providers: {
+          api: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.example.com/v1",
+            models: ["upstream-model"],
+            alias: { "friendly-alias": "upstream-model" },
+          },
+        },
+      },
     });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(
+      expectedModelList([
+        expectedModel("friendly-alias", "api", "Upstream Model", {
+          maxInputTokens: 100,
+          maxTokens: 10,
+        }),
+      ]),
+    );
+  });
+
+  test("Given duplicate models When models are requested Then the highest-weight provider owns each id", async () => {
+    const catalog: ModelsDevCatalog = {
+      displayName(modelId) {
+        return {
+          "claude-sonnet-4-6": "Claude Sonnet 4.6",
+          "gpt-only": "GPT Only",
+          shared: "Shared Model",
+        }[modelId];
+      },
+      find() {
+        return undefined;
+      },
+      metadata(modelId) {
+        return {
+          "claude-sonnet-4-6": {
+            capabilities: testCapabilities,
+            displayName: "Claude Sonnet 4.6",
+            maxInputTokens: 1_000_000,
+            maxTokens: 128_000,
+            releaseDate: "2026-01-15",
+          },
+          "gpt-only": { displayName: "GPT Only", releaseDate: "2026-02-30" },
+          shared: { displayName: "Shared Model" },
+        }[modelId];
+      },
+    };
+    const app = createServer({
+      modelsDevCatalogTask: async () => catalog,
+      config: {
+        providers: {
+          low: {
+            kind: "api",
+            weight: 1,
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://low.example.com",
+            models: ["shared", "gpt-only"],
+          },
+          high: {
+            kind: "api",
+            weight: 10,
+            protocol: ProviderProtocol.Anthropic,
+            baseUrl: "https://high.example.com",
+            models: ["opaque-claude", "shared"],
+            alias: { "claude-sonnet-4-6": "opaque-claude" },
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(
+      expectedModelList([
+        expectedModel("claude-sonnet-4-6", "high", "Claude Sonnet 4.6", {
+          capabilities: testCapabilities,
+          created: 1_768_435_200,
+          createdAt: "2026-01-15T00:00:00.000Z",
+          maxInputTokens: 1_000_000,
+          maxTokens: 128_000,
+        }),
+        expectedModel("shared", "high", "Shared Model"),
+        expectedModel("gpt-only", "low", "GPT Only"),
+      ]),
+    );
+  });
+
+  test("Given equal provider weights When models are requested Then configuration order breaks ties", async () => {
+    const app = createServer({
+      modelsDevCatalogTask: noModelsDevCatalog,
+      config: {
+        providers: {
+          first: {
+            kind: "api",
+            weight: 5,
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://first.example.com",
+            models: ["shared"],
+          },
+          second: {
+            kind: "api",
+            weight: 5,
+            protocol: ProviderProtocol.Anthropic,
+            baseUrl: "https://second.example.com",
+            models: ["shared"],
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(expectedModelList([expectedModel("shared", "first")]));
+  });
+
+  test("Given models.dev failure When models are requested Then ids remain valid display names", async () => {
+    const app = createServer({
+      modelsDevCatalogTask: async () => {
+        throw new Error("catalog unavailable");
+      },
+      config: {
+        providers: {
+          api: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.example.com",
+            models: ["plain-model"],
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(expectedModelList([expectedModel("plain-model", "api")]));
   });
 
   test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {
@@ -171,6 +376,7 @@ describe("server routes", () => {
     });
     const app = createServer({
       config: { providers: { "chatgpt-xxx": { kind: "oauth", vendor: "openai-chatgpt" } } },
+      modelsDevCatalogTask: noModelsDevCatalog,
     });
 
     // When
@@ -179,9 +385,85 @@ describe("server routes", () => {
 
     // Then
     expect(response.status).toBe(200);
-    const ids = (body.data as Array<{ id: string }>).map((model) => model.id);
-    expect(ids).toContain("gpt-5.5");
-    expect(ids).toContain("gpt-5.4");
+    expect(body).toEqual(
+      expectedModelList(
+        OPENAI_CHATGPT_MODELS.map((model) => expectedModel(model.id, "chatgpt-xxx", model.displayName)),
+      ),
+    );
+  });
+
+  test("Given a renamed OAuth model When models are requested Then the alias inherits the vendor display name", async () => {
+    Auth.set("openai-chatgpt", "chatgpt-xxx", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      accountId: "xxx",
+      models: OPENAI_CHATGPT_MODELS,
+    });
+    const app = createServer({
+      modelsDevCatalogTask: async () => ({
+        displayName: () => "Catalog Name Must Not Win",
+        find: () => undefined,
+        metadata: (modelId) =>
+          modelId === "gpt5" || modelId === "gpt-5.5"
+            ? {
+                capabilities: testCapabilities,
+                displayName: "Catalog Name Must Not Win",
+                maxInputTokens: 120_000,
+                maxTokens: 8_000,
+                releaseDate: "2026-01-15",
+              }
+            : undefined,
+      }),
+      config: {
+        providers: {
+          "chatgpt-xxx": {
+            kind: "oauth",
+            vendor: "openai-chatgpt",
+            alias: { gpt5: "gpt-5.5" },
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+    const body = (await response.json()) as { data: ReturnType<typeof expectedModel>[] };
+
+    expect(body.data.find((model) => model.id === "gpt5")).toEqual(
+      expectedModel("gpt5", "chatgpt-xxx", "GPT-5.5", {
+        capabilities: testCapabilities,
+        created: 1_768_435_200,
+        createdAt: "2026-01-15T00:00:00.000Z",
+        maxInputTokens: 120_000,
+        maxTokens: 8_000,
+      }),
+    );
+  });
+
+  test("Given Copilot OAuth metadata When models are requested Then display names reach the HTTP response", async () => {
+    Auth.set("github-copilot", "copilot-xxx", {
+      access: "tok",
+      refresh: "r",
+      expires: Date.now() + 60_000,
+      baseUrl: "https://api.individual.githubcopilot.com",
+      models: [
+        {
+          id: "claude-sonnet-4-6",
+          displayName: "Claude Sonnet 4.6",
+          transport: ProviderProtocol.Anthropic,
+        },
+      ],
+    });
+    const app = createServer({
+      config: { providers: { "copilot-xxx": { kind: "oauth", vendor: "github-copilot" } } },
+      modelsDevCatalogTask: noModelsDevCatalog,
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(
+      expectedModelList([expectedModel("claude-sonnet-4-6", "copilot-xxx", "Claude Sonnet 4.6")]),
+    );
   });
 
   test("Given disabled provider When models and dashboard are requested Then provider is not routed", async () => {
@@ -206,7 +488,7 @@ describe("server routes", () => {
     const providers = await app.request("/dashboard/api/providers");
 
     // Then
-    expect(await models.json()).toEqual({ object: "list", data: [] });
+    expect(await models.json()).toEqual(expectedModelList([]));
     expect(await providers.json()).toEqual({
       providers: [
         {
