@@ -141,18 +141,18 @@ function parseDisplayNames(value: unknown): ReadonlyMap<string, string> {
   }
 
   for (const provider of Object.values(value)) {
-    if (!isRecord(provider) || !isRecord(provider.models)) {
+    if (!isRecord(provider) || !isRecord(provider["models"])) {
       continue;
     }
-    for (const model of Object.values(provider.models)) {
-      if (!isRecord(model) || typeof model.id !== "string" || typeof model.name !== "string") {
+    for (const model of Object.values(provider["models"])) {
+      if (!isRecord(model) || typeof model["id"] !== "string" || typeof model["name"] !== "string") {
         continue;
       }
-      if (model.name === model.id) {
+      if (model["name"] === model["id"]) {
         continue;
       }
-      addDisplayName(candidates, model.id, model.name);
-      addDisplayName(candidates, model.id.split("/").at(-1) ?? model.id, model.name);
+      addDisplayName(candidates, model["id"], model["name"]);
+      addDisplayName(candidates, model["id"].split("/").at(-1) ?? model["id"], model["name"]);
     }
   }
 
