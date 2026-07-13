@@ -4,7 +4,7 @@
 
 `GET /v1/models` currently concatenates every enabled provider's client-facing routes. If multiple providers expose the same model id, the response contains duplicates with different `owned_by` values.
 
-The response also implements only the OpenAI Models list shape. Anthropic clients expect pagination fields at the top level and additional metadata on every model. OAuth model discovery already supplies human-readable names, but runtime materialization currently reduces those model records to string ids and loses `displayName`.
+The response also implements only the OpenAI Models list shape. Anthropic clients expect pagination fields at the top level and additional metadata on every model. OAuth model discovery already supplies human-readable names, but runtime materialization currently reduces those model records to string ids and loses `displayName`. Non-OAuth providers can reuse the models.dev catalog that the server already fetches for usage pricing instead of always falling back to a raw model id.
 
 ## Desired Behavior
 
@@ -50,9 +50,17 @@ Each model entry contains the union of OpenAI `Model` and Anthropic `ModelInfo`:
 }
 ```
 
-The proxy does not currently have release timestamps, capability descriptions, or token limits for general configured providers. Unknown timestamps use Unix epoch values: `created: 0` and `created_at: "1970-01-01T00:00:00Z"`. Unknown capability and token-limit fields are `null`, which the installed Anthropic SDK types allow.
+The proxy does not currently normalize release timestamps, capability descriptions, or token limits for general configured providers. Unknown timestamps use Unix epoch values: `created: 0` and `created_at: "1970-01-01T00:00:00Z"`. Unknown capability and token-limit fields are `null`, which the installed Anthropic SDK types allow.
 
-## OAuth Metadata
+## Model Display Names
+
+Display-name resolution is provider-aware and follows this order:
+
+1. For OAuth providers, use vendor metadata for the route's upstream `modelId`.
+2. For non-OAuth providers, query the cached models.dev catalog by the client-facing alias first, then by the upstream `modelId`.
+3. If no trustworthy metadata is available, use the client-facing model id.
+
+### OAuth Metadata
 
 Runtime OAuth providers gain an optional model metadata map keyed by upstream model id. It preserves the existing OAuth discovery `displayName` without changing the string model ids used by routing.
 
@@ -60,17 +68,27 @@ Runtime OAuth providers gain an optional model metadata map keyed by upstream mo
 - GitHub Copilot builds the map from its cached model records and retains the optional `displayName` already stored during login.
 - API and AI SDK providers do not synthesize metadata.
 
-The endpoint iterates `modelRoutes(provider)`. For each route, it exposes `route.alias` as `id` and looks up metadata using `route.modelId`. This allows an OAuth alias to inherit the human-readable name of its upstream target. If the winning provider has no `displayName`, `display_name` falls back to the client-facing id.
+The endpoint iterates `modelRoutes(provider)`. For each OAuth route, it exposes `route.alias` as `id` and looks up vendor metadata using `route.modelId`. This allows an OAuth alias to inherit the human-readable name of its upstream target.
+
+### models.dev Metadata
+
+Generalize the existing six-hour models.dev price catalog task into one cached catalog task that serves both usage pricing and display-name lookup. `/v1/models` and usage capture share the same fetch result and refresh lifecycle; the model-list endpoint must not introduce a second models.dev request path.
+
+models.dev often contains the same bare model id under many providers. Display-name lookup collects matching entries and prefers a single human-readable name that differs from the raw id. If multiple conflicting human-readable names remain, the lookup is ambiguous and returns no name instead of choosing arbitrarily.
+
+Lookup checks the client-facing alias before the upstream id. This lets an API provider expose a canonical alias such as `claude-opus-4-6` for an opaque upstream target while still receiving the catalog name `Claude Opus 4.6`.
 
 ## Implementation Boundary
 
 Keep aggregation and response shaping in `packages/server/src/server.ts`, because this is an HTTP representation concern. Continue using the shared core `modelRoutes()` helper so the listed model ids cannot drift from runtime routing.
 
-Extend only the server runtime OAuth type and the two OAuth runtime constructors to carry model metadata. Do not change provider configuration schemas, core router behavior, raw provider model definitions, or add dependencies.
+Extend the core models.dev catalog with display-name lookup while preserving its existing pricing interface. Expose the same cached catalog task to the model-list route and usage capture. The route awaits the catalog task, but catalog failure degrades to OAuth metadata or the model id rather than failing the request. The catalog task remains injectable for hermetic server tests.
+
+Extend only the server runtime OAuth type and the two OAuth runtime constructors to carry vendor model metadata. Do not change provider configuration schemas, core router behavior, raw provider model definitions, or add dependencies.
 
 ## Error Behavior
 
-The endpoint performs no upstream requests. Missing or incomplete metadata is handled with deterministic fallback values, so one provider's metadata cannot make model listing fail.
+The endpoint may trigger the shared cached models.dev task. Fetch or parse failure is already treated as unavailable catalog data and must not fail `/v1/models`. Missing, conflicting, or incomplete metadata is handled with deterministic fallback values, so one provider's metadata cannot make model listing fail.
 
 Disabled providers remain excluded. An empty provider set returns an empty `data` array, `has_more: false`, and null boundary ids.
 
@@ -88,6 +106,10 @@ This adds client configuration and multiple output paths without improving compa
 
 The endpoint could inspect vendor payloads directly, but that would couple HTTP response code to authentication storage and duplicate vendor-specific parsing. Carrying normalized metadata on the runtime provider keeps the route stateless and vendor-neutral.
 
+### Fetch models.dev separately for model listing
+
+This would duplicate network traffic and cache policy. Sharing the existing catalog task keeps one source, one six-hour cache, and one failure path.
+
 ## Testing
 
 Regression tests will prove that:
@@ -99,7 +121,10 @@ Regression tests will prove that:
 - every entry contains all required OpenAI and Anthropic fields;
 - ChatGPT and GitHub Copilot OAuth display names are preserved;
 - an OAuth alias inherits its target model's display name;
-- configured providers without metadata fall back to their client-facing id;
+- non-OAuth aliases and model ids use unambiguous models.dev names;
+- conflicting or missing models.dev names fall back to the client-facing id;
+- models.dev failure still returns a valid model list;
+- model listing and usage pricing share one cached catalog task;
 - empty results contain valid pagination boundary fields.
 
 Implementation will use a red-green TDD cycle, followed by focused server and OAuth runtime tests, package tests, static checks, and a build.
