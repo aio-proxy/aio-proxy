@@ -1,6 +1,7 @@
 import { type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
 import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resources/models";
+import { filter, flatMap, map, pipe, uniqBy } from "es-toolkit/fp";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Model as OpenAIModel } from "openai/resources/models";
@@ -101,41 +102,42 @@ const unknownCreatedAt = "1970-01-01T00:00:00Z";
 type ModelListItem = OpenAIModel & AnthropicModelInfo;
 
 async function listModels(state: ServerState) {
-  const selected = new Map<string, { readonly modelId: string; readonly provider: RuntimeProviderInstance }>();
+  const selected = pipe(
+    state.currentProviderSnapshot().providers,
+    filter((provider) => provider.enabled),
+    flatMap((provider) =>
+      modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
+    ),
+    uniqBy(({ id }) => id),
+  );
 
-  for (const provider of state.currentProviderSnapshot().providers) {
-    if (!provider.enabled) {
-      continue;
-    }
-    for (const route of modelRoutes(provider)) {
-      if (!selected.has(route.alias)) {
-        selected.set(route.alias, { modelId: route.modelId, provider });
-      }
-    }
-  }
-
-  const needsCatalog = [...selected.values()].some(({ provider }) => provider.kind !== ProviderKind.OAuth);
+  const needsCatalog = selected.some(({ provider }) => provider.kind !== ProviderKind.OAuth);
   const catalog = needsCatalog ? await state.modelsDevCatalog().catch(() => undefined) : undefined;
-  const data = [...selected].map<ModelListItem>(([id, route]) => ({
-    capabilities: null,
-    created: 0,
-    created_at: unknownCreatedAt,
-    display_name: modelDisplayName(id, route.modelId, route.provider, catalog),
-    id,
-    max_input_tokens: null,
-    max_tokens: null,
-    object: "model" as const,
-    owned_by: route.provider.id,
-    type: "model" as const,
-  }));
 
-  return {
-    data,
-    first_id: data[0]?.id ?? null,
-    has_more: false,
-    last_id: data.at(-1)?.id ?? null,
-    object: "list" as const,
-  };
+  return pipe(
+    selected,
+    map(
+      ({ id, modelId, provider }): ModelListItem => ({
+        capabilities: null,
+        created: 0,
+        created_at: unknownCreatedAt,
+        display_name: modelDisplayName(id, modelId, provider, catalog),
+        id,
+        max_input_tokens: null,
+        max_tokens: null,
+        object: "model",
+        owned_by: provider.id,
+        type: "model",
+      }),
+    ),
+    (data) => ({
+      data,
+      first_id: data[0]?.id ?? null,
+      has_more: false,
+      last_id: data.at(-1)?.id ?? null,
+      object: "list" as const,
+    }),
+  );
 }
 
 function modelDisplayName(
