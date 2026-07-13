@@ -7,6 +7,7 @@ import type {
 } from "@google/genai";
 import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();
 
@@ -82,40 +83,34 @@ export function writeGeminiGenerateContentSSE(
   context: ModelEgressContext,
 ): ReadableStream<Uint8Array> {
   const metadata = fallbackMetadata(context.modelId);
-  return new ReadableStream({
-    async start(controller) {
-      const tools = new Map<string, ToolState>();
+  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+    const tools = new Map<string, ToolState>();
 
-      for await (const part of stream) {
-        switch (part.type) {
-          case "text-delta":
-            controller.enqueue(frame(metadata, [{ text: textDelta(part) }]));
-            break;
-          case "tool-input-start":
-            tools.set(part.id, { id: part.id, toolName: part.toolName, input: "" });
-            break;
-          case "tool-input-delta": {
-            const tool = tools.get(part.id);
-            if (tool !== undefined) tool.input += part.delta;
-            break;
-          }
-          case "tool-input-end": {
-            const tool = tools.get(part.id);
-            if (tool !== undefined) controller.enqueue(frame(metadata, [toolPart(tool)]));
-            break;
-          }
-          case "finish":
-            controller.enqueue(
-              frame(metadata, [], geminiFinishReason(part.finishReason), geminiUsage(part.totalUsage)),
-            );
-            break;
-          default:
-            break;
+    for await (const part of parts) {
+      switch (part.type) {
+        case "text-delta":
+          enqueue(frame(metadata, [{ text: textDelta(part) }]));
+          break;
+        case "tool-input-start":
+          tools.set(part.id, { id: part.id, toolName: part.toolName, input: "" });
+          break;
+        case "tool-input-delta": {
+          const tool = tools.get(part.id);
+          if (tool !== undefined) tool.input += part.delta;
+          break;
         }
+        case "tool-input-end": {
+          const tool = tools.get(part.id);
+          if (tool !== undefined) enqueue(frame(metadata, [toolPart(tool)]));
+          break;
+        }
+        case "finish":
+          enqueue(frame(metadata, [], geminiFinishReason(part.finishReason), geminiUsage(part.totalUsage)));
+          break;
+        default:
+          break;
       }
-
-      controller.close();
-    },
+    }
   });
 }
 

@@ -53,7 +53,7 @@ export type ServerState = ProviderRouteSource & {
   readonly events: DashboardEventHub;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
-  readonly redactedConfig: () => Config;
+  readonly currentConfig: () => Config;
   readonly requestLog: RequestLogStore;
 };
 
@@ -162,7 +162,7 @@ export function createServerState(options: ServerStateOptions): ServerState {
     },
     events,
     providerSummaries,
-    redactedConfig() {
+    currentConfig() {
       return snapshot.config;
     },
     reload,

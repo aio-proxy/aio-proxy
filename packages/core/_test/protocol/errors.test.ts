@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AiSdkProviderError,
   AnthropicMessagesTransformError,
   anthropicMessagesErrors,
   GeminiInlineDataTooLargeError,
@@ -18,6 +19,41 @@ async function body(response: Response | undefined): Promise<unknown> {
 }
 
 describe("protocol errors", () => {
+  test("maps wrapped client aborts to protocol-native 499 envelopes", async () => {
+    const cause = new Error("client disconnected");
+    cause.name = "AbortError";
+    const error = new AiSdkProviderError("provider", cause);
+
+    const openAI = openAICompletionsErrors.provider(error);
+    expect(openAI?.status).toBe(499);
+    expect(await body(openAI)).toEqual({
+      error: { code: "aborted", message: "client disconnected", type: "invalid_request_error" },
+    });
+
+    const anthropic = anthropicMessagesErrors.provider(error);
+    expect(anthropic?.status).toBe(499);
+    expect(await body(anthropic)).toEqual({
+      type: "error",
+      error: { type: "invalid_request_error", message: "client disconnected" },
+    });
+
+    const gemini = geminiGenerateContentErrors.provider(error);
+    expect(gemini?.status).toBe(499);
+    expect(await body(gemini)).toEqual({
+      error: { code: 499, message: "client disconnected", status: "CANCELLED" },
+    });
+  });
+
+  test("keeps wrapped timeouts as server errors", () => {
+    const cause = new Error("upstream timed out");
+    cause.name = "TimeoutError";
+    const error = new AiSdkProviderError("provider", cause);
+
+    expect(openAICompletionsErrors.provider(error)?.status).toBe(500);
+    expect(anthropicMessagesErrors.provider(error)?.status).toBe(500);
+    expect(geminiGenerateContentErrors.provider(error)?.status).toBe(500);
+  });
+
   test("maps request errors to each inbound protocol", async () => {
     expect(await body(openAICompletionsErrors.requestError(new SyntaxError("bad")))).toEqual({
       error: { code: "invalid_request", message: "Invalid OpenAI Completions request", type: "invalid_request_error" },

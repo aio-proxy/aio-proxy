@@ -16,9 +16,8 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 Provider selection is model-first:
 
 1. Parse the inbound request enough to get the requested model.
-2. Resolve every provider that exposes that model alias, preserving config order.
-3. Try candidates in order until one succeeds. Later this can become weighted
-   routing; until weights exist, config order is the weight.
+2. Resolve every provider that exposes that model alias.
+3. Resolve candidates by descending configured `weight`; equal or absent weights preserve config order.
 
 For each candidate:
 

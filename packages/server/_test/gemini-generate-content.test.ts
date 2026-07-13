@@ -238,7 +238,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         });
     await response.text().catch(() => undefined);
 
-    expect(response.status).toBe(stream ? 200 : 500);
+    expect(response.status).toBe(stream ? 200 : 499);
     expect(await recorded(dbHome)).toEqual({
       requests: [
         expect.objectContaining({
@@ -336,7 +336,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(body).toMatchObject({
       error: {
         code: 413,
-        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Request body too large",
         status: "RESOURCE_EXHAUSTED",
       },
     });
@@ -574,7 +574,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Request body too large",
         status: "RESOURCE_EXHAUSTED",
       },
     });
@@ -631,7 +631,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
+        message: "Request body too large",
         status: "RESOURCE_EXHAUSTED",
       },
     });

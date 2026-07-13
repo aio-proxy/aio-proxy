@@ -104,7 +104,7 @@ const requestLogsValidator = validator("query", (raw, context) => {
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
-    .get("/config", (context) => context.json(redactSecrets(state.redactedConfig())))
+    .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
     .get("/providers", async (context) => {
       const filter = context.req.query("filter");
       const probe = context.req.query("probe") === "true";
@@ -122,7 +122,7 @@ export const createDashboardRoutes = (state: ServerState) =>
     })
     .get("/providers/:id/edit-view", (context) => {
       const id = context.req.param("id");
-      const data = state.redactedConfig().providers.find((entry) => entry.id === id);
+      const data = state.currentConfig().providers.find((entry) => entry.id === id);
       if (data === undefined) {
         return context.json({ error: "provider not found" }, 404);
       }
@@ -193,7 +193,7 @@ export const createDashboardRoutes = (state: ServerState) =>
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const id = context.req.param("id");
-      if (!state.redactedConfig().providers.some((entry) => entry.id === id)) {
+      if (!state.currentConfig().providers.some((entry) => entry.id === id)) {
         return context.json({ error: "provider not found" }, 404);
       }
       await state.configStore.mutateProviders((record) => {

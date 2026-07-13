@@ -66,7 +66,10 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
   tooLarge: () => geminiError(413, "RESOURCE_EXHAUSTED", "Request body too large"),
   unsupported: () =>
     geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch"),
-  provider: (error) => genericProviderError(error, (status, message) => geminiError(status, "UNAVAILABLE", message)),
+  provider: (error) =>
+    genericProviderError(error, (status, message) =>
+      status === 499 ? geminiError(499, "CANCELLED", message) : geminiError(status, "UNAVAILABLE", message),
+    ),
 };
 
 function openAIProviderError(error: unknown): Response | undefined {
@@ -79,7 +82,7 @@ function openAIProviderError(error: unknown): Response | undefined {
   if (message === undefined) {
     return undefined;
   }
-  if (isAbortOrTimeout(cause)) {
+  if (isAbort(error)) {
     return openAIInvalid(499, "aborted", message);
   }
   const status = statusCode(cause);
@@ -88,14 +91,16 @@ function openAIProviderError(error: unknown): Response | undefined {
 
 function genericProviderError(
   error: unknown,
-  response: (status: 500 | 503, message: string) => Response,
+  response: (status: 499 | 500 | 503, message: string) => Response,
 ): Response | undefined {
   const missing = providerNotInstalled(error);
   if (missing !== undefined) {
     return response(503, missing.message);
   }
-  const message = providerMessage(error);
-  return message === undefined ? undefined : response(500, message);
+  const cause = error instanceof AiSdkProviderError ? error.cause : error;
+  const message = providerMessage(cause);
+  if (message === undefined) return undefined;
+  return response(isAbort(error) ? 499 : 500, message);
 }
 
 function providerNotInstalled(error: unknown): ProviderNotInstalledError | undefined {
@@ -130,8 +135,9 @@ function statusCode(error: unknown): number | undefined {
   return undefined;
 }
 
-function isAbortOrTimeout(error: unknown): boolean {
-  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+function isAbort(error: unknown): boolean {
+  const cause = error instanceof AiSdkProviderError ? error.cause : error;
+  return cause instanceof Error && cause.name === "AbortError";
 }
 
 function openAIUnsupported(feature: string): Response {
@@ -156,8 +162,8 @@ function anthropicError(status: number, type: "invalid_request_error" | "not_fou
 }
 
 function geminiError(
-  code: 400 | 404 | 413 | 500 | 501 | 503,
-  status: "INVALID_ARGUMENT" | "NOT_FOUND" | "RESOURCE_EXHAUSTED" | "UNAVAILABLE" | "UNIMPLEMENTED",
+  code: 400 | 404 | 413 | 499 | 500 | 501 | 503,
+  status: "CANCELLED" | "INVALID_ARGUMENT" | "NOT_FOUND" | "RESOURCE_EXHAUSTED" | "UNAVAILABLE" | "UNIMPLEMENTED",
   message: string,
 ): Response {
   return Response.json({ error: { code, message, status } }, { status: code });

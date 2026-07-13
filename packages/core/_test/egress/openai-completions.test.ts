@@ -70,6 +70,24 @@ function runtimePartStream(parts: readonly object[]) {
 }
 
 describe("writeOpenAICompletionsSSE", () => {
+  test("Given downstream cancellation When source is open Then source is cancelled", async () => {
+    let cancelCalls = 0;
+    const source = new ReadableStream<TextStreamPart<ToolSet>>({
+      start(controller) {
+        controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+      },
+      cancel() {
+        cancelCalls += 1;
+      },
+    });
+
+    const reader = new Response(writeOpenAICompletionsSSE(source)).body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client stopped");
+
+    expect(cancelCalls).toBe(1);
+  });
+
   test("Given finish-step metadata When encoded as response Then upstream metadata is reused", async () => {
     const response = await writeOpenAICompletionsResponse(
       runtimePartStream([

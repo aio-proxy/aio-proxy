@@ -1,5 +1,6 @@
 import type {
   Response,
+  ResponseFunctionToolCall,
   ResponseOutputItem,
   ResponseOutputMessage,
   ResponseReasoningItem,
@@ -9,6 +10,7 @@ import type {
 } from "openai/resources/responses/responses";
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();
 
@@ -28,9 +30,24 @@ type ResponseMetadata = {
   readonly createdAt: number;
 };
 
+type ToolState = {
+  readonly id: string;
+  readonly callId: string;
+  readonly name: string;
+  arguments: string;
+  completed: boolean;
+};
+
+type OutputItemRef =
+  | { readonly type: "message" }
+  | { readonly type: "reasoning" }
+  | { readonly type: "tool"; readonly callId: string };
+
 type ResponseState = {
   readonly text: string[];
   readonly reasoning: string[];
+  readonly tools: Map<string, ToolState>;
+  readonly output: OutputItemRef[];
   metadata: ResponseMetadata;
   usage?: ResponseUsage;
 };
@@ -39,89 +56,135 @@ export function writeOpenAIResponsesSSE(
   stream: ReadableStream<OpenAIResponsesStreamPart>,
   context: ModelEgressContext,
 ): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    async start(controller) {
-      const state: ResponseState = { text: [], reasoning: [], metadata: fallbackMetadata(context.modelId) };
-      let textItemAdded = false;
-      let reasoningItemAdded = false;
-      let sequenceNumber = 0;
-      const send = (value: ResponseStreamEvent) => {
-        controller.enqueue(frame(value));
-        sequenceNumber += 1;
-      };
+  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+    const state = responseState(context.modelId);
+    let sequenceNumber = 0;
+    const send = (value: ResponseStreamEvent) => {
+      enqueue(frame(value));
+      sequenceNumber += 1;
+    };
 
-      send({
-        type: "response.created",
-        sequence_number: sequenceNumber,
-        response: responseObject("in_progress", state),
-      });
+    send({
+      type: "response.created",
+      sequence_number: sequenceNumber,
+      response: responseObject("in_progress", state),
+    });
 
-      for await (const part of stream) {
-        switch (part.type) {
-          case "reasoning-delta": {
-            const outputIndex = 0;
-            if (!reasoningItemAdded) {
-              reasoningItemAdded = true;
-              send({
-                type: "response.output_item.added",
-                sequence_number: sequenceNumber,
-                output_index: outputIndex,
-                item: reasoningItem(state, "in_progress"),
-              });
-            }
-            const delta = reasoningDelta(part);
-            state.reasoning.push(delta);
+    for await (const part of parts) {
+      switch (part.type) {
+        case "reasoning-delta": {
+          const output = ensureOutput(state, { type: "reasoning" });
+          if (output.added) {
             send({
-              type: "response.reasoning_summary_text.delta",
+              type: "response.output_item.added",
               sequence_number: sequenceNumber,
-              item_id: state.metadata.reasoningId,
-              output_index: outputIndex,
-              summary_index: 0,
-              delta,
+              output_index: output.index,
+              item: reasoningItem(state, "in_progress"),
             });
-            break;
           }
-          case "text-delta": {
-            const outputIndex = reasoningItemAdded ? 1 : 0;
-            if (!textItemAdded) {
-              textItemAdded = true;
-              send({
-                type: "response.output_item.added",
-                sequence_number: sequenceNumber,
-                output_index: outputIndex,
-                item: messageItem(state, "in_progress"),
-              });
-            }
-            const delta = textDelta(part);
-            state.text.push(delta);
-            send({
-              type: "response.output_text.delta",
-              sequence_number: sequenceNumber,
-              item_id: state.metadata.messageId,
-              output_index: outputIndex,
-              content_index: 0,
-              delta,
-              logprobs: [],
-            });
-            break;
-          }
-          case "finish": {
-            const usage = openAIUsage(finishUsage(part));
-            if (usage !== undefined) state.usage = usage;
-            break;
-          }
-          default:
-            break;
+          const delta = reasoningDelta(part);
+          state.reasoning.push(delta);
+          send({
+            type: "response.reasoning_summary_text.delta",
+            sequence_number: sequenceNumber,
+            item_id: state.metadata.reasoningId,
+            output_index: output.index,
+            summary_index: 0,
+            delta,
+          });
+          break;
         }
+        case "text-delta": {
+          const output = ensureOutput(state, { type: "message" });
+          if (output.added) {
+            send({
+              type: "response.output_item.added",
+              sequence_number: sequenceNumber,
+              output_index: output.index,
+              item: messageItem(state, "in_progress"),
+            });
+          }
+          const delta = textDelta(part);
+          state.text.push(delta);
+          send({
+            type: "response.output_text.delta",
+            sequence_number: sequenceNumber,
+            item_id: state.metadata.messageId,
+            output_index: output.index,
+            content_index: 0,
+            delta,
+            logprobs: [],
+          });
+          break;
+        }
+        case "tool-input-start": {
+          if (state.tools.has(part.id)) break;
+          const tool = {
+            id: `fc_${crypto.randomUUID()}`,
+            callId: part.id,
+            name: part.toolName,
+            arguments: "",
+            completed: false,
+          };
+          state.tools.set(part.id, tool);
+          const output = ensureOutput(state, { type: "tool", callId: part.id });
+          send({
+            type: "response.output_item.added",
+            sequence_number: sequenceNumber,
+            output_index: output.index,
+            item: toolItem(tool, "in_progress"),
+          });
+          break;
+        }
+        case "tool-input-delta": {
+          const tool = state.tools.get(part.id);
+          if (tool === undefined || tool.completed) break;
+          tool.arguments += part.delta;
+          send({
+            type: "response.function_call_arguments.delta",
+            sequence_number: sequenceNumber,
+            item_id: tool.id,
+            output_index: outputIndex(state, { type: "tool", callId: part.id }),
+            delta: part.delta,
+          });
+          break;
+        }
+        case "tool-input-end": {
+          const tool = state.tools.get(part.id);
+          if (tool === undefined || tool.completed) break;
+          tool.completed = true;
+          const index = outputIndex(state, { type: "tool", callId: part.id });
+          send({
+            type: "response.function_call_arguments.done",
+            sequence_number: sequenceNumber,
+            item_id: tool.id,
+            output_index: index,
+            name: tool.name,
+            arguments: tool.arguments,
+          });
+          send({
+            type: "response.output_item.done",
+            sequence_number: sequenceNumber,
+            output_index: index,
+            item: toolItem(tool, "completed"),
+          });
+          break;
+        }
+        case "finish": {
+          const usage = openAIUsage(finishUsage(part));
+          if (usage !== undefined) state.usage = usage;
+          break;
+        }
+        default:
+          break;
       }
+    }
 
-      send({
-        type: "response.completed",
-        sequence_number: sequenceNumber,
-        response: responseObject("completed", state),
-      });
-      controller.close();
-    },
+    send({
+      type: "response.completed",
+      sequence_number: sequenceNumber,
+      response: responseObject("completed", state),
+    });
   });
 }
 
@@ -129,16 +192,40 @@ export async function writeOpenAIResponsesResponse(
   stream: ReadableStream<OpenAIResponsesStreamPart>,
   context: ModelEgressContext,
 ): Promise<Response> {
-  const state: ResponseState = { text: [], reasoning: [], metadata: fallbackMetadata(context.modelId) };
+  const state = responseState(context.modelId);
 
   for await (const part of stream) {
     switch (part.type) {
       case "reasoning-delta":
+        ensureOutput(state, { type: "reasoning" });
         state.reasoning.push(reasoningDelta(part));
         break;
       case "text-delta":
+        ensureOutput(state, { type: "message" });
         state.text.push(textDelta(part));
         break;
+      case "tool-input-start":
+        if (!state.tools.has(part.id)) {
+          state.tools.set(part.id, {
+            id: `fc_${crypto.randomUUID()}`,
+            callId: part.id,
+            name: part.toolName,
+            arguments: "",
+            completed: false,
+          });
+          ensureOutput(state, { type: "tool", callId: part.id });
+        }
+        break;
+      case "tool-input-delta": {
+        const tool = state.tools.get(part.id);
+        if (tool !== undefined && !tool.completed) tool.arguments += part.delta;
+        break;
+      }
+      case "tool-input-end": {
+        const tool = state.tools.get(part.id);
+        if (tool !== undefined) tool.completed = true;
+        break;
+      }
       case "finish-step":
         state.metadata = upstreamMetadata(part, state.metadata);
         break;
@@ -153,6 +240,16 @@ export async function writeOpenAIResponsesResponse(
   }
 
   return responseObject("completed", state);
+}
+
+function responseState(modelId: string): ResponseState {
+  return {
+    text: [],
+    reasoning: [],
+    tools: new Map(),
+    output: [],
+    metadata: fallbackMetadata(modelId),
+  };
 }
 
 function fallbackMetadata(model: string): ResponseMetadata {
@@ -203,10 +300,39 @@ function responseObject(status: ResponseStatus, state: ResponseState): Response 
 }
 
 function outputItems(state: ResponseState): ResponseOutputItem[] {
-  return [
-    ...(state.reasoning.length === 0 ? [] : [reasoningItem(state, "completed")]),
-    ...(state.text.length === 0 ? [] : [messageItem(state, "completed")]),
-  ];
+  const items: ResponseOutputItem[] = [];
+  for (const output of state.output) {
+    switch (output.type) {
+      case "reasoning":
+        items.push(reasoningItem(state, "completed"));
+        break;
+      case "message":
+        items.push(messageItem(state, "completed"));
+        break;
+      case "tool": {
+        const tool = state.tools.get(output.callId);
+        if (tool !== undefined) items.push(toolItem(tool, "completed"));
+        break;
+      }
+    }
+  }
+  return items;
+}
+
+function ensureOutput(
+  state: ResponseState,
+  output: OutputItemRef,
+): { readonly index: number; readonly added: boolean } {
+  const index = outputIndex(state, output);
+  if (index >= 0) return { index, added: false };
+  state.output.push(output);
+  return { index: state.output.length - 1, added: true };
+}
+
+function outputIndex(state: ResponseState, output: OutputItemRef): number {
+  return output.type === "tool"
+    ? state.output.findIndex((item) => item.type === "tool" && item.callId === output.callId)
+    : state.output.findIndex((item) => item.type === output.type);
 }
 
 function reasoningItem(state: ResponseState, status: "in_progress" | "completed"): ResponseReasoningItem {
@@ -228,6 +354,17 @@ function messageItem(state: ResponseState, status: "in_progress" | "completed"):
       state.text.length === 0
         ? []
         : [{ type: "output_text", text: state.text.join(""), annotations: [], logprobs: [] }],
+  };
+}
+
+function toolItem(tool: ToolState, status: "in_progress" | "completed"): ResponseFunctionToolCall {
+  return {
+    id: tool.id,
+    type: "function_call",
+    call_id: tool.callId,
+    name: tool.name,
+    arguments: tool.arguments,
+    status,
   };
 }
 

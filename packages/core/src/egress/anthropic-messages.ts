@@ -9,6 +9,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages/messages";
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();
 
@@ -114,133 +115,130 @@ export function writeAnthropicMessagesSSE(
   context: ModelEgressContext,
 ): ReadableStream<Uint8Array> {
   const id = messageId();
-  return new ReadableStream({
-    async start(controller) {
-      let nextIndex = 0;
-      let text: { readonly id: string; readonly index: number } | undefined;
-      const texts = new Map<string, number>();
-      const tools = new Map<string, number>();
-      const openBlocks = new Set<number>();
+  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+    let nextIndex = 0;
+    let text: { readonly id: string; readonly index: number } | undefined;
+    const texts = new Map<string, number>();
+    const tools = new Map<string, number>();
+    const openBlocks = new Set<number>();
 
-      controller.enqueue(
-        event({
-          type: "message_start",
-          message: {
-            id,
-            type: "message",
-            role: "assistant",
-            container: null,
-            content: [],
-            model: context.modelId,
-            stop_details: null,
-            stop_reason: null,
-            stop_sequence: null,
-            usage: anthropicUsage({}),
-          },
-        }),
-      );
+    enqueue(
+      event({
+        type: "message_start",
+        message: {
+          id,
+          type: "message",
+          role: "assistant",
+          container: null,
+          content: [],
+          model: context.modelId,
+          stop_details: null,
+          stop_reason: null,
+          stop_sequence: null,
+          usage: anthropicUsage({}),
+        },
+      }),
+    );
 
-      for await (const part of stream) {
-        switch (part.type) {
-          case "text-start":
-            if (!texts.has(part.id)) {
-              if (text !== undefined && openBlocks.delete(text.index)) controller.enqueue(contentBlockStop(text.index));
-              text = { id: part.id, index: nextIndex++ };
-              texts.set(part.id, text.index);
-              openBlocks.add(text.index);
-              controller.enqueue(textStart(text.index));
-            }
-            break;
-          case "text-delta": {
-            let index = texts.get(part.id);
-            if (index === undefined) {
-              if (text !== undefined && openBlocks.delete(text.index)) controller.enqueue(contentBlockStop(text.index));
-              text = { id: part.id, index: nextIndex++ };
-              index = text.index;
-              texts.set(part.id, index);
-              openBlocks.add(index);
-              controller.enqueue(textStart(index));
-            }
-            if (openBlocks.has(index)) {
-              controller.enqueue(
-                event({ type: "content_block_delta", index, delta: { type: "text_delta", text: textDelta(part) } }),
-              );
-            }
-            break;
+    for await (const part of parts) {
+      switch (part.type) {
+        case "text-start":
+          if (!texts.has(part.id)) {
+            if (text !== undefined && openBlocks.delete(text.index)) enqueue(contentBlockStop(text.index));
+            text = { id: part.id, index: nextIndex++ };
+            texts.set(part.id, text.index);
+            openBlocks.add(text.index);
+            enqueue(textStart(text.index));
           }
-          case "text-end": {
-            const index = texts.get(part.id);
-            if (index !== undefined && openBlocks.delete(index)) controller.enqueue(contentBlockStop(index));
-            if (text?.id === part.id) text = undefined;
-            break;
-          }
-          case "tool-input-start": {
-            if (text !== undefined && openBlocks.delete(text.index)) {
-              controller.enqueue(contentBlockStop(text.index));
-              text = undefined;
-            }
-            const index = nextIndex++;
-            tools.set(part.id, index);
+          break;
+        case "text-delta": {
+          let index = texts.get(part.id);
+          if (index === undefined) {
+            if (text !== undefined && openBlocks.delete(text.index)) enqueue(contentBlockStop(text.index));
+            text = { id: part.id, index: nextIndex++ };
+            index = text.index;
+            texts.set(part.id, index);
             openBlocks.add(index);
-            controller.enqueue(
-              event({
-                type: "content_block_start",
-                index,
-                content_block: {
-                  type: "tool_use",
-                  id: part.id,
-                  name: part.toolName,
-                  input: {},
-                  caller: { type: "direct" },
-                },
-              }),
+            enqueue(textStart(index));
+          }
+          if (openBlocks.has(index)) {
+            enqueue(
+              event({ type: "content_block_delta", index, delta: { type: "text_delta", text: textDelta(part) } }),
             );
-            break;
           }
-          case "tool-input-delta": {
-            const index = tools.get(part.id);
-            if (index !== undefined && openBlocks.has(index)) {
-              controller.enqueue(
-                event({
-                  type: "content_block_delta",
-                  index,
-                  delta: { type: "input_json_delta", partial_json: part.delta },
-                }),
-              );
-            }
-            break;
-          }
-          case "tool-input-end": {
-            const index = tools.get(part.id);
-            if (index !== undefined && openBlocks.delete(index)) controller.enqueue(contentBlockStop(index));
-            break;
-          }
-          case "finish":
-            for (const index of openBlocks) controller.enqueue(contentBlockStop(index));
-            openBlocks.clear();
-            text = undefined;
-            controller.enqueue(
-              event({
-                type: "message_delta",
-                delta: {
-                  container: null,
-                  stop_details: null,
-                  stop_reason: anthropicStopReason(part.finishReason),
-                  stop_sequence: null,
-                },
-                usage: messageDeltaUsage(finishUsage(part)),
-              }),
-            );
-            break;
-          default:
-            break;
+          break;
         }
+        case "text-end": {
+          const index = texts.get(part.id);
+          if (index !== undefined && openBlocks.delete(index)) enqueue(contentBlockStop(index));
+          if (text?.id === part.id) text = undefined;
+          break;
+        }
+        case "tool-input-start": {
+          if (text !== undefined && openBlocks.delete(text.index)) {
+            enqueue(contentBlockStop(text.index));
+            text = undefined;
+          }
+          const index = nextIndex++;
+          tools.set(part.id, index);
+          openBlocks.add(index);
+          enqueue(
+            event({
+              type: "content_block_start",
+              index,
+              content_block: {
+                type: "tool_use",
+                id: part.id,
+                name: part.toolName,
+                input: {},
+                caller: { type: "direct" },
+              },
+            }),
+          );
+          break;
+        }
+        case "tool-input-delta": {
+          const index = tools.get(part.id);
+          if (index !== undefined && openBlocks.has(index)) {
+            enqueue(
+              event({
+                type: "content_block_delta",
+                index,
+                delta: { type: "input_json_delta", partial_json: part.delta },
+              }),
+            );
+          }
+          break;
+        }
+        case "tool-input-end": {
+          const index = tools.get(part.id);
+          if (index !== undefined && openBlocks.delete(index)) enqueue(contentBlockStop(index));
+          break;
+        }
+        case "finish":
+          for (const index of openBlocks) enqueue(contentBlockStop(index));
+          openBlocks.clear();
+          text = undefined;
+          enqueue(
+            event({
+              type: "message_delta",
+              delta: {
+                container: null,
+                stop_details: null,
+                stop_reason: anthropicStopReason(part.finishReason),
+                stop_sequence: null,
+              },
+              usage: messageDeltaUsage(finishUsage(part)),
+            }),
+          );
+          break;
+        default:
+          break;
       }
+    }
 
-      for (const index of openBlocks) controller.enqueue(contentBlockStop(index));
-      controller.enqueue(event({ type: "message_stop" }));
-      controller.close();
-    },
+    for (const index of openBlocks) enqueue(contentBlockStop(index));
+    enqueue(event({ type: "message_stop" }));
   });
 }
 
