@@ -1,5 +1,5 @@
-import { modelRoutes } from "@aio-proxy/core";
-import { ConfigSchema } from "@aio-proxy/types";
+import { type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
+import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { DashboardAssets } from "./dashboard-assets";
@@ -27,6 +27,7 @@ export type CreateServerOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
+  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly port?: number;
   readonly host?: string;
@@ -46,21 +47,7 @@ const createRoutes = (
       version: "0.0.0",
     }),
   );
-  app.get("/v1/models", (context) =>
-    context.json({
-      object: "list",
-      data: state
-        .currentProviderSnapshot()
-        .providers.filter((provider) => provider.enabled)
-        .flatMap((provider) =>
-          exposedModels(provider).map((model) => ({
-            id: model,
-            object: "model",
-            owned_by: provider.id,
-          })),
-        ),
-    }),
-  );
+  app.get("/v1/models", async (context) => context.json(await listModels(state)));
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
 
   app.use("/dashboard/api/*", async (context, next) => {
@@ -108,8 +95,56 @@ const createRoutes = (
   return routes;
 };
 
-function exposedModels(provider: RuntimeProviderInstance): string[] {
-  return modelRoutes(provider).map((route) => route.alias);
+const unknownCreatedAt = "1970-01-01T00:00:00Z";
+
+async function listModels(state: ServerState) {
+  const selected = new Map<string, { readonly modelId: string; readonly provider: RuntimeProviderInstance }>();
+
+  for (const provider of state.currentProviderSnapshot().providers) {
+    if (!provider.enabled) {
+      continue;
+    }
+    for (const route of modelRoutes(provider)) {
+      if (!selected.has(route.alias)) {
+        selected.set(route.alias, { modelId: route.modelId, provider });
+      }
+    }
+  }
+
+  const needsCatalog = [...selected.values()].some(({ provider }) => provider.kind !== ProviderKind.OAuth);
+  const catalog = needsCatalog ? await state.modelsDevCatalog().catch(() => undefined) : undefined;
+  const data = [...selected].map(([id, route]) => ({
+    capabilities: null,
+    created: 0,
+    created_at: unknownCreatedAt,
+    display_name: modelDisplayName(id, route.modelId, route.provider, catalog),
+    id,
+    max_input_tokens: null,
+    max_tokens: null,
+    object: "model" as const,
+    owned_by: route.provider.id,
+    type: "model" as const,
+  }));
+
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false,
+    last_id: data.at(-1)?.id ?? null,
+    object: "list" as const,
+  };
+}
+
+function modelDisplayName(
+  id: string,
+  modelId: string,
+  provider: RuntimeProviderInstance,
+  catalog: ModelsDevCatalog | undefined,
+): string {
+  if (provider.kind === ProviderKind.OAuth) {
+    return provider.modelMetadata?.[modelId]?.displayName ?? id;
+  }
+  return catalog?.displayName(id) ?? catalog?.displayName(modelId) ?? id;
 }
 
 const routes = createRoutes(createServerState({ config: defaultConfig }));
@@ -131,6 +166,7 @@ export const createServer = (options: CreateServerOptions): AppType => {
       ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
       ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
       ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
+      ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
       ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
       ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
     }),
