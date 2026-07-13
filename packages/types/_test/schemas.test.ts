@@ -183,11 +183,11 @@ describe("ConfigSchema", () => {
 
     expect(
       ConfigSchema.parse({
-        server: { host: "0.0.0.0", port: 3000 },
+        server: { host: "127.0.0.1", port: 3000 },
         providers: input,
       }),
     ).toEqual({
-      server: { host: "0.0.0.0", port: 3000 },
+      server: { host: "127.0.0.1", port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
         { kind: "oauth", enabled: true, id: "copilot", vendor: OAuthVendor.GitHubCopilot },

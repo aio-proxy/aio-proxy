@@ -7,8 +7,14 @@ import {
   validateAliasTargets,
 } from "./provider";
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
 export const ServerConfigSchema = z.object({
-  host: z.string().min(1).default("127.0.0.1").describe("HTTP host for the proxy API server."),
+  host: z
+    .string()
+    .refine((host) => LOOPBACK_HOSTS.has(host), "Remote binding requires an authenticated remote-mode design")
+    .default("127.0.0.1")
+    .describe("Loopback host for the proxy API server."),
   port: z.number().int().min(1).max(65_535).default(22_078).describe("HTTP port for the proxy API server."),
 });
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { AppType } from "@aio-proxy/server";
 import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ConfigSchema, ProviderProtocol } from "@aio-proxy/types";
 import { hc } from "hono/client";
 
 const config = {
@@ -230,6 +230,10 @@ describe("server routes", () => {
   test("server defaults bind to localhost api port when inspected", () => {
     // Given / When / Then
     expect(serverDefaults).toEqual({ host: "127.0.0.1", port: 22_078 });
+  });
+
+  test("server config rejects non-loopback binding", () => {
+    expect(() => ConfigSchema.parse({ server: { host: "0.0.0.0" }, providers: {} })).toThrow();
   });
 
   test("Bun entrypoint binds localhost api port when inspected", () => {
