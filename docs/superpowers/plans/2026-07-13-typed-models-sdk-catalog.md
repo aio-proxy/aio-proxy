@@ -11,6 +11,7 @@
 ## Global Constraints
 
 - Use `Models.make().providers()`; do not fetch models.dev URLs directly.
+- Bound each live models.dev request with a three-second abort signal.
 - Resolve complete OpenRouter metadata by exact ID and then unique bare ID before canonical/provider fallbacks.
 - Preserve the existing six-hour server cache and shared pricing/model-list task.
 - Use `limit.input ?? limit.context` for `max_input_tokens` and `limit.output` for `max_tokens`.
@@ -111,7 +112,7 @@ In `models-dev-catalog.ts`, define:
 import { Models, type Model, type ProviderMap } from "@opencode-ai/models";
 import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
 
-export type FetchModelsDevProviders = () => Promise<ProviderMap>;
+export type FetchModelsDevProviders = (options?: RequestOptions) => Promise<ProviderMap>;
 export type ModelsDevCapabilities = Pick<
   ModelCapabilities,
   "effort" | "image_input" | "pdf_input" | "structured_outputs" | "thinking"
@@ -132,7 +133,7 @@ Create one stateless SDK client and typed default loader:
 
 ```ts
 const modelsDev = Models.make();
-const defaultFetch: FetchModelsDevProviders = () => modelsDev.providers();
+const defaultFetch: FetchModelsDevProviders = (options) => modelsDev.providers(options);
 ```
 
 Use `providers["openrouter"]?.models` for pricing and complete metadata. Resolve exact OpenRouter IDs first, then reuse the existing unique bare-ID index; only then use provider-scoped candidates with the existing canonical OpenAI/Anthropic preference and unambiguous-fallback rules.

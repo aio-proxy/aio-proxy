@@ -1,9 +1,4 @@
-import {
-  type ModelsDevCapabilities,
-  type ModelsDevCatalog,
-  type ModelsDevModelMetadata,
-  modelRoutes,
-} from "@aio-proxy/core";
+import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
 import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resources/models";
 import { getUnixTime, isValid, parseISO } from "date-fns";
@@ -125,13 +120,21 @@ async function listModels(state: ServerState) {
   return pipe(
     selected,
     map(({ id, modelId, provider }): ModelListItem => {
-      const metadata = catalog?.metadata(id) ?? catalog?.metadata(modelId);
+      const aliasMetadata = catalog?.metadata(id);
+      const upstreamMetadata =
+        id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
+      const metadata = aliasMetadata ?? upstreamMetadata;
       const timestamps = modelTimestamps(metadata?.releaseDate);
       return {
         capabilities: metadata?.capabilities ?? null,
         created: timestamps.created,
         created_at: timestamps.createdAt,
-        display_name: modelDisplayName(id, modelId, provider, metadata),
+        display_name: modelDisplayName(
+          id,
+          modelId,
+          provider,
+          aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
+        ),
         id,
         max_input_tokens: metadata?.maxInputTokens ?? null,
         max_tokens: metadata?.maxTokens ?? null,
@@ -154,12 +157,12 @@ function modelDisplayName(
   id: string,
   modelId: string,
   provider: RuntimeProviderInstance,
-  metadata: ModelsDevModelMetadata | undefined,
+  catalogDisplayName: string | undefined,
 ): string {
   if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? id;
+    return provider.modelMetadata?.[modelId]?.displayName ?? catalogDisplayName ?? id;
   }
-  return metadata?.displayName ?? id;
+  return catalogDisplayName ?? id;
 }
 
 function modelTimestamps(releaseDate: string | undefined): { readonly created: number; readonly createdAt: string } {

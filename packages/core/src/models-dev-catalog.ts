@@ -1,5 +1,5 @@
 import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
-import { type Model, Models, type ProviderMap } from "@opencode-ai/models";
+import { type Model, Models, type ProviderMap, type RequestOptions } from "@opencode-ai/models";
 import type { OpenRouterModelPrice } from "./usage-pricing";
 
 export type OpenRouterPriceCatalog = {
@@ -24,7 +24,7 @@ export type ModelsDevModelMetadata = {
   readonly releaseDate?: string;
 };
 
-export type FetchModelsDevProviders = () => Promise<ProviderMap>;
+export type FetchModelsDevProviders = (options?: RequestOptions) => Promise<ProviderMap>;
 export type FetchOpenRouterPrices = FetchModelsDevProviders;
 
 type MetadataCatalog = {
@@ -35,13 +35,14 @@ type MetadataCatalog = {
 };
 
 const modelsDev = Models.make();
+const modelsDevRequestTimeoutMs = 3_000;
 const openRouterProviderId = "openrouter";
-const defaultFetch: FetchModelsDevProviders = () => modelsDev.providers();
+const defaultFetch: FetchModelsDevProviders = (options) => modelsDev.providers(options);
 
 export async function createModelsDevCatalog(
   fetchProviders: FetchModelsDevProviders = defaultFetch,
 ): Promise<ModelsDevCatalog> {
-  const providers = await fetchProviders();
+  const providers = await fetchProviders({ signal: AbortSignal.timeout(modelsDevRequestTimeoutMs) });
   const prices = parsePrices(providers);
   const byId = new Map(prices.map((price) => [price.id, price]));
   const byBareId = uniqueBareEntries(byId);
@@ -150,7 +151,7 @@ function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevMo
   const providerMetadata = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
   return (
     catalog.byOpenRouterId.get(modelId) ??
-    catalog.byOpenRouterBareId.get(modelId) ??
+    catalog.byOpenRouterBareId.get(bareId) ??
     providerMetadata?.get(modelId) ??
     providerMetadata?.get(bareId) ??
     catalog.byModelId.get(modelId) ??

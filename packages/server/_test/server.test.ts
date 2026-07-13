@@ -212,6 +212,43 @@ describe("server routes", () => {
     );
   });
 
+  test("Given alias metadata without a name When models are requested Then the upstream name is used", async () => {
+    const app = createServer({
+      modelsDevCatalogTask: async () => ({
+        displayName: () => undefined,
+        find: () => undefined,
+        metadata(modelId) {
+          return {
+            "friendly-alias": { maxInputTokens: 100, maxTokens: 10 },
+            "upstream-model": { displayName: "Upstream Model", maxInputTokens: 200, maxTokens: 20 },
+          }[modelId];
+        },
+      }),
+      config: {
+        providers: {
+          api: {
+            kind: "api",
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.example.com/v1",
+            models: ["upstream-model"],
+            alias: { "friendly-alias": "upstream-model" },
+          },
+        },
+      },
+    });
+
+    const response = await app.request("/v1/models");
+
+    expect(await response.json()).toEqual(
+      expectedModelList([
+        expectedModel("friendly-alias", "api", "Upstream Model", {
+          maxInputTokens: 100,
+          maxTokens: 10,
+        }),
+      ]),
+    );
+  });
+
   test("Given duplicate models When models are requested Then the highest-weight provider owns each id", async () => {
     const catalog: ModelsDevCatalog = {
       displayName(modelId) {

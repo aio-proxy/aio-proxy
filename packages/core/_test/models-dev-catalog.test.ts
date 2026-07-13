@@ -71,6 +71,18 @@ const conflictingApi: ProviderMap = {
 };
 
 describe("models.dev catalog", () => {
+  test("bounds provider fetches with an abort signal", async () => {
+    let signal: AbortSignal | undefined;
+
+    await createModelsDevCatalog(async (options?: { readonly signal?: AbortSignal }) => {
+      signal = options?.signal;
+      return api;
+    });
+
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+  });
+
   test("matches full and bare OpenRouter model ids", async () => {
     const catalog = await createOpenRouterPriceCatalog(async () => api);
 
@@ -110,6 +122,7 @@ describe("models.dev catalog", () => {
       maxTokens: 128_000,
       releaseDate: "2026-02-17",
     });
+    expect(catalog.metadata("proxy/gpt-5.5")).toEqual(catalog.metadata("gpt-5.5"));
     expect(catalog.metadata("openai/gpt-5.5")).toEqual(catalog.metadata("gpt-5.5"));
     expect(catalog.metadata("anthropic/claude-sonnet-4-6")).toEqual(catalog.metadata("claude-sonnet-4-6"));
   });

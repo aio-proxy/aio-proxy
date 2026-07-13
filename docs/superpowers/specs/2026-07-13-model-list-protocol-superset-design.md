@@ -57,7 +57,7 @@ When models.dev metadata is available, the proxy fills release timestamps, token
 Display-name resolution is provider-aware and follows this order:
 
 1. For OAuth providers, prefer vendor metadata for the route's upstream `modelId`.
-2. Query the cached models.dev catalog by the client-facing alias first, then by the upstream `modelId`; OAuth vendor names remain authoritative when present.
+2. Query the cached models.dev catalog by the client-facing alias first; if its metadata has no display name, fall back to the upstream `modelId`. OAuth vendor names remain authoritative when present.
 3. If no trustworthy metadata is available, use the client-facing model id.
 
 ### OAuth Metadata
@@ -76,7 +76,7 @@ Generalize the existing six-hour models.dev price catalog task into one cached c
 
 OpenRouter publishes complete model records under qualified IDs. Lookup first uses an exact OpenRouter ID, then the existing unique bare-ID index produced by splitting qualified IDs on `/`. If OpenRouter does not contain the model, recognized OpenAI and Anthropic IDs use their canonical provider entry; other models use metadata only when matching providers agree. Conflicting fallback metadata remains unresolved instead of being chosen arbitrarily.
 
-Lookup checks the client-facing alias before the upstream id. This lets an API provider expose a canonical alias such as `claude-opus-4-6` for an opaque upstream target while still receiving the catalog name `Claude Opus 4.6`.
+Lookup checks the client-facing alias before the upstream id. This lets an API provider expose a canonical alias such as `claude-opus-4-6` for an opaque upstream target while still receiving the catalog name `Claude Opus 4.6`. Alias metadata remains authoritative for limits, capabilities, and timestamps; only a missing display name falls through to the upstream record.
 
 ## Implementation Boundary
 
@@ -88,7 +88,7 @@ The server runtime OAuth type and the two OAuth runtime constructors carry vendo
 
 ## Error Behavior
 
-The endpoint may trigger the shared cached models.dev task. Fetch or parse failure is already treated as unavailable catalog data and must not fail `/v1/models`. Missing, conflicting, or incomplete metadata is handled with deterministic fallback values, so one provider's metadata cannot make model listing fail.
+The endpoint may trigger the shared cached models.dev task. Fetch, parse, or three-second timeout failure is treated as unavailable catalog data and must not fail `/v1/models`. Missing, conflicting, or incomplete metadata is handled with deterministic fallback values, so one provider's metadata cannot make model listing fail.
 
 Disabled providers remain excluded. An empty provider set returns an empty `data` array, `has_more: false`, and null boundary ids.
 
