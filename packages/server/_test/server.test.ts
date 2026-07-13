@@ -32,7 +32,7 @@ const config = {
         },
         name: "compatible",
       },
-      models: ["compatible-test"],
+      models: ["compatible", "compatible-test"],
       alias: {
         compatible: { model: "compatible-test", preserve: false },
       },
@@ -91,31 +91,41 @@ describe("server routes", () => {
         { id: "gpt-alias", object: "model", owned_by: "openai-compatible" },
         { id: "gpt-test", object: "model", owned_by: "openai-compatible" },
         { id: "compatible", object: "model", owned_by: "compatible" },
+        { id: "compatible-test", object: "model", owned_by: "compatible" },
       ],
     });
   });
 
-  test("Given api provider with models-only and no alias When OpenAI models are requested Then no models are listed", async () => {
-    // Given
+  test("Given API and AI SDK providers with models only When models are requested Then every model is listed", async () => {
     const app = createServer({
       config: {
         providers: {
-          openai: {
+          api: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.openai.com/v1",
-            models: ["gpt-5.5", "gpt-5.4"],
+            baseUrl: "https://api.example.com/v1",
+            models: ["api-model"],
+          },
+          sdk: {
+            kind: "ai-sdk",
+            packageName: "@ai-sdk/openai-compatible",
+            options: { baseURL: "https://sdk.example.com/v1", name: "sdk" },
+            models: ["sdk-model"],
           },
         },
       },
     });
 
-    // When
     const response = await app.request("/v1/models");
 
-    // Then
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ object: "list", data: [] });
+    expect(await response.json()).toEqual({
+      object: "list",
+      data: [
+        { id: "api-model", object: "model", owned_by: "api" },
+        { id: "sdk-model", object: "model", owned_by: "sdk" },
+      ],
+    });
   });
 
   test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {
@@ -152,7 +162,8 @@ describe("server routes", () => {
             enabled: false,
             protocol: ProviderProtocol.OpenAICompatible,
             baseUrl: "https://api.example.com",
-            models: ["gpt-disabled"],
+            models: ["gpt-disabled", "gpt-untouched"],
+            alias: { disabled: { model: "gpt-disabled", preserve: false } },
           },
         },
       },
@@ -173,7 +184,7 @@ describe("server routes", () => {
           passthrough: true,
           last_status: "unknown",
           last_latency: null,
-          clientModels: ["gpt-disabled"],
+          clientModels: ["disabled", "gpt-disabled", "gpt-untouched"],
           hasApiKey: false,
         },
       ],
@@ -293,7 +304,7 @@ describe("server routes", () => {
             passthrough: true,
             last_status: "unknown",
             last_latency: null,
-            clientModels: [],
+            clientModels: ["gpt-test"],
             hasApiKey: false,
           },
         ],

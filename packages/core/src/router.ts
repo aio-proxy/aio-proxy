@@ -1,4 +1,4 @@
-import { type AliasConfig, type Provider as ConfigProvider, resolveAliasTarget } from "@aio-proxy/types";
+import { type AliasConfig, type Provider as ConfigProvider, ProviderKind, resolveAliasTarget } from "@aio-proxy/types";
 import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
@@ -35,7 +35,7 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
       for (const [alias, config] of Object.entries(provider.alias ?? {})) {
         this.addRoute(provider, alias, config);
       }
-      for (const modelId of preservedModelIds(provider)) {
+      for (const modelId of directModelIds(provider)) {
         this.addRoute(provider, modelId, { model: modelId, preserve: false });
       }
     }
@@ -80,12 +80,25 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
 
 export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
   const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
-  for (const modelId of preservedModelIds(provider)) {
+  for (const modelId of directModelIds(provider)) {
     if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
       routes.push({ alias: modelId, modelId });
     }
   }
   return routes;
+}
+
+function directModelIds(provider: ProviderInstance): string[] {
+  const modelIds = new Set<string>(
+    provider.kind === ProviderKind.OAuth || !("models" in provider) ? [] : (provider.models ?? []),
+  );
+  for (const alias of Object.keys(provider.alias ?? {})) {
+    modelIds.delete(alias);
+  }
+  for (const modelId of preservedModelIds(provider)) {
+    modelIds.add(modelId);
+  }
+  return [...modelIds];
 }
 
 function preservedModelIds(provider: ProviderInstance): string[] {
