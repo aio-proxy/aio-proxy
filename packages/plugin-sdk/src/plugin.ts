@@ -17,6 +17,13 @@ export type PluginDescriptor<Options = undefined> = {
   readonly setup: (api: PluginApi, options: Options) => void | Promise<void>;
 };
 
+export type PluginDescriptorShell = {
+  readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
+  readonly apiVersion: typeof PLUGIN_API_VERSION;
+  readonly metadata: { readonly options?: unknown };
+  readonly setup: unknown;
+};
+
 export function definePlugin<Options = undefined>(
   setup: PluginDescriptor<Options>["setup"],
   metadata: PluginDescriptor<Options>["metadata"] = {},
@@ -33,20 +40,7 @@ function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isConfigSpecShell(value: unknown): value is ConfigSpec<unknown> {
-  if (!isObject(value)) {
-    return false;
-  }
-
-  const schema = Reflect.get(value, "schema");
-  return (
-    isObject(schema) &&
-    typeof Reflect.get(schema, "safeParse") === "function" &&
-    Array.isArray(Reflect.get(value, "form"))
-  );
-}
-
-export function isPluginDescriptor(value: unknown): value is PluginDescriptor<unknown> {
+export function isPluginDescriptor(value: unknown): value is PluginDescriptorShell {
   if (!isObject(value)) {
     return false;
   }
@@ -56,7 +50,6 @@ export function isPluginDescriptor(value: unknown): value is PluginDescriptor<un
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
     Reflect.get(value, "apiVersion") === PLUGIN_API_VERSION &&
     isObject(metadata) &&
-    (!Reflect.has(metadata, "options") || isConfigSpecShell(Reflect.get(metadata, "options"))) &&
     typeof Reflect.get(value, "setup") === "function"
   );
 }

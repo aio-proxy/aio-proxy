@@ -40,17 +40,14 @@ describe("definePlugin", () => {
     expect(isPluginDescriptor({ ...descriptor, metadata: [] })).toBe(false);
   });
 
-  test("rejects branded descriptors with malformed config spec shells", () => {
+  test("recognizes descriptor shells without validating plugin options", () => {
     const descriptor = {
       [PLUGIN_DESCRIPTOR_BRAND]: true,
       apiVersion: PLUGIN_API_VERSION,
       setup() {},
     };
 
-    expect(isPluginDescriptor({ ...descriptor, metadata: { options: null } })).toBe(false);
-    expect(isPluginDescriptor({ ...descriptor, metadata: { options: { schema: zod.string(), form: "bad" } } })).toBe(
-      false,
-    );
-    expect(isPluginDescriptor({ ...descriptor, metadata: { options: { schema: {}, form: [] } } })).toBe(false);
+    expect(isPluginDescriptor({ ...descriptor, metadata: { options: null } })).toBe(true);
+    expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: "bad" } } })).toBe(true);
   });
 });
