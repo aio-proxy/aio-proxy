@@ -28,6 +28,70 @@ function textPartStream(parts: readonly LanguageModelV2StreamPart[]): ReadableSt
 }
 
 describe("createAiSdkProvider", () => {
+  const availableProvider = {
+    languageModel() {
+      throw new Error("languageModel should not be called by ensureAvailable");
+    },
+  } satisfies Pick<ProviderV3, "languageModel">;
+
+  test("defaults openai-compatible name to the provider id", async () => {
+    let optionsSeen: Readonly<Record<string, unknown>> | undefined;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "carpool",
+        packageName: "@ai-sdk/openai-compatible",
+        options: { baseURL: "https://example.test/v1" },
+      },
+      {
+        async loadProvider(_packageName, options) {
+          optionsSeen = options;
+          return availableProvider;
+        },
+      },
+    );
+
+    await provider.ensureAvailable?.();
+    expect(optionsSeen).toEqual({ baseURL: "https://example.test/v1", name: "carpool" });
+  });
+
+  test("preserves an explicit openai-compatible name", async () => {
+    let optionsSeen: Readonly<Record<string, unknown>> | undefined;
+    const provider = createAiSdkProvider(
+      {
+        kind: "ai-sdk",
+        id: "carpool",
+        packageName: "@ai-sdk/openai-compatible",
+        options: { baseURL: "https://example.test/v1", name: "custom" },
+      },
+      {
+        async loadProvider(_packageName, options) {
+          optionsSeen = options;
+          return availableProvider;
+        },
+      },
+    );
+
+    await provider.ensureAvailable?.();
+    expect(optionsSeen).toEqual({ baseURL: "https://example.test/v1", name: "custom" });
+  });
+
+  test("does not inject name into other AI SDK packages", async () => {
+    let optionsSeen: Readonly<Record<string, unknown>> | undefined;
+    const provider = createAiSdkProvider(
+      { kind: "ai-sdk", id: "openai", packageName: "@ai-sdk/openai", options: { apiKey: "test" } },
+      {
+        async loadProvider(_packageName, options) {
+          optionsSeen = options;
+          return availableProvider;
+        },
+      },
+    );
+
+    await provider.ensureAvailable?.();
+    expect(optionsSeen).toEqual({ apiKey: "test" });
+  });
+
   test("yields the exact model-origin stream parts in order", async () => {
     const modelParts: readonly LanguageModelV2StreamPart[] = [
       { type: "text-start", id: "text-1" },

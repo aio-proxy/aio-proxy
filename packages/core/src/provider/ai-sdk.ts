@@ -142,7 +142,11 @@ function enqueueStreamParts(
 }
 
 function loadOptions(config: AiSdkProvider): AiSdkProviderLoadOptions {
-  return config.options ?? {};
+  const options = config.options ?? {};
+  if (config.packageName !== "@ai-sdk/openai-compatible" || options["name"] !== undefined) {
+    return options;
+  }
+  return { ...options, name: config.id };
 }
 
 async function resolveLoadedModel({
