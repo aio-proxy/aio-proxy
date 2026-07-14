@@ -1,8 +1,0 @@
-{
-  "extends": "@aio-proxy/infra/tsconfig/base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "types": ["bun"]
-  },
-  "include": ["*.ts", "../src/allowlist.ts", "../src/types.ts"]
-}
