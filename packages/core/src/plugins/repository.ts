@@ -267,7 +267,7 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
     const result = sqlite
       .query(
         `INSERT INTO oauth_account_diagnostic (provider_id, code, diagnostic_json) VALUES (?, ?, ?)
-         ON CONFLICT (provider_id, code) DO UPDATE SET diagnostic_json = excluded.diagnostic_json`,
+         ON CONFLICT (provider_id, code) DO NOTHING`,
       )
       .run(providerId, value.code, encodeJson(value));
     return result.changes > 0;

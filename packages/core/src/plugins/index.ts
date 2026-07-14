@@ -1,5 +1,6 @@
 export * from "./catalog";
 export * from "./config-spec";
+export * from "./credential-port";
 export * from "./diagnostic";
 export * from "./loader";
 export * from "./registry";
