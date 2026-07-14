@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantKey } from "./common";
+import { CapabilityIdSchema, PluginPackageNameSchema } from "./plugin";
 import { type ProviderAlias, validateAliasTargets } from "./provider-alias";
 
 export { validateAliasTargets } from "./provider-alias";
@@ -53,6 +54,14 @@ export const OAuthProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
   ...SharedProviderSchemaBase,
   vendor: z.enum(OAuthVendor).describe("OAuth vendor."),
+});
+
+export const OAuthPluginProviderSchema = z.object({
+  kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a plugin OAuth account."),
+  ...SharedProviderSchemaBase,
+  plugin: PluginPackageNameSchema,
+  capability: CapabilityIdSchema,
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const AiSdkProviderSchema = z.object({
@@ -159,6 +168,8 @@ export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;
 export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
 export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
+export type OAuthPluginProviderInput = z.input<typeof OAuthPluginProviderSchema>;
+export type OAuthPluginProvider = z.output<typeof OAuthPluginProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;
 export type AiSdkProvider = z.output<typeof AiSdkProviderSchema>;
 export type ApiProviderMutationBodyInput = z.input<typeof ApiProviderMutationBodySchema>;

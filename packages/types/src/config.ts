@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PluginPackageNameSchema } from "./plugin";
 import {
   AiSdkProviderSchema,
   ApiProviderSchema,
@@ -34,7 +35,31 @@ const ProvidersInputSchema = z
       .sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0)),
   );
 
+const PluginEnablementSchema = z
+  .union([PluginPackageNameSchema, z.tuple([PluginPackageNameSchema, z.unknown()])])
+  .transform((entry) =>
+    typeof entry === "string" ? { packageName: entry } : { packageName: entry[0], options: entry[1] },
+  );
+
+const PluginsInputSchema = z
+  .array(PluginEnablementSchema)
+  .default([])
+  .superRefine((plugins, context) => {
+    const seen = new Set<string>();
+    for (const [index, plugin] of plugins.entries()) {
+      if (seen.has(plugin.packageName)) {
+        context.addIssue({
+          code: "custom",
+          message: `Duplicate plugin ${plugin.packageName}`,
+          path: [index],
+        });
+      }
+      seen.add(plugin.packageName);
+    }
+  });
+
 export const ConfigSchema = z.object({
+  plugins: PluginsInputSchema,
   server: ServerConfigSchema.prefault({}).describe("Local server settings."),
   providers: ProvidersInputSchema.describe("Provider backends keyed by stable provider id."),
 });

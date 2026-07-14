@@ -5,14 +5,21 @@ import {
   type AioStreamPart,
   AiSdkProviderSchema,
   ApiProviderMutationBodySchema,
+  CapabilityIdSchema,
   ConfigSchema,
   DashboardEventSchema,
   DashboardUsageOverviewResponseSchema,
+  DiagnosticCodeSchema,
+  type InvalidProviderConfig,
+  OAuthPluginProviderSchema,
   OAuthProviderSchema,
   OAuthVendor,
+  PluginPackageNameSchema,
+  PluginStateSchema,
   ProviderKind,
   ProviderMutationBodySchema,
   ProviderProtocol,
+  ProviderStateSchema,
   RequestOutcomeSchema,
   TraceEventSchema,
   UsageOverviewGroupBySchema,
@@ -39,6 +46,7 @@ function expectIssuePath(input: unknown, path: (string | number)[]) {
 describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: apiProvider }))).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...apiProvider, enabled: true, id: "openai" }],
     });
@@ -46,6 +54,7 @@ describe("ConfigSchema", () => {
 
   test("accepts disabled provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: { ...apiProvider, enabled: false } }))).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...apiProvider, enabled: false, id: "openai" }],
     });
@@ -64,6 +73,7 @@ describe("ConfigSchema", () => {
 
     // Then
     expect(config).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ kind: "oauth", vendor: OAuthVendor.GitHubCopilot, enabled: true, id: "copilot" }],
     });
@@ -99,6 +109,7 @@ describe("ConfigSchema", () => {
     };
 
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...provider, enabled: true, id: "chatgpt" }],
     });
@@ -126,6 +137,7 @@ describe("ConfigSchema", () => {
     };
 
     expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...provider, enabled: true, id: "google" }],
     });
@@ -186,6 +198,7 @@ describe("ConfigSchema", () => {
         providers: input,
       }),
     ).toEqual({
+      plugins: [],
       server: { host: "127.0.0.1", port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
@@ -193,6 +206,16 @@ describe("ConfigSchema", () => {
         { kind: "ai-sdk", enabled: true, id: "anthropic", packageName: "@ai-sdk/anthropic" },
       ],
     });
+  });
+
+  test.each([
+    ["blank package name", ["   "]],
+    ["uppercase package name", ["@Example/plugin"]],
+    ["missing scoped package name", ["@example/"]],
+    ["object entry", [{ packageName: "@example/plugin" }]],
+    ["tuple without options", [["@example/plugin"]]],
+  ])("rejects malformed plugins: %s", (_caseName, plugins) => {
+    expect(ConfigSchema.safeParse({ plugins, providers: {} }).success).toBe(false);
   });
 
   test("sorts providers by descending weight and preserves key order for ties", () => {
@@ -655,6 +678,91 @@ describe("ConfigSchema", () => {
       },
       ["providers", "openai", "alias", "mini", "variants", "low", "model"],
     );
+  });
+});
+
+const diagnosticCodes = [
+  "PLUGIN_NOT_INSTALLED",
+  "PLUGIN_API_INCOMPATIBLE",
+  "PLUGIN_LOAD_FAILED",
+  "PLUGIN_OPTIONS_INVALID",
+  "PROVIDER_CONFIG_INVALID",
+  "LEGACY_OAUTH_CONFIG_UNSUPPORTED",
+  "CAPABILITY_MISSING",
+  "ACCOUNT_OPTIONS_INVALID",
+  "CREDENTIALS_MISSING_OR_INVALID",
+  "CREDENTIAL_REFRESH_FAILED",
+  "AUTHORIZATION_FAILED",
+  "CATALOG_UNAVAILABLE",
+  "RUNTIME_CREATE_FAILED",
+] as const;
+
+const diagnostic = (code: (typeof diagnosticCodes)[number]) => ({
+  code,
+  summary: `Diagnostic ${code}`,
+  retryable: false,
+  occurredAt: "2026-07-14T00:00:00.000Z",
+});
+
+describe("plugin and provider diagnostics", () => {
+  test.each(diagnosticCodes)("accepts diagnostic code %s", (code) => {
+    expect(DiagnosticCodeSchema.parse(code)).toBe(code);
+  });
+
+  test.each([
+    { status: "ready" },
+    { status: "failed", diagnostic: diagnostic("PLUGIN_LOAD_FAILED") },
+  ] as const)("accepts plugin state $status", (state) => {
+    expect(PluginStateSchema.parse(state)).toEqual(state);
+  });
+
+  test.each([
+    ["ready", { status: "ready", catalog: "fresh" }],
+    ["unavailable", { status: "unavailable", diagnostic: diagnostic("CREDENTIALS_MISSING_OR_INVALID") }],
+  ] as const)("accepts provider state %s", (_status, state) => {
+    expect(ProviderStateSchema.parse(state)).toEqual(state);
+  });
+
+  test("does not synthesize catalog freshness for API or AI SDK ready states", () => {
+    expect(ProviderStateSchema.parse({ status: "ready" })).toEqual({ status: "ready" });
+  });
+
+  test("keeps invalid provider diagnostics free of raw provider values", () => {
+    const invalidProvider: InvalidProviderConfig = {
+      id: "broken-provider",
+      kind: ProviderKind.OAuth,
+      code: "LEGACY_OAUTH_CONFIG_UNSUPPORTED",
+      issuePaths: [["providers", "broken-provider", "vendor"]],
+    };
+
+    expect(invalidProvider).toEqual({
+      id: "broken-provider",
+      kind: ProviderKind.OAuth,
+      code: "LEGACY_OAUTH_CONFIG_UNSUPPORTED",
+      issuePaths: [["providers", "broken-provider", "vendor"]],
+    });
+    expect(Object.keys(invalidProvider).sort()).toEqual(["code", "id", "issuePaths", "kind"]);
+    expect(invalidProvider).not.toHaveProperty("raw");
+  });
+});
+
+describe("plugin identifiers and staged OAuth provider schema", () => {
+  test("accepts valid package and capability identifiers", () => {
+    expect(PluginPackageNameSchema.parse(" @example/enterprise ")).toBe("@example/enterprise");
+    expect(CapabilityIdSchema.parse("default")).toBe("default");
+  });
+
+  test("accepts a structured OAuth plugin provider without activating it in the legacy schema", () => {
+    const provider = {
+      id: "copilot-12345",
+      kind: "oauth",
+      plugin: "@aio-proxy/plugin-github-copilot",
+      capability: "default",
+      options: { deploymentType: "github.com" },
+    } as const;
+
+    expect(OAuthPluginProviderSchema.parse(provider)).toEqual({ ...provider, enabled: true });
+    expect(OAuthProviderSchema.safeParse(provider).success).toBe(false);
   });
 });
 

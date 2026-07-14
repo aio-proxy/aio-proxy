@@ -13,6 +13,7 @@ describe("example config (aio-proxy.json)", () => {
     const raw: unknown = JSON.parse(readFileSync(exampleConfigPath, "utf8"));
     const config = ConfigSchema.parse(raw);
 
+    expect(config.plugins).toEqual([]);
     expect(config.providers.length).toBeGreaterThan(0);
 
     // OAuth providers sync their model list from the vendor at login time, so the
