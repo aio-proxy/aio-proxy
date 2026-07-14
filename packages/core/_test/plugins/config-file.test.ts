@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
@@ -10,9 +10,10 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtomicConfigFile } from "../../src/plugins/config-file";
+import { AtomicConfigCommitUncertainError, AtomicConfigFile } from "../../src/plugins/config-file";
 
 const homes: string[] = [];
 const child = join(import.meta.dir, "config-lock-child.ts");
@@ -92,11 +93,69 @@ describe("AtomicConfigFile", () => {
   test("a stale recovery marker is reclaimed even when its PID was reused", async () => {
     const { path } = fixture("{}\n");
     const recoveryPath = `${path}.lock.recovery.reused-owner`;
-    writeFileSync(recoveryPath, JSON.stringify({ pid: process.pid, owner: "reused", createdAt: 0 }));
+    writeFileSync(
+      recoveryPath,
+      JSON.stringify({ pid: process.pid, owner: "reused", createdAt: 0, starttime: "DIFFERENT" }),
+    );
     utimesSync(recoveryPath, new Date(0), new Date(0));
 
     await new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
+  });
+
+  test("a main lock is recovered when its live PID has a different start identity", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: process.pid, owner: "reused", createdAt: Date.now(), starttime: "DIFFERENT" }),
+    );
+    const originalSpawn = Bun.spawn;
+    Bun.spawn = (() => {
+      const stdout = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("MATCH\n"));
+          controller.close();
+        },
+      });
+      return { stdout, exited: Promise.resolve(0) } as unknown as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+    try {
+      await new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
+    } finally {
+      Bun.spawn = originalSpawn;
+    }
+  });
+
+  test("a stale main lock with unavailable live identity is not stolen", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: process.pid, owner: "unknown", createdAt: 0, starttime: "RECORDED" }),
+    );
+    utimesSync(lockPath, new Date(0), new Date(0));
+    const originalSpawn = Bun.spawn;
+    Bun.spawn = () => {
+      throw new Error("ps unavailable");
+    };
+    let completed = false;
+    const update = new AtomicConfigFile(path)
+      .replace((current) => ({ ...current, recovered: true }))
+      .then(() => {
+        completed = true;
+      });
+    try {
+      await Bun.sleep(100);
+      expect(completed).toBe(false);
+      unlinkSync(lockPath);
+      await update;
+    } finally {
+      Bun.spawn = originalSpawn;
+      if (existsSync(lockPath)) unlinkSync(lockPath);
+      await update.catch(() => {});
+    }
   });
 
   test("recovery cleanup preserves a marker whose heartbeat becomes fresh before unlink", async () => {
@@ -153,6 +212,77 @@ describe("AtomicConfigFile", () => {
       if (existsSync(recoveryPath)) unlinkSync(recoveryPath);
       writeFileSync(releasePath, "release");
       await update.catch(() => {});
+    }
+  });
+
+  test("release fencing prevents a former owner from unlinking a replacement lock", async () => {
+    const { dir, path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    const unlinkPaused = join(dir, "unlink-paused");
+    const resumeUnlink = join(dir, "resume-unlink");
+    const realUnlink = fsPromises.unlink.bind(fsPromises);
+    let intercepted = false;
+    const unlink = spyOn(fsPromises, "unlink").mockImplementation(async (target) => {
+      if (target === lockPath && !intercepted) {
+        intercepted = true;
+        writeFileSync(unlinkPaused, "paused");
+        await waitForFile(resumeUnlink);
+      }
+      return realUnlink(target);
+    });
+
+    let finishFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstDidEnter = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    const first = new AtomicConfigFile(path).replace(async (current) => {
+      firstEntered();
+      await firstCanFinish;
+      return { ...current, first: true };
+    });
+
+    let finishReplacement!: () => void;
+    const replacementCanFinish = new Promise<void>((resolve) => {
+      finishReplacement = resolve;
+    });
+    let replacementEntered!: () => void;
+    let didEnterReplacement = false;
+    const replacementDidEnter = new Promise<void>((resolve) => {
+      replacementEntered = resolve;
+    });
+
+    try {
+      await firstDidEnter;
+      finishFirst();
+      await waitForFile(unlinkPaused);
+      utimesSync(lockPath, new Date(0), new Date(0));
+
+      const replacement = new AtomicConfigFile(path).replace(async (current) => {
+        didEnterReplacement = true;
+        replacementEntered();
+        await replacementCanFinish;
+        return { ...current, replacement: true };
+      });
+      await Bun.sleep(100);
+      expect(didEnterReplacement).toBe(false);
+      writeFileSync(resumeUnlink, "resume");
+      await first;
+      await replacementDidEnter;
+      expect(existsSync(lockPath)).toBe(true);
+
+      finishReplacement();
+      await replacement;
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ first: true, replacement: true });
+    } finally {
+      writeFileSync(resumeUnlink, "resume");
+      finishFirst();
+      finishReplacement();
+      unlink.mockRestore();
+      await first.catch(() => {});
     }
   });
 
@@ -261,6 +391,22 @@ describe("AtomicConfigFile", () => {
     expect(statSync(path).mode & 0o777).toBe(0o604);
   });
 
+  test("a committed candidate is successful even when lock cleanup fails", async () => {
+    const { dir, path } = fixture("{}\n");
+    try {
+      await expect(
+        new AtomicConfigFile(path).replace((current) => ({ ...current, committed: true }), {
+          async verify() {
+            chmodSync(dir, 0o500);
+          },
+        }),
+      ).resolves.toBeUndefined();
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true });
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+  });
+
   test("a former owner never rolls back over a replacement config after verify", async () => {
     const { path } = fixture("{}\n");
     let resume!: () => void;
@@ -286,7 +432,7 @@ describe("AtomicConfigFile", () => {
     writeFileSync(path, '{"newer":true}\n');
     resume();
 
-    await expect(update).rejects.toThrow("Config lock ownership lost");
+    await expect(update).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ newer: true });
   });
 

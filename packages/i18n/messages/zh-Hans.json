@@ -72,6 +72,7 @@
   "cli_plugin_error_descriptor_invalid": "插件描述符无效：{plugin}。",
   "cli_plugin_error_not_configured": "插件尚未配置：{plugin}。",
   "cli_plugin_error_not_installed": "插件包尚未安装：{plugin}。",
+  "cli_plugin_error_config_changed": "配置期间插件 {plugin} 已发生变化，请重新运行 plugin config。",
   "cli_plugin_error_builtin_remove": "无法移除内置插件 {plugin}。",
   "cli_plugin_error_purge_conflict": "已移除插件 {plugin}，但其密钥被并发更新，未执行清除。",
   "cli_plugin_error_number_invalid": "字段 {key} 必须是有效数字。",

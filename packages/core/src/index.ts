@@ -105,6 +105,7 @@ export {
   npmPackageCacheDir,
   removeNpmPackageCache,
   withInstalledNpmPackage,
+  withNpmPackageLifecycle,
 } from "./npm";
 export {
   type InstalledNpmPackage,

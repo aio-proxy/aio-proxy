@@ -114,6 +114,87 @@ describe("renderConfigSpec", () => {
     expect(cleared.secrets).toEqual({});
   });
 
+  test("retains hidden existing secrets and applies explicit clear after visibility", async () => {
+    const requiredHidden = {
+      schema: zod.object({ mode: zod.enum(["simple", "advanced"]), token: zod.string().min(1) }),
+      form: [
+        {
+          type: "select",
+          key: "mode",
+          label: "Mode",
+          options: [
+            { label: "Simple", value: "simple" },
+            { label: "Advanced", value: "advanced" },
+          ],
+        },
+        { type: "secret", key: "token", label: "Token", when: { key: "mode", equals: "advanced" } },
+      ],
+    } as const;
+    const retained = await renderConfigSpec(requiredHidden, {
+      prompts: prompts(["simple"]),
+      currentSecrets: { token: "retained" },
+    });
+    expect(retained).toEqual({ publicValues: { mode: "simple" }, secrets: { token: "retained" } });
+
+    const optionalHidden = {
+      ...requiredHidden,
+      schema: zod.object({ mode: zod.enum(["simple", "advanced"]), token: zod.string().optional() }),
+    } as const;
+    const cleared = await renderConfigSpec(optionalHidden, {
+      prompts: prompts(["simple"]),
+      currentSecrets: { token: "retained" },
+      clearSecrets: ["token"],
+    });
+    expect(cleared).toEqual({ publicValues: { mode: "simple" }, secrets: {} });
+  });
+
+  test("uses current defaults only when their values are compatible with the field type", async () => {
+    const defaultsSpec = {
+      schema: zod.object({
+        text: zod.string(),
+        count: zod.number(),
+        enabled: zod.boolean(),
+        region: zod.enum(["us", "eu"]),
+        data: zod.unknown(),
+      }),
+      form: [
+        { type: "text", key: "text", label: "Text" },
+        { type: "number", key: "count", label: "Count" },
+        { type: "boolean", key: "enabled", label: "Enabled", defaultValue: true },
+        {
+          type: "select",
+          key: "region",
+          label: "Region",
+          options: [
+            { label: "US", value: "us" },
+            { label: "EU", value: "eu" },
+          ],
+        },
+        { type: "json", key: "data", label: "Data", defaultValue: { safe: true } },
+      ],
+    } as const;
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const calls: { type: string; config: unknown; signal?: AbortSignal }[] = [];
+
+    await renderConfigSpec(defaultsSpec, {
+      prompts: prompts(["text", "2", false, "us", "{}"], calls),
+      currentPublicValues: {
+        text: 123,
+        count: Number.POSITIVE_INFINITY,
+        enabled: "false",
+        region: "missing",
+        data: cyclic,
+      },
+    });
+
+    expect((calls[0]?.config as { default?: unknown }).default).toBeUndefined();
+    expect((calls[1]?.config as { default?: unknown }).default).toBeUndefined();
+    expect((calls[2]?.config as { default?: unknown }).default).toBe(true);
+    expect((calls[3]?.config as { default?: unknown }).default).toBeUndefined();
+    expect((calls[4]?.config as { default?: unknown }).default).toBe('{"safe":true}');
+  });
+
   test("forwards the same signal to every prompt and abort returns no partial result", async () => {
     const controller = new AbortController();
     const calls: { type: string; config: unknown; signal?: AbortSignal }[] = [];

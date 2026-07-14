@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import {
+  AtomicConfigCommitUncertainError,
   AtomicConfigFile,
   BUILT_IN_PLUGIN_PACKAGE_NAMES,
   type BuiltInPluginDefinition,
@@ -13,11 +14,13 @@ import {
   loadPluginRegistry,
   type NpmPackageInfo,
   npmAdd,
+  type PluginPackageImporter,
   type PluginRepository,
   type PluginSecretSnapshot,
   removeNpmPackageCache,
   validateConfigSpec,
   withInstalledNpmPackage,
+  withNpmPackageLifecycle,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
 import { m } from "@aio-proxy/i18n";
@@ -48,14 +51,14 @@ export type PluginLifecycleDeps = {
   readonly withInstalledNpmPackage?: <T>(
     packageName: string,
     registry: string | undefined,
-    use: (installed: NpmPackageInfo) => Promise<T>,
+    use: (installed: NpmPackageInfo, assertOwnership: () => Promise<void>) => Promise<T>,
+  ) => Promise<T>;
+  readonly withNpmPackageLifecycle?: <T>(
+    packageName: string,
+    use: (assertOwnership: () => Promise<void>) => Promise<T>,
   ) => Promise<T>;
   readonly findInstalledNpmPackage?: (packageName: string) => Promise<NpmPackageInfo | null>;
-  readonly importPackage: (input: {
-    readonly packageName: string;
-    readonly version: string;
-    readonly entrypoint: string;
-  }) => Promise<unknown>;
+  readonly importPackage: PluginPackageImporter;
   readonly listInstalledNpmPackages: () => Promise<readonly InstalledNpmPackage[]>;
   readonly removeNpmPackageCache: (packageName: string, canRemove?: () => Promise<boolean>) => Promise<boolean>;
   readonly print: (line: string) => void;
@@ -101,6 +104,13 @@ export class PluginNotInstalledError extends Error {
   }
 }
 
+export class PluginConfigChangedError extends Error {
+  override readonly name = "PluginConfigChangedError";
+  constructor(readonly packageName: string) {
+    super(m.cli_plugin_error_config_changed({ plugin: packageName }));
+  }
+}
+
 export class BuiltInPluginRemovalError extends Error {
   override readonly name = "BuiltInPluginRemovalError";
   constructor(readonly packageName: string) {
@@ -131,6 +141,7 @@ export const pluginErrors = [
   PluginDescriptorInvalidError,
   PluginNotConfiguredError,
   PluginNotInstalledError,
+  PluginConfigChangedError,
   BuiltInPluginRemovalError,
   PluginSecretPurgeConflictError,
   PluginSetupValidationError,
@@ -274,7 +285,13 @@ async function loadDescriptor(
   installed: NpmPackageInfo,
   deps: PluginLifecycleDeps,
 ): Promise<PluginDescriptor<unknown>> {
-  return descriptorFromModule(packageName, await deps.importPackage({ packageName, ...installed }));
+  const attempt = crypto.randomUUID();
+  const entrypoint = pathToFileURL(installed.entrypoint);
+  entrypoint.searchParams.set("aio_proxy_cli_attempt", attempt);
+  return descriptorFromModule(
+    packageName,
+    await deps.importPackage({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt }),
+  );
 }
 
 async function stageDescriptor(
@@ -321,10 +338,20 @@ async function commitPluginConfig(
   secrets: Record<string, unknown>,
   previousSecret: PluginSecretSnapshot | null,
   deps: PluginLifecycleDeps,
+  options: {
+    readonly expectedEntry?: unknown;
+    readonly assertPackageOwnership?: () => Promise<void>;
+  } = {},
 ): Promise<void> {
   let appliedRevision: number | null = null;
   try {
     await deps.config.transaction(async (current) => {
+      if (Object.hasOwn(options, "expectedEntry")) {
+        const latest = entries(current).find((entry) => packageNameOf(entry) === packageName);
+        if (latest === undefined) throw new PluginNotConfiguredError(packageName);
+        if (!sameJson(latest, options.expectedEntry)) throw new PluginConfigChangedError(packageName);
+      }
+      await options.assertPackageOwnership?.();
       if (
         !sameJson(secretRecord(previousSecret), secrets) ||
         (previousSecret === null && Object.keys(secrets).length > 0)
@@ -341,7 +368,9 @@ async function commitPluginConfig(
       };
     });
   } catch (error) {
-    await compensateSecret(packageName, previousSecret, appliedRevision, deps.repository);
+    if (!(error instanceof AtomicConfigCommitUncertainError)) {
+      await compensateSecret(packageName, previousSecret, appliedRevision, deps.repository);
+    }
     throw error;
   }
 }
@@ -386,12 +415,9 @@ function createDefaultDeps(): PluginLifecycleDeps {
     confirm: (message, signal) => confirm({ message }, signal === undefined ? undefined : { signal }),
     npmAdd,
     withInstalledNpmPackage,
+    withNpmPackageLifecycle,
     findInstalledNpmPackage,
-    importPackage: async ({ entrypoint }) => {
-      const url = pathToFileURL(entrypoint);
-      url.searchParams.set("aio_proxy_cli_attempt", crypto.randomUUID());
-      return import(url.href);
-    },
+    importPackage: async ({ entrypoint }) => import(entrypoint),
     listInstalledNpmPackages,
     removeNpmPackageCache,
     print: console.log,
@@ -413,8 +439,9 @@ export async function pluginAdd(
     }
     await requireConfirmation(m.cli_plugin_trust_prompt({ plugin: packageName }), options, deps, packageName);
     const installAndUse =
-      deps.withInstalledNpmPackage ?? (async (name, registry, use) => use(await deps.npmAdd(name, registry)));
-    await installAndUse(packageName, options.registry, async (installed) => {
+      deps.withInstalledNpmPackage ??
+      (async (name, registry, use) => use(await deps.npmAdd(name, registry), async () => {}));
+    await installAndUse(packageName, options.registry, async (installed, assertOwnership = async () => {}) => {
       const descriptor = await loadDescriptor(packageName, installed, deps);
       const rendered =
         descriptor.metadata.options === undefined
@@ -422,7 +449,9 @@ export async function pluginAdd(
           : await renderConfigSpec(descriptor.metadata.options, { prompts: deps.prompts });
       await stageDescriptor(packageName, installed.version, descriptor, rendered.publicValues, rendered.secrets);
       const previousSecret = deps.repository.readPluginSecret(packageName);
-      await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps);
+      await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps, {
+        assertPackageOwnership: assertOwnership,
+      });
     });
     deps.print(m.cli_plugin_added({ plugin: packageName }));
   } finally {
@@ -453,7 +482,23 @@ export async function pluginConfig(
             ...(options.clearSecret === undefined ? {} : { clearSecrets: options.clearSecret }),
           });
     await stageDescriptor(packageName, version, descriptor, rendered.publicValues, rendered.secrets);
-    await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps);
+    if (deps.builtInNames.has(packageName)) {
+      await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps, {
+        expectedEntry: currentEntry,
+      });
+    } else {
+      const lifecycle = deps.withNpmPackageLifecycle ?? (async (_packageName, use) => use(async () => {}));
+      await lifecycle(packageName, async (assertOwnership) => {
+        if ((await (deps.findInstalledNpmPackage ?? findInstalledNpmPackage)(packageName)) === null) {
+          throw new PluginNotInstalledError(packageName);
+        }
+        await assertOwnership();
+        await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps, {
+          expectedEntry: currentEntry,
+          assertPackageOwnership: assertOwnership,
+        });
+      });
+    }
     deps.print(m.cli_plugin_configured({ plugin: packageName }));
   } finally {
     if (injected === undefined) deps.close?.();
@@ -506,13 +551,33 @@ export async function pluginRemove(
     packageName = requirePluginPackageName(packageName);
     if (deps.builtInNames.has(packageName)) throw new BuiltInPluginRemovalError(packageName);
     await requireConfirmation(m.cli_plugin_remove_prompt({ plugin: packageName }), options, deps, packageName);
+    const lifecycle = deps.withNpmPackageLifecycle ?? (async (_packageName, use) => use(async () => {}));
+    await lifecycle(packageName, async (assertOwnership) => {
+      await assertOwnership();
+      await deps.config.replace((current) => removePlugin(current, packageName));
+    });
     if (options.purgeSecrets === true) {
-      await requireConfirmation(m.cli_plugin_purge_prompt({ plugin: packageName }), options, deps, packageName);
-    }
-    const snapshot = options.purgeSecrets === true ? deps.repository.readPluginSecret(packageName) : null;
-    await deps.config.replace((current) => removePlugin(current, packageName));
-    if (snapshot !== null && !deps.repository.deletePluginSecret(packageName, snapshot.revision)) {
-      throw new PluginSecretPurgeConflictError(packageName);
+      try {
+        await requireConfirmation(m.cli_plugin_purge_prompt({ plugin: packageName }), options, deps, packageName);
+      } catch (error) {
+        if (!(error instanceof PluginTrustRejectedError)) throw error;
+        deps.print(m.cli_plugin_removed_secrets_retained({ plugin: packageName }));
+        return;
+      }
+      await lifecycle(packageName, async (assertOwnership) => {
+        await assertOwnership();
+        await deps.config.transaction(async (current) => {
+          if (entries(current).some((entry) => packageNameOf(entry) === packageName)) {
+            throw new PluginSecretPurgeConflictError(packageName);
+          }
+          await assertOwnership();
+          const snapshot = deps.repository.readPluginSecret(packageName);
+          if (snapshot !== null && !deps.repository.deletePluginSecret(packageName, snapshot.revision)) {
+            throw new PluginSecretPurgeConflictError(packageName);
+          }
+          return { next: current, result: undefined };
+        });
+      });
     }
     deps.print(
       options.purgeSecrets === true
@@ -525,10 +590,11 @@ export async function pluginRemove(
 }
 
 function usedPackageNames(config: ConfigRecord): Set<string> {
+  const builtIns = new Set<string>(BUILT_IN_PLUGIN_PACKAGE_NAMES);
   const used = new Set(
     entries(config)
       .map(packageNameOf)
-      .filter((name): name is string => name !== null),
+      .filter((name): name is string => name !== null && !builtIns.has(name)),
   );
   if (isRecord(config["providers"])) {
     for (const provider of Object.values(config["providers"])) {

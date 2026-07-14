@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NpmLockError } from "../src";
@@ -16,6 +17,14 @@ import {
 import { acquireNpmInstallLock } from "../src/npm-lock";
 
 const homes: string[] = [];
+
+async function waitForFile(path: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!existsSync(path)) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${path}`);
+    await Bun.sleep(5);
+  }
+}
 
 function sandboxHome(): string {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-npm-home-"));
@@ -255,6 +264,39 @@ describe("npmAdd", () => {
     rmSync(cacheDir, { recursive: true, force: true });
   });
 
+  test("Given verifiable identity and a stale heartbeat When contending Then the old owner is fenced", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-live-lock-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const first = await acquireNpmInstallLock("stale-live-provider", cacheDir);
+    utimesSync(lockPath, new Date(0), new Date(0));
+
+    const replacement = await acquireNpmInstallLock("stale-live-provider", cacheDir);
+    await expect(first.withOwnership(async () => "stale")).rejects.toThrow("Npm lock ownership lost");
+    expect(existsSync(lockPath)).toBe(true);
+
+    await first.release();
+    await replacement.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given a verifiable stale recovery marker When acquiring Then the marker is reclaimed", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.stale-owner`;
+    const ps = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(process.pid)], { stdout: "pipe" });
+    const starttime = new TextDecoder().decode(ps.stdout).trim();
+    writeFileSync(
+      markerPath,
+      JSON.stringify({ pid: process.pid, createdAt: 0, owner: "stale-owner", starttime, version: 1 }),
+    );
+    utimesSync(markerPath, new Date(0), new Date(0));
+
+    const lock = await acquireNpmInstallLock("stale-marker-provider", cacheDir);
+    expect(existsSync(markerPath)).toBe(false);
+    await lock.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
   test("Given concurrent stale-lock recovery When owners run Then only one lock is active", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-lock-race-"));
     const lockPath = join(cacheDir, ".aio-proxy-install.lock");
@@ -276,6 +318,47 @@ describe("npmAdd", () => {
     );
     expect(maximum).toBe(1);
     rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given release paused after compare When a replacement acquires Then the old owner cannot unlink it", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-release-race-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const pausedPath = join(cacheDir, "release-paused");
+    const resumePath = join(cacheDir, "release-resume");
+    const first = await acquireNpmInstallLock("release-race-provider", cacheDir);
+    const realRm = fsPromises.rm.bind(fsPromises);
+    let intercepted = false;
+    const rm = spyOn(fsPromises, "rm").mockImplementation(async (target, options) => {
+      if (target === lockPath && !intercepted) {
+        intercepted = true;
+        writeFileSync(pausedPath, "paused");
+        await waitForFile(resumePath);
+      }
+      return realRm(target, options);
+    });
+    try {
+      const releasing = first.release();
+      await waitForFile(pausedPath);
+      utimesSync(lockPath, new Date(0), new Date(0));
+      let replacementAcquired = false;
+      const replacementPending = acquireNpmInstallLock("release-race-provider", cacheDir).then((lock) => {
+        replacementAcquired = true;
+        return lock;
+      });
+
+      await Bun.sleep(100);
+      expect(replacementAcquired).toBe(false);
+      writeFileSync(resumePath, "resume");
+      await releasing;
+      const replacement = await replacementPending;
+      expect(existsSync(lockPath)).toBe(true);
+
+      await replacement.release();
+    } finally {
+      writeFileSync(resumePath, "resume");
+      rm.mockRestore();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 });
 

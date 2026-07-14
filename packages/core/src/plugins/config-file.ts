@@ -8,11 +8,20 @@ export const CONFIG_LOCK_STALE_MS = 60_000;
 export const CONFIG_LOCK_HEARTBEAT_MS = 10_000;
 
 type ConfigRecord = Record<string, unknown>;
+const abandonedRecoveryMarkers = new Set<string>();
 
 export type AtomicConfigTransactionOptions = {
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
   readonly verify?: (candidate: ConfigRecord) => Promise<void>;
 };
+
+export class AtomicConfigCommitUncertainError extends Error {
+  override readonly name = "AtomicConfigCommitUncertainError";
+
+  constructor() {
+    super("Config candidate was committed but its final state could not be confirmed");
+  }
+}
 
 type LockRecord = {
   readonly pid: number;
@@ -73,9 +82,25 @@ async function readLock(path: string): Promise<LockRecord | null> {
   }
 }
 
-async function unlinkOwnedLock(path: string, owner: string): Promise<void> {
+async function unlinkOwnedLock(
+  path: string,
+  owner: string,
+  identity: Stats,
+  assertFence: () => Promise<void>,
+): Promise<void> {
   try {
-    if ((await readLock(path))?.owner === owner) await unlink(path);
+    const [record, metadata] = await Promise.all([readLock(path), stat(path)]);
+    if (record?.owner !== owner || metadata.dev !== identity.dev || metadata.ino !== identity.ino) return;
+    await assertFence();
+    const [currentRecord, currentMetadata] = await Promise.all([readLock(path), stat(path)]);
+    if (
+      currentRecord?.owner !== owner ||
+      currentMetadata.dev !== identity.dev ||
+      currentMetadata.ino !== identity.ino
+    ) {
+      return;
+    }
+    await unlink(path);
   } catch (error) {
     if (!isNodeError(error, "ENOENT")) throw error;
   }
@@ -110,12 +135,11 @@ async function recoveryMarkerActive(path: string): Promise<boolean> {
   const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > CONFIG_LOCK_STALE_MS;
   const alive = record !== null && ownerAlive(record.pid);
   const currentStarttime = record === null || !alive ? null : await processStarttime(record.pid);
+  const identityVerifiable = alive && record?.starttime !== undefined && currentStarttime !== null;
   const stale =
     record === null
       ? staleByHeartbeat
-      : !alive ||
-        (currentStarttime !== null && record.starttime !== undefined && currentStarttime !== record.starttime) ||
-        staleByHeartbeat;
+      : !alive || (identityVerifiable && (currentStarttime !== record.starttime || staleByHeartbeat));
   if (!stale) return true;
   try {
     if ((await readFile(path, "utf8")) !== text) return false;
@@ -141,6 +165,7 @@ async function recoveryActive(lockPath: string, excludePath?: string): Promise<b
   }
   for (const name of names) {
     const path = join(directory, name);
+    if (abandonedRecoveryMarkers.has(path)) continue;
     if (path !== excludePath && name.startsWith(prefix) && (await recoveryMarkerActive(path))) return true;
   }
   return false;
@@ -200,6 +225,28 @@ async function createRecoveryMarker(lockPath: string): Promise<{
   };
 }
 
+async function withRecoveryFence<T>(
+  lockPath: string,
+  action: (assertFence: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  while (true) {
+    if (await recoveryActive(lockPath)) {
+      await Bun.sleep(50 + Math.floor(Math.random() * 25));
+      continue;
+    }
+    const recovery = await createRecoveryMarker(lockPath);
+    try {
+      if (await recoveryActive(lockPath, recovery.path)) continue;
+      await recovery.assertActive();
+      return await action(recovery.assertActive);
+    } finally {
+      await recovery.release().catch(() => {
+        abandonedRecoveryMarkers.add(recovery.path);
+      });
+    }
+  }
+}
+
 async function reclaimStaleLock(path: string): Promise<boolean> {
   if (await recoveryActive(path)) return false;
   const recovery = await createRecoveryMarker(path);
@@ -213,10 +260,14 @@ async function reclaimStaleLock(path: string): Promise<boolean> {
       throw error;
     }
     const [record, metadata] = await Promise.all([Promise.resolve(parseLock(text)), stat(path).catch(() => null)]);
+    const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > CONFIG_LOCK_STALE_MS;
+    const alive = record !== null && ownerAlive(record.pid);
+    const currentStarttime = record === null || !alive ? null : await processStarttime(record.pid);
+    const identityVerifiable = alive && record?.starttime !== undefined && currentStarttime !== null;
     const stale =
-      metadata === null ||
-      Date.now() - metadata.mtimeMs > CONFIG_LOCK_STALE_MS ||
-      (record !== null && !ownerAlive(record.pid));
+      record === null
+        ? staleByHeartbeat
+        : !alive || (identityVerifiable && (currentStarttime !== record.starttime || staleByHeartbeat));
     if (!stale) return false;
     try {
       if ((await readFile(path, "utf8")) !== text) return false;
@@ -250,6 +301,7 @@ async function acquireLock(path: string): Promise<{
     }
     try {
       const handle = await open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      let identity: Stats | undefined;
       try {
         await handle.writeFile(
           JSON.stringify({
@@ -260,9 +312,10 @@ async function acquireLock(path: string): Promise<{
           } satisfies LockRecord),
         );
         await handle.sync();
+        identity = await handle.stat();
         if (await recoveryActive(path)) {
           await handle.close();
-          await unlinkOwnedLock(path, owner);
+          await withRecoveryFence(path, (assertFence) => unlinkOwnedLock(path, owner, identity as Stats, assertFence));
           if (Date.now() - startedAt >= CONFIG_LOCK_WAIT_MS) {
             throw new Error(`Timed out waiting for config lock: ${path}`);
           }
@@ -271,7 +324,11 @@ async function acquireLock(path: string): Promise<{
         }
       } catch (error) {
         await handle.close().catch(() => {});
-        await unlinkOwnedLock(path, owner).catch(() => {});
+        if (identity !== undefined) {
+          await withRecoveryFence(path, (assertFence) =>
+            unlinkOwnedLock(path, owner, identity as Stats, assertFence),
+          ).catch(() => {});
+        }
         throw error;
       }
       let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
@@ -282,34 +339,26 @@ async function acquireLock(path: string): Promise<{
       return {
         owner,
         async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
-          while (true) {
-            if (await recoveryActive(path)) {
-              await Bun.sleep(50 + Math.floor(Math.random() * 25));
-              continue;
-            }
-            const recovery = await createRecoveryMarker(path);
-            try {
-              if (await recoveryActive(path, recovery.path)) continue;
-              const assertOwnership = async () => {
-                await recovery.assertActive();
-                if ((await readLock(path))?.owner !== owner) throw new Error("Config lock ownership lost");
-                const now = new Date();
-                await handle.utimes(now, now);
-              };
-              await assertOwnership();
-              return await action(assertOwnership);
-            } finally {
-              await recovery.release();
-            }
-          }
+          return withRecoveryFence(path, async (assertFence) => {
+            const assertOwnership = async () => {
+              await assertFence();
+              if ((await readLock(path))?.owner !== owner) throw new Error("Config lock ownership lost");
+              const now = new Date();
+              await handle.utimes(now, now);
+            };
+            await assertOwnership();
+            return await action(assertOwnership);
+          });
         },
         async release() {
-          if (heartbeat !== undefined) {
-            clearInterval(heartbeat);
-            heartbeat = undefined;
-          }
           try {
-            await unlinkOwnedLock(path, owner);
+            await withRecoveryFence(path, async (assertFence) => {
+              if (heartbeat !== undefined) {
+                clearInterval(heartbeat);
+                heartbeat = undefined;
+              }
+              await unlinkOwnedLock(path, owner, identity as Stats, assertFence);
+            });
           } finally {
             await handle.close().catch(() => {});
           }
@@ -359,7 +408,7 @@ function stable(value: unknown, seen = new Set<object>()): unknown {
     ? value.map((item) => stable(item, seen))
     : Object.fromEntries(
         Object.entries(value as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
           .map(([key, item]) => [key, stable(item, seen)]),
       );
   seen.delete(value);
@@ -394,29 +443,43 @@ export class AtomicConfigFile {
         if (next === current) return result;
         options.validateCandidate?.(next);
         await writeAtomic(this.#path, encodeCandidate(next), original.mode, tempPath, assertOwnership);
-        await assertOwnership();
+        let candidateCommitted = true;
         try {
-          await options.verify?.(next);
-        } catch (error) {
           await assertOwnership();
-          if (original.bytes === null) {
+          try {
+            await options.verify?.(next);
+          } catch (verifyError) {
             try {
               await assertOwnership();
-              await unlink(this.#path);
-            } catch (rollbackError) {
-              if (!isNodeError(rollbackError, "ENOENT")) throw rollbackError;
+              if (original.bytes === null) {
+                try {
+                  await assertOwnership();
+                  await unlink(this.#path);
+                } catch (rollbackError) {
+                  if (!isNodeError(rollbackError, "ENOENT")) throw rollbackError;
+                }
+              } else {
+                await writeAtomic(this.#path, original.bytes, original.mode, tempPath, assertOwnership);
+              }
+              await assertOwnership();
+              candidateCommitted = false;
+            } catch {
+              throw new AtomicConfigCommitUncertainError();
             }
-          } else {
-            await writeAtomic(this.#path, original.bytes, original.mode, tempPath, assertOwnership);
+            throw verifyError;
+          }
+          await assertOwnership();
+          return result;
+        } catch (error) {
+          if (candidateCommitted && !(error instanceof AtomicConfigCommitUncertainError)) {
+            throw new AtomicConfigCommitUncertainError();
           }
           throw error;
         }
-        await assertOwnership();
-        return result;
       });
     } finally {
       await rm(tempPath, { force: true }).catch(() => {});
-      await lock.release();
+      await lock.release().catch(() => {});
     }
   }
 

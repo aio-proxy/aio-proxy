@@ -1,15 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { AtomicConfigFile, type PluginSecretSnapshot } from "@aio-proxy/core";
+import { dirname, join } from "node:path";
+import {
+  AtomicConfigCommitUncertainError,
+  AtomicConfigFile,
+  npmPackageCacheDir,
+  type PluginSecretSnapshot,
+} from "@aio-proxy/core";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
 import {
   BuiltInPluginRemovalError,
   createCliPluginDiagnosticFactory,
+  PluginConfigChangedError,
   PluginConfirmationRequiredError,
   PluginDescriptorInvalidError,
   type PluginLifecycleDeps,
+  PluginNotConfiguredError,
+  PluginNotInstalledError,
   PluginSecretPurgeConflictError,
   PluginSetupValidationError,
   pluginAdd,
@@ -234,6 +242,38 @@ describe("plugin lifecycle commands", () => {
     expect(output).not.toContain(secret);
   });
 
+  test("production list imports a real cached ESM plugin from its file URL exactly once", async () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-list-real-"));
+    homes.push(home);
+    const packageName = `real-plugin-${crypto.randomUUID()}`;
+    const previousHome = process.env.AIO_PROXY_HOME;
+    const previousLog = console.log;
+    const lines: string[] = [];
+    process.env.AIO_PROXY_HOME = home;
+    console.log = (line) => lines.push(String(line));
+    try {
+      writeFileSync(join(home, "config.jsonc"), JSON.stringify({ providers: {}, plugins: [packageName] }));
+      const packageDir = join(npmPackageCacheDir(packageName), "node_modules", packageName);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name: packageName, version: "1.0.0", main: "index.js" }),
+      );
+      writeFileSync(
+        join(packageDir, "index.js"),
+        'const brand = Symbol.for("@aio-proxy/plugin-sdk/descriptor/v1");\nexport default { [brand]: true, apiVersion: 1, metadata: {}, setup() {} };\n',
+      );
+
+      await pluginList({});
+      expect(lines.join("\n")).toContain(`${packageName} configured`);
+      expect(lines.join("\n")).not.toContain("failed");
+    } finally {
+      if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+      else process.env.AIO_PROXY_HOME = previousHome;
+      console.log = previousLog;
+    }
+  });
+
   test("config retains blank secret and supports explicit clear", async () => {
     const descriptor = definePlugin(() => {}, {
       options: {
@@ -284,6 +324,95 @@ describe("plugin lifecycle commands", () => {
       },
     );
     expect(externalAccess).toBe(0);
+  });
+
+  test("config never revives a plugin removed while its prompt is open", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["racing-plugin", { endpoint: "old" }]] });
+
+    await expect(
+      pluginConfig(
+        "racing-plugin",
+        {},
+        {
+          ...state.deps,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: {
+            ...state.deps.prompts,
+            input: async () => {
+              await state.config.replace((current) => ({ ...current, plugins: [] }));
+              return "new";
+            },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginNotConfiguredError);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
+  });
+
+  test("config rejects a changed entry and a cache pruned before final commit", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    const changed = harness({ providers: {}, plugins: [["racing-plugin", { endpoint: "old" }]] });
+    await expect(
+      pluginConfig(
+        "racing-plugin",
+        {},
+        {
+          ...changed.deps,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: {
+            ...changed.deps.prompts,
+            input: async () => {
+              await changed.config.replace((current) => ({
+                ...current,
+                plugins: [["racing-plugin", { endpoint: "concurrent" }]],
+              }));
+              return "new";
+            },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginConfigChangedError);
+
+    const pruned = harness({ providers: {}, plugins: ["racing-plugin"] });
+    let packageChecks = 0;
+    await expect(
+      pluginConfig(
+        "racing-plugin",
+        {},
+        {
+          ...pruned.deps,
+          importPackage: async () => ({ default: descriptor }),
+          findInstalledNpmPackage: async () => {
+            packageChecks += 1;
+            return packageChecks === 1 ? { version: "1.0.0", entrypoint: "/tmp/plugin.js" } : null;
+          },
+          withNpmPackageLifecycle: async (_packageName, use) => use(async () => {}),
+          prompts: { ...pruned.deps.prompts, input: async () => "new" },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginNotInstalledError);
+    expect(JSON.parse(readFileSync(pruned.path, "utf8")).plugins).toEqual(["racing-plugin"]);
   });
 
   test("failed config write compensates only its own secret revision", async () => {
@@ -368,6 +497,94 @@ describe("plugin lifecycle commands", () => {
     expect(state.values.get("secret-plugin")?.value).toEqual({ token: "old" });
   });
 
+  test("an uncertain committed config never compensates its applied secret", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["secret-plugin"] });
+    state.values.set("secret-plugin", { revision: 1, value: { token: "old" } });
+    const uncertainConfig = {
+      read: state.deps.config.read.bind(state.deps.config),
+      transaction: async (mutate: Parameters<AtomicConfigFile["transaction"]>[0]) => {
+        const { next } = await mutate(await state.deps.config.read());
+        writeFileSync(state.path, `${JSON.stringify(next, null, 2)}\n`);
+        throw new AtomicConfigCommitUncertainError();
+      },
+      replace: state.deps.config.replace.bind(state.deps.config),
+      providerEntry: state.deps.config.providerEntry.bind(state.deps.config),
+      providerEntryDigest: state.deps.config.providerEntryDigest.bind(state.deps.config),
+    } as AtomicConfigFile;
+
+    await expect(
+      pluginConfig(
+        "secret-plugin",
+        {},
+        {
+          ...state.deps,
+          config: uncertainConfig,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: { ...state.deps.prompts, password: async () => "new" },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
+    expect(state.values.get("secret-plugin")?.value).toEqual({ token: "new" });
+    expect(JSON.parse(readFileSync(state.path, "utf8"))).toEqual({ providers: {}, plugins: ["secret-plugin"] });
+  });
+
+  test("a committed config with release cleanup failure keeps its applied secret", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["secret-plugin"] });
+    state.values.set("secret-plugin", { revision: 1, value: { token: "old" } });
+    const home = dirname(state.path);
+    const cleanupFailingConfig = {
+      read: state.deps.config.read.bind(state.deps.config),
+      transaction: (mutate: Parameters<AtomicConfigFile["transaction"]>[0]) =>
+        state.deps.config.transaction(mutate, {
+          async verify() {
+            chmodSync(home, 0o500);
+          },
+        }),
+      replace: state.deps.config.replace.bind(state.deps.config),
+      providerEntry: state.deps.config.providerEntry.bind(state.deps.config),
+      providerEntryDigest: state.deps.config.providerEntryDigest.bind(state.deps.config),
+    } as AtomicConfigFile;
+
+    try {
+      await pluginConfig(
+        "secret-plugin",
+        {},
+        {
+          ...state.deps,
+          config: cleanupFailingConfig,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: { ...state.deps.prompts, password: async () => "new" },
+        },
+      );
+      expect(state.values.get("secret-plugin")?.value).toEqual({ token: "new" });
+      expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual(["secret-plugin"]);
+    } finally {
+      chmodSync(home, 0o700);
+    }
+  });
+
   test("failed config compensation surfaces storage errors while its revision is still current", async () => {
     const descriptor = definePlugin(() => {}, {
       options: {
@@ -449,6 +666,76 @@ describe("plugin lifecycle commands", () => {
     expect(state.values.has("third-party-plugin")).toBe(false);
   });
 
+  test("declining the post-remove purge keeps secrets and reports retention", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "keep" } });
+    let confirmations = 0;
+    await pluginRemove(
+      "third-party-plugin",
+      { purgeSecrets: true },
+      {
+        ...state.deps,
+        confirm: async () => {
+          confirmations += 1;
+          if (confirmations === 2) {
+            expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
+            return false;
+          }
+          return true;
+        },
+      },
+    );
+    expect(state.values.get("third-party-plugin")?.value).toEqual({ token: "keep" });
+    expect(state.lines.join("\n")).toContain("retained");
+  });
+
+  test("purge snapshots the secret revision only after the second confirmation", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "old" } });
+    let confirmations = 0;
+    await pluginRemove(
+      "third-party-plugin",
+      { purgeSecrets: true },
+      {
+        ...state.deps,
+        confirm: async () => {
+          confirmations += 1;
+          if (confirmations === 2) {
+            state.values.set("third-party-plugin", { revision: 2, value: { token: "new" } });
+          }
+          return true;
+        },
+      },
+    );
+    expect(state.values.has("third-party-plugin")).toBe(false);
+  });
+
+  test("purge preserves credentials when the plugin is re-added during the second confirmation", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "old" } });
+    let confirmations = 0;
+
+    await expect(
+      pluginRemove(
+        "third-party-plugin",
+        { purgeSecrets: true },
+        {
+          ...state.deps,
+          confirm: async () => {
+            confirmations += 1;
+            if (confirmations === 2) {
+              writeFileSync(state.path, JSON.stringify({ providers: {}, plugins: ["third-party-plugin"] }));
+              state.values.set("third-party-plugin", { revision: 2, value: { token: "re-added" } });
+            }
+            return true;
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginSecretPurgeConflictError);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual(["third-party-plugin"]);
+    expect(state.values.get("third-party-plugin")?.value).toEqual({ token: "re-added" });
+  });
+
   test("--yes permits non-interactive secret purge", async () => {
     const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
     state.values.set("third-party-plugin", { revision: 1, value: { token: "remove" } });
@@ -489,7 +776,7 @@ describe("plugin lifecycle commands", () => {
 
   test("prune conservatively keeps plugin and raw ai-sdk package names", async () => {
     const { deps } = harness({
-      plugins: [["used-plugin", { anything: true }]],
+      plugins: ["@aio-proxy/plugin-github-copilot", ["used-plugin", { anything: true }]],
       providers: {
         broken: { kind: "ai-sdk", package: "used-provider", options: "malformed-but-package-still-counts" },
         legacyUpper: { kind: "ai-sdk", package: "Legacy-Provider" },
@@ -500,6 +787,7 @@ describe("plugin lifecycle commands", () => {
     const removed: string[] = [];
     const packages = [
       "used-plugin",
+      "@aio-proxy/plugin-github-copilot",
       "used-provider",
       "Legacy-Provider",
       "../malformed",
@@ -523,7 +811,12 @@ describe("plugin lifecycle commands", () => {
         },
       },
     );
-    expect(removed).toEqual(["../malformed", "not-an-ai-sdk-package", "unused-package"]);
+    expect(removed).toEqual([
+      "@aio-proxy/plugin-github-copilot",
+      "../malformed",
+      "not-an-ai-sdk-package",
+      "unused-package",
+    ]);
   });
 
   test("prune rechecks config under the package lifecycle lock before removal", async () => {

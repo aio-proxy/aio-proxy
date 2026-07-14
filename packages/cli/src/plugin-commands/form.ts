@@ -62,10 +62,35 @@ function visible(field: FormField, values: Readonly<Record<string, unknown>>): b
   return field.when === undefined || values[field.when.key] === field.when.equals;
 }
 
-function fieldDefault(field: FormField, current: unknown): unknown {
-  if (current !== undefined) return current;
-  if (field.type === "boolean" || field.type === "json") return field.defaultValue;
-  return undefined;
+function jsonSafe(value: unknown, seen = new Set<object>()): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  const safe = Array.isArray(value)
+    ? value.every((item) => jsonSafe(item, seen))
+    : Object.entries(value).every(([key, item]) => typeof key === "string" && jsonSafe(item, seen));
+  seen.delete(value);
+  return safe;
+}
+
+function compatibleDefault(field: FormField, current: unknown): unknown {
+  switch (field.type) {
+    case "text":
+      return typeof current === "string" ? current : undefined;
+    case "secret":
+      return current;
+    case "number":
+      return typeof current === "number" && Number.isFinite(current) ? current : undefined;
+    case "boolean":
+      return typeof current === "boolean" ? current : field.defaultValue;
+    case "select":
+      return field.options.some((option) => option.value === current) ? current : undefined;
+    case "json":
+      return jsonSafe(current) ? current : field.defaultValue;
+    default:
+      return assertNever(field);
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -84,7 +109,7 @@ export async function renderConfigSpec<T>(
   const currentPublic = options.currentPublicValues ?? {};
   const currentSecrets = options.currentSecrets ?? {};
   const clearSecrets = new Set(options.clearSecrets ?? []);
-  const collected: Record<string, unknown> = {};
+  const collected: Record<string, unknown> = { ...currentSecrets };
   const context = options.signal === undefined ? undefined : { signal: options.signal };
 
   for (const field of spec.form) {
@@ -92,13 +117,14 @@ export async function renderConfigSpec<T>(
     let value: unknown;
     const message = promptMessage(field);
     const current = field.type === "secret" ? currentSecrets[field.key] : currentPublic[field.key];
+    const promptDefault = compatibleDefault(field, current);
     switch (field.type) {
       case "text":
         value = await prompts.input(
           {
             message,
             ...(field.placeholder === undefined ? {} : { placeholder: field.placeholder }),
-            ...(current === undefined ? {} : { default: String(current) }),
+            ...(promptDefault === undefined ? {} : { default: promptDefault as string }),
           },
           context,
         );
@@ -114,7 +140,7 @@ export async function renderConfigSpec<T>(
             {
               message,
               ...(field.placeholder === undefined ? {} : { placeholder: field.placeholder }),
-              ...(current === undefined ? {} : { default: String(current) }),
+              ...(promptDefault === undefined ? {} : { default: String(promptDefault) }),
             },
             context,
           )
@@ -124,7 +150,7 @@ export async function renderConfigSpec<T>(
         break;
       }
       case "boolean":
-        value = await prompts.confirm({ message, default: Boolean(fieldDefault(field, current) ?? false) }, context);
+        value = await prompts.confirm({ message, default: (promptDefault as boolean | undefined) ?? false }, context);
         break;
       case "select":
         value = await prompts.select(
@@ -135,13 +161,13 @@ export async function renderConfigSpec<T>(
               value: option.value,
               ...(option.description === undefined ? {} : { description: option.description }),
             })),
-            ...(current === undefined ? {} : { default: current }),
+            ...(promptDefault === undefined ? {} : { default: promptDefault }),
           },
           context,
         );
         break;
       case "json": {
-        const fallback = fieldDefault(field, current);
+        const fallback = promptDefault;
         const raw = (
           await prompts.input(
             {

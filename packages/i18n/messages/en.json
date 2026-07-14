@@ -76,6 +76,7 @@
   "cli_plugin_error_descriptor_invalid": "Plugin descriptor is invalid: {plugin}.",
   "cli_plugin_error_not_configured": "Plugin is not configured: {plugin}.",
   "cli_plugin_error_not_installed": "Plugin package is not installed: {plugin}.",
+  "cli_plugin_error_config_changed": "Plugin {plugin} changed while it was being configured. Run plugin config again.",
   "cli_plugin_error_builtin_remove": "Built-in plugin {plugin} cannot be removed.",
   "cli_plugin_error_purge_conflict": "Removed plugin {plugin}, but its secrets changed concurrently and were not purged.",
   "cli_plugin_error_number_invalid": "Field {key} must be a valid number.",
