@@ -55,6 +55,24 @@ describe("redactPluginError", () => {
     for (const value of Object.values(values)) expect(serialized).not.toContain(value);
   });
 
+  test("redacts escape-aware JSON string values from message and stack", () => {
+    const secrets = ["quote-secret-suffix", "backslash-secret", "state-secret", "second-code-secret"];
+    const payload = JSON.stringify({
+      access_token: `prefix"${secrets[0]}`,
+      refresh_token: `path\\${secrets[1]}`,
+      state: secrets[2],
+      code: secrets[3],
+    });
+    const error = new Error(payload);
+    error.stack = `Error: ${payload}\n at plugin (plugin.ts:1:1)`;
+
+    const redacted = redactPluginError(error);
+    for (const secret of secrets) {
+      expect(redacted.message).not.toContain(secret);
+      expect(redacted.stack).not.toContain(secret);
+    }
+  });
+
   test("malicious error accessors and string conversion use a fixed safe fallback", () => {
     const accessorError = Object.create(Error.prototype, {
       name: {
@@ -91,12 +109,18 @@ describe("redactPluginError", () => {
 
   test("loader diagnostics never receive raw plugin error details", async () => {
     const secret = "public-diagnostic-secret";
-    const diagnostics: DiagnosticFactory = (code, options) => ({
-      code,
-      retryable: options.retryable,
-      summary: code,
-      occurredAt: new Date(0).toISOString(),
-    });
+    let capturedCode: unknown;
+    let capturedOptions: unknown;
+    const diagnostics: DiagnosticFactory = (code, options) => {
+      capturedCode = code;
+      capturedOptions = options;
+      return {
+        code,
+        retryable: options.retryable,
+        summary: code,
+        occurredAt: new Date(0).toISOString(),
+      };
+    };
     const error = new Error(`Bearer ${secret}`, { cause: new Error("private cause") });
     error.stack = `Error: Bearer ${secret}\n at plugin (plugin.ts:1:1)`;
     const descriptor = definePlugin(() => {
@@ -119,5 +143,11 @@ describe("redactPluginError", () => {
     expect(serialized).not.toContain("private cause");
     expect(serialized).not.toContain("stack");
     expect(serialized).toContain("PLUGIN_LOAD_FAILED");
+    expect(capturedCode).toBe("PLUGIN_LOAD_FAILED");
+    expect(capturedOptions).toEqual({ plugin: "@example/public-diagnostic", retryable: false });
+    expect(JSON.stringify(capturedOptions)).not.toContain(secret);
+    expect(JSON.stringify(capturedOptions)).not.toContain("cause");
+    expect(JSON.stringify(capturedOptions)).not.toContain("stack");
+    expect(Object.keys(capturedOptions as object).sort()).toEqual(["plugin", "retryable"]);
   });
 });

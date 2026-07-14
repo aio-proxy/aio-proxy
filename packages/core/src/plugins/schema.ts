@@ -24,11 +24,15 @@ function isRecord(value: unknown): value is Readonly<Record<PropertyKey, unknown
 }
 
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {
-  return (
-    isRecord(value) &&
-    typeof Reflect.get(value, "safeParse") === "function" &&
-    typeof Reflect.get(value, "safeParseAsync") === "function"
-  );
+  try {
+    return (
+      isRecord(value) &&
+      typeof Reflect.get(value, "safeParse") === "function" &&
+      typeof Reflect.get(value, "safeParseAsync") === "function"
+    );
+  } catch {
+    return false;
+  }
 }
 
 function normalizePath(value: unknown): readonly (string | number)[] {
@@ -41,37 +45,31 @@ function normalizePath(value: unknown): readonly (string | number)[] {
 }
 
 export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): Promise<PluginSchemaValidation<T>> {
-  if (!isPluginZodSchema(schema)) {
-    throw new PluginSchemaContractError();
-  }
-
-  let result: unknown;
   try {
-    result = await schema.safeParseAsync(value);
+    if (!isPluginZodSchema(schema)) throw new PluginSchemaContractError();
+    const result: unknown = await schema.safeParseAsync(value);
+
+    if (!isRecord(result)) throw new PluginSchemaContractError();
+    const { success } = result;
+    if (typeof success !== "boolean") throw new PluginSchemaContractError();
+    if (success) {
+      if (!("data" in result)) throw new PluginSchemaContractError();
+      const { data } = result;
+      return { ok: true, value: data as T };
+    }
+
+    const { error } = result;
+    if (!isRecord(error)) throw new PluginSchemaContractError();
+    const { issues: rawIssues } = error;
+    if (!Array.isArray(rawIssues) || rawIssues.length === 0) throw new PluginSchemaContractError();
+    const issues = rawIssues.map((issue) => {
+      if (!isRecord(issue)) throw new PluginSchemaContractError();
+      const { message, path } = issue;
+      if (typeof message !== "string") throw new PluginSchemaContractError();
+      return { message, path: normalizePath(path) };
+    });
+    return { ok: false, issues };
   } catch {
     throw new PluginSchemaContractError();
   }
-
-  if (!isRecord(result)) {
-    throw new PluginSchemaContractError();
-  }
-  const { success } = result;
-  if (typeof success !== "boolean") throw new PluginSchemaContractError();
-  if (success) {
-    if (!("data" in result)) throw new PluginSchemaContractError();
-    const { data } = result;
-    return { ok: true, value: data as T };
-  }
-
-  const { error } = result;
-  if (!isRecord(error)) throw new PluginSchemaContractError();
-  const { issues: rawIssues } = error;
-  if (!Array.isArray(rawIssues) || rawIssues.length === 0) throw new PluginSchemaContractError();
-  const issues = rawIssues.map((issue) => {
-    if (!isRecord(issue)) throw new PluginSchemaContractError();
-    const { message, path } = issue;
-    if (typeof message !== "string") throw new PluginSchemaContractError();
-    return { message, path: normalizePath(path) };
-  });
-  return { ok: false, issues };
 }

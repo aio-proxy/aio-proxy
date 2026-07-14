@@ -32,6 +32,16 @@ export type RedactedPluginError = {
 };
 
 const SAFE_ERROR_MESSAGE = "Plugin error details unavailable";
+const SENSITIVE_FIELDS = new Set([
+  "access_token",
+  "refresh_token",
+  "authorization_code",
+  "code",
+  "code_verifier",
+  "state",
+  "accessToken",
+  "refreshToken",
+]);
 
 function safeFallback(): RedactedPluginError {
   return { name: "Error", message: SAFE_ERROR_MESSAGE };
@@ -39,6 +49,60 @@ function safeFallback(): RedactedPluginError {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function jsonStringEnd(input: string, start: number): number | undefined {
+  for (let index = start + 1; index < input.length; index++) {
+    if (input[index] === "\\") {
+      index++;
+    } else if (input[index] === '"') {
+      return index + 1;
+    }
+  }
+  return undefined;
+}
+
+function redactJsonQuotedFields(input: string): string {
+  let output = "";
+  let cursor = 0;
+  let index = 0;
+  while (index < input.length) {
+    if (input[index] !== '"') {
+      index++;
+      continue;
+    }
+    const keyEnd = jsonStringEnd(input, index);
+    if (keyEnd === undefined) break;
+    let key: unknown;
+    try {
+      key = JSON.parse(input.slice(index, keyEnd));
+    } catch {
+      index = keyEnd;
+      continue;
+    }
+    if (typeof key !== "string" || !SENSITIVE_FIELDS.has(key)) {
+      index = keyEnd;
+      continue;
+    }
+    let separator = keyEnd;
+    while (/\s/u.test(input[separator] ?? "")) separator++;
+    if (input[separator] !== ":") {
+      index = keyEnd;
+      continue;
+    }
+    let valueStart = separator + 1;
+    while (/\s/u.test(input[valueStart] ?? "")) valueStart++;
+    if (input[valueStart] !== '"') {
+      index = keyEnd;
+      continue;
+    }
+    const valueEnd = jsonStringEnd(input, valueStart);
+    if (valueEnd === undefined) break;
+    output += `${input.slice(cursor, valueStart)}"[REDACTED]"`;
+    cursor = valueEnd;
+    index = valueEnd;
+  }
+  return `${output}${input.slice(cursor)}`;
 }
 
 function redactText(input: string, secretValues: readonly string[]): string {
@@ -51,8 +115,9 @@ function redactText(input: string, secretValues: readonly string[]): string {
     (url) => `${url.slice(0, url.indexOf("?"))}?[REDACTED]`,
   );
   output = output.replace(/\bBearer\s+[^\s,;]+/giu, "Bearer [REDACTED]");
+  output = redactJsonQuotedFields(output);
   output = output.replace(
-    /((?:["'])?\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b(?:["'])?\s*(?:=|:)\s*)(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/giu,
+    /(\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b\s*(?:=|:)\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;&}]+)/giu,
     "$1[REDACTED]",
   );
   return output;
