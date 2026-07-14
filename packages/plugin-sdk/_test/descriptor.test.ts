@@ -27,4 +27,16 @@ describe("definePlugin", () => {
   test("rejects unbranded lookalikes", () => {
     expect(isPluginDescriptor({ apiVersion: 1, setup() {} })).toBe(false);
   });
+
+  test("rejects branded descriptors without object metadata", () => {
+    const descriptor = {
+      [PLUGIN_DESCRIPTOR_BRAND]: true,
+      apiVersion: PLUGIN_API_VERSION,
+      setup() {},
+    };
+
+    expect(isPluginDescriptor(descriptor)).toBe(false);
+    expect(isPluginDescriptor({ ...descriptor, metadata: null })).toBe(false);
+    expect(isPluginDescriptor({ ...descriptor, metadata: [] })).toBe(false);
+  });
 });

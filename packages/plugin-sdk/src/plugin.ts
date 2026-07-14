@@ -6,7 +6,7 @@ export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for("@aio-proxy/plugin-sdk/descrip
 
 export type PluginApi = {
   readonly oauth: {
-    readonly register: (adapter: OAuthAdapter) => void;
+    readonly register: <Options, Credential>(adapter: OAuthAdapter<Options, Credential>) => void;
   };
 };
 
@@ -30,11 +30,17 @@ export function definePlugin<Options = undefined>(
 }
 
 export function isPluginDescriptor(value: unknown): value is PluginDescriptor<unknown> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const metadata = Reflect.get(value, "metadata");
   return (
-    typeof value === "object" &&
-    value !== null &&
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
     Reflect.get(value, "apiVersion") === PLUGIN_API_VERSION &&
+    typeof metadata === "object" &&
+    metadata !== null &&
+    !Array.isArray(metadata) &&
     typeof Reflect.get(value, "setup") === "function"
   );
 }
