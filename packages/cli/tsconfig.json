@@ -12,6 +12,9 @@
       "path": "../i18n"
     },
     {
+      "path": "../plugin-sdk"
+    },
+    {
       "path": "../core"
     },
     {
