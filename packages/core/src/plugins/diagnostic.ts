@@ -117,7 +117,7 @@ function redactText(input: string, secretValues: readonly string[]): string {
   output = output.replace(/\bBearer\s+[^\s,;]+/giu, "Bearer [REDACTED]");
   output = redactJsonQuotedFields(output);
   output = output.replace(
-    /(\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b\s*(?:=|:)\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;&}]+)/giu,
+    /((?:["'])?\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b(?:["'])?\s*(?:=|:)\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;&}]+)/giu,
     "$1[REDACTED]",
   );
   return output;

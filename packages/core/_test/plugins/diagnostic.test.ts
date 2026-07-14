@@ -73,6 +73,20 @@ describe("redactPluginError", () => {
     }
   });
 
+  test.each([
+    ["single-quoted key and value", "{'access_token':'single-quoted-secret'}", "single-quoted-secret"],
+    ["double-quoted key and single-quoted value", `"access_token":'mixed-single-secret'`, "mixed-single-secret"],
+    ["single-quoted key and double-quoted value", `'access_token':"mixed-double-secret"`, "mixed-double-secret"],
+    ["unquoted assignment", "access_token=assignment-token-secret", "assignment-token-secret"],
+  ])("redacts %s fallback form from message and stack", (_name, payload, secret) => {
+    const error = new Error(payload);
+    error.stack = `Error: ${payload}\n at plugin (plugin.ts:1:1)`;
+
+    const redacted = redactPluginError(error);
+    expect(redacted.message).not.toContain(secret);
+    expect(redacted.stack).not.toContain(secret);
+  });
+
   test("malicious error accessors and string conversion use a fixed safe fallback", () => {
     const accessorError = Object.create(Error.prototype, {
       name: {
