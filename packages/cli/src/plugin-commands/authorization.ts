@@ -8,6 +8,9 @@ export type CliAuthorizationDeps = {
     readonly deviceCode: (code: string) => string;
     readonly openedAuthorizationPage: string;
     readonly successHtml: string;
+    readonly alreadyCompleted: string;
+    readonly invalidCallback: string;
+    readonly notFound: string;
   };
   readonly openBrowser: (url: string) => boolean;
   readonly copyToClipboard: (value: string) => boolean;
@@ -24,6 +27,9 @@ export function createDefaultCliAuthorizationCopy(): CliAuthorizationDeps["copy"
     deviceCode: (code) => m.cli_oauth_device_code({ code }),
     openedAuthorizationPage: m.cli_oauth_opened_authorization_page(),
     successHtml: m.cli_oauth_success_html(),
+    alreadyCompleted: m.cli_oauth_callback_already_completed(),
+    invalidCallback: m.cli_oauth_invalid_callback_response(),
+    notFound: m.cli_oauth_callback_not_found(),
   };
 }
 

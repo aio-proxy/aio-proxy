@@ -84,14 +84,6 @@ export class LoopbackPortUnavailableError extends Error {
   }
 }
 
-export class LoopbackBrowserError extends Error {
-  override readonly name = "LoopbackBrowserError";
-
-  constructor() {
-    super(m.cli_oauth_error_browser());
-  }
-}
-
 export class LoopbackManualInputError extends Error {
   override readonly name = "LoopbackManualInputError";
 
@@ -119,17 +111,61 @@ export class LoopbackAuthorizationUrlBuildError extends Error {
 type LoopbackResult = { readonly code: string; readonly redirectUri: string };
 type Settlement = { readonly ok: true; readonly value: LoopbackResult } | { readonly ok: false; readonly error: Error };
 type LoopbackServer = ReturnType<typeof Bun.serve>;
+type UntrustedLoopbackRequest = {
+  readonly state?: unknown;
+  readonly redirect?: unknown;
+  readonly authorizationUrl?: unknown;
+  readonly allowManualCallbackUrl?: unknown;
+};
+type UntrustedRedirect = {
+  readonly hostname?: unknown;
+  readonly port?: unknown;
+  readonly path?: unknown;
+};
+
+function invalidLoopbackRequest(): never {
+  throw new LoopbackRequestInvalidError();
+}
 
 function requireValidRequest(request: LoopbackRequest): void {
-  const { path, port } = request.redirect;
-  if (
-    request.state.trim().length === 0 ||
-    (request.redirect.hostname !== "localhost" && request.redirect.hostname !== "127.0.0.1") ||
-    (port !== "dynamic" && (!Number.isInteger(port) || port < 1 || port > 65_535)) ||
-    !path.startsWith("/") ||
-    path.includes("?") ||
-    path.includes("#")
-  ) {
+  try {
+    const value: unknown = request;
+    if (typeof value !== "object" || value === null) {
+      invalidLoopbackRequest();
+    }
+    const candidate = value as UntrustedLoopbackRequest;
+    const state = candidate.state;
+    const redirect = candidate.redirect;
+    const authorizationUrl = candidate.authorizationUrl;
+    const allowManualCallbackUrl = candidate.allowManualCallbackUrl;
+    if (
+      typeof state !== "string" ||
+      state.trim().length === 0 ||
+      typeof redirect !== "object" ||
+      redirect === null ||
+      typeof authorizationUrl !== "function" ||
+      typeof allowManualCallbackUrl !== "boolean"
+    ) {
+      invalidLoopbackRequest();
+    }
+    const redirectValue = redirect as UntrustedRedirect;
+    const hostname = redirectValue.hostname;
+    const port = redirectValue.port;
+    const path = redirectValue.path;
+    if (
+      (hostname !== "localhost" && hostname !== "127.0.0.1") ||
+      (port !== "dynamic" && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65_535)) ||
+      typeof path !== "string" ||
+      !path.startsWith("/") ||
+      path.includes("?") ||
+      path.includes("#")
+    ) {
+      invalidLoopbackRequest();
+    }
+  } catch (error) {
+    if (error instanceof LoopbackRequestInvalidError) {
+      throw error;
+    }
     throw new LoopbackRequestInvalidError();
   }
 }
@@ -214,7 +250,7 @@ export async function runLoopbackAuthorization(
   });
   const losingPath = new AbortController();
 
-  const settle = (settlement: Settlement, deferPublication = false): boolean => {
+  const settle = (settlement: Settlement, afterResponse = false): boolean => {
     if (settled) {
       return false;
     }
@@ -227,7 +263,7 @@ export async function runLoopbackAuthorization(
         rejectResult(settlement.error);
       }
     };
-    if (deferPublication) {
+    if (afterResponse) {
       setTimeout(publish, 0);
     } else {
       publish();
@@ -237,12 +273,12 @@ export async function runLoopbackAuthorization(
 
   const handleCallback = (raw: string): Response => {
     if (settled) {
-      return new Response("Authorization already completed.", { status: 409 });
+      return new Response(deps.copy.alreadyCompleted, { status: 409 });
     }
     try {
       const { code } = parseCallback(raw, expectedRedirectUri, request.state);
       if (!settle({ ok: true, value: { code, redirectUri: expectedRedirectUri } }, true)) {
-        return new Response("Authorization already completed.", { status: 409 });
+        return new Response(deps.copy.alreadyCompleted, { status: 409 });
       }
       return new Response(deps.copy.successHtml, {
         headers: { "content-type": "text/html; charset=utf-8" },
@@ -251,9 +287,9 @@ export async function runLoopbackAuthorization(
       if (error instanceof LoopbackOAuthError) {
         settle({ ok: false, error }, true);
       } else if (!isSafeCallbackError(error)) {
-        return new Response("Invalid OAuth callback.", { status: 400 });
+        return new Response(deps.copy.invalidCallback, { status: 400 });
       }
-      return new Response("Invalid OAuth callback.", { status: 400 });
+      return new Response(deps.copy.invalidCallback, { status: 400 });
     }
   };
 
@@ -266,7 +302,7 @@ export async function runLoopbackAuthorization(
         fetch(incoming) {
           const incomingUrl = new URL(incoming.url);
           if (incomingUrl.pathname !== request.redirect.path) {
-            return new Response("Not found.", { status: 404 });
+            return new Response(deps.copy.notFound, { status: 404 });
           }
           return handleCallback(incoming.url);
         },
@@ -311,10 +347,15 @@ export async function runLoopbackAuthorization(
     if (deps.signal.aborted) {
       throw new LoopbackAbortedError();
     }
+    deps.print(authorizationUrl);
+    let opened = false;
     try {
-      deps.openBrowser(authorizationUrl);
+      opened = deps.openBrowser(authorizationUrl);
     } catch {
-      throw new LoopbackBrowserError();
+      opened = false;
+    }
+    if (opened) {
+      deps.print(deps.copy.openedAuthorizationPage);
     }
 
     const combinedSignal = AbortSignal.any([deps.signal, losingPath.signal]);

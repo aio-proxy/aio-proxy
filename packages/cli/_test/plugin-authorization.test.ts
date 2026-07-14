@@ -7,6 +7,7 @@ import {
   LoopbackCallbackMismatchError,
   LoopbackOAuthError,
   LoopbackPortUnavailableError,
+  LoopbackRequestInvalidError,
   LoopbackStateMismatchError,
   LoopbackTimeoutError,
   runLoopbackAuthorization,
@@ -17,6 +18,9 @@ const copy = {
   deviceCode: (code: string) => `Device code: ${code}`,
   openedAuthorizationPage: "Opened authorization page.",
   successHtml: "<html><body>Authorization complete.</body></html>",
+  alreadyCompleted: "Authorization already completed (test copy).",
+  invalidCallback: "Invalid OAuth callback (test copy).",
+  notFound: "Not found (test copy).",
 } as const;
 
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -97,6 +101,23 @@ async function expectPortAvailable(port: number): Promise<void> {
   await probe.stop(true);
 }
 
+async function requireFixedCallbackTestPort(): Promise<void> {
+  let probe: ReturnType<typeof Bun.serve> | undefined;
+  try {
+    probe = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 1_455,
+      fetch: () => new Response(null, { status: 204 }),
+    });
+  } catch {
+    throw new Error(
+      "Task 6 fixed-callback test requires 127.0.0.1:1455 to be free before the test; release the external listener and retry.",
+    );
+  } finally {
+    await probe?.stop(true);
+  }
+}
+
 describe("device-code presentation", () => {
   test("opens and always prints the complete verification URL", async () => {
     const { deps, opened, printed } = createDeps();
@@ -161,41 +182,95 @@ describe("device-code presentation", () => {
 
 describe("loopback authorization", () => {
   test("binds before building and opening a fixed callback URL, then stops after automatic success", async () => {
+    await requireFixedCallbackTestPort();
     setInteractive(false);
-    const { deps, opened } = createDeps();
+    const created = createDeps();
     let listenerWasBound = false;
+    let flow: Promise<{ readonly code: string; readonly redirectUri: string }> | undefined;
+    try {
+      flow = runLoopbackAuthorization(
+        request({
+          redirect: { hostname: "localhost", port: 1_455, path: "/auth/callback" },
+          authorizationUrl: ({ redirectUri }) => {
+            expect(redirectUri).toBe("http://localhost:1455/auth/callback");
+            expect(() =>
+              Bun.serve({
+                hostname: "127.0.0.1",
+                port: 1_455,
+                fetch: () => new Response(null),
+              }),
+            ).toThrow();
+            listenerWasBound = true;
+            return "https://identity.example/authorize";
+          },
+        }),
+        created.deps,
+      );
+
+      expect(listenerWasBound).toBe(true);
+      expect(created.opened).toEqual(["https://identity.example/authorize"]);
+      expect(created.printed).toEqual(["https://identity.example/authorize", copy.openedAuthorizationPage]);
+      const response = await fetch("http://localhost:1455/auth/callback?code=auto-code&state=expected-state");
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+      expect(await response.text()).toBe(copy.successHtml);
+      await expect(flow).resolves.toEqual({
+        code: "auto-code",
+        redirectUri: "http://localhost:1455/auth/callback",
+      });
+    } finally {
+      created.controller.abort();
+      await flow?.catch(() => {});
+      await expectPortAvailable(1_455);
+    }
+  });
+
+  test("prints the authorization URL and automatic callback succeeds when browser opening returns false", async () => {
+    setInteractive(false);
+    const authorizationUrl = "https://identity.example/authorize?flow=browser-false";
+    const created = createDeps({ openBrowser: () => false });
+    let redirectUri = "";
     const flow = runLoopbackAuthorization(
       request({
-        redirect: { hostname: "localhost", port: 1_455, path: "/auth/callback" },
-        authorizationUrl: ({ redirectUri }) => {
-          expect(redirectUri).toBe("http://localhost:1455/auth/callback");
-          expect(() =>
-            Bun.serve({
-              hostname: "127.0.0.1",
-              port: 1_455,
-              fetch: () => new Response(null),
-            }),
-          ).toThrow();
-          listenerWasBound = true;
-          return "https://identity.example/authorize";
+        authorizationUrl: (input) => {
+          redirectUri = input.redirectUri;
+          return authorizationUrl;
         },
       }),
-      deps,
+      created.deps,
     );
 
-    expect(listenerWasBound).toBe(true);
-    expect(opened).toEqual(["https://identity.example/authorize"]);
-    const callback = "http://localhost:1455/auth/callback?code=auto-code&state=expected-state";
-    const responses = await Promise.all([fetch(callback), fetch(callback)]);
-    expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
-    const response = responses.find(({ status }) => status === 200);
-    expect(response?.headers.get("content-type")).toContain("text/html");
-    expect(await response?.text()).toBe(copy.successHtml);
-    await expect(flow).resolves.toEqual({
-      code: "auto-code",
-      redirectUri: "http://localhost:1455/auth/callback",
+    expect(created.printed).toEqual([authorizationUrl]);
+    expect((await fetch(`${redirectUri}?code=auto-code&state=expected-state`)).status).toBe(200);
+    await expect(flow).resolves.toMatchObject({ code: "auto-code" });
+    await expectPortAvailable(Number(new URL(redirectUri).port));
+  });
+
+  test("prints the authorization URL and manual callback succeeds when browser opening throws", async () => {
+    setInteractive(true);
+    const authorizationUrl = "https://identity.example/authorize?flow=browser-throw";
+    let redirectUri = "";
+    const created = createDeps({
+      openBrowser: () => {
+        throw new Error("private browser failure");
+      },
+      readManualCallbackUrl: async () => `${redirectUri}?code=manual-code&state=expected-state`,
     });
-    await expectPortAvailable(1_455);
+
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: (input) => {
+            redirectUri = input.redirectUri;
+            return authorizationUrl;
+          },
+        }),
+        created.deps,
+      ),
+    ).resolves.toMatchObject({ code: "manual-code" });
+    expect(created.printed).toEqual([authorizationUrl]);
+    await expectPortAvailable(Number(new URL(redirectUri).port));
   });
 
   test("allocates a dynamic port and uses the actual port in the redirect URI", async () => {
@@ -287,8 +362,10 @@ describe("loopback authorization", () => {
       deps,
     );
 
-    expect(printed).toHaveLength(1);
-    expect(printed[0]).toBe(new LoopbackCallbackMismatchError().message);
+    expect(printed).toHaveLength(3);
+    expect(printed[0]).toContain("https://identity.example/authorize");
+    expect(printed[1]).toBe(copy.openedAuthorizationPage);
+    expect(printed[2]).toBe(new LoopbackCallbackMismatchError().message);
     expect(printed.join(" ")).not.toContain(secret);
   });
 
@@ -334,7 +411,9 @@ describe("loopback authorization", () => {
     );
 
     expect(result.code).toBe("valid");
-    expect(printed).toEqual([new ErrorType().message]);
+    expect(printed[0]).toContain("https://identity.example/authorize");
+    expect(printed[1]).toBe(copy.openedAuthorizationPage);
+    expect(printed[2]).toBe(new ErrorType().message);
   });
 
   test("checks state before OAuth error and only settles the error with expected state", async () => {
@@ -353,6 +432,7 @@ describe("loopback authorization", () => {
 
     const wrongState = await fetch(`${redirectUri}?error=access_denied&state=wrong-secret`);
     expect(wrongState.status).toBe(400);
+    expect(await wrongState.text()).toBe(copy.invalidCallback);
     const acceptedError = await fetch(`${redirectUri}?error=access_denied&state=expected-state`);
     expect(acceptedError.status).toBe(400);
     await expect(flow).rejects.toBeInstanceOf(LoopbackOAuthError);
@@ -373,8 +453,12 @@ describe("loopback authorization", () => {
       deps,
     );
 
-    expect((await fetch(`${new URL(redirectUri).origin}/wrong?code=secret&state=expected-state`)).status).toBe(404);
-    expect((await fetch(`${redirectUri}?code=secret&state=wrong-secret`)).status).toBe(400);
+    const wrongPath = await fetch(`${new URL(redirectUri).origin}/wrong?code=secret&state=expected-state`);
+    expect(wrongPath.status).toBe(404);
+    expect(await wrongPath.text()).toBe(copy.notFound);
+    const wrongState = await fetch(`${redirectUri}?code=secret&state=wrong-secret`);
+    expect(wrongState.status).toBe(400);
+    expect(await wrongState.text()).toBe(copy.invalidCallback);
     expect((await fetch(`${redirectUri}?code=valid&state=expected-state`)).status).toBe(200);
     await expect(flow).resolves.toMatchObject({ code: "valid" });
   });
@@ -412,7 +496,7 @@ describe("loopback authorization", () => {
     expect(manualWasAborted).toBe(true);
   });
 
-  test("the first valid manual result wins and a duplicate automatic callback cannot resettle", async () => {
+  test("manual first valid result wins and late automatic callbacks cannot resettle", async () => {
     setInteractive(true);
     let redirectUri = "";
     const { deps } = createDeps({
@@ -429,7 +513,14 @@ describe("loopback authorization", () => {
       deps,
     );
 
-    await expect(flow).resolves.toMatchObject({ code: "manual-wins" });
+    const result = await flow;
+    expect(result.code).toBe("manual-wins");
+    const lateCallbacks = await Promise.allSettled([
+      fetch(`${redirectUri}?code=late-auto-1&state=expected-state`),
+      fetch(`${redirectUri}?code=late-auto-2&state=expected-state`),
+    ]);
+    expect(lateCallbacks.every(({ status }) => status === "rejected")).toBe(true);
+    expect(result.code).toBe("manual-wins");
     await expectPortAvailable(Number(new URL(redirectUri).port));
   });
 
@@ -578,20 +669,41 @@ describe("loopback authorization", () => {
   });
 
   test.each([
-    ["empty state", { state: "" }],
-    ["invalid port", { redirect: { hostname: "localhost", port: 0, path: "/auth/callback" } }],
-    ["path without slash", { redirect: { hostname: "localhost", port: "dynamic", path: "callback" as `/${string}` } }],
-    ["path with query", { redirect: { hostname: "localhost", port: "dynamic", path: "/callback?secret=x" } }],
-    ["path with fragment", { redirect: { hostname: "localhost", port: "dynamic", path: "/callback#secret" } }],
+    ["null request", null],
+    ["missing request fields", {}],
+    ["non-string state", { ...request(), state: null }],
+    ["empty state", request({ state: "" })],
+    ["missing redirect", { ...request(), redirect: undefined }],
+    ["non-string hostname", { ...request(), redirect: { hostname: 42, port: "dynamic", path: "/auth/callback" } }],
     [
       "non-loopback hostname",
-      { redirect: { hostname: "attacker.example" as "localhost", port: "dynamic", path: "/auth/callback" } },
+      { ...request(), redirect: { hostname: "attacker.example", port: "dynamic", path: "/auth/callback" } },
     ],
-  ] as const)("rejects invalid loopback request input: %s", async (_name, override) => {
-    const { deps, opened } = createDeps();
-    await expect(runLoopbackAuthorization(request(override as Partial<LoopbackRequest>), deps)).rejects.toBeInstanceOf(
-      Error,
+    ["invalid port type", { ...request(), redirect: { hostname: "localhost", port: null, path: "/auth/callback" } }],
+    ["invalid port range", { ...request(), redirect: { hostname: "localhost", port: 0, path: "/auth/callback" } }],
+    ["non-string path", { ...request(), redirect: { hostname: "localhost", port: "dynamic", path: null } }],
+    ["path without slash", { ...request(), redirect: { hostname: "localhost", port: "dynamic", path: "callback" } }],
+    [
+      "path with query",
+      { ...request(), redirect: { hostname: "localhost", port: "dynamic", path: "/callback?secret=x" } },
+    ],
+    [
+      "path with fragment",
+      { ...request(), redirect: { hostname: "localhost", port: "dynamic", path: "/callback#secret" } },
+    ],
+    ["non-function authorization URL builder", { ...request(), authorizationUrl: "https://identity.example" }],
+    ["non-boolean manual callback flag", { ...request(), allowManualCallbackUrl: "yes" }],
+  ] as const)("rejects invalid loopback request input with a safe typed error: %s", async (_name, value) => {
+    let clockCalls = 0;
+    const created = createDeps({
+      now: () => {
+        clockCalls += 1;
+        return clockCalls === 1 ? 0 : 10 * 60_000 + 1;
+      },
+    });
+    await expect(runLoopbackAuthorization(value as LoopbackRequest, created.deps)).rejects.toBeInstanceOf(
+      LoopbackRequestInvalidError,
     );
-    expect(opened).toEqual([]);
+    expect(created.opened).toEqual([]);
   });
 });
