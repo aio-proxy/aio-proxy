@@ -462,6 +462,27 @@ describe("pending operation compensation", () => {
     }
   });
 
+  test("changed same-code diagnostic after a staged update makes compensation superseded", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      repository.writeDiagnostic("provider-1", diagnostic("CREDENTIAL_REFRESH_FAILED", "before update"));
+      const pending = repository.stageAccountOperation({
+        kind: "update",
+        targetDigest: "digest:update",
+        expectedRuntimeRevision: 1,
+        account: account("provider-1", { options: { generation: 2 } }),
+      });
+      const changed = diagnostic("CREDENTIAL_REFRESH_FAILED", "after update");
+
+      expect(repository.writeDiagnostic("provider-1", changed)).toBe(true);
+      expect(repository.compensateAccountOperation(pending.operationId)).toBe("superseded");
+      expect(repository.readDiagnostics("provider-1")).toContainEqual(changed);
+    } finally {
+      handle.close();
+    }
+  });
+
   test("diagnostic clear after a staged update makes compensation superseded without restoring it", () => {
     const { handle, repository } = openRepository();
     try {
@@ -485,6 +506,22 @@ describe("pending operation compensation", () => {
 });
 
 describe("catalogs, diagnostics, plugin secrets, and refresh leases", () => {
+  test("identical diagnostics are no-ops while changed same-code diagnostics replace the stored value", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      const first = diagnostic("CREDENTIAL_REFRESH_FAILED", "first");
+      const changed = diagnostic("CREDENTIAL_REFRESH_FAILED", "changed");
+
+      expect(repository.writeDiagnostic("provider-1", first)).toBe(true);
+      expect(repository.writeDiagnostic("provider-1", first)).toBe(false);
+      expect(repository.writeDiagnostic("provider-1", changed)).toBe(true);
+      expect(repository.readDiagnostics("provider-1")).toEqual([changed]);
+    } finally {
+      handle.close();
+    }
+  });
+
   test("account deletion cascades catalog, lease, and diagnostics", () => {
     const { handle, repository } = openRepository();
     try {

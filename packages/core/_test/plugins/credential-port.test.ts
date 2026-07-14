@@ -75,6 +75,7 @@ function port(
   providerId = "provider-1",
   overrides: {
     readonly schema?: Parameters<typeof createCredentialPort>[0]["schema"];
+    readonly diagnostics?: DiagnosticFactory;
     readonly logger?: PluginLogSink;
     readonly onDiagnosticChanged?: () => void;
   } = {},
@@ -83,7 +84,7 @@ function port(
     providerId,
     schema: overrides.schema ?? zod.object({ token: zod.string() }),
     repository,
-    diagnostics: diagnosticFactory(),
+    diagnostics: overrides.diagnostics ?? diagnosticFactory(),
     logger: overrides.logger ?? (() => {}),
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
   });
@@ -176,10 +177,12 @@ describe("credential refresh coordination", () => {
   });
 
   test("allows exactly one exchange across two processes sharing one SQLite database", async () => {
-    const { home, handle } = openFixture();
+    const { home, handle, repository } = openFixture();
+    const expectedRevision = repository.readAccount("provider-1")?.revision;
+    if (expectedRevision === undefined) throw new Error("missing fixture account");
     handle.close();
     const spawn = () =>
-      Bun.spawn([process.execPath, childPath, "refresh", home, "provider-1", "250"], {
+      Bun.spawn([process.execPath, childPath, "refresh", home, "provider-1", String(expectedRevision)], {
         cwd: process.cwd(),
         stdout: "pipe",
         stderr: "pipe",
@@ -188,6 +191,7 @@ describe("credential refresh coordination", () => {
     const outputs = await Promise.all([childOutput(spawn()), childOutput(spawn())]);
 
     expect(outputs.join("").match(/^exchange$/gim)).toHaveLength(1);
+    expect(outputs.join("").match(new RegExp(`^expected:${expectedRevision}$`, "gim"))).toHaveLength(2);
     expect(outputs.join("").match(/^updated$/gim)).toHaveLength(1);
     expect(outputs.join("").match(/^superseded$/gim)).toHaveLength(1);
   });
@@ -240,10 +244,17 @@ describe("credential refresh coordination", () => {
     const { handle, repository } = openFixture();
     const logs: Parameters<PluginLogSink>[0][] = [];
     let notifications = 0;
+    let diagnosticSummary = "Credential refresh failed";
     try {
       repository.compareAndSwapCredential("provider-1", 1, { token: "valid-initial-secret" });
       const credentials = port(repository, "provider-1", {
         schema: zod.object({ token: zod.string().startsWith("valid-") }),
+        diagnostics: (code, options) => ({
+          code,
+          summary: diagnosticSummary,
+          retryable: options.retryable,
+          occurredAt: "2026-07-15T00:00:00.000Z",
+        }),
         logger: (entry) => logs.push(entry),
         onDiagnosticChanged: () => {
           notifications += 1;
@@ -255,17 +266,24 @@ describe("credential refresh coordination", () => {
           credentials.refresh(current.revision, async () => ({ value: { token: "invalid-refreshed-secret" } })),
         ).rejects.toBeInstanceOf(CredentialValidationError);
       }
+      expect(notifications).toBe(1);
+
+      diagnosticSummary = "Credential refresh failed again";
+      await expect(
+        credentials.refresh(current.revision, async () => ({ value: { token: "invalid-refreshed-secret" } })),
+      ).rejects.toBeInstanceOf(CredentialValidationError);
 
       expect(repository.readAccount("provider-1")).toMatchObject({
         credential: { token: "valid-initial-secret" },
         revision: 2,
       });
       expect(repository.readDiagnostics("provider-1")).toHaveLength(1);
+      expect(repository.readDiagnostics("provider-1")[0]?.summary).toBe("Credential refresh failed again");
       expect(JSON.stringify(repository.readDiagnostics("provider-1"))).not.toMatch(
         /valid-initial-secret|invalid-refreshed-secret/,
       );
-      expect(notifications).toBe(1);
-      expect(logs).toHaveLength(2);
+      expect(notifications).toBe(2);
+      expect(logs).toHaveLength(3);
     } finally {
       handle.close();
     }
@@ -328,6 +346,55 @@ describe("credential refresh coordination", () => {
     } finally {
       handle.close();
     }
+  });
+
+  async function expectRenewalFailure(renewRefreshLease: PluginRepository["renewRefreshLease"]): Promise<void> {
+    const { handle, repository } = openFixture();
+    const exchangeGate = deferred();
+    let signal: AbortSignal | undefined;
+    try {
+      const credentials = port({ ...repository, renewRefreshLease });
+      const current = await credentials.read();
+      jest.useFakeTimers();
+      const refreshing = credentials.refresh(current.revision, async (_snapshot, deadlineSignal) => {
+        signal = deadlineSignal;
+        await exchangeGate.promise;
+        return { value: { token: "must-not-be-written" } };
+      });
+      let rejection: unknown;
+      void refreshing.catch((error: unknown) => {
+        rejection = error;
+      });
+      jest.advanceTimersByTime(0);
+      for (let index = 0; index < 50 && signal === undefined; index++) await Promise.resolve();
+      expect(signal?.aborted).toBe(false);
+
+      jest.advanceTimersByTime(15_000);
+      for (let index = 0; index < 20 && rejection === undefined; index++) await Promise.resolve();
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toContain("refresh lease");
+      expect(signal?.aborted).toBe(true);
+      expect(repository.readAccount("provider-1")).toMatchObject({
+        credential: { token: "initial-secret" },
+        revision: current.revision,
+      });
+      expect(repository.tryAcquireRefreshLease("provider-1", "next-owner", Date.now(), Date.now() + 1_000)).toBe(true);
+    } finally {
+      exchangeGate.resolve();
+      for (let index = 0; index < 10; index++) await Promise.resolve();
+      handle.close();
+    }
+  }
+
+  test("aborts and rejects refresh immediately when lease renewal loses ownership", async () => {
+    await expectRenewalFailure(() => false);
+  });
+
+  test("aborts and rejects refresh immediately when lease renewal throws", async () => {
+    await expectRenewalFailure(() => {
+      throw new Error("database unavailable");
+    });
   });
 
   test("refresh changes only credential revision and notifies once when clearing an existing diagnostic", async () => {

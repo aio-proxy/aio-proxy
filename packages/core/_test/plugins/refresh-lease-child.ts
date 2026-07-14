@@ -3,7 +3,7 @@ import { openDb } from "../../src/db";
 import { createCredentialPort } from "../../src/plugins/credential-port";
 import { createPluginRepository } from "../../src/plugins/repository";
 
-const [mode, home, providerId, argument] = process.argv.slice(2);
+const [mode, home, providerId, argument, delayArgument] = process.argv.slice(2);
 if (mode === undefined || home === undefined || providerId === undefined) {
   throw new Error("usage: refresh-lease-child.ts <mode> <home> <provider-id> [argument]");
 }
@@ -21,6 +21,8 @@ try {
     console.log("acquired");
     await new Promise(() => {});
   } else if (mode === "refresh") {
+    const expectedRevision = Number(argument);
+    if (!Number.isSafeInteger(expectedRevision)) throw new Error("refresh mode requires expected revision");
     const port = createCredentialPort({
       providerId,
       schema: zod.object({ token: zod.string() }),
@@ -34,10 +36,10 @@ try {
       logger: () => {},
       onDiagnosticChanged: () => {},
     });
-    const current = await port.read();
-    const result = await port.refresh(current.revision, async () => {
+    console.log(`expected:${expectedRevision}`);
+    const result = await port.refresh(expectedRevision, async () => {
       console.log("exchange");
-      await Bun.sleep(Number(argument ?? "200"));
+      if (delayArgument !== undefined) await Bun.sleep(Number(delayArgument));
       return { value: { token: `refreshed-${process.pid}` } };
     });
     console.log(result.status);

@@ -46,6 +46,13 @@ export class CredentialRefreshWaitTimeoutError extends Error {
   }
 }
 
+export class CredentialRefreshLeaseLostError extends Error {
+  constructor() {
+    super("Credential refresh lease was lost");
+    this.name = "CredentialRefreshLeaseLostError";
+  }
+}
+
 export class CredentialAccountMissingError extends Error {
   constructor() {
     super("Credential account is unavailable");
@@ -94,19 +101,32 @@ function stringLeaves(value: unknown): readonly string[] {
   return leaves;
 }
 
-async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
+async function withRefreshGuards<T>(run: (signal: AbortSignal) => Promise<T>, renewLease: () => boolean): Promise<T> {
   const controller = new AbortController();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timeout = setTimeout(() => {
-      controller.abort();
-      reject(new CredentialRefreshTimeoutError());
-    }, timeoutMs);
+  let rejectGuard = (_error: Error) => {};
+  let stopped = false;
+  const guard = new Promise<never>((_resolve, reject) => {
+    rejectGuard = reject;
   });
+  const fail = (error: Error): void => {
+    if (stopped) return;
+    rejectGuard(error);
+    controller.abort();
+  };
+  const timeout = setTimeout(() => fail(new CredentialRefreshTimeoutError()), REFRESH_EXCHANGE_TIMEOUT_MS);
+  const renew = setInterval(() => {
+    try {
+      if (!renewLease()) fail(new CredentialRefreshLeaseLostError());
+    } catch {
+      fail(new CredentialRefreshLeaseLostError());
+    }
+  }, REFRESH_RENEW_MS);
   try {
-    return await Promise.race([Promise.resolve().then(() => run(controller.signal)), deadline]);
+    return await Promise.race([Promise.resolve().then(() => run(controller.signal)), guard]);
   } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
+    stopped = true;
+    clearTimeout(timeout);
+    clearInterval(renew);
   }
 }
 
@@ -178,18 +198,15 @@ export function createCredentialPort<Credential>(
         try {
           const lease = await waitForLease(options, owner, expectedRevision);
           if (!lease.acquired) return { status: "superseded", snapshot: lease.snapshot };
-          const renew = setInterval(() => {
-            options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS);
-          }, REFRESH_RENEW_MS);
           try {
             const current = await readValidated(options.providerId, options.schema, options.repository);
             secretValues = stringLeaves(current.snapshot.value);
             if (current.snapshot.revision !== expectedRevision) {
               return { status: "superseded", snapshot: current.snapshot };
             }
-            const exchanged = await withDeadline(
+            const exchanged = await withRefreshGuards(
               (signal) => exchange(current.snapshot, signal),
-              REFRESH_EXCHANGE_TIMEOUT_MS,
+              () => options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
             );
             secretValues = [...secretValues, ...stringLeaves(exchanged.value)];
             const validated = await parsePluginSchema(options.schema, exchanged.value);
@@ -209,7 +226,6 @@ export function createCredentialPort<Credential>(
             }
             return { status: "updated", snapshot: { value: validated.value, revision: updated.revision } };
           } finally {
-            clearInterval(renew);
             options.repository.releaseRefreshLease(options.providerId, owner);
           }
         } catch (error) {
