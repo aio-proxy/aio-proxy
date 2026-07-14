@@ -99,9 +99,12 @@ export {
 } from "./models-dev-catalog";
 export {
   findInstalledNpmPackage,
+  isNpmPackageName,
   type NpmPackageInfo,
   npmAdd,
   npmPackageCacheDir,
+  removeNpmPackageCache,
+  withInstalledNpmPackage,
 } from "./npm";
 export {
   type InstalledNpmPackage,

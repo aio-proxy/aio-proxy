@@ -1,0 +1,548 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AtomicConfigFile, type PluginSecretSnapshot } from "@aio-proxy/core";
+import { definePlugin } from "@aio-proxy/plugin-sdk";
+import {
+  BuiltInPluginRemovalError,
+  createCliPluginDiagnosticFactory,
+  PluginConfirmationRequiredError,
+  PluginDescriptorInvalidError,
+  type PluginLifecycleDeps,
+  PluginSecretPurgeConflictError,
+  PluginSetupValidationError,
+  pluginAdd,
+  pluginConfig,
+  pluginList,
+  pluginPrune,
+  pluginRemove,
+} from "../src/plugin-commands/plugin";
+
+const homes: string[] = [];
+
+function harness(initial: Record<string, unknown> = { providers: {}, plugins: [] }) {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-command-"));
+  homes.push(home);
+  const path = join(home, "config.jsonc");
+  writeFileSync(path, `${JSON.stringify(initial, null, 2)}\n`);
+  const config = new AtomicConfigFile(path);
+  const values = new Map<string, PluginSecretSnapshot>();
+  const lines: string[] = [];
+  const deps: PluginLifecycleDeps = {
+    config,
+    builtInNames: new Set(["@aio-proxy/plugin-github-copilot"]),
+    confirm: async () => true,
+    importPackage: async () => ({ default: definePlugin(() => {}) }),
+    isTTY: true,
+    findInstalledNpmPackage: async () => ({ version: "1.0.0", entrypoint: "/tmp/plugin.js" }),
+    listInstalledNpmPackages: async () => [],
+    npmAdd: async () => ({ version: "1.0.0", entrypoint: "/tmp/plugin.js" }),
+    print: (line) => lines.push(line),
+    prompts: {
+      input: async () => "",
+      password: async () => "",
+      confirm: async () => true,
+      select: async () => "",
+    },
+    removeNpmPackageCache: async () => false,
+    repository: {
+      readPluginSecret(plugin) {
+        return values.get(plugin) ?? null;
+      },
+      writePluginSecret(plugin, expectedRevision, value) {
+        const current = values.get(plugin) ?? null;
+        if ((current?.revision ?? null) !== expectedRevision) throw new Error("Plugin secret revision mismatch");
+        const snapshot = { value, revision: (current?.revision ?? 0) + 1 };
+        values.set(plugin, snapshot);
+        return snapshot;
+      },
+      deletePluginSecret(plugin, expectedRevision) {
+        const current = values.get(plugin);
+        if (current?.revision !== expectedRevision) return false;
+        values.delete(plugin);
+        return true;
+      },
+    },
+  };
+  return { config, deps, lines, path, values };
+}
+
+afterEach(() => {
+  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
+});
+
+describe("plugin lifecycle commands", () => {
+  test("non-interactive refusal and built-in add do not create config, database, or package cache", async () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-cli-"));
+    homes.push(home);
+    const previousHome = process.env.AIO_PROXY_HOME;
+    const previousLog = console.log;
+    process.env.AIO_PROXY_HOME = home;
+    console.log = () => {};
+    try {
+      await expect(pluginAdd("third-party-plugin", {})).rejects.toBeInstanceOf(PluginConfirmationRequiredError);
+      expect(existsSync(join(home, "aio-proxy.db"))).toBe(false);
+      expect(existsSync(join(home, "config.jsonc"))).toBe(false);
+      expect(existsSync(join(home, "packages"))).toBe(false);
+
+      await pluginAdd("@aio-proxy/plugin-github-copilot", {});
+      expect(existsSync(join(home, "aio-proxy.db"))).toBe(false);
+      expect(existsSync(join(home, "config.jsonc"))).toBe(false);
+      expect(existsSync(join(home, "packages"))).toBe(false);
+    } finally {
+      if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
+      else process.env.AIO_PROXY_HOME = previousHome;
+      console.log = previousLog;
+    }
+  });
+
+  test("add refuses non-TTY without --yes and built-ins are npm-free no-ops", async () => {
+    const { deps, lines } = harness();
+    await expect(pluginAdd("third-party-plugin", {}, { ...deps, isTTY: false })).rejects.toBeInstanceOf(
+      PluginConfirmationRequiredError,
+    );
+
+    let npmCalls = 0;
+    await pluginAdd(
+      "@aio-proxy/plugin-github-copilot",
+      {},
+      {
+        ...deps,
+        npmAdd: async () => {
+          npmCalls += 1;
+          throw new Error("must not install");
+        },
+      },
+    );
+    expect(npmCalls).toBe(0);
+    expect(lines.join("\n")).toContain("already built in");
+  });
+
+  test("add orders trust before npm/import and failed import leaves plugins unchanged", async () => {
+    const { deps, path } = harness();
+    const events: string[] = [];
+    await expect(
+      pluginAdd(
+        "third-party-plugin",
+        {},
+        {
+          ...deps,
+          confirm: async () => {
+            events.push("trust");
+            return true;
+          },
+          npmAdd: async () => {
+            events.push("npm");
+            return { version: "1.0.0", entrypoint: "/tmp/plugin.js" };
+          },
+          importPackage: async () => {
+            events.push("import");
+            throw new Error("bad import");
+          },
+        },
+      ),
+    ).rejects.toThrow("bad import");
+    expect(events).toEqual(["trust", "npm", "import"]);
+    expect(JSON.parse(readFileSync(path, "utf8")).plugins).toEqual([]);
+  });
+
+  test("add maps a malformed descriptor ConfigSpec to a localized descriptor error", async () => {
+    const state = harness();
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: { safeParse() {}, async safeParseAsync() {} } as never,
+        form: [{ type: "text", key: "", label: "Invalid" }],
+      },
+    });
+
+    await expect(
+      pluginAdd(
+        "invalid-config-plugin",
+        { yes: true },
+        {
+          ...state.deps,
+          importPackage: async () => ({ default: descriptor }),
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginDescriptorInvalidError);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
+  });
+
+  test("add writes string form without options and tuple form with public options", async () => {
+    const empty = harness();
+    await pluginAdd("empty-plugin", { yes: true }, empty.deps);
+    expect(JSON.parse(readFileSync(empty.path, "utf8")).plugins).toEqual(["empty-plugin"]);
+
+    const configured = harness();
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    await pluginAdd(
+      "configured-plugin",
+      { yes: true },
+      {
+        ...configured.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: { ...configured.deps.prompts, input: async () => "https://example.test" },
+      },
+    );
+    expect(JSON.parse(readFileSync(configured.path, "utf8")).plugins).toEqual([
+      ["configured-plugin", { endpoint: "https://example.test" }],
+    ]);
+  });
+
+  test("setup validation failure is safely reported before config or secrets are committed", async () => {
+    const state = harness();
+    const descriptor = definePlugin(() => {
+      throw new Error("setup contained secret-value");
+    });
+    const result = pluginAdd(
+      "hanging-plugin",
+      { yes: true },
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+      },
+    );
+    await expect(result).rejects.toBeInstanceOf(PluginSetupValidationError);
+    await expect(result).rejects.not.toThrow("secret-value");
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
+    expect(state.values.size).toBe(0);
+  });
+
+  test("list includes built-ins and configured third parties without options or secrets", async () => {
+    const secret = "vault-secret-value";
+    const { deps, lines, values } = harness({
+      providers: {},
+      plugins: [["third-party-plugin", { endpoint: "https://private.test" }]],
+    });
+    values.set("third-party-plugin", { revision: 1, value: { token: secret } });
+    await pluginList({}, deps);
+    const output = lines.join("\n");
+    expect(output).toContain("@aio-proxy/plugin-github-copilot");
+    expect(output).toContain("third-party-plugin");
+    expect(output).not.toContain("private.test");
+    expect(output).not.toContain(secret);
+  });
+
+  test("config retains blank secret and supports explicit clear", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const retained = harness({ providers: {}, plugins: ["secret-plugin"] });
+    retained.values.set("secret-plugin", { revision: 1, value: { token: "keep" } });
+    await pluginConfig("secret-plugin", {}, { ...retained.deps, importPackage: async () => ({ default: descriptor }) });
+    expect(retained.values.get("secret-plugin")?.value).toEqual({ token: "keep" });
+
+    await pluginConfig(
+      "secret-plugin",
+      { clearSecret: ["token"] },
+      {
+        ...retained.deps,
+        importPackage: async () => ({ default: descriptor }),
+      },
+    );
+    expect(retained.values.get("secret-plugin")?.value).toEqual({});
+  });
+
+  test("config uses an injected built-in descriptor without npm or dynamic import", async () => {
+    const packageName = "@aio-proxy/plugin-github-copilot";
+    const state = harness({ providers: {}, plugins: [packageName] });
+    const descriptor = definePlugin(() => {});
+    let externalAccess = 0;
+    await pluginConfig(
+      packageName,
+      {},
+      {
+        ...state.deps,
+        builtIns: [{ packageName, version: "built-in", descriptor }],
+        findInstalledNpmPackage: async () => {
+          externalAccess += 1;
+          return null;
+        },
+        importPackage: async () => {
+          externalAccess += 1;
+          throw new Error("must not import built-in");
+        },
+      },
+    );
+    expect(externalAccess).toBe(0);
+  });
+
+  test("failed config write compensates only its own secret revision", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["secret-plugin"] });
+    state.values.set("secret-plugin", { revision: 1, value: { token: "old" } });
+    const realWrite = state.deps.repository.writePluginSecret.bind(state.deps.repository);
+    const brokenConfig = {
+      read: state.deps.config.read.bind(state.deps.config),
+      transaction: async (mutate: Parameters<AtomicConfigFile["transaction"]>[0]) => {
+        const current = await state.deps.config.read();
+        await mutate(current);
+        realWrite("secret-plugin", 2, { token: "concurrent" });
+        throw new Error("config failed");
+      },
+      replace: state.deps.config.replace.bind(state.deps.config),
+      providerEntry: state.deps.config.providerEntry.bind(state.deps.config),
+      providerEntryDigest: state.deps.config.providerEntryDigest.bind(state.deps.config),
+    } as AtomicConfigFile;
+    await expect(
+      pluginConfig(
+        "secret-plugin",
+        {},
+        {
+          ...state.deps,
+          config: brokenConfig,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: { ...state.deps.prompts, password: async () => "new" },
+        },
+      ),
+    ).rejects.toThrow("config failed");
+    expect(state.values.get("secret-plugin")).toEqual({ revision: 3, value: { token: "concurrent" } });
+  });
+
+  test("failed config write restores the prior secret when its applied revision is current", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["secret-plugin"] });
+    state.values.set("secret-plugin", { revision: 1, value: { token: "old" } });
+    const brokenConfig = {
+      read: state.deps.config.read.bind(state.deps.config),
+      transaction: async (mutate: Parameters<AtomicConfigFile["transaction"]>[0]) => {
+        await mutate(await state.deps.config.read());
+        throw new Error("config failed");
+      },
+      replace: state.deps.config.replace.bind(state.deps.config),
+      providerEntry: state.deps.config.providerEntry.bind(state.deps.config),
+      providerEntryDigest: state.deps.config.providerEntryDigest.bind(state.deps.config),
+    } as AtomicConfigFile;
+
+    await expect(
+      pluginConfig(
+        "secret-plugin",
+        {},
+        {
+          ...state.deps,
+          config: brokenConfig,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: { ...state.deps.prompts, password: async () => "new" },
+        },
+      ),
+    ).rejects.toThrow("config failed");
+    expect(state.values.get("secret-plugin")?.value).toEqual({ token: "old" });
+  });
+
+  test("failed config compensation surfaces storage errors while its revision is still current", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "secret", key: "token", label: "Token" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["secret-plugin"] });
+    state.values.set("secret-plugin", { revision: 1, value: { token: "old" } });
+    const brokenConfig = {
+      read: state.deps.config.read.bind(state.deps.config),
+      transaction: async (mutate: Parameters<AtomicConfigFile["transaction"]>[0]) => {
+        await mutate(await state.deps.config.read());
+        throw new Error("config failed");
+      },
+      replace: state.deps.config.replace.bind(state.deps.config),
+      providerEntry: state.deps.config.providerEntry.bind(state.deps.config),
+      providerEntryDigest: state.deps.config.providerEntryDigest.bind(state.deps.config),
+    } as AtomicConfigFile;
+    let writes = 0;
+
+    await expect(
+      pluginConfig(
+        "secret-plugin",
+        {},
+        {
+          ...state.deps,
+          config: brokenConfig,
+          repository: {
+            ...state.deps.repository,
+            writePluginSecret(plugin, expectedRevision, value) {
+              writes += 1;
+              if (writes === 2) throw new Error("rollback storage failed");
+              return state.deps.repository.writePluginSecret(plugin, expectedRevision, value);
+            },
+          },
+          importPackage: async () => ({ default: descriptor }),
+          prompts: { ...state.deps.prompts, password: async () => "new" },
+        },
+      ),
+    ).rejects.toThrow("rollback storage failed");
+  });
+
+  test("localized diagnostics interpolate only safe identifiers", () => {
+    const diagnostic = createCliPluginDiagnosticFactory()("CAPABILITY_MISSING", {
+      plugin: "secret-value\ninvalid",
+      capability: "secret-value invalid",
+      providerId: "secret-value invalid",
+      retryable: false,
+    });
+    expect(diagnostic.summary).not.toContain("secret-value");
+  });
+
+  test("remove preserves secrets by default and purge uses a second confirmation after config success", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "keep" } });
+    await pluginRemove("third-party-plugin", { yes: true }, state.deps);
+    expect(state.values.get("third-party-plugin")?.value).toEqual({ token: "keep" });
+
+    writeFileSync(state.path, JSON.stringify({ providers: {}, plugins: ["third-party-plugin"] }));
+    let confirmations = 0;
+    await pluginRemove(
+      "third-party-plugin",
+      { purgeSecrets: true },
+      {
+        ...state.deps,
+        confirm: async () => {
+          confirmations += 1;
+          return true;
+        },
+      },
+    );
+    expect(confirmations).toBe(2);
+    expect(state.values.has("third-party-plugin")).toBe(false);
+  });
+
+  test("--yes permits non-interactive secret purge", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "remove" } });
+    await pluginRemove("third-party-plugin", { purgeSecrets: true, yes: true }, { ...state.deps, isTTY: false });
+    expect(state.values.has("third-party-plugin")).toBe(false);
+  });
+
+  test("purge reports a conflict when a concurrent secret update wins", async () => {
+    const state = harness({ providers: {}, plugins: ["third-party-plugin"] });
+    state.values.set("third-party-plugin", { revision: 1, value: { token: "old" } });
+
+    await expect(
+      pluginRemove(
+        "third-party-plugin",
+        { purgeSecrets: true, yes: true },
+        {
+          ...state.deps,
+          repository: {
+            ...state.deps.repository,
+            deletePluginSecret(plugin, expectedRevision) {
+              state.values.set(plugin, { revision: expectedRevision + 1, value: { token: "new" } });
+              return false;
+            },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginSecretPurgeConflictError);
+    expect(state.values.get("third-party-plugin")?.value).toEqual({ token: "new" });
+    expect(state.lines.join("\n")).not.toContain("purged");
+  });
+
+  test("built-ins cannot be removed", async () => {
+    const { deps } = harness();
+    await expect(pluginRemove("@aio-proxy/plugin-github-copilot", { yes: true }, deps)).rejects.toBeInstanceOf(
+      BuiltInPluginRemovalError,
+    );
+  });
+
+  test("prune conservatively keeps plugin and raw ai-sdk package names", async () => {
+    const { deps } = harness({
+      plugins: [["used-plugin", { anything: true }]],
+      providers: {
+        broken: { kind: "ai-sdk", package: "used-provider", options: "malformed-but-package-still-counts" },
+        legacyUpper: { kind: "ai-sdk", package: "Legacy-Provider" },
+        invalidName: { kind: "ai-sdk", packageName: "../malformed" },
+        api: { kind: "api", package: "not-an-ai-sdk-package" },
+      },
+    });
+    const removed: string[] = [];
+    const packages = [
+      "used-plugin",
+      "used-provider",
+      "Legacy-Provider",
+      "../malformed",
+      "not-an-ai-sdk-package",
+      "unused-package",
+    ];
+    await pluginPrune(
+      { yes: true },
+      {
+        ...deps,
+        listInstalledNpmPackages: async () =>
+          packages.map((packageName) => ({
+            packageName,
+            version: "1",
+            entrypoint: "/tmp/x",
+            cacheDir: `/tmp/${packageName}`,
+          })),
+        removeNpmPackageCache: async (packageName) => {
+          removed.push(packageName);
+          return true;
+        },
+      },
+    );
+    expect(removed).toEqual(["../malformed", "not-an-ai-sdk-package", "unused-package"]);
+  });
+
+  test("prune rechecks config under the package lifecycle lock before removal", async () => {
+    const state = harness({ providers: {}, plugins: [] });
+    let removed = false;
+    await pluginPrune(
+      { yes: true },
+      {
+        ...state.deps,
+        listInstalledNpmPackages: async () => [
+          { packageName: "racing-plugin", version: "1.0.0", entrypoint: "/tmp/racing.js", cacheDir: "/tmp/cache" },
+        ],
+        removeNpmPackageCache: async (_packageName, canRemove) => {
+          await state.config.replace((current) => ({ ...current, plugins: ["racing-plugin"] }));
+          removed = (await canRemove?.()) ?? true;
+          return removed;
+        },
+      },
+    );
+    expect(removed).toBe(false);
+  });
+});

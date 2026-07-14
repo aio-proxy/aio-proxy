@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NpmLockError } from "../src";
-import { NpmInstallError, npmAdd, npmPackageCacheDir } from "../src/index";
+import {
+  findInstalledNpmPackage,
+  listInstalledNpmPackages,
+  NpmInstallError,
+  npmAdd,
+  npmPackageCacheDir,
+  packagesDir,
+  removeNpmPackageCache,
+  withInstalledNpmPackage,
+} from "../src/index";
 import { acquireNpmInstallLock } from "../src/npm-lock";
 
 const homes: string[] = [];
@@ -12,6 +21,7 @@ function sandboxHome(): string {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-npm-home-"));
   homes.push(home);
   process.env.HOME = home;
+  process.env.AIO_PROXY_HOME = home;
   return home;
 }
 
@@ -93,6 +103,7 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
   }
   delete process.env.HOME;
+  delete process.env.AIO_PROXY_HOME;
 });
 
 describe("npmAdd", () => {
@@ -195,5 +206,136 @@ describe("npmAdd", () => {
       Bun.spawn = originalSpawn;
       rmSync(cacheDir, { recursive: true, force: true });
     }
+  });
+
+  test("Given a fresh partial lock record When contending Then it receives a write grace period", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-partial-lock-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    writeFileSync(lockPath, "", { flag: "wx" });
+    let acquired = false;
+    const pending = acquireNpmInstallLock("partial-lock-provider", cacheDir).then((lock) => {
+      acquired = true;
+      return lock;
+    });
+
+    await Bun.sleep(100);
+    expect(acquired).toBe(false);
+    expect(readFileSync(lockPath, "utf8")).toBe("");
+    rmSync(lockPath);
+    const lock = await pending;
+    await lock.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given unavailable identity and a live PID When heartbeat is stale Then the lock is not stolen", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-reused-pid-lock-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: process.pid,
+        createdAt: 0,
+        starttime: "unavailable",
+        version: 1,
+      }),
+      { flag: "wx" },
+    );
+    utimesSync(lockPath, new Date(0), new Date(0));
+
+    let acquired = false;
+    const pending = acquireNpmInstallLock("reused-pid-provider", cacheDir).then((lock) => {
+      acquired = true;
+      return lock;
+    });
+    await Bun.sleep(100);
+    expect(acquired).toBe(false);
+    rmSync(lockPath);
+    const lock = await pending;
+    await lock.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given concurrent stale-lock recovery When owners run Then only one lock is active", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-lock-race-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999, createdAt: Date.now(), starttime: "dead", version: 1 }), {
+      flag: "wx",
+    });
+    let active = 0;
+    let maximum = 0;
+
+    await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        const lock = await acquireNpmInstallLock("stale-lock-race-provider", cacheDir);
+        active += 1;
+        maximum = Math.max(maximum, active);
+        await Bun.sleep(10);
+        active -= 1;
+        await lock.release();
+      }),
+    );
+    expect(maximum).toBe(1);
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe("isolated npm cache lifecycle", () => {
+  test("lists only the requested cache root package, never its dependencies", async () => {
+    sandboxHome();
+    writeCachedPackage("root-plugin", "1.0.0");
+    writeCachedPackage("dependency-package", "9.0.0");
+    const dependencyDir = join(npmPackageCacheDir("root-plugin"), "node_modules", "dependency-package");
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(
+      join(dependencyDir, "package.json"),
+      JSON.stringify({ name: "dependency-package", version: "9.0.0" }),
+    );
+
+    expect((await listInstalledNpmPackages()).map((pkg) => pkg.packageName)).toEqual([
+      "dependency-package",
+      "root-plugin",
+    ]);
+  });
+
+  test("cache removal is idempotent", async () => {
+    sandboxHome();
+    writeCachedPackage("removable-plugin", "1.0.0");
+    expect(await removeNpmPackageCache("removable-plugin")).toBe(true);
+    expect(await removeNpmPackageCache("removable-plugin")).toBe(false);
+  });
+
+  test("an installed package stays locked through its caller's config commit", async () => {
+    sandboxHome();
+    writeCachedPackage("racing-plugin", "1.0.0");
+    let allowCommit!: () => void;
+    const commit = new Promise<void>((resolve) => {
+      allowCommit = resolve;
+    });
+    let callbackEntered!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      callbackEntered = resolve;
+    });
+    let removalGuardCalled = false;
+
+    const add = withInstalledNpmPackage("racing-plugin", undefined, async () => {
+      callbackEntered();
+      await commit;
+    });
+    await entered;
+    const lifecycleLock = join(packagesDir(), ".locks", encodeURIComponent("racing-plugin"), ".aio-proxy-install.lock");
+    expect(existsSync(lifecycleLock)).toBe(true);
+    expect(lifecycleLock.startsWith(npmPackageCacheDir("racing-plugin"))).toBe(false);
+    const remove = removeNpmPackageCache("racing-plugin", async () => {
+      removalGuardCalled = true;
+      return false;
+    });
+    await Bun.sleep(20);
+    expect(removalGuardCalled).toBe(false);
+
+    allowCommit();
+    await add;
+    expect(await remove).toBe(false);
+    expect(removalGuardCalled).toBe(true);
+    expect(await findInstalledNpmPackage("racing-plugin")).not.toBeNull();
   });
 });

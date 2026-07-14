@@ -1,17 +1,20 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { NpmLockError } from "./error";
 
 const LOCK_FILE = ".aio-proxy-install.lock";
 const LOCK_VERSION = 1;
 const STALE_LOCK_MS = 5 * 60 * 1000;
+const LOCK_HEARTBEAT_MS = 10_000;
 const RETRIES = 8;
 const STARTTIME_UNAVAILABLE = "unavailable";
 
 const LockSchema = z.object({
   pid: z.number().int().positive(),
   createdAt: z.number().int().nonnegative(),
+  owner: z.string().min(1).optional(),
   starttime: z.string().min(1),
   version: z.literal(LOCK_VERSION),
 });
@@ -64,6 +67,15 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
+function parseLock(text: string): ReturnType<typeof LockSchema.safeParse> {
+  try {
+    return LockSchema.safeParse(JSON.parse(text));
+  } catch (error) {
+    if (error instanceof SyntaxError) return LockSchema.safeParse(undefined);
+    throw error;
+  }
+}
+
 async function removeIfUnchanged(path: string, expected: string): Promise<void> {
   try {
     if ((await readFile(path, "utf8")) === expected) {
@@ -77,40 +89,119 @@ async function removeIfUnchanged(path: string, expected: string): Promise<void> 
   }
 }
 
-async function recoverStaleLock(path: string): Promise<boolean> {
+async function recoveryMarkerActive(path: string): Promise<boolean> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    if (error instanceof Error && isNodeCode(error, "ENOENT")) {
-      return true;
-    }
+    if (error instanceof Error && isNodeCode(error, "ENOENT")) return false;
     throw error;
   }
+  const [parsed, metadata] = await Promise.all([Promise.resolve(parseLock(text)), stat(path).catch(() => null)]);
+  const lock = parsed.success ? parsed.data : undefined;
+  const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
+  const alive = lock !== undefined && processIsAlive(lock.pid);
+  const currentStarttime = lock === undefined || !alive ? null : await processStarttime(lock.pid);
+  const stale =
+    lock === undefined
+      ? staleByHeartbeat
+      : !alive ||
+        (currentStarttime !== null && lock.starttime !== STARTTIME_UNAVAILABLE && currentStarttime !== lock.starttime);
+  if (!stale) return true;
+  await rm(path, { force: true });
+  return false;
+}
 
-  let parsed = LockSchema.safeParse(undefined);
+async function recoveryActive(lockPath: string, excludePath?: string): Promise<boolean> {
+  const directory = dirname(lockPath);
+  const prefix = `${basename(lockPath)}.recovery.`;
+  const names = await readdir(directory).catch((error) => {
+    if (error instanceof Error && isNodeCode(error, "ENOENT")) return [];
+    throw error;
+  });
+  for (const name of names) {
+    const path = join(directory, name);
+    if (path !== excludePath && name.startsWith(prefix) && (await recoveryMarkerActive(path))) return true;
+  }
+  return false;
+}
+
+async function createRecoveryMarker(
+  lockPath: string,
+): Promise<{ readonly path: string; readonly release: () => Promise<void> }> {
+  const owner = randomUUID();
+  const path = `${lockPath}.recovery.${owner}`;
+  const handle = await open(path, "wx", 0o600);
+  const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
   try {
-    parsed = LockSchema.safeParse(JSON.parse(text));
+    await handle.writeFile(
+      JSON.stringify({
+        pid: process.pid,
+        createdAt: Date.now(),
+        owner,
+        starttime,
+        version: LOCK_VERSION,
+      } satisfies LockFile),
+    );
+    await handle.sync();
   } catch (error) {
-    if (!(error instanceof SyntaxError)) {
+    await rm(path, { force: true });
+    await handle.close().catch(() => {});
+    throw error;
+  }
+  let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+    const now = new Date();
+    void handle.utimes(now, now).catch(() => {});
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
+  return {
+    path,
+    async release() {
+      if (heartbeat !== undefined) {
+        clearInterval(heartbeat);
+        heartbeat = undefined;
+      }
+      try {
+        await rm(path, { force: true });
+      } finally {
+        await handle.close().catch(() => {});
+      }
+    },
+  };
+}
+
+async function recoverStaleLock(path: string): Promise<boolean> {
+  if (await recoveryActive(path)) return false;
+  const recovery = await createRecoveryMarker(path);
+  try {
+    if (await recoveryActive(path, recovery.path)) return false;
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch (error) {
+      if (error instanceof Error && isNodeCode(error, "ENOENT")) {
+        return true;
+      }
       throw error;
     }
-  }
 
-  const lock = parsed.success ? parsed.data : undefined;
-  const staleByAge = lock === undefined || Date.now() - lock.createdAt > STALE_LOCK_MS;
-  const ownerAlive = lock === undefined ? false : processIsAlive(lock.pid);
-  const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
-  const staleByOwner =
-    lock === undefined ||
-    !ownerAlive ||
-    (ownerStarttime !== null && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== lock.starttime);
-
-  if (!staleByAge && !staleByOwner) {
-    return false;
+    const parsed = parseLock(text);
+    const lock = parsed.success ? parsed.data : undefined;
+    const metadata = await stat(path).catch(() => null);
+    const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
+    const ownerAlive = lock === undefined ? false : processIsAlive(lock.pid);
+    const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
+    const staleByOwner =
+      lock === undefined ||
+      !ownerAlive ||
+      (ownerStarttime !== null && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== lock.starttime);
+    const stale = lock === undefined ? staleByHeartbeat : staleByOwner;
+    if (!stale) return false;
+    await removeIfUnchanged(path, text);
+    return true;
+  } finally {
+    await recovery.release();
   }
-  await removeIfUnchanged(path, text);
-  return true;
 }
 
 function retryDelay(attempt: number): number {
@@ -122,19 +213,54 @@ export async function acquireNpmInstallLock(pkg: string, cacheDir: string): Prom
   const lockPath = join(cacheDir, LOCK_FILE);
   await mkdir(cacheDir, { recursive: true, mode: 0o700 });
   const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
+  const owner = randomUUID();
   const lock: LockFile = {
     pid: process.pid,
     createdAt: Date.now(),
+    owner,
     starttime,
     version: LOCK_VERSION,
   };
   const content = JSON.stringify(lock);
 
   for (let attempt = 0; attempt < RETRIES; attempt += 1) {
+    if (await recoveryActive(lockPath)) {
+      await Bun.sleep(retryDelay(attempt));
+      continue;
+    }
     try {
-      await writeFile(lockPath, content, { flag: "wx", mode: 0o600 });
+      const handle = await open(lockPath, "wx", 0o600);
+      try {
+        await handle.writeFile(content);
+        await handle.sync();
+        if (await recoveryActive(lockPath)) {
+          await removeIfUnchanged(lockPath, content);
+          await handle.close();
+          await Bun.sleep(retryDelay(attempt));
+          continue;
+        }
+      } catch (error) {
+        await rm(lockPath, { force: true }).catch(() => {});
+        await handle.close().catch(() => {});
+        throw error;
+      }
+      let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+        const now = new Date();
+        void handle.utimes(now, now).catch(() => {});
+      }, LOCK_HEARTBEAT_MS);
+      heartbeat.unref?.();
       return {
-        release: () => removeIfUnchanged(lockPath, content),
+        async release() {
+          if (heartbeat !== undefined) {
+            clearInterval(heartbeat);
+            heartbeat = undefined;
+          }
+          try {
+            await removeIfUnchanged(lockPath, content);
+          } finally {
+            await handle.close().catch(() => {});
+          }
+        },
       };
     } catch (error) {
       if (!(error instanceof Error)) {

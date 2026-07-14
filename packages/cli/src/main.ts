@@ -18,6 +18,17 @@ import packageJson from "../package.json" with { type: "json" };
 import { openBrowser } from "./browser";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
+import {
+  FormJsonInvalidError,
+  FormNumberInvalidError,
+  FormSchemaValidationError,
+  pluginAdd,
+  pluginConfig,
+  pluginErrors,
+  pluginList,
+  pluginPrune,
+  pluginRemove,
+} from "./plugin-commands";
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
 
 setLocale(resolveLocaleFromArgv(process.argv));
@@ -175,6 +186,33 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .description(m.cli_provider_test_description())
     .option("--url <url>", m.cli_provider_test_option_url_description())
     .action(providerTest);
+  const plugin = program.command("plugin").description(m.cli_plugin_description());
+  plugin
+    .command("add <package>")
+    .description(m.cli_plugin_add_description())
+    .option("--yes", m.cli_plugin_add_option_yes_description())
+    .option("--registry <url>", m.cli_plugin_add_option_registry_description())
+    .action((packageName, options) => pluginAdd(packageName, options));
+  plugin
+    .command("list")
+    .description(m.cli_plugin_list_description())
+    .action(() => pluginList({}));
+  plugin
+    .command("config <package>")
+    .description(m.cli_plugin_config_description())
+    .option("--clear-secret <key...>", m.cli_plugin_config_option_clear_secret_description())
+    .action((packageName, options) => pluginConfig(packageName, options));
+  plugin
+    .command("remove <package>")
+    .description(m.cli_plugin_remove_description())
+    .option("--purge-secrets", m.cli_plugin_remove_option_purge_secrets_description())
+    .option("--yes", m.cli_plugin_remove_option_yes_description())
+    .action((packageName, options) => pluginRemove(packageName, options));
+  plugin
+    .command("prune")
+    .description(m.cli_plugin_prune_description())
+    .option("--yes", m.cli_plugin_prune_option_yes_description())
+    .action((options) => pluginPrune(options));
   program.command("model").description(m.cli_model_description());
   program.command("trace").description(m.cli_trace_description());
 
@@ -192,6 +230,16 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
       return;
     }
     if (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) {
+      console.error(err.message);
+      process.exitCode = 1;
+      return;
+    }
+    if (
+      err instanceof FormNumberInvalidError ||
+      err instanceof FormJsonInvalidError ||
+      err instanceof FormSchemaValidationError ||
+      (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
+    ) {
       console.error(err.message);
       process.exitCode = 1;
       return;

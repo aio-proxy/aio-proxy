@@ -21,28 +21,14 @@ export async function listInstalledNpmPackages(): Promise<readonly InstalledNpmP
     if (!cacheEntry.isDirectory()) {
       continue;
     }
-    const cacheDir = join(packagesRoot, cacheEntry.name);
-    const nodeModules = join(cacheDir, "node_modules");
-    if (!existsSync(nodeModules)) {
+    let packageName: string;
+    try {
+      packageName = decodeURIComponent(cacheEntry.name);
+    } catch {
       continue;
     }
-    for (const entry of await readdir(nodeModules, { withFileTypes: true })) {
-      const names = entry.name.startsWith("@")
-        ? (
-            await readdir(join(nodeModules, entry.name), {
-              withFileTypes: true,
-            })
-          )
-            .filter((child) => child.isDirectory())
-            .map((child) => `${entry.name}/${child.name}`)
-        : [entry.name];
-      for (const packageName of names) {
-        const info = await findInstalledNpmPackage(packageName);
-        if (info !== null) {
-          installed.push({ ...info, cacheDir, packageName });
-        }
-      }
-    }
+    const info = await findInstalledNpmPackage(packageName).catch(() => null);
+    if (info !== null) installed.push({ ...info, cacheDir: join(packagesRoot, cacheEntry.name), packageName });
   }
   return installed.sort((a, b) => a.packageName.localeCompare(b.packageName));
 }
