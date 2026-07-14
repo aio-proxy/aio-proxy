@@ -135,6 +135,13 @@ type RollbackSnapshot = StoredAccount & {
   readonly diagnostics: readonly Diagnostic[];
 };
 
+type ChildSnapshot = Pick<RollbackSnapshot, "catalog" | "diagnostics">;
+
+type AccountOperationRollback = {
+  readonly previous: RollbackSnapshot;
+  readonly applied: ChildSnapshot;
+};
+
 function encodeJson(value: unknown): string {
   const encoded = JSON.stringify(value);
   if (encoded === undefined) throw new TypeError("Plugin vault values must be JSON serializable");
@@ -224,6 +231,26 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
       catalog: readStoredCatalog(row.provider_id),
       diagnostics: readStoredDiagnostics(row.provider_id),
     };
+  }
+
+  function childSnapshot(providerId: string): ChildSnapshot {
+    return {
+      catalog: readStoredCatalog(providerId),
+      diagnostics: readStoredDiagnostics(providerId),
+    };
+  }
+
+  function childSnapshotsEqual(left: ChildSnapshot, right: ChildSnapshot): boolean {
+    return encodeJson(left) === encodeJson(right);
+  }
+
+  function assertNoPendingOperation(providerId: string): void {
+    const pending = sqlite
+      .query<{ readonly operation_id: string }, [string]>(
+        "SELECT operation_id FROM oauth_pending_operation WHERE provider_id = ? LIMIT 1",
+      )
+      .get(providerId);
+    if (pending !== null) throw new Error("Account already has a pending operation");
   }
 
   function replaceCatalog(providerId: string, value: StoredCatalog): void {
@@ -340,7 +367,7 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
     targetDigest: string,
     appliedRevision: number,
     previousRevision: number | undefined,
-    rollback: RollbackSnapshot | undefined,
+    rollback: AccountOperationRollback | undefined,
   ): PendingAccountOperation {
     const value: PendingAccountOperation = {
       operationId: crypto.randomUUID(),
@@ -452,12 +479,14 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
       return sqlite
         .transaction(() => {
           if (input.kind === "create") {
+            assertNoPendingOperation(input.account.providerId);
             insertAccount(input.account, 1, 1, Date.now());
             applyCatalog(input.account.providerId, input.account.catalog);
             return insertPending(input.account.providerId, "create", input.targetDigest, 1, undefined, undefined);
           }
 
           const providerId = input.kind === "update" ? input.account.providerId : input.providerId;
+          assertNoPendingOperation(providerId);
           const current = selectAccount.get(providerId);
           if (current === null || current.runtime_revision !== input.expectedRuntimeRevision) {
             throw new Error("Account runtime revision mismatch");
@@ -465,21 +494,20 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           const rollback = snapshot(current);
 
           if (input.kind === "delete") {
-            return insertPending(
-              providerId,
-              "delete",
-              input.targetDigest,
-              current.runtime_revision,
-              current.revision,
-              rollback,
-            );
+            return insertPending(providerId, "delete", input.targetDigest, current.runtime_revision, current.revision, {
+              previous: rollback,
+              applied: childSnapshot(providerId),
+            });
           }
 
           const revision = current.revision + 1;
           const runtimeRevision = current.runtime_revision + 1;
           updateAccount(input.account, revision, runtimeRevision, Date.now());
           applyCatalog(providerId, input.account.catalog);
-          return insertPending(providerId, "update", input.targetDigest, revision, current.revision, rollback);
+          return insertPending(providerId, "update", input.targetDigest, revision, current.revision, {
+            previous: rollback,
+            applied: childSnapshot(providerId),
+          });
         })
         .immediate();
     },
@@ -500,8 +528,11 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           } else if (pending.kind === "update") {
             const current = selectAccount.get(pending.provider_id);
             if (current?.revision === pending.applied_revision && pending.rollback_json !== null) {
-              restoreSnapshot(decodeJson<RollbackSnapshot>(pending.rollback_json));
-              compensated = true;
+              const rollback = decodeJson<AccountOperationRollback>(pending.rollback_json);
+              if (childSnapshotsEqual(childSnapshot(pending.provider_id), rollback.applied)) {
+                restoreSnapshot(rollback.previous);
+                compensated = true;
+              }
             }
           } else {
             compensated = selectAccount.get(pending.provider_id)?.runtime_revision === pending.applied_revision;

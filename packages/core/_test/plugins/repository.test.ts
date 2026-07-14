@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,6 +6,7 @@ import { join } from "node:path";
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
 import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
 import { type OpenDbHandle, openDb } from "../../src/db";
+import { MIGRATIONS } from "../../src/db/migrations.manifest";
 import { type AccountWrite, createPluginRepository, type PluginRepository } from "../../src/plugins/repository";
 
 const homes: string[] = [];
@@ -86,6 +88,70 @@ describe("plugin vault schema and opaque storage", () => {
       });
     } finally {
       handle.close();
+    }
+  });
+
+  test("upgrades a populated pre-0004 database without losing legacy auth, request, or usage rows", () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-repository-upgrade-"));
+    homes.push(home);
+    const path = join(home, "aio-proxy.db");
+    const legacy = new Database(path);
+    const migrationsThrough0003 = MIGRATIONS.filter(({ file }) => file <= "0003_request_log_indexes.sql");
+    const migrate = legacy.transaction(() => {
+      for (const migration of migrationsThrough0003) legacy.exec(migration.sql);
+      legacy.exec(`PRAGMA user_version = ${migrationsThrough0003.at(-1)?.version ?? 0}`);
+    });
+    migrate.immediate();
+    legacy
+      .query("INSERT INTO auth (vendor, provider_id, account_fingerprint, payload, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .run("legacy", "legacy-provider", "legacy-fingerprint", '{"token":"retained"}', 10);
+    legacy
+      .query(
+        `INSERT INTO request_log (
+           request_id, inbound_protocol, requested_model_id, outcome, final_provider_id, final_model_id,
+           attempts_json, started_at, completed_at, duration_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "request-before-0004",
+        "legacy",
+        "model-before-0004",
+        "success",
+        "legacy-provider",
+        "model-before-0004",
+        "[]",
+        10,
+        11,
+        1,
+      );
+    legacy
+      .query(
+        `INSERT INTO usage (
+           id, request_id, provider_id, model_id, input_tokens, output_tokens, total_tokens, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run("usage-before-0004", "request-before-0004", "legacy-provider", "model-before-0004", 1, 2, 3, 11);
+    legacy.close();
+
+    const upgraded = openDb({ home });
+    try {
+      expect(upgraded.sqlite.query("PRAGMA user_version").get()).toEqual({ user_version: MIGRATIONS.length });
+      expect(upgraded.sqlite.query("SELECT payload FROM auth WHERE provider_id = ?").get("legacy-provider")).toEqual({
+        payload: '{"token":"retained"}',
+      });
+      expect(
+        upgraded.sqlite
+          .query("SELECT requested_model_id FROM request_log WHERE request_id = ?")
+          .get("request-before-0004"),
+      ).toEqual({
+        requested_model_id: "model-before-0004",
+      });
+      expect(upgraded.sqlite.query("SELECT total_tokens FROM usage WHERE id = ?").get("usage-before-0004")).toEqual({
+        total_tokens: 3,
+      });
+      expect(upgraded.sqlite.query("PRAGMA table_info(oauth_account)").all()).not.toHaveLength(0);
+    } finally {
+      upgraded.close();
     }
   });
 
@@ -209,16 +275,26 @@ describe("pending operation compensation", () => {
         kind: "update",
         targetDigest: "digest:update",
         expectedRuntimeRevision: 1,
-        account: account("provider-1", { credential: { accessToken: "replacement" } }),
+        account: account("provider-1", {
+          credential: { accessToken: "replacement" },
+          catalog: { kind: "replace", value: { catalog: catalog("model-2"), refreshedAt: 200 } },
+        }),
       });
       expect(updated).toMatchObject({ kind: "update", appliedRevision: 3, previousRevision: 2 });
       const raw = handle.sqlite
         .query("SELECT rollback_json FROM oauth_pending_operation WHERE operation_id = ?")
         .get(updated.operationId) as { rollback_json: string | null };
       expect(JSON.parse(raw.rollback_json ?? "null")).toMatchObject({
-        revision: 2,
-        runtimeRevision: 1,
-        credential: { accessToken: "latest-before-update" },
+        previous: {
+          revision: 2,
+          runtimeRevision: 1,
+          credential: { accessToken: "latest-before-update" },
+          catalog: { catalog: catalog(), refreshedAt: 100 },
+        },
+        applied: {
+          catalog: { catalog: catalog("model-2"), refreshedAt: 200 },
+          diagnostics: [],
+        },
       });
       expect(repository.compensateAccountOperation(updated.operationId)).toBe("compensated");
       expect(repository.readAccount("provider-1")).toMatchObject({
@@ -255,7 +331,7 @@ describe("pending operation compensation", () => {
     }
   });
 
-  test("delete uses pre-delete runtime revision so refresh is tolerated but replacement supersedes finalization", () => {
+  test("delete uses pre-delete runtime revision while blocking replacement until its marker is cleared", () => {
     const { handle, repository } = openRepository();
     try {
       createAccount(repository);
@@ -277,6 +353,15 @@ describe("pending operation compensation", () => {
         providerId: "provider-1",
         expectedRuntimeRevision: 1,
       });
+      expect(() =>
+        repository.stageAccountOperation({
+          kind: "update",
+          targetDigest: "digest:replacement-too-early",
+          expectedRuntimeRevision: 1,
+          account: account("provider-1", { options: { generation: 2 } }),
+        }),
+      ).toThrow();
+      expect(repository.compensateAccountOperation(superseded.operationId)).toBe("compensated");
       const replacement = repository.stageAccountOperation({
         kind: "update",
         targetDigest: "digest:replacement",
@@ -286,6 +371,113 @@ describe("pending operation compensation", () => {
       repository.completeAccountOperation(replacement.operationId);
       expect(repository.finalizeDeleteOperation(superseded.operationId)).toBe("superseded");
       expect(repository.readAccount("provider-1")).toMatchObject({ runtimeRevision: 2 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("blocks multiple pending deletes and prevents an old delete marker from deleting a recreated provider id", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      const pending = repository.stageAccountOperation({
+        kind: "delete",
+        targetDigest: "absent",
+        providerId: "provider-1",
+        expectedRuntimeRevision: 1,
+      });
+      expect(() =>
+        repository.stageAccountOperation({
+          kind: "delete",
+          targetDigest: "absent",
+          providerId: "provider-1",
+          expectedRuntimeRevision: 1,
+        }),
+      ).toThrow();
+
+      repository.deleteAccount("provider-1");
+      expect(() =>
+        repository.stageAccountOperation({
+          kind: "create",
+          targetDigest: "digest:recreate-too-early",
+          account: account("provider-1", { credential: { accessToken: "new-incarnation" } }),
+        }),
+      ).toThrow();
+      expect(repository.finalizeDeleteOperation(pending.operationId)).toBe("superseded");
+
+      const recreated = repository.stageAccountOperation({
+        kind: "create",
+        targetDigest: "digest:recreate",
+        account: account("provider-1", { credential: { accessToken: "new-incarnation" } }),
+      });
+      repository.completeAccountOperation(recreated.operationId);
+      expect(repository.finalizeDeleteOperation(pending.operationId)).toBe("superseded");
+      expect(repository.readAccount("provider-1")).toMatchObject({ credential: { accessToken: "new-incarnation" } });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("catalog refresh after a staged update makes compensation superseded without overwriting it", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      const pending = repository.stageAccountOperation({
+        kind: "update",
+        targetDigest: "digest:update",
+        expectedRuntimeRevision: 1,
+        account: account("provider-1", {
+          options: { generation: 2 },
+          catalog: { kind: "replace", value: { catalog: catalog("model-2"), refreshedAt: 200 } },
+        }),
+      });
+      repository.writeCatalog("provider-1", catalog("model-3"), 300);
+
+      expect(repository.compensateAccountOperation(pending.operationId)).toBe("superseded");
+      expect(repository.readAccount("provider-1")).toMatchObject({ options: { generation: 2 }, revision: 2 });
+      expect(repository.readCatalog("provider-1")).toEqual({ catalog: catalog("model-3"), refreshedAt: 300 });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("diagnostic write after a staged update makes compensation superseded without clearing it", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      const pending = repository.stageAccountOperation({
+        kind: "update",
+        targetDigest: "digest:update",
+        expectedRuntimeRevision: 1,
+        account: account("provider-1", { options: { generation: 2 } }),
+      });
+      const later = diagnostic("CREDENTIAL_REFRESH_FAILED", "later diagnostic");
+      repository.writeDiagnostic("provider-1", later);
+
+      expect(repository.compensateAccountOperation(pending.operationId)).toBe("superseded");
+      expect(repository.readAccount("provider-1")).toMatchObject({ options: { generation: 2 }, revision: 2 });
+      expect(repository.readDiagnostics("provider-1")).toContainEqual(later);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("diagnostic clear after a staged update makes compensation superseded without restoring it", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      repository.writeDiagnostic("provider-1", diagnostic("CREDENTIAL_REFRESH_FAILED"));
+      const pending = repository.stageAccountOperation({
+        kind: "update",
+        targetDigest: "digest:update",
+        expectedRuntimeRevision: 1,
+        account: account("provider-1", { options: { generation: 2 } }),
+      });
+      repository.clearDiagnostic("provider-1", "CREDENTIAL_REFRESH_FAILED");
+
+      expect(repository.compensateAccountOperation(pending.operationId)).toBe("superseded");
+      expect(repository.readAccount("provider-1")).toMatchObject({ options: { generation: 2 }, revision: 2 });
+      expect(repository.readDiagnostics("provider-1")).not.toContainEqual(diagnostic("CREDENTIAL_REFRESH_FAILED"));
     } finally {
       handle.close();
     }
