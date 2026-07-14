@@ -1,0 +1,31 @@
+{
+  "name": "@aio-proxy/plugin-sdk",
+  "version": "0.0.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test _test"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

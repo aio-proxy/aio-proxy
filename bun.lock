@@ -188,6 +188,19 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugin-sdk": {
+      "name": "@aio-proxy/plugin-sdk",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/provider": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/server": {
       "name": "@aio-proxy/server",
       "version": "0.0.0",
@@ -295,6 +308,8 @@
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/oauth": ["@aio-proxy/oauth@workspace:packages/oauth"],
+
+    "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@aio-proxy/provider-schemas": ["@aio-proxy/provider-schemas@0.1.1", "", { "peerDependencies": { "zod": "^4.1.5" }, "optionalPeers": ["zod"] }, "sha512-jYutoOrOFeCvt6qImGjZ3S9GpqPC/8b5mo1dSrWxJr86V4+wjXi0bX/8eiOJ0IpkT9b5QJJVrCCUbPb6X7jGZw=="],
 
