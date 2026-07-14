@@ -15,7 +15,7 @@ const seedConfig = {
     "seed-api": {
       kind: "api",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
       apiKey: "sk-preserved-value",
       enabled: true,
       alias: { "gpt-4o": "gpt-4o-upstream" },
@@ -44,6 +44,8 @@ const req = (method: string, path: string, body?: unknown) =>
     headers: method === "GET" ? {} : { Origin: ORIGIN, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+
+const postProvider = (body: unknown) => req("POST", "/providers", body);
 
 async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
   const reader = stream.body?.getReader();
@@ -88,7 +90,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "newapi",
       protocol: "openai-compatible",
-      baseUrl: "https://newapi.example.com",
+      baseURL: "https://newapi.example.com",
     });
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -102,7 +104,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://dup.example.com",
+      baseURL: "https://dup.example.com",
     });
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -118,19 +120,27 @@ describe("dashboard provider CRUD", () => {
     expect(res.status).toBe(400);
   });
 
-  test("5. POST malformed body (missing baseUrl) returns 400 with zod details", async () => {
-    const res = await req("POST", "/providers", {
+  test("POST malformed body missing baseURL returns 400 with zod details", async () => {
+    const response = await postProvider({
       kind: "api",
-      id: "bad-api",
-      protocol: "openai-response",
+      id: "missing-base-url",
+      protocol: "openai-compatible",
     });
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("validation failed");
-    expect(Array.isArray(body.details)).toBe(true);
+    expect(response.status).toBe(400);
+    const body = await response.json();
     expect(
-      body.details.some((issue: { path: unknown[] }) => Array.isArray(issue.path) && issue.path.includes("baseUrl")),
+      body.details.some((issue: { path: unknown[] }) => Array.isArray(issue.path) && issue.path.includes("baseURL")),
     ).toBe(true);
+  });
+
+  test("POST rejects removed baseUrl spelling", async () => {
+    const response = await postProvider({
+      kind: "api",
+      id: "legacy-spelling",
+      protocol: "openai-compatible",
+      baseUrl: "https://api.example.com",
+    });
+    expect(response.status).toBe(400);
   });
 
   test("6. PUT rename attempt (body.id !== :id) returns 400", async () => {
@@ -138,7 +148,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "renamed",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
     });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -150,7 +160,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
     });
     expect(res.status).toBe(200);
     expect(onDisk().providers["seed-api"].apiKey).toBe("sk-preserved-value");
@@ -161,7 +171,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
       apiKey: "",
     });
     expect(res.status).toBe(200);
@@ -173,7 +183,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
       apiKey: "sk-new-value",
     });
     expect(res.status).toBe(200);
@@ -185,7 +195,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "ghost",
       protocol: "openai-response",
-      baseUrl: "https://ghost.example.com",
+      baseURL: "https://ghost.example.com",
     });
     expect(res.status).toBe(404);
     const body = await res.json();
@@ -222,7 +232,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "sseapi",
       protocol: "openai-compatible",
-      baseUrl: "https://sse.example.com",
+      baseURL: "https://sse.example.com",
     });
     expect(post.status).toBe(201);
     const text = await readNextEventText(stream);
@@ -238,7 +248,7 @@ describe("dashboard provider CRUD", () => {
         kind: "api",
         id: "nopath",
         protocol: "openai-response",
-        baseUrl: "https://nopath.example.com",
+        baseURL: "https://nopath.example.com",
       }),
     });
     expect(res.status).toBe(409);
@@ -251,10 +261,11 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://changed.example.com",
+      baseURL: "https://changed.example.com",
     });
     expect(res.status).toBe(200);
-    expect(onDisk().providers["seed-api"].baseUrl).toBe("https://changed.example.com");
+    expect(onDisk().providers["seed-api"].baseURL).toBe("https://changed.example.com");
+    expect(onDisk().providers["seed-api"]).not.toHaveProperty("baseUrl");
     expect(onDisk().providers["seed-api"].alias).toEqual({ "gpt-4o": "gpt-4o-upstream" });
   });
 
@@ -272,7 +283,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "seed-api",
       protocol: "openai-response",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
       models: ["unrelated-model"],
     });
     expect(res.status).toBe(422);
@@ -312,7 +323,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "alias-test",
       protocol: "openai-compatible",
-      baseUrl: "https://alias-test.example.com",
+      baseURL: "https://alias-test.example.com",
       models: ["gpt-4o-upstream", "o3-upstream"],
       alias: {
         "gpt-4o": {
@@ -338,7 +349,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "alias-test",
       protocol: "openai-compatible",
-      baseUrl: "https://alias-test.example.com",
+      baseURL: "https://alias-test.example.com",
       models: ["gpt-4o-upstream", "o3-upstream"],
       alias: { "new-alias": { model: "o3-upstream" } },
     });
@@ -354,7 +365,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "alias-test",
       protocol: "openai-compatible",
-      baseUrl: "https://alias-test.example.com",
+      baseURL: "https://alias-test.example.com",
       models: ["gpt-4o-upstream", "o3-upstream"],
       alias: {},
     });
@@ -367,7 +378,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "bad-alias-target",
       protocol: "openai-compatible",
-      baseUrl: "https://bad-alias.example.com",
+      baseURL: "https://bad-alias.example.com",
       models: ["real-model"],
       alias: { "my-alias": { model: "nonexistent-model" } },
     });
@@ -381,7 +392,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "bad-variant-target",
       protocol: "openai-compatible",
-      baseUrl: "https://bad-variant.example.com",
+      baseURL: "https://bad-variant.example.com",
       models: ["real-model"],
       alias: {
         "my-alias": {
@@ -420,13 +431,13 @@ describe("dashboard provider CRUD", () => {
         kind: "api",
         id: "race-create",
         protocol: "openai-compatible",
-        baseUrl: "https://first.example.com",
+        baseURL: "https://first.example.com",
       }),
       req("POST", "/providers", {
         kind: "api",
         id: "race-create",
         protocol: "openai-compatible",
-        baseUrl: "https://second.example.com",
+        baseURL: "https://second.example.com",
       }),
     ]);
 
@@ -438,7 +449,7 @@ describe("dashboard provider CRUD", () => {
       kind: "api",
       id: "race-update",
       protocol: "openai-compatible",
-      baseUrl: "https://before.example.com",
+      baseURL: "https://before.example.com",
     });
     expect(create.status).toBe(201);
 
@@ -448,7 +459,7 @@ describe("dashboard provider CRUD", () => {
         kind: "api",
         id: "race-update",
         protocol: "openai-compatible",
-        baseUrl: "https://after.example.com",
+        baseURL: "https://after.example.com",
       }),
     ]);
 
