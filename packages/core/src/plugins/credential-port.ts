@@ -101,33 +101,56 @@ function stringLeaves(value: unknown): readonly string[] {
   return leaves;
 }
 
-async function withRefreshGuards<T>(run: (signal: AbortSignal) => Promise<T>, renewLease: () => boolean): Promise<T> {
+type RefreshLeaseGuard = {
+  readonly race: <T>(operation: Promise<T>) => Promise<T>;
+  readonly exchange: <T>(run: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+  readonly close: () => void;
+};
+
+function createRefreshLeaseGuard(renewLease: () => boolean): RefreshLeaseGuard {
   const controller = new AbortController();
-  let rejectGuard = (_error: Error) => {};
+  let rejectLeaseLoss = (_error: Error) => {};
   let stopped = false;
-  const guard = new Promise<never>((_resolve, reject) => {
-    rejectGuard = reject;
+  const leaseLoss = new Promise<never>((_resolve, reject) => {
+    rejectLeaseLoss = reject;
   });
-  const fail = (error: Error): void => {
+  const loseLease = (): void => {
     if (stopped) return;
-    rejectGuard(error);
+    rejectLeaseLoss(new CredentialRefreshLeaseLostError());
     controller.abort();
   };
-  const timeout = setTimeout(() => fail(new CredentialRefreshTimeoutError()), REFRESH_EXCHANGE_TIMEOUT_MS);
   const renew = setInterval(() => {
     try {
-      if (!renewLease()) fail(new CredentialRefreshLeaseLostError());
+      if (!renewLease()) loseLease();
     } catch {
-      fail(new CredentialRefreshLeaseLostError());
+      loseLease();
     }
   }, REFRESH_RENEW_MS);
-  try {
-    return await Promise.race([Promise.resolve().then(() => run(controller.signal)), guard]);
-  } finally {
-    stopped = true;
-    clearTimeout(timeout);
-    clearInterval(renew);
-  }
+
+  return {
+    race(operation) {
+      return Promise.race([operation, leaseLoss]);
+    },
+    async exchange(run) {
+      let rejectDeadline = (_error: Error) => {};
+      const deadline = new Promise<never>((_resolve, reject) => {
+        rejectDeadline = reject;
+      });
+      const timeout = setTimeout(() => {
+        rejectDeadline(new CredentialRefreshTimeoutError());
+        controller.abort();
+      }, REFRESH_EXCHANGE_TIMEOUT_MS);
+      try {
+        return await Promise.race([Promise.resolve().then(() => run(controller.signal)), leaseLoss, deadline]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+    close() {
+      stopped = true;
+      clearInterval(renew);
+    },
+  };
 }
 
 async function readValidated<Credential>(
@@ -198,18 +221,18 @@ export function createCredentialPort<Credential>(
         try {
           const lease = await waitForLease(options, owner, expectedRevision);
           if (!lease.acquired) return { status: "superseded", snapshot: lease.snapshot };
+          const guard = createRefreshLeaseGuard(() =>
+            options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
+          );
           try {
-            const current = await readValidated(options.providerId, options.schema, options.repository);
+            const current = await guard.race(readValidated(options.providerId, options.schema, options.repository));
             secretValues = stringLeaves(current.snapshot.value);
             if (current.snapshot.revision !== expectedRevision) {
               return { status: "superseded", snapshot: current.snapshot };
             }
-            const exchanged = await withRefreshGuards(
-              (signal) => exchange(current.snapshot, signal),
-              () => options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
-            );
+            const exchanged = await guard.exchange((signal) => exchange(current.snapshot, signal));
             secretValues = [...secretValues, ...stringLeaves(exchanged.value)];
-            const validated = await parsePluginSchema(options.schema, exchanged.value);
+            const validated = await guard.race(parsePluginSchema(options.schema, exchanged.value));
             if (!validated.ok) throw new CredentialValidationError(validated.issues);
             const updated = options.repository.compareAndSwapCredential(
               options.providerId,
@@ -218,7 +241,7 @@ export function createCredentialPort<Credential>(
               exchanged.metadata,
             );
             if (updated === null) {
-              const latest = await readValidated(options.providerId, options.schema, options.repository);
+              const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
               return { status: "superseded", snapshot: latest.snapshot };
             }
             if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {
@@ -226,6 +249,7 @@ export function createCredentialPort<Credential>(
             }
             return { status: "updated", snapshot: { value: validated.value, revision: updated.revision } };
           } finally {
+            guard.close();
             options.repository.releaseRefreshLease(options.providerId, owner);
           }
         } catch (error) {
