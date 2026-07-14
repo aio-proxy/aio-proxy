@@ -29,6 +29,7 @@
     "test:unit": "bun test _test"
   },
   "dependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "ai": "catalog:",
     "@ai-sdk/openai": "catalog:",
