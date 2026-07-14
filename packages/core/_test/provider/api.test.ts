@@ -48,7 +48,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "provider",
         protocol,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
       });
       await provider.passthrough(
         new Request("https://proxy.local/v1/test", {
@@ -90,7 +90,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "provider",
         protocol,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
         apiKey: "provider-key",
       });
       await provider.passthrough(
@@ -147,7 +147,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "openai",
         protocol: ProviderProtocol.OpenAICompatible,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
         apiKey: "$AIO_PROXY_TEST_KEY",
         models: ["gpt-5-mini"],
       });
@@ -203,7 +203,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "openai",
         protocol: ProviderProtocol.OpenAICompatible,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
         apiKey: "direct-key",
         trace,
       });
@@ -243,7 +243,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "openai",
         protocol: ProviderProtocol.OpenAICompatible,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
       });
 
       const response = await provider.passthrough(new Request("https://proxy.local/v1/chat/completions"));
@@ -278,7 +278,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "openai",
         protocol: ProviderProtocol.OpenAICompatible,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
       });
 
       const response = await provider.passthrough(
@@ -309,7 +309,7 @@ describe("createApiProvider", () => {
         kind: "api",
         id: "openai",
         protocol: ProviderProtocol.OpenAICompatible,
-        baseUrl: upstream.url.toString(),
+        baseURL: upstream.url.toString(),
         trace,
       });
 
