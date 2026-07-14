@@ -8,4 +8,14 @@ export {
   type RequestLogsQuery,
   type UsageOverviewQuery,
 } from "./request-log";
-export { type RequestAttemptLog, requestLog, usage } from "./schema";
+export {
+  oauthAccount,
+  oauthAccountDiagnostic,
+  oauthCatalog,
+  oauthPendingOperation,
+  oauthRefreshLease,
+  pluginSecret,
+  type RequestAttemptLog,
+  requestLog,
+  usage,
+} from "./schema";
