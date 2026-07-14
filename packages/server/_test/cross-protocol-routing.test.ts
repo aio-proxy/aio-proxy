@@ -102,7 +102,7 @@ function provider(
   };
   const value = {
     alias: { m: { model: "m", preserve: false } },
-    baseUrl: `https://${id}.example.test`,
+    baseURL: `https://${id}.example.test`,
     enabled: true,
     id,
     kind: ProviderKind.Api,

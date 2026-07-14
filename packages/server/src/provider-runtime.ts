@@ -195,7 +195,7 @@ function providerProbeRequest(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
   model: string,
 ): { readonly body: unknown; readonly url: URL } {
-  const url = new URL(provider.baseUrl);
+  const url = new URL(provider.baseURL);
   switch (provider.protocol) {
     case ProviderProtocol.OpenAICompatible:
       url.pathname = "/v1/chat/completions";

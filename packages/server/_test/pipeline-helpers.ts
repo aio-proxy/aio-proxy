@@ -142,7 +142,7 @@ export function rawProvider(options: {
   const model = options.model === undefined ? undefined : instrumentModel(options.model, calls);
   const provider = {
     alias: routeAlias(options.modelId ?? `${options.id}-model`),
-    baseUrl: `https://${options.id}.example.test/v1`,
+    baseURL: `https://${options.id}.example.test/v1`,
     enabled: true,
     id: options.id,
     kind: ProviderKind.Api,

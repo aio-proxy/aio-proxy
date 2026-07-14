@@ -19,7 +19,7 @@ test("materializes a configured API provider with raw and bridged model capabili
   const config = ConfigSchema.parse({
     providers: {
       api: {
-        baseUrl: "https://api.example.com",
+        baseURL: "https://api.example.com",
         kind: ProviderKind.Api,
         models: ["model"],
         protocol: ProviderProtocol.OpenAICompatible,
@@ -77,7 +77,7 @@ test("materializes AI SDK and OAuth inputs with model capabilities only", () => 
 test("materializes an API input whose raw placeholder is undefined", () => {
   const passthrough = async () => new Response();
   const provider = {
-    baseUrl: "https://api.example.com",
+    baseURL: "https://api.example.com",
     enabled: true,
     id: "api-placeholder",
     kind: ProviderKind.Api,
@@ -127,7 +127,7 @@ test("materializes an AI SDK input instead of accepting an inherited model capab
   expect(runtime.model?.invoke).toBe(invoke);
 });
 
-test("materializes an injected API test double without baseUrl through the snapshot seam", () => {
+test("materializes an injected API test double without baseURL through the snapshot seam", () => {
   const passthrough = async () => new Response();
   const provider = {
     enabled: true,
@@ -135,7 +135,7 @@ test("materializes an injected API test double without baseUrl through the snaps
     kind: ProviderKind.Api,
     passthrough,
     protocol: ProviderProtocol.Anthropic,
-  } satisfies Omit<ApiProviderInstance, "baseUrl">;
+  } satisfies Omit<ApiProviderInstance, "baseURL">;
   const dbHome = mkdtempSync(join(tmpdir(), "aio-proxy-provider-capabilities-"));
   const state = createServerState({
     config: ConfigSchema.parse({ providers: {} }),
@@ -198,7 +198,7 @@ test("replaces the model capability object only after config reload", async () =
   const config = ConfigSchema.parse({
     providers: {
       api: {
-        baseUrl: "https://before.example.com",
+        baseURL: "https://before.example.com",
         kind: ProviderKind.Api,
         models: ["model"],
         protocol: ProviderProtocol.OpenAICompatible,
@@ -217,7 +217,7 @@ test("replaces the model capability object only after config reload", async () =
       JSON.stringify({
         providers: {
           api: {
-            baseUrl: "https://after.example.com",
+            baseURL: "https://after.example.com",
             kind: ProviderKind.Api,
             models: ["model"],
             protocol: ProviderProtocol.OpenAICompatible,
@@ -238,7 +238,7 @@ test("does not materialize configured providers before building an injected snap
   const config = ConfigSchema.parse({
     providers: {
       configured: {
-        baseUrl: "https://configured.example.com",
+        baseURL: "https://configured.example.com",
         kind: ProviderKind.Api,
         models: ["configured-model"],
         protocol: ProviderProtocol.OpenAICompatible,
@@ -249,12 +249,12 @@ test("does not materialize configured providers before building an injected snap
   if (configured === undefined) {
     throw new Error("configured provider is missing");
   }
-  let baseUrlReads = 0;
-  Object.defineProperty(configured, "baseUrl", {
+  let baseURLReads = 0;
+  Object.defineProperty(configured, "baseURL", {
     configurable: true,
     enumerable: true,
     get() {
-      baseUrlReads += 1;
+      baseURLReads += 1;
       return "https://configured.example.com";
     },
   });
@@ -268,7 +268,7 @@ test("does not materialize configured providers before building an injected snap
   const state = createServerState({ config, dbHome, providerInstances: [provider] });
 
   try {
-    expect(baseUrlReads).toBe(0);
+    expect(baseURLReads).toBe(0);
     expect(state.currentProviderSnapshot().providers.map((entry) => entry.id)).toEqual(["injected"]);
   } finally {
     state.close();

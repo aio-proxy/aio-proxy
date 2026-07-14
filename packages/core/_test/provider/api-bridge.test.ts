@@ -123,7 +123,7 @@ describe("bridgeApiProviderToAiSdk", () => {
             id: `provider-${expected.protocol}`,
             protocol: expected.protocol,
             apiKey: "$AIO_PROXY_BRIDGE_KEY",
-            baseUrl: "https://api.example.com/v1",
+            baseURL: "https://api.example.com/v1",
             models: ["gpt-test"],
           },
           {
@@ -165,7 +165,7 @@ describe("bridgeApiProviderToAiSdk", () => {
         kind: ProviderKind.Api,
         id: "responses",
         protocol: ProviderProtocol.OpenAIResponse,
-        baseUrl: "https://api.example.com/v1",
+        baseURL: "https://api.example.com/v1",
         models: ["gpt-test"],
       },
       {
@@ -203,7 +203,7 @@ describe("bridgeApiProviderToAiSdk", () => {
         kind: ProviderKind.Api,
         id: "responses",
         protocol: ProviderProtocol.OpenAIResponse,
-        baseUrl: "https://api.example.com/v1",
+        baseURL: "https://api.example.com/v1",
         models: ["gpt-test"],
       },
       {
@@ -237,7 +237,7 @@ describe("bridgeApiProviderToAiSdk", () => {
       id: "responses",
       protocol: ProviderProtocol.OpenAIResponse,
       apiKey: "secret",
-      baseUrl: "https://api.example.com/v1",
+      baseURL: "https://api.example.com/v1",
       models: ["gpt-test"],
     });
 

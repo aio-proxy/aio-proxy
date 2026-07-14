@@ -10,7 +10,9 @@ import {
   DashboardUsageOverviewResponseSchema,
   OAuthProviderSchema,
   OAuthVendor,
+  ProviderKind,
   ProviderMutationBodySchema,
+  ProviderProtocol,
   RequestOutcomeSchema,
   TraceEventSchema,
   UsageOverviewGroupBySchema,
@@ -19,12 +21,9 @@ import {
 } from "../src/index";
 
 const apiProvider = {
-  kind: "api",
-  name: "OpenAI",
-  protocol: "openai-response",
-  baseUrl: "https://api.example.com",
-  apiKey: "sk-test",
-  models: ["gpt-5-mini"],
+  kind: ProviderKind.Api,
+  protocol: ProviderProtocol.OpenAICompatible,
+  baseURL: "https://api.example.com",
 };
 
 const providers = (entries: Record<string, unknown>) => ({ providers: entries });
@@ -249,10 +248,26 @@ describe("ConfigSchema", () => {
     ]);
   });
 
-  test("rejects api provider without baseUrl at providers.openai.baseUrl", () => {
-    const { baseUrl: _baseUrl, ...provider } = apiProvider;
+  test("rejects api provider without baseURL at providers.openai.baseURL", () => {
+    const { baseURL: _baseURL, ...provider } = apiProvider;
 
-    expectIssuePath({ server: {}, providers: { openai: provider } }, ["providers", "openai", "baseUrl"]);
+    expectIssuePath({ server: {}, providers: { openai: provider } }, ["providers", "openai", "baseURL"]);
+  });
+
+  test("rejects removed api provider baseUrl spelling", () => {
+    expectIssuePath(
+      {
+        server: {},
+        providers: {
+          openai: {
+            kind: ProviderKind.Api,
+            protocol: ProviderProtocol.OpenAICompatible,
+            baseUrl: "https://api.example.com",
+          },
+        },
+      },
+      ["providers", "openai", "baseURL"],
+    );
   });
 
   test("rejects invalid oauth vendor at providers.copilot.vendor", () => {
@@ -316,7 +331,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
       }),
     ).toMatchObject({ kind: "api", id: "openai" });
   });
@@ -340,7 +355,7 @@ describe("ConfigSchema", () => {
       ApiProviderMutationBodySchema.parse({
         kind: "api",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
       }),
     ).toThrow();
   });
@@ -352,7 +367,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini"],
         alias: { mini: { model: "gpt-5-mini" } },
       };
@@ -395,7 +410,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini", "gpt-5-mini-low"],
         alias: {
           mini: {
@@ -425,7 +440,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini", "gpt-5"],
         alias: {
           " mini ": {
@@ -450,7 +465,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini"],
         alias: { mini: { model: "missing-model" } },
       };
@@ -471,7 +486,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini"],
         alias: {
           mini: {
@@ -502,7 +517,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini"],
         alias: {
           mini: {
@@ -526,7 +541,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-5-mini"],
         alias: {
           mini: "gpt-5-mini",
@@ -545,7 +560,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-default", "gpt-raw"],
         alias: {
           "gpt-raw": { model: "gpt-default" },
@@ -564,7 +579,7 @@ describe("ConfigSchema", () => {
         kind: "api",
         id: "openai",
         protocol: "openai-response",
-        baseUrl: "https://api.openai.com",
+        baseURL: "https://api.openai.com",
         models: ["gpt-raw"],
         alias: {
           mini: { model: "gpt-raw", preserve: true },

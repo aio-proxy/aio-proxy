@@ -15,7 +15,7 @@ const config = {
       kind: "api",
       protocol: ProviderProtocol.OpenAICompatible,
       apiKey: "sk-abcdefghijklmnopqrstuvwxyz",
-      baseUrl: "https://api.example.com",
+      baseURL: "https://api.example.com",
       models: ["gpt-test"],
       alias: {
         "gpt-alias": { model: "gpt-test", preserve: true },
@@ -159,7 +159,7 @@ describe("server routes", () => {
           api: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.example.com/v1",
+            baseURL: "https://api.example.com/v1",
             models: ["api-model"],
           },
           sdk: {
@@ -188,7 +188,7 @@ describe("server routes", () => {
           "anthropic-aliases": {
             kind: "api",
             protocol: ProviderProtocol.Anthropic,
-            baseUrl: "https://anthropic.example.com",
+            baseURL: "https://anthropic.example.com",
             models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46"],
             alias: {
               "claude-opus-4-8": "upstream-opus-48",
@@ -229,7 +229,7 @@ describe("server routes", () => {
           api: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.example.com/v1",
+            baseURL: "https://api.example.com/v1",
             models: ["upstream-model"],
             alias: { "friendly-alias": "upstream-model" },
           },
@@ -283,14 +283,14 @@ describe("server routes", () => {
             kind: "api",
             weight: 1,
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://low.example.com",
+            baseURL: "https://low.example.com",
             models: ["shared", "gpt-only"],
           },
           high: {
             kind: "api",
             weight: 10,
             protocol: ProviderProtocol.Anthropic,
-            baseUrl: "https://high.example.com",
+            baseURL: "https://high.example.com",
             models: ["opaque-claude", "shared"],
             alias: { "claude-sonnet-4-6": "opaque-claude" },
           },
@@ -324,14 +324,14 @@ describe("server routes", () => {
             kind: "api",
             weight: 5,
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://first.example.com",
+            baseURL: "https://first.example.com",
             models: ["shared"],
           },
           second: {
             kind: "api",
             weight: 5,
             protocol: ProviderProtocol.Anthropic,
-            baseUrl: "https://second.example.com",
+            baseURL: "https://second.example.com",
             models: ["shared"],
           },
         },
@@ -353,7 +353,7 @@ describe("server routes", () => {
           api: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.example.com",
+            baseURL: "https://api.example.com",
             models: ["plain-model"],
           },
         },
@@ -475,7 +475,7 @@ describe("server routes", () => {
             kind: "api",
             enabled: false,
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://api.example.com",
+            baseURL: "https://api.example.com",
             models: ["gpt-disabled", "gpt-untouched"],
             alias: { disabled: { model: "gpt-disabled", preserve: false } },
           },
@@ -595,7 +595,7 @@ describe("server routes", () => {
           openai: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            baseURL: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },
         },
@@ -650,7 +650,7 @@ describe("server routes", () => {
           authenticated: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            baseURL: `http://127.0.0.1:${upstream.port}`,
             apiKey: "probe-secret",
             models: ["gpt-test"],
           },
@@ -683,7 +683,7 @@ describe("server routes", () => {
           configured: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            baseURL: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-real", "gpt-fallback"],
           },
         },
@@ -709,26 +709,26 @@ describe("server routes", () => {
         return new Response("", { status: 204 });
       },
     });
-    const baseUrl = `http://127.0.0.1:${upstream.port}`;
+    const baseURL = `http://127.0.0.1:${upstream.port}`;
     const app = createServer({
       config: {
         providers: {
           chat: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl,
+            baseURL,
             models: ["chat-model"],
           },
           responses: {
             kind: "api",
             protocol: ProviderProtocol.OpenAIResponse,
-            baseUrl,
+            baseURL,
             models: ["responses-model"],
           },
           gemini: {
             kind: "api",
             protocol: ProviderProtocol.Gemini,
-            baseUrl,
+            baseURL,
             models: ["gemini-model"],
           },
         },
@@ -859,7 +859,7 @@ describe("server routes", () => {
           bad: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: `http://127.0.0.1:${upstream.port}`,
+            baseURL: `http://127.0.0.1:${upstream.port}`,
             models: ["gpt-test"],
           },
         },

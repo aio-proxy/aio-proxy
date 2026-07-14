@@ -40,12 +40,12 @@ export function createApiProvider(
   config: ApiProviderConfig,
   options: ApiProviderFactoryOptions = {},
 ): ApiProviderInstance {
-  const baseUrl = config.baseUrl;
+  const baseURL = config.baseURL;
   const trace = options.trace ?? config.trace;
 
   return {
     ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
-    baseUrl,
+    baseURL,
     enabled: config.enabled,
     id: config.id,
     kind: config.kind,
@@ -53,7 +53,7 @@ export function createApiProvider(
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     protocol: config.protocol,
     async passthrough(req) {
-      const upstreamUrl = rewrittenUrl(baseUrl, req.url);
+      const upstreamUrl = rewrittenUrl(baseURL, req.url);
       const headers = upstreamHeaders(req.headers, config.protocol, resolveApiKey(config.apiKey));
 
       const response = await fetch(upstreamUrl, {
@@ -99,8 +99,8 @@ function decodedBodyResponseInit(response: Response): ResponseInit {
   };
 }
 
-function rewrittenUrl(baseUrl: string, requestUrl: string): URL {
-  const upstreamUrl = new URL(baseUrl);
+function rewrittenUrl(baseURL: string, requestUrl: string): URL {
+  const upstreamUrl = new URL(baseURL);
   const incomingUrl = new URL(requestUrl);
   upstreamUrl.pathname = incomingUrl.pathname;
   upstreamUrl.search = incomingUrl.search;

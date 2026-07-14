@@ -45,7 +45,7 @@ export const ApiProviderSchema = z.object({
   ...SharedProviderSchemaBase,
   ...modelsField,
   protocol: ProviderProtocolSchema,
-  baseUrl: z.url().describe("Provider API base URL."),
+  baseURL: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
 });
 
@@ -81,7 +81,7 @@ export const ApiProviderMutationBodySchema = z.object({
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
   protocol: ProviderProtocolSchema,
-  baseUrl: z.url(),
+  baseURL: z.url(),
   apiKey: z.string().optional(),
   models: z.array(z.string()).optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),

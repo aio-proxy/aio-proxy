@@ -8,12 +8,12 @@ import { createServerState } from "../src/server-state";
 
 const decoder = new TextDecoder();
 
-const configWithProvider = (id: string, baseUrl: string) => ({
+const configWithProvider = (id: string, baseURL: string) => ({
   providers: {
     [id]: {
       kind: "api",
       protocol: ProviderProtocol.OpenAICompatible,
-      baseUrl,
+      baseURL,
       models: [`${id}-model`],
       alias: { [`${id}-model`]: { model: `${id}-model`, preserve: false } },
     },
@@ -96,7 +96,7 @@ describe("server reload", () => {
           duplicate: {
             kind: "api",
             protocol: ProviderProtocol.OpenAICompatible,
-            baseUrl: "https://duplicate.example.com",
+            baseURL: "https://duplicate.example.com",
             models: ["first-model", "second-model"],
             alias: {
               "first-model": { model: "second-model", preserve: false },

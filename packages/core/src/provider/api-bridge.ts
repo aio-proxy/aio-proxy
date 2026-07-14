@@ -23,7 +23,7 @@ export function bridgeApiProviderToAiSdk(
   provider: ApiProvider,
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
-  const baseURL = provider.baseUrl;
+  const baseURL = provider.baseURL;
   const providerId = provider.id;
   const mapping = bridgeMapping(provider, baseURL, providerId);
   const synthesized = {

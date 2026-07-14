@@ -23,8 +23,8 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
     <div className="space-y-4">
       <ProviderCommonFields form={form} mode={mode} />
 
-      <div data-testid="provider-form-field-baseUrl">
-        <form.Field name="baseUrl">
+      <div data-testid="provider-form-field-baseURL">
+        <form.Field name="baseURL">
           {(field) => (
             <Field>
               <Label htmlFor={field.name}>{m["dashboard.providers.form.label_base_url"]()}</Label>
