@@ -76,6 +76,23 @@ describe("createAiSdkProvider", () => {
     expect(optionsSeen).toEqual({ baseURL: "https://example.test/v1", name: "custom" });
   });
 
+  test("rejects an explicit non-string openai-compatible name without replacing it", async () => {
+    const provider = createAiSdkProvider({
+      kind: "ai-sdk",
+      id: "carpool",
+      packageName: "@ai-sdk/openai-compatible",
+      options: { baseURL: "https://example.test/v1", name: 42 },
+    });
+
+    if (!provider.ensureAvailable) {
+      throw new Error("AI SDK provider should expose availability validation");
+    }
+
+    await expect(provider.ensureAvailable()).rejects.toThrow(
+      "carpool: @ai-sdk/openai-compatible requires name and baseURL",
+    );
+  });
+
   test("does not inject name into other AI SDK packages", async () => {
     let optionsSeen: Readonly<Record<string, unknown>> | undefined;
     const provider = createAiSdkProvider(
