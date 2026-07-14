@@ -31,6 +31,12 @@ export type RedactedPluginError = {
   readonly stack?: string;
 };
 
+const SAFE_ERROR_MESSAGE = "Plugin error details unavailable";
+
+function safeFallback(): RedactedPluginError {
+  return { name: "Error", message: SAFE_ERROR_MESSAGE };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -46,20 +52,27 @@ function redactText(input: string, secretValues: readonly string[]): string {
   );
   output = output.replace(/\bBearer\s+[^\s,;]+/giu, "Bearer [REDACTED]");
   output = output.replace(
-    /(\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b\s*(?:=|:)\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/giu,
+    /((?:["'])?\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b(?:["'])?\s*(?:=|:)\s*)(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/giu,
     "$1[REDACTED]",
   );
   return output;
 }
 
 export function redactPluginError(error: unknown, redaction: PluginErrorRedaction = {}): RedactedPluginError {
-  const name = error instanceof Error ? error.name : "Error";
-  const message = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
-  const secretValues = redaction.secretValues ?? [];
-  return {
-    name,
-    message: redactText(message, secretValues),
-    ...(stack === undefined ? {} : { stack: redactText(stack, secretValues) }),
-  };
+  try {
+    const secretValues = redaction.secretValues ?? [];
+    if (error instanceof Error) {
+      const name = typeof error.name === "string" ? error.name : "Error";
+      const message = typeof error.message === "string" ? error.message : SAFE_ERROR_MESSAGE;
+      const stack = typeof error.stack === "string" ? error.stack : undefined;
+      return {
+        name,
+        message: redactText(message, secretValues),
+        ...(stack === undefined ? {} : { stack: redactText(stack, secretValues) }),
+      };
+    }
+    return { name: "Error", message: redactText(String(error), secretValues) };
+  } catch {
+    return safeFallback();
+  }
 }

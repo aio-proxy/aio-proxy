@@ -239,9 +239,11 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         descriptor = validateDescriptor(candidate.builtIn.descriptor);
       }
 
-      const pluginOptions = await prepareOptions(descriptor, candidate.options, secretOptions);
       const staging = host.stage(candidate.packageName);
-      const setup = Promise.resolve().then(() => descriptor.setup(staging.api, pluginOptions));
+      const setup = Promise.resolve().then(async () => {
+        const pluginOptions = await prepareOptions(descriptor, candidate.options, secretOptions);
+        return descriptor.setup(staging.api, pluginOptions);
+      });
       try {
         await timeout(setup, PLUGIN_SETUP_TIMEOUT_MS, staging.seal);
       } catch (error) {

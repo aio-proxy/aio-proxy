@@ -66,7 +66,7 @@ export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): 
   const { error } = result;
   if (!isRecord(error)) throw new PluginSchemaContractError();
   const { issues: rawIssues } = error;
-  if (!Array.isArray(rawIssues)) throw new PluginSchemaContractError();
+  if (!Array.isArray(rawIssues) || rawIssues.length === 0) throw new PluginSchemaContractError();
   const issues = rawIssues.map((issue) => {
     if (!isRecord(issue)) throw new PluginSchemaContractError();
     const { message, path } = issue;

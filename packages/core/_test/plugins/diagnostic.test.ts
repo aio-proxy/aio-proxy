@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { redactPluginError } from "../../src/plugins/diagnostic";
+import { definePlugin } from "@aio-proxy/plugin-sdk";
+import { type DiagnosticFactory, redactPluginError } from "../../src/plugins/diagnostic";
+import { loadPluginRegistry } from "../../src/plugins/loader";
 
 describe("redactPluginError", () => {
   test("removes OAuth material, URLs, causes, stacks, and arbitrary third-party secrets", () => {
@@ -33,5 +35,89 @@ describe("redactPluginError", () => {
     expect(redacted.message).toContain("[REDACTED]");
     expect(redacted.stack).toContain("[REDACTED]");
     expect(redacted).not.toHaveProperty("cause");
+  });
+
+  test("redacts OAuth values from JSON quoted keys", () => {
+    const values = {
+      access_token: "json-access",
+      refresh_token: "json-refresh",
+      authorization_code: "json-code",
+      code: "json-short-code",
+      code_verifier: "json-verifier",
+      state: "json-state",
+      accessToken: "json-camel-access",
+      refreshToken: "json-camel-refresh",
+    };
+    const error = new Error(JSON.stringify(values));
+    error.stack = `Error: ${JSON.stringify(values)}`;
+
+    const serialized = JSON.stringify(redactPluginError(error));
+    for (const value of Object.values(values)) expect(serialized).not.toContain(value);
+  });
+
+  test("malicious error accessors and string conversion use a fixed safe fallback", () => {
+    const accessorError = Object.create(Error.prototype, {
+      name: {
+        get: () => {
+          throw new Error("name getter leaked");
+        },
+      },
+      message: {
+        get: () => {
+          throw new Error("message getter leaked");
+        },
+      },
+      stack: {
+        get: () => {
+          throw new Error("stack getter leaked");
+        },
+      },
+    });
+    const stringError = {
+      [Symbol.toPrimitive]() {
+        throw new Error("string conversion leaked");
+      },
+    };
+
+    expect(redactPluginError(accessorError)).toEqual({
+      name: "Error",
+      message: "Plugin error details unavailable",
+    });
+    expect(redactPluginError(stringError)).toEqual({
+      name: "Error",
+      message: "Plugin error details unavailable",
+    });
+  });
+
+  test("loader diagnostics never receive raw plugin error details", async () => {
+    const secret = "public-diagnostic-secret";
+    const diagnostics: DiagnosticFactory = (code, options) => ({
+      code,
+      retryable: options.retryable,
+      summary: code,
+      occurredAt: new Date(0).toISOString(),
+    });
+    const error = new Error(`Bearer ${secret}`, { cause: new Error("private cause") });
+    error.stack = `Error: Bearer ${secret}\n at plugin (plugin.ts:1:1)`;
+    const descriptor = definePlugin(() => {
+      throw error;
+    });
+
+    const snapshot = await loadPluginRegistry({
+      enablements: [],
+      builtIns: [{ packageName: "@example/public-diagnostic", version: "1.0.0", descriptor }],
+      diagnostics,
+      importPackage: async () => {
+        throw new Error("must not import");
+      },
+      logger: () => {},
+      secrets: { readPluginSecret: () => undefined },
+    });
+    const serialized = JSON.stringify(snapshot.plugins.get("@example/public-diagnostic")?.state);
+
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain("private cause");
+    expect(serialized).not.toContain("stack");
+    expect(serialized).toContain("PLUGIN_LOAD_FAILED");
   });
 });

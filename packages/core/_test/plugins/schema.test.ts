@@ -71,4 +71,15 @@ describe("parsePluginSchema", () => {
       expect(error).not.toHaveProperty("cause");
     }
   });
+
+  test("an empty issue list is a malformed parse result", async () => {
+    const schema = {
+      safeParse() {},
+      async safeParseAsync() {
+        return { success: false, error: { issues: [] } };
+      },
+    };
+
+    await expect(parsePluginSchema(schema as never, "hidden-input")).rejects.toEqual(new PluginSchemaContractError());
+  });
 });

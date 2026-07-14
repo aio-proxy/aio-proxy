@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, jest, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
@@ -148,6 +148,49 @@ describe("loadPluginRegistry", () => {
       status: "failed",
       diagnostic: { code: "PLUGIN_OPTIONS_INVALID" },
     });
+  });
+
+  test("options async validation shares the setup deadline and late setup stays sealed", async () => {
+    let resolveValidation: ((value: unknown) => void) | undefined;
+    const schema = {
+      safeParse() {},
+      safeParseAsync() {
+        return new Promise((resolve) => {
+          resolveValidation = resolve;
+        });
+      },
+    };
+    const descriptor = definePlugin(
+      (api) => {
+        api.oauth.register(adapter("late-options"));
+      },
+      { options: { schema: schema as never, form: [] } },
+    );
+    jest.useFakeTimers();
+
+    try {
+      let snapshot: Awaited<ReturnType<typeof loadPluginRegistry>> | undefined;
+      const loading = loadPluginRegistry(
+        options({
+          builtIns: [{ packageName: "@example/options-timeout", version: "1.0.0", descriptor }],
+        }),
+      );
+      loading.then((value) => {
+        snapshot = value;
+      });
+      await Promise.resolve();
+      jest.advanceTimersByTime(PLUGIN_SETUP_TIMEOUT_MS);
+      for (let index = 0; index < 10; index++) await Promise.resolve();
+
+      const timedOutSnapshot = snapshot;
+      resolveValidation?.({ success: true, data: {} });
+      for (let index = 0; index < 10; index++) await Promise.resolve();
+
+      expect(timedOutSnapshot?.plugins.get("@example/options-timeout")?.state.status).toBe("failed");
+      expect(timedOutSnapshot?.registry.resolveOAuth("@example/options-timeout", "late-options")).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("public config cannot supply a secret field and plugin secret is merged", async () => {
@@ -339,6 +382,38 @@ describe("loadPluginRegistry", () => {
     expect(snapshot.plugins.get("@example/setup-timeout")?.state.status).toBe("failed");
     expect(snapshot.registry.resolveOAuth("@example/setup-timeout", "late")).toBeUndefined();
   }, 7_000);
+
+  test("malicious plugin errors do not stop later plugins from loading", async () => {
+    const malicious = Object.create(Error.prototype, {
+      message: {
+        get: () => {
+          throw new Error("message getter");
+        },
+      },
+      stack: {
+        get: () => {
+          throw new Error("stack getter");
+        },
+      },
+    });
+    const snapshot = await loadPluginRegistry(
+      options({
+        builtIns: [
+          {
+            packageName: "@example/malicious-error",
+            version: "1.0.0",
+            descriptor: definePlugin(() => {
+              throw malicious;
+            }),
+          },
+          { packageName: "@example/after-malicious", version: "1.0.0", descriptor: definePlugin(() => {}) },
+        ],
+      }),
+    );
+
+    expect(snapshot.plugins.get("@example/malicious-error")?.state.status).toBe("failed");
+    expect(snapshot.plugins.get("@example/after-malicious")?.state.status).toBe("ready");
+  });
 
   test("unbranded descriptor is rejected even when structurally compatible", async () => {
     install("@example/unbranded");
