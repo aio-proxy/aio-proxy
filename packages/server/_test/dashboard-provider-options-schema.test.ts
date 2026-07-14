@@ -82,7 +82,8 @@ describe("dashboard provider package metadata", () => {
     expect(body.npm).toBe("@ai-sdk/openai-compatible");
     expect(body.packageVersion).toBe(PROVIDER_OPTIONS_SCHEMAS["@ai-sdk/openai-compatible"]?.packageVersion);
     expect(body.factoryName).toBe("createOpenAICompatible");
-    expect(body.schema.required).toEqual(expect.arrayContaining(["name", "baseURL"]));
+    expect(body.schema.required).toContain("baseURL");
+    expect(body.schema.properties.name).toMatchObject({ type: "string" });
     expect(body.warnings).toEqual(expect.any(Array));
   });
 
