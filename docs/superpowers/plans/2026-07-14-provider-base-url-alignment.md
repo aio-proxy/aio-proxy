@@ -546,9 +546,11 @@ Expected remaining matches are limited to:
 
 - `packages/dashboard/src/lib/dashboard-client.ts` local client-origin parameter;
 - `packages/server/src/oauth-runtime.ts` OAuth payload parsing;
-- OAuth payload fixtures in `packages/server/_test/oauth-provider-runtime.test.ts` and the GitHub Copilot payload fixture in `packages/server/_test/server.test.ts`.
+- OAuth payload fixtures in `packages/server/_test/oauth-provider-runtime.test.ts` and the GitHub Copilot payload fixture in `packages/server/_test/server.test.ts`;
+- the removed-spelling rejection test in `packages/types/_test/schemas.test.ts`;
+- the removed-spelling rejection test and legacy-property absence assertion in `packages/server/_test/dashboard-providers-mutation.test.ts`.
 
-There must be no remaining API provider schema, runtime, bridge, dashboard form, or API provider test fixture using `baseUrl`.
+There must be no remaining accepted API-provider schema, runtime, bridge, dashboard form, or configuration fixture use of `baseUrl`. Negative tests and assertions may mention the exact removed spelling only to prove that it is rejected or absent.
 
 - [ ] **Step 7: Commit Server and Dashboard propagation**
 
