@@ -14,7 +14,7 @@
   "scripts": {
     "build": "rslib",
     "test": "bun run test:unit",
-    "test:unit": "bun test _test",
+    "test:unit": "bun test _test && bun run test:types",
     "test:types": "tsc -p tsconfig.test.json"
   },
   "dependencies": {

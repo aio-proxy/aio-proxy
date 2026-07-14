@@ -29,8 +29,25 @@ export function definePlugin<Options = undefined>(
   });
 }
 
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isConfigSpecShell(value: unknown): value is ConfigSpec<unknown> {
+  if (!isObject(value)) {
+    return false;
+  }
+
+  const schema = Reflect.get(value, "schema");
+  return (
+    isObject(schema) &&
+    typeof Reflect.get(schema, "safeParse") === "function" &&
+    Array.isArray(Reflect.get(value, "form"))
+  );
+}
+
 export function isPluginDescriptor(value: unknown): value is PluginDescriptor<unknown> {
-  if (typeof value !== "object" || value === null) {
+  if (!isObject(value)) {
     return false;
   }
 
@@ -38,9 +55,8 @@ export function isPluginDescriptor(value: unknown): value is PluginDescriptor<un
   return (
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
     Reflect.get(value, "apiVersion") === PLUGIN_API_VERSION &&
-    typeof metadata === "object" &&
-    metadata !== null &&
-    !Array.isArray(metadata) &&
+    isObject(metadata) &&
+    (!Reflect.has(metadata, "options") || isConfigSpecShell(Reflect.get(metadata, "options"))) &&
     typeof Reflect.get(value, "setup") === "function"
   );
 }
