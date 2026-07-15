@@ -203,6 +203,22 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/github-copilot": {
+      "name": "@aio-proxy/plugin-github-copilot",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/anthropic": "catalog:",
+        "@ai-sdk/openai": "catalog:",
+        "@ai-sdk/openai-compatible": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/server": {
       "name": "@aio-proxy/server",
       "version": "0.0.0",
@@ -310,6 +326,8 @@
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/oauth": ["@aio-proxy/oauth@workspace:packages/oauth"],
+
+    "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 
     "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
 

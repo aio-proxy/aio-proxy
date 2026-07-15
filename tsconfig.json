@@ -14,6 +14,9 @@
       "path": "./packages/plugin-sdk"
     },
     {
+      "path": "./packages/plugins/github-copilot"
+    },
+    {
       "path": "./packages/core"
     },
     {
