@@ -9,10 +9,19 @@ const generatedFiles = [
   "packages/i18n/src/paraglide/runtime.d.ts",
 ] as const;
 
+const compositeOutputFiles = ["packages/i18n/dist/index.js", "packages/i18n/dist/index.d.ts"] as const;
+
 describe("paraglide compile output", () => {
   test("emits runtime and declaration files", () => {
     // Given / When / Then
     for (const file of generatedFiles) {
+      expect(existsSync(file)).toBe(true);
+    }
+  });
+
+  test("emits composite outputs required by downstream project references", () => {
+    // Given / When / Then
+    for (const file of compositeOutputFiles) {
       expect(existsSync(file)).toBe(true);
     }
   });

@@ -11,8 +11,8 @@
     }
   },
   "scripts": {
-    "build": "paraglide-js compile --emit-ts-declarations",
-    "dev": "bun run build --watch",
+    "build": "paraglide-js compile --emit-ts-declarations && tsc -b tsconfig.json",
+    "dev": "paraglide-js compile --emit-ts-declarations --watch",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/i18n/_test/*.test.ts"
   },
