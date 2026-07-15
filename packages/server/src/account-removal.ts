@@ -1,5 +1,6 @@
 import {
   ABSENT_PROVIDER_DIGEST,
+  AccountCleanupPendingError,
   type AtomicConfigFile,
   PENDING_OPERATION_TTL_MS,
   type PendingAccountOperation,
@@ -53,6 +54,13 @@ export function createAccountRemovalCoordinator(options: {
         if (!isOAuthProviderEntry(previous)) continue;
         const account = options.repository.readAccount(providerId);
         if (account === null) continue;
+        const capability = oauthCapabilityOf(providerId, previous);
+        if (
+          capability !== undefined &&
+          (account.plugin !== capability.plugin || account.capability !== capability.capability)
+        ) {
+          throw new AccountCleanupPendingError(providerId);
+        }
         operations.push(
           options.repository.stageAccountOperation({
             kind: "delete",

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ABSENT_PROVIDER_DIGEST,
+  AccountCleanupPendingError,
   AtomicConfigFile,
   createPluginRepository,
   PENDING_OPERATION_TTL_MS,
@@ -72,6 +73,49 @@ test.each([
       expectedRuntimeRevision: 7,
     },
   ]);
+});
+
+test("rejects staging a removed structured OAuth row whose account capability does not match", () => {
+  let staged = 0;
+  const repository = {
+    readAccount() {
+      return {
+        providerId: "person",
+        plugin: "@example/other",
+        capability: "alternate",
+        runtimeRevision: 7,
+      };
+    },
+    stageAccountOperation() {
+      staged++;
+      throw new Error("must not stage");
+    },
+  };
+  const coordinator = createAccountRemovalCoordinator({ file: {} as never, repository: repository as never });
+
+  expect(() =>
+    coordinator.stageRemoved({ person: { kind: "oauth", plugin: "@example/oauth", capability: "default" } }, {}),
+  ).toThrow(AccountCleanupPendingError);
+  expect(staged).toBe(0);
+});
+
+test("does not stage a marker when a removed structured OAuth row has no stored account", () => {
+  let staged = 0;
+  const coordinator = createAccountRemovalCoordinator({
+    file: {} as never,
+    repository: {
+      readAccount: () => null,
+      stageAccountOperation() {
+        staged++;
+        throw new Error("must not stage");
+      },
+    } as never,
+  });
+
+  expect(
+    coordinator.stageRemoved({ person: { kind: "oauth", plugin: "@example/oauth", capability: "default" } }, {}),
+  ).toEqual([]);
+  expect(staged).toBe(0);
 });
 
 test("never stages a stale account for a removed API or AI SDK row", () => {

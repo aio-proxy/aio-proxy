@@ -169,6 +169,50 @@ describe("plugin lifecycle commands", () => {
     expect(JSON.parse(readFileSync(path, "utf8")).plugins).toEqual([]);
   });
 
+  test("add times out a hanging import, releases its lifecycle lock, and ignores late resolution", async () => {
+    const state = harness();
+    const descriptor = definePlugin(() => {});
+    let resolveImport!: (value: unknown) => void;
+    const imported = new Promise<unknown>((resolve) => {
+      resolveImport = resolve;
+    });
+    let released = false;
+    const command = pluginAdd("hanging-add-plugin", { yes: true }, {
+      ...state.deps,
+      importTimeoutMs: 20,
+      importPackage: async () => imported,
+      withInstalledNpmPackage: async (_packageName, _registry, use) => {
+        try {
+          return await use({ version: "1.0.0", entrypoint: "/tmp/plugin.js" }, async () => {});
+        } finally {
+          released = true;
+        }
+      },
+    } as PluginLifecycleDeps);
+
+    const outcome = await Promise.race([
+      command.then(
+        () => "resolved" as const,
+        (error: unknown) => error,
+      ),
+      Bun.sleep(100).then(() => "still-pending" as const),
+    ]);
+    const releasedBeforeLateResolution = released;
+    const configBeforeLateResolution = JSON.parse(readFileSync(state.path, "utf8"));
+    const secretsBeforeLateResolution = state.values.size;
+    resolveImport({ default: descriptor });
+    await command.catch(() => {});
+    await Bun.sleep(0);
+
+    expect(outcome).toBeInstanceOf(PluginDescriptorInvalidError);
+    expect(releasedBeforeLateResolution).toBe(true);
+    expect(configBeforeLateResolution.plugins).toEqual([]);
+    expect(secretsBeforeLateResolution).toBe(0);
+    expect(released).toBe(true);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
+    expect(state.values.size).toBe(0);
+  });
+
   test("add maps a malformed descriptor ConfigSpec to a localized descriptor error", async () => {
     const state = harness();
     const descriptor = definePlugin(() => {}, {
@@ -646,6 +690,49 @@ describe("plugin lifecycle commands", () => {
       },
     );
     expect(externalAccess).toBe(0);
+  });
+
+  test("config times out a hanging import, releases its lifecycle lock, and observes late rejection", async () => {
+    const state = harness({ providers: {}, plugins: ["hanging-config-plugin"] });
+    let rejectImport!: (error: unknown) => void;
+    const imported = new Promise<unknown>((_resolve, reject) => {
+      rejectImport = reject;
+    });
+    let released = false;
+    const command = pluginConfig("hanging-config-plugin", {}, {
+      ...state.deps,
+      importTimeoutMs: 20,
+      importPackage: async () => imported,
+      withNpmPackageLifecycle: async (_packageName, use) => {
+        try {
+          return await use(async () => {});
+        } finally {
+          released = true;
+        }
+      },
+    } as PluginLifecycleDeps);
+
+    const outcome = await Promise.race([
+      command.then(
+        () => "resolved" as const,
+        (error: unknown) => error,
+      ),
+      Bun.sleep(100).then(() => "still-pending" as const),
+    ]);
+    const releasedBeforeLateRejection = released;
+    const configBeforeLateRejection = JSON.parse(readFileSync(state.path, "utf8"));
+    const secretsBeforeLateRejection = state.values.size;
+    rejectImport(new Error("late import rejection"));
+    await command.catch(() => {});
+    await Bun.sleep(0);
+
+    expect(outcome).toBeInstanceOf(PluginDescriptorInvalidError);
+    expect(releasedBeforeLateRejection).toBe(true);
+    expect(configBeforeLateRejection.plugins).toEqual(["hanging-config-plugin"]);
+    expect(secretsBeforeLateRejection).toBe(0);
+    expect(released).toBe(true);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual(["hanging-config-plugin"]);
+    expect(state.values.size).toBe(0);
   });
 
   test("config never revives a plugin removed while its prompt is open", async () => {

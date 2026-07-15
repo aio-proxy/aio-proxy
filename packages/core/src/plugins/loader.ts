@@ -107,13 +107,19 @@ function validateImportedModule(value: unknown): PluginDescriptor<unknown> {
   return validateDescriptor(Reflect.get(value, "default"));
 }
 
-function timeout<T>(promise: Promise<T>, milliseconds: number, onTimeout: () => void): Promise<T> {
+export type ObservedPromiseDeadlineOptions = {
+  readonly timeoutMs: number;
+  readonly timeoutError: () => Error;
+  readonly onTimeout?: () => void;
+};
+
+export function observedPromiseDeadline<T>(promise: Promise<T>, options: ObservedPromiseDeadlineOptions): Promise<T> {
   promise.catch(() => {});
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      onTimeout();
-      reject(new PluginHostError("PLUGIN_LOAD_FAILED", true));
-    }, milliseconds);
+      options.onTimeout?.();
+      reject(options.timeoutError());
+    }, options.timeoutMs);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -139,7 +145,10 @@ async function loadThirdPartyDescriptor(
     const entrypoint = pathToFileURL(installed.entrypoint);
     entrypoint.searchParams.set("aio_proxy_plugin_attempt", attempt);
     const imported = importer({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt });
-    cached = timeout(imported, PLUGIN_IMPORT_TIMEOUT_MS, () => {}).then(validateImportedModule);
+    cached = observedPromiseDeadline(imported, {
+      timeoutMs: PLUGIN_IMPORT_TIMEOUT_MS,
+      timeoutError: () => new PluginHostError("PLUGIN_LOAD_FAILED", true),
+    }).then(validateImportedModule);
     descriptorCache.set(cacheKey, cached);
     cached.catch(() => {
       if (descriptorCache.get(cacheKey) === cached) descriptorCache.delete(cacheKey);
@@ -253,7 +262,11 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         return descriptor.setup(staging.api, pluginOptions);
       });
       try {
-        await timeout(setup, PLUGIN_SETUP_TIMEOUT_MS, staging.seal);
+        await observedPromiseDeadline(setup, {
+          timeoutMs: PLUGIN_SETUP_TIMEOUT_MS,
+          timeoutError: () => new PluginHostError("PLUGIN_LOAD_FAILED", true),
+          onTimeout: staging.seal,
+        });
       } catch (error) {
         staging.seal();
         throw error;

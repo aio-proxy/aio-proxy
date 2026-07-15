@@ -255,14 +255,17 @@ export async function materializePluginProvider(
   }
 
   let accountOptions: unknown;
+  let accountOptionsDigest: `sha256:${string}`;
   try {
     const { secretKeys } = validateConfigSpec(adapter.account.options);
     const publicOptions = config.options ?? {};
     if (!isRecord(publicOptions) || !isRecord(account.secrets)) throw new Error("Invalid account options");
     for (const key of secretKeys) if (Object.hasOwn(publicOptions, key)) throw new Error("Secret option in config");
+    const preTransformDigest = digest({ public: publicOptions, secret: account.secrets });
     const parsed = await parsePluginSchema(adapter.account.options.schema, { ...publicOptions, ...account.secrets });
     if (!parsed.ok) throw new Error("Invalid account options");
     accountOptions = parsed.value;
+    accountOptionsDigest = preTransformDigest;
   } catch {
     return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id));
   }
@@ -339,7 +342,7 @@ export async function materializePluginProvider(
       public: options.pluginOptions,
       secret: repository.readPluginSecret(config.plugin)?.value,
     }),
-    accountOptionsDigest: digest(accountOptions),
+    accountOptionsDigest,
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),
     catalogRefreshedAt: storedCatalog.refreshedAt,

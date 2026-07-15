@@ -17,6 +17,8 @@ import {
   loadPluginRegistry,
   type NpmPackageInfo,
   npmAdd,
+  observedPromiseDeadline,
+  PLUGIN_IMPORT_TIMEOUT_MS,
   type PluginPackageImporter,
   type PluginRepository,
   type PluginSecretSnapshot,
@@ -61,6 +63,7 @@ export type PluginLifecycleDeps = {
   ) => Promise<T>;
   readonly findInstalledNpmPackage?: (packageName: string) => Promise<NpmPackageInfo | null>;
   readonly importPackage: PluginPackageImporter;
+  readonly importTimeoutMs?: number;
   readonly listInstalledNpmPackages: () => Promise<readonly InstalledNpmPackage[]>;
   readonly removeNpmPackageCache: (packageName: string, canRemove?: () => Promise<boolean>) => Promise<boolean>;
   readonly print: (line: string) => void;
@@ -235,7 +238,13 @@ async function loadDescriptor(
   entrypoint.searchParams.set("aio_proxy_cli_attempt", attempt);
   return descriptorFromModule(
     packageName,
-    await deps.importPackage({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt }),
+    await observedPromiseDeadline(
+      deps.importPackage({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt }),
+      {
+        timeoutMs: deps.importTimeoutMs ?? PLUGIN_IMPORT_TIMEOUT_MS,
+        timeoutError: () => new PluginDescriptorInvalidError(packageName),
+      },
+    ),
   );
 }
 

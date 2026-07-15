@@ -102,6 +102,31 @@ jobs:
         with:
           name: npm-binaries
       - run: tar -xf npm-binaries.tar
+      - name: Build public packages
+        run: |
+          bun run --filter @aio-proxy/plugin-sdk build
+          bun run --filter @aio-proxy/plugin-github-copilot build
+          bun run --filter @aio-proxy/plugin-openai-chatgpt build
+      - name: Smoke-test public package tarballs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for package_dir in \
+            packages/plugin-sdk \
+            packages/plugins/github-copilot \
+            packages/plugins/openai-chatgpt
+          do
+            output_dir="$RUNNER_TEMP/$(basename "$package_dir")"
+            mkdir -p "$output_dir"
+            (
+              cd "$package_dir"
+              bun pm pack --destination "$output_dir"
+            )
+            tarballs=("$output_dir"/*.tgz)
+            test "${#tarballs[@]}" -eq 1
+            tar -tzf "${tarballs[0]}" | grep -Fx package/dist/index.js >/dev/null
+            tar -tzf "${tarballs[0]}" | grep -Fx package/dist/index.d.ts >/dev/null
+          done
       - name: Create GitHub Release
         run: |
           mkdir -p release-assets

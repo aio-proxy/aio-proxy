@@ -1,16 +1,10 @@
 import {
-  AccountCleanupPendingError,
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
   type PendingAccountOperation,
   type PluginRepository,
 } from "@aio-proxy/core";
-import {
-  type AccountRemovalCoordinator,
-  asProviderRecord,
-  createAccountRemovalCoordinator,
-  oauthCapabilityOf,
-} from "./account-removal";
+import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
 import type { FifoQueue } from "./fifo-queue";
 import { createFifoQueue } from "./fifo-queue";
 import type { RetiredProviderSnapshot } from "./runtime";
@@ -103,16 +97,6 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
 
   async function deleteProviderNow(providerId: string): Promise<void> {
     await mutateProvidersNow((providers) => {
-      const capability = oauthCapabilityOf(providerId, providers[providerId]);
-      if (capability !== undefined && options.repository !== undefined) {
-        const account = options.repository.readAccount(providerId);
-        if (
-          account !== null &&
-          (account.plugin !== capability.plugin || account.capability !== capability.capability)
-        ) {
-          throw new AccountCleanupPendingError(providerId);
-        }
-      }
       const { [providerId]: _removed, ...remaining } = providers;
       return remaining;
     });

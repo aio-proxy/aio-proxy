@@ -49,6 +49,7 @@ const diagnostics: DiagnosticFactory = (code, options) => ({
 function runtimeFixture(
   policy: OAuthAdapter["catalog"]["policy"],
   overrides: {
+    readonly accountOptionsSchema?: OAuthAdapter["account"]["options"]["schema"];
     readonly catalog?: ModelCatalog | null;
     readonly createRuntime?: OAuthAdapter["createRuntime"];
     readonly providerId?: string;
@@ -93,7 +94,7 @@ function runtimeFixture(
   staging.api.oauth.register({
     id: "default",
     label: "Example",
-    account: { options: { schema: zod.object({}), form: [] } },
+    account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
       throw new Error("not called");
@@ -478,6 +479,108 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
   expect(pluginOptionsChanged.cacheEntry?.identity).not.toBe(first.cacheEntry?.identity);
   expect(relogged.cacheEntry?.identity).not.toBe(pluginOptionsChanged.cacheEntry?.identity);
   expect(refreshed.cacheEntry?.identity).not.toBe(relogged.cacheEntry?.identity);
+});
+
+test.each([
+  ["URL", URL, (value: string) => new URL(value), "https://one.example.test", "https://two.example.test"],
+  ["Date", Date, (value: string) => new Date(value), "2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"],
+] as const)("%s account-option transforms reuse unchanged JSON inputs and rebuild changed inputs", async (_label, transformedType, transform, firstValue, secondValue) => {
+  const observed: unknown[] = [];
+  const fixture = runtimeFixture(
+    { kind: "static" },
+    {
+      accountOptionsSchema: zod.object({ value: zod.string() }).transform(({ value }) => ({ value: transform(value) })),
+      createRuntime: async ({ options }) => {
+        observed.push(options);
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    },
+  );
+  const base = {
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  } as const;
+  const config = {
+    id: "person",
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: "@example/oauth",
+    capability: "default",
+    options: { value: firstValue },
+  } as const;
+
+  const first = await materializePluginProvider({ ...base, config });
+  const unchanged = await materializePluginProvider({ ...base, config, previous: first.cacheEntry });
+  const changed = await materializePluginProvider({
+    ...base,
+    config: { ...config, options: { value: secondValue } },
+    previous: unchanged.cacheEntry,
+  });
+
+  expect(fixture.createCalls()).toBe(2);
+  expect(unchanged.provider?.model).toBe(first.provider?.model);
+  expect(changed.provider?.model).not.toBe(first.provider?.model);
+  expect(observed).toHaveLength(2);
+  expect((observed[0] as { value: unknown }).value).toBeInstanceOf(transformedType);
+});
+
+test("an in-place nested account-option transform cannot change the pre-transform runtime identity input", async () => {
+  const fixture = runtimeFixture(
+    { kind: "static" },
+    {
+      accountOptionsSchema: zod.object({ nested: zod.any() }).transform(({ nested }) => {
+        nested.value = new URL(nested.value as string);
+        return { nested };
+      }),
+    },
+  );
+  const base = {
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  } as const;
+  const config = {
+    id: "person",
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: "@example/oauth",
+    capability: "default",
+  } as const;
+
+  const first = await materializePluginProvider({
+    ...base,
+    config: { ...config, options: { nested: { value: "https://one.example.test" } } },
+  });
+  const unchanged = await materializePluginProvider({
+    ...base,
+    config: { ...config, options: { nested: { value: "https://one.example.test" } } },
+    previous: first.cacheEntry,
+  });
+  await materializePluginProvider({
+    ...base,
+    config: { ...config, options: { nested: { value: "https://two.example.test" } } },
+    previous: unchanged.cacheEntry,
+  });
+
+  expect(fixture.createCalls()).toBe(2);
 });
 
 test("plugin raw capability receives catalog metadata and rejects malformed transports", async () => {

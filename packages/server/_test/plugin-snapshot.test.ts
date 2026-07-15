@@ -320,6 +320,66 @@ test("OAuth deletion cascades account data only after the retired snapshot drain
   rmSync(home, { recursive: true, force: true });
 });
 
+test("watcher reload rejects structured OAuth removal when the stored account capability mismatches", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-mismatched-removal-"));
+  const configPath = join(home, "config.json");
+  const initialInput = {
+    providers: {
+      person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+    },
+  };
+  writeFileSync(configPath, JSON.stringify(initialInput));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  const create = repository.stageAccountOperation({
+    kind: "create",
+    targetDigest: "create",
+    account: {
+      providerId: "person",
+      plugin: "@example/other",
+      capability: "alternate",
+      fingerprint: "person@example.com",
+      options: {},
+      secrets: {},
+      credential: { token: "secret" },
+      catalog: {
+        kind: "missing",
+        diagnostic: {
+          code: "CATALOG_UNAVAILABLE",
+          summary: "catalog unavailable",
+          retryable: true,
+          occurredAt: new Date(0).toISOString(),
+        },
+      },
+    },
+  });
+  repository.completeAccountOperation(create.operationId);
+  const state = await createServerState({
+    config: ConfigSchema.parse(initialInput),
+    configPath,
+    pluginRepository: repository,
+    watchConfig: false,
+    logger: () => {},
+  });
+  const before = state.currentProviderSnapshot();
+
+  try {
+    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+    expect(await state.reload()).toMatchObject({ ok: false, stage: "providers" });
+    expect(state.currentProviderSnapshot()).toBe(before);
+    expect(state.currentConfig().providers).toHaveLength(1);
+    expect(repository.listPendingAccountOperations()).toEqual([]);
+    expect(repository.readAccount("person")).toMatchObject({
+      plugin: "@example/other",
+      capability: "alternate",
+    });
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("OAuth deletion waits for every older retired snapshot containing the provider", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-all-retired-"));
   const configPath = join(home, "config.json");
