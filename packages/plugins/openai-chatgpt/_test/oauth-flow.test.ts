@@ -83,15 +83,44 @@ describe("OpenAI ChatGPT OAuth flow", () => {
   });
 
   test("surfaces non-successful token responses without leaking tokens", async () => {
-    const fetchMock: TokenFetch = async () => new Response("bad request", { status: 400 });
-    const exchange = exchangeCodeForTokens("secret-code", "secret-verifier", {
-      fetch: fetchMock,
+    const secrets = ["secret-code", "secret-verifier", "secret-access-token", "secret-refresh-token"];
+    const fetchMock: TokenFetch = async () =>
+      Response.json(
+        {
+          error: "invalid_grant",
+          authorization_code: secrets[0],
+          code_verifier: secrets[1],
+          access_token: secrets[2],
+          refresh_token: secrets[3],
+        },
+        { status: 400 },
+      );
+
+    let error: unknown;
+    try {
+      await exchangeCodeForTokens(secrets[0] ?? "", secrets[1] ?? "", {
+        fetch: fetchMock,
+        redirectUri: "http://localhost:1455/auth/callback",
+      });
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(ChatGPTTokenExchangeError);
+    expect(error).toMatchObject({ status: 400 });
+    if (!(error instanceof Error)) throw new Error("expected token exchange error");
+    const publicSurface = [error.message, ...Object.values(error), JSON.stringify(error)].join("\n");
+    for (const secret of secrets) expect(publicSurface).not.toContain(secret);
+  });
+
+  test("does not expose a raw upstream response body on token errors", async () => {
+    const exchange = exchangeCodeForTokens("code", "verifier", {
+      fetch: async () => new Response("upstream diagnostic", { status: 429 }),
       redirectUri: "http://localhost:1455/auth/callback",
     });
 
-    await expect(exchange).rejects.toBeInstanceOf(ChatGPTTokenExchangeError);
-    await expect(exchange).rejects.toMatchObject({ status: 400 });
-    await expect(exchange).rejects.not.toThrow(/secret-code|secret-verifier/);
+    await expect(exchange).rejects.toEqual(expect.objectContaining({ status: 429 }));
+    await expect(exchange).rejects.not.toHaveProperty("responseText");
   });
 });
 

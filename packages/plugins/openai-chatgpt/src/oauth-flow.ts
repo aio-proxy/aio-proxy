@@ -28,10 +28,7 @@ export type ChatGPTFetch = (input: string | URL | Request, init?: RequestInit) =
 export class ChatGPTTokenExchangeError extends Error {
   override readonly name = "ChatGPTTokenExchangeError";
 
-  constructor(
-    readonly status: number,
-    readonly responseText?: string,
-  ) {
+  constructor(readonly status: number) {
     super(`ChatGPT token exchange failed with status ${status}`);
   }
 }
@@ -105,7 +102,7 @@ async function postTokenRequest<T>(
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
 
-  if (!response.ok) throw new ChatGPTTokenExchangeError(response.status, await response.text());
+  if (!response.ok) throw new ChatGPTTokenExchangeError(response.status);
   return schema.parse(await response.json());
 }
 

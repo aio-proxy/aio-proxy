@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { OAuthAdapter, OAuthLoginContext, PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import {
+  type OAuthAdapter,
+  type OAuthLoginContext,
+  PLUGIN_DESCRIPTOR_BRAND,
+  type PluginDescriptor,
+} from "@aio-proxy/plugin-sdk";
 import packageJson from "../package.json" with { type: "json" };
-import openAIChatGPTPlugin, {
-  createOpenAIChatGPTPlugin,
-  OPENAI_CHATGPT_MODELS,
-  OPENAI_CHATGPT_PLUGIN_VERSION,
-} from "../src";
+import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "../src";
 import { base64url } from "../src/pkce";
 
 const originalFetch = globalThis.fetch;
@@ -18,6 +19,8 @@ describe("OpenAI ChatGPT plugin", () => {
   test("exports a versioned default descriptor with OAuth capability default", async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
 
+    expect(openAIChatGPTPlugin.apiVersion).toBe(1);
+    expect(openAIChatGPTPlugin[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
     expect(adapter.id).toBe("default");
     expect(adapter.label).toBe("Login with ChatGPT (Plus/Pro)");
     expect(OPENAI_CHATGPT_PLUGIN_VERSION).toBe(packageJson.version);
@@ -90,14 +93,19 @@ describe("OpenAI ChatGPT plugin", () => {
   test("discovers the fixed language model catalog", async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
 
-    await expect(
-      adapter.catalog.discover({
-        credentials: unusedCredentialPort(),
-        options: {},
-        signal: new AbortController().signal,
-      }),
-    ).resolves.toEqual({
-      language: OPENAI_CHATGPT_MODELS,
+    const catalog = await adapter.catalog.discover({
+      credentials: unusedCredentialPort(),
+      options: {},
+      signal: new AbortController().signal,
+    });
+
+    expect(catalog).toEqual({
+      language: [
+        { id: "gpt-5.5", displayName: "GPT-5.5" },
+        { id: "gpt-5.4", displayName: "GPT-5.4" },
+        { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
+        { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
+      ],
       image: [],
       embedding: [],
       speech: [],

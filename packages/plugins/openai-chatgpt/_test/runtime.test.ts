@@ -4,7 +4,7 @@ import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime } from "../
 import type { ChatGPTCredential } from "../src/schema";
 
 type FetchCall = {
-  readonly body: BodyInit | null | undefined;
+  readonly body: string;
   readonly headers: Headers;
   readonly signal: AbortSignal | null | undefined;
   readonly url: string;
@@ -56,8 +56,9 @@ describe("OpenAI ChatGPT runtime", () => {
     );
     const controller = new AbortController();
 
-    await dynamicFetch("https://api.openai.com/v1/responses", {
-      body: "{}",
+    const body = JSON.stringify({ input: "hello", model: "gpt-5.5", stream: true });
+    await dynamicFetch("https://api.openai.com/v1/responses?foo=bar&foo=baz", {
+      body,
       headers: { authorization: "Bearer caller-token", "x-keep": "1" },
       method: "POST",
       signal: controller.signal,
@@ -66,7 +67,7 @@ describe("OpenAI ChatGPT runtime", () => {
     await dynamicFetch("https://api.openai.com/v1/models", { method: "GET" });
 
     const first = requiredCall(calls, 0);
-    expect(first.url).toBe("https://chatgpt.com/backend-api/codex/responses");
+    expect(first.url).toBe("https://chatgpt.com/backend-api/codex/responses?foo=bar&foo=baz");
     expect(requiredCall(calls, 1).url).toBe("https://chatgpt.com/backend-api/codex/responses");
     expect(requiredCall(calls, 2).url).toBe("https://api.openai.com/v1/models");
     expect(first.headers.get("authorization")).toBe("Bearer runtime-token");
@@ -77,6 +78,7 @@ describe("OpenAI ChatGPT runtime", () => {
     );
     expect(first.headers.get("session-id")).toBeString();
     expect(first.headers.get("x-keep")).toBe("1");
+    expect(first.body).toBe(body);
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get("session-id")).not.toBe(first.headers.get("session-id"));
   });
@@ -109,7 +111,7 @@ function captureFetch(calls: FetchCall[]): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, init);
     calls.push({
-      body: init?.body,
+      body: await request.text(),
       headers: new Headers(request.headers),
       signal: init?.signal ?? request.signal,
       url: request.url,

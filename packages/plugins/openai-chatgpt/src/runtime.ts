@@ -66,7 +66,11 @@ export async function currentCredential(port: CredentialPort<ChatGPTCredential>)
 
 function rewriteCodexUrl(input: string): string {
   const target = new URL(input);
-  if (shouldRewriteCodexPath(target.pathname)) return CHATGPT_CODEX_RESPONSES_ENDPOINT;
+  if (shouldRewriteCodexPath(target.pathname)) {
+    const endpoint = new URL(CHATGPT_CODEX_RESPONSES_ENDPOINT);
+    endpoint.search = target.search;
+    return endpoint.toString();
+  }
   return target.toString();
 }
 
