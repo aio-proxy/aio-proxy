@@ -82,7 +82,14 @@ type ServerStateTestHooks = {
   readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
   readonly reconciliationRetryMs?: number;
+  readonly recoveryScheduler?: RecoveryScheduler;
   readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
+};
+
+type RecoveryTimer = { readonly clear: () => void };
+type RecoveryScheduler = {
+  readonly now: () => number;
+  readonly setTimeout: (callback: () => void, delayMs: number) => RecoveryTimer;
 };
 
 type InternalServerStateOptions = ServerStateOptions & { readonly __test?: ServerStateTestHooks };
@@ -157,7 +164,15 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     testHooks?.configFile ?? (options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath));
   const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
   const reconciliationRetryMs = testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS;
-  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  const recoveryScheduler: RecoveryScheduler = testHooks?.recoveryScheduler ?? {
+    now: Date.now,
+    setTimeout(callback, delayMs) {
+      const timer = setTimeout(callback, delayMs);
+      timer.unref?.();
+      return { clear: () => clearTimeout(timer) };
+    },
+  };
+  let recoveryTimer: RecoveryTimer | undefined;
   let recoveryRunAt: number | undefined;
   const reconciliationTimers = new Set<ReturnType<typeof setTimeout>>();
   let recoveryGeneration = 0;
@@ -172,7 +187,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     await recoverAccounts(
       configFile,
       repository,
-      { mode: "server", canDeleteAccount: () => true },
+      { mode: "server", canDeleteAccount: () => true, now: recoveryScheduler.now },
       {
         factory: diagnostics,
         logger: pluginLogger,
@@ -367,14 +382,14 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       const result = await recoverAccounts(
         configFile,
         repository,
-        { mode: "server", canDeleteAccount: manager.canDeleteAccount },
+        { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
         { factory: diagnostics, logger: pluginLogger },
       );
       if (closed || generation !== recoveryGeneration) return;
       if (result.nextRunAt !== undefined) scheduleRecovery(result.nextRunAt, generation);
     } catch (error) {
       if (closed || generation !== recoveryGeneration) return;
-      scheduleRecovery(Date.now() + RECOVERY_DRAIN_RETRY_MS, generation);
+      scheduleRecovery(recoveryScheduler.now() + RECOVERY_DRAIN_RETRY_MS, generation);
       try {
         pluginLogger({
           event: "plugin.account.recovery.failed",
@@ -392,25 +407,24 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   function scheduleRecovery(nextRunAt: number, generation = recoveryGeneration): void {
     if (closed || generation !== recoveryGeneration) return;
     if (recoveryTimer !== undefined && recoveryRunAt !== undefined && recoveryRunAt <= nextRunAt) return;
-    if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+    recoveryTimer?.clear();
     recoveryRunAt = nextRunAt;
-    recoveryTimer = setTimeout(
+    recoveryTimer = recoveryScheduler.setTimeout(
       () => {
         recoveryTimer = undefined;
         recoveryRunAt = undefined;
         if (closed || generation !== recoveryGeneration) return;
         void runRecovery(generation);
       },
-      Math.max(0, nextRunAt - Date.now()),
+      Math.max(0, nextRunAt - recoveryScheduler.now()),
     );
-    recoveryTimer.unref?.();
   }
 
   if (configFile !== undefined) {
     const recovered = await recoverAccounts(
       configFile,
       repository,
-      { mode: "server", canDeleteAccount: manager.canDeleteAccount },
+      { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
       { factory: diagnostics, logger: pluginLogger },
     );
     if (recovered.nextRunAt !== undefined) scheduleRecovery(recovered.nextRunAt);
@@ -430,7 +444,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       watcher?.close();
       scheduler.close();
       if (recoveryTimer !== undefined) {
-        clearTimeout(recoveryTimer);
+        recoveryTimer.clear();
         recoveryTimer = undefined;
         recoveryRunAt = undefined;
       }

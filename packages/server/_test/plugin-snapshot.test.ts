@@ -64,6 +64,45 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
   }
 }
 
+function createManualRecoveryScheduler(startAt: number) {
+  type Scheduled = { readonly callback: () => void; readonly runAt: number; cleared: boolean };
+  let now = startAt;
+  const scheduled = new Set<Scheduled>();
+  return {
+    hooks: {
+      now: () => now,
+      setTimeout(callback: () => void, delayMs: number) {
+        const timer: Scheduled = { callback, runAt: now + delayMs, cleared: false };
+        scheduled.add(timer);
+        return {
+          clear() {
+            timer.cleared = true;
+            scheduled.delete(timer);
+          },
+        };
+      },
+    },
+    advanceTo(target: number) {
+      if (target < now) throw new Error("cannot move the recovery clock backwards");
+      now = target;
+      const due = [...scheduled]
+        .filter((timer) => !timer.cleared && timer.runAt <= now)
+        .sort((left, right) => left.runAt - right.runAt);
+      for (const timer of due) {
+        scheduled.delete(timer);
+        if (!timer.cleared) timer.callback();
+      }
+    },
+    nextRunAt: () =>
+      [...scheduled]
+        .filter((timer) => !timer.cleared)
+        .reduce<number | undefined>(
+          (earliest, timer) => (earliest === undefined ? timer.runAt : Math.min(earliest, timer.runAt)),
+          undefined,
+        ),
+  };
+}
+
 const snapshot = (id: string) => ({
   plugins: emptyPlugins,
   providers: [{ id, kind: "api", enabled: true, models: ["model"] }] as never,
@@ -1221,7 +1260,6 @@ test("close prevents an in-flight rejected recovery from logging or rearming", a
 });
 
 test("a failed delete finalizer is retried by the marker recovery deadline", async () => {
-  jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-recovery-"));
   const configPath = join(home, "config.json");
   writeFileSync(configPath, JSON.stringify({ providers: {} }));
@@ -1247,6 +1285,7 @@ test("a failed delete finalizer is retried by the marker recovery deadline", asy
     providerId: "person",
     expectedRuntimeRevision: account.runtimeRevision,
   });
+  const recoveryScheduler = createManualRecoveryScheduler(pending.createdAt);
   expect(() => observedRepository.finalizeDeleteOperation(pending.operationId)).toThrow("transient finalize failure");
   const state = await createServerState({
     config: ConfigSchema.parse({ providers: {} }),
@@ -1255,6 +1294,7 @@ test("a failed delete finalizer is retried by the marker recovery deadline", asy
     dbHome: home,
     pluginRepository: observedRepository,
     __test: {
+      recoveryScheduler: recoveryScheduler.hooks,
       async recoverPendingAccountOperations(...args: Parameters<typeof recoverPendingAccountOperations>) {
         recoveries++;
         const result = await recoverPendingAccountOperations(...args);
@@ -1268,9 +1308,9 @@ test("a failed delete finalizer is retried by the marker recovery deadline", asy
     expect(recoveries).toBe(2);
     expect(finalizeAttempts).toBe(1);
     expect(repository.listPendingAccountOperations()).toHaveLength(1);
+    expect(recoveryScheduler.nextRunAt()).toBe(pending.createdAt + PENDING_OPERATION_TTL_MS);
 
-    jest.advanceTimersByTime(PENDING_OPERATION_TTL_MS);
-    await flushMicrotasks();
+    recoveryScheduler.advanceTo(pending.createdAt + PENDING_OPERATION_TTL_MS);
     expect(recoveries).toBe(3);
     await recoveryFinished.promise;
     expect(finalizeAttempts).toBe(2);
@@ -1284,7 +1324,6 @@ test("a failed delete finalizer is retried by the marker recovery deadline", asy
 });
 
 test("a committed delete marker arms the server recovery timer", async () => {
-  jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-marker-timer-"));
   const configPath = join(home, "config.json");
   const input = {
@@ -1296,6 +1335,7 @@ test("a committed delete marker arms the server recovery timer", async () => {
   const handle = openDb({ home });
   const repository = createPluginRepository(handle.sqlite);
   seedOAuthAccount(repository);
+  const recoveryScheduler = createManualRecoveryScheduler(Date.now());
   let recoveries = 0;
   const state = await createServerState({
     config: ConfigSchema.parse(input),
@@ -1304,6 +1344,7 @@ test("a committed delete marker arms the server recovery timer", async () => {
     dbHome: home,
     pluginRepository: repository,
     __test: {
+      recoveryScheduler: recoveryScheduler.hooks,
       async recoverPendingAccountOperations() {
         recoveries++;
         return {};
@@ -1314,9 +1355,11 @@ test("a committed delete marker arms the server recovery timer", async () => {
   try {
     expect(recoveries).toBe(2);
     await state.configStore.deleteProvider("person");
-    jest.advanceTimersByTime(PENDING_OPERATION_TTL_MS);
-    await flushMicrotasks();
-    expect(recoveries).toBe(3);
+    const pending = repository.listPendingAccountOperations()[0];
+    if (pending === undefined) throw new Error("delete marker missing");
+    await waitUntil(() => recoveryScheduler.nextRunAt() === pending.createdAt + PENDING_OPERATION_TTL_MS);
+    recoveryScheduler.advanceTo(pending.createdAt + PENDING_OPERATION_TTL_MS);
+    await waitUntil(() => recoveries === 3);
   } finally {
     state.close();
     handle.close();
@@ -1325,7 +1368,6 @@ test("a committed delete marker arms the server recovery timer", async () => {
 });
 
 test("server recovery schedules the earliest competing orphan and pending deadlines and close clears the later one", async () => {
-  jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-earliest-"));
   const configPath = join(home, "config.json");
   writeFileSync(configPath, JSON.stringify({ providers: {} }));
@@ -1352,8 +1394,10 @@ test("server recovery schedules the earliest competing orphan and pending deadli
     },
   });
   repository.completeAccountOperation(orphanCreate.operationId);
-  jest.advanceTimersByTime(100);
-  repository.stageAccountOperation({
+  const orphan = repository.readAccount("orphan");
+  if (orphan === null) throw new Error("orphan fixture missing");
+  await waitUntil(() => Date.now() > orphan.updatedAt);
+  const pending = repository.stageAccountOperation({
     kind: "create",
     targetDigest: "pending-create",
     account: {
@@ -1373,6 +1417,9 @@ test("server recovery schedules the earliest competing orphan and pending deadli
       },
     },
   });
+  const orphanDeadline = orphan.updatedAt + ORPHAN_ACCOUNT_GRACE_MS;
+  const pendingDeadline = pending.createdAt + PENDING_OPERATION_TTL_MS;
+  const recoveryScheduler = createManualRecoveryScheduler(pending.createdAt);
   const orphanDeleted = deferred();
   const observedRepository = {
     ...repository,
@@ -1387,24 +1434,26 @@ test("server recovery schedules the earliest competing orphan and pending deadli
     watchConfig: false,
     dbHome: home,
     pluginRepository: observedRepository,
+    __test: { recoveryScheduler: recoveryScheduler.hooks },
   });
 
   try {
     expect(ORPHAN_ACCOUNT_GRACE_MS).toBe(PENDING_OPERATION_TTL_MS);
-    jest.advanceTimersByTime(ORPHAN_ACCOUNT_GRACE_MS - 101);
-    await flushMicrotasks();
+    expect(orphanDeadline).toBeLessThan(pendingDeadline);
+    expect(recoveryScheduler.nextRunAt()).toBe(orphanDeadline);
+    recoveryScheduler.advanceTo(orphanDeadline - 1);
     expect(repository.readAccount("orphan")).not.toBeNull();
     expect(repository.readAccount("pending")).not.toBeNull();
 
-    jest.advanceTimersByTime(1);
+    recoveryScheduler.advanceTo(orphanDeadline);
     await orphanDeleted.promise;
     expect(repository.readAccount("orphan")).toBeNull();
     expect(repository.readAccount("pending")).not.toBeNull();
     expect(repository.listPendingAccountOperations()).toHaveLength(1);
+    await waitUntil(() => recoveryScheduler.nextRunAt() === pendingDeadline);
 
     state.close();
-    jest.advanceTimersByTime(1_000);
-    await flushMicrotasks();
+    expect(recoveryScheduler.nextRunAt()).toBeUndefined();
     expect(repository.readAccount("pending")).not.toBeNull();
     expect(repository.listPendingAccountOperations()).toHaveLength(1);
   } finally {
