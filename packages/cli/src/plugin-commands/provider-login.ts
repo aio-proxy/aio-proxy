@@ -1,5 +1,6 @@
 import {
   AccountCleanupPendingError,
+  AccountOptionsValidationError,
   AtomicConfigFile,
   configPath,
   createPluginRepository,
@@ -9,13 +10,22 @@ import {
   loadPluginRegistry,
   loginOAuthAccount,
   type OAuthCapabilityReference,
+  OAuthCapabilityRequiredError,
+  OAuthCapabilityUnavailableError,
+  OAuthLoginResultValidationError,
+  OAuthLoginTimeoutError,
   type PluginLogSink,
   type PluginRegistry,
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
+  ProviderAccountChangedError,
+  ProviderCapabilityTargetMismatchError,
+  ProviderConfigInvalidError,
+  ProviderFingerprintMismatchError,
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
+import { m } from "@aio-proxy/i18n";
 import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
 import { openBrowser } from "../browser";
@@ -47,7 +57,11 @@ export class ProviderCapabilityNotFoundError extends Error {
   override readonly name = "ProviderCapabilityNotFoundError";
 
   constructor(readonly reference?: string) {
-    super("OAuth capability was not found");
+    super(
+      reference === undefined
+        ? m.cli_provider_login_error_capability_not_found_any()
+        : m.cli_provider_login_error_capability_not_found({ reference }),
+    );
   }
 }
 
@@ -58,7 +72,12 @@ export class ProviderCapabilityAmbiguousError extends Error {
     readonly input: string,
     readonly references: readonly string[],
   ) {
-    super("OAuth capability is ambiguous");
+    const joined = references.join(", ");
+    super(
+      input.length === 0
+        ? m.cli_provider_login_error_capability_ambiguous_selection({ references: joined })
+        : m.cli_provider_login_error_capability_ambiguous({ input, references: joined }),
+    );
   }
 }
 
@@ -69,8 +88,23 @@ export class ProviderCapabilityMismatchError extends Error {
     readonly requested: string,
     readonly target: string,
   ) {
-    super("The requested capability does not match the target provider");
+    super(m.cli_provider_login_error_capability_mismatch({ requested, target }));
   }
+}
+
+type CapabilitySelectPrompt = (config: {
+  readonly message: string;
+  readonly choices: readonly { readonly name: string; readonly value: string }[];
+}) => Promise<string>;
+
+export function createCapabilitySelector(
+  prompt: CapabilitySelectPrompt = select as CapabilitySelectPrompt,
+): (references: readonly string[]) => Promise<string> {
+  return (references) =>
+    prompt({
+      message: m.cli_provider_login_capability_prompt(),
+      choices: references.map((reference) => ({ name: reference, value: reference })),
+    });
 }
 
 export function createManualOnlyConfirmation(
@@ -171,48 +205,95 @@ function enablements(config: ConfigRecord): readonly { readonly packageName: str
   });
 }
 
-async function createDefaultDeps(): Promise<ProviderLoginDeps> {
-  const config = new AtomicConfigFile(configPath());
-  const handle = openDb();
-  const repository = createPluginRepository(handle.sqlite);
-  const diagnostics = createCliPluginDiagnosticFactory();
-  const snapshot = await loadPluginRegistry({
-    enablements: enablements(await config.read()),
-    builtIns: [],
-    diagnostics,
-    importPackage: async ({ entrypoint }) => import(entrypoint),
-    logger: () => {},
-    secrets: { readPluginSecret: (plugin) => repository.readPluginSecret(plugin)?.value },
-  });
-  const prompts: PluginFormPrompts = { input, password, confirm, select };
-  return {
-    config,
-    repository,
-    registry: snapshot.registry,
-    isTTY: process.stdin.isTTY === true,
-    selectCapability: (references) =>
-      select({
-        message: "OAuth capability",
-        choices: references.map((reference) => ({ name: reference, value: reference })),
-      }),
-    renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
-      renderConfigSpec(spec, { prompts, currentPublicValues, currentSecrets, signal }),
-    createAuthorization: (signal) =>
-      createCliAuthorizationPort({
-        copy: createDefaultCliAuthorizationCopy(),
-        openBrowser,
-        copyToClipboard: () => false,
-        print: console.log,
-        readManualCallbackUrl: (authorizationUrl, promptSignal) =>
-          input({ message: authorizationUrl }, { signal: promptSignal }),
-        confirmManualOnly: createManualOnlyConfirmation(signal),
-        signal,
-      }),
-    diagnostics,
-    logger: () => {},
-    print: console.log,
-    close: () => handle.close(),
-  };
+export type ProviderLoginDefaultDepsOptions = {
+  readonly config?: AtomicConfigFile;
+  readonly openDatabase?: typeof openDb;
+  readonly createRepository?: typeof createPluginRepository;
+  readonly loadRegistry?: typeof loadPluginRegistry;
+};
+
+export async function createProviderLoginDefaultDeps(
+  options: ProviderLoginDefaultDepsOptions = {},
+): Promise<ProviderLoginDeps> {
+  const config = options.config ?? new AtomicConfigFile(configPath());
+  const handle = (options.openDatabase ?? openDb)();
+  try {
+    const repository = (options.createRepository ?? createPluginRepository)(handle.sqlite);
+    const diagnostics = createCliPluginDiagnosticFactory();
+    const snapshot = await (options.loadRegistry ?? loadPluginRegistry)({
+      enablements: enablements(await config.read()),
+      builtIns: [],
+      diagnostics,
+      importPackage: async ({ entrypoint }) => import(entrypoint),
+      logger: () => {},
+      secrets: { readPluginSecret: (plugin) => repository.readPluginSecret(plugin)?.value },
+    });
+    const prompts: PluginFormPrompts = { input, password, confirm, select };
+    return {
+      config,
+      repository,
+      registry: snapshot.registry,
+      isTTY: process.stdin.isTTY === true,
+      selectCapability: createCapabilitySelector(),
+      renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
+        renderConfigSpec(spec, { prompts, currentPublicValues, currentSecrets, signal }),
+      createAuthorization: (signal) =>
+        createCliAuthorizationPort({
+          copy: createDefaultCliAuthorizationCopy(),
+          openBrowser,
+          copyToClipboard: () => false,
+          print: console.log,
+          readManualCallbackUrl: (authorizationUrl, promptSignal) =>
+            input({ message: authorizationUrl }, { signal: promptSignal }),
+          confirmManualOnly: createManualOnlyConfirmation(signal),
+          signal,
+        }),
+      diagnostics,
+      logger: () => {},
+      print: console.log,
+      close: () => handle.close(),
+    };
+  } catch (error) {
+    try {
+      handle.close();
+    } catch {}
+    throw error;
+  }
+}
+
+function localizedProviderLoginError(error: unknown): unknown {
+  if (error instanceof ProviderAccountAlreadyExistsError) {
+    error.message = m.cli_provider_login_error_account_exists({
+      provider: error.existingProviderId,
+      command: error.suggestedCommand,
+    });
+  } else if (error instanceof AccountCleanupPendingError) {
+    error.message = m.cli_provider_login_error_cleanup_pending({ provider: error.providerId });
+  } else if (error instanceof ProviderAccountChangedError) {
+    error.message = m.cli_provider_login_error_account_changed({ provider: error.providerId });
+  } else if (error instanceof ProviderFingerprintMismatchError) {
+    error.message = m.cli_provider_login_error_fingerprint_mismatch({ provider: error.providerId });
+  } else if (error instanceof ProviderCapabilityTargetMismatchError) {
+    error.message = m.cli_provider_login_error_target_mismatch({
+      requested: canonical(error.requested),
+      target: canonical(error.target),
+    });
+  } else if (error instanceof OAuthLoginResultValidationError) {
+    error.message = m.cli_provider_login_error_result_invalid();
+  } else if (error instanceof AccountOptionsValidationError) {
+    error.message = m.cli_provider_login_error_options_invalid();
+  } else if (error instanceof ProviderConfigInvalidError) {
+    error.message = m.cli_provider_login_error_config_invalid();
+  } else if (error instanceof OAuthLoginTimeoutError) {
+    error.message = m.cli_provider_login_error_timeout();
+  } else if (error instanceof OAuthCapabilityRequiredError) {
+    error.message = m.cli_provider_login_error_capability_required();
+  } else if (error instanceof OAuthCapabilityUnavailableError) {
+    error.message = m.cli_provider_login_error_capability_unavailable({
+      reference: canonical(error),
+    });
+  }
+  return error;
 }
 
 export async function providerLogin(
@@ -220,7 +301,7 @@ export async function providerLogin(
   options: ProviderLoginOptions,
   injected?: ProviderLoginDeps,
 ): Promise<void> {
-  const deps = injected ?? (await createDefaultDeps());
+  const deps = injected ?? (await createProviderLoginDefaultDeps());
   try {
     await (deps.recover ?? recoverPendingAccountOperations)(deps.config, deps.repository, { mode: "cli" });
     const target = options.provider === undefined ? undefined : await targetCapability(options.provider, deps.config);
@@ -234,23 +315,22 @@ export async function providerLogin(
     if (target !== undefined && (target.plugin !== resolved.plugin || target.capability !== resolved.capability)) {
       throw new ProviderCapabilityMismatchError(canonical(resolved), canonical(target));
     }
-    try {
-      const result = await (deps.login ?? loginOAuthAccount)({
-        ...(options.provider === undefined ? {} : { targetProviderId: options.provider }),
-        capability: resolved,
-        registry: deps.registry,
-        repository: deps.repository,
-        config: deps.config,
-        renderAccountOptions: deps.renderAccountOptions,
-        createAuthorization: deps.createAuthorization,
-        diagnostics: deps.diagnostics,
-        logger: deps.logger,
-      });
-      deps.print(result.providerId);
-    } catch (error) {
-      if (error instanceof ProviderAccountAlreadyExistsError) deps.print(error.suggestedCommand);
-      throw error;
-    }
+    const result = await (deps.login ?? loginOAuthAccount)({
+      ...(options.provider === undefined ? {} : { targetProviderId: options.provider }),
+      capability: resolved,
+      registry: deps.registry,
+      repository: deps.repository,
+      config: deps.config,
+      renderAccountOptions: deps.renderAccountOptions,
+      createAuthorization: deps.createAuthorization,
+      diagnostics: deps.diagnostics,
+      logger: deps.logger,
+    });
+    deps.print(result.providerId);
+  } catch (error) {
+    const localized = localizedProviderLoginError(error);
+    if (localized instanceof ProviderAccountAlreadyExistsError) deps.print(localized.suggestedCommand);
+    throw localized;
   } finally {
     if (injected === undefined) deps.close?.();
   }

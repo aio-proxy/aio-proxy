@@ -21,10 +21,10 @@ import {
   RECOVERY_DRAIN_RETRY_MS,
   recoverPendingAccountOperations,
 } from "../../src/plugins/account-login";
-import { AtomicConfigFile, digestProviderEntry } from "../../src/plugins/config-file";
+import { AtomicConfigCommitUncertainError, AtomicConfigFile, digestProviderEntry } from "../../src/plugins/config-file";
 import type { DiagnosticFactory, PluginLogSink } from "../../src/plugins/diagnostic";
 import { createPluginRegistryHost, type PluginRegistry } from "../../src/plugins/registry";
-import { createPluginRepository } from "../../src/plugins/repository";
+import { createPluginRepository, type PluginRepository } from "../../src/plugins/repository";
 
 const roots: string[] = [];
 const handles: OpenDbHandle[] = [];
@@ -71,6 +71,7 @@ type AdapterControls = {
   login?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["login"];
   discover?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["catalog"]["discover"];
   credentialSchema?: OAuthAdapter<Record<string, unknown>, unknown>["credentials"];
+  accountSchema?: OAuthAdapter<Record<string, unknown>, unknown>["account"]["options"]["schema"];
 };
 
 function registry(controls: AdapterControls = {}): PluginRegistry {
@@ -81,7 +82,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
     label: "Example OAuth",
     account: {
       options: {
-        schema: zod.object({ tenant: zod.string(), secret: zod.string() }),
+        schema: controls.accountSchema ?? zod.object({ tenant: zod.string(), secret: zod.string() }),
         form: [
           { type: "text", key: "tenant", label: "Tenant" },
           { type: "secret", key: "secret", label: "Secret" },
@@ -222,6 +223,166 @@ describe("account login transaction", () => {
     controller.abort(new Error("cancelled"));
     await expect(login).rejects.toThrow("cancelled");
     expect(state.repository.listAccounts()).toHaveLength(0);
+  });
+
+  test("abort during the final config lock wait prevents staging and config mutation", async () => {
+    const state = fixture();
+    const controller = new AbortController();
+    let lockHeld!: () => void;
+    let releaseLock!: () => void;
+    let discoveryFinished!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      lockHeld = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const discovered = new Promise<void>((resolve) => {
+      discoveryFinished = resolve;
+    });
+    const lock = state.config.transaction(async (current) => {
+      lockHeld();
+      await blocked;
+      return { next: current, result: undefined };
+    });
+    await holding;
+    const login = createAccount(state, {
+      signal: controller.signal,
+      registry: registry({
+        discover: async () => {
+          discoveryFinished();
+          return emptyCatalog();
+        },
+      }),
+    });
+    await discovered;
+    await Bun.sleep(25);
+    const outcome = login.then(
+      () => ({ status: "resolved" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    controller.abort(new Error("cancelled"));
+    const beforeRelease = await Promise.race([outcome, Bun.sleep(1_000).then(() => ({ status: "waiting" as const }))]);
+    releaseLock();
+    await lock;
+    await outcome;
+    expect(beforeRelease).toMatchObject({ status: "rejected", error: { message: "cancelled" } });
+    expect(state.repository.listAccounts()).toHaveLength(0);
+    expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+    expect(configOf(state)).toEqual({ plugins: [], providers: {} });
+  });
+
+  test("an aborted re-login does not cancel a pending delete during preflight", async () => {
+    const state = fixture();
+    await createAccount(state);
+    const marker = await deleteOAuthAccount({
+      providerId: "person",
+      config: state.config,
+      repository: state.repository,
+    });
+    await state.config.replace((current) => ({
+      ...current,
+      providers: { person: { kind: "oauth", plugin: "@example/oauth", capability: "default", enabled: true } },
+    }));
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(
+      loginOAuthAccount(
+        options(state, {
+          targetProviderId: "person",
+          capability: undefined,
+          signal: controller.signal,
+        }),
+      ),
+    ).rejects.toThrow("cancelled");
+    expect(state.repository.listPendingAccountOperations()).toContainEqual(
+      expect.objectContaining({ operationId: marker.operationId, kind: "delete" }),
+    );
+  });
+
+  test("abort during async account schema validation prevents adapter login", async () => {
+    const state = fixture();
+    const controller = new AbortController();
+    let validationStarted!: () => void;
+    let releaseValidation!: () => void;
+    const started = new Promise<void>((resolve) => {
+      validationStarted = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
+    });
+    let loginCalls = 0;
+    const accountSchema = zod.object({ tenant: zod.string(), secret: zod.string() }).superRefine(async () => {
+      validationStarted();
+      await blocked;
+    });
+    const login = createAccount(state, {
+      signal: controller.signal,
+      registry: registry({
+        accountSchema,
+        login: async () => {
+          loginCalls += 1;
+          return { fingerprint: "person@example.com", suggestedKey: "person", credentials: { token: "new" } };
+        },
+      }),
+    });
+    await started;
+    controller.abort(new Error("cancelled"));
+    releaseValidation();
+    await expect(login).rejects.toThrow("cancelled");
+    expect(loginCalls).toBe(0);
+    expect(state.repository.listAccounts()).toHaveLength(0);
+  });
+
+  test("abort during async credential schema validation prevents discovery and persistence", async () => {
+    const state = fixture();
+    const controller = new AbortController();
+    let validationStarted!: () => void;
+    let releaseValidation!: () => void;
+    const started = new Promise<void>((resolve) => {
+      validationStarted = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
+    });
+    let discoveryCalls = 0;
+    const credentialSchema = zod.object({ token: zod.string() }).superRefine(async () => {
+      validationStarted();
+      await blocked;
+    });
+    const login = createAccount(state, {
+      signal: controller.signal,
+      registry: registry({
+        credentialSchema,
+        discover: async () => {
+          discoveryCalls += 1;
+          return emptyCatalog();
+        },
+      }),
+    });
+    await started;
+    controller.abort(new Error("cancelled"));
+    releaseValidation();
+    await expect(login).rejects.toThrow("cancelled");
+    expect(discoveryCalls).toBe(0);
+    expect(state.repository.listAccounts()).toHaveLength(0);
+  });
+
+  test("abort triggered by final staging is compensated before config commit", async () => {
+    const state = fixture();
+    const controller = new AbortController();
+    const repository = {
+      ...state.repository,
+      stageAccountOperation(input: Parameters<PluginRepository["stageAccountOperation"]>[0]) {
+        const operation = state.repository.stageAccountOperation(input);
+        controller.abort(new Error("cancelled"));
+        return operation;
+      },
+    } as PluginRepository;
+    await expect(createAccount(state, { repository, signal: controller.signal })).rejects.toThrow("cancelled");
+    expect(state.repository.listAccounts()).toHaveLength(0);
+    expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+    expect(configOf(state)).toEqual({ plugins: [], providers: {} });
   });
 
   test("stores account, structured canonical config, credentials, and initial catalog", async () => {
@@ -601,6 +762,87 @@ describe("account login transaction", () => {
       runtimeRevision: 1,
       options: { tenant: "work" },
     });
+  });
+
+  test("definite config write failure removes a newly staged account", async () => {
+    const state = fixture();
+    const real = state.config;
+    const failing = {
+      async transaction<T>(mutate: Parameters<AtomicConfigFile["transaction"]>[0]): Promise<T> {
+        await mutate(await real.read());
+        throw new Error("write failed");
+      },
+    } as AtomicConfigFile;
+    await expect(createAccount(state, { config: failing })).rejects.toThrow("write failed");
+    expect(state.repository.listAccounts()).toHaveLength(0);
+    expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+    expect(configOf(state)).toEqual({ plugins: [], providers: {} });
+  });
+
+  test("definite config write failure fully restores an unchanged update", async () => {
+    const state = fixture();
+    await createAccount(state, {
+      registry: registry({ discover: async () => ({ ...emptyCatalog(), language: [{ id: "old-model" }] }) }),
+    });
+    state.repository.writeDiagnostic(
+      "person",
+      diagnostics("CREDENTIAL_REFRESH_FAILED", { providerId: "person", retryable: true }),
+    );
+    const previousAccount = state.repository.readAccount("person");
+    const previousCatalog = state.repository.readCatalog("person");
+    const previousDiagnostics = state.repository.readDiagnostics("person");
+    const previousConfig = configOf(state);
+    const real = state.config;
+    let transactions = 0;
+    const failing = {
+      async transaction<T>(mutate: Parameters<AtomicConfigFile["transaction"]>[0]): Promise<T> {
+        const { result } = await mutate(await real.read());
+        transactions += 1;
+        if (transactions === 1) return result as T;
+        throw new Error("write failed");
+      },
+    } as AtomicConfigFile;
+    await expect(
+      loginOAuthAccount(
+        options(state, {
+          config: failing,
+          targetProviderId: "person",
+          capability: undefined,
+          renderAccountOptions: async () => ({
+            publicValues: { tenant: "new-work" },
+            secrets: { secret: "new-hidden" },
+          }),
+          registry: registry({
+            login: async () => ({
+              fingerprint: "person@example.com",
+              suggestedKey: "ignored",
+              label: "new-label",
+              credentials: { token: "new-token" },
+            }),
+            discover: async () => ({ ...emptyCatalog(), language: [{ id: "new-model" }] }),
+          }),
+        }),
+      ),
+    ).rejects.toThrow("write failed");
+    expect(state.repository.readAccount("person")).toEqual(previousAccount);
+    expect(state.repository.readCatalog("person")).toEqual(previousCatalog);
+    expect(state.repository.readDiagnostics("person")).toEqual(previousDiagnostics);
+    expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+    expect(configOf(state)).toEqual(previousConfig);
+  });
+
+  test("uncertain config commit preserves the staged account and marker", async () => {
+    const state = fixture();
+    const real = state.config;
+    const uncertain = {
+      async transaction<T>(mutate: Parameters<AtomicConfigFile["transaction"]>[0]): Promise<T> {
+        await mutate(await real.read());
+        throw new AtomicConfigCommitUncertainError();
+      },
+    } as AtomicConfigFile;
+    await expect(createAccount(state, { config: uncertain })).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
+    expect(state.repository.readAccount("person")).not.toBeNull();
+    expect(state.repository.listPendingAccountOperations()).toHaveLength(1);
   });
 
   test("a compensation superseded by a newer credential preserves data and emits only a safe diagnostic", async () => {

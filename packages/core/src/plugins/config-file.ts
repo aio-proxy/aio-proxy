@@ -16,6 +16,7 @@ const abandonedRecoveryMarkers = new Set<string>();
 export type AtomicConfigTransactionOptions = {
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
   readonly verify?: (candidate: ConfigRecord) => Promise<void>;
+  readonly signal?: AbortSignal;
 };
 
 export class AtomicConfigCommitUncertainError extends Error {
@@ -306,15 +307,18 @@ async function withRecoveryFence<T>(
   lockPath: string,
   action: (assertFence: () => Promise<void>) => Promise<T>,
   startedAt = Date.now(),
+  signal?: AbortSignal,
 ): Promise<T> {
   while (true) {
+    signal?.throwIfAborted();
     if (await recoveryActive(lockPath)) {
       if (Date.now() - startedAt >= CONFIG_LOCK_WAIT_MS) {
         throw new Error(`Timed out waiting for config recovery fence: ${lockPath}`);
       }
-      await Bun.sleep(50 + Math.floor(Math.random() * 25));
+      await abortableDelay(50 + Math.floor(Math.random() * 25), signal);
       continue;
     }
+    signal?.throwIfAborted();
     const recovery = await createRecoveryMarker(lockPath);
     try {
       if (await recoveryActive(lockPath, recovery.path)) {
@@ -323,6 +327,7 @@ async function withRecoveryFence<T>(
         }
         continue;
       }
+      signal?.throwIfAborted();
       await recovery.assertActive();
       return await action(recovery.assertActive);
     } finally {
@@ -331,6 +336,25 @@ async function withRecoveryFence<T>(
       });
     }
   }
+}
+
+async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal === undefined) {
+    await Bun.sleep(milliseconds);
+    return;
+  }
+  signal.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(done, milliseconds);
+    const abort = () => done(signal.reason);
+    function done(error?: unknown): void {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      if (error === undefined) resolve();
+      else reject(error);
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
 async function reclaimStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
@@ -364,17 +388,22 @@ async function reclaimStaleLock(path: string, assertFence: () => Promise<void>):
   }
 }
 
-async function acquireLock(path: string): Promise<{
+async function acquireLock(
+  path: string,
+  signal?: AbortSignal,
+): Promise<{
   readonly owner: string;
   readonly withOwnership: <T>(action: (assertOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly withOwnershipFence: <T>(action: () => Promise<T>) => Promise<T>;
   readonly release: () => Promise<void>;
 }> {
+  signal?.throwIfAborted();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const owner = randomUUID();
   const startedAt = Date.now();
   const starttime = await processStarttime(process.pid);
   while (true) {
+    signal?.throwIfAborted();
     const acquired = await withRecoveryFence(
       path,
       async (assertFence) => {
@@ -405,11 +434,12 @@ async function acquireLock(path: string): Promise<{
         }
       },
       startedAt,
+      signal,
     );
     if (acquired === null) continue;
     if (acquired === false) {
       if (Date.now() - startedAt >= CONFIG_LOCK_WAIT_MS) throw new Error(`Timed out waiting for config lock: ${path}`);
-      await Bun.sleep(50 + Math.floor(Math.random() * 25));
+      await abortableDelay(50 + Math.floor(Math.random() * 25), signal);
       continue;
     }
     const { handle, identity } = acquired;
@@ -525,17 +555,22 @@ export class AtomicConfigFile {
     options: AtomicConfigTransactionOptions = {},
   ): Promise<T> {
     const lockPath = `${this.#path}.lock`;
-    const lock = await acquireLock(lockPath);
+    const lock = await acquireLock(lockPath, options.signal);
     const tempPath = `${this.#path}.${process.pid}.${lock.owner}.tmp`;
     let original: Awaited<ReturnType<typeof originalFile>> | undefined;
     try {
       return await lock.withOwnership(async (assertOwnership) => {
+        options.signal?.throwIfAborted();
         original = await originalFile(this.#path);
         const current = parseConfig(original.bytes);
+        options.signal?.throwIfAborted();
         const { next, result } = await mutate(current);
+        options.signal?.throwIfAborted();
         await assertOwnership();
+        options.signal?.throwIfAborted();
         if (next === current) return result;
         options.validateCandidate?.(next);
+        options.signal?.throwIfAborted();
         await writeAtomic(this.#path, encodeCandidate(next), original.mode, tempPath, lock.withOwnershipFence);
         let candidateCommitted = true;
         try {

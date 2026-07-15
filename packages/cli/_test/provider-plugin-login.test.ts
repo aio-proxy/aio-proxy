@@ -2,11 +2,18 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtomicConfigFile, createPluginRegistryHost, ProviderAccountAlreadyExistsError } from "@aio-proxy/core";
+import {
+  AccountCleanupPendingError,
+  AtomicConfigFile,
+  createPluginRegistryHost,
+  ProviderAccountAlreadyExistsError,
+} from "@aio-proxy/core";
 import type { OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { zod } from "@aio-proxy/plugin-sdk";
 import {
+  createCapabilitySelector,
   createManualOnlyConfirmation,
+  createProviderLoginDefaultDeps,
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityMismatchError,
   ProviderCapabilityNotFoundError,
@@ -98,6 +105,16 @@ function fixture(provider?: Record<string, unknown>) {
 }
 
 describe("generic provider login capability resolution", () => {
+  test("uses localized capability prompt copy", async () => {
+    let message: string | undefined;
+    const selectCapability = createCapabilitySelector(async (config) => {
+      message = config.message;
+      return config.choices[0]?.value ?? "";
+    });
+    await expect(selectCapability(["@a/one#default"])).resolves.toBe("@a/one#default");
+    expect(message).toBe("Select an OAuth capability.");
+  });
+
   test("manual-only confirmation uses the login signal", async () => {
     const controller = new AbortController();
     let observedSignal: AbortSignal | undefined;
@@ -127,9 +144,27 @@ describe("generic provider login capability resolution", () => {
     const state = fixture();
     await expect(providerLogin("default", {}, state.deps)).rejects.toMatchObject({
       name: "ProviderCapabilityAmbiguousError",
+      message: "OAuth capability default is ambiguous. Choose one of: @a/one#default, @b/two#default.",
       references: ["@a/one#default", "@b/two#default"],
     });
     expect(new ProviderCapabilityAmbiguousError("default", ["@a/one#default"]).references).toEqual(["@a/one#default"]);
+  });
+
+  test("uses localized capability and target errors with safe identifiers", async () => {
+    expect(new ProviderCapabilityNotFoundError("missing").message).toBe("OAuth capability missing was not found.");
+    expect(new ProviderCapabilityMismatchError("@a/one#unique", "@b/two#default").message).toBe(
+      "Requested capability @a/one#unique does not match provider capability @b/two#default.",
+    );
+    const state = fixture();
+    state.deps = {
+      ...state.deps,
+      login: async () => {
+        throw new AccountCleanupPendingError("target");
+      },
+    };
+    await expect(providerLogin("unique", {}, state.deps)).rejects.toThrow(
+      "Provider target is pending account cleanup.",
+    );
   });
 
   test("uses interactive selection when omitted or ambiguous", async () => {
@@ -174,7 +209,30 @@ describe("generic provider login capability resolution", () => {
         throw new ProviderAccountAlreadyExistsError("existing");
       },
     };
-    await expect(providerLogin("unique", {}, state.deps)).rejects.toBeInstanceOf(ProviderAccountAlreadyExistsError);
+    await expect(providerLogin("unique", {}, state.deps)).rejects.toThrow(
+      "An account is already configured as provider existing. Run aio-proxy provider login --provider existing to re-login.",
+    );
     expect(state.printed).toEqual(["aio-proxy provider login --provider existing"]);
+  });
+
+  test("default dependency creation closes SQLite when registry loading fails", async () => {
+    let closes = 0;
+    await expect(
+      createProviderLoginDefaultDeps({
+        config: { read: async () => ({ plugins: [], providers: {} }) } as AtomicConfigFile,
+        openDatabase: () =>
+          ({
+            sqlite: {},
+            close() {
+              closes += 1;
+            },
+          }) as never,
+        createRepository: () => ({ readPluginSecret: () => null }) as never,
+        loadRegistry: async () => {
+          throw new Error("setup failed");
+        },
+      }),
+    ).rejects.toThrow("setup failed");
+    expect(closes).toBe(1);
   });
 });

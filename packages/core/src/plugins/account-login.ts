@@ -74,7 +74,7 @@ export class ProviderAccountAlreadyExistsError extends Error {
   readonly suggestedCommand: string;
 
   constructor(readonly existingProviderId: string) {
-    super("An account with this fingerprint is already configured");
+    super("PROVIDER_ACCOUNT_ALREADY_EXISTS");
     this.suggestedCommand = `aio-proxy provider login --provider ${existingProviderId}`;
   }
 }
@@ -83,7 +83,7 @@ export class AccountCleanupPendingError extends Error {
   override readonly name = "AccountCleanupPendingError";
 
   constructor(readonly providerId: string) {
-    super("The provider account is pending cleanup");
+    super("ACCOUNT_CLEANUP_PENDING");
   }
 }
 
@@ -91,7 +91,7 @@ export class ProviderAccountChangedError extends Error {
   override readonly name = "ProviderAccountChangedError";
 
   constructor(readonly providerId: string) {
-    super("The provider account changed during login");
+    super("PROVIDER_ACCOUNT_CHANGED");
   }
 }
 
@@ -99,7 +99,7 @@ export class ProviderFingerprintMismatchError extends Error {
   override readonly name = "ProviderFingerprintMismatchError";
 
   constructor(readonly providerId: string) {
-    super("The authenticated account does not match the configured provider");
+    super("PROVIDER_FINGERPRINT_MISMATCH");
   }
 }
 
@@ -110,7 +110,7 @@ export class ProviderCapabilityTargetMismatchError extends Error {
     readonly requested: OAuthCapabilityReference,
     readonly target: OAuthCapabilityReference,
   ) {
-    super("The requested capability does not match the target provider");
+    super("PROVIDER_CAPABILITY_TARGET_MISMATCH");
   }
 }
 
@@ -118,7 +118,7 @@ export class OAuthLoginResultValidationError extends Error {
   override readonly name = "OAuthLoginResultValidationError";
 
   constructor() {
-    super("The OAuth adapter returned an invalid login result");
+    super("OAUTH_LOGIN_RESULT_INVALID");
   }
 }
 
@@ -126,7 +126,50 @@ export class AccountOptionsValidationError extends Error {
   override readonly name = "AccountOptionsValidationError";
 
   constructor() {
-    super("Account options are invalid");
+    super("ACCOUNT_OPTIONS_INVALID");
+  }
+}
+
+export class OAuthLoginTimeoutError extends Error {
+  override readonly name = "OAuthLoginTimeoutError";
+
+  constructor() {
+    super("OAUTH_LOGIN_TIMEOUT");
+  }
+}
+
+export class OAuthCatalogDiscoveryTimeoutError extends Error {
+  override readonly name = "OAuthCatalogDiscoveryTimeoutError";
+
+  constructor() {
+    super("OAUTH_CATALOG_DISCOVERY_TIMEOUT");
+  }
+}
+
+export class OAuthCapabilityRequiredError extends Error {
+  override readonly name = "OAuthCapabilityRequiredError";
+
+  constructor() {
+    super("OAUTH_CAPABILITY_REQUIRED");
+  }
+}
+
+export class OAuthCapabilityUnavailableError extends Error {
+  override readonly name = "OAuthCapabilityUnavailableError";
+
+  constructor(
+    readonly plugin: string,
+    readonly capability: string,
+  ) {
+    super("OAUTH_CAPABILITY_UNAVAILABLE");
+  }
+}
+
+export class ProviderConfigInvalidError extends Error {
+  override readonly name = "ProviderConfigInvalidError";
+
+  constructor() {
+    super("PROVIDER_CONFIG_INVALID");
   }
 }
 
@@ -139,7 +182,7 @@ function providerRecord(current: ConfigRecord): Record<string, unknown> {
   if (providers === undefined) return {};
   if (isRecord(providers)) return providers;
   ConfigSchema.parse(current);
-  throw new Error("Providers config must be an object");
+  throw new ProviderConfigInvalidError();
 }
 
 function structuredEntry(value: unknown): PlainRecord | null {
@@ -182,7 +225,7 @@ function deadlineController(parent?: AbortSignal): { readonly signal: AbortSigna
   const abort = () => controller.abort(parent?.reason);
   if (parent?.aborted) abort();
   else parent?.addEventListener("abort", abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(new Error("OAuth login timed out")), LOGIN_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(new OAuthLoginTimeoutError()), LOGIN_TIMEOUT_MS);
   timeout.unref?.();
   return {
     signal: controller.signal,
@@ -201,7 +244,7 @@ function childDeadline(
   const abort = () => controller.abort(parent.reason);
   if (parent.aborted) abort();
   else parent.addEventListener("abort", abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(new Error("Plugin catalog discovery timed out")), milliseconds);
+  const timeout = setTimeout(() => controller.abort(new OAuthCatalogDiscoveryTimeoutError()), milliseconds);
   timeout.unref?.();
   return {
     signal: controller.signal,
@@ -212,7 +255,7 @@ function childDeadline(
   };
 }
 
-async function withAbort<T>(signal: AbortSignal, operation: Promise<T>): Promise<T> {
+async function withAbort<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
   if (signal.aborted) throw signal.reason;
   let rejectAbort = (_reason: unknown) => {};
   const aborted = new Promise<never>((_resolve, reject) => {
@@ -221,7 +264,7 @@ async function withAbort<T>(signal: AbortSignal, operation: Promise<T>): Promise
   const onAbort = () => rejectAbort(signal.reason);
   signal.addEventListener("abort", onAbort, { once: true });
   try {
-    return await Promise.race([operation, aborted]);
+    return await Promise.race([Promise.resolve().then(operation), aborted]);
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
@@ -243,6 +286,7 @@ function stringLeaves(value: unknown, seen = new Set<object>()): string[] {
 async function validatedLoginResult<Credential>(
   adapter: OAuthAdapter<unknown, Credential>,
   raw: OAuthLoginResult<Credential>,
+  signal: AbortSignal,
 ): Promise<{
   readonly fingerprint: string;
   readonly suggestedKey: string;
@@ -262,7 +306,7 @@ async function validatedLoginResult<Credential>(
   ) {
     throw new OAuthLoginResultValidationError();
   }
-  const parsed = await parsePluginSchema(adapter.credentials, credentials);
+  const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, credentials));
   if (!parsed.ok) throw new OAuthLoginResultValidationError();
   return {
     fingerprint: fingerprint.trim(),
@@ -293,7 +337,7 @@ function inMemoryCredentialPort<Credential>(
         const flight = (async (): Promise<RefreshResult> => {
           if (expectedRevision !== revision) return { status: "superseded", snapshot: { value, revision } };
           const exchanged = await exchange({ value, revision }, signal);
-          const parsed = await parsePluginSchema(adapter.credentials, exchanged.value);
+          const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, exchanged.value));
           if (!parsed.ok) throw new OAuthLoginResultValidationError();
           if (exchanged.metadata?.label !== undefined) metadata.label = exchanged.metadata.label;
           if (exchanged.metadata?.expiresAt !== undefined) {
@@ -327,37 +371,43 @@ type Preflight = {
   readonly secrets: Readonly<Record<string, unknown>>;
 };
 
-async function preflight(options: LoginOAuthAccountOptions): Promise<Preflight> {
+async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
+  signal.throwIfAborted();
   if (options.targetProviderId === undefined) {
-    if (options.capability === undefined) throw new Error("OAuth capability is required");
+    if (options.capability === undefined) throw new OAuthCapabilityRequiredError();
     return { capability: options.capability, publicOptions: {}, secrets: {} };
   }
-  return options.config.transaction(async (current) => {
-    const entry = structuredEntry(providerRecord(current)[options.targetProviderId as string]);
-    const account = options.repository.readAccount(options.targetProviderId as string);
-    if (entry === null || account === null) throw new AccountCleanupPendingError(options.targetProviderId as string);
-    const targetCapability = capabilityOf(entry);
-    if (!accountMatches(account, targetCapability))
-      throw new AccountCleanupPendingError(options.targetProviderId as string);
-    if (options.capability !== undefined && !sameCapability(options.capability, targetCapability)) {
-      throw new ProviderCapabilityTargetMismatchError(options.capability, targetCapability);
-    }
-    const pendingDelete = options.repository
-      .listPendingAccountOperations()
-      .find((operation) => operation.providerId === options.targetProviderId && operation.kind === "delete");
-    if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
-    return {
-      next: current,
-      result: {
-        capability: targetCapability,
-        account,
-        runtimeRevision: account.runtimeRevision,
-        fingerprint: account.fingerprint,
-        publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
-        secrets: isRecord(account.secrets) ? account.secrets : {},
-      },
-    };
-  });
+  return options.config.transaction(
+    async (current) => {
+      signal.throwIfAborted();
+      const entry = structuredEntry(providerRecord(current)[options.targetProviderId as string]);
+      const account = options.repository.readAccount(options.targetProviderId as string);
+      if (entry === null || account === null) throw new AccountCleanupPendingError(options.targetProviderId as string);
+      const targetCapability = capabilityOf(entry);
+      if (!accountMatches(account, targetCapability))
+        throw new AccountCleanupPendingError(options.targetProviderId as string);
+      if (options.capability !== undefined && !sameCapability(options.capability, targetCapability)) {
+        throw new ProviderCapabilityTargetMismatchError(options.capability, targetCapability);
+      }
+      const pendingDelete = options.repository
+        .listPendingAccountOperations()
+        .find((operation) => operation.providerId === options.targetProviderId && operation.kind === "delete");
+      signal.throwIfAborted();
+      if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
+      return {
+        next: current,
+        result: {
+          capability: targetCapability,
+          account,
+          runtimeRevision: account.runtimeRevision,
+          fingerprint: account.fingerprint,
+          publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
+          secrets: isRecord(account.secrets) ? account.secrets : {},
+        },
+      };
+    },
+    { signal },
+  );
 }
 
 function providerEntry(
@@ -403,7 +453,7 @@ function safeSupersededDiagnostic(
     suggestedCommand,
   }) ?? {
     code: "AUTHORIZATION_FAILED" as const,
-    summary: "The account operation was superseded by newer data",
+    summary: "ACCOUNT_OPERATION_SUPERSEDED",
     retryable: true,
     occurredAt: new Date(now).toISOString(),
     suggestedCommand,
@@ -413,18 +463,19 @@ function safeSupersededDiagnostic(
     event: "plugin.account.compensation.superseded",
     code: "AUTHORIZATION_FAILED",
     context: { providerId },
-    error: { name: "Error", message: "Account recovery was superseded by newer data" },
+    error: { name: "Error", message: "ACCOUNT_OPERATION_SUPERSEDED" },
   });
 }
 
 export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Promise<LoginOAuthAccountResult> {
   const deadline = deadlineController(options.signal);
   try {
-    const initial = await preflight(options);
+    const initial = await preflight(options, deadline.signal);
     const adapter = options.registry.resolveOAuth(initial.capability.plugin, initial.capability.capability);
-    if (adapter === undefined) throw new Error("OAuth capability is unavailable");
-    const rendered = await withAbort(
-      deadline.signal,
+    if (adapter === undefined) {
+      throw new OAuthCapabilityUnavailableError(initial.capability.plugin, initial.capability.capability);
+    }
+    const rendered = await withAbort(deadline.signal, () =>
       options.renderAccountOptions({
         spec: adapter.account.options,
         currentPublicValues: initial.publicOptions,
@@ -434,17 +485,18 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     );
     if (!isRecord(rendered.publicValues) || !isRecord(rendered.secrets)) throw new AccountOptionsValidationError();
     const merged = { ...rendered.publicValues, ...rendered.secrets };
-    const parsedOptions = await parsePluginSchema(adapter.account.options.schema, merged);
+    const parsedOptions = await withAbort(deadline.signal, () =>
+      parsePluginSchema(adapter.account.options.schema, merged),
+    );
     if (!parsedOptions.ok) throw new AccountOptionsValidationError();
     const authorization = options.createAuthorization(deadline.signal);
-    const loginResult = await withAbort(
-      deadline.signal,
+    const loginResult = await withAbort(deadline.signal, () =>
       adapter.login(
         { authorization, progress: options.progress ?? (() => {}), signal: deadline.signal },
         parsedOptions.value,
       ),
     );
-    const validated = await validatedLoginResult(adapter, loginResult);
+    const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
     }
@@ -462,8 +514,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       discovered = {
         kind: "success",
         catalog: validateModelCatalog(
-          await withAbort(
-            discoveryDeadline.signal,
+          await withAbort(discoveryDeadline.signal, () =>
             adapter.catalog.discover({
               credentials: credentials.port,
               options: parsedOptions.value,
@@ -492,6 +543,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     try {
       const committedOperation = await options.config.transaction(
         async (current) => {
+          deadline.signal.throwIfAborted();
           const providers = providerRecord(current);
           const existingFingerprint = options.repository.findAccountByFingerprint(
             initial.capability.plugin,
@@ -581,6 +633,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
                   ? ({ kind: "missing", diagnostic: catalogDiagnostic } as const)
                   : ({ kind: "preserve", diagnostic: catalogDiagnostic } as const),
           };
+          deadline.signal.throwIfAborted();
           const operation =
             currentAccount === null
               ? options.repository.stageAccountOperation({ kind: "create", targetDigest, account })
@@ -594,7 +647,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
           stagedProviderId = providerId;
           return { next: { ...current, providers: { ...providers, [providerId]: entry } }, result: operation };
         },
-        { validateCandidate: validateStagedOAuthWrite },
+        { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
       );
       staged = committedOperation;
     } catch (error) {

@@ -125,3 +125,50 @@ following complete Core run passed all 425 tests.
 - The generic command intentionally remains unreachable from the public CLI
   until Task 11 wires the config parser and runtime materializer atomically.
 - No changes were pushed.
+
+## Formal Review Fix Report
+
+The formal task reviewer returned four Important findings and one Minor
+finding. All five were addressed before Task 8 was closed:
+
+- The login deadline signal now guards config-lock acquisition, recovery-fence
+  waits, preflight mutation, asynchronous account/credential schema parsing,
+  final staging, and the last pre-write transaction checks. A staged operation
+  created immediately before cancellation is conditionally compensated.
+- Core login failures expose typed errors with stable safe codes and fields;
+  the CLI maps them to `packages/i18n` messages. Capability prompts and both
+  English and Simplified Chinese host copy are localized.
+- Non-interactive ambiguity errors now include every canonical
+  `plugin#capability` reference in the final user-visible message.
+- Deterministic post-callback config write failures now prove that create
+  compensation removes the staged account and ordinary update compensation
+  restores account options, secrets, credential, catalog, and diagnostics.
+  Superseded and uncertain-commit characterizations remain covered.
+- Default dependency creation closes its SQLite handle when registry loading
+  or plugin setup fails before the dependency object can be returned.
+
+### Formal Review RED
+
+The Core review tests initially reported 32 passing and 3 expected failures:
+
+- abort during the final config-lock wait still committed;
+- an already-aborted re-login preflight still cancelled a delete marker;
+- abort during asynchronous account schema validation still reached adapter
+  login.
+
+The CLI review tests initially failed module loading because the new localized
+prompt and default-dependency helpers did not yet exist. The definite create
+and update compensation tests were added at the same time and characterized
+the already-correct conditional repository compensation behavior.
+
+### Formal Review GREEN and Final Verification
+
+- Focused Task 8 suite: 60 passed, 0 failed, 181 assertions.
+- Full Core suite: 433 passed, 0 failed, 1,100 assertions.
+- Full CLI suite: 126 passed, 0 failed, 346 assertions.
+- `bun run i18n:compile`: passed.
+- `bun run --filter @aio-proxy/core build`: passed, including declaration
+  generation.
+- `bunx tsc -p packages/cli/tsconfig.json --noEmit --pretty false`: passed.
+- Scoped Biome check: passed with informational `useLiteralKeys` notices only.
+- `git diff --check`: passed.
