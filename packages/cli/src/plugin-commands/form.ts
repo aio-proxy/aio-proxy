@@ -74,6 +74,43 @@ function jsonSafe(value: unknown, seen = new Set<object>()): boolean {
   return safe;
 }
 
+function stableJsonValue(value: unknown, seen = new Set<object>()): string | undefined {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : undefined;
+  if (typeof value !== "object" || seen.has(value)) return undefined;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (Array.isArray(value)) {
+      seen.add(value);
+      const items = value.map((item) => stableJsonValue(item, seen));
+      return items.some((item) => item === undefined) ? undefined : `[${items.join(",")}]`;
+    }
+    if (prototype !== Object.prototype && prototype !== null) return undefined;
+    seen.add(value);
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string")) return undefined;
+    const fields: string[] = [];
+    for (const key of (keys as string[]).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) return undefined;
+      const encoded = stableJsonValue(descriptor.value, seen);
+      if (encoded === undefined) return undefined;
+      fields.push(`${JSON.stringify(key)}:${encoded}`);
+    }
+    return `{${fields.join(",")}}`;
+  } catch {
+    return undefined;
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function jsonSafeEqual(left: unknown, right: unknown): boolean {
+  const encoded = stableJsonValue(left);
+  return encoded !== undefined && encoded === stableJsonValue(right);
+}
+
 function compatibleDefault(field: FormField, current: unknown): unknown {
   switch (field.type) {
     case "text":
@@ -231,6 +268,15 @@ export async function renderConfigSpec<T>(
   for (const key of secretKeys) {
     if (Object.hasOwn(collected, key) && !validatedKeys.has(key)) {
       boundaryIssues.push({ key, message: "Schema output removed or renamed a secret field" });
+    }
+  }
+  const hasSecretInput = [...secretKeys].some((key) => Object.hasOwn(collected, key));
+  if (hasSecretInput) {
+    for (const [key, value] of validatedEntries) {
+      if (secretKeys.has(key)) continue;
+      if (!Object.hasOwn(collected, key) || !jsonSafeEqual(value, collected[key])) {
+        boundaryIssues.push({ key, message: "Schema output changed public data while secrets were present" });
+      }
     }
   }
   if (boundaryIssues.length > 0) throw new FormSchemaValidationError(boundaryIssues);

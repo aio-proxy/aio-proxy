@@ -155,6 +155,40 @@ describe("AtomicConfigFile", () => {
     }
   });
 
+  test("a released stdout reader cannot make process identity cleanup reject", async () => {
+    const { path } = fixture("{}\n");
+    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+    const originalSpawn = mutableBun.spawn;
+    const killSignals: unknown[] = [];
+    mutableBun.spawn = (() => ({
+      stdout: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("MATCH\n"));
+          controller.close();
+        },
+      }),
+      exited: new Promise<number>(() => {}),
+      kill(signal?: unknown) {
+        killSignals.push(signal);
+      },
+    })) as typeof Bun.spawn;
+    const pending = new AtomicConfigFile(path).replace((current) => current);
+    try {
+      await expect(
+        Promise.race([
+          pending,
+          Bun.sleep(2_500).then(() => {
+            throw new Error("config cleanup rejection exceeded its budget");
+          }),
+        ]),
+      ).resolves.toBeUndefined();
+      expect(killSignals.every((signal) => signal === 9)).toBe(true);
+    } finally {
+      mutableBun.spawn = originalSpawn;
+      void pending.catch(() => {});
+    }
+  });
+
   test("a main lock is recovered when its live PID has a different start identity", async () => {
     const { path } = fixture("{}\n");
     const lockPath = `${path}.lock`;

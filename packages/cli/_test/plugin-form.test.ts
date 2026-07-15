@@ -221,6 +221,45 @@ describe("renderConfigSpec", () => {
     });
   });
 
+  test("uses stable deep equality for unchanged public JSON while transforming a secret", async () => {
+    const transformed = {
+      schema: zod
+        .object({ settings: zod.object({ alpha: zod.number(), beta: zod.number() }), token: zod.string() })
+        .transform(({ settings, token }) => ({
+          settings: { beta: settings.beta, alpha: settings.alpha },
+          token: token.trim(),
+        })),
+      form: [
+        { type: "json", key: "settings", label: "Settings" },
+        { type: "secret", key: "token", label: "Token" },
+      ],
+    } as const;
+
+    const result = await renderConfigSpec(transformed, {
+      prompts: prompts(['{"alpha":1,"beta":2}', "  transformed-secret  "]),
+    });
+
+    expect(result).toEqual({
+      publicValues: { settings: { beta: 2, alpha: 1 } },
+      secrets: { token: "transformed-secret" },
+    });
+  });
+
+  test("allows public transforms and defaults when no secret input is present", async () => {
+    const publicOnly = {
+      schema: zod.object({ endpoint: zod.string() }).transform(({ endpoint }) => ({
+        endpoint: endpoint === "" ? "DEFAULT-ENDPOINT" : endpoint.toUpperCase(),
+      })),
+      form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+    } as const;
+
+    const transformed = await renderConfigSpec(publicOnly, { prompts: prompts(["mixed-case"]) });
+    const defaulted = await renderConfigSpec(publicOnly, { prompts: prompts([""]) });
+
+    expect(transformed.publicValues).toEqual({ endpoint: "MIXED-CASE" });
+    expect(defaulted.publicValues).toEqual({ endpoint: "DEFAULT-ENDPOINT" });
+  });
+
   test("rejects non-plain schema output records", async () => {
     class Output {
       endpoint = "https://example.test";

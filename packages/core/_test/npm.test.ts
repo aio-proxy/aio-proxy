@@ -404,6 +404,41 @@ describe("npmAdd", () => {
     }
   });
 
+  test("Given stdout reader is released When cleanup cancels Then locking still completes", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-released-reader-"));
+    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+    const originalSpawn = mutableBun.spawn;
+    const killSignals: unknown[] = [];
+    mutableBun.spawn = (() => ({
+      stdout: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("MATCH\n"));
+          controller.close();
+        },
+      }),
+      exited: new Promise<number>(() => {}),
+      kill(signal?: unknown) {
+        killSignals.push(signal);
+      },
+    })) as typeof Bun.spawn;
+    let lock: Awaited<ReturnType<typeof acquireNpmInstallLock>> | undefined;
+    const pending = acquireNpmInstallLock("released-reader-provider", cacheDir, { waitMs: 2_500 });
+    try {
+      lock = await Promise.race([
+        pending,
+        Bun.sleep(2_500).then(() => {
+          throw new Error("npm cleanup rejection exceeded its budget");
+        }),
+      ]);
+      expect(killSignals.every((signal) => signal === 9)).toBe(true);
+    } finally {
+      mutableBun.spawn = originalSpawn;
+      void pending.catch(() => {});
+      await lock?.release();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
   test("Given a live recovery-fence owner When heartbeat is old Then the marker is not stolen", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-live-marker-"));
     const lockPath = join(cacheDir, ".aio-proxy-install.lock");

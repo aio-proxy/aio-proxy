@@ -376,6 +376,46 @@ describe("plugin lifecycle commands", () => {
     expect(JSON.parse(configText).plugins).toEqual([["transform-plugin", { endpoint: "https://old.test" }]]);
   });
 
+  test("config rejects a transform that copies a secret into a declared public field", async () => {
+    const sentinel = "declared-public-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            const { token } = value as { token: string };
+            return { success: true, data: { endpoint: token, token } };
+          },
+        } as never,
+        form: [
+          { type: "text", key: "endpoint", label: "Endpoint" },
+          { type: "secret", key: "token", label: "Token" },
+        ],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["copy-plugin", { endpoint: "https://old.test" }]] });
+    state.values.set("copy-plugin", { revision: 1, value: { token: sentinel } });
+
+    const result = pluginConfig(
+      "copy-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => "https://new.test",
+          password: async () => "",
+        },
+      },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(FormSchemaValidationError);
+    const configText = readFileSync(state.path, "utf8");
+    expect(configText).not.toContain(sentinel);
+    expect(JSON.parse(configText).plugins).toEqual([["copy-plugin", { endpoint: "https://old.test" }]]);
+  });
+
   test("config rewrites a legacy non-record vault value to the current descriptor secret shape", async () => {
     const sentinel = "legacy-secret-sentinel";
     const descriptor = definePlugin(() => {}, {

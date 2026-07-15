@@ -85,6 +85,12 @@ async function withinProcessStarttimeDeadline<T>(
   }
 }
 
+async function settleProcessStarttimeCleanup(promise: Promise<unknown>): Promise<void> {
+  try {
+    await withinProcessStarttimeDeadline(promise, PROCESS_STARTTIME_CLEANUP_WAIT_MS);
+  } catch {}
+}
+
 function drainProcessStdout(stdout: ReadableStream<Uint8Array> | null): {
   readonly result: Promise<string>;
   readonly cancel: () => Promise<void>;
@@ -133,9 +139,9 @@ async function processStarttime(pid: number): Promise<string | null> {
     child.kill(9);
   } catch {}
   await Promise.all([
-    withinProcessStarttimeDeadline(child.exited, PROCESS_STARTTIME_CLEANUP_WAIT_MS),
-    withinProcessStarttimeDeadline(stdout.result, PROCESS_STARTTIME_CLEANUP_WAIT_MS),
-    withinProcessStarttimeDeadline(stdout.cancel(), PROCESS_STARTTIME_CLEANUP_WAIT_MS),
+    settleProcessStarttimeCleanup(child.exited),
+    settleProcessStarttimeCleanup(stdout.result),
+    settleProcessStarttimeCleanup(stdout.cancel()),
   ]);
   return null;
 }
