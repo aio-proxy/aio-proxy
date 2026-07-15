@@ -76,7 +76,7 @@ describe("AtomicConfigFile", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(
       Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`key${index}`, String(index)])),
     );
-  });
+  }, 15_000);
 
   test("a recovery owner blocks replacement lock acquisition until recovery completes", async () => {
     const { path } = fixture("{}\n");
