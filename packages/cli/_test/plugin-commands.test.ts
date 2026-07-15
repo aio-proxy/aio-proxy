@@ -416,6 +416,92 @@ describe("plugin lifecycle commands", () => {
     expect(JSON.parse(configText).plugins).toEqual([["copy-plugin", { endpoint: "https://old.test" }]]);
   });
 
+  test("config rejects a schema that mutates its input to copy a secret into public config", async () => {
+    const sentinel = "mutated-input-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            const input = value as { endpoint: string; token: string };
+            input.endpoint = input.token;
+            return { success: true, data: input };
+          },
+        } as never,
+        form: [
+          { type: "text", key: "endpoint", label: "Endpoint" },
+          { type: "secret", key: "token", label: "Token" },
+        ],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["mutation-plugin", { endpoint: "https://old.test" }]] });
+
+    const result = pluginConfig(
+      "mutation-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => "https://new.test",
+          password: async () => sentinel,
+        },
+      },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(FormSchemaValidationError);
+    const configText = readFileSync(state.path, "utf8");
+    expect(configText).not.toContain(sentinel);
+    expect(JSON.parse(configText).plugins).toEqual([["mutation-plugin", { endpoint: "https://old.test" }]]);
+    expect(state.values.get("mutation-plugin")).toBeUndefined();
+  });
+
+  test("config rejects an array toJSON closure that would serialize a secret", async () => {
+    const sentinel = "array-to-json-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            const { token } = value as { token: string };
+            const endpoint: unknown[] = [];
+            Object.defineProperty(endpoint, "toJSON", {
+              value: () => token,
+              enumerable: true,
+            });
+            return { success: true, data: { endpoint, token } };
+          },
+        } as never,
+        form: [
+          { type: "json", key: "endpoint", label: "Endpoint" },
+          { type: "secret", key: "token", label: "Token" },
+        ],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["array-plugin", { endpoint: [] }]] });
+
+    const result = pluginConfig(
+      "array-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => "[]",
+          password: async () => sentinel,
+        },
+      },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(FormSchemaValidationError);
+    const configText = readFileSync(state.path, "utf8");
+    expect(configText).not.toContain(sentinel);
+    expect(JSON.parse(configText).plugins).toEqual([["array-plugin", { endpoint: [] }]]);
+    expect(state.values.get("array-plugin")).toBeUndefined();
+  });
+
   test("config rewrites a legacy non-record vault value to the current descriptor secret shape", async () => {
     const sentinel = "legacy-secret-sentinel";
     const descriptor = definePlugin(() => {}, {

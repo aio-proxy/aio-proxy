@@ -83,8 +83,17 @@ function stableJsonValue(value: unknown, seen = new Set<object>()): string | und
     const prototype = Object.getPrototypeOf(value);
     if (Array.isArray(value)) {
       seen.add(value);
-      const items = value.map((item) => stableJsonValue(item, seen));
-      return items.some((item) => item === undefined) ? undefined : `[${items.join(",")}]`;
+      const items: string[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.hasOwn(value, index)) {
+          items.push("hole");
+          continue;
+        }
+        const item = stableJsonValue(value[index], seen);
+        if (item === undefined) return undefined;
+        items.push(`value:${item}`);
+      }
+      return `[${items.join(",")}]`;
     }
     if (prototype !== Object.prototype && prototype !== null) return undefined;
     seen.add(value);
@@ -109,6 +118,72 @@ function stableJsonValue(value: unknown, seen = new Set<object>()): string | und
 function jsonSafeEqual(left: unknown, right: unknown): boolean {
   const encoded = stableJsonValue(left);
   return encoded !== undefined && encoded === stableJsonValue(right);
+}
+
+function inertJsonError(): never {
+  throw new FormSchemaValidationError([{ key: "<root>", message: "Expected inert JSON data" }]);
+}
+
+function arrayIndex(key: string, length: number): number | undefined {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && index < 0xffff_ffff && index < length && String(index) === key
+    ? index
+    : undefined;
+}
+
+function cloneInertJson(value: unknown, seen = new Set<object>()): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : inertJsonError();
+  if (typeof value !== "object" || seen.has(value)) return inertJsonError();
+  seen.add(value);
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (Array.isArray(value)) {
+      if (prototype !== Array.prototype) return inertJsonError();
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      if (
+        lengthDescriptor === undefined ||
+        !("value" in lengthDescriptor) ||
+        lengthDescriptor.enumerable ||
+        !Number.isInteger(lengthDescriptor.value) ||
+        lengthDescriptor.value < 0 ||
+        lengthDescriptor.value > 0xffff_ffff
+      ) {
+        return inertJsonError();
+      }
+      const clone: unknown[] = new Array(lengthDescriptor.value);
+      for (const key of Reflect.ownKeys(value)) {
+        if (key === "length") continue;
+        if (typeof key !== "string") return inertJsonError();
+        const index = arrayIndex(key, lengthDescriptor.value);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (index === undefined || descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
+          return inertJsonError();
+        }
+        clone[index] = cloneInertJson(descriptor.value, seen);
+      }
+      return clone;
+    }
+    if (prototype !== Object.prototype && prototype !== null) return inertJsonError();
+    const clone = Object.create(prototype) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") return inertJsonError();
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) return inertJsonError();
+      Object.defineProperty(clone, key, {
+        value: cloneInertJson(descriptor.value, seen),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return clone;
+  } catch (error) {
+    if (error instanceof FormSchemaValidationError) throw error;
+    return inertJsonError();
+  } finally {
+    seen.delete(value);
+  }
 }
 
 function compatibleDefault(field: FormField, current: unknown): unknown {
@@ -250,7 +325,13 @@ export async function renderConfigSpec<T>(
   }
 
   for (const key of clearSecrets) delete collected[key];
-  const parsed = await parsePluginSchema(spec.schema, collected);
+  const secretInputKeys = new Set([...secretKeys].filter((key) => Object.hasOwn(collected, key)));
+  const publicInputSnapshot = Object.fromEntries(
+    plainRecordEntries(
+      cloneInertJson(Object.fromEntries(Object.entries(collected).filter(([key]) => !secretKeys.has(key)))),
+    ),
+  );
+  const parsed = await parsePluginSchema(spec.schema, cloneInertJson(collected));
   if (!parsed.ok) {
     throw new FormSchemaValidationError(
       parsed.issues.map((issue) => ({
@@ -259,22 +340,21 @@ export async function renderConfigSpec<T>(
       })),
     );
   }
-  const validatedEntries = plainRecordEntries(parsed.value);
+  const validatedEntries = plainRecordEntries(cloneInertJson(parsed.value));
   const validatedKeys = new Set(validatedEntries.map(([key]) => key));
   const boundaryIssues: FormSchemaIssue[] = [];
   for (const [key] of validatedEntries) {
     if (!formKeys.has(key)) boundaryIssues.push({ key, message: "Schema output key is not declared by the form" });
   }
   for (const key of secretKeys) {
-    if (Object.hasOwn(collected, key) && !validatedKeys.has(key)) {
+    if (secretInputKeys.has(key) && !validatedKeys.has(key)) {
       boundaryIssues.push({ key, message: "Schema output removed or renamed a secret field" });
     }
   }
-  const hasSecretInput = [...secretKeys].some((key) => Object.hasOwn(collected, key));
-  if (hasSecretInput) {
+  if (secretInputKeys.size > 0) {
     for (const [key, value] of validatedEntries) {
       if (secretKeys.has(key)) continue;
-      if (!Object.hasOwn(collected, key) || !jsonSafeEqual(value, collected[key])) {
+      if (!Object.hasOwn(publicInputSnapshot, key) || !jsonSafeEqual(value, publicInputSnapshot[key])) {
         boundaryIssues.push({ key, message: "Schema output changed public data while secrets were present" });
       }
     }
