@@ -26,7 +26,7 @@ const seedConfig = {
       alias: { "gpt-4o": "gpt-4o-upstream" },
     },
     "seed-ai": { kind: "ai-sdk", packageName: "@ai-sdk/openai-compatible", enabled: true },
-    "seed-oauth": { kind: "oauth", vendor: "github-copilot", enabled: true },
+    "seed-oauth": { kind: "oauth", vendor: "legacy-provider", enabled: true },
   },
 };
 
@@ -162,7 +162,7 @@ describe("dashboard provider CRUD", () => {
     const res = await req("POST", "/providers", {
       kind: "oauth",
       id: "newoauth",
-      vendor: "github-copilot",
+      vendor: "legacy-provider",
     });
     expect(res.status).toBe(400);
   });
@@ -259,10 +259,10 @@ describe("dashboard provider CRUD", () => {
 
   test.each([
     ["invalid", { kind: "oauth", plugin: "@example/oauth", capability: "" }, undefined],
-    ["legacy", { kind: "oauth", vendor: "github-copilot" }, undefined],
+    ["legacy", { kind: "oauth", vendor: "legacy-provider" }, undefined],
     [
       "hybrid legacy",
-      { kind: "oauth", vendor: "github-copilot", plugin: "@example/oauth", capability: "default" },
+      { kind: "oauth", vendor: "legacy-provider", plugin: "@example/oauth", capability: "default" },
       { plugin: "@example/other", capability: "alternate" },
     ],
   ])("Dashboard DELETE of an %s OAuth row cascades account state through its CAS marker", async (_label, provider, account) => {

@@ -13,7 +13,7 @@ test("normalizes plugin enablements while degrading legacy OAuth provider config
   const config = ConfigSchema.parse({
     plugins: [["@example/enterprise", { baseURL: "https://example.test" }]],
     providers: {
-      legacyDuringScaffolding: { kind: "oauth", vendor: "github-copilot" },
+      legacyDuringScaffolding: { kind: "oauth", vendor: "legacy-provider" },
     },
   });
 
@@ -40,7 +40,7 @@ test("degrades invalid and legacy provider entries independently", () => {
         protocol: "openai-compatible",
         baseURL: "https://api.example.test/v1",
       },
-      legacy: { kind: "oauth", vendor: "github-copilot" },
+      legacy: { kind: "oauth", vendor: "legacy-provider" },
       broken: {
         kind: "oauth",
         plugin: "@example/oauth",
@@ -64,14 +64,14 @@ test("degrades invalid and legacy provider entries independently", () => {
       issuePaths: [["capability"]],
     },
   ]);
-  expect(JSON.stringify(config)).not.toContain("github-copilot");
+  expect(JSON.stringify(config)).not.toContain("legacy-provider");
   expect(JSON.stringify(config)).not.toContain("@example/oauth");
 });
 
 test("keeps authoring schema strict and documents the structured oauth shape", () => {
   expect(
     ConfigAuthoringSchema.safeParse({
-      providers: { legacy: { kind: "oauth", vendor: "github-copilot" } },
+      providers: { legacy: { kind: "oauth", vendor: "legacy-provider" } },
     }).success,
   ).toBe(false);
   expect(

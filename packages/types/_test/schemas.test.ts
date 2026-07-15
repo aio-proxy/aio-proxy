@@ -411,7 +411,7 @@ describe("ConfigSchema", () => {
   });
 
   test("rejects oauth kind in mutation body", () => {
-    expect(() => ProviderMutationBodySchema.parse({ kind: "oauth", id: "x", vendor: "github-copilot" })).toThrow();
+    expect(() => ProviderMutationBodySchema.parse({ kind: "oauth", id: "x", vendor: "legacy-provider" })).toThrow();
   });
 
   test("requires id field", () => {

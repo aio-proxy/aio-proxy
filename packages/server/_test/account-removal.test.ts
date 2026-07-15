@@ -45,7 +45,7 @@ test("compensates earlier delete markers when staging a later removal fails", ()
 
 test.each([
   ["invalid", { kind: "oauth", plugin: "@example/oauth", capability: "" }],
-  ["legacy", { kind: "oauth", vendor: "github-copilot" }],
+  ["legacy", { kind: "oauth", vendor: "legacy-provider" }],
 ])("stages a runtime-revision CAS marker for a removed %s OAuth row", (_label, previous) => {
   const staged: unknown[] = [];
   const repository = {

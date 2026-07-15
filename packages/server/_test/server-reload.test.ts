@@ -154,7 +154,7 @@ describe("server reload", () => {
 
   test.each([
     ["manual reload", false, { kind: "oauth", plugin: "@example/oauth", capability: "" }],
-    ["watcher reload", true, { kind: "oauth", vendor: "github-copilot" }],
+    ["watcher reload", true, { kind: "oauth", vendor: "legacy-provider" }],
   ])("Given an invalid or legacy OAuth row When %s removes it Then account cleanup uses a CAS marker", async (_label, watchConfig, provider) => {
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-reload-oauth-delete-"));
     const configPath = join(dir, "config.jsonc");

@@ -696,7 +696,7 @@ test("invalid and legacy provider summaries remain visible but never enter Route
         },
         legacy: {
           kind: "oauth",
-          vendor: "github-copilot",
+          vendor: "legacy-provider",
           models: ["legacy-model"],
         },
         stable: {

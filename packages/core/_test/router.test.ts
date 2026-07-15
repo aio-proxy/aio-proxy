@@ -3,10 +3,10 @@ import { ProviderProtocol } from "@aio-proxy/types";
 import type { ProviderInstance } from "../src/index";
 import { modelRoutes, Router, RouterModelCollisionError, RouterModelNotFoundError } from "../src/index";
 
-const copilot = {
+const legacyOAuth = {
   kind: "oauth",
-  id: "copilot",
-  vendor: "github-copilot",
+  id: "legacy-oauth",
+  vendor: "legacy-provider",
   models: ["claude-sonnet-4-5"],
   alias: { sonnet: { model: "claude-sonnet-4-5", preserve: false } },
 } satisfies ProviderInstance;
@@ -225,12 +225,12 @@ describe("Router", () => {
     expect(() => router.resolve("openai/gpt-5-mini")).toThrow(RouterModelNotFoundError);
   });
 
-  test("resolves the plan QA copilot sonnet alias", () => {
-    const router = new Router([copilot]);
+  test("resolves the plan QA legacy OAuth sonnet alias", () => {
+    const router = new Router([legacyOAuth]);
 
     const resolved = router.resolve("sonnet");
 
-    expect(resolved).toEqual([{ provider: copilot, modelId: "claude-sonnet-4-5" }]);
+    expect(resolved).toEqual([{ provider: legacyOAuth, modelId: "claude-sonnet-4-5" }]);
   });
 
   test("routes a configured model when no alias is present", () => {
