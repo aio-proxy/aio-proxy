@@ -65,7 +65,7 @@ export type PluginRuntimeCacheEntry = {
 
 export type PluginProviderMaterialization = {
   readonly provider?: RuntimeProviderInstance;
-  readonly summary: DashboardProviderSummary;
+  readonly summary: Omit<DashboardProviderSummary, "state">;
   readonly state: ProviderState;
   readonly catalogJob?: CatalogJobDescriptor;
   readonly cacheEntry?: PluginRuntimeCacheEntry;
@@ -122,7 +122,10 @@ function diagnosticState(diagnostic: Diagnostic): ProviderState {
   return { status: "unavailable", diagnostic };
 }
 
-function summary(config: OAuthProvider, provider: RuntimeProviderInstance | undefined): DashboardProviderSummary {
+function summary(
+  config: OAuthProvider,
+  provider: RuntimeProviderInstance | undefined,
+): Omit<DashboardProviderSummary, "state"> {
   return {
     id: config.id,
     kind: ProviderKind.OAuth,

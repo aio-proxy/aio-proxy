@@ -7,7 +7,11 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
-import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
+import {
+  type DashboardProviderSummary,
+  DashboardProvidersResponseSchema,
+  dashboardProviderSuggestedCommand,
+} from "@aio-proxy/types";
 import { confirm } from "@inquirer/prompts";
 import { ProviderDashboardError } from "./errors";
 import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from "./plugin-commands/provider-login";
@@ -92,9 +96,27 @@ async function providerInstalledList(): Promise<void> {
 }
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
-  const headers = ["id", "kind", "enabled", "passthrough", "last_status", "last_latency", ...(probe ? ["probe"] : [])];
+  const headers = [
+    "id",
+    "kind",
+    "enabled",
+    "passthrough",
+    "last_status",
+    "last_latency",
+    "state",
+    "catalog",
+    "plugin",
+    "capability",
+    "account",
+    "expires_at",
+    "catalog_last_success_at",
+    "diagnostic",
+    "suggested_command",
+    ...(probe ? ["probe"] : []),
+  ];
   console.log(headers.join(" | "));
   for (const provider of providers) {
+    const diagnostic = provider.state.diagnostic;
     console.log(
       [
         provider.id,
@@ -103,6 +125,15 @@ function printProviderTable(providers: readonly DashboardProviderSummary[], prob
         String(provider.passthrough),
         provider.last_status,
         provider.last_latency === null ? "-" : String(provider.last_latency),
+        provider.state.status,
+        provider.state.status === "ready" ? (provider.state.catalog ?? "-") : "-",
+        provider.plugin ?? "-",
+        provider.capability ?? "-",
+        provider.accountLabel ?? "-",
+        provider.expiresAt === undefined ? "-" : new Date(provider.expiresAt).toISOString(),
+        provider.catalogLastSuccessAt ?? "-",
+        diagnostic?.summary ?? "-",
+        dashboardProviderSuggestedCommand(provider) ?? "-",
         ...(probe ? [provider.probe ?? "FAIL"] : []),
       ].join(" | "),
     );

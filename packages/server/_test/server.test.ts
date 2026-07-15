@@ -390,6 +390,7 @@ describe("server routes", () => {
           last_latency: null,
           clientModels: ["disabled", "gpt-untouched"],
           hasApiKey: false,
+          state: { status: "ready" },
         },
       ],
     });
@@ -510,6 +511,7 @@ describe("server routes", () => {
             last_latency: null,
             clientModels: ["gpt-test"],
             hasApiKey: false,
+            state: { status: "ready" },
           },
         ],
       });
@@ -662,6 +664,7 @@ describe("server routes", () => {
         last_latency: null,
         clientModels: ["gpt-alias", "gpt-test"],
         hasApiKey: true,
+        state: { status: "ready" },
       },
     });
     expect(missing.status).toBe(404);

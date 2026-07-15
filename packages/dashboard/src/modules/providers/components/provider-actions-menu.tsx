@@ -20,12 +20,13 @@ export const ProviderActionsMenu: React.FC<Props> = ({ provider, onDelete, onPro
     <DropdownMenu>
       <DropdownMenuTrigger
         data-testid="provider-actions-trigger"
+        aria-label={m["dashboard.providers.actions.open_menu"]({ id: provider.id })}
         className="flex h-8 w-8 items-center justify-center p-0"
       >
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {provider.kind !== "oauth" && (
+        {(provider.kind === "api" || provider.kind === "ai-sdk") && (
           <DropdownMenuItem
             data-testid="provider-action-edit"
             render={<Link preload="intent" to="/providers/$id/edit" params={{ id: provider.id }} />}

@@ -25,6 +25,7 @@ import {
   type Config,
   ConfigSchema,
   type DashboardEvent,
+  type DashboardPluginSummary,
   type DashboardProviderProbe,
   type DashboardProviderSummary,
   ProviderKind,
@@ -98,6 +99,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly modelsDevCatalog: () => Promise<ModelsDevCatalog | undefined>;
+  readonly pluginSummaries: () => readonly DashboardPluginSummary[];
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
@@ -315,6 +317,16 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     verify: (candidate) => commitConfig(ConfigSchema.parse(candidate), "config-store"),
   });
 
+  function pluginSummaries(): readonly DashboardPluginSummary[] {
+    const lease = manager.acquire();
+    try {
+      const active = lease.snapshot as Snapshot;
+      return [...active.plugins.plugins.values()];
+    } finally {
+      lease.release();
+    }
+  }
+
   async function providerSummaries({
     filter,
     probe,
@@ -420,6 +432,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configStore,
     currentProviderSnapshot: manager.current,
     events,
+    pluginSummaries,
     providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     modelsDevCatalog,
@@ -482,18 +495,18 @@ async function buildSnapshot(
   const summaryById = new Map(
     [...base.summaries, ...oauth.map((item) => item.summary)].map((summary) => [summary.id, summary] as const),
   );
-  const summaries = [
+  const summaryBases = [
     ...config.invalidProviders.map(
       (invalid) =>
         ({
           id: invalid.id,
-          kind: invalid.kind ?? ProviderKind.OAuth,
+          kind: invalid.kind ?? "invalid",
           enabled: false,
           passthrough: false,
           last_status: "unknown",
           last_latency: null,
           clientModels: [],
-        }) satisfies DashboardProviderSummary,
+        }) satisfies Omit<DashboardProviderSummary, "state">,
     ),
     ...config.providers.flatMap((configured) => {
       const summary = summaryById.get(configured.id);
@@ -517,6 +530,27 @@ async function buildSnapshot(
   oauth.forEach((item, index) => {
     const provider = oauthConfigs[index];
     if (provider !== undefined) providerStates.set(provider.id, item.state);
+  });
+  const configuredById = new Map(config.providers.map((provider) => [provider.id, provider] as const));
+  const accountById = new Map(repository.listAccounts().map((account) => [account.providerId, account] as const));
+  const summaries = summaryBases.map((summary): DashboardProviderSummary => {
+    const state = providerStates.get(summary.id);
+    if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
+    const configured = configuredById.get(summary.id);
+    if (configured?.kind !== ProviderKind.OAuth) return { ...summary, state };
+    const account = accountById.get(summary.id);
+    const matchingAccount =
+      account?.plugin === configured.plugin && account.capability === configured.capability ? account : undefined;
+    const catalog = matchingAccount === undefined ? null : repository.readCatalog(summary.id);
+    return {
+      ...summary,
+      state,
+      plugin: configured.plugin,
+      capability: configured.capability,
+      ...(matchingAccount?.label === undefined ? {} : { accountLabel: matchingAccount.label }),
+      ...(matchingAccount?.expiresAt === undefined ? {} : { expiresAt: matchingAccount.expiresAt }),
+      ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
+    };
   });
   return {
     config,
@@ -546,16 +580,17 @@ function buildSnapshotWithProviders(
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Snapshot {
   const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
+  const providerStates = new Map(materialized.map((provider) => [provider.id, { status: "ready" } as const]));
   return {
     config,
     plugins: emptyPluginSnapshot(),
     probes: new Map(),
     providers: materialized,
     router: createRouter(materialized),
-    summaries: materialized.map((provider) => providerSummary(provider)),
+    summaries: materialized.map((provider) => ({ ...providerSummary(provider), state: { status: "ready" } })),
     catalogJobs: [],
     runtimeCache: new Map(),
-    providerStates: new Map(materialized.map((provider) => [provider.id, { status: "ready" } as const])),
+    providerStates,
   };
 }
 

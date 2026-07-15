@@ -102,6 +102,7 @@ const requestLogsValidator = validator("query", (raw, context) => {
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
+    .get("/plugins", (context) => context.json({ plugins: state.pluginSummaries() }))
     .get("/providers", async (context) => {
       const filter = context.req.query("filter");
       const probe = context.req.query("probe") === "true";

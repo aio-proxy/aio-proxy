@@ -22,8 +22,10 @@ const openAIResponsesProbeMaxOutputTokens = 16;
 export type ProviderRuntime = {
   readonly providers: readonly RuntimeProviderInstance[];
   readonly probes: ReadonlyMap<string, ProviderProbe>;
-  readonly summaries: readonly DashboardProviderSummary[];
+  readonly summaries: readonly ProviderRuntimeSummary[];
 };
+
+export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, "state">;
 
 export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
@@ -106,7 +108,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   const bridgeApiProvider = options.bridgeApiProvider ?? bridgeApiProviderToAiSdk;
   const probes = new Map<string, ProviderProbe>();
   const providers: RuntimeProviderInstance[] = [];
-  const summaries: DashboardProviderSummary[] = [];
+  const summaries: ProviderRuntimeSummary[] = [];
   for (const provider of config.providers) {
     const id = providerId(provider);
     if (!provider.enabled) {
@@ -147,7 +149,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   };
 }
 
-export function providerSummary(provider: RuntimeProviderInstance, name?: string): DashboardProviderSummary {
+export function providerSummary(provider: RuntimeProviderInstance, name?: string): ProviderRuntimeSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -162,7 +164,10 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
   };
 }
 
-export function providerDiff(before: readonly DashboardProviderSummary[], after: readonly DashboardProviderSummary[]) {
+export function providerDiff(
+  before: readonly Pick<DashboardProviderSummary, "id">[],
+  after: readonly Pick<DashboardProviderSummary, "id">[],
+) {
   const beforeIds = new Set(before.map((provider) => provider.id));
   const afterIds = new Set(after.map((provider) => provider.id));
   return {
@@ -177,7 +182,7 @@ function providerId(provider: Provider): string {
   return provider.id;
 }
 
-function providerConfigSummary(provider: Provider): DashboardProviderSummary {
+function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
   const clientModels = [...new Set(modelRoutes(provider).map((route) => route.alias))];
   return {
     id: provider.id,

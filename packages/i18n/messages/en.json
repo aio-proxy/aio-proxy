@@ -195,20 +195,27 @@
     },
     "providers": {
       "list_title": "Providers",
+      "providers_title": "Provider diagnostics",
       "new_provider": "New Provider",
       "edit_loading": "Loading provider…",
       "edit_not_found": "Provider not found",
       "kind_label": {
         "api": "API",
         "ai-sdk": "AI SDK",
-        "oauth": "OAuth"
+        "oauth": "OAuth",
+        "invalid": "Invalid"
       },
       "table": {
+        "label": "Provider diagnostics",
         "col_type": "Type",
         "col_id": "ID",
         "col_name": "Name",
         "col_enabled": "Enabled",
         "col_status": "Status",
+        "col_state": "Availability",
+        "col_capability": "Capability",
+        "col_account": "Account",
+        "col_catalog": "Catalog",
         "col_models": "Models",
         "col_weight": "Weight",
         "col_actions": "Actions"
@@ -218,6 +225,39 @@
         "disabled": "Disabled",
         "probe_ok": "OK",
         "probe_fail": "FAIL"
+      },
+      "state": {
+        "details": "Diagnostics for provider {id}",
+        "ready": "Ready",
+        "failed": "Failed",
+        "unavailable": "Unavailable",
+        "catalog_fresh": "Fresh",
+        "catalog_stale": "Stale"
+      },
+      "diagnostics": {
+        "not_available": "—"
+      },
+      "account": {
+        "expires_at": "Expires {value}"
+      },
+      "catalog": {
+        "last_success_at": "Last success {value}"
+      },
+      "plugins": {
+        "title": "OAuth plugins",
+        "empty": "No OAuth plugins loaded",
+        "source_builtin": "Built-in",
+        "source_third_party": "Third-party",
+        "table": {
+          "label": "OAuth plugin diagnostics",
+          "col_package": "Package",
+          "col_source": "Source",
+          "col_version": "Version",
+          "col_state": "State",
+          "col_diagnostic": "Diagnostic",
+          "filter": "Filter plugins",
+          "columns": "Columns"
+        }
       },
       "form": {
         "label_id": "Provider ID",
@@ -312,7 +352,8 @@
         "delete": "Delete",
         "edit": "Edit",
         "probe_now": "Probe Now",
-        "edit_aliases": "Edit Aliases"
+        "edit_aliases": "Edit Aliases",
+        "open_menu": "Open actions for provider {id}"
       },
       "toast": {
         "created": "Provider created",

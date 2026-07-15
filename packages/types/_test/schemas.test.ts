@@ -9,6 +9,9 @@ import {
   ConfigAuthoringSchema,
   ConfigSchema,
   DashboardEventSchema,
+  DashboardPluginSummarySchema,
+  DashboardPluginsResponseSchema,
+  DashboardProviderSummarySchema,
   DashboardUsageOverviewResponseSchema,
   DiagnosticCodeSchema,
   type InvalidProviderConfig,
@@ -743,6 +746,62 @@ const diagnostic = (code: (typeof diagnosticCodes)[number]) => ({
 });
 
 describe("plugin and provider diagnostics", () => {
+  test("accepts safe dashboard plugin summaries", () => {
+    const failedPlugin = {
+      packageName: "@example/broken",
+      builtIn: false,
+      version: "1.2.3",
+      state: {
+        status: "failed",
+        diagnostic: {
+          code: "PLUGIN_LOAD_FAILED",
+          summary: "Plugin setup failed.",
+          retryable: true,
+          occurredAt: "2026-07-14T00:00:00.000Z",
+          suggestedCommand: "aio-proxy plugin config @example/broken",
+        },
+      },
+    } as const;
+
+    expect(DashboardPluginSummarySchema.parse(failedPlugin)).toEqual(failedPlugin);
+    expect(DashboardPluginsResponseSchema.parse({ plugins: [failedPlugin] })).toEqual({ plugins: [failedPlugin] });
+  });
+
+  test("accepts provider availability and safe OAuth account metadata", () => {
+    const provider = {
+      id: "copilot-octocat",
+      kind: "oauth",
+      enabled: true,
+      passthrough: false,
+      last_status: "unknown",
+      last_latency: null,
+      clientModels: ["gpt-4o"],
+      state: { status: "ready", catalog: "stale" },
+      plugin: "@aio-proxy/plugin-github-copilot",
+      capability: "default",
+      accountLabel: "octocat",
+      expiresAt: 1_900_000_000_000,
+      catalogLastSuccessAt: "2026-07-14T00:00:00.000Z",
+    } as const;
+
+    expect(DashboardProviderSummarySchema.parse(provider)).toEqual(provider);
+  });
+
+  test("allows dashboard-only invalid provider rows without widening routed provider kinds", () => {
+    const provider = {
+      id: "broken",
+      kind: "invalid",
+      enabled: false,
+      passthrough: false,
+      last_status: "unknown",
+      last_latency: null,
+      clientModels: [],
+      state: { status: "unavailable", diagnostic: diagnostic("PROVIDER_CONFIG_INVALID") },
+    } as const;
+
+    expect(DashboardProviderSummarySchema.parse(provider)).toEqual(provider);
+  });
+
   test.each(diagnosticCodes)("accepts diagnostic code %s", (code) => {
     expect(DiagnosticCodeSchema.parse(code)).toBe(code);
   });

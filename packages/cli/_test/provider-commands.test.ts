@@ -14,6 +14,23 @@ type FakeDashboardProvider = {
   readonly last_status: string;
   readonly last_latency: number | null;
   readonly probe?: "OK" | "FAIL";
+  readonly state?:
+    | { readonly status: "ready"; readonly catalog?: "fresh" | "stale" }
+    | {
+        readonly status: "unavailable";
+        readonly diagnostic: {
+          readonly code: string;
+          readonly summary: string;
+          readonly retryable: boolean;
+          readonly occurredAt: string;
+          readonly suggestedCommand?: string;
+        };
+      };
+  readonly plugin?: string;
+  readonly capability?: string;
+  readonly accountLabel?: string;
+  readonly expiresAt?: number;
+  readonly catalogLastSuccessAt?: string;
 };
 
 const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], run: (url: string) => Promise<void>) => {
@@ -32,6 +49,7 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
         .filter((provider) => filter === null || provider.id === filter)
         .map((provider) => ({
           clientModels: [],
+          state: { status: "ready" },
           ...provider,
           ...(probe ? { probe: provider.probe ?? "OK" } : {}),
         }));
@@ -125,6 +143,62 @@ describe("provider commands", () => {
         expect(failedProvider.stdout).toContain("slow-ai");
         expect(failedProvider.stdout).toContain("FAIL");
         expect(failedProvider.stdout).not.toContain("openai");
+      },
+    );
+  });
+
+  test("provider list prints availability metadata and a provider-targeted credential recovery command", async () => {
+    await withFakeDashboard(
+      [
+        {
+          id: "copilot-octocat",
+          kind: "oauth",
+          enabled: true,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          state: { status: "ready", catalog: "stale" },
+          plugin: "@aio-proxy/plugin-github-copilot",
+          capability: "default",
+          accountLabel: "octocat",
+          expiresAt: 1_900_000_000_000,
+          catalogLastSuccessAt: "2026-07-14T00:00:00.000Z",
+        },
+        {
+          id: "chatgpt-personal",
+          kind: "oauth",
+          enabled: true,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          state: {
+            status: "unavailable",
+            diagnostic: {
+              code: "CREDENTIAL_REFRESH_FAILED",
+              summary: "Credential refresh failed.",
+              retryable: true,
+              occurredAt: "2026-07-14T00:00:00.000Z",
+              suggestedCommand: "aio-proxy provider login default",
+            },
+          },
+          plugin: "@aio-proxy/plugin-openai-chatgpt",
+          capability: "default",
+        },
+      ],
+      async (url) => {
+        const result = await runCliAsync(["provider", "list", "--url", url]);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("ready");
+        expect(result.stdout).toContain("stale");
+        expect(result.stdout).toContain("@aio-proxy/plugin-github-copilot");
+        expect(result.stdout).toContain("default");
+        expect(result.stdout).toContain("octocat");
+        expect(result.stdout).toContain("2026-07-14T00:00:00.000Z");
+        expect(result.stdout).toContain("unavailable");
+        expect(result.stdout).toContain("Credential refresh failed.");
+        expect(result.stdout).toContain("aio-proxy provider login --provider chatgpt-personal");
+        expect(result.stdout).not.toContain("aio-proxy provider login default");
       },
     );
   });

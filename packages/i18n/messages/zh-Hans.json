@@ -195,20 +195,27 @@
     },
     "providers": {
       "list_title": "提供商",
+      "providers_title": "提供商诊断",
       "new_provider": "新建提供商",
       "edit_loading": "正在加载提供商…",
       "edit_not_found": "未找到提供商",
       "kind_label": {
         "api": "API",
         "ai-sdk": "AI SDK",
-        "oauth": "OAuth"
+        "oauth": "OAuth",
+        "invalid": "无效"
       },
       "table": {
+        "label": "提供商诊断",
         "col_type": "类型",
         "col_id": "ID",
         "col_name": "名称",
         "col_enabled": "启用",
         "col_status": "状态",
+        "col_state": "可用性",
+        "col_capability": "能力",
+        "col_account": "账户",
+        "col_catalog": "目录",
         "col_models": "模型",
         "col_weight": "权重",
         "col_actions": "操作"
@@ -218,6 +225,39 @@
         "disabled": "已禁用",
         "probe_ok": "正常",
         "probe_fail": "故障"
+      },
+      "state": {
+        "details": "提供商 {id} 的诊断信息",
+        "ready": "就绪",
+        "failed": "失败",
+        "unavailable": "不可用",
+        "catalog_fresh": "最新",
+        "catalog_stale": "已过期"
+      },
+      "diagnostics": {
+        "not_available": "—"
+      },
+      "account": {
+        "expires_at": "到期时间 {value}"
+      },
+      "catalog": {
+        "last_success_at": "最近成功 {value}"
+      },
+      "plugins": {
+        "title": "OAuth 插件",
+        "empty": "未加载 OAuth 插件",
+        "source_builtin": "内置",
+        "source_third_party": "第三方",
+        "table": {
+          "label": "OAuth 插件诊断",
+          "col_package": "包名",
+          "col_source": "来源",
+          "col_version": "版本",
+          "col_state": "状态",
+          "col_diagnostic": "诊断",
+          "filter": "筛选插件",
+          "columns": "列"
+        }
       },
       "form": {
         "label_id": "提供商 ID",
@@ -312,7 +352,8 @@
         "delete": "删除",
         "edit": "编辑",
         "probe_now": "立即探测",
-        "edit_aliases": "编辑别名"
+        "edit_aliases": "编辑别名",
+        "open_menu": "打开提供商 {id} 的操作菜单"
       },
       "toast": {
         "created": "提供商已创建",

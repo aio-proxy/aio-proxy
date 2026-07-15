@@ -1,11 +1,11 @@
 import { m } from "@aio-proxy/i18n";
-import { ProviderKind } from "@aio-proxy/types";
+import type { DashboardProviderSummary } from "@aio-proxy/types";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { flexRender } from "@tanstack/react-table";
+import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
 import type React from "react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
@@ -19,22 +19,120 @@ import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
+import { PluginsTable } from "../components/plugins-table";
 import { ProviderActionsMenu } from "../components/provider-actions-menu";
 import { ProviderModelsCell } from "../components/provider-models-cell";
+import { ProviderStateCell } from "../components/provider-state-cell";
 import { useProvidersTable } from "../hooks/use-providers-table";
+import { pluginsQueryOptions } from "../services/plugins-service";
 import { providersQueryOptions } from "../services/providers-service";
 
-const kindLabels: Record<ProviderKind, () => string> = {
-  [ProviderKind.Api]: () => m["dashboard.providers.kind_label.api"](),
-  [ProviderKind.AiSdk]: () => m["dashboard.providers.kind_label.ai-sdk"](),
-  [ProviderKind.OAuth]: () => m["dashboard.providers.kind_label.oauth"](),
+const kindLabels: Record<DashboardProviderSummary["kind"], () => string> = {
+  api: () => m["dashboard.providers.kind_label.api"](),
+  "ai-sdk": () => m["dashboard.providers.kind_label.ai-sdk"](),
+  oauth: () => m["dashboard.providers.kind_label.oauth"](),
+  invalid: () => m["dashboard.providers.kind_label.invalid"](),
 };
 
 export const ProvidersPage: React.FC = () => {
-  const { data, isLoading } = useQuery(providersQueryOptions());
-  const providers = data?.providers ?? [];
-  const table = useProvidersTable(providers);
+  const providersQuery = useQuery(providersQueryOptions());
+  const pluginsQuery = useQuery(pluginsQueryOptions());
+  const providers = providersQuery.data?.providers ?? [];
+  const plugins = pluginsQuery.data?.plugins ?? [];
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
+  const columns = useMemo<ColumnDef<DashboardProviderSummary>[]>(
+    () => [
+      {
+        id: "kind",
+        accessorKey: "kind",
+        header: () => m["dashboard.providers.table.col_type"](),
+        cell: ({ row }) => kindLabels[row.original.kind](),
+      },
+      { id: "id", accessorKey: "id", header: () => m["dashboard.providers.table.col_id"]() },
+      {
+        id: "name",
+        accessorFn: (row) => row.name ?? startCase(row.id),
+        header: () => m["dashboard.providers.table.col_name"](),
+      },
+      {
+        id: "enabled",
+        accessorKey: "enabled",
+        header: () => m["dashboard.providers.table.col_enabled"](),
+        cell: ({ row }) =>
+          row.original.enabled ? m["dashboard.providers.badge.enabled"]() : m["dashboard.providers.badge.disabled"](),
+      },
+      {
+        id: "state",
+        accessorFn: (row) => row.state.status,
+        header: () => m["dashboard.providers.table.col_state"](),
+        cell: ({ row }) => <ProviderStateCell provider={row.original} />,
+      },
+      {
+        id: "capability",
+        accessorFn: (row) => [row.plugin, row.capability].filter(Boolean).join("/"),
+        header: () => m["dashboard.providers.table.col_capability"](),
+        cell: ({ row }) =>
+          row.original.plugin === undefined || row.original.capability === undefined
+            ? m["dashboard.providers.diagnostics.not_available"]()
+            : `${row.original.plugin}/${row.original.capability}`,
+      },
+      {
+        id: "account",
+        accessorFn: (row) => row.accountLabel ?? "",
+        header: () => m["dashboard.providers.table.col_account"](),
+        cell: ({ row }) => (
+          <div>
+            <div>{row.original.accountLabel ?? m["dashboard.providers.diagnostics.not_available"]()}</div>
+            {row.original.expiresAt === undefined ? null : (
+              <div className="text-muted-foreground text-xs">
+                {m["dashboard.providers.account.expires_at"]({
+                  value: new Date(row.original.expiresAt).toISOString(),
+                })}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "catalog",
+        accessorFn: (row) => (row.state.status === "ready" ? (row.state.catalog ?? "") : ""),
+        header: () => m["dashboard.providers.table.col_catalog"](),
+        cell: ({ row }) => (
+          <div>
+            <div>
+              {row.original.state.status === "ready" && row.original.state.catalog !== undefined
+                ? row.original.state.catalog === "fresh"
+                  ? m["dashboard.providers.state.catalog_fresh"]()
+                  : m["dashboard.providers.state.catalog_stale"]()
+                : m["dashboard.providers.diagnostics.not_available"]()}
+            </div>
+            {row.original.catalogLastSuccessAt === undefined ? null : (
+              <div className="text-muted-foreground text-xs">
+                {m["dashboard.providers.catalog.last_success_at"]({ value: row.original.catalogLastSuccessAt })}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "models",
+        accessorFn: (row) => (row.clientModels ?? []).join(", "),
+        header: () => m["dashboard.providers.table.col_models"](),
+        cell: ({ row }) => <ProviderModelsCell models={row.original.clientModels ?? []} />,
+      },
+      {
+        id: "actions",
+        enableSorting: false,
+        header: () => "",
+        cell: ({ row }) => (
+          <ProviderActionsMenu provider={row.original} onDelete={() => deleteDialogRef.current?.open(row.original)} />
+        ),
+      },
+    ],
+    [],
+  );
+  const table = useProvidersTable(providers, columns);
+  const isLoading = providersQuery.isLoading || pluginsQuery.isLoading;
 
   return (
     <PageContainer
@@ -62,44 +160,53 @@ export const ProvidersPage: React.FC = () => {
             return <Skeleton key={i} className="h-12 w-full" />;
           })}
         </div>
-      ) : providers.length === 0 ? (
-        <Empty>{m["dashboard.providers.empty_state"]()}</Empty>
       ) : (
-        <div className="flex flex-col gap-4">
-          <Table data-testid="providers-table">
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
-                  <TableCell>{kindLabels[row.original.kind]()}</TableCell>
-                  <TableCell>{row.original.id}</TableCell>
-                  <TableCell>{row.original.name ?? startCase(row.original.id)}</TableCell>
-                  <TableCell>{row.original.enabled ? "✓" : "—"}</TableCell>
-                  <TableCell>{row.original.last_status}</TableCell>
-                  <TableCell>
-                    <ProviderModelsCell models={row.original.clientModels ?? []} />
-                  </TableCell>
-                  <TableCell>
-                    <ProviderActionsMenu
-                      provider={row.original}
-                      onDelete={() => deleteDialogRef.current?.open(row.original)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <DataTablePagination table={table} />
+        <div className="flex flex-col gap-8">
+          <section className="space-y-3" aria-labelledby="plugins-heading">
+            <h2 id="plugins-heading" className="font-semibold text-sm">
+              {m["dashboard.providers.plugins.title"]()}
+            </h2>
+            <PluginsTable plugins={plugins} />
+          </section>
+
+          <section className="space-y-3" aria-labelledby="providers-heading">
+            <h2 id="providers-heading" className="font-semibold text-sm">
+              {m["dashboard.providers.providers_title"]()}
+            </h2>
+            {providers.length === 0 ? (
+              <Empty>{m["dashboard.providers.empty_state"]()}</Empty>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <Table aria-label={m["dashboard.providers.table.label"]()} data-testid="providers-table">
+                  <TableHeader>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <DataTablePagination table={table} />
+              </div>
+            )}
+          </section>
         </div>
       )}
       <DeleteProviderDialog ref={deleteDialogRef} />
