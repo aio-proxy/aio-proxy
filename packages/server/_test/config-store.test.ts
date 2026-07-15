@@ -277,10 +277,18 @@ describe("createConfigStore mutex", () => {
     writeFileSync(configPath, JSON.stringify(initial));
     const handle = openDb({ home: dir });
     const repository = createPluginRepository(handle.sqlite);
+    let stageAccountOperationCalls = 0;
+    const observedRepository: PluginRepository = {
+      ...repository,
+      stageAccountOperation(input) {
+        stageAccountOperationCalls++;
+        return repository.stageAccountOperation(input);
+      },
+    };
     const verified: Readonly<Record<string, unknown>>[] = [];
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      repository,
+      repository: observedRepository,
       verify: async (candidate) => {
         verified.push(candidate);
         return undefined;
@@ -293,6 +301,7 @@ describe("createConfigStore mutex", () => {
       expect(verified).toHaveLength(1);
       expect(verified[0]?.["providers"]).toEqual({});
       expect((JSON.parse(readFileSync(configPath, "utf8")) as typeof initial).providers).toEqual({});
+      expect(stageAccountOperationCalls).toBe(0);
       expect(repository.readAccount("person")).toBeNull();
       expect(repository.listPendingAccountOperations()).toEqual([]);
     } finally {
