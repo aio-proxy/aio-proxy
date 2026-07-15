@@ -124,7 +124,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
-  const app = createServer({
+  const app = await createServer({
     config,
     configPath: resolvedConfigPath,
     dashboardAssets,
@@ -180,7 +180,11 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option("--probe", m.cli_provider_list_option_probe_description())
     .option("--installed", m.cli_provider_list_option_installed_description())
     .action(providerList);
-  provider.command("login <vendor>").description(m.cli_provider_login_description()).action(providerLogin);
+  provider
+    .command("login [capability]")
+    .description(m.cli_provider_login_description())
+    .option("--provider <id>")
+    .action(providerLogin);
   provider
     .command("test <provider-id>")
     .description(m.cli_provider_test_description())

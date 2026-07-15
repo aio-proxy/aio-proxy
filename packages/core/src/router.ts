@@ -1,28 +1,40 @@
-import { type AliasConfig, type Provider as ConfigProvider, ProviderKind, resolveAliasTarget } from "@aio-proxy/types";
+import { type AliasConfig, type ModelId, resolveAliasTarget } from "@aio-proxy/types";
 import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
 import type { AiSdkProviderInstance } from "./provider/ai-sdk";
 import type { ApiProviderInstance } from "./provider/api";
 
-export type ProviderInstance = (ConfigProvider & { readonly id: string }) | ApiProviderInstance | AiSdkProviderInstance;
+export type RoutableProvider = {
+  readonly id: string;
+  readonly enabled: boolean;
+  readonly models?: readonly ModelId[] | undefined;
+  readonly alias?: Readonly<Record<string, AliasConfig>> | undefined;
+};
 
-export type RouterResolution<TProvider extends ProviderInstance = ProviderInstance> = {
+export type ProviderInstance = RoutableProvider &
+  (
+    | { readonly kind: ApiProviderInstance["kind"] }
+    | { readonly kind: AiSdkProviderInstance["kind"] }
+    | { readonly kind: string }
+  );
+
+export type RouterResolution<TProvider extends RoutableProvider = ProviderInstance> = {
   readonly provider: TProvider;
   readonly modelId: string;
 };
 
-export type RouterCandidate<TProvider extends ProviderInstance = ProviderInstance> = RouterResolution<TProvider>;
+export type RouterCandidate<TProvider extends RoutableProvider = ProviderInstance> = RouterResolution<TProvider>;
 
 export type ModelRoute = {
   readonly alias: string;
   readonly modelId: string;
 };
 
-type ConfiguredRouterRoute<TProvider extends ProviderInstance> = {
+type ConfiguredRouterRoute<TProvider extends RoutableProvider> = {
   readonly provider: TProvider;
   readonly config: AliasConfig;
 };
 
-export class Router<TProvider extends ProviderInstance = ProviderInstance> {
+export class Router<TProvider extends RoutableProvider = ProviderInstance> {
   private readonly aliases = new Map<string, ConfiguredRouterRoute<TProvider>[]>();
   private readonly providerAliases = new Map<string, ConfiguredRouterRoute<TProvider>>();
 
@@ -78,7 +90,7 @@ export class Router<TProvider extends ProviderInstance = ProviderInstance> {
   }
 }
 
-export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
+export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
   const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
   for (const modelId of directModelIds(provider)) {
     if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
@@ -88,10 +100,8 @@ export function modelRoutes(provider: ProviderInstance): ModelRoute[] {
   return routes;
 }
 
-function directModelIds(provider: ProviderInstance): string[] {
-  const configuredModelIds = new Set<string>(
-    provider.kind === ProviderKind.OAuth || !("models" in provider) ? [] : (provider.models ?? []),
-  );
+function directModelIds(provider: RoutableProvider): string[] {
+  const configuredModelIds = new Set<string>("models" in provider ? (provider.models ?? []) : []);
   const modelIds = new Set(configuredModelIds);
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {
@@ -115,7 +125,7 @@ function directModelIds(provider: ProviderInstance): string[] {
   return [...modelIds];
 }
 
-function preservedModelIds(provider: ProviderInstance): string[] {
+function preservedModelIds(provider: RoutableProvider): string[] {
   const modelIds = new Set<string>();
   for (const config of Object.values(provider.alias ?? {})) {
     if (config.preserve) {

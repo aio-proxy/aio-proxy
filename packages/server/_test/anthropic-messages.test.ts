@@ -72,7 +72,7 @@ describe("POST /v1/messages", () => {
         return Response.json({ unexpected: true });
       },
     } satisfies ApiProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
     let chunks = 0;
 
     const response = await app.request(
@@ -115,7 +115,7 @@ describe("POST /v1/messages", () => {
       },
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       dbHome,
       providerInstances: [provider],
@@ -165,7 +165,7 @@ describe("POST /v1/messages", () => {
       passthrough: async () => Response.json({ fallback: true }),
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
 
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({ ...messagesRequest, stream: false }),
@@ -205,7 +205,7 @@ describe("POST /v1/messages", () => {
           { type: "text-end", id: "text-1" },
         ]),
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [first, second] });
 
     const response = await app.request("/v1/messages", {
       body: JSON.stringify(messagesRequest),
@@ -232,7 +232,7 @@ describe("POST /v1/messages", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
     await app.request("/v1/messages", {
       body: JSON.stringify({
@@ -283,7 +283,7 @@ describe("POST /v1/messages", () => {
         return textStream([{ type: "finish", finishReason: "stop", rawFinishReason: "stop", totalUsage: {} }]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({
@@ -325,7 +325,7 @@ describe("POST /v1/messages", () => {
         }),
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
 
     const response = await app.request("/v1/messages", {
       body: JSON.stringify(messagesRequest),
@@ -365,7 +365,7 @@ describe("POST /v1/messages", () => {
       },
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
     const abort = new AbortController();
     abort.abort();
 
@@ -402,7 +402,7 @@ describe("POST /v1/messages", () => {
       invoke: () => new ReadableStream({ pull: (controller) => controller.error(reason) }),
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
 
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({ ...messagesRequest, stream: false }),
@@ -448,7 +448,7 @@ describe("POST /v1/messages", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -485,7 +485,7 @@ describe("POST /v1/messages", () => {
         return textStream([]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -526,7 +526,7 @@ describe("POST /v1/messages", () => {
         },
       },
     );
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -559,7 +559,7 @@ describe("POST /v1/messages/count_tokens", () => {
         return textStream([]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -579,7 +579,7 @@ describe("POST /v1/messages/count_tokens", () => {
   });
 
   test("Given oversized Content-Length When token count is posted Then rejects before parsing", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request("/v1/messages/count_tokens", {
       body: JSON.stringify(messagesRequest),

@@ -141,6 +141,32 @@
   "common_save": "保存",
   "common_delete": "删除",
   "common_close": "关闭",
+  "oauth": {
+    "github-copilot": {
+      "login_label": "使用 GitHub Copilot 登录",
+      "deployment_type": {
+        "message": "选择 GitHub 部署类型",
+        "options": {
+          "github": {
+            "label": "GitHub.com",
+            "description": "公共服务"
+          },
+          "github-enterprise": {
+            "label": "GitHub Enterprise",
+            "description": "数据驻留或自托管"
+          }
+        }
+      },
+      "enterprise_url": {
+        "message": "输入 GitHub Enterprise URL 或域名",
+        "placeholder": "company.ghe.com 或 https://company.ghe.com"
+      },
+      "device_instructions": "输入代码"
+    },
+    "openai-chatgpt": {
+      "login_label": "使用 ChatGPT（Plus/Pro）登录"
+    }
+  },
   "brand": {
     "name": "AIO Proxy",
     "tagline": "一站式网关"

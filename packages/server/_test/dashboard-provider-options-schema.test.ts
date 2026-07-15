@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from "@aio-proxy/core";
-import { createServer } from "@aio-proxy/server";
+import { PROVIDER_OPTIONS_SCHEMAS } from "@aio-proxy/provider-schemas";
+import { createServer as createBaseServer } from "@aio-proxy/server";
 
 const installRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify(body),
@@ -17,6 +18,8 @@ const installRequest = (body: Record<string, unknown>) => ({
 describe("dashboard provider package metadata", () => {
   let home: string;
   let previousHome: string | undefined;
+  const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
+    createBaseServer({ ...options, dbHome: home });
 
   beforeEach(() => {
     previousHome = process.env.AIO_PROXY_HOME;
@@ -33,8 +36,8 @@ describe("dashboard provider package metadata", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  test("package status returns runtime fields only", async () => {
-    const app = createServer({ config: { providers: {} } });
+  test("package status separates runtime state from embedded schema availability", async () => {
+    const app = await createServer({ config: { providers: {} } });
     const response = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fopenai-compatible");
 
     expect(response.status).toBe(200);
@@ -43,6 +46,7 @@ describe("dashboard provider package metadata", () => {
       trusted: true,
       state: "bundled",
       version: BUNDLED_PROVIDER_VERSIONS["@ai-sdk/openai-compatible"],
+      schemaAvailable: true,
     });
   });
 
@@ -51,7 +55,7 @@ describe("dashboard provider package metadata", () => {
     const packageDir = join(npmPackageCacheDir(installedPackage), "node_modules", "@vendor", "installed-provider");
     mkdirSync(packageDir, { recursive: true });
     writeFileSync(join(packageDir, "package.json"), JSON.stringify({ version: "1.2.3" }));
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const installed = await app.request("/dashboard/api/providers/package-status?npm=%40vendor%2Finstalled-provider");
     const missing = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fmissing-provider");
@@ -61,16 +65,31 @@ describe("dashboard provider package metadata", () => {
       trusted: false,
       state: "installed",
       version: "1.2.3",
+      schemaAvailable: false,
     });
     expect(await missing.json()).toEqual({
       npm: "@ai-sdk/missing-provider",
       trusted: true,
       state: "missing",
+      schemaAvailable: false,
     });
   });
 
+  test("returns embedded schema without importing provider code", async () => {
+    const app = await createServer({ config: { providers: {} } });
+    const response = await app.request("/dashboard/api/providers/options-schema?npm=%40ai-sdk%2Fopenai-compatible");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.npm).toBe("@ai-sdk/openai-compatible");
+    expect(body.packageVersion).toBe(PROVIDER_OPTIONS_SCHEMAS["@ai-sdk/openai-compatible"]?.packageVersion);
+    expect(body.factoryName).toBe("createOpenAICompatible");
+    expect(body.schema.required).toContain("baseURL");
+    expect(body.schema.properties.name).toMatchObject({ type: "string" });
+    expect(body.warnings).toEqual(expect.any(Array));
+  });
   test("invalid package names return a stable code", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request("/dashboard/api/providers/package-status?npm=..%2Fbad");
 
@@ -81,8 +100,19 @@ describe("dashboard provider package metadata", () => {
     });
   });
 
+  test("missing embedded schemas return a stable 404", async () => {
+    const app = await createServer({ config: { providers: {} } });
+
+    const response = await app.request("/dashboard/api/providers/options-schema?npm=%40vendor%2Fprovider");
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      code: "schema_unavailable",
+      error: "provider options schema unavailable",
+    });
+  });
   test("trusted packages may install without confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -94,7 +124,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("trusted packages may install with explicit false confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -110,7 +140,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("untrusted packages require explicit confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -125,7 +155,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("untrusted packages reject explicit false confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",

@@ -43,7 +43,7 @@ test("model listing and usage pricing share one cached models.dev fetch", async 
       npm: "@openrouter/ai-sdk-provider",
     },
   } satisfies Awaited<ReturnType<FetchModelsDevProviders>>;
-  const state = createServerState({
+  const state = await createServerState({
     config: ConfigSchema.parse({ providers: {} }),
     dbHome: tempHome(),
     modelsDevCatalogTask: createModelsDevCatalogTask(async () => {

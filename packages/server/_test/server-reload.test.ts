@@ -71,7 +71,7 @@ async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<s
 }
 
 describe("server reload", () => {
-  test("Given conflicting preserved alias config reload When reload is requested Then old provider keeps serving", async () => {
+  test("Given invalid provider config reload When reload is requested Then the provider degrades independently", async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-reload-"));
     const configPath = join(dir, "config.jsonc");
@@ -84,7 +84,7 @@ describe("server reload", () => {
     });
     const initialConfig = configWithProvider("old-openai", `http://127.0.0.1:${upstream.port}`);
     writeConfig(configPath, initialConfig);
-    const app = createServer({
+    const app = await createServer({
       config: initialConfig,
       configPath,
       watchConfig: false,
@@ -111,20 +111,13 @@ describe("server reload", () => {
         headers: { Origin: "http://127.0.0.1:22078" },
         method: "POST",
       });
-      const chat = await app.request("/v1/chat/completions", {
-        body: JSON.stringify({
-          model: "old-openai-model",
-          messages: [{ role: "user", content: "still there" }],
-        }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      });
-      const body = await chat.json();
+      const providers = await app.request("/dashboard/api/providers/duplicate");
+      const body = await providers.json();
 
       // Then
-      expect(reload.status).toBe(409);
-      expect(chat.status).toBe(208);
-      expect(body).toEqual({ servedBy: "old-openai" });
+      expect(reload.status).toBe(200);
+      expect(providers.status).toBe(200);
+      expect(body.provider).toMatchObject({ id: "duplicate", enabled: false, clientModels: [] });
     } finally {
       await upstream.stop(true);
       rmSync(dir, { recursive: true, force: true });
@@ -138,7 +131,7 @@ describe("server reload", () => {
     const initialConfig = configWithProvider("old-openai", "https://old.test");
     const nextConfig = configWithProvider("new-openai", "https://new.test");
     writeConfig(configPath, initialConfig);
-    const state = createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
+    const state = await createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
     const stream = new Response(state.events.stream());
 
     try {
@@ -166,7 +159,7 @@ describe("server reload", () => {
     const middleConfig = configWithProvider("middle-openai", "https://middle.test");
     const nextConfig = configWithProvider("new-openai", "https://new.test");
     writeConfig(configPath, initialConfig);
-    const state = createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
+    const state = await createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
 
     try {
       // When

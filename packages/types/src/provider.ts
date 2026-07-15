@@ -50,12 +50,6 @@ export const ApiProviderSchema = z.object({
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
 });
 
-export const OAuthProviderSchema = z.object({
-  kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
-  ...SharedProviderSchemaBase,
-  vendor: z.enum(OAuthVendor).describe("OAuth vendor."),
-});
-
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a plugin OAuth account."),
   ...SharedProviderSchemaBase,
@@ -63,6 +57,8 @@ export const OAuthPluginProviderSchema = z.object({
   capability: CapabilityIdSchema,
   options: z.record(z.string(), z.unknown()).optional(),
 });
+
+export const OAuthProviderSchema = OAuthPluginProviderSchema;
 
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),

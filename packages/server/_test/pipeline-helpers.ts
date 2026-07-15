@@ -148,7 +148,7 @@ export function rawProvider(options: {
     kind: ProviderKind.Api,
     passthrough: rawInvoke,
     protocol,
-    raw: { invoke: rawInvoke, protocol },
+    raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: rawInvoke } : undefined) },
     ...(model === undefined ? {} : { model }),
   } satisfies RuntimeProviderInstance;
   return { calls, provider };
@@ -205,6 +205,10 @@ export function defineProviderRouteSource(
     },
   };
   const source = {
+    acquireProviderSnapshot: () => ({
+      snapshot: { providers, router: new Router(providers) },
+      release() {},
+    }),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
     requestRecorder: recording.recorder,
     usageCapture,

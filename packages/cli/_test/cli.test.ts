@@ -117,8 +117,8 @@ describe("cli", () => {
     // Then
     expect(install).toContain("<package>");
     expect(install).not.toContain("<pkg>");
-    expect(login).toContain("<vendor>");
-    expect(login).not.toContain("<family>");
+    expect(login).toContain("[capability]");
+    expect(login).toContain("--provider <id>");
     expect(probe).toContain("<provider-id>");
     expect(probe).not.toContain("<id>");
   });

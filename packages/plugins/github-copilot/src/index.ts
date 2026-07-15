@@ -21,6 +21,7 @@ export type GitHubCopilotCopy = {
   readonly enterpriseLabel: string;
   readonly enterpriseURLLabel: string;
   readonly enterpriseURLPlaceholder: string;
+  readonly deviceInstructions?: string;
 };
 
 export const englishCopy: GitHubCopilotCopy = {
@@ -30,6 +31,7 @@ export const englishCopy: GitHubCopilotCopy = {
   enterpriseLabel: "GitHub Enterprise",
   enterpriseURLLabel: "Enter your GitHub Enterprise URL or domain",
   enterpriseURLPlaceholder: "company.ghe.com or https://company.ghe.com",
+  deviceInstructions: "Enter code",
 };
 
 export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescriptor<undefined> {
@@ -94,7 +96,7 @@ export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescri
       ),
     login: async (context, options) => {
       const parsed = await accountOptions.schema.parseAsync(options);
-      return await loginToGitHubCopilot(context, parsed);
+      return await loginToGitHubCopilot(context, parsed, copy.deviceInstructions ?? "Enter code");
     },
     catalog: {
       policy: { kind: "ttl", ttlMs: COPILOT_CATALOG_TTL_MS },

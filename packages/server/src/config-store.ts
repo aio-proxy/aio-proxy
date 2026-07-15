@@ -1,4 +1,18 @@
-import { chmod, readFile, rename, stat, writeFile } from "node:fs/promises";
+import {
+  AccountCleanupPendingError,
+  AtomicConfigFile,
+  deleteOAuthAccount,
+  type PendingAccountOperation,
+  type PluginRepository,
+} from "@aio-proxy/core";
+import {
+  type AccountRemovalCoordinator,
+  asProviderRecord,
+  createAccountRemovalCoordinator,
+  oauthCapabilityOf,
+} from "./account-removal";
+import { createFifoQueue } from "./fifo-queue";
+import type { RetiredProviderSnapshot } from "./runtime";
 
 export class ConfigPathMissingError extends Error {
   constructor() {
@@ -14,55 +28,97 @@ export class ConfigReloadRejectedError extends Error {
   }
 }
 
-export type ConfigReloadOutcome = { readonly ok: true } | { readonly ok: false; readonly error: string };
-
 export type ConfigStoreOptions = {
   readonly getConfigPath: () => string | undefined;
-  readonly reload: () => Promise<ConfigReloadOutcome>;
+  readonly file?: AtomicConfigFile;
+  readonly verify: (candidate: Readonly<Record<string, unknown>>) => Promise<RetiredProviderSnapshot | undefined>;
+  readonly repository?: PluginRepository;
+  readonly accountRemovals?: AccountRemovalCoordinator;
 };
 
 export type ConfigStore = {
+  readonly file: AtomicConfigFile | undefined;
+  readonly deleteProvider: (providerId: string) => Promise<void>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
 export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
-  // Promise chain mutex — serialize concurrent writes
-  let chain = Promise.resolve();
+  const path = options.getConfigPath();
+  const file = options.file ?? (path === undefined ? undefined : new AtomicConfigFile(path));
+  const accountRemovals =
+    options.accountRemovals ?? createAccountRemovalCoordinator({ file, repository: options.repository });
+  const enqueue = createFifoQueue();
 
-  const mutateProviders = (fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> => {
-    const run = chain.then(async () => {
-      const configPath = options.getConfigPath();
-      if (configPath === undefined) {
-        throw new ConfigPathMissingError();
+  async function verifyCandidate(
+    candidate: Readonly<Record<string, unknown>>,
+  ): Promise<RetiredProviderSnapshot | undefined> {
+    try {
+      return await options.verify(candidate);
+    } catch (error) {
+      throw new ConfigReloadRejectedError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function mutateProvidersNow(fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    const staged: PendingAccountOperation[] = [];
+    let retired: RetiredProviderSnapshot | undefined;
+    try {
+      await file.transaction(
+        async (current) => {
+          const providers = asProviderRecord(current["providers"]);
+          const nextProviders = fn(providers);
+          staged.push(...accountRemovals.stageRemoved(providers, nextProviders));
+          return { next: { ...current, providers: nextProviders }, result: undefined };
+        },
+        {
+          verify: async (candidate) => {
+            retired = await verifyCandidate(candidate);
+          },
+        },
+      );
+    } catch (error) {
+      accountRemovals.compensate(staged);
+      throw error;
+    }
+
+    void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+  }
+
+  async function deleteProviderNow(providerId: string): Promise<void> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    let cleanupPending: AccountCleanupPendingError | undefined;
+    if (options.repository !== undefined) {
+      let retired: RetiredProviderSnapshot | undefined;
+      try {
+        const operation = await deleteOAuthAccount({
+          providerId,
+          config: file,
+          repository: options.repository,
+          verify: async (candidate) => {
+            retired = await verifyCandidate(candidate);
+          },
+        });
+        void accountRemovals.finalizeAfterDrain([operation], retired).catch(() => {});
+        return;
+      } catch (error) {
+        if (!(error instanceof AccountCleanupPendingError)) throw error;
+        cleanupPending = error;
       }
-      // Read raw JSON — do NOT reserialize from parsed Config to preserve on-disk field order and future-added fields
-      const raw = await readFile(configPath, "utf8");
-      const { mode } = await stat(configPath);
-      const parsed: Record<string, unknown> = JSON.parse(raw);
-      const providers =
-        typeof parsed.providers === "object" && parsed.providers !== null && !Array.isArray(parsed.providers)
-          ? (parsed.providers as Record<string, unknown>)
-          : {};
-      const newProviders = fn(providers);
-      const updated = { ...parsed, providers: newProviders };
-      const tmpPath = `${configPath}.tmp`;
-      // Write to tmp then rename atomically
-      await writeFile(tmpPath, JSON.stringify(updated, null, 2), "utf8");
-      await chmod(tmpPath, mode);
-      await rename(tmpPath, configPath);
-      const result = await options.reload();
-      if (!result.ok) {
-        // ponytail: reload validates the persisted file; on rejection restore the prior valid config so disk never diverges from the live snapshot.
-        await writeFile(tmpPath, raw, "utf8");
-        await chmod(tmpPath, mode);
-        await rename(tmpPath, configPath);
-        throw new ConfigReloadRejectedError(result.error);
+    }
+
+    await mutateProvidersNow((providers) => {
+      if (oauthCapabilityOf(providerId, providers[providerId]) !== undefined && cleanupPending !== undefined) {
+        throw cleanupPending;
       }
+      const { [providerId]: _removed, ...remaining } = providers;
+      return remaining;
     });
-    // ponytail: a rejected write must not poison the mutex — swallow it on `chain`, surface it on `run`.
-    chain = run.catch(() => {});
-    return run;
-  };
+  }
 
-  return { mutateProviders };
+  return {
+    deleteProvider: (providerId) => enqueue(() => deleteProviderNow(providerId)),
+    file,
+    mutateProviders: (fn) => enqueue(() => mutateProvidersNow(fn)),
+  };
 }

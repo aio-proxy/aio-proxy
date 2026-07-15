@@ -130,7 +130,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       dbHome,
       providerInstances: [provider],
@@ -191,7 +191,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
 
     // When
     const response = await app.request("/v1/chat/completions", {
@@ -236,7 +236,7 @@ describe("POST /v1/chat/completions", () => {
         ),
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify(chatRequest),
@@ -277,7 +277,7 @@ describe("POST /v1/chat/completions", () => {
         return Response.json({ ok: true });
       },
     } satisfies ApiProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
     // When
     const response = await app.request("/v1/chat/completions", {
@@ -312,7 +312,7 @@ describe("POST /v1/chat/completions", () => {
         );
       },
     } satisfies ApiProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -361,7 +361,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -407,7 +407,7 @@ describe("POST /v1/chat/completions", () => {
         },
       },
     } satisfies ApiProviderInstance & { model: { invoke: AiSdkProviderInstance["invoke"] } };
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
@@ -460,7 +460,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
     // When
     const response = await app.request("/v1/chat/completions", {
@@ -498,7 +498,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -554,7 +554,7 @@ describe("POST /v1/chat/completions", () => {
       },
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
     const originalFetch = globalThis.fetch;
     const catalogResponse = Promise.withResolvers<Response>();
     const catalogRequested = Promise.withResolvers<void>();
@@ -630,7 +630,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       dbHome: tempHome(),
       providerInstances: [provider],
@@ -684,7 +684,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -731,7 +731,7 @@ describe("POST /v1/chat/completions", () => {
         ]),
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -771,7 +771,7 @@ describe("POST /v1/chat/completions", () => {
           },
         }),
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -807,7 +807,7 @@ describe("POST /v1/chat/completions", () => {
       protocol: ProviderProtocol.OpenAICompatible,
       passthrough: async () => Response.json({ fallback: true }),
     } satisfies ApiProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [first, second] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -845,7 +845,7 @@ describe("POST /v1/chat/completions", () => {
           },
         ]),
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [first, second] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -887,7 +887,7 @@ describe("POST /v1/chat/completions", () => {
         ]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({ config: { providers: {} }, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, providerInstances: [first, second] });
 
     const response = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -910,7 +910,7 @@ describe("POST /v1/chat/completions", () => {
         return errorStream(new UpstreamStatusError("upstream denied"));
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -947,7 +947,7 @@ describe("POST /v1/chat/completions", () => {
         return errorStream(new AbortStreamError("client closed request"));
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -986,7 +986,7 @@ describe("POST /v1/chat/completions", () => {
         ]),
     } satisfies AiSdkProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
     const abort = new AbortController();
     abort.abort();
 
@@ -1026,7 +1026,7 @@ describe("POST /v1/chat/completions", () => {
         },
       },
     );
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -1067,7 +1067,7 @@ describe("POST /v1/chat/completions", () => {
         },
       },
     );
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -1104,7 +1104,7 @@ describe("POST /v1/chat/completions", () => {
         throw new Error("model exploded");
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -1143,7 +1143,7 @@ describe("POST /v1/chat/completions", () => {
         return textStream([]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });
@@ -1181,7 +1181,7 @@ describe("POST /v1/chat/completions", () => {
         return textStream([]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });

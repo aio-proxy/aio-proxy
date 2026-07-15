@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
-import { type DiagnosticFactory, redactPluginError } from "../../src/plugins/diagnostic";
+import { createPluginDiagnosticFactory, type DiagnosticFactory, redactPluginError } from "../../src/plugins/diagnostic";
 import { loadPluginRegistry } from "../../src/plugins/loader";
 
 describe("redactPluginError", () => {
@@ -163,5 +163,26 @@ describe("redactPluginError", () => {
     expect(JSON.stringify(capturedOptions)).not.toContain("cause");
     expect(JSON.stringify(capturedOptions)).not.toContain("stack");
     expect(Object.keys(capturedOptions as object).sort()).toEqual(["plugin", "retryable"]);
+  });
+});
+
+describe("createPluginDiagnosticFactory", () => {
+  test("centralizes localized summaries, safe identifiers, and injected timestamps", () => {
+    const diagnostic = createPluginDiagnosticFactory(() => 123)("CAPABILITY_MISSING", {
+      plugin: "not a package secret-plugin",
+      capability: "secret capability",
+      providerId: "provider",
+      retryable: false,
+      suggestedCommand: "aio-proxy provider login",
+    });
+
+    expect(diagnostic).toEqual({
+      code: "CAPABILITY_MISSING",
+      occurredAt: new Date(123).toISOString(),
+      retryable: false,
+      suggestedCommand: "aio-proxy provider login",
+      summary: "Plugin <plugin> does not provide capability <capability>.",
+    });
+    expect(diagnostic.summary).not.toContain("secret");
   });
 });

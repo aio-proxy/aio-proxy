@@ -138,10 +138,12 @@ export {
   resolveApiKey,
 } from "./provider/api";
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
+export { createProviderV4Invoke, validateProviderV4 } from "./provider/provider-v4";
 export {
   type ModelRoute,
   modelRoutes,
   type ProviderInstance,
+  type RoutableProvider,
   Router,
   type RouterCandidate,
   type RouterResolution,

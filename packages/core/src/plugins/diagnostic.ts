@@ -1,4 +1,5 @@
-import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
+import { m } from "@aio-proxy/i18n";
+import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 
 export type DiagnosticContext = {
   readonly plugin?: string;
@@ -13,6 +14,55 @@ export type DiagnosticFactory = (
     readonly suggestedCommand?: string;
   },
 ) => Diagnostic;
+
+function diagnosticSummary(code: DiagnosticCode, context: DiagnosticContext): string {
+  const pluginResult = PluginPackageNameSchema.safeParse(context.plugin);
+  const plugin = pluginResult.success ? pluginResult.data : "<plugin>";
+  const capability = /^[a-z0-9][a-z0-9._-]*$/u.test(context.capability ?? "")
+    ? (context.capability as string)
+    : "<capability>";
+  const provider = /^[a-z0-9][a-z0-9._~-]*$/iu.test(context.providerId ?? "")
+    ? (context.providerId as string)
+    : "<provider>";
+  switch (code) {
+    case "PLUGIN_NOT_INSTALLED":
+      return m.cli_plugin_diagnostic_plugin_not_installed({ plugin });
+    case "PLUGIN_API_INCOMPATIBLE":
+      return m.cli_plugin_diagnostic_plugin_api_incompatible({ plugin });
+    case "PLUGIN_LOAD_FAILED":
+      return m.cli_plugin_diagnostic_plugin_load_failed({ plugin });
+    case "PLUGIN_OPTIONS_INVALID":
+      return m.cli_plugin_diagnostic_plugin_options_invalid({ plugin });
+    case "PROVIDER_CONFIG_INVALID":
+      return m.cli_plugin_diagnostic_provider_config_invalid({ provider });
+    case "LEGACY_OAUTH_CONFIG_UNSUPPORTED":
+      return m.cli_plugin_diagnostic_legacy_oauth_config_unsupported({ provider });
+    case "CAPABILITY_MISSING":
+      return m.cli_plugin_diagnostic_capability_missing({ plugin, capability });
+    case "ACCOUNT_OPTIONS_INVALID":
+      return m.cli_plugin_diagnostic_account_options_invalid({ provider });
+    case "CREDENTIALS_MISSING_OR_INVALID":
+      return m.cli_plugin_diagnostic_credentials_missing_or_invalid({ provider });
+    case "CREDENTIAL_REFRESH_FAILED":
+      return m.cli_plugin_diagnostic_credential_refresh_failed({ provider });
+    case "AUTHORIZATION_FAILED":
+      return m.cli_plugin_diagnostic_authorization_failed({ provider });
+    case "CATALOG_UNAVAILABLE":
+      return m.cli_plugin_diagnostic_catalog_unavailable({ provider });
+    case "RUNTIME_CREATE_FAILED":
+      return m.cli_plugin_diagnostic_runtime_create_failed({ provider });
+  }
+}
+
+export function createPluginDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
+  return (code, options) => ({
+    code,
+    summary: diagnosticSummary(code, options),
+    retryable: options.retryable,
+    occurredAt: new Date(now()).toISOString(),
+    ...(options.suggestedCommand === undefined ? {} : { suggestedCommand: options.suggestedCommand }),
+  });
+}
 
 export type PluginLogSink = (entry: {
   readonly event: string;

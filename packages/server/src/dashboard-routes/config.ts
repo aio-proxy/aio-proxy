@@ -1,4 +1,5 @@
 import {
+  AccountCleanupPendingError,
   NpmInstallError,
   NpmLockError,
   NpmPackageEntrypointError,
@@ -183,13 +184,17 @@ export const createDashboardRoutes = (state: ServerState) =>
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const id = context.req.param("id");
-      if (!state.currentConfig().providers.some((entry) => entry.id === id)) {
+      if ((await state.providerSummaries({ filter: id, probe: false })).length === 0) {
         return context.json({ error: "provider not found" }, 404);
       }
-      await state.configStore.mutateProviders((record) => {
-        const { [id]: _removed, ...rest } = record;
-        return rest;
-      });
+      try {
+        await state.configStore.deleteProvider(id);
+      } catch (error) {
+        if (error instanceof AccountCleanupPendingError) {
+          return context.json({ error: "provider account cleanup pending", id }, 409);
+        }
+        throw error;
+      }
       return context.json({ ok: true, id });
     })
     .get("/providers/:id", providerProbeValidator, async (context) => {

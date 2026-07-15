@@ -1,5 +1,5 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, Router } from "@aio-proxy/core";
-import type { AliasConfig, ModelId, OAuthVendor, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from "@aio-proxy/core";
+import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from "@aio-proxy/types";
 import type { RequestRecorder } from "./request-recorder";
 import type { UsageCapture } from "./usage-capture";
 
@@ -7,21 +7,15 @@ export type RuntimeModelMetadata = {
   readonly displayName?: string;
 };
 
-export type OAuthProviderInstance = {
-  readonly enabled: boolean;
-  readonly ensureAvailable?: () => Promise<void>;
-  readonly id: string;
-  readonly invoke: AiSdkProviderInstance["invoke"];
-  readonly kind: ProviderKind.OAuth;
-  readonly models?: ModelId[];
-  readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
-  readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly vendor: OAuthVendor.GitHubCopilot | OAuthVendor.OpenAIChatGPT;
+export type RawTransport = {
+  readonly invoke: ApiProviderInstance["passthrough"];
 };
 
-export type RawTransport = {
-  readonly protocol: ProviderProtocol;
-  readonly invoke: ApiProviderInstance["passthrough"];
+export type RuntimeRawCapability = {
+  readonly resolve: (input: {
+    readonly protocol: ProviderProtocol;
+    readonly modelId: string;
+  }) => RawTransport | undefined;
 };
 
 export type ModelTransport = {
@@ -29,23 +23,46 @@ export type ModelTransport = {
   readonly invoke: AiSdkProviderInstance["invoke"];
 };
 
-export type RuntimeCapabilities =
-  | { readonly raw: RawTransport; readonly model?: ModelTransport }
-  | { readonly raw?: RawTransport; readonly model: ModelTransport };
-
-export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance | OAuthProviderInstance;
-export type RuntimeProviderInstance = LegacyRuntimeProviderInstance &
-  RuntimeCapabilities & {
-    readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
-  };
+export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
+type RuntimeProviderBase = {
+  readonly id: string;
+  readonly kind: ProviderKind;
+  readonly enabled: boolean;
+  readonly models?: readonly ModelId[];
+  readonly alias?: Readonly<Record<string, AliasConfig>>;
+  readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
+  readonly plugin?: string;
+  readonly capability?: string;
+  readonly hasApiKey?: boolean;
+};
+export type RuntimeProviderInstance = RuntimeProviderBase &
+  (
+    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport }
+    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport }
+  );
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 
 export type ProviderRouteSnapshot = {
+  readonly config?: Config;
+  readonly plugins: PluginRegistrySnapshot;
   readonly providers: readonly RuntimeProviderInstance[];
   readonly router: Router<RuntimeProviderInstance>;
+  readonly providerStates?: ReadonlyMap<string, ProviderState>;
+};
+
+export type ProviderSnapshotLease = {
+  readonly snapshot: ProviderRouteSnapshot;
+  readonly release: () => void;
+};
+
+export type RetiredProviderSnapshot = {
+  readonly providerIds: ReadonlySet<string>;
+  readonly whenDrained: Promise<void>;
+  readonly whenProviderDrained: (providerId: string) => Promise<void>;
 };
 
 export type ProviderRouteSource = {
+  readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
   readonly requestRecorder: RequestRecorder;
   readonly usageCapture: UsageCapture;

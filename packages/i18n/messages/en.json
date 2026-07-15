@@ -164,7 +164,11 @@
       "enterprise_url": {
         "message": "Enter your GitHub Enterprise URL or domain",
         "placeholder": "company.ghe.com or https://company.ghe.com"
-      }
+      },
+      "device_instructions": "Enter code"
+    },
+    "openai-chatgpt": {
+      "login_label": "Login with ChatGPT (Plus/Pro)"
     }
   },
   "dashboard": {

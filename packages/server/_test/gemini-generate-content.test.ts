@@ -124,7 +124,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       });
     });
     const dbHome = tempHome();
-    const app = appWith(provider, dbHome);
+    const app = await appWith(provider, dbHome);
 
     // When
     const response = await postGenerate(app, requestBody);
@@ -158,7 +158,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       id: "google-fallback",
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
-    const app = createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
+    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
 
     const response = await postGenerate(app);
 
@@ -189,7 +189,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         }),
     );
     const dbHome = tempHome();
-    const app = appWith(provider, dbHome);
+    const app = await appWith(provider, dbHome);
 
     const response = await postStream(app);
     await response.text();
@@ -219,7 +219,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       });
     });
     const dbHome = tempHome();
-    const app = appWith(provider, dbHome);
+    const app = await appWith(provider, dbHome);
     const abort = new AbortController();
     abort.abort();
 
@@ -257,7 +257,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
   ])("Given final provider rejects %p When generateContent is posted Then one failed request is recorded", async (reason) => {
     const provider = aiSdkProvider(() => new ReadableStream({ pull: (controller) => controller.error(reason) }));
     const dbHome = tempHome();
-    const app = appWith(provider, dbHome);
+    const app = await appWith(provider, dbHome);
 
     const response = await postGenerate(app);
 
@@ -296,7 +296,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         return Response.json({ ok: true });
       },
     } satisfies ApiProviderInstance;
-    const app = appWith(provider);
+    const app = await appWith(provider);
     const body = {
       ...generateRequest,
       generationConfig: { thinkingConfig: { thinkingLevel: "HIGH" } },
@@ -318,7 +318,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       invoked = true;
       return new Response("provider-invoked", { status: 202 });
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
     const data = `${"A".repeat(27_962_028)}====`;
 
     // When
@@ -365,7 +365,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         },
       ]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postGenerate(app);
@@ -414,7 +414,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         return textStream([]);
       },
     } satisfies AiSdkProviderInstance;
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postGenerate(
@@ -457,7 +457,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
         { type: "text-end", id: "text-1" },
       ]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postGenerate(app, {
@@ -500,7 +500,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       invoked = true;
       return textStream([]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postGenerate(app, generateRequest, "missing-model");
@@ -525,7 +525,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       invoked = true;
       return textStream([]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await app.request("/v1beta/models/gemini-2.5-flash:generateContent", {
@@ -556,7 +556,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       invoked = true;
       return textStream([]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
     const data = `${"A".repeat(27_962_028)}====`;
 
     // When
@@ -591,7 +591,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
         status: 200,
       });
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postStream(app);
@@ -609,7 +609,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
       invoked = true;
       return new Response('data: {"upstream":true}\n\n', { status: 200 });
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
     const data = `${"A".repeat(27_962_028)}====`;
 
     // When
@@ -652,7 +652,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
         },
       ]);
     });
-    const app = appWith(provider);
+    const app = await appWith(provider);
 
     // When
     const response = await postStream(app);
@@ -689,7 +689,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
 describe("Gemini generateContent route matching", () => {
   test("Given missing method suffix When model path is posted Then Hono returns 404", async () => {
     // Given
-    const app = appWith();
+    const app = await appWith();
 
     // When
     const response = await app.request("/v1beta/models/gemini-2.5-flash", {

@@ -5,6 +5,55 @@ import { join } from "node:path";
 import { ConfigReloadRejectedError, createConfigStore } from "../src/config-store";
 
 describe("createConfigStore mutex", () => {
+  test("serializes every mutation in invocation order before entering AtomicConfigFile", async () => {
+    let transactionCalls = 0;
+    let releaseFirst = () => {};
+    const firstMayEnter = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const order: string[] = [];
+    const file = {
+      async transaction(
+        mutate: (current: Record<string, unknown>) => Promise<{
+          readonly next: Record<string, unknown>;
+          readonly result: unknown;
+        }>,
+        options: { readonly verify?: (candidate: Record<string, unknown>) => Promise<void> } = {},
+      ) {
+        transactionCalls++;
+        if (transactionCalls === 1) await firstMayEnter;
+        const result = await mutate({ providers: { seed: { kind: "api" } } });
+        await options.verify?.(result.next);
+        return result.result;
+      },
+    };
+    const store = createConfigStore({
+      getConfigPath: () => undefined,
+      file,
+      verify: async () => undefined,
+    } as never);
+
+    const first = store.mutateProviders((record) => {
+      order.push("first");
+      return record;
+    });
+    const second = store.mutateProviders((record) => {
+      order.push("second");
+      return record;
+    });
+
+    try {
+      await Bun.sleep(0);
+      expect(transactionCalls).toBe(1);
+      releaseFirst();
+      await Promise.all([first, second]);
+      expect(order).toEqual(["first", "second"]);
+    } finally {
+      releaseFirst();
+      await Promise.allSettled([first, second]);
+    }
+  });
+
   test("a rejected write does not poison later mutations", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aio-store-"));
     const configPath = join(dir, "config.json");
@@ -13,9 +62,8 @@ describe("createConfigStore mutex", () => {
     let reloads = 0;
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => {
+      verify: async () => {
         reloads += 1;
-        return { ok: true as const };
       },
     });
 
@@ -44,7 +92,9 @@ describe("createConfigStore mutex", () => {
 
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => ({ ok: false as const, error: "invalid alias target" }),
+      verify: async () => {
+        throw new Error("invalid alias target");
+      },
     });
 
     await expect(store.mutateProviders((record) => ({ ...record, b: { kind: "api" } }))).rejects.toThrow(
@@ -63,7 +113,7 @@ describe("createConfigStore mutex", () => {
     chmodSync(configPath, 0o600);
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => ({ ok: true as const }),
+      verify: async () => undefined,
     });
 
     await store.mutateProviders((record) => ({ ...record, added: { kind: "api" } }));

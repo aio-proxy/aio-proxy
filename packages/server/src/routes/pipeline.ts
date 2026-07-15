@@ -6,6 +6,7 @@ import {
   RouterModelNotFoundError,
   type RouterResolution,
 } from "@aio-proxy/core";
+import type { ProviderProtocol } from "@aio-proxy/types";
 import type { RequestAttemptInput, RequestFinishInput } from "../request-recorder";
 import { isInboundAbort, terminalCompletion } from "../route-observation";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
@@ -33,6 +34,8 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly request: TRequest;
   readonly requestedModel: string;
   readonly source: ProviderRouteSource;
+  readonly deferRelease: () => void;
+  readonly release: () => void;
 };
 
 export async function handleProtocolRequest<TRequest, TContext>({
@@ -56,32 +59,41 @@ export async function handleProtocolRequest<TRequest, TContext>({
   }
 
   const requestedModel = adapter.model(request, context);
-  let candidates: readonly RouterResolution<RuntimeProviderInstance>[];
+  const lease = source.acquireProviderSnapshot();
+  let deferred = false;
+  const deferRelease = () => {
+    deferred = true;
+  };
   try {
-    candidates = source.currentProviderSnapshot().router.resolve(requestedModel, adapter.variant(request, context));
+    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+    return await attemptCandidates({
+      adapter,
+      candidates,
+      context,
+      deferRelease,
+      rawRequest,
+      release: lease.release,
+      request,
+      requestedModel,
+      source,
+    });
   } catch (error) {
     if (error instanceof RouterModelNotFoundError) {
       return adapter.errors.modelNotFound(error.message);
     }
     throw error;
+  } finally {
+    if (!deferred) lease.release();
   }
-
-  return attemptCandidates({
-    adapter,
-    candidates,
-    context,
-    rawRequest,
-    request,
-    requestedModel,
-    source,
-  });
 }
 
 async function attemptCandidates<TRequest, TContext>({
   adapter,
   candidates,
   context,
+  deferRelease,
   rawRequest,
+  release,
   request,
   requestedModel,
   source,
@@ -98,11 +110,13 @@ async function attemptCandidates<TRequest, TContext>({
     const startedAt = performance.now();
     const hasNext = index < candidates.length - 1;
     try {
-      if (provider.raw?.protocol === adapter.protocol) {
+      const raw = provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
+      if (raw !== undefined) {
         const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
-        const response = await provider.raw.invoke(upstream);
+        const response = await raw.invoke(upstream);
+        if (!(response instanceof Response)) throw new TypeError("Provider raw transport must return a Response");
         if (hasNext && shouldFallbackStatus(response.status)) {
-          session.attempt(failedAttempt(provider, candidate.modelId, response.status, startedAt));
+          session.attempt(failedAttempt(provider, candidate.modelId, response.status, startedAt, adapter.protocol));
           lastFailure = response;
           try {
             await response.body?.cancel();
@@ -110,23 +124,27 @@ async function attemptCandidates<TRequest, TContext>({
           continue;
         }
         if (response.status < 200 || response.status >= 400) {
-          session.finish(finalFailure(provider, candidate.modelId, response.status, startedAt));
-          return response;
+          session.finish(finalFailure(provider, candidate.modelId, response.status, startedAt, adapter.protocol));
+          const retained = retainResponseBody(response, release);
+          if (retained !== response) deferRelease();
+          return retained;
         }
         const captured = source.usageCapture.passthrough({
           response,
-          protocol: provider.raw.protocol,
+          protocol: adapter.protocol,
           providerId: provider.id,
           modelId: candidate.modelId,
         });
         session.finishFrom(
-          attemptBase(provider, candidate.modelId, startedAt),
-          terminalCompletion(captured.completion, rawRequest.signal),
+          attemptBase(provider, candidate.modelId, startedAt, adapter.protocol),
+          terminalCompletion(captured.completion, rawRequest.signal).finally(release),
         );
+        deferRelease();
         return captured.value;
       }
 
-      if (provider.model !== undefined) {
+      const model = provider.model;
+      if (model !== undefined) {
         if (invocation === undefined) {
           try {
             invocation = adapter.modelInvocation(request, context);
@@ -137,11 +155,11 @@ async function attemptCandidates<TRequest, TContext>({
             return mapped;
           }
         }
-        await provider.model.ensureAvailable?.();
+        await model.ensureAvailable?.();
         const captured = source.usageCapture.stream({
           providerId: provider.id,
           modelId: candidate.modelId,
-          stream: provider.model.invoke({
+          stream: model.invoke({
             messages: invocation.messages,
             modelId: candidate.modelId,
             signal: rawRequest.signal,
@@ -164,8 +182,9 @@ async function attemptCandidates<TRequest, TContext>({
           }
           session.finishFrom(
             attemptBase(provider, candidate.modelId, startedAt),
-            terminalCompletion(captured.completion, rawRequest.signal),
+            terminalCompletion(captured.completion, rawRequest.signal).finally(release),
           );
+          deferRelease();
           return response;
         }
 
@@ -178,6 +197,8 @@ async function attemptCandidates<TRequest, TContext>({
         return response;
       }
 
+      // The capability union guarantees this is a raw-only provider whose
+      // resolver does not support the inbound protocol/model combination.
       const unsupported = adapter.errors.unsupported("transform_dispatch");
       if (hasNext) {
         session.attempt(failedAttempt(provider, candidate.modelId, unsupported.status, startedAt));
@@ -240,12 +261,13 @@ function attemptBase(
   provider: RuntimeProviderInstance,
   modelId: string,
   startedAt: number,
+  protocol?: ProviderProtocol,
 ): Omit<RequestAttemptInput, "outcome" | "statusCode" | "errorCode"> {
   return {
     providerId: provider.id,
     modelId,
     providerKind: provider.kind,
-    ...("protocol" in provider ? { protocol: provider.protocol } : {}),
+    ...(protocol === undefined ? {} : { protocol }),
     durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
   };
 }
@@ -255,9 +277,10 @@ function failedAttempt(
   modelId: string,
   statusCode: number,
   startedAt: number,
+  protocol?: ProviderProtocol,
 ): RequestAttemptInput {
   return {
-    ...attemptBase(provider, modelId, startedAt),
+    ...attemptBase(provider, modelId, startedAt, protocol),
     outcome: "failure",
     statusCode,
   };
@@ -268,18 +291,55 @@ function finalFailure(
   modelId: string,
   statusCode: number,
   startedAt: number,
+  protocol?: ProviderProtocol,
 ): RequestFinishInput {
   return {
     outcome: "failure",
     finalProviderId: provider.id,
     finalModelId: modelId,
     finalStatusCode: statusCode,
-    attempt: failedAttempt(provider, modelId, statusCode, startedAt),
+    attempt: failedAttempt(provider, modelId, statusCode, startedAt, protocol),
   };
 }
 
 function shouldFallbackStatus(status: number): boolean {
   return status === 429 || status >= 500;
+}
+
+function retainResponseBody(response: Response, release: () => void): Response {
+  if (response.body === null) return response;
+  const reader = response.body.getReader();
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    reader.releaseLock();
+    release();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          settle();
+          controller.close();
+        } else {
+          controller.enqueue(next.value);
+        }
+      } catch (error) {
+        settle();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        settle();
+      }
+    },
+  });
+  return new Response(body, { headers: response.headers, status: response.status, statusText: response.statusText });
 }
 
 async function preflightStream<T>(stream: ReadableStream<T>): Promise<ReadableStream<T>> {
@@ -291,7 +351,7 @@ async function preflightStream<T>(stream: ReadableStream<T>): Promise<ReadableSt
       released = true;
     }
   };
-  let first: ReadableStreamReadResult<T>;
+  let first: Awaited<ReturnType<ReadableStreamDefaultReader<T>["read"]>>;
   try {
     first = await reader.read();
   } catch (error) {

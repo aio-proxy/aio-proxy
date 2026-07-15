@@ -110,7 +110,7 @@ function provider(
     models: ["m"],
     passthrough: raw,
     protocol,
-    raw: { invoke: raw, protocol },
+    raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: raw } : undefined) },
   } satisfies ApiProviderInstance & RuntimeProviderInstance;
   return { calls, value };
 }
@@ -137,7 +137,7 @@ function modelStream(text: string): ReadableStream<TextStreamPart<ToolSet>> {
 }
 
 async function request(inbound: InboundCase, providers: readonly RuntimeProviderInstance[], dbHome?: string) {
-  const app = createServer({
+  const app = await createServer({
     config: { providers: {} },
     dbHome: dbHome ?? tempHome(),
     providerInstances: providers,

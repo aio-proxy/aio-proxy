@@ -6,6 +6,7 @@ import {
   AiSdkProviderSchema,
   ApiProviderMutationBodySchema,
   CapabilityIdSchema,
+  ConfigAuthoringSchema,
   ConfigSchema,
   DashboardEventSchema,
   DashboardUsageOverviewResponseSchema,
@@ -13,7 +14,6 @@ import {
   type InvalidProviderConfig,
   OAuthPluginProviderSchema,
   OAuthProviderSchema,
-  OAuthVendor,
   PluginPackageNameSchema,
   PluginStateSchema,
   ProviderKind,
@@ -36,7 +36,7 @@ const apiProvider = {
 const providers = (entries: Record<string, unknown>) => ({ providers: entries });
 
 function expectIssuePath(input: unknown, path: (string | number)[]) {
-  const result = ConfigSchema.safeParse(input);
+  const result = ConfigAuthoringSchema.safeParse(input);
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(result.error.issues.map((issue) => issue.path)).toContainEqual(path);
@@ -49,6 +49,7 @@ describe("ConfigSchema", () => {
       plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...apiProvider, enabled: true, id: "openai" }],
+      invalidProviders: [],
     });
   });
 
@@ -57,6 +58,7 @@ describe("ConfigSchema", () => {
       plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...apiProvider, enabled: false, id: "openai" }],
+      invalidProviders: [],
     });
   });
 
@@ -64,7 +66,8 @@ describe("ConfigSchema", () => {
     // Given
     const provider = {
       kind: "oauth",
-      vendor: OAuthVendor.GitHubCopilot,
+      plugin: "@aio-proxy/plugin-github-copilot",
+      capability: "default",
       models: ["gpt-5-mini"],
     };
 
@@ -75,7 +78,16 @@ describe("ConfigSchema", () => {
     expect(config).toEqual({
       plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
-      providers: [{ kind: "oauth", vendor: OAuthVendor.GitHubCopilot, enabled: true, id: "copilot" }],
+      providers: [
+        {
+          kind: "oauth",
+          plugin: "@aio-proxy/plugin-github-copilot",
+          capability: "default",
+          enabled: true,
+          id: "copilot",
+        },
+      ],
+      invalidProviders: [],
     });
     expect(config.providers[0]).not.toHaveProperty("models");
   });
@@ -84,7 +96,8 @@ describe("ConfigSchema", () => {
     // Given
     const provider = {
       kind: "oauth",
-      vendor: OAuthVendor.GitHubCopilot,
+      plugin: "@aio-proxy/plugin-github-copilot",
+      capability: "default",
       alias: { mini: { model: "gpt-5-mini" } },
     };
 
@@ -94,7 +107,8 @@ describe("ConfigSchema", () => {
     // Then
     expect(config.providers[0]).toEqual({
       kind: "oauth",
-      vendor: OAuthVendor.GitHubCopilot,
+      plugin: "@aio-proxy/plugin-github-copilot",
+      capability: "default",
       enabled: true,
       id: "copilot",
       alias: { mini: { model: "gpt-5-mini", preserve: false } },
@@ -105,20 +119,35 @@ describe("ConfigSchema", () => {
   test("Given oauth provider config with openai-chatgpt vendor When parsed Then it is accepted", () => {
     const provider = {
       kind: "oauth",
-      vendor: OAuthVendor.OpenAIChatGPT,
+      plugin: "@aio-proxy/plugin-openai-chatgpt",
+      capability: "default",
     };
 
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
       plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...provider, enabled: true, id: "chatgpt" }],
+      invalidProviders: [],
     });
   });
 
   test("Given oauth and ai-sdk provider schemas When parsed Then name is accepted", () => {
-    expect(OAuthProviderSchema.parse({ kind: "oauth", id: "x", vendor: "github-copilot", name: "My Copilot" })).toEqual(
-      { kind: "oauth", id: "x", vendor: "github-copilot", name: "My Copilot", enabled: true },
-    );
+    expect(
+      OAuthProviderSchema.parse({
+        kind: "oauth",
+        id: "x",
+        plugin: "@example/oauth",
+        capability: "default",
+        name: "My Copilot",
+      }),
+    ).toEqual({
+      kind: "oauth",
+      id: "x",
+      plugin: "@example/oauth",
+      capability: "default",
+      name: "My Copilot",
+      enabled: true,
+    });
     expect(AiSdkProviderSchema.parse({ kind: "ai-sdk", id: "y", name: "My SDK" })).toEqual({
       kind: "ai-sdk",
       id: "y",
@@ -140,6 +169,7 @@ describe("ConfigSchema", () => {
       plugins: [],
       server: { host: "127.0.0.1", port: 22078 },
       providers: [{ ...provider, enabled: true, id: "google" }],
+      invalidProviders: [],
     });
   });
 
@@ -171,7 +201,7 @@ describe("ConfigSchema", () => {
     ]);
   });
 
-  test("Given ai-sdk config with a blank packageName When parsed Then it is rejected", () => {
+  test("Given ai-sdk config with a blank packageName When parsed Then it is degraded", () => {
     // Given
     const config = providers({ blank: { kind: "ai-sdk", packageName: "   " } });
 
@@ -179,7 +209,8 @@ describe("ConfigSchema", () => {
     const result = ConfigSchema.safeParse(config);
 
     // Then
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.invalidProviders[0]?.issuePaths).toContainEqual(["packageName"]);
     if (!result.success) {
       expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["providers", "blank", "packageName"]);
     }
@@ -188,7 +219,7 @@ describe("ConfigSchema", () => {
   test("accepts mixed provider config", () => {
     const input = {
       openai: apiProvider,
-      copilot: { kind: "oauth", vendor: OAuthVendor.GitHubCopilot },
+      copilot: { kind: "oauth", plugin: "@aio-proxy/plugin-github-copilot", capability: "default" },
       anthropic: { kind: "ai-sdk", packageName: "@ai-sdk/anthropic" },
     };
 
@@ -202,9 +233,16 @@ describe("ConfigSchema", () => {
       server: { host: "127.0.0.1", port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
-        { kind: "oauth", enabled: true, id: "copilot", vendor: OAuthVendor.GitHubCopilot },
+        {
+          kind: "oauth",
+          enabled: true,
+          id: "copilot",
+          plugin: "@aio-proxy/plugin-github-copilot",
+          capability: "default",
+        },
         { kind: "ai-sdk", enabled: true, id: "anthropic", packageName: "@ai-sdk/anthropic" },
       ],
+      invalidProviders: [],
     });
   });
 
@@ -232,7 +270,7 @@ describe("ConfigSchema", () => {
   });
 
   test("generates object-shaped provider input schema without value id", () => {
-    const jsonSchema = z.toJSONSchema(ConfigSchema, { io: "input" }) as {
+    const jsonSchema = z.toJSONSchema(ConfigAuthoringSchema, { io: "input" }) as {
       properties: {
         providers: {
           additionalProperties: { oneOf: { properties: Record<string, unknown> }[] };
@@ -299,7 +337,7 @@ describe("ConfigSchema", () => {
         server: {},
         providers: { copilot: { kind: "oauth", vendor: "github" } },
       },
-      ["providers", "copilot", "vendor"],
+      ["providers", "copilot", "plugin"],
     );
   });
 
@@ -309,7 +347,7 @@ describe("ConfigSchema", () => {
         server: {},
         providers: { copilot: { kind: "oauth", vendor: "openai" } },
       },
-      ["providers", "copilot", "vendor"],
+      ["providers", "copilot", "plugin"],
     );
   });
 
@@ -762,7 +800,7 @@ describe("plugin identifiers and staged OAuth provider schema", () => {
     } as const;
 
     expect(OAuthPluginProviderSchema.parse(provider)).toEqual({ ...provider, enabled: true });
-    expect(OAuthProviderSchema.safeParse(provider).success).toBe(false);
+    expect(OAuthProviderSchema.safeParse(provider).success).toBe(true);
   });
 });
 

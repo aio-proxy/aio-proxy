@@ -32,6 +32,7 @@ export type GitHubCopilotCredential = {
 export async function loginToGitHubCopilot(
   context: OAuthLoginContext,
   options: GitHubAccountOptions,
+  deviceInstructions = "Enter code",
 ): Promise<{
   readonly fingerprint: string;
   readonly suggestedKey: string;
@@ -47,7 +48,7 @@ export async function loginToGitHubCopilot(
   await context.authorization.presentDeviceCode({
     url: device.verificationUriComplete ?? device.verificationUri,
     userCode: device.userCode,
-    instructions: `Enter code ${device.userCode}`,
+    instructions: `${deviceInstructions} ${device.userCode}`,
   });
 
   const githubToken = await pollGitHubToken(authBase, device, context);

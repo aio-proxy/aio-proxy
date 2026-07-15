@@ -13,6 +13,7 @@ import { FormSchemaValidationError } from "../src/plugin-commands/form";
 import {
   BuiltInPluginRemovalError,
   createCliPluginDiagnosticFactory,
+  createDefaultPluginLifecycleDeps,
   PluginConfigChangedError,
   PluginConfirmationRequiredError,
   PluginDescriptorInvalidError,
@@ -29,6 +30,18 @@ import {
 } from "../src/plugin-commands/plugin";
 
 const homes: string[] = [];
+
+test("default plugin lifecycle dependencies bind embedded built-ins", () => {
+  const deps = createDefaultPluginLifecycleDeps();
+  try {
+    expect(deps.builtIns?.map(({ packageName }) => packageName).sort()).toEqual([
+      "@aio-proxy/plugin-github-copilot",
+      "@aio-proxy/plugin-openai-chatgpt",
+    ]);
+  } finally {
+    deps.close?.();
+  }
+});
 
 function harness(initial: Record<string, unknown> = { providers: {}, plugins: [] }) {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-command-"));

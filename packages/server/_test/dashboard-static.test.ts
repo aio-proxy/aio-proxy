@@ -13,7 +13,7 @@ describe("dashboard static routes", () => {
     mkdirSync(join(dir, "static"));
     writeFileSync(join(dir, "index.html"), '<div id="root"></div><script src="/dashboard/static/app.js"></script>');
     writeFileSync(join(dir, "static", "app.js"), "console.log('dashboard');");
-    const app = createServer({ config, dashboardAssets: directoryDashboardAssets(dir) });
+    const app = await createServer({ config, dashboardAssets: directoryDashboardAssets(dir) });
 
     try {
       // When

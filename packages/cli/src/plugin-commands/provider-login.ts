@@ -3,6 +3,7 @@ import {
   AccountOptionsValidationError,
   AtomicConfigFile,
   configPath,
+  createEmbeddedBuiltIns,
   createPluginRepository,
   type DiagnosticFactory,
   type LoginOAuthAccountOptions,
@@ -223,7 +224,7 @@ export async function createProviderLoginDefaultDeps(
     const diagnostics = createCliPluginDiagnosticFactory();
     const snapshot = await (options.loadRegistry ?? loadPluginRegistry)({
       enablements: enablements(await config.read()),
-      builtIns: [],
+      builtIns: createEmbeddedBuiltIns(),
       diagnostics,
       importPackage: async ({ entrypoint }) => import(entrypoint),
       logger: () => {},

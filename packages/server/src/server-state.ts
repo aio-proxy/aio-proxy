@@ -1,5 +1,23 @@
-import { readFile } from "node:fs/promises";
-import { createModelsDevCatalog, type FetchModelsDevProviders, type ModelsDevCatalog, Router } from "@aio-proxy/core";
+import { dirname } from "node:path";
+import {
+  AtomicConfigFile,
+  type BuiltInPluginDefinition,
+  createEmbeddedBuiltIns,
+  createModelsDevCatalog,
+  createPluginDiagnosticFactory,
+  createPluginRepository,
+  type DiagnosticFactory,
+  type FetchModelsDevProviders,
+  loadPluginRegistry,
+  type ModelsDevCatalog,
+  type PendingAccountOperation,
+  type PluginLogSink,
+  type PluginPackageImporter,
+  type PluginRegistrySnapshot,
+  type PluginRepository,
+  Router,
+  recoverPendingAccountOperations,
+} from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb, type RequestLogStore } from "@aio-proxy/core/db";
 import {
   type Config,
@@ -7,11 +25,18 @@ import {
   type DashboardEvent,
   type DashboardProviderProbe,
   type DashboardProviderSummary,
+  ProviderKind,
+  type ProviderState,
 } from "@aio-proxy/types";
 import { ZodError } from "zod";
+import { asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
+import { CatalogScheduler } from "./catalog-scheduler";
 import { type ConfigStore, createConfigStore } from "./config-store";
 import { watchConfigFile } from "./config-watcher";
 import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLimits } from "./dashboard-events";
+import { createFifoQueue } from "./fifo-queue";
+import { type CatalogJobDescriptor, materializePluginProvider, type PluginRuntimeCacheEntry } from "./plugin-runtime";
+import { createSnapshotManager } from "./plugin-snapshot";
 import {
   materializeProviders,
   materializeRuntimeProvider,
@@ -23,6 +48,7 @@ import { createRequestRecorder } from "./request-recorder";
 import type {
   ProviderRouteSnapshot,
   ProviderRouteSource,
+  RetiredProviderSnapshot,
   RuntimeProviderInput,
   RuntimeProviderInstance,
 } from "./runtime";
@@ -37,7 +63,22 @@ export type ServerStateOptions = {
   readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;
+  readonly pluginRepository?: PluginRepository;
+  readonly importPlugin?: PluginPackageImporter;
+  readonly pluginLogger?: PluginLogSink;
+  readonly builtIns?: readonly BuiltInPluginDefinition[];
 };
+
+type ServerStateTestHooks = {
+  readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
+  readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
+  readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
+};
+
+type InternalServerStateOptions = ServerStateOptions & { readonly __test?: ServerStateTestHooks };
+
+const createRuntimeRouter = (providers: readonly RuntimeProviderInstance[]): Router<RuntimeProviderInstance> =>
+  new Router(providers);
 
 export type ConfigReloadLog = {
   readonly error: string;
@@ -65,109 +106,248 @@ export type ProviderSummaryOptions = {
 };
 
 type ConfigChangedData = Extract<DashboardEvent, { readonly event: "config.changed" }>["data"];
-
-type ReloadFailure = {
-  readonly error: string;
-  readonly ok: false;
-  readonly stage: ConfigReloadLog["stage"];
-};
+type ReloadFailure = { readonly error: string; readonly ok: false; readonly stage: ConfigReloadLog["stage"] };
 
 type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
   readonly probes: ReadonlyMap<string, ProviderProbe>;
   readonly summaries: readonly DashboardProviderSummary[];
+  readonly catalogJobs: readonly CatalogJobDescriptor[];
+  readonly runtimeCache: ReadonlyMap<string, PluginRuntimeCacheEntry>;
+  readonly providerStates: ReadonlyMap<string, ProviderState>;
 };
 
-type ProviderStatus = {
-  readonly last_latency: number | null;
-  readonly last_status: string;
-};
+type ProviderStatus = { readonly last_latency: number | null; readonly last_status: string };
 
-const defaultLogger = (entry: ConfigReloadLog): void => {
-  console.error(JSON.stringify(entry));
-};
+const defaultLogger = (entry: ConfigReloadLog): void => console.error(JSON.stringify(entry));
+const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
-export function createServerState(options: ServerStateOptions): ServerState {
-  let snapshot =
-    options.providerInstances === undefined
-      ? buildSnapshotFromConfig(options.config)
-      : buildSnapshotWithProviders(options.config, options.providerInstances);
+export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
+  return createPluginDiagnosticFactory(now);
+}
 
+export async function createServerState(options: ServerStateOptions): Promise<ServerState> {
+  const testHooks = (options as InternalServerStateOptions).__test;
+  const createRouter = testHooks?.createRouter ?? createRuntimeRouter;
   const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
   const dbHandle = openServerDb(options);
+  const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
+  const diagnostics = createServerDiagnosticFactory();
+  const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
+  const configFile = options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath);
+  const accountRemovals = createAccountRemovalCoordinator({ file: configFile, repository });
+  const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let recoveryGeneration = 0;
+  let closed = false;
+
+  if (configFile !== undefined) {
+    await recoverAccounts(
+      configFile,
+      repository,
+      { mode: "server", canDeleteAccount: () => true },
+      {
+        factory: diagnostics,
+        logger: pluginLogger,
+      },
+    );
+  }
+
+  const queue = createFifoQueue();
+  let manager: ReturnType<typeof createSnapshotManager>;
+  let managerReady = false;
+  let startupDiagnosticRebuildPending = false;
+  const queueRebuild = () => {
+    if (!managerReady) {
+      startupDiagnosticRebuildPending = true;
+      return;
+    }
+    void queue(() => commitConfig((manager.current() as Snapshot).config, "credential-diagnostic")).catch(() => {});
+  };
+  const initial =
+    options.providerInstances === undefined
+      ? await buildSnapshot(
+          options.config,
+          undefined,
+          options,
+          repository,
+          diagnostics,
+          pluginLogger,
+          queueRebuild,
+          createRouter,
+        )
+      : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
+  manager = createSnapshotManager(initial);
+  managerReady = true;
+  const scheduler = new CatalogScheduler({
+    repository,
+    diagnostics,
+    rebuild: () => queue(() => commitConfig((manager.current() as Snapshot).config, "catalog")),
+  });
+  const replaceCatalogJobs = (jobs: readonly CatalogJobDescriptor[]): void => {
+    scheduler.replaceJobs(jobs);
+    testHooks?.onCatalogJobsReplaced?.(jobs);
+  };
+  if (startupDiagnosticRebuildPending) {
+    startupDiagnosticRebuildPending = false;
+    await queue(() => commitConfig((manager.current() as Snapshot).config, "credential-diagnostic"));
+  } else {
+    replaceCatalogJobs(initial.catalogJobs);
+  }
+
   const requestLog = createRequestLogStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
   const requestRecorder = createRequestRecorder({ store: requestLog });
   const logger = options.logger ?? defaultLogger;
-  const watcher =
-    options.configPath !== undefined && options.watchConfig !== false
-      ? watchConfigFile(options.configPath, reload)
-      : undefined;
+  async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {
+    const candidate = await buildSnapshot(
+      config,
+      manager.current() as Snapshot,
+      options,
+      repository,
+      diagnostics,
+      pluginLogger,
+      queueRebuild,
+      createRouter,
+    );
+    const before = (manager.current() as Snapshot).summaries;
+    const retired = manager.swap(candidate);
+    replaceCatalogJobs(candidate.catalogJobs);
+    events.publish({ event: "config.changed", data: providerDiff(before, candidate.summaries) });
+    return retired;
+  }
 
   async function reload(): Promise<ConfigReloadResult> {
-    const result = await buildReloadSnapshot(options.configPath, snapshot.config);
-    if (!result.ok) {
-      logger({
-        error: result.error,
-        event: "config.reload_failed",
-        stage: result.stage,
-      });
-      return result;
-    }
-
-    const diff = providerDiff(snapshot.summaries, result.snapshot.summaries);
-    snapshot = result.snapshot;
-    events.publish({ event: "config.changed", data: diff });
-    return { ok: true, diff };
+    return queue(async () => {
+      try {
+        const before = (manager.current() as Snapshot).summaries;
+        if (configFile === undefined) {
+          await commitConfig((manager.current() as Snapshot).config, "reload");
+        } else {
+          const staged: PendingAccountOperation[] = [];
+          let retired: RetiredProviderSnapshot | undefined;
+          try {
+            await configFile.transaction(async (current) => {
+              const previous = manager.current() as Snapshot;
+              staged.push(
+                ...accountRemovals.stageRemoved(
+                  providerConfigRecord(previous.config),
+                  asProviderRecord(current["providers"]),
+                ),
+              );
+              retired = await commitConfig(ConfigSchema.parse(current), "reload");
+              return { next: current, result: undefined };
+            });
+          } catch (error) {
+            accountRemovals.compensate(staged);
+            throw error;
+          }
+          void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+        }
+        return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
+      } catch (error) {
+        const result = reloadError(error);
+        logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
+        return result;
+      }
+    });
   }
+
+  const configStore = createConfigStore({
+    getConfigPath: () => options.configPath,
+    accountRemovals,
+    repository,
+    verify: (candidate) => queue(() => commitConfig(ConfigSchema.parse(candidate), "config-store")),
+  });
 
   async function providerSummaries({
     filter,
     probe,
   }: ProviderSummaryOptions): Promise<readonly DashboardProviderSummary[]> {
-    const rows = snapshot.summaries.filter((provider) => filter === undefined || provider.id === filter);
-    if (!probe) {
-      return rows.map((provider) => mergeStatus(provider, statuses.get(provider.id)));
+    const lease = manager.acquire();
+    try {
+      const active = lease.snapshot as Snapshot;
+      const rows = active.summaries.filter((provider) => filter === undefined || provider.id === filter);
+      if (!probe) return rows.map((provider) => mergeStatus(provider, statuses.get(provider.id)));
+      return await Promise.all(
+        rows.map(async (provider) => {
+          const started = performance.now();
+          const probeStatus = await runProbe(provider.id, active.probes);
+          const status = { last_latency: Math.round(performance.now() - started), last_status: probeStatus };
+          statuses.set(provider.id, status);
+          return { ...provider, ...status, probe: probeStatus };
+        }),
+      );
+    } finally {
+      lease.release();
     }
-
-    return Promise.all(
-      rows.map(async (provider) => {
-        const started = performance.now();
-        const probeStatus = await runProbe(provider.id, snapshot.probes);
-        const status = {
-          last_latency: Math.round(performance.now() - started),
-          last_status: probeStatus,
-        };
-        statuses.set(provider.id, status);
-        return { ...provider, ...status, probe: probeStatus };
-      }),
-    );
   }
 
-  const configStore = createConfigStore({
-    getConfigPath: () => options.configPath,
-    reload,
-  });
+  async function runRecovery(generation: number): Promise<void> {
+    if (closed || generation !== recoveryGeneration || configFile === undefined) return;
+    const result = await recoverAccounts(
+      configFile,
+      repository,
+      { mode: "server", canDeleteAccount: manager.canDeleteAccount },
+      { factory: diagnostics, logger: pluginLogger },
+    );
+    if (closed || generation !== recoveryGeneration) return;
+    if (result.nextRunAt !== undefined) scheduleRecovery(result.nextRunAt, generation);
+  }
+
+  function scheduleRecovery(nextRunAt: number, generation = recoveryGeneration): void {
+    if (closed || generation !== recoveryGeneration) return;
+    if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+    recoveryTimer = setTimeout(
+      () => {
+        recoveryTimer = undefined;
+        if (closed || generation !== recoveryGeneration) return;
+        void runRecovery(generation);
+      },
+      Math.max(0, nextRunAt - Date.now()),
+    );
+    recoveryTimer.unref?.();
+  }
+
+  if (configFile !== undefined) {
+    const recovered = await recoverAccounts(
+      configFile,
+      repository,
+      { mode: "server", canDeleteAccount: manager.canDeleteAccount },
+      { factory: diagnostics, logger: pluginLogger },
+    );
+    if (recovered.nextRunAt !== undefined) scheduleRecovery(recovered.nextRunAt);
+  }
+
+  const watcher =
+    options.configPath !== undefined && options.watchConfig !== false
+      ? watchConfigFile(options.configPath, reload)
+      : undefined;
 
   return {
+    acquireProviderSnapshot: manager.acquire,
     close() {
+      if (closed) return;
+      closed = true;
+      recoveryGeneration++;
       watcher?.close();
+      scheduler.close();
+      if (recoveryTimer !== undefined) {
+        clearTimeout(recoveryTimer);
+        recoveryTimer = undefined;
+      }
       events.close();
       dbHandle.close();
     },
     configPath: options.configPath,
     configStore,
-    currentProviderSnapshot() {
-      return snapshot;
-    },
+    currentProviderSnapshot: manager.current,
     events,
     providerSummaries,
-    currentConfig() {
-      return snapshot.config;
-    },
+    currentConfig: () => (manager.current() as Snapshot).config,
     modelsDevCatalog,
     reload,
     requestLog,
@@ -176,29 +356,155 @@ export function createServerState(options: ServerStateOptions): ServerState {
   };
 }
 
+async function buildSnapshot(
+  config: Config,
+  previous: Snapshot | undefined,
+  options: ServerStateOptions,
+  repository: PluginRepository,
+  diagnostics: DiagnosticFactory,
+  logger: PluginLogSink,
+  onDiagnosticChanged: () => void,
+  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+): Promise<Snapshot> {
+  const plugins = await loadPluginRegistry({
+    enablements: config.plugins,
+    builtIns: options.builtIns ?? createEmbeddedBuiltIns(),
+    diagnostics,
+    importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
+    logger,
+    secrets: { readPluginSecret: (plugin) => repository.readPluginSecret(plugin)?.value },
+  });
+  const nonOAuth = {
+    ...config,
+    providers: config.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
+  };
+  const base = materializeProviders(nonOAuth);
+  const oauthConfigs = config.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
+  const oauth = await Promise.all(
+    oauthConfigs.map((provider) => {
+      const previousEntry = previous?.runtimeCache.get(provider.id);
+      const pluginOptions = config.plugins.find((entry) => entry.packageName === provider.plugin)?.options;
+      return materializePluginProvider({
+        config: provider,
+        plugins,
+        repository,
+        diagnostics,
+        logger,
+        onDiagnosticChanged,
+        ...(pluginOptions === undefined ? {} : { pluginOptions }),
+        ...(previousEntry === undefined ? {} : { previous: previousEntry }),
+      });
+    }),
+  );
+  const providerById = new Map(
+    [...base.providers, ...oauth.flatMap((item) => (item.provider === undefined ? [] : [item.provider]))].map(
+      (provider) => [provider.id, provider] as const,
+    ),
+  );
+  const providers = config.providers.flatMap((configured) => {
+    const provider = providerById.get(configured.id);
+    return provider === undefined ? [] : [provider];
+  });
+  const summaryById = new Map(
+    [...base.summaries, ...oauth.map((item) => item.summary)].map((summary) => [summary.id, summary] as const),
+  );
+  const summaries = [
+    ...config.invalidProviders.map(
+      (invalid) =>
+        ({
+          id: invalid.id,
+          kind: invalid.kind ?? ProviderKind.OAuth,
+          enabled: false,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          clientModels: [],
+        }) satisfies DashboardProviderSummary,
+    ),
+    ...config.providers.flatMap((configured) => {
+      const summary = summaryById.get(configured.id);
+      return summary === undefined ? [] : [summary];
+    }),
+  ];
+  const providerStates = new Map<string, ProviderState>();
+  for (const provider of nonOAuth.providers) providerStates.set(provider.id, { status: "ready" });
+  for (const invalid of config.invalidProviders) {
+    providerStates.set(invalid.id, {
+      status: "unavailable",
+      diagnostic: diagnostics(invalid.code, {
+        providerId: invalid.id,
+        retryable: false,
+        ...(invalid.code === "LEGACY_OAUTH_CONFIG_UNSUPPORTED"
+          ? { suggestedCommand: "Delete this provider in Dashboard or config, then run aio-proxy provider login" }
+          : {}),
+      }),
+    });
+  }
+  oauth.forEach((item, index) => {
+    const provider = oauthConfigs[index];
+    if (provider !== undefined) providerStates.set(provider.id, item.state);
+  });
+  return {
+    config,
+    plugins,
+    probes: base.probes,
+    providers,
+    router: createRouter(providers),
+    summaries,
+    catalogJobs: oauth.flatMap((item) => (item.catalogJob === undefined ? [] : [item.catalogJob])),
+    runtimeCache: new Map(
+      oauth.flatMap((item) => (item.cacheEntry === undefined ? [] : [[item.summary.id, item.cacheEntry] as const])),
+    ),
+    providerStates,
+  };
+}
+
+function providerConfigRecord(config: Config): Record<string, unknown> {
+  return Object.fromEntries(config.providers.map(({ id, ...provider }) => [id, provider]));
+}
+
+function buildSnapshotWithProviders(
+  config: Config,
+  providers: readonly RuntimeProviderInput[],
+  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+): Snapshot {
+  const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
+  return {
+    config,
+    plugins: emptyPluginSnapshot(),
+    probes: new Map(),
+    providers: materialized,
+    router: createRouter(materialized),
+    summaries: materialized.map((provider) => providerSummary(provider)),
+    catalogJobs: [],
+    runtimeCache: new Map(),
+    providerStates: new Map(materialized.map((provider) => [provider.id, { status: "ready" } as const])),
+  };
+}
+
+function emptyPluginSnapshot(): PluginRegistrySnapshot {
+  return {
+    registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] },
+    plugins: new Map(),
+  };
+}
+
 function openServerDb(options: ServerStateOptions): OpenDbHandle {
-  return options.dbHome === undefined ? openDb() : openDb({ home: options.dbHome });
+  if (options.dbHome !== undefined) return openDb({ home: options.dbHome });
+  return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
 export function createModelsDevCatalogTask(
   fetchProviders?: FetchModelsDevProviders,
 ): () => Promise<ModelsDevCatalog | undefined> {
-  let catalog:
-    | {
-        readonly expiresAt: number;
-        readonly task: Promise<ModelsDevCatalog | undefined>;
-      }
-    | undefined;
-
+  let catalog: { readonly expiresAt: number; readonly task: Promise<ModelsDevCatalog | undefined> } | undefined;
   return () => {
     const now = Date.now();
     if (catalog === undefined || catalog.expiresAt <= now) {
       catalog = {
         expiresAt: now + PRICE_CATALOG_TTL_MS,
         task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
-          if (error instanceof Error) {
-            return undefined;
-          }
+          if (error instanceof Error) return undefined;
           throw error;
         }),
       };
@@ -207,70 +513,26 @@ export function createModelsDevCatalogTask(
   };
 }
 
-async function buildReloadSnapshot(
-  configPath: string | undefined,
-  fallback: Config,
-): Promise<{ readonly ok: true; readonly snapshot: Snapshot } | ReloadFailure> {
-  try {
-    const config =
-      configPath === undefined ? fallback : ConfigSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
-    // Provider and router construction is CPU-only and completes before the atomic swap.
-    return { ok: true, snapshot: buildSnapshotFromConfig(config) };
-  } catch (error) {
-    return reloadError(error);
-  }
-}
-
-function buildSnapshotFromConfig(config: Config): Snapshot {
-  const runtime = materializeProviders(config);
-  return buildSnapshot(config, runtime.providers, runtime.probes, runtime.summaries);
-}
-
-function buildSnapshotWithProviders(config: Config, providers: readonly RuntimeProviderInput[]): Snapshot {
-  const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
-  return buildSnapshot(
-    config,
-    materialized,
-    new Map<string, ProviderProbe>(),
-    materialized.map((provider) => providerSummary(provider)),
-  );
-}
-
-function buildSnapshot(
-  config: Config,
-  providers: readonly RuntimeProviderInstance[],
-  probes: ReadonlyMap<string, ProviderProbe>,
-  summaries: readonly DashboardProviderSummary[],
-): Snapshot {
-  const router = new Router(providers);
-  return { config, probes, providers, router, summaries };
-}
-
 function reloadError(error: unknown): ReloadFailure {
-  if (error instanceof SyntaxError || error instanceof ZodError) {
+  if (error instanceof SyntaxError || error instanceof ZodError)
     return { ok: false, error: error.message, stage: "parse" };
-  }
   if (error instanceof Error) {
-    const stage = error.name === "RouterModelCollisionError" ? "alias-collision" : "providers";
-    return { ok: false, error: error.message, stage };
+    return {
+      ok: false,
+      error: error.message,
+      stage: error.name === "RouterModelCollisionError" ? "alias-collision" : "providers",
+    };
   }
   return { ok: false, error: String(error), stage: "providers" };
 }
 
 function mergeStatus(provider: DashboardProviderSummary, status: ProviderStatus | undefined): DashboardProviderSummary {
-  if (status === undefined) {
-    return provider;
-  }
-  return { ...provider, ...status };
+  return status === undefined ? provider : { ...provider, ...status };
 }
 
 async function runProbe(
   providerId: string,
   probes: ReadonlyMap<string, ProviderProbe>,
 ): Promise<DashboardProviderProbe> {
-  const probe = probes.get(providerId);
-  if (probe === undefined) {
-    return "OK";
-  }
-  return probe();
+  return (await probes.get(providerId)?.()) ?? "OK";
 }

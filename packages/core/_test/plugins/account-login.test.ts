@@ -744,7 +744,7 @@ describe("account login transaction", () => {
   });
 
   test("config validation failure conditionally deletes a create and restores an update", async () => {
-    const createState = fixture({ plugins: [], providers: { broken: { kind: "invalid" } } });
+    const createState = fixture({ plugins: [42], providers: {} });
     await expect(createAccount(createState)).rejects.toBeDefined();
     expect(createState.repository.listAccounts()).toHaveLength(0);
 
@@ -752,7 +752,7 @@ describe("account login transaction", () => {
     await createAccount(updateState);
     await updateState.config.replace((current) => ({
       ...current,
-      providers: { ...(current["providers"] as object), broken: { kind: "invalid" } },
+      plugins: [42],
     }));
     await expect(
       loginOAuthAccount(options(updateState, { targetProviderId: "person", capability: undefined })),

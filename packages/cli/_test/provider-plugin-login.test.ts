@@ -7,6 +7,7 @@ import {
   AtomicConfigFile,
   createPluginRegistryHost,
   ProviderAccountAlreadyExistsError,
+  ProviderFingerprintMismatchError,
   ProviderIdCollisionError,
 } from "@aio-proxy/core";
 import type { OAuthAdapter } from "@aio-proxy/plugin-sdk";
@@ -227,6 +228,21 @@ describe("generic provider login capability resolution", () => {
       "An account is already configured as provider existing. Run aio-proxy provider login --provider existing to re-login.",
     );
     expect(state.printed).toEqual(["aio-proxy provider login --provider existing"]);
+  });
+
+  test("fingerprint mismatch is localized while the account service owns rollback", async () => {
+    const state = fixture({ kind: "oauth", plugin: "@a/one", capability: "unique", enabled: true });
+    state.deps = {
+      ...state.deps,
+      login: async () => {
+        throw new ProviderFingerprintMismatchError("target");
+      },
+    };
+
+    await expect(providerLogin(undefined, { provider: "target" }, state.deps)).rejects.toThrow(
+      "The authenticated account does not match provider target.",
+    );
+    expect(state.printed).toEqual([]);
   });
 
   test("default dependency creation closes SQLite when registry loading fails", async () => {

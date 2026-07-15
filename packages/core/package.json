@@ -29,6 +29,9 @@
     "test:unit": "bun test _test"
   },
   "dependencies": {
+    "@aio-proxy/i18n": "workspace:*",
+    "@aio-proxy/plugin-github-copilot": "workspace:*",
+    "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "ai": "catalog:",

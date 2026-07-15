@@ -29,11 +29,8 @@ const tmpDir = mkdtempSync(join(tmpdir(), "aio-test-"));
 const configPath = join(tmpDir, "config.jsonc");
 writeFileSync(configPath, JSON.stringify(seedConfig, null, 2));
 
-// Isolate the OAuth SQLite from the developer's real ~/.aio-proxy schema.
-process.env.AIO_PROXY_HOME = tmpDir;
-
 // watchConfig:false — mutateProviders drives reload itself; no watcher needed.
-const app = createServer({ config: seedConfig, configPath, watchConfig: false, port: PORT });
+const app = await createServer({ config: seedConfig, configPath, watchConfig: false, port: PORT });
 
 const onDisk = () =>
   JSON.parse(readFileSync(configPath, "utf8")) as { providers: Record<string, Record<string, unknown>> };
@@ -240,7 +237,7 @@ describe("dashboard provider CRUD", () => {
   });
 
   test("15. POST without a configured config path returns 409", async () => {
-    const pathless = createServer({ config: seedConfig, port: PORT });
+    const pathless = await createServer({ config: seedConfig, port: PORT });
     const res = await pathless.request("/dashboard/api/providers", {
       method: "POST",
       headers: { Origin: ORIGIN, "Content-Type": "application/json" },
@@ -277,8 +274,7 @@ describe("dashboard provider CRUD", () => {
     expect(body.provider.alias["gpt-4o"].model).toBe("gpt-4o-upstream");
   });
 
-  test("18. PUT that yields an invalid config is rejected (422) and rolled back on disk", async () => {
-    const before = JSON.stringify(onDisk().providers["seed-api"]);
+  test("18. PUT that yields an invalid provider degrades that row without rejecting the config", async () => {
     const res = await req("PUT", "/providers/seed-api", {
       kind: "api",
       id: "seed-api",
@@ -286,8 +282,14 @@ describe("dashboard provider CRUD", () => {
       baseURL: "https://api.example.com",
       models: ["unrelated-model"],
     });
-    expect(res.status).toBe(422);
-    expect(JSON.stringify(onDisk().providers["seed-api"])).toBe(before);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      provider: { id: "seed-api", enabled: false, clientModels: [] },
+    });
+    expect(onDisk().providers["seed-api"]).toMatchObject({
+      models: ["unrelated-model"],
+      alias: { "gpt-4o": "gpt-4o-upstream" },
+    });
   });
 
   test("19. GET /providers surfaces the saved display name for an enabled provider", async () => {

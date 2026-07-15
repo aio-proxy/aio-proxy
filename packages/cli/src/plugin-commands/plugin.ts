@@ -6,7 +6,10 @@ import {
   type BuiltInPluginDefinition,
   ConfigSpecValidationError,
   configPath,
+  createEmbeddedBuiltIns,
+  createPluginDiagnosticFactory,
   createPluginRepository,
+  type DiagnosticFactory,
   findInstalledNpmPackage,
   type InstalledNpmPackage,
   isNpmPackageName,
@@ -25,7 +28,7 @@ import {
 import { openDb } from "@aio-proxy/core/db";
 import { m } from "@aio-proxy/i18n";
 import { isPluginDescriptor, type PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
+import { PluginPackageNameSchema } from "@aio-proxy/types";
 import { confirm, input, password, select } from "@inquirer/prompts";
 import { cloneInertJson, type PluginFormPrompts, renderConfigSpec } from "./form";
 
@@ -146,65 +149,8 @@ export const pluginErrors = [
   PluginSetupValidationError,
 ] as const;
 
-function diagnosticSummary(
-  code: DiagnosticCode,
-  context: { plugin?: string; capability?: string; providerId?: string },
-): string {
-  const pluginResult = PluginPackageNameSchema.safeParse(context.plugin);
-  const plugin = pluginResult.success ? pluginResult.data : "<plugin>";
-  const capability = /^[a-z0-9][a-z0-9._-]*$/u.test(context.capability ?? "")
-    ? (context.capability as string)
-    : "<capability>";
-  const provider = /^[a-z0-9][a-z0-9._~-]*$/iu.test(context.providerId ?? "")
-    ? (context.providerId as string)
-    : "<provider>";
-  switch (code) {
-    case "PLUGIN_NOT_INSTALLED":
-      return m.cli_plugin_diagnostic_plugin_not_installed({ plugin });
-    case "PLUGIN_API_INCOMPATIBLE":
-      return m.cli_plugin_diagnostic_plugin_api_incompatible({ plugin });
-    case "PLUGIN_LOAD_FAILED":
-      return m.cli_plugin_diagnostic_plugin_load_failed({ plugin });
-    case "PLUGIN_OPTIONS_INVALID":
-      return m.cli_plugin_diagnostic_plugin_options_invalid({ plugin });
-    case "PROVIDER_CONFIG_INVALID":
-      return m.cli_plugin_diagnostic_provider_config_invalid({ provider });
-    case "LEGACY_OAUTH_CONFIG_UNSUPPORTED":
-      return m.cli_plugin_diagnostic_legacy_oauth_config_unsupported({ provider });
-    case "CAPABILITY_MISSING":
-      return m.cli_plugin_diagnostic_capability_missing({ plugin, capability });
-    case "ACCOUNT_OPTIONS_INVALID":
-      return m.cli_plugin_diagnostic_account_options_invalid({ provider });
-    case "CREDENTIALS_MISSING_OR_INVALID":
-      return m.cli_plugin_diagnostic_credentials_missing_or_invalid({ provider });
-    case "CREDENTIAL_REFRESH_FAILED":
-      return m.cli_plugin_diagnostic_credential_refresh_failed({ provider });
-    case "AUTHORIZATION_FAILED":
-      return m.cli_plugin_diagnostic_authorization_failed({ provider });
-    case "CATALOG_UNAVAILABLE":
-      return m.cli_plugin_diagnostic_catalog_unavailable({ provider });
-    case "RUNTIME_CREATE_FAILED":
-      return m.cli_plugin_diagnostic_runtime_create_failed({ provider });
-  }
-}
-
-export function createCliPluginDiagnosticFactory(): (
-  code: DiagnosticCode,
-  options: {
-    readonly plugin?: string;
-    readonly capability?: string;
-    readonly providerId?: string;
-    readonly retryable: boolean;
-    readonly suggestedCommand?: string;
-  },
-) => Diagnostic {
-  return (code, options) => ({
-    code,
-    summary: diagnosticSummary(code, options),
-    retryable: options.retryable,
-    occurredAt: new Date().toISOString(),
-    ...(options.suggestedCommand === undefined ? {} : { suggestedCommand: options.suggestedCommand }),
-  });
+export function createCliPluginDiagnosticFactory(): DiagnosticFactory {
+  return createPluginDiagnosticFactory();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -404,7 +350,7 @@ async function descriptorForConfig(
   return { descriptor: await loadDescriptor(packageName, installed, deps), version: installed.version };
 }
 
-function createDefaultDeps(): PluginLifecycleDeps {
+export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {
   let handle: ReturnType<typeof openDb> | undefined;
   let repository: PluginRepository | undefined;
   const getRepository = (): PluginRepository => {
@@ -422,7 +368,7 @@ function createDefaultDeps(): PluginLifecycleDeps {
       deletePluginSecret: (plugin, expectedRevision) => getRepository().deletePluginSecret(plugin, expectedRevision),
     },
     builtInNames: new Set(BUILT_IN_PLUGIN_PACKAGE_NAMES),
-    builtIns: [],
+    builtIns: createEmbeddedBuiltIns(),
     isTTY: process.stdin.isTTY === true,
     prompts: { input, password, confirm, select },
     confirm: (message, signal) => confirm({ message }, signal === undefined ? undefined : { signal }),
@@ -443,7 +389,7 @@ export async function pluginAdd(
   options: PluginAddOptions,
   injected?: PluginLifecycleDeps,
 ): Promise<void> {
-  const deps = injected ?? createDefaultDeps();
+  const deps = injected ?? createDefaultPluginLifecycleDeps();
   try {
     packageName = requirePluginPackageName(packageName);
     if (deps.builtInNames.has(packageName)) {
@@ -477,7 +423,7 @@ export async function pluginConfig(
   options: PluginConfigOptions,
   injected?: PluginLifecycleDeps,
 ): Promise<void> {
-  const deps = injected ?? createDefaultDeps();
+  const deps = injected ?? createDefaultPluginLifecycleDeps();
   try {
     packageName = requirePluginPackageName(packageName);
     const current = await deps.config.read();
@@ -526,7 +472,7 @@ export async function pluginConfig(
 }
 
 export async function pluginList(_options: PluginListOptions, injected?: PluginLifecycleDeps): Promise<void> {
-  const deps = injected ?? createDefaultDeps();
+  const deps = injected ?? createDefaultPluginLifecycleDeps();
   try {
     const config = await deps.config.read();
     const enablements = entries(config).flatMap((entry) => {
@@ -566,7 +512,7 @@ export async function pluginRemove(
   options: PluginRemoveOptions,
   injected?: PluginLifecycleDeps,
 ): Promise<void> {
-  const deps = injected ?? createDefaultDeps();
+  const deps = injected ?? createDefaultPluginLifecycleDeps();
   try {
     packageName = requirePluginPackageName(packageName);
     if (deps.builtInNames.has(packageName)) throw new BuiltInPluginRemovalError(packageName);
@@ -627,7 +573,7 @@ function usedPackageNames(config: ConfigRecord): Set<string> {
 }
 
 export async function pluginPrune(options: PluginPruneOptions, injected?: PluginLifecycleDeps): Promise<void> {
-  const deps = injected ?? createDefaultDeps();
+  const deps = injected ?? createDefaultPluginLifecycleDeps();
   try {
     await requireConfirmation(m.cli_plugin_prune_prompt(), options, deps);
     const used = usedPackageNames(await deps.config.read());

@@ -12,10 +12,10 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
 });
 
-function seededApp() {
+async function seededApp() {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-dashboard-logs-"));
   homes.push(home);
-  const app = createServer({ config: { providers: {} }, dbHome: home });
+  const app = await createServer({ config: { providers: {} }, dbHome: home });
   const handle = openDb({ home });
   const store = createRequestLogStore(handle.db);
   const completedAt = new Date("2026-07-12T08:00:00.000Z");
@@ -71,7 +71,7 @@ function seededApp() {
 
 describe("GET /dashboard/api/logs", () => {
   test("returns newest terminal requests with usage and attempts", async () => {
-    const response = await seededApp().request("/dashboard/api/logs");
+    const response = await (await seededApp()).request("/dashboard/api/logs");
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -105,7 +105,7 @@ describe("GET /dashboard/api/logs", () => {
       startedAfter: "2026-07-12T07:59:00.000Z",
       completedBefore: "2026-07-12T08:01:00.000Z",
     });
-    const response = await seededApp().request(`/dashboard/api/logs?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -122,7 +122,7 @@ describe("GET /dashboard/api/logs", () => {
     "startedAfter=not-a-date",
     "completedBefore=not-a-date",
   ])("rejects invalid query %s", async (query) => {
-    const response = await seededApp().request(`/dashboard/api/logs?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "validation failed", details: expect.any(Array) });

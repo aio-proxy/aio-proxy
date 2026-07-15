@@ -23,7 +23,7 @@ describe("Gemini missing provider boundary", () => {
         },
       },
     );
-    const app = createServer({
+    const app = await createServer({
       config: { providers: {} },
       providerInstances: [provider],
     });

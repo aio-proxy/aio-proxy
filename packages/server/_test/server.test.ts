@@ -3,9 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelsDevCapabilities, ModelsDevCatalog } from "@aio-proxy/core";
-import { Auth, OPENAI_CHATGPT_MODELS } from "@aio-proxy/oauth";
 import type { AppType } from "@aio-proxy/server";
-import serverEntrypoint, { createServer, serverDefaults } from "@aio-proxy/server";
+import serverEntrypoint, { createServer as createBaseServer, serverDefaults } from "@aio-proxy/server";
 import { ConfigSchema, ProviderProtocol } from "@aio-proxy/types";
 import { hc } from "hono/client";
 
@@ -97,28 +96,20 @@ const expectedModelList = (data: ReturnType<typeof expectedModel>[]) => ({
 
 describe("server routes", () => {
   let dir: string;
-  let previousHome: string | undefined;
+  const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
+    createBaseServer({ ...options, dbHome: dir });
 
   beforeEach(() => {
-    previousHome = process.env.AIO_PROXY_HOME;
     dir = mkdtempSync(join(tmpdir(), "aio-proxy-server-"));
-    process.env.AIO_PROXY_HOME = dir;
   });
 
   afterEach(() => {
-    Auth.del("openai-chatgpt", "chatgpt-xxx");
-    Auth.del("github-copilot", "copilot-xxx");
-    if (previousHome === undefined) {
-      delete process.env.AIO_PROXY_HOME;
-    } else {
-      process.env.AIO_PROXY_HOME = previousHome;
-    }
     rmSync(dir, { recursive: true, force: true });
   });
 
   test("GET /health returns ok status and version when requested", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/health");
@@ -133,7 +124,7 @@ describe("server routes", () => {
 
   test("Given configured providers When OpenAI models are requested Then model list is returned", async () => {
     // Given
-    const app = createServer({ config, modelsDevCatalogTask: noModelsDevCatalog });
+    const app = await createServer({ config, modelsDevCatalogTask: noModelsDevCatalog });
 
     // When
     const response = await app.request("/v1/models");
@@ -152,7 +143,7 @@ describe("server routes", () => {
   });
 
   test("Given API and AI SDK providers with models only When models are requested Then every model is listed", async () => {
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
@@ -181,7 +172,7 @@ describe("server routes", () => {
   });
 
   test("Given added Anthropic aliases When models are requested Then upstream targets are hidden", async () => {
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
@@ -213,7 +204,7 @@ describe("server routes", () => {
   });
 
   test("Given alias metadata without a name When models are requested Then the upstream name is used", async () => {
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: async () => ({
         displayName: () => undefined,
         find: () => undefined,
@@ -275,7 +266,7 @@ describe("server routes", () => {
         }[modelId];
       },
     };
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: async () => catalog,
       config: {
         providers: {
@@ -316,7 +307,7 @@ describe("server routes", () => {
   });
 
   test("Given equal provider weights When models are requested Then configuration order breaks ties", async () => {
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
@@ -344,7 +335,7 @@ describe("server routes", () => {
   });
 
   test("Given models.dev failure When models are requested Then ids remain valid display names", async () => {
-    const app = createServer({
+    const app = await createServer({
       modelsDevCatalogTask: async () => {
         throw new Error("catalog unavailable");
       },
@@ -365,110 +356,9 @@ describe("server routes", () => {
     expect(await response.json()).toEqual(expectedModelList([expectedModel("plain-model", "api")]));
   });
 
-  test("Given chatgpt oauth provider When OpenAI models are requested Then vendor models are listed via derived alias", async () => {
-    // Given
-    Auth.set("openai-chatgpt", "chatgpt-xxx", {
-      access: "tok",
-      refresh: "r",
-      expires: Date.now() + 60_000,
-      accountId: "xxx",
-      models: OPENAI_CHATGPT_MODELS,
-    });
-    const app = createServer({
-      config: { providers: { "chatgpt-xxx": { kind: "oauth", vendor: "openai-chatgpt" } } },
-      modelsDevCatalogTask: noModelsDevCatalog,
-    });
-
-    // When
-    const response = await app.request("/v1/models");
-    const body = await response.json();
-
-    // Then
-    expect(response.status).toBe(200);
-    expect(body).toEqual(
-      expectedModelList(
-        OPENAI_CHATGPT_MODELS.map((model) => expectedModel(model.id, "chatgpt-xxx", model.displayName)),
-      ),
-    );
-  });
-
-  test("Given a renamed OAuth model When models are requested Then the alias inherits the vendor display name", async () => {
-    Auth.set("openai-chatgpt", "chatgpt-xxx", {
-      access: "tok",
-      refresh: "r",
-      expires: Date.now() + 60_000,
-      accountId: "xxx",
-      models: OPENAI_CHATGPT_MODELS,
-    });
-    const app = createServer({
-      modelsDevCatalogTask: async () => ({
-        displayName: () => "Catalog Name Must Not Win",
-        find: () => undefined,
-        metadata: (modelId) =>
-          modelId === "gpt5" || modelId === "gpt-5.5"
-            ? {
-                capabilities: testCapabilities,
-                displayName: "Catalog Name Must Not Win",
-                maxInputTokens: 120_000,
-                maxTokens: 8_000,
-                releaseDate: "2026-01-15",
-              }
-            : undefined,
-      }),
-      config: {
-        providers: {
-          "chatgpt-xxx": {
-            kind: "oauth",
-            vendor: "openai-chatgpt",
-            alias: { gpt5: "gpt-5.5" },
-          },
-        },
-      },
-    });
-
-    const response = await app.request("/v1/models");
-    const body = (await response.json()) as { data: ReturnType<typeof expectedModel>[] };
-
-    expect(body.data.find((model) => model.id === "gpt5")).toEqual(
-      expectedModel("gpt5", "chatgpt-xxx", "GPT-5.5", {
-        capabilities: testCapabilities,
-        created: 1_768_435_200,
-        createdAt: "2026-01-15T00:00:00.000Z",
-        maxInputTokens: 120_000,
-        maxTokens: 8_000,
-      }),
-    );
-  });
-
-  test("Given Copilot OAuth metadata When models are requested Then display names reach the HTTP response", async () => {
-    Auth.set("github-copilot", "copilot-xxx", {
-      access: "tok",
-      refresh: "r",
-      expires: Date.now() + 60_000,
-      baseUrl: "https://api.individual.githubcopilot.com",
-      models: [
-        {
-          id: "claude-sonnet-4-6",
-          displayName: "Claude Sonnet 4.6",
-          transport: ProviderProtocol.Anthropic,
-        },
-      ],
-    });
-    const app = createServer({
-      config: { providers: { "copilot-xxx": { kind: "oauth", vendor: "github-copilot" } } },
-      modelsDevCatalogTask: noModelsDevCatalog,
-    });
-
-    const response = await app.request("/v1/models");
-
-    expect(await response.json()).toEqual(
-      expectedModelList([expectedModel("claude-sonnet-4-6", "copilot-xxx", "Claude Sonnet 4.6")]),
-    );
-  });
-
   test("Given disabled provider When models and dashboard are requested Then provider is not routed", async () => {
     // Given
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           openai: {
@@ -507,7 +397,7 @@ describe("server routes", () => {
 
   test("GET /dashboard/api/config redacts secret-like config values when requested", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/config");
@@ -527,7 +417,7 @@ describe("server routes", () => {
 
   test("POST /dashboard/api/config rejects evil origin when requested", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/config", {
@@ -541,7 +431,7 @@ describe("server routes", () => {
 
   test("POST /dashboard/api/config rejects absent origin when requested", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/config", {
@@ -589,7 +479,7 @@ describe("server routes", () => {
         return new Response("", { status: 204 });
       },
     });
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           openai: {
@@ -644,7 +534,7 @@ describe("server routes", () => {
         return new Response("", { status: 204 });
       },
     });
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           authenticated: {
@@ -677,7 +567,7 @@ describe("server routes", () => {
         return new Response("", { status: 204 });
       },
     });
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           configured: {
@@ -710,7 +600,7 @@ describe("server routes", () => {
       },
     });
     const baseURL = `http://127.0.0.1:${upstream.port}`;
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           chat: {
@@ -754,7 +644,7 @@ describe("server routes", () => {
 
   test("Given configured provider When dashboard provider detail is requested Then one provider is returned", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const found = await app.request("/dashboard/api/providers/openai-compatible");
@@ -779,7 +669,7 @@ describe("server routes", () => {
 
   test("Given dashboard install request without confirmation When posted Then request is rejected", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/providers/install", {
@@ -802,7 +692,7 @@ describe("server routes", () => {
 
   test("Given dashboard install request with invalid package name When posted Then request is rejected", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/providers/install", {
@@ -822,7 +712,7 @@ describe("server routes", () => {
 
   test("Given dashboard install request fails at registry When posted Then controlled error is returned", async () => {
     // Given
-    const app = createServer({ config });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request("/dashboard/api/providers/install", {
@@ -853,7 +743,7 @@ describe("server routes", () => {
         return Response.json({ error: "upstream failed" }, { status: 500 });
       },
     });
-    const app = createServer({
+    const app = await createServer({
       config: {
         providers: {
           bad: {

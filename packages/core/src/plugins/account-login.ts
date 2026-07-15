@@ -59,6 +59,7 @@ export type DeleteOAuthAccountOptions = {
   readonly providerId: string;
   readonly config: AtomicConfigFile;
   readonly repository: PluginRepository;
+  readonly verify?: (candidate: Readonly<ConfigRecord>) => Promise<void>;
 };
 
 export type RecoverPendingAccountOperationsOptions =
@@ -687,7 +688,10 @@ export async function deleteOAuthAccount(options: DeleteOAuthAccountOptions): Pr
         const { [options.providerId]: _removed, ...remaining } = providers;
         return { next: { ...current, providers: remaining }, result: operation };
       },
-      { validateCandidate: validateStagedOAuthWrite },
+      {
+        validateCandidate: validateStagedOAuthWrite,
+        ...(options.verify === undefined ? {} : { verify: options.verify }),
+      },
     );
     staged = committedOperation;
     return staged;
