@@ -26,6 +26,12 @@ function fixture(text = '{"providers":{}}\n'): { dir: string; path: string } {
   return { dir, path };
 }
 
+function ageLockWithUnavailableIdentity(lockPath: string): void {
+  const { starttime: _starttime, ...record } = JSON.parse(readFileSync(lockPath, "utf8"));
+  writeFileSync(lockPath, JSON.stringify(record));
+  utimesSync(lockPath, new Date(0), new Date(0));
+}
+
 async function waitForFile(path: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (!existsSync(path)) {
@@ -214,32 +220,54 @@ describe("AtomicConfigFile", () => {
     }
   });
 
-  test("a stale main lock with unavailable live identity is not stolen", async () => {
+  test("a stale main lock with unavailable live identity is recovered", async () => {
     const { path } = fixture("{}\n");
     const lockPath = `${path}.lock`;
     writeFileSync(
       lockPath,
       JSON.stringify({ pid: process.pid, owner: "unknown", createdAt: 0, starttime: "RECORDED" }),
     );
-    utimesSync(lockPath, new Date(0), new Date(0));
+    ageLockWithUnavailableIdentity(lockPath);
     const originalSpawn = Bun.spawn;
     Bun.spawn = () => {
       throw new Error("ps unavailable");
     };
-    let completed = false;
-    const update = new AtomicConfigFile(path)
-      .replace((current) => ({ ...current, recovered: true }))
-      .then(() => {
-        completed = true;
-      });
+    const update = new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
     try {
-      await Bun.sleep(100);
-      expect(completed).toBe(false);
-      unlinkSync(lockPath);
-      await update;
+      await expect(
+        Promise.race([
+          update,
+          Bun.sleep(500).then(() => {
+            throw new Error("stale config lock with unavailable identity was not recovered");
+          }),
+        ]),
+      ).resolves.toBeUndefined();
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
     } finally {
       Bun.spawn = originalSpawn;
       if (existsSync(lockPath)) unlinkSync(lockPath);
+      await update.catch(() => {});
+    }
+  });
+
+  test("a stale recovery fence with unavailable live identity is recovered", async () => {
+    const { path } = fixture("{}\n");
+    const recoveryPath = `${path}.lock.recovery.unknown-owner`;
+    writeFileSync(recoveryPath, JSON.stringify({ pid: process.pid, owner: "unknown-owner", createdAt: 0 }));
+    utimesSync(recoveryPath, new Date(0), new Date(0));
+    const update = new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
+    try {
+      await expect(
+        Promise.race([
+          update,
+          Bun.sleep(500).then(() => {
+            throw new Error("stale config recovery fence with unavailable identity was not recovered");
+          }),
+        ]),
+      ).resolves.toBeUndefined();
+      expect(existsSync(recoveryPath)).toBe(false);
+    } finally {
+      if (existsSync(recoveryPath)) unlinkSync(recoveryPath);
       await update.catch(() => {});
     }
   });
@@ -396,7 +424,7 @@ describe("AtomicConfigFile", () => {
     await didEnter;
 
     const lockPath = `${path}.lock`;
-    utimesSync(lockPath, new Date(0), new Date(0));
+    ageLockWithUnavailableIdentity(lockPath);
     let finishReplacement!: () => void;
     const replacementCanFinish = new Promise<void>((resolve) => {
       finishReplacement = resolve;
@@ -439,7 +467,7 @@ describe("AtomicConfigFile", () => {
       return { next: current, result: "first" };
     });
     await didEnter;
-    utimesSync(`${path}.lock`, new Date(0), new Date(0));
+    ageLockWithUnavailableIdentity(`${path}.lock`);
 
     let secondEntered = false;
     const second = config.replace((current) => {
@@ -525,7 +553,7 @@ describe("AtomicConfigFile", () => {
     await didEnter;
 
     const lockPath = `${path}.lock`;
-    utimesSync(lockPath, new Date(0), new Date(0));
+    ageLockWithUnavailableIdentity(lockPath);
     let finishReplacement!: () => void;
     const replacementCanFinish = new Promise<void>((resolve) => {
       finishReplacement = resolve;

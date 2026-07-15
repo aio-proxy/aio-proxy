@@ -218,7 +218,8 @@ async function recoveryMarkerActive(path: string): Promise<boolean> {
   const currentStarttime = lock === undefined || !alive ? null : await processStarttime(lock.pid);
   const identityVerifiable =
     alive && lock !== undefined && lock.starttime !== STARTTIME_UNAVAILABLE && currentStarttime !== null;
-  const stale = !alive || (identityVerifiable && currentStarttime !== lock.starttime);
+  const staleByHeartbeat = Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
+  const stale = !alive || (identityVerifiable ? currentStarttime !== lock.starttime : staleByHeartbeat);
   if (!stale) return true;
   try {
     if ((await readFile(path, "utf8")) !== text) return true;
@@ -352,8 +353,10 @@ async function recoverStaleLock(path: string, assertFence: () => Promise<void>):
   const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
   const identityVerifiable =
     ownerAlive && lock !== undefined && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== null;
-  const staleByOwner = lock === undefined || !ownerAlive || (identityVerifiable && ownerStarttime !== lock.starttime);
-  const stale = lock === undefined ? staleByHeartbeat : staleByOwner;
+  const stale =
+    lock === undefined
+      ? staleByHeartbeat
+      : !ownerAlive || (identityVerifiable ? ownerStarttime !== lock.starttime : staleByHeartbeat);
   if (!stale || metadata === null) return false;
   return removeIfUnchanged(path, text, metadata, assertFence, true);
 }

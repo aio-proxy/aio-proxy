@@ -148,6 +148,43 @@ describe("credential refresh coordination", () => {
     }
   });
 
+  test("does not share a refresh flight across repositories with the same provider id", async () => {
+    const firstFixture = openFixture();
+    const secondFixture = openFixture();
+    const firstGate = deferred();
+    const firstStarted = deferred();
+    const secondStarted = deferred();
+    try {
+      const first = port(firstFixture.repository);
+      const second = port(secondFixture.repository);
+      const firstSnapshot = await first.read();
+      const secondSnapshot = await second.read();
+      const firstRefresh = first.refresh(firstSnapshot.revision, async () => {
+        firstStarted.resolve();
+        await firstGate.promise;
+        return { value: { token: "first-repository-token" } };
+      });
+      await firstStarted.promise;
+
+      const secondRefresh = second.refresh(secondSnapshot.revision, async () => {
+        secondStarted.resolve();
+        return { value: { token: "second-repository-token" } };
+      });
+
+      expect(await Promise.race([secondStarted.promise.then(() => true), Bun.sleep(100).then(() => false)])).toBe(true);
+      expect(await secondRefresh).toMatchObject({
+        status: "updated",
+        snapshot: { value: { token: "second-repository-token" } },
+      });
+      firstGate.resolve();
+      await firstRefresh;
+    } finally {
+      firstGate.resolve();
+      firstFixture.handle.close();
+      secondFixture.handle.close();
+    }
+  });
+
   test("does not serialize refresh exchanges for different providers", async () => {
     const { handle, repository } = openFixture(["provider-1", "provider-2"]);
     try {

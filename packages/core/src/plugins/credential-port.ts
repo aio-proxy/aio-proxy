@@ -60,18 +60,22 @@ export class CredentialAccountMissingError extends Error {
   }
 }
 
-const refreshFlights = new Map<string, Promise<RefreshResult<unknown>>>();
+const refreshFlights = new WeakMap<PluginRepository, Map<string, Promise<RefreshResult<unknown>>>>();
 
 function singleFlight<Credential>(
+  repository: PluginRepository,
   providerId: string,
   run: () => Promise<RefreshResult<Credential>>,
 ): Promise<RefreshResult<Credential>> {
-  const existing = refreshFlights.get(providerId);
+  const repositoryFlights = refreshFlights.get(repository) ?? new Map<string, Promise<RefreshResult<unknown>>>();
+  const existing = repositoryFlights.get(providerId);
   if (existing !== undefined) return existing as Promise<RefreshResult<Credential>>;
   const flight = run();
-  refreshFlights.set(providerId, flight as Promise<RefreshResult<unknown>>);
+  repositoryFlights.set(providerId, flight as Promise<RefreshResult<unknown>>);
+  refreshFlights.set(repository, repositoryFlights);
   const cleanup = () => {
-    if (refreshFlights.get(providerId) === flight) refreshFlights.delete(providerId);
+    if (repositoryFlights.get(providerId) === flight) repositoryFlights.delete(providerId);
+    if (repositoryFlights.size === 0) refreshFlights.delete(repository);
   };
   void flight.then(cleanup, cleanup);
   return flight;
@@ -215,7 +219,7 @@ export function createCredentialPort<Credential>(
       return (await readValidated(options.providerId, options.schema, options.repository)).snapshot;
     },
     refresh(expectedRevision, exchange) {
-      return singleFlight(options.providerId, async () => {
+      return singleFlight(options.repository, options.providerId, async () => {
         const owner = `${process.pid}:${crypto.randomUUID()}`;
         let secretValues: readonly string[] = [];
         try {

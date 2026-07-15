@@ -236,7 +236,7 @@ describe("npmAdd", () => {
     rmSync(cacheDir, { recursive: true, force: true });
   });
 
-  test("Given unavailable identity and a live PID When heartbeat is stale Then the lock is not stolen", async () => {
+  test("Given unavailable identity and a live PID When heartbeat is stale Then the lock is recovered", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-reused-pid-lock-"));
     const lockPath = join(cacheDir, ".aio-proxy-install.lock");
     writeFileSync(
@@ -251,17 +251,22 @@ describe("npmAdd", () => {
     );
     utimesSync(lockPath, new Date(0), new Date(0));
 
-    let acquired = false;
-    const pending = acquireNpmInstallLock("reused-pid-provider", cacheDir).then((lock) => {
-      acquired = true;
-      return lock;
-    });
-    await Bun.sleep(100);
-    expect(acquired).toBe(false);
-    rmSync(lockPath);
-    const lock = await pending;
-    await lock.release();
-    rmSync(cacheDir, { recursive: true, force: true });
+    const pending = acquireNpmInstallLock("reused-pid-provider", cacheDir);
+    let lock: Awaited<typeof pending> | undefined;
+    try {
+      lock = await Promise.race([
+        pending,
+        Bun.sleep(500).then(() => {
+          throw new Error("stale npm lock with unavailable identity was not recovered");
+        }),
+      ]);
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      if (lock === undefined) rmSync(lockPath, { force: true });
+      lock ??= await pending.catch(() => undefined);
+      await lock?.release();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 
   test("Given matching live identity and a stale heartbeat When contending Then the owner is preserved", async () => {
@@ -361,6 +366,39 @@ describe("npmAdd", () => {
     expect(existsSync(markerPath)).toBe(false);
     await lock.release();
     rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given a stale recovery marker with unavailable live identity When acquiring Then it is reclaimed", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-unverifiable-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.unknown-owner`;
+    writeFileSync(
+      markerPath,
+      JSON.stringify({
+        pid: process.pid,
+        createdAt: 0,
+        owner: "unknown-owner",
+        starttime: "unavailable",
+        version: 1,
+      }),
+    );
+    utimesSync(markerPath, new Date(0), new Date(0));
+    const pending = acquireNpmInstallLock("stale-unknown-marker-provider", cacheDir, { waitMs: 500 });
+    let lock: Awaited<typeof pending> | undefined;
+    try {
+      lock = await Promise.race([
+        pending,
+        Bun.sleep(500).then(() => {
+          throw new Error("stale npm recovery marker with unavailable identity was not recovered");
+        }),
+      ]);
+      expect(existsSync(markerPath)).toBe(false);
+    } finally {
+      if (lock === undefined) rmSync(markerPath, { force: true });
+      lock ??= await pending.catch(() => undefined);
+      await lock?.release();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 
   test("Given process identity ignores termination When locking Then SIGKILL cleanup stays bounded", async () => {

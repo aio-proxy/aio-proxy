@@ -222,7 +222,8 @@ async function recoveryMarkerActive(path: string): Promise<boolean> {
   const alive = record !== null && ownerAlive(record.pid);
   const currentStarttime = record === null || !alive ? null : await processStarttime(record.pid);
   const identityVerifiable = alive && record?.starttime !== undefined && currentStarttime !== null;
-  const stale = !alive || (identityVerifiable && currentStarttime !== record.starttime);
+  const staleByHeartbeat = Date.now() - metadata.mtimeMs > CONFIG_LOCK_STALE_MS;
+  const stale = !alive || (identityVerifiable ? currentStarttime !== record.starttime : staleByHeartbeat);
   if (!stale) return true;
   try {
     if ((await readFile(path, "utf8")) !== text) return false;
@@ -373,7 +374,7 @@ async function reclaimStaleLock(path: string, assertFence: () => Promise<void>):
   const stale =
     record === null
       ? staleByHeartbeat
-      : !alive || (identityVerifiable && (currentStarttime !== record.starttime || staleByHeartbeat));
+      : !alive || (identityVerifiable ? currentStarttime !== record.starttime : staleByHeartbeat);
   if (!stale || metadata === null) return false;
   try {
     await assertFence();
