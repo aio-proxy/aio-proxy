@@ -106,7 +106,10 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
       const capability = oauthCapabilityOf(providerId, providers[providerId]);
       if (capability !== undefined && options.repository !== undefined) {
         const account = options.repository.readAccount(providerId);
-        if (account === null || account.plugin !== capability.plugin || account.capability !== capability.capability) {
+        if (
+          account !== null &&
+          (account.plugin !== capability.plugin || account.capability !== capability.capability)
+        ) {
           throw new AccountCleanupPendingError(providerId);
         }
       }

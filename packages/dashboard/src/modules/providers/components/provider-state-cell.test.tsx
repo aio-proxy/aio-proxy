@@ -105,6 +105,28 @@ describe("provider state cell", () => {
     expect(screen.getByText("aio-proxy provider login --provider chatgpt-personal")).toBeTruthy();
     expect(screen.queryByText("aio-proxy provider login default")).toBeNull();
   });
+
+  test("does not render targeted login when a credential diagnostic omits its command", () => {
+    render(
+      <ProviderStateCell
+        provider={provider({
+          id: "chatgpt-personal",
+          state: {
+            status: "unavailable",
+            diagnostic: {
+              code: "CREDENTIALS_MISSING_OR_INVALID",
+              summary: "Credentials missing or invalid.",
+              retryable: false,
+              occurredAt: "2026-07-14T00:00:00.000Z",
+            },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Credentials missing or invalid.")).toBeTruthy();
+    expect(screen.queryByText("aio-proxy provider login --provider chatgpt-personal")).toBeNull();
+  });
 });
 
 describe("providers page diagnostics", () => {

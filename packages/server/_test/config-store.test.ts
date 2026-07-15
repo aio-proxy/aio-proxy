@@ -266,6 +266,41 @@ describe("createConfigStore mutex", () => {
     }
   });
 
+  test("deletes a config-only OAuth provider through verification without staging account cleanup", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-store-config-only-oauth-"));
+    const configPath = join(dir, "config.json");
+    const initial = {
+      providers: {
+        person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+      },
+    };
+    writeFileSync(configPath, JSON.stringify(initial));
+    const handle = openDb({ home: dir });
+    const repository = createPluginRepository(handle.sqlite);
+    const verified: Readonly<Record<string, unknown>>[] = [];
+    const store = createConfigStore({
+      getConfigPath: () => configPath,
+      repository,
+      verify: async (candidate) => {
+        verified.push(candidate);
+        return undefined;
+      },
+    });
+
+    try {
+      await store.deleteProvider("person");
+
+      expect(verified).toHaveLength(1);
+      expect(verified[0]?.["providers"]).toEqual({});
+      expect((JSON.parse(readFileSync(configPath, "utf8")) as typeof initial).providers).toEqual({});
+      expect(repository.readAccount("person")).toBeNull();
+      expect(repository.listPendingAccountOperations()).toEqual([]);
+    } finally {
+      handle.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("compensates a staged delete marker when the config write definitely fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aio-store-failed-"));
     const configPath = join(dir, "config.json");

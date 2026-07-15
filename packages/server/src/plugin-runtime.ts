@@ -251,7 +251,7 @@ export async function materializePluginProvider(
   if (adapter === undefined) return failure(options, "CAPABILITY_MISSING", false);
   const account = repository.readAccount(config.id);
   if (account === null || account.plugin !== config.plugin || account.capability !== config.capability) {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false);
   }
 
   let accountOptions: unknown;
@@ -274,7 +274,10 @@ export async function materializePluginProvider(
   const diagnostics = repository.readDiagnostics(config.id);
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
-    return { summary: summary(config, undefined), state: diagnosticState(refreshFailure) };
+    return {
+      summary: summary(config, undefined),
+      state: diagnosticState({ ...refreshFailure, suggestedCommand: providerLoginCommand(config.id) }),
+    };
   }
 
   let storedCatalog: StoredCatalog | null = repository.readCatalog(config.id);

@@ -190,6 +190,7 @@ export const dashboardProviderSuggestedCommand = (
 ): string | undefined => {
   const diagnostic = provider.state.diagnostic;
   if (diagnostic === undefined) return undefined;
+  if (diagnostic.suggestedCommand === undefined) return undefined;
   if (providerLoginDiagnosticCodes.has(diagnostic.code)) {
     return providerLoginCommand(provider.id);
   }
