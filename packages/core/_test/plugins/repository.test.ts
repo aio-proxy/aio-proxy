@@ -483,7 +483,7 @@ describe("pending operation compensation", () => {
     }
   });
 
-  test("diagnostic clear after a staged update makes compensation superseded without restoring it", () => {
+  test("staged update clears credential failure and compensation restores it when no newer child data exists", () => {
     const { handle, repository } = openRepository();
     try {
       createAccount(repository);
@@ -494,11 +494,11 @@ describe("pending operation compensation", () => {
         expectedRuntimeRevision: 1,
         account: account("provider-1", { options: { generation: 2 } }),
       });
-      repository.clearDiagnostic("provider-1", "CREDENTIAL_REFRESH_FAILED");
-
-      expect(repository.compensateAccountOperation(pending.operationId)).toBe("superseded");
-      expect(repository.readAccount("provider-1")).toMatchObject({ options: { generation: 2 }, revision: 2 });
       expect(repository.readDiagnostics("provider-1")).not.toContainEqual(diagnostic("CREDENTIAL_REFRESH_FAILED"));
+
+      expect(repository.compensateAccountOperation(pending.operationId)).toBe("compensated");
+      expect(repository.readAccount("provider-1")).toMatchObject({ options: { tenant: "public" }, revision: 1 });
+      expect(repository.readDiagnostics("provider-1")).toContainEqual(diagnostic("CREDENTIAL_REFRESH_FAILED"));
     } finally {
       handle.close();
     }

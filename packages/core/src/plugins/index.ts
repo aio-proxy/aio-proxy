@@ -1,3 +1,4 @@
+export * from "./account-login";
 export * from "./builtins";
 export * from "./catalog";
 export * from "./config-file";
@@ -5,6 +6,7 @@ export * from "./config-spec";
 export * from "./credential-port";
 export * from "./diagnostic";
 export * from "./loader";
+export * from "./provider-id";
 export * from "./registry";
 export * from "./repository";
 export * from "./schema";

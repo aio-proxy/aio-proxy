@@ -483,6 +483,11 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
             assertNoPendingOperation(input.account.providerId);
             insertAccount(input.account, 1, 1, Date.now());
             applyCatalog(input.account.providerId, input.account.catalog);
+            sqlite
+              .query(
+                "DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = 'CREDENTIAL_REFRESH_FAILED'",
+              )
+              .run(input.account.providerId);
             return insertPending(input.account.providerId, "create", input.targetDigest, 1, undefined, undefined);
           }
 
@@ -505,6 +510,9 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           const runtimeRevision = current.runtime_revision + 1;
           updateAccount(input.account, revision, runtimeRevision, Date.now());
           applyCatalog(providerId, input.account.catalog);
+          sqlite
+            .query("DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = 'CREDENTIAL_REFRESH_FAILED'")
+            .run(providerId);
           return insertPending(providerId, "update", input.targetDigest, revision, current.revision, {
             previous: rollback,
             applied: childSnapshot(providerId),

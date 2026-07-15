@@ -503,6 +503,12 @@ function stable(value: unknown, seen = new Set<object>()): unknown {
   return result;
 }
 
+export function digestProviderEntry(entry: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(stable(entry)))
+    .digest("hex");
+}
+
 export class AtomicConfigFile {
   readonly #path: string;
 
@@ -584,10 +590,6 @@ export class AtomicConfigFile {
 
   async providerEntryDigest(providerId: string): Promise<string | null> {
     const entry = await this.providerEntry(providerId);
-    return entry === undefined
-      ? null
-      : createHash("sha256")
-          .update(JSON.stringify(stable(entry)))
-          .digest("hex");
+    return entry === undefined ? null : digestProviderEntry(entry);
   }
 }
