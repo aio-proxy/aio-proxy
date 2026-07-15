@@ -53,6 +53,9 @@ not yet exist. During completion, focused RED/GREEN regressions also proved:
   marker divergent when config watching was disabled;
 - a failed reconciliation could compensate the retained uncertainty marker and
   never retry, leaving committed disk bytes and the old snapshot divergent;
+- the provider-key acceptance test manually supplied the expected runtime `id`
+  and therefore never proved ConfigSchema record-key injection through a real
+  server snapshot;
 - Dashboard deletion of a valid OAuth row no longer preserved the typed
   cleanup-pending preflight for missing or mismatched account identity;
 - a rejected recovery used an unrelated credential-refresh log code, and its
@@ -67,7 +70,7 @@ implementation inference.
 
 | Step 3 runtime/snapshot bullet | Direct test coverage |
 | --- | --- |
-| Provider record key becomes runtime ID | `plugin-runtime.test.ts` — `the provider config key becomes the materialized runtime provider ID` |
+| Provider record key becomes runtime ID | `plugin-runtime.test.ts` — `the provider config key becomes the materialized runtime provider ID` (vertical `ConfigSchema` record key → embedded plugin/account/catalog → `createServerState` snapshot/provider state/Router candidate) |
 | Catalog routes, aliases, and display metadata | `plugin-runtime.test.ts` — `plugin raw capability receives catalog metadata and rejects malformed transports`; `a materialized OAuth provider obeys real Router self, rename, and preserve aliases` |
 | Invalid/legacy summaries never enter Router | `plugin-snapshot.test.ts` — `invalid and legacy provider summaries remain visible but never enter Router candidates` |
 | Stable diagnostics matrix | `plugin-runtime.test.ts` — `maps plugin, capability, account, options, credential, catalog, and runtime failures to stable diagnostics` |
@@ -164,7 +167,7 @@ bun install: exit 0; 775 installs across 899 packages, no changes
 i18n compile: exit 0
 types: 90 pass, 0 fail, 1 conditional local-config skip
 core: 442 pass, 0 fail, 1114 expectations
-server: 351 pass, 0 fail, 1060 expectations
+server: 351 pass, 0 fail, 1062 expectations
 CLI full suite: 126 pass, 0 fail, 339 expectations
 CLI changed suites: 64 pass, 0 fail, 177 expectations
 CLI Step 14 provider-login/commands subset: 18 pass, 0 fail, 48 expectations
@@ -212,7 +215,7 @@ then verified after the minimal fix.
 | Uncertain reload compensated after snapshot swap | `packages/server/_test/server-reload.test.ts` — `an uncertain reload commit keeps cleanup recoverable after the snapshot swaps` | RED: explicit injection first returned `ok: true`; the real-shape generic post-mutate `Config lock ownership lost` then timed out with the account orphaned after compensation. GREEN: 1 pass, 0 fail, 3 expectations; `retired !== undefined` identifies the completed swap independently of error class, preserves/finalizes the marker, and reports reload failure. |
 | Dashboard valid OAuth deletion lost cleanup-pending identity preflight | `packages/server/_test/dashboard-providers-mutation.test.ts` — missing-account and plugin/capability-mismatch variants | RED: both returned 200 and removed config/account state. GREEN: focused subset → 2 pass, 0 fail, 9 expectations; both return typed 409 and preserve config/account/markers. |
 | Superseding runtime-revision test removed its marker too early | `packages/server/_test/account-removal.test.ts` — `a live delete marker cannot remove an account with a superseding runtime revision` | The revised test keeps the marker present, advances `runtime_revision`, then proves finalization returns through the live CAS without deleting the newer account: 1 pass, 0 fail, 3 expectations. |
-| Provider key → runtime ID lacked a direct test | `packages/server/_test/plugin-runtime.test.ts` — `the provider config key becomes the materialized runtime provider ID` | `bun test packages/server/_test/plugin-runtime.test.ts -t "config key becomes"` → 1 pass, 0 fail. |
+| Provider key → runtime ID lacked a valid vertical test | `packages/server/_test/plugin-runtime.test.ts` — `the provider config key becomes the materialized runtime provider ID` | RED review: the prior unit test manually passed `id: "configured-key"` to `materializePluginProvider`, bypassing the required record-key injection. GREEN: `bun test packages/server/_test/plugin-runtime.test.ts -t "config key becomes"` → 1 pass, 0 fail, 4 expectations through real `ConfigSchema` parsing, embedded plugin materialization, repository account/catalog state, server snapshot, provider-state key, and Router candidate. |
 | Real Router self/rename/preserve behavior lacked direct materialized-runtime coverage | `packages/server/_test/plugin-runtime.test.ts` — `a materialized OAuth provider obeys real Router self, rename, and preserve aliases` | `bun test packages/server/_test/plugin-runtime.test.ts -t "real Router"` → 1 pass, 0 fail. |
 | Bad plugin isolation covered API only | `packages/server/_test/plugin-snapshot.test.ts` — `failed plugin setup remains snapshot data and does not block API or AI SDK providers` | `bun test packages/server/_test/plugin-snapshot.test.ts -t "does not block API or AI SDK"` → 1 pass, 0 fail. |
 | Model stream snapshot lease lacked direct EOF/cancel coverage | `packages/server/_test/plugin-snapshot.test.ts` — model stream EOF and cancel variants | `bun test packages/server/_test/plugin-snapshot.test.ts -t "in-flight model stream"` → 2 pass, 0 fail. |
@@ -221,8 +224,8 @@ then verified after the minimal fix.
 Fix-pass verification:
 
 ```text
-affected server files: 100 pass, 0 fail, 343 expectations
-full server: 351 pass, 0 fail, 1060 expectations
+affected server files: 100 pass, 0 fail, 345 expectations
+full server: 351 pass, 0 fail, 1062 expectations
 full core: 442 pass, 0 fail, 1114 expectations
 full CLI: 126 pass, 0 fail, 339 expectations
 CLI TypeScript: exit 0

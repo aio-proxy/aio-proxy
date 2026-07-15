@@ -12,13 +12,14 @@ import {
 } from "@aio-proxy/core";
 import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
 import { definePlugin, type ModelCatalog, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import {
   materializePluginProvider,
   PluginRawResolverError,
   PluginRawTransportError,
   validatePluginProtocolMap,
 } from "../src/plugin-runtime";
+import { createServerState } from "../src/server-state";
 
 const homes: string[] = [];
 const handles: OpenDbHandle[] = [];
@@ -200,26 +201,66 @@ test("an expired TTL catalog is ready but stale before a refresh diagnostic exis
 
 test("the provider config key becomes the materialized runtime provider ID", async () => {
   const fixture = runtimeFixture({ kind: "static" }, { providerId: "configured-key" });
-
-  const result = await materializePluginProvider({
-    config: {
-      id: "configured-key",
-      kind: ProviderKind.OAuth,
-      enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
-    },
-    plugins: fixture.plugins,
-    repository: fixture.repository,
-    diagnostics,
-    logger: () => {},
-    onDiagnosticChanged: () => {},
+  const serverHome = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-runtime-server-"));
+  homes.push(serverHome);
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: "default",
+      label: "Example",
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error("not called");
+      },
+      catalog: {
+        policy: { kind: "static" },
+        async discover() {
+          throw new Error("stored catalog should be used");
+        },
+      },
+      async createRuntime() {
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse({
+      providers: {
+        "configured-key": {
+          kind: "oauth",
+          plugin: "@example/oauth",
+          capability: "default",
+        },
+      },
+    }),
+    dbHome: serverHome,
+    pluginRepository: fixture.repository,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
+    pluginLogger: () => {},
   });
 
-  expect(result.provider?.id).toBe("configured-key");
-  expect(new Router(result.provider === undefined ? [] : [result.provider]).resolve("model")[0]?.provider.id).toBe(
-    "configured-key",
-  );
+  try {
+    const snapshot = state.currentProviderSnapshot();
+    expect(snapshot.providers[0]?.id).toBe("configured-key");
+    expect(snapshot.providerStates?.get("configured-key")).toEqual({ status: "ready", catalog: "fresh" });
+    expect(snapshot.providerStates?.has("person")).toBe(false);
+    expect(snapshot.router.resolve("model")[0]?.provider.id).toBe("configured-key");
+  } finally {
+    state.close();
+  }
 });
 
 test("a materialized OAuth provider obeys real Router self, rename, and preserve aliases", async () => {
