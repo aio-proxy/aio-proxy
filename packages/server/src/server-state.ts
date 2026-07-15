@@ -38,7 +38,12 @@ import { type ConfigStore, createConfigStore } from "./config-store";
 import { watchConfigFile } from "./config-watcher";
 import { createDashboardEventHub, type DashboardEventHub, type DashboardEventLimits } from "./dashboard-events";
 import { createFifoQueue } from "./fifo-queue";
-import { type CatalogJobDescriptor, materializePluginProvider, type PluginRuntimeCacheEntry } from "./plugin-runtime";
+import {
+  type CatalogJobDescriptor,
+  materializePluginProvider,
+  type PluginRuntimeCacheEntry,
+  pluginOptionsIdentityDigest,
+} from "./plugin-runtime";
 import { createSnapshotManager } from "./plugin-snapshot";
 import {
   materializeProviders,
@@ -459,13 +464,30 @@ async function buildSnapshot(
   onDiagnosticChanged: () => void,
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
+  const builtIns = options.builtIns ?? createEmbeddedBuiltIns();
+  const publicPluginOptions = new Map<string, unknown>(builtIns.map((plugin) => [plugin.packageName, undefined]));
+  for (const enablement of config.plugins) publicPluginOptions.set(enablement.packageName, enablement.options);
+  for (const provider of config.providers) {
+    if (provider.kind === ProviderKind.OAuth && !publicPluginOptions.has(provider.plugin)) {
+      publicPluginOptions.set(provider.plugin, undefined);
+    }
+  }
+  const pluginOptionInputs = new Map(
+    [...publicPluginOptions].map(([packageName, publicOptions]) => [
+      packageName,
+      { public: publicOptions, secret: repository.readPluginSecret(packageName)?.value },
+    ]),
+  );
+  const pluginOptionsDigests = new Map(
+    [...pluginOptionInputs].map(([packageName, input]) => [packageName, pluginOptionsIdentityDigest(input)]),
+  );
   const plugins = await loadPluginRegistry({
     enablements: config.plugins,
-    builtIns: options.builtIns ?? createEmbeddedBuiltIns(),
+    builtIns,
     diagnostics,
     importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
     logger,
-    secrets: { readPluginSecret: (plugin) => repository.readPluginSecret(plugin)?.value },
+    secrets: { readPluginSecret: (plugin) => pluginOptionInputs.get(plugin)?.secret },
   });
   const nonOAuth = {
     ...config,
@@ -476,7 +498,8 @@ async function buildSnapshot(
   const oauth = await Promise.all(
     oauthConfigs.map((provider) => {
       const previousEntry = previous?.runtimeCache.get(provider.id);
-      const pluginOptions = config.plugins.find((entry) => entry.packageName === provider.plugin)?.options;
+      const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
+      if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
       return materializePluginProvider({
         config: provider,
         plugins,
@@ -484,7 +507,7 @@ async function buildSnapshot(
         diagnostics,
         logger,
         onDiagnosticChanged,
-        ...(pluginOptions === undefined ? {} : { pluginOptions }),
+        pluginOptionsDigest,
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
       });
     }),

@@ -35,6 +35,9 @@ import type { RuntimeProviderInstance } from "./runtime";
 export const PLUGIN_RUNTIME_TIMEOUT_MS = 5_000;
 
 export type RuntimeIdentityKey = `sha256:${string}` & { readonly __runtimeIdentity: unique symbol };
+export type PluginOptionsIdentityDigest = `sha256:${string}` & {
+  readonly __pluginOptionsIdentityDigest: unique symbol;
+};
 
 export class PluginRawResolverError extends Error {
   constructor() {
@@ -79,7 +82,7 @@ export type MaterializePluginProviderOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
-  readonly pluginOptions?: unknown;
+  readonly pluginOptionsDigest: PluginOptionsIdentityDigest;
   readonly previous?: PluginRuntimeCacheEntry;
 };
 
@@ -113,6 +116,13 @@ function digest(value: unknown): `sha256:${string}` {
   return `sha256:${createHash("sha256")
     .update(JSON.stringify(stable(value)))
     .digest("hex")}`;
+}
+
+export function pluginOptionsIdentityDigest(value: {
+  readonly public: unknown;
+  readonly secret: unknown;
+}): PluginOptionsIdentityDigest {
+  return digest(value) as PluginOptionsIdentityDigest;
 }
 
 function runtimeIdentity(value: unknown): RuntimeIdentityKey {
@@ -338,10 +348,7 @@ export async function materializePluginProvider(
     version: pluginVersion(plugins, config.plugin),
     capability: config.capability,
     providerId: config.id,
-    pluginOptionsDigest: digest({
-      public: options.pluginOptions,
-      secret: repository.readPluginSecret(config.plugin)?.value,
-    }),
+    pluginOptionsDigest: options.pluginOptionsDigest,
     accountOptionsDigest,
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),

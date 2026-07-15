@@ -320,6 +320,95 @@ test("OAuth deletion cascades account data only after the retired snapshot drain
   rmSync(home, { recursive: true, force: true });
 });
 
+test("plugin option identity survives nested in-place schema transforms across snapshot reloads", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-options-identity-"));
+  const configPath = join(home, "config.json");
+  const input = (value: string) => ({
+    plugins: [["@example/oauth", { nested: { value } }]],
+    providers: {
+      person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+    },
+  });
+  writeFileSync(configPath, JSON.stringify(input("https://one.example.test")));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  handle.close();
+  const setupValues: unknown[] = [];
+  let runtimes = 0;
+  const descriptor = definePlugin(
+    (api, options) => {
+      setupValues.push((options as { nested: { value: unknown } }).nested.value);
+      api.oauth.register({
+        id: "default",
+        label: "Example",
+        account: { options: { schema: zod.object({}), form: [] } },
+        credentials: zod.object({ token: zod.string() }),
+        async login() {
+          throw new Error("not called");
+        },
+        catalog: {
+          policy: { kind: "static" },
+          async discover() {
+            throw new Error("stored catalog should be used");
+          },
+        },
+        async createRuntime() {
+          runtimes++;
+          return {
+            provider: {
+              specificationVersion: "v4",
+              languageModel() {
+                throw new Error("not called");
+              },
+              imageModel() {
+                throw new Error("not called");
+              },
+              embeddingModel() {
+                throw new Error("not called");
+              },
+            },
+          } as never;
+        },
+      });
+    },
+    {
+      options: {
+        schema: zod.object({ nested: zod.any() }).transform(({ nested }) => {
+          nested.value = new URL(nested.value as string);
+          return { nested };
+        }),
+        form: [],
+      },
+    },
+  );
+  const state = await createServerState({
+    config: ConfigSchema.parse(input("https://one.example.test")),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
+  });
+
+  try {
+    expect(runtimes).toBe(1);
+    expect(setupValues[0]).toBeInstanceOf(URL);
+
+    writeFileSync(configPath, JSON.stringify(input("https://one.example.test")));
+    expect(await state.reload()).toMatchObject({ ok: true });
+    expect(runtimes).toBe(1);
+
+    writeFileSync(configPath, JSON.stringify(input("https://two.example.test")));
+    expect(await state.reload()).toMatchObject({ ok: true });
+    expect(runtimes).toBe(2);
+    expect(setupValues).toHaveLength(3);
+    expect(setupValues.every((value) => value instanceof URL)).toBe(true);
+  } finally {
+    state.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("watcher reload rejects structured OAuth removal when the stored account capability mismatches", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-mismatched-removal-"));
   const configPath = join(home, "config.json");

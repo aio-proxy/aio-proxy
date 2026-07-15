@@ -14,9 +14,11 @@ import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
 import { definePlugin, type ModelCatalog, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import {
-  materializePluginProvider,
+  type MaterializePluginProviderOptions,
+  materializePluginProvider as materializePluginProviderWithDigest,
   PluginRawResolverError,
   PluginRawTransportError,
+  pluginOptionsIdentityDigest,
   validatePluginProtocolMap,
 } from "../src/plugin-runtime";
 import { createServerState } from "../src/server-state";
@@ -45,6 +47,16 @@ const diagnostics: DiagnosticFactory = (code, options) => ({
   occurredAt: new Date(0).toISOString(),
   ...(options.suggestedCommand === undefined ? {} : { suggestedCommand: options.suggestedCommand }),
 });
+
+const emptyPluginOptionsDigest = pluginOptionsIdentityDigest({ public: undefined, secret: undefined });
+
+function materializePluginProvider(
+  options: Omit<MaterializePluginProviderOptions, "pluginOptionsDigest"> & {
+    readonly pluginOptionsDigest?: MaterializePluginProviderOptions["pluginOptionsDigest"];
+  },
+) {
+  return materializePluginProviderWithDigest({ pluginOptionsDigest: emptyPluginOptionsDigest, ...options });
+}
 
 function runtimeFixture(
   policy: OAuthAdapter["catalog"]["policy"],
@@ -436,10 +448,13 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
     logger: () => {},
     onDiagnosticChanged: () => {},
   } as const;
-  const first = await materializePluginProvider({ ...base, pluginOptions: { mode: "one" } });
+  const first = await materializePluginProvider({
+    ...base,
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "one" }, secret: undefined }),
+  });
   const pluginOptionsChanged = await materializePluginProvider({
     ...base,
-    pluginOptions: { mode: "two" },
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
     previous: first.cacheEntry,
   });
   const account = fixture.repository.readAccount("person");
@@ -465,13 +480,13 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
   fixture.repository.completeAccountOperation(relogin.operationId);
   const relogged = await materializePluginProvider({
     ...base,
-    pluginOptions: { mode: "two" },
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
     previous: pluginOptionsChanged.cacheEntry,
   });
   fixture.repository.writeCatalog("person", catalog, 2_000);
   const refreshed = await materializePluginProvider({
     ...base,
-    pluginOptions: { mode: "two" },
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
     previous: relogged.cacheEntry,
   });
 
