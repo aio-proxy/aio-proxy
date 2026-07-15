@@ -115,47 +115,43 @@ describe("AtomicConfigFile", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
   });
 
-  test("a hung process identity lookup is killed instead of blocking config locking", async () => {
+  test("a process identity lookup that ignores termination is force-killed and bounded", async () => {
     const { path } = fixture("{}\n");
     const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
     const originalSpawn = mutableBun.spawn;
-    let killed = 0;
+    const killSignals: unknown[] = [];
     mutableBun.spawn = (() => {
-      let closed = false;
-      let resolveExit!: (code: number) => void;
-      const exited = new Promise<number>((resolve) => {
-        resolveExit = resolve;
-      });
-      let controller!: ReadableStreamDefaultController<Uint8Array>;
       const stdout = new ReadableStream<Uint8Array>({
-        start(value) {
-          controller = value;
-          setTimeout(() => {
-            if (closed) return;
-            closed = true;
-            controller.enqueue(new TextEncoder().encode("MATCH\n"));
-            controller.close();
-            resolveExit(0);
-          }, 400);
+        pull() {
+          return new Promise<void>(() => {});
+        },
+        cancel() {
+          return new Promise<void>(() => {});
         },
       });
       return {
         stdout,
-        exited,
-        kill() {
-          killed += 1;
-          if (closed) return;
-          closed = true;
-          controller.close();
-          resolveExit(1);
+        exited: new Promise<number>(() => {}),
+        kill(signal?: unknown) {
+          killSignals.push(signal);
         },
       } as unknown as ReturnType<typeof Bun.spawn>;
     }) as typeof Bun.spawn;
+    const pending = new AtomicConfigFile(path).replace((current) => current);
     try {
-      await new AtomicConfigFile(path).replace((current) => current);
-      expect(killed).toBeGreaterThan(0);
+      await expect(
+        Promise.race([
+          pending,
+          Bun.sleep(2_500).then(() => {
+            throw new Error("config identity cleanup exceeded its budget");
+          }),
+        ]),
+      ).resolves.toBeUndefined();
+      expect(killSignals.length).toBeGreaterThan(0);
+      expect(killSignals.every((signal) => signal === 9)).toBe(true);
     } finally {
       mutableBun.spawn = originalSpawn;
+      void pending.catch(() => {});
     }
   });
 

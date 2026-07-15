@@ -7,6 +7,7 @@ export const CONFIG_LOCK_WAIT_MS = 15_000;
 export const CONFIG_LOCK_STALE_MS = 60_000;
 export const CONFIG_LOCK_HEARTBEAT_MS = 10_000;
 const PROCESS_STARTTIME_WAIT_MS = 250;
+const PROCESS_STARTTIME_CLEANUP_WAIT_MS = 250;
 const PROCESS_STARTTIME_TIMEOUT = Symbol("process-starttime-timeout");
 
 type ConfigRecord = Record<string, unknown>;
@@ -61,6 +62,56 @@ function ownerAlive(pid: number): boolean {
   }
 }
 
+function observe<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => {});
+  return promise;
+}
+
+async function withinProcessStarttimeDeadline<T>(
+  promise: Promise<T>,
+  waitMs: number,
+): Promise<T | typeof PROCESS_STARTTIME_TIMEOUT> {
+  observe(promise);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<typeof PROCESS_STARTTIME_TIMEOUT>((resolve) => {
+        timeout = setTimeout(() => resolve(PROCESS_STARTTIME_TIMEOUT), waitMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+function drainProcessStdout(stdout: ReadableStream<Uint8Array> | null): {
+  readonly result: Promise<string>;
+  readonly cancel: () => Promise<void>;
+} {
+  if (stdout === null) return { result: Promise.resolve(""), cancel: async () => {} };
+  const reader = stdout.getReader();
+  const result = observe(
+    (async () => {
+      const decoder = new TextDecoder();
+      let text = "";
+      try {
+        while (true) {
+          const part = await reader.read();
+          if (part.done) return text + decoder.decode();
+          text += decoder.decode(part.value, { stream: true });
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    })(),
+  );
+  return {
+    result,
+    cancel: () => observe(Promise.resolve().then(() => reader.cancel())),
+  };
+}
+
 async function processStarttime(pid: number): Promise<string | null> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
@@ -69,23 +120,23 @@ async function processStarttime(pid: number): Promise<string | null> {
     if (error instanceof Error) return null;
     throw error;
   }
-  const inspection = (async () => {
-    const stdout = child.stdout;
-    const text = stdout === null ? "" : await new Response(stdout).text();
-    if ((await child.exited) !== 0) return null;
+  const stdout = drainProcessStdout(child.stdout);
+  const inspection = observe(Promise.all([stdout.result, child.exited]));
+  const result = await withinProcessStarttimeDeadline(inspection, PROCESS_STARTTIME_WAIT_MS);
+  if (result !== PROCESS_STARTTIME_TIMEOUT) {
+    const [text, code] = result;
+    if (code !== 0) return null;
     const trimmed = text.trim();
     return trimmed.length === 0 ? null : trimmed;
-  })();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timed = new Promise<typeof PROCESS_STARTTIME_TIMEOUT>((resolve) => {
-    timeout = setTimeout(() => resolve(PROCESS_STARTTIME_TIMEOUT), PROCESS_STARTTIME_WAIT_MS);
-  });
-  const result = await Promise.race([inspection, timed]);
-  if (timeout !== undefined) clearTimeout(timeout);
-  if (result !== PROCESS_STARTTIME_TIMEOUT) return result;
-  child.kill();
-  await child.exited.catch(() => {});
-  await inspection.catch(() => null);
+  }
+  try {
+    child.kill(9);
+  } catch {}
+  await Promise.all([
+    withinProcessStarttimeDeadline(child.exited, PROCESS_STARTTIME_CLEANUP_WAIT_MS),
+    withinProcessStarttimeDeadline(stdout.result, PROCESS_STARTTIME_CLEANUP_WAIT_MS),
+    withinProcessStarttimeDeadline(stdout.cancel(), PROCESS_STARTTIME_CLEANUP_WAIT_MS),
+  ]);
   return null;
 }
 

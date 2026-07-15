@@ -178,6 +178,65 @@ describe("renderConfigSpec", () => {
     expect(result).toEqual({ publicValues: { endpoint: "https://example.test" }, secrets: {} });
   });
 
+  test("rejects a schema transform that renames a current secret into an undeclared public key", async () => {
+    const sentinel = "transform-secret-sentinel";
+    const renamedSecret = {
+      schema: zod
+        .object({ endpoint: zod.string().url(), token: zod.string() })
+        .transform(({ endpoint, token }) => ({ endpoint, leaked: token })),
+      form: [
+        { type: "text", key: "endpoint", label: "Endpoint" },
+        { type: "secret", key: "token", label: "Token" },
+      ],
+    } as const;
+
+    await expect(
+      renderConfigSpec(renamedSecret, {
+        prompts: prompts(["https://example.test", sentinel]),
+      }),
+    ).rejects.toBeInstanceOf(FormSchemaValidationError);
+  });
+
+  test("allows same-key secret transforms while preserving public prompt defaults", async () => {
+    const transformed = {
+      schema: zod
+        .object({ endpoint: zod.string().url(), token: zod.string() })
+        .transform(({ endpoint, token }) => ({ endpoint: endpoint.toLowerCase(), token: token.trim() })),
+      form: [
+        { type: "text", key: "endpoint", label: "Endpoint" },
+        { type: "secret", key: "token", label: "Token" },
+      ],
+    } as const;
+    const calls: { type: string; config: unknown; signal?: AbortSignal }[] = [];
+
+    const result = await renderConfigSpec(transformed, {
+      prompts: prompts(["https://example.test/path", "  transformed-secret  "], calls),
+      currentPublicValues: { endpoint: "https://old.example/path" },
+    });
+
+    expect((calls[0]?.config as { default?: unknown }).default).toBe("https://old.example/path");
+    expect(result).toEqual({
+      publicValues: { endpoint: "https://example.test/path" },
+      secrets: { token: "transformed-secret" },
+    });
+  });
+
+  test("rejects non-plain schema output records", async () => {
+    class Output {
+      endpoint = "https://example.test";
+    }
+    const nonPlain = {
+      schema: zod.object({ endpoint: zod.string().url() }).transform(() => new Output()),
+      form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+    } as const;
+
+    await expect(
+      renderConfigSpec(nonPlain, {
+        prompts: prompts(["https://example.test"]),
+      }),
+    ).rejects.toBeInstanceOf(FormSchemaValidationError);
+  });
+
   test("uses current defaults only when their values are compatible with the field type", async () => {
     const defaultsSpec = {
       schema: zod.object({

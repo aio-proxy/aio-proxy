@@ -93,11 +93,29 @@ function compatibleDefault(field: FormField, current: unknown): unknown {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+function plainRecordEntries(value: unknown): readonly (readonly [string, unknown])[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new FormSchemaValidationError([{ key: "<root>", message: "Expected an object" }]);
   }
-  return value as Record<string, unknown>;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new FormSchemaValidationError([{ key: "<root>", message: "Expected a plain object" }]);
+    }
+    return Reflect.ownKeys(value).map((key) => {
+      if (typeof key !== "string") {
+        throw new FormSchemaValidationError([{ key: "<root>", message: "Expected string record keys" }]);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
+        throw new FormSchemaValidationError([{ key, message: "Expected a plain record value" }]);
+      }
+      return [key, descriptor.value] as const;
+    });
+  } catch (error) {
+    if (error instanceof FormSchemaValidationError) throw error;
+    throw new FormSchemaValidationError([{ key: "<root>", message: "Expected a plain object" }]);
+  }
 }
 
 export async function renderConfigSpec<T>(
@@ -109,8 +127,7 @@ export async function renderConfigSpec<T>(
   const currentPublic = options.currentPublicValues ?? {};
   const currentSecrets = options.currentSecrets ?? {};
   const clearSecrets = new Set((options.clearSecrets ?? []).filter((key) => secretKeys.has(key)));
-  const vaultOriginKeys = new Set(Object.keys(currentSecrets));
-  const publicFieldKeys = new Set(spec.form.filter((field) => field.type !== "secret").map((field) => field.key));
+  const formKeys = new Set(spec.form.map((field) => field.key));
   const collected: Record<string, unknown> = Object.fromEntries(
     Object.entries(currentSecrets).filter(([key]) => secretKeys.has(key)),
   );
@@ -205,12 +222,23 @@ export async function renderConfigSpec<T>(
       })),
     );
   }
-  const validated = asRecord(parsed.value);
+  const validatedEntries = plainRecordEntries(parsed.value);
+  const validatedKeys = new Set(validatedEntries.map(([key]) => key));
+  const boundaryIssues: FormSchemaIssue[] = [];
+  for (const [key] of validatedEntries) {
+    if (!formKeys.has(key)) boundaryIssues.push({ key, message: "Schema output key is not declared by the form" });
+  }
+  for (const key of secretKeys) {
+    if (Object.hasOwn(collected, key) && !validatedKeys.has(key)) {
+      boundaryIssues.push({ key, message: "Schema output removed or renamed a secret field" });
+    }
+  }
+  if (boundaryIssues.length > 0) throw new FormSchemaValidationError(boundaryIssues);
   const publicValues: Record<string, unknown> = {};
   const secrets: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(validated)) {
+  for (const [key, value] of validatedEntries) {
     if (secretKeys.has(key)) secrets[key] = value;
-    else if (!vaultOriginKeys.has(key) || publicFieldKeys.has(key)) publicValues[key] = value;
+    else publicValues[key] = value;
   }
   return { publicValues, secrets };
 }

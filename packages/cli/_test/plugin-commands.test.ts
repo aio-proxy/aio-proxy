@@ -9,6 +9,7 @@ import {
   type PluginSecretSnapshot,
 } from "@aio-proxy/core";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
+import { FormSchemaValidationError } from "../src/plugin-commands/form";
 import {
   BuiltInPluginRemovalError,
   createCliPluginDiagnosticFactory,
@@ -332,6 +333,47 @@ describe("plugin lifecycle commands", () => {
     expect(configText).not.toContain(sentinel);
     expect(JSON.parse(configText).plugins).toEqual([["migrated-plugin", { endpoint: "https://example.test" }]]);
     expect(state.values.get("migrated-plugin")?.value).toEqual({});
+  });
+
+  test("config rejects a secret-renaming transform without publishing the secret", async () => {
+    const sentinel = "transform-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            const { endpoint, token } = value as { endpoint: string; token: string };
+            return { success: true, data: { endpoint, leaked: token } };
+          },
+        } as never,
+        form: [
+          { type: "text", key: "endpoint", label: "Endpoint" },
+          { type: "secret", key: "token", label: "Token" },
+        ],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["transform-plugin", { endpoint: "https://old.test" }]] });
+    state.values.set("transform-plugin", { revision: 1, value: { token: sentinel } });
+
+    const result = pluginConfig(
+      "transform-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => "https://new.test",
+          password: async () => "",
+        },
+      },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(FormSchemaValidationError);
+    await result.catch((error) => expect(String(error)).not.toContain(sentinel));
+    const configText = readFileSync(state.path, "utf8");
+    expect(configText).not.toContain(sentinel);
+    expect(JSON.parse(configText).plugins).toEqual([["transform-plugin", { endpoint: "https://old.test" }]]);
   });
 
   test("config rewrites a legacy non-record vault value to the current descriptor secret shape", async () => {
