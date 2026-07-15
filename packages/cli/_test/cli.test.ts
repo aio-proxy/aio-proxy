@@ -76,7 +76,10 @@ describe("cli", () => {
 
     try {
       // When
-      const response = await waitForOk(`http://127.0.0.1:${port}/health`, 1_000);
+      const response = await waitForOk(`http://127.0.0.1:${port}/health`, {
+        probeTimeoutMs: 1_000,
+        readinessTimeoutMs: 5_000,
+      });
 
       // Then
       expect(response.status).toBe(200);

@@ -57,19 +57,25 @@ export const freePort = () => {
   return port;
 };
 
-export async function waitForOk(url: string, timeoutMs: number): Promise<Response> {
-  const deadline = performance.now() + timeoutMs;
+type WaitForOkOptions = Readonly<{
+  probeTimeoutMs: number;
+  readinessTimeoutMs: number;
+}>;
+
+export async function waitForOk(url: string, options: WaitForOkOptions): Promise<Response> {
+  const deadline = performance.now() + options.readinessTimeoutMs;
   let lastError: Error | undefined;
 
   while (performance.now() < deadline) {
     try {
       const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()));
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(remainingMs),
+        signal: AbortSignal.timeout(Math.min(options.probeTimeoutMs, remainingMs)),
       });
       if (response.ok) {
         return response;
       }
+      await response.body?.cancel();
       lastError = new Error(`HTTP ${response.status}`);
     } catch (err) {
       if (!(err instanceof Error)) {

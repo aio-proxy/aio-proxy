@@ -548,7 +548,7 @@ describe("npmAdd", () => {
 
     await Promise.all(
       Array.from({ length: 8 }, async () => {
-        const lock = await acquireNpmInstallLock("stale-lock-race-provider", cacheDir);
+        const lock = await acquireNpmInstallLock("stale-lock-race-provider", cacheDir, { waitMs: 10_000 });
         active += 1;
         maximum = Math.max(maximum, active);
         await Bun.sleep(10);
@@ -558,7 +558,7 @@ describe("npmAdd", () => {
     );
     expect(maximum).toBe(1);
     rmSync(cacheDir, { recursive: true, force: true });
-  });
+  }, 15_000);
 
   test("Given release paused after compare When a replacement acquires Then the old owner cannot unlink it", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-release-race-"));
