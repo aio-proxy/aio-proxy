@@ -8,6 +8,7 @@ import {
   type DiagnosticFactory,
   loadPluginRegistry,
   type PluginRepository,
+  Router,
 } from "@aio-proxy/core";
 import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
 import { definePlugin, type ModelCatalog, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
@@ -48,6 +49,7 @@ function runtimeFixture(
   overrides: {
     readonly catalog?: ModelCatalog | null;
     readonly createRuntime?: OAuthAdapter["createRuntime"];
+    readonly providerId?: string;
   } = {},
 ): {
   readonly repository: PluginRepository;
@@ -60,14 +62,15 @@ function runtimeFixture(
   handles.push(handle);
   const repository = createPluginRepository(handle.sqlite);
   const fixtureCatalog = overrides.catalog === undefined ? catalog : overrides.catalog;
+  const providerId = overrides.providerId ?? "person";
   const operation = repository.stageAccountOperation({
     kind: "create",
     targetDigest: "create",
     account: {
-      providerId: "person",
+      providerId,
       plugin: "@example/oauth",
       capability: "default",
-      fingerprint: "person@example.com",
+      fingerprint: `${providerId}@example.com`,
       options: {},
       secrets: {},
       credential: { token: "secret" },
@@ -75,7 +78,7 @@ function runtimeFixture(
         fixtureCatalog === null
           ? {
               kind: "missing",
-              diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId: "person", retryable: true }),
+              diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId, retryable: true }),
             }
           : { kind: "replace", value: { catalog: fixtureCatalog, refreshedAt: 1_000 } },
     },
@@ -193,6 +196,71 @@ test("an expired TTL catalog is ready but stale before a refresh diagnostic exis
 
   expect(result.provider?.id).toBe("person");
   expect(result.state).toEqual({ status: "ready", catalog: "stale" });
+});
+
+test("the provider config key becomes the materialized runtime provider ID", async () => {
+  const fixture = runtimeFixture({ kind: "static" }, { providerId: "configured-key" });
+
+  const result = await materializePluginProvider({
+    config: {
+      id: "configured-key",
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: "@example/oauth",
+      capability: "default",
+    },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+
+  expect(result.provider?.id).toBe("configured-key");
+  expect(new Router(result.provider === undefined ? [] : [result.provider]).resolve("model")[0]?.provider.id).toBe(
+    "configured-key",
+  );
+});
+
+test("a materialized OAuth provider obeys real Router self, rename, and preserve aliases", async () => {
+  const fixture = runtimeFixture({ kind: "static" });
+  const base = {
+    id: "person",
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: "@example/oauth",
+    capability: "default",
+  } as const;
+  const options = {
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  };
+  const direct = await materializePluginProvider({ ...options, config: base });
+  const renamed = await materializePluginProvider({
+    ...options,
+    config: { ...base, alias: { renamed: { model: "model", preserve: false } } },
+    previous: direct.cacheEntry,
+  });
+  const preserved = await materializePluginProvider({
+    ...options,
+    config: { ...base, alias: { kept: { model: "model", preserve: true } } },
+    previous: renamed.cacheEntry,
+  });
+  if (direct.provider === undefined || renamed.provider === undefined || preserved.provider === undefined) {
+    throw new Error("runtime fixture did not materialize providers");
+  }
+  const directRouter = new Router([direct.provider]);
+  const renamedRouter = new Router([renamed.provider]);
+  const preservedRouter = new Router([preserved.provider]);
+
+  expect(directRouter.resolve("model")[0]?.modelId).toBe("model");
+  expect(renamedRouter.resolve("renamed")[0]?.modelId).toBe("model");
+  expect(() => renamedRouter.resolve("model")).toThrow();
+  expect(preservedRouter.resolve("kept")[0]?.modelId).toBe("model");
+  expect(preservedRouter.resolve("model")[0]?.modelId).toBe("model");
 });
 
 test("a malformed stored catalog becomes unavailable and schedules safe rediscovery", async () => {

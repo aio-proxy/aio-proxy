@@ -16,7 +16,6 @@ import {
 import type {
   AccountContext,
   CredentialPort,
-  JsonValue,
   ModelCatalog,
   OAuthAdapter,
   ProtocolId,
@@ -428,8 +427,4 @@ export async function materializePluginProvider(
 
 export function validatePluginProtocolMap(): Readonly<Record<ProviderProtocol, ProtocolId>> {
   return pluginProtocol;
-}
-
-export function pluginMetadata(value: JsonValue | undefined): JsonValue | undefined {
-  return value;
 }

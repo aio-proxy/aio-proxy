@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import {
+  AtomicConfigCommitUncertainError,
   AtomicConfigFile,
   type BuiltInPluginDefinition,
   createEmbeddedBuiltIns,
@@ -15,6 +16,7 @@ import {
   type PluginPackageImporter,
   type PluginRegistrySnapshot,
   type PluginRepository,
+  RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
@@ -70,8 +72,10 @@ export type ServerStateOptions = {
 };
 
 type ServerStateTestHooks = {
+  readonly configFile?: AtomicConfigFile;
   readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
+  readonly reconciliationRetryMs?: number;
   readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
 };
 
@@ -136,12 +140,20 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
-  const configFile = options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath);
-  const accountRemovals = createAccountRemovalCoordinator({ file: configFile, repository });
+  const configFile =
+    testHooks?.configFile ?? (options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath));
   const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
+  const reconciliationRetryMs = testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS;
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let recoveryRunAt: number | undefined;
+  const reconciliationTimers = new Set<ReturnType<typeof setTimeout>>();
   let recoveryGeneration = 0;
   let closed = false;
+  const accountRemovals = createAccountRemovalCoordinator({
+    file: configFile,
+    repository,
+    onRecoveryNeeded: scheduleRecovery,
+  });
 
   if (configFile !== undefined) {
     await recoverAccounts(
@@ -220,47 +232,87 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     return retired;
   }
 
-  async function reload(): Promise<ConfigReloadResult> {
-    return queue(async () => {
-      try {
-        const before = (manager.current() as Snapshot).summaries;
-        if (configFile === undefined) {
-          await commitConfig((manager.current() as Snapshot).config, "reload");
-        } else {
-          const staged: PendingAccountOperation[] = [];
-          let retired: RetiredProviderSnapshot | undefined;
-          try {
-            await configFile.transaction(async (current) => {
-              const previous = manager.current() as Snapshot;
-              staged.push(
-                ...accountRemovals.stageRemoved(
-                  providerConfigRecord(previous.config),
-                  asProviderRecord(current["providers"]),
-                ),
-              );
-              retired = await commitConfig(ConfigSchema.parse(current), "reload");
-              return { next: current, result: undefined };
-            });
-          } catch (error) {
-            accountRemovals.compensate(staged);
-            throw error;
+  async function reloadNow(retainedOperations: readonly PendingAccountOperation[] = []): Promise<ConfigReloadResult> {
+    try {
+      const before = (manager.current() as Snapshot).summaries;
+      if (configFile === undefined) {
+        await commitConfig((manager.current() as Snapshot).config, "reload");
+      } else {
+        const staged: PendingAccountOperation[] = [...retainedOperations];
+        const newlyStaged: PendingAccountOperation[] = [];
+        const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
+        let retired: RetiredProviderSnapshot | undefined;
+        try {
+          await configFile.transaction(async (current) => {
+            const previous = manager.current() as Snapshot;
+            const previousProviders = Object.fromEntries(
+              Object.entries(providerConfigRecord(previous.config)).filter(
+                ([providerId]) => !retainedProviderIds.has(providerId),
+              ),
+            );
+            const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
+            newlyStaged.push(...detected);
+            staged.push(...detected);
+            retired = await commitConfig(ConfigSchema.parse(current), "reload");
+            return { next: current, result: undefined };
+          });
+        } catch (error) {
+          if (retired !== undefined) {
+            void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+          } else if (error instanceof AtomicConfigCommitUncertainError) {
+            accountRemovals.scheduleRecovery(staged);
+          } else {
+            accountRemovals.compensate(newlyStaged);
           }
-          void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+          throw error;
         }
-        return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
-      } catch (error) {
-        const result = reloadError(error);
-        logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
-        return result;
+        void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
       }
-    });
+      return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
+    } catch (error) {
+      const result = reloadError(error);
+      logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
+      return result;
+    }
+  }
+
+  async function reload(): Promise<ConfigReloadResult> {
+    return queue(() => reloadNow());
+  }
+
+  function queueReconciliation(operations: readonly PendingAccountOperation[], generation = recoveryGeneration): void {
+    if (closed || generation !== recoveryGeneration) return;
+    void queue(async () => {
+      if (closed || generation !== recoveryGeneration) return;
+      try {
+        const result = await reloadNow(operations);
+        if (!result.ok) scheduleReconciliationRetry(operations, generation);
+      } catch {
+        scheduleReconciliationRetry(operations, generation);
+      }
+    }).catch(() => scheduleReconciliationRetry(operations, generation));
+  }
+
+  function scheduleReconciliationRetry(operations: readonly PendingAccountOperation[], generation: number): void {
+    if (closed || generation !== recoveryGeneration) return;
+    const timer = setTimeout(() => {
+      reconciliationTimers.delete(timer);
+      queueReconciliation(operations, generation);
+    }, reconciliationRetryMs);
+    reconciliationTimers.add(timer);
+    timer.unref?.();
   }
 
   const configStore = createConfigStore({
     getConfigPath: () => options.configPath,
+    ...(configFile === undefined ? {} : { file: configFile }),
     accountRemovals,
+    enqueue: queue,
+    onReconciliationNeeded: (operations) => {
+      queueReconciliation(operations);
+    },
     repository,
-    verify: (candidate) => queue(() => commitConfig(ConfigSchema.parse(candidate), "config-store")),
+    verify: (candidate) => commitConfig(ConfigSchema.parse(candidate), "config-store"),
   });
 
   async function providerSummaries({
@@ -288,22 +340,41 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
 
   async function runRecovery(generation: number): Promise<void> {
     if (closed || generation !== recoveryGeneration || configFile === undefined) return;
-    const result = await recoverAccounts(
-      configFile,
-      repository,
-      { mode: "server", canDeleteAccount: manager.canDeleteAccount },
-      { factory: diagnostics, logger: pluginLogger },
-    );
-    if (closed || generation !== recoveryGeneration) return;
-    if (result.nextRunAt !== undefined) scheduleRecovery(result.nextRunAt, generation);
+    try {
+      const result = await recoverAccounts(
+        configFile,
+        repository,
+        { mode: "server", canDeleteAccount: manager.canDeleteAccount },
+        { factory: diagnostics, logger: pluginLogger },
+      );
+      if (closed || generation !== recoveryGeneration) return;
+      if (result.nextRunAt !== undefined) scheduleRecovery(result.nextRunAt, generation);
+    } catch (error) {
+      if (closed || generation !== recoveryGeneration) return;
+      scheduleRecovery(Date.now() + RECOVERY_DRAIN_RETRY_MS, generation);
+      try {
+        pluginLogger({
+          event: "plugin.account.recovery.failed",
+          code: "ACCOUNT_RECOVERY_FAILED",
+          context: {},
+          error: {
+            name: error instanceof Error ? error.name : "Error",
+            message: "Pending account recovery failed",
+          },
+        });
+      } catch {}
+    }
   }
 
   function scheduleRecovery(nextRunAt: number, generation = recoveryGeneration): void {
     if (closed || generation !== recoveryGeneration) return;
+    if (recoveryTimer !== undefined && recoveryRunAt !== undefined && recoveryRunAt <= nextRunAt) return;
     if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+    recoveryRunAt = nextRunAt;
     recoveryTimer = setTimeout(
       () => {
         recoveryTimer = undefined;
+        recoveryRunAt = undefined;
         if (closed || generation !== recoveryGeneration) return;
         void runRecovery(generation);
       },
@@ -338,7 +409,10 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       if (recoveryTimer !== undefined) {
         clearTimeout(recoveryTimer);
         recoveryTimer = undefined;
+        recoveryRunAt = undefined;
       }
+      for (const timer of reconciliationTimers) clearTimeout(timer);
+      reconciliationTimers.clear();
       events.close();
       dbHandle.close();
     },
@@ -460,7 +534,10 @@ async function buildSnapshot(
 }
 
 function providerConfigRecord(config: Config): Record<string, unknown> {
-  return Object.fromEntries(config.providers.map(({ id, ...provider }) => [id, provider]));
+  return Object.fromEntries([
+    ...config.providers.map(({ id, ...provider }) => [id, provider] as const),
+    ...config.invalidProviders.map(({ id, kind }) => [id, kind === undefined ? {} : { kind }] as const),
+  ]);
 }
 
 function buildSnapshotWithProviders(

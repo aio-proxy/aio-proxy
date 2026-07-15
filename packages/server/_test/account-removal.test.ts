@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ABSENT_PROVIDER_DIGEST, AtomicConfigFile, createPluginRepository } from "@aio-proxy/core";
+import {
+  ABSENT_PROVIDER_DIGEST,
+  AtomicConfigFile,
+  createPluginRepository,
+  PENDING_OPERATION_TTL_MS,
+} from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
 import { createAccountRemovalCoordinator } from "../src/account-removal";
 
@@ -38,11 +43,42 @@ test("compensates earlier delete markers when staging a later removal fails", ()
   expect(compensated).toEqual(["delete:first"]);
 });
 
-test("never stages a stale account for a removed non-OAuth or mismatched provider", () => {
+test.each([
+  ["invalid", { kind: "oauth", plugin: "@example/oauth", capability: "" }],
+  ["legacy", { kind: "oauth", vendor: "github-copilot" }],
+])("stages a runtime-revision CAS marker for a removed %s OAuth row", (_label, previous) => {
+  const staged: unknown[] = [];
+  const repository = {
+    readAccount(providerId: string) {
+      return { providerId, plugin: "@example/other", capability: "default", runtimeRevision: 7 };
+    },
+    stageAccountOperation(input: unknown) {
+      staged.push(input);
+      return {
+        operationId: "delete:person",
+        providerId: "person",
+        targetDigest: ABSENT_PROVIDER_DIGEST,
+      };
+    },
+  };
+  const coordinator = createAccountRemovalCoordinator({ file: {} as never, repository: repository as never });
+
+  expect(coordinator.stageRemoved({ person: previous }, {})).toHaveLength(1);
+  expect(staged).toEqual([
+    {
+      kind: "delete",
+      targetDigest: ABSENT_PROVIDER_DIGEST,
+      providerId: "person",
+      expectedRuntimeRevision: 7,
+    },
+  ]);
+});
+
+test("never stages a stale account for a removed API or AI SDK row", () => {
   let staged = 0;
   const repository = {
     readAccount(providerId: string) {
-      return { providerId, plugin: "@example/other", capability: "default", runtimeRevision: 1 };
+      return { providerId, plugin: "@example/oauth", capability: "default", runtimeRevision: 1 };
     },
     stageAccountOperation() {
       staged++;
@@ -55,12 +91,72 @@ test("never stages a stale account for a removed non-OAuth or mismatched provide
     coordinator.stageRemoved(
       {
         api: { kind: "api", protocol: "openai-compatible", baseURL: "https://api.example.test" },
-        oauth: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+        ai: { kind: "ai-sdk", packageName: "@ai-sdk/openai-compatible" },
       },
       {},
     ),
   ).toEqual([]);
   expect(staged).toBe(0);
+});
+
+test("a committed delete marker schedules recovery before its retired snapshot drains", async () => {
+  let releaseDrain = (): void => {};
+  const whenDrained = new Promise<void>((resolve) => {
+    releaseDrain = resolve;
+  });
+  const scheduled: number[] = [];
+  const coordinator = createAccountRemovalCoordinator({
+    file: {
+      transaction: async (fn: (current: Record<string, unknown>) => Promise<unknown>) => fn({ providers: {} }),
+    } as never,
+    repository: {
+      finalizeDeleteOperation() {
+        return "deleted";
+      },
+    } as never,
+    onRecoveryNeeded: (nextRunAt) => scheduled.push(nextRunAt),
+  });
+  const operation = {
+    operationId: "delete:person",
+    providerId: "person",
+    kind: "delete" as const,
+    targetDigest: ABSENT_PROVIDER_DIGEST,
+    appliedRevision: 1,
+    createdAt: 123,
+  };
+
+  const finalizing = coordinator.finalizeAfterDrain([operation], {
+    providerIds: new Set(["person"]),
+    whenDrained,
+    whenProviderDrained: () => whenDrained,
+  });
+  expect(scheduled).toEqual([123 + PENDING_OPERATION_TTL_MS]);
+  releaseDrain();
+  await finalizing;
+});
+
+test("a failed delete finalizer re-arms recovery at the marker deadline", async () => {
+  const scheduled: number[] = [];
+  const coordinator = createAccountRemovalCoordinator({
+    file: {
+      transaction() {
+        throw new Error("transient finalize failure");
+      },
+    } as never,
+    repository: {} as never,
+    onRecoveryNeeded: (nextRunAt) => scheduled.push(nextRunAt),
+  });
+  const operation = {
+    operationId: "delete:person",
+    providerId: "person",
+    kind: "delete" as const,
+    targetDigest: ABSENT_PROVIDER_DIGEST,
+    appliedRevision: 1,
+    createdAt: 456,
+  };
+
+  await expect(coordinator.finalizeAfterDrain([operation], undefined)).rejects.toThrow("transient finalize failure");
+  expect(scheduled).toEqual([456 + PENDING_OPERATION_TTL_MS, 456 + PENDING_OPERATION_TTL_MS]);
 });
 
 test("coordinates absent digest, snapshot drainage, and final config recheck", async () => {
@@ -123,10 +219,11 @@ test("coordinates absent digest, snapshot drainage, and final config recheck", a
   }
 });
 
-test("keeps a re-added account when the retired snapshot drains", async () => {
+test("re-adding an invalid OAuth row before drain preserves the account and completes its marker", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-account-removal-"));
   const configPath = join(home, "config.json");
-  writeFileSync(configPath, JSON.stringify({ providers: { person: { kind: "oauth" } } }));
+  const invalid = { kind: "oauth", plugin: "@example/oauth", capability: "" };
+  writeFileSync(configPath, JSON.stringify({ providers: { person: invalid } }));
   const handle = openDb({ home });
   const repository = createPluginRepository(handle.sqlite);
   const create = repository.stageAccountOperation({
@@ -151,14 +248,70 @@ test("keeps a re-added account when the retired snapshot drains", async () => {
   });
   repository.completeAccountOperation(create.operationId);
   const coordinator = createAccountRemovalCoordinator({ file: new AtomicConfigFile(configPath), repository });
-  const staged = coordinator.stageRemoved(
-    { person: { kind: "oauth", plugin: "@example/oauth", capability: "default" } },
-    {},
-  );
+  const staged = coordinator.stageRemoved({ person: invalid }, {});
+  let releaseDrain = (): void => {};
+  const whenDrained = new Promise<void>((resolve) => {
+    releaseDrain = resolve;
+  });
 
   try {
-    await coordinator.finalizeAfterDrain(staged, undefined);
+    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+    const finalizing = coordinator.finalizeAfterDrain(staged, {
+      providerIds: new Set(["person"]),
+      whenDrained,
+      whenProviderDrained: () => whenDrained,
+    });
+    writeFileSync(configPath, JSON.stringify({ providers: { person: invalid } }));
+    releaseDrain();
+    await finalizing;
     expect(repository.readAccount("person")).not.toBeNull();
+    expect(repository.listPendingAccountOperations()).toEqual([]);
+  } finally {
+    handle.close();
+    rmSync(home, { force: true, recursive: true });
+  }
+});
+
+test("a live delete marker cannot remove an account with a superseding runtime revision", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-account-removal-"));
+  const configPath = join(home, "config.json");
+  const invalid = { kind: "oauth", plugin: "@example/oauth", capability: "" };
+  writeFileSync(configPath, JSON.stringify({ providers: { person: invalid } }));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  const create = repository.stageAccountOperation({
+    kind: "create",
+    targetDigest: "create",
+    account: {
+      providerId: "person",
+      plugin: "@example/oauth",
+      capability: "default",
+      fingerprint: "person@example.com",
+      options: {},
+      secrets: {},
+      credential: { token: "old" },
+      catalog: {
+        kind: "replace",
+        value: {
+          catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+          refreshedAt: 1,
+        },
+      },
+    },
+  });
+  repository.completeAccountOperation(create.operationId);
+  const coordinator = createAccountRemovalCoordinator({ file: new AtomicConfigFile(configPath), repository });
+  const [stale] = coordinator.stageRemoved({ person: invalid }, {});
+  if (stale === undefined) throw new Error("delete marker fixture missing");
+  handle.sqlite
+    .query("UPDATE oauth_account SET runtime_revision = 2, credential_json = ? WHERE provider_id = ?")
+    .run(JSON.stringify({ token: "new" }), "person");
+
+  try {
+    expect(repository.listPendingAccountOperations()).toEqual([stale]);
+    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+    await coordinator.finalizeAfterDrain([stale], undefined);
+    expect(repository.readAccount("person")).toMatchObject({ runtimeRevision: 2, credential: { token: "new" } });
     expect(repository.listPendingAccountOperations()).toEqual([]);
   } finally {
     handle.close();

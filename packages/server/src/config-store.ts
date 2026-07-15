@@ -1,7 +1,7 @@
 import {
   AccountCleanupPendingError,
+  AtomicConfigCommitUncertainError,
   AtomicConfigFile,
-  deleteOAuthAccount,
   type PendingAccountOperation,
   type PluginRepository,
 } from "@aio-proxy/core";
@@ -11,6 +11,7 @@ import {
   createAccountRemovalCoordinator,
   oauthCapabilityOf,
 } from "./account-removal";
+import type { FifoQueue } from "./fifo-queue";
 import { createFifoQueue } from "./fifo-queue";
 import type { RetiredProviderSnapshot } from "./runtime";
 
@@ -34,6 +35,8 @@ export type ConfigStoreOptions = {
   readonly verify: (candidate: Readonly<Record<string, unknown>>) => Promise<RetiredProviderSnapshot | undefined>;
   readonly repository?: PluginRepository;
   readonly accountRemovals?: AccountRemovalCoordinator;
+  readonly enqueue?: FifoQueue;
+  readonly onReconciliationNeeded?: (operations: readonly PendingAccountOperation[]) => void;
 };
 
 export type ConfigStore = {
@@ -47,7 +50,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const file = options.file ?? (path === undefined ? undefined : new AtomicConfigFile(path));
   const accountRemovals =
     options.accountRemovals ?? createAccountRemovalCoordinator({ file, repository: options.repository });
-  const enqueue = createFifoQueue();
+  const enqueue = options.enqueue ?? createFifoQueue();
 
   async function verifyCandidate(
     candidate: Readonly<Record<string, unknown>>,
@@ -63,6 +66,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     if (file === undefined) throw new ConfigPathMissingError();
     const staged: PendingAccountOperation[] = [];
     let retired: RetiredProviderSnapshot | undefined;
+    let verificationCompleted = false;
     try {
       await file.transaction(
         async (current) => {
@@ -74,11 +78,23 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         {
           verify: async (candidate) => {
             retired = await verifyCandidate(candidate);
+            verificationCompleted = true;
           },
         },
       );
     } catch (error) {
-      accountRemovals.compensate(staged);
+      if (error instanceof AtomicConfigCommitUncertainError) {
+        if (verificationCompleted) {
+          void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+        } else {
+          accountRemovals.scheduleRecovery(staged);
+          try {
+            options.onReconciliationNeeded?.(staged);
+          } catch {}
+        }
+      } else {
+        accountRemovals.compensate(staged);
+      }
       throw error;
     }
 
@@ -86,30 +102,13 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   }
 
   async function deleteProviderNow(providerId: string): Promise<void> {
-    if (file === undefined) throw new ConfigPathMissingError();
-    let cleanupPending: AccountCleanupPendingError | undefined;
-    if (options.repository !== undefined) {
-      let retired: RetiredProviderSnapshot | undefined;
-      try {
-        const operation = await deleteOAuthAccount({
-          providerId,
-          config: file,
-          repository: options.repository,
-          verify: async (candidate) => {
-            retired = await verifyCandidate(candidate);
-          },
-        });
-        void accountRemovals.finalizeAfterDrain([operation], retired).catch(() => {});
-        return;
-      } catch (error) {
-        if (!(error instanceof AccountCleanupPendingError)) throw error;
-        cleanupPending = error;
-      }
-    }
-
     await mutateProvidersNow((providers) => {
-      if (oauthCapabilityOf(providerId, providers[providerId]) !== undefined && cleanupPending !== undefined) {
-        throw cleanupPending;
+      const capability = oauthCapabilityOf(providerId, providers[providerId]);
+      if (capability !== undefined && options.repository !== undefined) {
+        const account = options.repository.readAccount(providerId);
+        if (account === null || account.plugin !== capability.plugin || account.capability !== capability.capability) {
+          throw new AccountCleanupPendingError(providerId);
+        }
       }
       const { [providerId]: _removed, ...remaining } = providers;
       return remaining;

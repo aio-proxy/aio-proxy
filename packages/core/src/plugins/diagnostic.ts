@@ -64,9 +64,11 @@ export function createPluginDiagnosticFactory(now: () => number = Date.now): Dia
   });
 }
 
+export type PluginLogCode = DiagnosticCode | "ACCOUNT_RECOVERY_FAILED";
+
 export type PluginLogSink = (entry: {
   readonly event: string;
-  readonly code: DiagnosticCode;
+  readonly code: PluginLogCode;
   readonly context: DiagnosticContext;
   readonly error: { readonly name: string; readonly message: string; readonly stack?: string };
 }) => void;

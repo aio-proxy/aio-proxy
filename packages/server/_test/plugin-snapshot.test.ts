@@ -8,8 +8,11 @@ import {
   ORPHAN_ACCOUNT_GRACE_MS,
   PENDING_OPERATION_TTL_MS,
   type PluginRepository,
+  RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
+  type TextStreamPart,
+  type ToolSet,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
 import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
@@ -24,6 +27,7 @@ import {
   defineProtocolAdapter,
   defineProviderRouteSource,
   jsonRequest,
+  modelProvider,
   REQUESTED_MODEL,
   rawProvider,
 } from "./pipeline-helpers";
@@ -171,6 +175,62 @@ test("an in-flight protocol response retains its old provider snapshot until the
   bodyController?.enqueue(new TextEncoder().encode('{"ok":true}'));
   bodyController?.close();
   expect(await response.text()).toBe('{"ok":true}');
+  await retired.whenDrained;
+  expect(manager.canDeleteAccount("old")).toBe(true);
+});
+
+test.each([
+  "EOF",
+  "cancel",
+] as const)("an in-flight model stream retains its old provider snapshot until response %s", async (completion) => {
+  let modelController: ReadableStreamDefaultController<TextStreamPart<ToolSet>> | undefined;
+  const old = modelProvider({
+    id: "old",
+    modelId: REQUESTED_MODEL,
+    invoke: () =>
+      new ReadableStream<TextStreamPart<ToolSet>>({
+        start(controller) {
+          modelController = controller;
+          controller.enqueue({ type: "text-delta", id: "text-1", text: "old" });
+        },
+      }),
+  });
+  const next = modelProvider({
+    id: "next",
+    modelId: REQUESTED_MODEL,
+    invoke: () => new ReadableStream<TextStreamPart<ToolSet>>({ start: (controller) => controller.close() }),
+  });
+  const manager = createSnapshotManager({
+    plugins: emptyPlugins as never,
+    providers: [old.provider],
+    router: new Router([old.provider]),
+  });
+  const base = defineProviderRouteSource([old]);
+  const source = {
+    ...base.source,
+    acquireProviderSnapshot: manager.acquire,
+    currentProviderSnapshot: manager.current,
+    usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }),
+  };
+  const response = await handleProtocolRequest({
+    adapter: defineProtocolAdapter(),
+    context: createProtocolContext(),
+    rawRequest: jsonRequest({ model: REQUESTED_MODEL, stream: true }),
+    source,
+  });
+  const retired = manager.swap({
+    plugins: emptyPlugins as never,
+    providers: [next.provider],
+    router: new Router([next.provider]),
+  });
+
+  expect(manager.canDeleteAccount("old")).toBe(false);
+  if (completion === "EOF") {
+    modelController?.close();
+    expect(await response.text()).toContain('data: {"text":"old"}');
+  } else {
+    await response.body?.cancel();
+  }
   await retired.whenDrained;
   expect(manager.canDeleteAccount("old")).toBe(true);
 });
@@ -585,7 +645,7 @@ test("a root config parse failure preserves the prior snapshot", async () => {
   }
 });
 
-test("failed plugin setup remains snapshot data and does not block an API provider", async () => {
+test("failed plugin setup remains snapshot data and does not block API or AI SDK providers", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-failed-plugin-isolation-"));
   const descriptor = definePlugin(() => {
     throw new Error("setup failed");
@@ -599,6 +659,12 @@ test("failed plugin setup remains snapshot data and does not block an API provid
           baseURL: "https://stable.example.test/v1",
           models: ["stable-model"],
         },
+        sdk: {
+          kind: "ai-sdk",
+          packageName: "@ai-sdk/openai-compatible",
+          options: { baseURL: "https://sdk.example.test/v1", name: "sdk" },
+          models: ["sdk-model"],
+        },
       },
     }),
     dbHome: home,
@@ -611,6 +677,7 @@ test("failed plugin setup remains snapshot data and does not block an API provid
       state: { status: "failed", diagnostic: { code: "PLUGIN_LOAD_FAILED" } },
     });
     expect(state.currentProviderSnapshot().router.resolve("stable-model")[0]?.provider.id).toBe("stable");
+    expect(state.currentProviderSnapshot().router.resolve("sdk-model")[0]?.provider.id).toBe("sdk");
   } finally {
     state.close();
     rmSync(home, { recursive: true, force: true });
@@ -887,6 +954,206 @@ test("server recovery schedules the returned deadline and close prevents an in-f
   } finally {
     releaseRecovery.resolve();
     state.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a rejected recovery run is logged with a fixed payload and retried", async () => {
+  jest.useFakeTimers();
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-rejection-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  let recoveries = 0;
+  const logs: unknown[] = [];
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginLogger: (entry) => logs.push(entry),
+    __test: {
+      async recoverPendingAccountOperations() {
+        recoveries++;
+        if (recoveries === 1) return {};
+        if (recoveries === 2) return { nextRunAt: Date.now() + 100 };
+        if (recoveries === 3) throw new Error("transient recovery failure");
+        return {};
+      },
+    },
+  } as never);
+
+  try {
+    expect(recoveries).toBe(2);
+    jest.advanceTimersByTime(100);
+    await flushMicrotasks();
+    expect(recoveries).toBe(3);
+    expect(logs).toEqual([
+      {
+        event: "plugin.account.recovery.failed",
+        code: "ACCOUNT_RECOVERY_FAILED",
+        context: {},
+        error: { name: "Error", message: "Pending account recovery failed" },
+      },
+    ]);
+
+    jest.advanceTimersByTime(RECOVERY_DRAIN_RETRY_MS - 1);
+    await flushMicrotasks();
+    expect(recoveries).toBe(3);
+    jest.advanceTimersByTime(1);
+    await flushMicrotasks();
+    expect(recoveries).toBe(4);
+  } finally {
+    state.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("close prevents an in-flight rejected recovery from logging or rearming", async () => {
+  jest.useFakeTimers();
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-rejection-close-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  const recoveryStarted = deferred();
+  const rejectRecovery = deferred();
+  let recoveries = 0;
+  const logs: unknown[] = [];
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginLogger: (entry) => logs.push(entry),
+    __test: {
+      async recoverPendingAccountOperations() {
+        recoveries++;
+        if (recoveries === 1) return {};
+        if (recoveries === 2) return { nextRunAt: Date.now() + 100 };
+        recoveryStarted.resolve();
+        await rejectRecovery.promise;
+        throw new Error("secret recovery failure");
+      },
+    },
+  } as never);
+
+  try {
+    jest.advanceTimersByTime(100);
+    await recoveryStarted.promise;
+    expect(recoveries).toBe(3);
+
+    state.close();
+    rejectRecovery.resolve();
+    await flushMicrotasks();
+    jest.advanceTimersByTime(RECOVERY_DRAIN_RETRY_MS);
+    await flushMicrotasks();
+    expect(recoveries).toBe(3);
+    expect(logs).toEqual([]);
+  } finally {
+    rejectRecovery.resolve();
+    state.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a failed delete finalizer is retried by the marker recovery deadline", async () => {
+  jest.useFakeTimers();
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-recovery-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  let finalizeAttempts = 0;
+  let recoveries = 0;
+  const recoveryFinished = deferred();
+  const observedRepository = {
+    ...repository,
+    finalizeDeleteOperation(operationId: string) {
+      finalizeAttempts++;
+      if (finalizeAttempts === 1) throw new Error("transient finalize failure");
+      return repository.finalizeDeleteOperation(operationId);
+    },
+  };
+  const account = repository.readAccount("person");
+  if (account === null) throw new Error("account fixture missing");
+  const pending = observedRepository.stageAccountOperation({
+    kind: "delete",
+    targetDigest: "absent",
+    providerId: "person",
+    expectedRuntimeRevision: account.runtimeRevision,
+  });
+  expect(() => observedRepository.finalizeDeleteOperation(pending.operationId)).toThrow("transient finalize failure");
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: observedRepository,
+    __test: {
+      async recoverPendingAccountOperations(...args: Parameters<typeof recoverPendingAccountOperations>) {
+        recoveries++;
+        const result = await recoverPendingAccountOperations(...args);
+        if (recoveries === 3) recoveryFinished.resolve();
+        return result;
+      },
+    },
+  } as never);
+
+  try {
+    expect(recoveries).toBe(2);
+    expect(finalizeAttempts).toBe(1);
+    expect(repository.listPendingAccountOperations()).toHaveLength(1);
+
+    jest.advanceTimersByTime(PENDING_OPERATION_TTL_MS);
+    await flushMicrotasks();
+    expect(recoveries).toBe(3);
+    await recoveryFinished.promise;
+    expect(finalizeAttempts).toBe(2);
+    expect(repository.readAccount("person")).toBeNull();
+    expect(repository.listPendingAccountOperations()).toEqual([]);
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a committed delete marker arms the server recovery timer", async () => {
+  jest.useFakeTimers();
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-marker-timer-"));
+  const configPath = join(home, "config.json");
+  const input = {
+    providers: {
+      person: { kind: "oauth", plugin: "@example/oauth", capability: "" },
+    },
+  };
+  writeFileSync(configPath, JSON.stringify(input));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  let recoveries = 0;
+  const state = await createServerState({
+    config: ConfigSchema.parse(input),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    __test: {
+      async recoverPendingAccountOperations() {
+        recoveries++;
+        return {};
+      },
+    },
+  } as never);
+
+  try {
+    expect(recoveries).toBe(2);
+    await state.configStore.deleteProvider("person");
+    jest.advanceTimersByTime(PENDING_OPERATION_TTL_MS);
+    await flushMicrotasks();
+    expect(recoveries).toBe(3);
+  } finally {
+    state.close();
+    handle.close();
     rmSync(home, { recursive: true, force: true });
   }
 });
