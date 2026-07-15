@@ -24,7 +24,7 @@ export class ProviderIdCollisionError extends Error {
   override readonly name = "ProviderIdCollisionError";
 
   constructor(readonly providerId: string) {
-    super("Unable to allocate a unique Provider ID");
+    super("PROVIDER_ID_COLLISION");
   }
 }
 

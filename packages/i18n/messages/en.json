@@ -34,6 +34,7 @@
   "cli_provider_login_error_timeout": "OAuth login timed out.",
   "cli_provider_login_error_capability_required": "An OAuth capability is required.",
   "cli_provider_login_error_capability_unavailable": "OAuth capability {reference} is unavailable.",
+  "cli_provider_login_error_provider_id_collision": "Unable to allocate a unique provider ID for {provider}.",
   "cli_oauth_copied_device_code": "Copied the device code to the clipboard.",
   "cli_oauth_device_code": "Device code: {code}",
   "cli_oauth_opened_authorization_page": "Opened the authorization page in your default browser.",

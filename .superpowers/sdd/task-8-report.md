@@ -172,3 +172,34 @@ the already-correct conditional repository compensation behavior.
 - `bunx tsc -p packages/cli/tsconfig.json --noEmit --pretty false`: passed.
 - Scoped Biome check: passed with informational `useLiteralKeys` notices only.
 - `git diff --check`: passed.
+
+## Re-review Addendum: Provider ID Collision Localization
+
+The final re-review identified one remaining host-facing Core error. The
+exhausted deterministic Provider ID collision now uses the stable Core code
+`PROVIDER_ID_COLLISION`, retains the safe typed `providerId` field, and is
+localized by the CLI through English and Simplified Chinese i18n messages.
+
+### RED / GREEN
+
+- RED: the direct CLI regression test reported 11 passed and 1 failed because
+  the final message was the Core string `Unable to allocate a unique Provider
+  ID` instead of localized copy containing the safe candidate.
+- GREEN after i18n compilation: the same file passed 12 tests with 24
+  assertions, including `person-deadbeef` interpolation.
+
+### Re-review Verification
+
+- Focused Task 8 suite: 61 passed, 0 failed, 182 assertions.
+- `bun run i18n:compile`: passed.
+- Core Rslib build and declaration generation: passed.
+- Full CLI TypeScript no-emit check: passed.
+- Scoped Biome: passed with 9 pre-existing `useLiteralKeys` information notices
+  and no warnings/errors.
+- `git diff --check`: passed.
+
+### Re-review Self-review
+
+- Only collision error coding/localization, its direct CLI regression test,
+  message catalogs, and this report changed.
+- Third-party error strings remain opaque and no public CLI wiring changed.

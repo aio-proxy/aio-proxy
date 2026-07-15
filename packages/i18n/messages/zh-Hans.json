@@ -30,6 +30,7 @@
   "cli_provider_login_error_timeout": "OAuth 登录已超时。",
   "cli_provider_login_error_capability_required": "必须指定 OAuth 能力。",
   "cli_provider_login_error_capability_unavailable": "OAuth 能力 {reference} 不可用。",
+  "cli_provider_login_error_provider_id_collision": "无法为 {provider} 分配唯一的提供商 ID。",
   "cli_oauth_copied_device_code": "已将设备代码复制到剪贴板。",
   "cli_oauth_device_code": "设备代码：{code}",
   "cli_oauth_opened_authorization_page": "已在默认浏览器中打开授权页面。",

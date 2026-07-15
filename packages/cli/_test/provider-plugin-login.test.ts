@@ -7,6 +7,7 @@ import {
   AtomicConfigFile,
   createPluginRegistryHost,
   ProviderAccountAlreadyExistsError,
+  ProviderIdCollisionError,
 } from "@aio-proxy/core";
 import type { OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { zod } from "@aio-proxy/plugin-sdk";
@@ -164,6 +165,19 @@ describe("generic provider login capability resolution", () => {
     };
     await expect(providerLogin("unique", {}, state.deps)).rejects.toThrow(
       "Provider target is pending account cleanup.",
+    );
+  });
+
+  test("localizes exhausted Provider ID collisions with the safe candidate", async () => {
+    const state = fixture();
+    state.deps = {
+      ...state.deps,
+      login: async () => {
+        throw new ProviderIdCollisionError("person-deadbeef");
+      },
+    };
+    await expect(providerLogin("unique", {}, state.deps)).rejects.toThrow(
+      "Unable to allocate a unique provider ID for person-deadbeef.",
     );
   });
 

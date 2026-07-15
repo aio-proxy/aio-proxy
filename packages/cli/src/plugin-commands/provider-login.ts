@@ -22,6 +22,7 @@ import {
   ProviderCapabilityTargetMismatchError,
   ProviderConfigInvalidError,
   ProviderFingerprintMismatchError,
+  ProviderIdCollisionError,
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
@@ -292,6 +293,8 @@ function localizedProviderLoginError(error: unknown): unknown {
     error.message = m.cli_provider_login_error_capability_unavailable({
       reference: canonical(error),
     });
+  } else if (error instanceof ProviderIdCollisionError) {
+    error.message = m.cli_provider_login_error_provider_id_collision({ provider: error.providerId });
   }
   return error;
 }
