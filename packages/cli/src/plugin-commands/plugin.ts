@@ -27,8 +27,7 @@ import { m } from "@aio-proxy/i18n";
 import { isPluginDescriptor, type PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 import { confirm, input, password, select } from "@inquirer/prompts";
-import type { PluginFormPrompts } from "./form";
-import { renderConfigSpec } from "./form";
+import { cloneInertJson, type PluginFormPrompts, renderConfigSpec } from "./form";
 
 type ConfigRecord = Record<string, unknown>;
 type SecretRepository = Pick<PluginRepository, "readPluginSecret" | "writePluginSecret" | "deletePluginSecret">;
@@ -301,13 +300,20 @@ async function stageDescriptor(
   publicValues: Record<string, unknown>,
   secrets: Record<string, unknown>,
 ): Promise<void> {
+  const stagingPublicValues = cloneInertJson(publicValues);
+  const stagingSecrets = cloneInertJson(secrets);
   const snapshot = await loadPluginRegistry({
-    enablements: [{ packageName, ...(Object.keys(publicValues).length === 0 ? {} : { options: publicValues }) }],
+    enablements: [
+      {
+        packageName,
+        ...(Object.keys(stagingPublicValues).length === 0 ? {} : { options: stagingPublicValues }),
+      },
+    ],
     builtIns: [{ packageName, version, descriptor }],
     diagnostics: createCliPluginDiagnosticFactory(),
     importPackage: async () => ({ default: descriptor }),
     logger: () => {},
-    secrets: { readPluginSecret: () => secrets },
+    secrets: { readPluginSecret: () => stagingSecrets },
   });
   const state = snapshot.plugins.get(packageName)?.state;
   if (state?.status === "failed") throw new PluginSetupValidationError(packageName, state.diagnostic.summary);

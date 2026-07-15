@@ -131,7 +131,7 @@ function arrayIndex(key: string, length: number): number | undefined {
     : undefined;
 }
 
-function cloneInertJson(value: unknown, seen = new Set<object>()): unknown {
+function cloneInertJsonValue(value: unknown, seen: Set<object>): unknown {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") return Number.isFinite(value) ? value : inertJsonError();
   if (typeof value !== "object" || seen.has(value)) return inertJsonError();
@@ -160,7 +160,7 @@ function cloneInertJson(value: unknown, seen = new Set<object>()): unknown {
         if (index === undefined || descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
           return inertJsonError();
         }
-        clone[index] = cloneInertJson(descriptor.value, seen);
+        clone[index] = cloneInertJsonValue(descriptor.value, seen);
       }
       return clone;
     }
@@ -171,7 +171,7 @@ function cloneInertJson(value: unknown, seen = new Set<object>()): unknown {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) return inertJsonError();
       Object.defineProperty(clone, key, {
-        value: cloneInertJson(descriptor.value, seen),
+        value: cloneInertJsonValue(descriptor.value, seen),
         enumerable: true,
         configurable: true,
         writable: true,
@@ -184,6 +184,10 @@ function cloneInertJson(value: unknown, seen = new Set<object>()): unknown {
   } finally {
     seen.delete(value);
   }
+}
+
+export function cloneInertJson<T>(value: T): T {
+  return cloneInertJsonValue(value, new Set<object>()) as T;
 }
 
 function compatibleDefault(field: FormField, current: unknown): unknown {
