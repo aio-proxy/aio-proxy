@@ -11,7 +11,11 @@ type Props = {
 };
 
 export const DataTableHeaderCell: React.FC<Props> = ({ label, canSort, sortDirection, onToggleSorting }) => (
-  <TableHead aria-sort={sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"}>
+  <TableHead
+    aria-sort={
+      canSort ? (sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none") : undefined
+    }
+  >
     {canSort ? (
       <Button variant="ghost" size="sm" onClick={onToggleSorting}>
         {label}

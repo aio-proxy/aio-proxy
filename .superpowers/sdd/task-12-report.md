@@ -195,6 +195,12 @@ full biome check:     exit 0
 git diff --check:     exit 0
 ```
 
+The fresh final spec review reported 0 Critical, 0 Important, and 0 Minor
+findings. The fresh final standards review reported 0 Critical, 0 Important,
+0 hard, and 0 Minor findings. Both reviewers approved the complete diff against
+`4d408bff306c5c29b036b3a37ac8e6ed4a2bb86a`, including the untracked header
+regression test, without editing files or rerunning suites.
+
 The standalone i18n unit suite has one environment-only failure in the existing
 tree-shaking spike: its temporary directory runs an unpinned `bunx
 @inlang/paraglide-js`, which attempts a registry manifest download and fails
@@ -212,3 +218,46 @@ and identified a minor implicit toolbar rerender contract. A stable-prop RED
 test reproduced the stale checkmark. `useDataTable()` now exposes its reactive
 column-visibility state explicitly to `DataTableToolbar`, making the shared
 component independent of callback identity; the focused dashboard run is 24/24.
+
+## Formal Re-Review Follow-Up
+
+The formal re-review left one Important accessibility issue and two Minor
+cleanup issues. The final follow-up resolves all three:
+
+1. `DataTableToolbar` now renders the existing shadcn
+   `DropdownMenuCheckboxItem` with controlled `checked` state and
+   `onCheckedChange`. Assistive technology receives the native
+   `menuitemcheckbox` role and `aria-checked` state. The shared toolbar test and
+   both provider/plugin table interaction tests query only those semantics,
+   including the live checked-to-unchecked transition while the Base UI menu
+   remains open.
+2. `DataTableHeaderCell` omits `aria-sort` for non-sortable columns. Sortable
+   unsorted columns expose `aria-sort="none"`, while active columns expose
+   `ascending` or `descending`.
+3. The one-line `useProvidersTable` forwarding hook was deleted, and
+   `ProvidersPage` now calls the shared `useDataTable` hook directly.
+
+### Follow-Up RED/GREEN Evidence
+
+The focused RED run contained 25 tests with 21 passing and 4 failing for the
+intended missing behavior: the non-sortable header incorrectly exposed
+`aria-sort="none"`, and the toolbar, plugin table, and provider table did not
+expose any `menuitemcheckbox` roles.
+
+After the minimal implementation, the first focused run passed 24 tests and
+failed one test whose old assumption expected the checkbox menu to close.
+Base UI intentionally keeps checkbox menus open, and the rendered item had
+already transitioned to `aria-checked="false"`. The three visibility tests were
+therefore tightened to assert that live semantic state without relying on popup
+timing.
+
+Fresh follow-up verification:
+
+```text
+dashboard focused:    25 pass, 0 fail across 4 files
+dashboard full unit:  108 pass, 0 fail across 16 files
+scoped biome check:   7 files checked, no fixes applied
+full biome check:     exit 0; existing informational diagnostics and one warning
+full build:           7 successful tasks, 0 failed
+git diff --check:     exit 0
+```

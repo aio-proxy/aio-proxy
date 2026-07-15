@@ -20,12 +20,12 @@ import {
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { useDataTable } from "@/hooks/use-data-table";
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
 import { PluginsTable } from "../components/plugins-table";
 import { ProviderActionsMenu } from "../components/provider-actions-menu";
 import { ProviderModelsCell } from "../components/provider-models-cell";
 import { ProviderStateCell } from "../components/provider-state-cell";
-import { useProvidersTable } from "../hooks/use-providers-table";
 import { pluginsQueryOptions } from "../services/plugins-service";
 import { providersQueryOptions } from "../services/providers-service";
 
@@ -149,7 +149,7 @@ export const ProvidersPage: React.FC = () => {
     ],
     [],
   );
-  const { table, columnVisibility } = useProvidersTable(providers, columns);
+  const { table, columnVisibility } = useDataTable(providers, columns);
   const isLoading = providersQuery.isLoading || pluginsQuery.isLoading;
 
   return (

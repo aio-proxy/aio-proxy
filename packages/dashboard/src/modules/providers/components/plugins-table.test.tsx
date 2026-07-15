@@ -72,10 +72,15 @@ describe("plugins table", () => {
     render(<PluginsTable plugins={plugins} />);
 
     expect(screen.getByRole("columnheader", { name: /Version|版本/u })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Columns|列/iu }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Version|版本/u }));
+    const trigger = screen.getByRole("button", { name: /Columns|列/iu });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Version|版本/u, checked: true }));
 
     expect(screen.queryByRole("columnheader", { name: /Version|版本/u })).toBeNull();
+    expect(await screen.findByRole("menuitemcheckbox", { name: /Version|版本/u, checked: false })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
   test("pages forward and backward through more than one page of plugins", () => {

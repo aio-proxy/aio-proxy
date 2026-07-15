@@ -1,11 +1,10 @@
 import { useForm } from "@tanstack/react-form";
-import { Check } from "lucide-react";
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -13,7 +12,7 @@ import { Input } from "@/components/ui/input";
 
 type VisibilityColumn = {
   readonly id: string;
-  readonly toggleVisibility: () => void;
+  readonly toggleVisibility: (value?: boolean) => void;
 };
 
 type TableControls = {
@@ -61,10 +60,13 @@ export const DataTableToolbar: React.FC<Props> = ({
         <DropdownMenuTrigger render={<Button variant="outline" />}>{columnsLabel}</DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {table.getAllLeafColumns().map((column) => (
-            <DropdownMenuItem key={column.id} onClick={() => column.toggleVisibility()}>
-              {columnVisibility[column.id] !== false && <Check />}
+            <DropdownMenuCheckboxItem
+              key={column.id}
+              checked={columnVisibility[column.id] !== false}
+              onCheckedChange={(checked) => column.toggleVisibility(checked)}
+            >
               {columnLabel(column.id)}
-            </DropdownMenuItem>
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>

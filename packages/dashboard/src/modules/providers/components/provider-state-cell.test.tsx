@@ -162,10 +162,15 @@ describe("providers page diagnostics", () => {
     render(<ProvidersPage />);
 
     expect(screen.getByRole("columnheader", { name: /Name|名称/u })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Provider columns|提供商列/u }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Name|名称/u }));
+    const trigger = screen.getByRole("button", { name: /Provider columns|提供商列/u });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Name|名称/u, checked: true }));
 
     expect(screen.queryByRole("columnheader", { name: /Name|名称/u })).toBeNull();
+    expect(await screen.findByRole("menuitemcheckbox", { name: /Name|名称/u, checked: false })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
   test("pages forward and backward through more than one page of providers", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@rstest/core";
 import type { ColumnDef } from "@tanstack/react-table";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { useDataTable } from "@/hooks/use-data-table";
 import { DataTableToolbar } from "./data-table-toolbar";
 
@@ -25,19 +25,16 @@ const ToolbarHarness = () => {
 };
 
 describe("data table toolbar", () => {
-  test("refreshes visibility checkmarks when stable props retain the table instance", async () => {
+  test("exposes and refreshes checkbox state when stable props retain the table instance", async () => {
     render(<ToolbarHarness />);
 
     const trigger = screen.getByRole("button", { name: "Columns" });
     fireEvent.click(trigger);
-    const visibleItem = await screen.findByRole("menuitem", { name: "Name" });
-    expect(visibleItem.querySelector("svg")).not.toBeNull();
+    const visibleItem = await screen.findByRole("menuitemcheckbox", { name: "Name", checked: true });
+    expect(visibleItem).toHaveAttribute("aria-checked", "true");
 
     fireEvent.click(visibleItem);
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Name" })).toBeNull());
-    fireEvent.click(trigger);
-
-    const hiddenItem = await screen.findByRole("menuitem", { name: "Name" });
-    expect(hiddenItem.querySelector("svg")).toBeNull();
+    const hiddenItem = await screen.findByRole("menuitemcheckbox", { name: "Name", checked: false });
+    expect(hiddenItem).toHaveAttribute("aria-checked", "false");
   });
 });
