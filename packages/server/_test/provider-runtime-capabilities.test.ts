@@ -273,7 +273,10 @@ test("does not materialize configured providers before building an injected snap
 
   try {
     expect(baseURLReads).toBe(0);
-    expect(state.currentProviderSnapshot().providers.map((entry) => entry.id)).toEqual(["injected"]);
+    const snapshot = state.currentProviderSnapshot();
+    const summaries = await state.providerSummaries({ probe: false });
+    expect(snapshot.providers.map((entry) => entry.id)).toEqual(["injected"]);
+    expect(snapshot.providerStates?.get("injected")).toBe(summaries[0]?.state);
   } finally {
     state.close();
     rmSync(dbHome, { force: true, recursive: true });

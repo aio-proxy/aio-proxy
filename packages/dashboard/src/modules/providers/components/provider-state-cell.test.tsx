@@ -134,6 +134,55 @@ describe("providers page diagnostics", () => {
     expect(screen.queryByRole("button", { name: /Login|登录/u })).toBeNull();
     expect(screen.queryByLabelText(/Secret|密钥/u)).toBeNull();
   });
+
+  test("sorts providers from a column header control", () => {
+    queryMocks.providers.providers = [provider({ id: "z-provider" }), provider({ id: "a-provider" })];
+    render(<ProvidersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^ID$/u }));
+
+    const rows = screen.getAllByTestId(/^provider-row-/u);
+    expect(rows[0]?.getAttribute("data-testid")).toBe("provider-row-a-provider");
+  });
+
+  test("filters providers from the table filter control", () => {
+    queryMocks.providers.providers = [provider({ id: "keep-provider" }), provider({ id: "hide-provider" })];
+    render(<ProvidersPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Filter providers|筛选提供商/u }), {
+      target: { value: "keep" },
+    });
+
+    expect(screen.getByTestId("provider-row-keep-provider")).toBeTruthy();
+    expect(screen.queryByTestId("provider-row-hide-provider")).toBeNull();
+  });
+
+  test("toggles provider columns from the column visibility control", async () => {
+    queryMocks.providers.providers = [provider()];
+    render(<ProvidersPage />);
+
+    expect(screen.getByRole("columnheader", { name: /Name|名称/u })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Provider columns|提供商列/u }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Name|名称/u }));
+
+    expect(screen.queryByRole("columnheader", { name: /Name|名称/u })).toBeNull();
+  });
+
+  test("pages forward and backward through more than one page of providers", () => {
+    queryMocks.providers.providers = Array.from({ length: 11 }, (_, index) => provider({ id: `provider-${index}` }));
+    render(<ProvidersPage />);
+    const section = within(screen.getByRole("region", { name: /Provider diagnostics|提供商诊断/u }));
+
+    expect(section.getByTestId("provider-row-provider-0")).toBeTruthy();
+    expect(section.queryByTestId("provider-row-provider-10")).toBeNull();
+
+    fireEvent.click(section.getByRole("button", { name: /Next|下一页/u }));
+    expect(section.queryByTestId("provider-row-provider-0")).toBeNull();
+    expect(section.getByTestId("provider-row-provider-10")).toBeTruthy();
+
+    fireEvent.click(section.getByRole("button", { name: /Previous|上一页/u }));
+    expect(section.getByTestId("provider-row-provider-0")).toBeTruthy();
+  });
 });
 
 describe("provider diagnostics actions", () => {
@@ -176,5 +225,30 @@ describe("provider diagnostics actions", () => {
 
     expect(await screen.findByTestId("provider-action-edit")).toBeTruthy();
     expect(screen.getByTestId("provider-action-delete")).toBeTruthy();
+  });
+
+  test.each(["api", "ai-sdk"] as const)("hides edit for inferred invalid %s rows", async (kind) => {
+    render(
+      <ProviderActionsMenu
+        provider={provider({
+          kind,
+          enabled: false,
+          state: {
+            status: "unavailable",
+            diagnostic: {
+              code: "PROVIDER_CONFIG_INVALID",
+              summary: "Provider configuration is invalid.",
+              retryable: false,
+              occurredAt: "2026-07-14T00:00:00.000Z",
+            },
+          },
+        })}
+        onDelete={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("provider-actions-trigger"));
+
+    expect(await screen.findByTestId("provider-action-delete")).toBeTruthy();
+    expect(screen.queryByTestId("provider-action-edit")).toBeNull();
   });
 });

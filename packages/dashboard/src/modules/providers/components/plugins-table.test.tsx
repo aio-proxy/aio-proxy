@@ -72,9 +72,29 @@ describe("plugins table", () => {
     render(<PluginsTable plugins={plugins} />);
 
     expect(screen.getByRole("columnheader", { name: /Version|版本/u })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Columns|列/u }));
+    fireEvent.click(screen.getByRole("button", { name: /Columns|列/iu }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /Version|版本/u }));
 
     expect(screen.queryByRole("columnheader", { name: /Version|版本/u })).toBeNull();
+  });
+
+  test("pages forward and backward through more than one page of plugins", () => {
+    const pagedPlugins: readonly DashboardPluginSummary[] = Array.from({ length: 11 }, (_, index) => ({
+      packageName: `@example/plugin-${index}`,
+      builtIn: false,
+      version: "1.0.0",
+      state: { status: "ready" },
+    }));
+    render(<PluginsTable plugins={pagedPlugins} />);
+
+    expect(screen.getByTestId("plugin-row-@example/plugin-0")).toBeTruthy();
+    expect(screen.queryByTestId("plugin-row-@example/plugin-10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Next|下一页/u }));
+    expect(screen.queryByTestId("plugin-row-@example/plugin-0")).toBeNull();
+    expect(screen.getByTestId("plugin-row-@example/plugin-10")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Previous|上一页/u }));
+    expect(screen.getByTestId("plugin-row-@example/plugin-0")).toBeTruthy();
   });
 });

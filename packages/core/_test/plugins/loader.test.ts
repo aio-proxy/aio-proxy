@@ -94,6 +94,62 @@ describe("loadPluginRegistry", () => {
     expect(snapshot.plugins.get("@example/invalid-export")?.version).toBe("1.0.0");
   });
 
+  test("configured third-party setup failures suggest the exact plugin config command", async () => {
+    install("@example/setup-failure-command");
+    const descriptor = definePlugin(() => {
+      throw new Error("setup failed");
+    });
+    const snapshot = await loadPluginRegistry(
+      options({
+        enablements: [{ packageName: "@example/setup-failure-command" }],
+        importPackage: async () => ({ default: descriptor }),
+      }),
+    );
+
+    expect(snapshot.plugins.get("@example/setup-failure-command")?.state).toMatchObject({
+      status: "failed",
+      diagnostic: {
+        code: "PLUGIN_LOAD_FAILED",
+        suggestedCommand: "aio-proxy plugin config @example/setup-failure-command",
+      },
+    });
+  });
+
+  test("unconfigured built-in failures do not suggest an unavailable config command", async () => {
+    const descriptor = definePlugin(() => {
+      throw new Error("setup failed");
+    });
+    const snapshot = await loadPluginRegistry(
+      options({
+        builtIns: [{ packageName: "@example/unconfigured-builtin", version: "1.0.0", descriptor }],
+      }),
+    );
+
+    const state = snapshot.plugins.get("@example/unconfigured-builtin")?.state;
+    expect(state).toMatchObject({ status: "failed", diagnostic: { code: "PLUGIN_LOAD_FAILED" } });
+    expect(state?.status === "failed" ? state.diagnostic.suggestedCommand : "unexpected-ready").toBeUndefined();
+  });
+
+  test("configured built-in failures suggest the exact plugin config command", async () => {
+    const descriptor = definePlugin(() => {
+      throw new Error("setup failed");
+    });
+    const snapshot = await loadPluginRegistry(
+      options({
+        enablements: [{ packageName: "@example/configured-builtin" }],
+        builtIns: [{ packageName: "@example/configured-builtin", version: "1.0.0", descriptor }],
+      }),
+    );
+
+    expect(snapshot.plugins.get("@example/configured-builtin")?.state).toMatchObject({
+      status: "failed",
+      diagnostic: {
+        code: "PLUGIN_LOAD_FAILED",
+        suggestedCommand: "aio-proxy plugin config @example/configured-builtin",
+      },
+    });
+  });
+
   test("apiVersion mismatch fails with incompatibility", async () => {
     install("@example/incompatible");
     const descriptor = { ...definePlugin(() => {}), apiVersion: 999 };

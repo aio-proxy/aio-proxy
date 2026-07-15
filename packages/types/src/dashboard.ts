@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerLoginCommand } from "./commands";
 import { IdSchema } from "./common";
 import { type DiagnosticCode, PluginStateSchema, ProviderStateSchema } from "./plugin";
 import { ProviderKind, ProviderProtocolSchema } from "./provider";
@@ -190,7 +191,7 @@ export const dashboardProviderSuggestedCommand = (
   const diagnostic = provider.state.diagnostic;
   if (diagnostic === undefined) return undefined;
   if (providerLoginDiagnosticCodes.has(diagnostic.code)) {
-    return `aio-proxy provider login --provider ${provider.id}`;
+    return providerLoginCommand(provider.id);
   }
   return diagnostic.suggestedCommand;
 };

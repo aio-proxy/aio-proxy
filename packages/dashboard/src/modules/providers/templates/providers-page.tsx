@@ -6,7 +6,9 @@ import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
 import type React from "react";
 import { useMemo, useRef } from "react";
+import { DataTableHeaderCell } from "@/components/data-table-header-cell";
 import { DataTablePagination } from "@/components/data-table-pagination";
+import { DataTableToolbar } from "@/components/data-table-toolbar";
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
 import { PluginsTable } from "../components/plugins-table";
 import { ProviderActionsMenu } from "../components/provider-actions-menu";
@@ -34,7 +36,23 @@ const kindLabels: Record<DashboardProviderSummary["kind"], () => string> = {
   invalid: () => m["dashboard.providers.kind_label.invalid"](),
 };
 
+const columnLabels: Record<string, () => string> = {
+  kind: () => m["dashboard.providers.table.col_type"](),
+  id: () => m["dashboard.providers.table.col_id"](),
+  name: () => m["dashboard.providers.table.col_name"](),
+  enabled: () => m["dashboard.providers.table.col_enabled"](),
+  state: () => m["dashboard.providers.table.col_state"](),
+  capability: () => m["dashboard.providers.table.col_capability"](),
+  account: () => m["dashboard.providers.table.col_account"](),
+  catalog: () => m["dashboard.providers.table.col_catalog"](),
+  models: () => m["dashboard.providers.table.col_models"](),
+  actions: () => m["dashboard.providers.table.col_actions"](),
+};
+
 export const ProvidersPage: React.FC = () => {
+  "use no memo";
+
+  // TanStack exposes changing state through a stable mutable table instance.
   const providersQuery = useQuery(providersQueryOptions());
   const pluginsQuery = useQuery(pluginsQueryOptions());
   const providers = providersQuery.data?.providers ?? [];
@@ -131,7 +149,7 @@ export const ProvidersPage: React.FC = () => {
     ],
     [],
   );
-  const table = useProvidersTable(providers, columns);
+  const { table, columnVisibility } = useProvidersTable(providers, columns);
   const isLoading = providersQuery.isLoading || pluginsQuery.isLoading;
 
   return (
@@ -177,16 +195,30 @@ export const ProvidersPage: React.FC = () => {
               <Empty>{m["dashboard.providers.empty_state"]()}</Empty>
             ) : (
               <div className="flex flex-col gap-4">
+                <DataTableToolbar
+                  table={table}
+                  columnVisibility={columnVisibility}
+                  filterId="providers-table-filter"
+                  filterLabel={m["dashboard.providers.table.filter"]()}
+                  columnsLabel={m["dashboard.providers.table.columns"]()}
+                  columnLabel={(columnId) => columnLabels[columnId]?.() ?? m["dashboard.providers.table.columns"]()}
+                />
                 <Table aria-label={m["dashboard.providers.table.label"]()} data-testid="providers-table">
                   <TableHeader>
                     {table.getHeaderGroups().map((headerGroup) => (
                       <TableRow key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
-                          <TableHead key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
+                          <DataTableHeaderCell
+                            key={header.id}
+                            label={
+                              header.isPlaceholder
+                                ? null
+                                : flexRender(header.column.columnDef.header, header.getContext())
+                            }
+                            canSort={!header.isPlaceholder && header.column.getCanSort()}
+                            sortDirection={header.column.getIsSorted()}
+                            onToggleSorting={header.column.getToggleSortingHandler()}
+                          />
                         ))}
                       </TableRow>
                     ))}

@@ -5,7 +5,7 @@ import {
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
-import type { DiagnosticCode, PluginEnablement, PluginState } from "@aio-proxy/types";
+import { type DiagnosticCode, type PluginEnablement, type PluginState, pluginConfigCommand } from "@aio-proxy/types";
 import { findInstalledNpmPackage, type NpmPackageInfo } from "../npm";
 import { validateConfigSpec } from "./config-spec";
 import { type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
@@ -179,6 +179,7 @@ type Candidate = {
   readonly packageName: string;
   readonly options?: unknown;
   readonly builtIn?: BuiltInPluginDefinition;
+  readonly configured: boolean;
 };
 
 function candidates(options: LoadPluginRegistryOptions): readonly Candidate[] {
@@ -191,9 +192,12 @@ function candidates(options: LoadPluginRegistryOptions): readonly Candidate[] {
         packageName: builtIn.packageName,
         ...(configured?.options === undefined ? {} : { options: configured.options }),
         builtIn,
+        configured: configured !== undefined,
       };
     }),
-    ...options.enablements.filter((entry) => !builtInNames.has(entry.packageName)),
+    ...options.enablements
+      .filter((entry) => !builtInNames.has(entry.packageName))
+      .map((entry) => ({ ...entry, configured: true })),
   ];
 }
 
@@ -202,6 +206,7 @@ function failedState(
   packageName: string,
   error: unknown,
   secretValues: readonly string[],
+  configured: boolean,
 ): PluginState {
   const hostError = error instanceof PluginHostError ? error : new PluginHostError("PLUGIN_LOAD_FAILED");
   options.logger({
@@ -215,6 +220,9 @@ function failedState(
     diagnostic: options.diagnostics(hostError.code, {
       plugin: packageName,
       retryable: hostError.retryable,
+      ...(configured && (hostError.code === "PLUGIN_LOAD_FAILED" || hostError.code === "PLUGIN_OPTIONS_INVALID")
+        ? { suggestedCommand: pluginConfigCommand(packageName) }
+        : {}),
     }),
   };
 }
@@ -263,7 +271,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         packageName: candidate.packageName,
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
-        state: failedState(options, candidate.packageName, error, secretValues),
+        state: failedState(options, candidate.packageName, error, secretValues, candidate.configured),
       });
     }
   }

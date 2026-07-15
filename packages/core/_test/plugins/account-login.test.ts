@@ -1182,5 +1182,9 @@ describe("delete and crash recovery", () => {
       existingProviderId: "provider-1",
       suggestedCommand: "aio-proxy provider login --provider provider-1",
     });
+    expect(new ProviderAccountAlreadyExistsError("provider; echo unsafe")).toMatchObject({
+      existingProviderId: "provider; echo unsafe",
+      suggestedCommand: "aio-proxy provider login --provider 'provider; echo unsafe'",
+    });
   });
 });

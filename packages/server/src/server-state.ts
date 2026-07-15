@@ -125,6 +125,12 @@ type Snapshot = ProviderRouteSnapshot & {
 
 type ProviderStatus = { readonly last_latency: number | null; readonly last_status: string };
 
+function providerStatesFromSummaries(
+  summaries: readonly DashboardProviderSummary[],
+): ReadonlyMap<string, ProviderState> {
+  return new Map(summaries.map((summary) => [summary.id, summary.state] as const));
+}
+
 const defaultLogger = (entry: ConfigReloadLog): void => console.error(JSON.stringify(entry));
 const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
@@ -513,28 +519,25 @@ async function buildSnapshot(
       return summary === undefined ? [] : [summary];
     }),
   ];
-  const providerStates = new Map<string, ProviderState>();
-  for (const provider of nonOAuth.providers) providerStates.set(provider.id, { status: "ready" });
+  const assembledStates = new Map<string, ProviderState>();
+  for (const provider of nonOAuth.providers) assembledStates.set(provider.id, { status: "ready" });
   for (const invalid of config.invalidProviders) {
-    providerStates.set(invalid.id, {
+    assembledStates.set(invalid.id, {
       status: "unavailable",
       diagnostic: diagnostics(invalid.code, {
         providerId: invalid.id,
         retryable: false,
-        ...(invalid.code === "LEGACY_OAUTH_CONFIG_UNSUPPORTED"
-          ? { suggestedCommand: "Delete this provider in Dashboard or config, then run aio-proxy provider login" }
-          : {}),
       }),
     });
   }
   oauth.forEach((item, index) => {
     const provider = oauthConfigs[index];
-    if (provider !== undefined) providerStates.set(provider.id, item.state);
+    if (provider !== undefined) assembledStates.set(provider.id, item.state);
   });
   const configuredById = new Map(config.providers.map((provider) => [provider.id, provider] as const));
   const accountById = new Map(repository.listAccounts().map((account) => [account.providerId, account] as const));
   const summaries = summaryBases.map((summary): DashboardProviderSummary => {
-    const state = providerStates.get(summary.id);
+    const state = assembledStates.get(summary.id);
     if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
     const configured = configuredById.get(summary.id);
     if (configured?.kind !== ProviderKind.OAuth) return { ...summary, state };
@@ -563,7 +566,7 @@ async function buildSnapshot(
     runtimeCache: new Map(
       oauth.flatMap((item) => (item.cacheEntry === undefined ? [] : [[item.summary.id, item.cacheEntry] as const])),
     ),
-    providerStates,
+    providerStates: providerStatesFromSummaries(summaries),
   };
 }
 
@@ -580,17 +583,20 @@ function buildSnapshotWithProviders(
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Snapshot {
   const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
-  const providerStates = new Map(materialized.map((provider) => [provider.id, { status: "ready" } as const]));
+  const summaries = materialized.map((provider) => ({
+    ...providerSummary(provider),
+    state: { status: "ready" } as const,
+  }));
   return {
     config,
     plugins: emptyPluginSnapshot(),
     probes: new Map(),
     providers: materialized,
     router: createRouter(materialized),
-    summaries: materialized.map((provider) => ({ ...providerSummary(provider), state: { status: "ready" } })),
+    summaries,
     catalogJobs: [],
     runtimeCache: new Map(),
-    providerStates,
+    providerStates: providerStatesFromSummaries(summaries),
   };
 }
 

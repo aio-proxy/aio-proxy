@@ -21,14 +21,15 @@ import type {
   ProtocolId,
   RawResolver,
 } from "@aio-proxy/plugin-sdk";
-import type {
-  DashboardProviderSummary,
-  Diagnostic,
-  OAuthProvider,
-  ProviderProtocol,
-  ProviderState,
+import {
+  type DashboardProviderSummary,
+  type Diagnostic,
+  type OAuthProvider,
+  ProviderKind,
+  type ProviderProtocol,
+  type ProviderState,
+  providerLoginCommand,
 } from "@aio-proxy/types";
-import { ProviderKind } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "./runtime";
 
 export const PLUGIN_RUNTIME_TIMEOUT_MS = 5_000;
@@ -250,12 +251,7 @@ export async function materializePluginProvider(
   if (adapter === undefined) return failure(options, "CAPABILITY_MISSING", false);
   const account = repository.readAccount(config.id);
   if (account === null || account.plugin !== config.plugin || account.capability !== config.capability) {
-    return failure(
-      options,
-      "CREDENTIALS_MISSING_OR_INVALID",
-      false,
-      `aio-proxy provider login --provider ${config.id}`,
-    );
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
   }
 
   let accountOptions: unknown;
@@ -268,17 +264,12 @@ export async function materializePluginProvider(
     if (!parsed.ok) throw new Error("Invalid account options");
     accountOptions = parsed.value;
   } catch {
-    return failure(options, "ACCOUNT_OPTIONS_INVALID", false, `aio-proxy provider login --provider ${config.id}`);
+    return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id));
   }
 
   const parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
   if (!parsedCredential.ok) {
-    return failure(
-      options,
-      "CREDENTIALS_MISSING_OR_INVALID",
-      false,
-      `aio-proxy provider login --provider ${config.id}`,
-    );
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
   }
   const diagnostics = repository.readDiagnostics(config.id);
   const refreshFailure = refreshDiagnostic(diagnostics);

@@ -97,6 +97,7 @@ describe("dashboard static routes", () => {
     );
     const state = await createServerState({
       config: ConfigSchema.parse({
+        plugins: ["@example/broken"],
         providers: {
           "broken-account": {
             kind: "oauth",
@@ -120,6 +121,7 @@ describe("dashboard static routes", () => {
       expect(plugins.status).toBe(200);
       expect(providers.status).toBe(200);
       expect(serialized).toContain("PLUGIN_LOAD_FAILED");
+      expect(serialized).toContain("aio-proxy plugin config @example/broken");
       expect(serialized).toContain("broken-account");
       expect(serialized).not.toContain("plugin-secret-sentinel");
       expect(serialized).not.toContain("account-option-sentinel");

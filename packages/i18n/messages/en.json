@@ -105,7 +105,7 @@
   "cli_plugin_diagnostic_plugin_load_failed": "Plugin {plugin} could not be loaded.",
   "cli_plugin_diagnostic_plugin_options_invalid": "Plugin {plugin} options are invalid.",
   "cli_plugin_diagnostic_provider_config_invalid": "Provider {provider} configuration is invalid.",
-  "cli_plugin_diagnostic_legacy_oauth_config_unsupported": "Provider {provider} uses unsupported legacy OAuth configuration.",
+  "cli_plugin_diagnostic_legacy_oauth_config_unsupported": "Provider {provider} uses unsupported legacy OAuth configuration. Delete it from the Dashboard or config before logging in again.",
   "cli_plugin_diagnostic_capability_missing": "Plugin {plugin} does not provide capability {capability}.",
   "cli_plugin_diagnostic_account_options_invalid": "Account options for provider {provider} are invalid.",
   "cli_plugin_diagnostic_credentials_missing_or_invalid": "Credentials for provider {provider} are missing or invalid.",
@@ -218,7 +218,9 @@
         "col_catalog": "Catalog",
         "col_models": "Models",
         "col_weight": "Weight",
-        "col_actions": "Actions"
+        "col_actions": "Actions",
+        "filter": "Filter providers",
+        "columns": "Provider columns"
       },
       "badge": {
         "enabled": "Enabled",
@@ -256,7 +258,7 @@
           "col_state": "State",
           "col_diagnostic": "Diagnostic",
           "filter": "Filter plugins",
-          "columns": "Columns"
+          "columns": "Plugin columns"
         }
       },
       "form": {

@@ -5,7 +5,7 @@ import type {
   OAuthAdapter,
   OAuthLoginResult,
 } from "@aio-proxy/plugin-sdk";
-import { ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
+import { ConfigSchema, OAuthPluginProviderSchema, providerLoginCommand } from "@aio-proxy/types";
 import { validateModelCatalog } from "./catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "./config-file";
 import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
@@ -76,7 +76,7 @@ export class ProviderAccountAlreadyExistsError extends Error {
 
   constructor(readonly existingProviderId: string) {
     super("PROVIDER_ACCOUNT_ALREADY_EXISTS");
-    this.suggestedCommand = `aio-proxy provider login --provider ${existingProviderId}`;
+    this.suggestedCommand = providerLoginCommand(existingProviderId);
   }
 }
 
@@ -447,7 +447,7 @@ function safeSupersededDiagnostic(
   now = Date.now(),
 ): void {
   if (repository.readAccount(providerId) === null) return;
-  const suggestedCommand = `aio-proxy provider login --provider ${providerId}`;
+  const suggestedCommand = providerLoginCommand(providerId);
   const diagnostic = diagnostics?.("AUTHORIZATION_FAILED", {
     providerId,
     retryable: true,

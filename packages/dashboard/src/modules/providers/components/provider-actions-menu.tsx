@@ -15,6 +15,13 @@ type Props = {
   onProbe?: () => void;
 };
 
+const inferredInvalidCodes = new Set(["PROVIDER_CONFIG_INVALID", "LEGACY_OAUTH_CONFIG_UNSUPPORTED"]);
+
+function canEdit(provider: DashboardProviderSummary): boolean {
+  if (provider.kind !== "api" && provider.kind !== "ai-sdk") return false;
+  return provider.state.diagnostic === undefined || !inferredInvalidCodes.has(provider.state.diagnostic.code);
+}
+
 export const ProviderActionsMenu: React.FC<Props> = ({ provider, onDelete, onProbe }) => {
   return (
     <DropdownMenu>
@@ -26,7 +33,7 @@ export const ProviderActionsMenu: React.FC<Props> = ({ provider, onDelete, onPro
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {(provider.kind === "api" || provider.kind === "ai-sdk") && (
+        {canEdit(provider) && (
           <DropdownMenuItem
             data-testid="provider-action-edit"
             render={<Link preload="intent" to="/providers/$id/edit" params={{ id: provider.id }} />}

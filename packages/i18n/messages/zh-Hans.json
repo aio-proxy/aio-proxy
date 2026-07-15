@@ -101,7 +101,7 @@
   "cli_plugin_diagnostic_plugin_load_failed": "无法加载插件 {plugin}。",
   "cli_plugin_diagnostic_plugin_options_invalid": "插件 {plugin} 的选项无效。",
   "cli_plugin_diagnostic_provider_config_invalid": "提供商 {provider} 的配置无效。",
-  "cli_plugin_diagnostic_legacy_oauth_config_unsupported": "提供商 {provider} 使用了不支持的旧版 OAuth 配置。",
+  "cli_plugin_diagnostic_legacy_oauth_config_unsupported": "提供商 {provider} 使用了不支持的旧版 OAuth 配置。请先从控制台或配置中删除该提供商，再重新登录。",
   "cli_plugin_diagnostic_capability_missing": "插件 {plugin} 未提供能力 {capability}。",
   "cli_plugin_diagnostic_account_options_invalid": "提供商 {provider} 的账户选项无效。",
   "cli_plugin_diagnostic_credentials_missing_or_invalid": "提供商 {provider} 的凭据缺失或无效。",
@@ -218,7 +218,9 @@
         "col_catalog": "目录",
         "col_models": "模型",
         "col_weight": "权重",
-        "col_actions": "操作"
+        "col_actions": "操作",
+        "filter": "筛选提供商",
+        "columns": "提供商列"
       },
       "badge": {
         "enabled": "已启用",
@@ -256,7 +258,7 @@
           "col_state": "状态",
           "col_diagnostic": "诊断",
           "filter": "筛选插件",
-          "columns": "列"
+          "columns": "插件列"
         }
       },
       "form": {
