@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildMigrationsManifest } from "../scripts/build-migrations";
+import { MigrationHashMismatchError } from "../src/error";
 
 const roots: string[] = [];
 
@@ -34,4 +35,23 @@ test("builds an idempotent append-only migration manifest without Drizzle metada
   writeFileSync(join(migrations, "0002_request_log.sql"), "CREATE TABLE request_log (id text);\n");
   await expect(buildMigrationsManifest(root)).resolves.toEqual({ changed: true, migrations: 3 });
   expect(readFileSync(manifestPath, "utf8")).toContain("0002_request_log.sql");
+});
+
+test("migration hash mismatch directs historical SQL restoration before adding a new migration", () => {
+  const error = new MigrationHashMismatchError(
+    {
+      version: 6,
+      file: "0005_drop_legacy_auth.sql",
+      sha256: "expected-hash",
+      sql: "DROP TABLE IF EXISTS auth;",
+    },
+    "actual-hash",
+  );
+
+  expect(error.name).toBe("MigrationHashMismatchError");
+  expect(error.migration.file).toBe("0005_drop_legacy_auth.sql");
+  expect(error.actualSha256).toBe("actual-hash");
+  expect(error.message).toContain("Restore historical migration 0005_drop_legacy_auth.sql");
+  expect(error.message).toContain("add the next append-only migration, then run `bun run build:migrations`");
+  expect(error.message).not.toContain("regenerate migrations and the manifest");
 });
