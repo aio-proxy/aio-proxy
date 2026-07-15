@@ -219,6 +219,22 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/openai-chatgpt": {
+      "name": "@aio-proxy/plugin-openai-chatgpt",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/openai": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
+        "jose": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/server": {
       "name": "@aio-proxy/server",
       "version": "0.0.0",
@@ -328,6 +344,8 @@
     "@aio-proxy/oauth": ["@aio-proxy/oauth@workspace:packages/oauth"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
+
+    "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
 
     "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
 

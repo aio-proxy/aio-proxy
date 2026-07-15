@@ -17,6 +17,9 @@
       "path": "./packages/plugins/github-copilot"
     },
     {
+      "path": "./packages/plugins/openai-chatgpt"
+    },
+    {
       "path": "./packages/core"
     },
     {
