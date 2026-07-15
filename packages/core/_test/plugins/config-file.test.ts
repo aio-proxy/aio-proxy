@@ -13,7 +13,7 @@ import {
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtomicConfigCommitUncertainError, AtomicConfigFile } from "../../src/plugins/config-file";
+import { AtomicConfigCommitUncertainError, AtomicConfigFile, CONFIG_LOCK_WAIT_MS } from "../../src/plugins/config-file";
 
 const homes: string[] = [];
 const child = join(import.meta.dir, "config-lock-child.ts");
@@ -103,6 +103,62 @@ describe("AtomicConfigFile", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
   });
 
+  test("an aged malformed recovery marker is reclaimed", async () => {
+    const { path } = fixture("{}\n");
+    const recoveryPath = `${path}.lock.recovery.partial-owner`;
+    writeFileSync(recoveryPath, "");
+    utimesSync(recoveryPath, new Date(0), new Date(0));
+
+    await new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
+
+    expect(existsSync(recoveryPath)).toBe(false);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
+  });
+
+  test("a hung process identity lookup is killed instead of blocking config locking", async () => {
+    const { path } = fixture("{}\n");
+    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+    const originalSpawn = mutableBun.spawn;
+    let killed = 0;
+    mutableBun.spawn = (() => {
+      let closed = false;
+      let resolveExit!: (code: number) => void;
+      const exited = new Promise<number>((resolve) => {
+        resolveExit = resolve;
+      });
+      let controller!: ReadableStreamDefaultController<Uint8Array>;
+      const stdout = new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+          setTimeout(() => {
+            if (closed) return;
+            closed = true;
+            controller.enqueue(new TextEncoder().encode("MATCH\n"));
+            controller.close();
+            resolveExit(0);
+          }, 400);
+        },
+      });
+      return {
+        stdout,
+        exited,
+        kill() {
+          killed += 1;
+          if (closed) return;
+          closed = true;
+          controller.close();
+          resolveExit(1);
+        },
+      } as unknown as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+    try {
+      await new AtomicConfigFile(path).replace((current) => current);
+      expect(killed).toBeGreaterThan(0);
+    } finally {
+      mutableBun.spawn = originalSpawn;
+    }
+  });
+
   test("a main lock is recovered when its live PID has a different start identity", async () => {
     const { path } = fixture("{}\n");
     const lockPath = `${path}.lock`;
@@ -158,35 +214,13 @@ describe("AtomicConfigFile", () => {
     }
   });
 
-  test("recovery cleanup preserves a marker whose heartbeat becomes fresh before unlink", async () => {
-    const { dir, path } = fixture("{}\n");
+  test("a live recovery fence is never stolen because its heartbeat is old", async () => {
+    const { path } = fixture("{}\n");
     const recoveryPath = `${path}.lock.recovery.live-owner`;
-    writeFileSync(
-      recoveryPath,
-      JSON.stringify({ pid: process.pid, owner: "live-owner", createdAt: 0, starttime: "MATCH" }),
-    );
+    const ps = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(process.pid)], { stdout: "pipe" });
+    const starttime = new TextDecoder().decode(ps.stdout).trim();
+    writeFileSync(recoveryPath, JSON.stringify({ pid: process.pid, owner: "live-owner", createdAt: 0, starttime }));
     utimesSync(recoveryPath, new Date(0), new Date(0));
-
-    const signalPath = join(dir, "ps-paused");
-    const releasePath = join(dir, "ps-release");
-    const bunWithMutableSpawn = Bun as unknown as { spawn: typeof Bun.spawn };
-    const originalSpawn = bunWithMutableSpawn.spawn;
-    let psCalls = 0;
-    bunWithMutableSpawn.spawn = ((command: string[]) => {
-      if (command[0] !== "ps") return originalSpawn(command);
-      psCalls += 1;
-      const stdout = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          if (psCalls === 2) {
-            writeFileSync(signalPath, "paused");
-            await waitForFile(releasePath);
-          }
-          controller.enqueue(new TextEncoder().encode("MATCH\n"));
-          controller.close();
-        },
-      });
-      return { stdout, exited: Promise.resolve(0) } as unknown as ReturnType<typeof Bun.spawn>;
-    }) as typeof Bun.spawn;
 
     let completed = false;
     const update = new AtomicConfigFile(path)
@@ -195,23 +229,36 @@ describe("AtomicConfigFile", () => {
         completed = true;
       });
     try {
-      await waitForFile(signalPath);
-      const now = new Date();
-      utimesSync(recoveryPath, now, now);
-      writeFileSync(releasePath, "release");
       await Bun.sleep(100);
-
       expect(existsSync(recoveryPath)).toBe(true);
       expect(completed).toBe(false);
-
       unlinkSync(recoveryPath);
       await update;
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
     } finally {
-      bunWithMutableSpawn.spawn = originalSpawn;
       if (existsSync(recoveryPath)) unlinkSync(recoveryPath);
-      writeFileSync(releasePath, "release");
       await update.catch(() => {});
+    }
+  });
+
+  test("a live recovery fence with unavailable identity returns a bounded timeout", async () => {
+    const { path } = fixture("{}\n");
+    const recoveryPath = `${path}.lock.recovery.unknown-owner`;
+    writeFileSync(recoveryPath, JSON.stringify({ pid: process.pid, owner: "unknown-owner", createdAt: 0 }));
+    const now = spyOn(Date, "now");
+    let tick = 0;
+    now.mockImplementation(() => {
+      tick += CONFIG_LOCK_WAIT_MS;
+      return tick;
+    });
+    try {
+      await expect(new AtomicConfigFile(path).replace((current) => current)).rejects.toThrow(
+        "Timed out waiting for config recovery fence",
+      );
+      expect(existsSync(recoveryPath)).toBe(true);
+    } finally {
+      now.mockRestore();
+      unlinkSync(recoveryPath);
     }
   });
 
@@ -301,7 +348,7 @@ describe("AtomicConfigFile", () => {
     await holder.exited;
   }, 15_000);
 
-  test("a resumed former owner cannot commit after its lock was replaced", async () => {
+  test("a stale former owner cannot rename or release a replacement lock after it resumes", async () => {
     const { path } = fixture("{}\n");
     let resume!: () => void;
     const paused = new Promise<void>((resolve) => {
@@ -319,16 +366,33 @@ describe("AtomicConfigFile", () => {
     await didEnter;
 
     const lockPath = `${path}.lock`;
-    unlinkSync(lockPath);
-    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, owner: "replacement", createdAt: Date.now() }));
+    utimesSync(lockPath, new Date(0), new Date(0));
+    let finishReplacement!: () => void;
+    const replacementCanFinish = new Promise<void>((resolve) => {
+      finishReplacement = resolve;
+    });
+    let replacementEntered!: () => void;
+    const replacementDidEnter = new Promise<void>((resolve) => {
+      replacementEntered = resolve;
+    });
+    const replacement = new AtomicConfigFile(path).replace(async (current) => {
+      replacementEntered();
+      await replacementCanFinish;
+      return { ...current, replacement: true };
+    });
+    await replacementDidEnter;
+    const replacementOwner = JSON.parse(readFileSync(lockPath, "utf8")).owner;
     resume();
 
     await expect(update).rejects.toThrow("Config lock ownership lost");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({});
-    expect(JSON.parse(readFileSync(lockPath, "utf8")).owner).toBe("replacement");
+    expect(JSON.parse(readFileSync(lockPath, "utf8")).owner).toBe(replacementOwner);
+    finishReplacement();
+    await replacement;
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ replacement: true });
   });
 
-  test("the recovery fence covers a same-object mutation callback", async () => {
+  test("a same-object mutation does not hold the recovery fence for its whole callback", async () => {
     const { path } = fixture("{}\n");
     const config = new AtomicConfigFile(path);
     let resume!: () => void;
@@ -352,12 +416,16 @@ describe("AtomicConfigFile", () => {
       secondEntered = true;
       return { ...current, second: true };
     });
-    await Bun.sleep(100);
-    expect(secondEntered).toBe(false);
+    const secondResult = second.then(() => undefined);
+    const deadline = Date.now() + 2_000;
+    while (!secondEntered) {
+      if (Date.now() >= deadline) throw new Error("replacement did not enter");
+      await Bun.sleep(5);
+    }
 
     resume();
-    expect(await first).toBe("first");
-    await second;
+    await expect(first).rejects.toThrow("Config lock ownership lost");
+    await secondResult;
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ second: true });
   });
 
@@ -407,7 +475,7 @@ describe("AtomicConfigFile", () => {
     }
   });
 
-  test("a former owner never rolls back over a replacement config after verify", async () => {
+  test("a stale former owner never rolls back over a replacement config after verify", async () => {
     const { path } = fixture("{}\n");
     let resume!: () => void;
     const paused = new Promise<void>((resolve) => {
@@ -427,13 +495,28 @@ describe("AtomicConfigFile", () => {
     await didEnter;
 
     const lockPath = `${path}.lock`;
-    unlinkSync(lockPath);
-    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, owner: "replacement", createdAt: Date.now() }));
-    writeFileSync(path, '{"newer":true}\n');
+    utimesSync(lockPath, new Date(0), new Date(0));
+    let finishReplacement!: () => void;
+    const replacementCanFinish = new Promise<void>((resolve) => {
+      finishReplacement = resolve;
+    });
+    let replacementCommitted!: () => void;
+    const replacementDidCommit = new Promise<void>((resolve) => {
+      replacementCommitted = resolve;
+    });
+    const replacement = new AtomicConfigFile(path).replace(() => ({ newer: true }), {
+      async verify() {
+        replacementCommitted();
+        await replacementCanFinish;
+      },
+    });
+    await replacementDidCommit;
     resume();
 
     await expect(update).rejects.toBeInstanceOf(AtomicConfigCommitUncertainError);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ newer: true });
+    finishReplacement();
+    await replacement;
   });
 
   test("returning the exact current object performs a locked read without rewrite or verification", async () => {

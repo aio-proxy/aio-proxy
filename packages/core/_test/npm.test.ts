@@ -279,15 +279,66 @@ describe("npmAdd", () => {
     rmSync(cacheDir, { recursive: true, force: true });
   });
 
-  test("Given a verifiable stale recovery marker When acquiring Then the marker is reclaimed", async () => {
+  test("Given a stale decision When the owner refreshes heartbeat Then recovery preserves the owner", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-refresh-during-recovery-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const pausedPath = join(cacheDir, "identity-paused");
+    const resumePath = join(cacheDir, "identity-resume");
+    const first = await acquireNpmInstallLock("refresh-during-recovery-provider", cacheDir);
+    utimesSync(lockPath, new Date(0), new Date(0));
+    const ps = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(process.pid)], { stdout: "pipe" });
+    const starttime = new TextDecoder().decode(ps.stdout).trim();
+    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+    const originalSpawn = mutableBun.spawn;
+    let calls = 0;
+    mutableBun.spawn = (() => {
+      calls += 1;
+      const stdout = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          if (calls === 3) {
+            writeFileSync(pausedPath, "paused");
+            await waitForFile(resumePath);
+          }
+          controller.enqueue(new TextEncoder().encode(`${starttime}\n`));
+          controller.close();
+        },
+      });
+      return { stdout, exited: Promise.resolve(0) } as unknown as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+
+    let replacement: Awaited<ReturnType<typeof acquireNpmInstallLock>> | undefined;
+    const pending = acquireNpmInstallLock("refresh-during-recovery-provider", cacheDir).then((lock) => {
+      replacement = lock;
+      return lock;
+    });
+    try {
+      await waitForFile(pausedPath);
+      const fresh = new Date();
+      utimesSync(lockPath, fresh, fresh);
+      writeFileSync(resumePath, "resume");
+      await Bun.sleep(100);
+      await expect(first.withOwnership(async () => undefined)).resolves.toBeUndefined();
+      expect(replacement).toBeUndefined();
+      await first.release();
+      replacement = await pending;
+      await replacement.release();
+    } finally {
+      mutableBun.spawn = originalSpawn;
+      writeFileSync(resumePath, "resume");
+      await first.release().catch(() => {});
+      if (replacement === undefined) replacement = await pending.catch(() => undefined);
+      await replacement?.release().catch(() => {});
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  test("Given a dead recovery-fence owner When acquiring Then the marker is reclaimed", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-marker-"));
     const lockPath = join(cacheDir, ".aio-proxy-install.lock");
     const markerPath = `${lockPath}.recovery.stale-owner`;
-    const ps = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(process.pid)], { stdout: "pipe" });
-    const starttime = new TextDecoder().decode(ps.stdout).trim();
     writeFileSync(
       markerPath,
-      JSON.stringify({ pid: process.pid, createdAt: 0, owner: "stale-owner", starttime, version: 1 }),
+      JSON.stringify({ pid: 999_999, createdAt: 0, owner: "stale-owner", starttime: "dead", version: 1 }),
     );
     utimesSync(markerPath, new Date(0), new Date(0));
 
@@ -295,6 +346,127 @@ describe("npmAdd", () => {
     expect(existsSync(markerPath)).toBe(false);
     await lock.release();
     rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given an aged malformed recovery marker When acquiring Then the marker is reclaimed", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-malformed-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.partial-owner`;
+    writeFileSync(markerPath, "");
+    utimesSync(markerPath, new Date(0), new Date(0));
+
+    const lock = await acquireNpmInstallLock("malformed-marker-provider", cacheDir, { waitMs: 500 });
+
+    expect(existsSync(markerPath)).toBe(false);
+    await lock.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given a hung process identity lookup When locking Then the child is killed within the wait budget", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-hung-identity-"));
+    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+    const originalSpawn = mutableBun.spawn;
+    let killed = 0;
+    mutableBun.spawn = (() => {
+      let closed = false;
+      let resolveExit!: (code: number) => void;
+      const exited = new Promise<number>((resolve) => {
+        resolveExit = resolve;
+      });
+      let controller!: ReadableStreamDefaultController<Uint8Array>;
+      const stdout = new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+          setTimeout(() => {
+            if (closed) return;
+            closed = true;
+            controller.enqueue(new TextEncoder().encode("MATCH\n"));
+            controller.close();
+            resolveExit(0);
+          }, 400);
+        },
+      });
+      return {
+        stdout,
+        exited,
+        kill() {
+          killed += 1;
+          if (closed) return;
+          closed = true;
+          controller.close();
+          resolveExit(1);
+        },
+      } as unknown as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+    let lock: Awaited<ReturnType<typeof acquireNpmInstallLock>> | undefined;
+    try {
+      lock = await acquireNpmInstallLock("hung-identity-provider", cacheDir, { waitMs: 2_000 });
+      expect(killed).toBeGreaterThan(0);
+    } finally {
+      mutableBun.spawn = originalSpawn;
+      await lock?.release();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  test("Given a live recovery-fence owner When heartbeat is old Then the marker is not stolen", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-live-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.live-owner`;
+    const ps = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(process.pid)], { stdout: "pipe" });
+    const starttime = new TextDecoder().decode(ps.stdout).trim();
+    writeFileSync(
+      markerPath,
+      JSON.stringify({ pid: process.pid, createdAt: 0, owner: "live-owner", starttime, version: 1 }),
+    );
+    utimesSync(markerPath, new Date(0), new Date(0));
+
+    let acquired = false;
+    const pending = acquireNpmInstallLock("live-marker-provider", cacheDir).then((lock) => {
+      acquired = true;
+      return lock;
+    });
+    await Bun.sleep(100);
+    expect(acquired).toBe(false);
+    expect(existsSync(markerPath)).toBe(true);
+    rmSync(markerPath);
+    const lock = await pending;
+    await lock.release();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given a live recovery marker with unavailable identity When waiting Then acquisition fails within its budget", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-unverifiable-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.unknown-owner`;
+    writeFileSync(
+      markerPath,
+      JSON.stringify({
+        pid: process.pid,
+        createdAt: 0,
+        owner: "unknown-owner",
+        starttime: "unavailable",
+        version: 1,
+      }),
+    );
+
+    const pending = acquireNpmInstallLock("unknown-marker-provider", cacheDir, { waitMs: 100 });
+    try {
+      await expect(
+        Promise.race([
+          pending,
+          Bun.sleep(500).then(() => {
+            throw new Error("npm recovery-fence wait was unbounded");
+          }),
+        ]),
+      ).rejects.toBeInstanceOf(NpmLockError);
+      expect(existsSync(markerPath)).toBe(true);
+    } finally {
+      rmSync(markerPath, { force: true });
+      const lock = await pending.catch(() => null);
+      await lock?.release();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 
   test("Given concurrent stale-lock recovery When owners run Then only one lock is active", async () => {

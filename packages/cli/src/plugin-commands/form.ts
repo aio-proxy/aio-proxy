@@ -108,8 +108,12 @@ export async function renderConfigSpec<T>(
   const prompts = options.prompts ?? defaultPrompts;
   const currentPublic = options.currentPublicValues ?? {};
   const currentSecrets = options.currentSecrets ?? {};
-  const clearSecrets = new Set(options.clearSecrets ?? []);
-  const collected: Record<string, unknown> = { ...currentSecrets };
+  const clearSecrets = new Set((options.clearSecrets ?? []).filter((key) => secretKeys.has(key)));
+  const vaultOriginKeys = new Set(Object.keys(currentSecrets));
+  const publicFieldKeys = new Set(spec.form.filter((field) => field.type !== "secret").map((field) => field.key));
+  const collected: Record<string, unknown> = Object.fromEntries(
+    Object.entries(currentSecrets).filter(([key]) => secretKeys.has(key)),
+  );
   const context = options.signal === undefined ? undefined : { signal: options.signal };
 
   for (const field of spec.form) {
@@ -206,7 +210,7 @@ export async function renderConfigSpec<T>(
   const secrets: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(validated)) {
     if (secretKeys.has(key)) secrets[key] = value;
-    else publicValues[key] = value;
+    else if (!vaultOriginKeys.has(key) || publicFieldKeys.has(key)) publicValues[key] = value;
   }
   return { publicValues, secrets };
 }

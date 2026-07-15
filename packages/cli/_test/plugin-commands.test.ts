@@ -302,6 +302,68 @@ describe("plugin lifecycle commands", () => {
     expect(retained.values.get("secret-plugin")?.value).toEqual({});
   });
 
+  test("config never publishes plaintext from secret fields removed by a new descriptor", async () => {
+    const sentinel = "retired-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["migrated-plugin"] });
+    state.values.set("migrated-plugin", { revision: 1, value: { retiredToken: sentinel } });
+
+    await pluginConfig(
+      "migrated-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: { ...state.deps.prompts, input: async () => "https://example.test" },
+      },
+    );
+
+    const configText = readFileSync(state.path, "utf8");
+    expect(configText).not.toContain(sentinel);
+    expect(JSON.parse(configText).plugins).toEqual([["migrated-plugin", { endpoint: "https://example.test" }]]);
+    expect(state.values.get("migrated-plugin")?.value).toEqual({});
+  });
+
+  test("config rewrites a legacy non-record vault value to the current descriptor secret shape", async () => {
+    const sentinel = "legacy-secret-sentinel";
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: ["legacy-secret-plugin"] });
+    state.values.set("legacy-secret-plugin", { revision: 1, value: sentinel as never });
+
+    await pluginConfig(
+      "legacy-secret-plugin",
+      {},
+      {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: { ...state.deps.prompts, input: async () => "https://example.test" },
+      },
+    );
+
+    expect(readFileSync(state.path, "utf8")).not.toContain(sentinel);
+    expect(state.values.get("legacy-secret-plugin")?.value).toEqual({});
+  });
+
   test("config uses an injected built-in descriptor without npm or dynamic import", async () => {
     const packageName = "@aio-proxy/plugin-github-copilot";
     const state = harness({ providers: {}, plugins: [packageName] });
@@ -360,7 +422,74 @@ describe("plugin lifecycle commands", () => {
     expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([]);
   });
 
-  test("config rejects a changed entry and a cache pruned before final commit", async () => {
+  test("config holds the installed package generation across import, prompt, staging, and commit", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["aba-plugin", { endpoint: "old" }]] });
+    let generation = 1;
+    let tail = Promise.resolve();
+    const lifecycle: NonNullable<PluginLifecycleDeps["withNpmPackageLifecycle"]> = async (_packageName, use) => {
+      const previous = tail;
+      let release!: () => void;
+      tail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await use(async () => {});
+      } finally {
+        release();
+      }
+    };
+    let replacement: Promise<void> | undefined;
+
+    await pluginConfig(
+      "aba-plugin",
+      {},
+      {
+        ...state.deps,
+        withNpmPackageLifecycle: lifecycle,
+        findInstalledNpmPackage: async () => ({
+          version: "1.0.0",
+          entrypoint: `/tmp/aba-plugin-generation-${generation}.js`,
+        }),
+        importPackage: async ({ entrypoint }) => {
+          expect(entrypoint).toContain("generation-1.js");
+          return { default: descriptor };
+        },
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => {
+            replacement = lifecycle("aba-plugin", async () => {
+              generation = 2;
+              await state.config.replace((current) => ({ ...current, plugins: [] }));
+              await state.config.replace((current) => ({
+                ...current,
+                plugins: [["aba-plugin", { endpoint: "old" }]],
+              }));
+            });
+            await Bun.sleep(25);
+            return "stale-prompt-value";
+          },
+        },
+      },
+    );
+    await replacement;
+
+    expect(generation).toBe(2);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([["aba-plugin", { endpoint: "old" }]]);
+  });
+
+  test("config rejects a changed entry and a missing cache under the lifecycle lock", async () => {
     const descriptor = definePlugin(() => {}, {
       options: {
         schema: {
@@ -395,7 +524,6 @@ describe("plugin lifecycle commands", () => {
     ).rejects.toBeInstanceOf(PluginConfigChangedError);
 
     const pruned = harness({ providers: {}, plugins: ["racing-plugin"] });
-    let packageChecks = 0;
     await expect(
       pluginConfig(
         "racing-plugin",
@@ -403,16 +531,53 @@ describe("plugin lifecycle commands", () => {
         {
           ...pruned.deps,
           importPackage: async () => ({ default: descriptor }),
-          findInstalledNpmPackage: async () => {
-            packageChecks += 1;
-            return packageChecks === 1 ? { version: "1.0.0", entrypoint: "/tmp/plugin.js" } : null;
-          },
+          findInstalledNpmPackage: async () => null,
           withNpmPackageLifecycle: async (_packageName, use) => use(async () => {}),
           prompts: { ...pruned.deps.prompts, input: async () => "new" },
         },
       ),
     ).rejects.toBeInstanceOf(PluginNotInstalledError);
     expect(JSON.parse(readFileSync(pruned.path, "utf8")).plugins).toEqual(["racing-plugin"]);
+  });
+
+  test("config rejects a concurrent secret revision even when its rendered secret value is unchanged", async () => {
+    const descriptor = definePlugin(() => {}, {
+      options: {
+        schema: {
+          safeParse() {},
+          async safeParseAsync(value: unknown) {
+            return { success: true, data: value };
+          },
+        } as never,
+        form: [
+          { type: "text", key: "endpoint", label: "Endpoint" },
+          { type: "secret", key: "token", label: "Token" },
+        ],
+      },
+    });
+    const state = harness({ providers: {}, plugins: [["secret-race-plugin", { endpoint: "old" }]] });
+    state.values.set("secret-race-plugin", { revision: 1, value: { token: "old-secret" } });
+
+    await expect(
+      pluginConfig(
+        "secret-race-plugin",
+        {},
+        {
+          ...state.deps,
+          importPackage: async () => ({ default: descriptor }),
+          prompts: {
+            ...state.deps.prompts,
+            input: async () => {
+              state.values.set("secret-race-plugin", { revision: 2, value: { token: "new-secret" } });
+              return "new-public";
+            },
+            password: async () => "",
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginConfigChangedError);
+    expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual([["secret-race-plugin", { endpoint: "old" }]]);
+    expect(state.values.get("secret-race-plugin")?.value).toEqual({ token: "new-secret" });
   });
 
   test("failed config write compensates only its own secret revision", async () => {

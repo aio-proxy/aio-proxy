@@ -351,10 +351,17 @@ async function commitPluginConfig(
         if (latest === undefined) throw new PluginNotConfiguredError(packageName);
         if (!sameJson(latest, options.expectedEntry)) throw new PluginConfigChangedError(packageName);
       }
+      const latestSecret = deps.repository.readPluginSecret(packageName);
+      if (
+        (latestSecret?.revision ?? null) !== (previousSecret?.revision ?? null) ||
+        !sameJson(latestSecret?.value, previousSecret?.value)
+      ) {
+        throw new PluginConfigChangedError(packageName);
+      }
       await options.assertPackageOwnership?.();
       if (
-        !sameJson(secretRecord(previousSecret), secrets) ||
-        (previousSecret === null && Object.keys(secrets).length > 0)
+        (previousSecret === null && Object.keys(secrets).length > 0) ||
+        (previousSecret !== null && !sameJson(previousSecret.value, secrets))
       ) {
         appliedRevision = deps.repository.writePluginSecret(
           packageName,
@@ -470,33 +477,40 @@ export async function pluginConfig(
     const current = await deps.config.read();
     const currentEntry = entries(current).find((entry) => packageNameOf(entry) === packageName);
     if (currentEntry === undefined) throw new PluginNotConfiguredError(packageName);
-    const { descriptor, version } = await descriptorForConfig(packageName, deps);
-    const previousSecret = deps.repository.readPluginSecret(packageName);
-    const rendered =
-      descriptor.metadata.options === undefined
-        ? { publicValues: {}, secrets: {} }
-        : await renderConfigSpec(descriptor.metadata.options, {
-            prompts: deps.prompts,
-            currentPublicValues: publicOptionsOf(currentEntry),
-            currentSecrets: secretRecord(previousSecret),
-            ...(options.clearSecret === undefined ? {} : { clearSecrets: options.clearSecret }),
-          });
-    await stageDescriptor(packageName, version, descriptor, rendered.publicValues, rendered.secrets);
-    if (deps.builtInNames.has(packageName)) {
+    const configure = async (
+      descriptor: PluginDescriptor<unknown>,
+      version: string,
+      assertPackageOwnership?: () => Promise<void>,
+    ) => {
+      const previousSecret = deps.repository.readPluginSecret(packageName);
+      const rendered =
+        descriptor.metadata.options === undefined
+          ? { publicValues: {}, secrets: {} }
+          : await renderConfigSpec(descriptor.metadata.options, {
+              prompts: deps.prompts,
+              currentPublicValues: publicOptionsOf(currentEntry),
+              currentSecrets: secretRecord(previousSecret),
+              ...(options.clearSecret === undefined ? {} : { clearSecrets: options.clearSecret }),
+            });
+      await stageDescriptor(packageName, version, descriptor, rendered.publicValues, rendered.secrets);
+      await assertPackageOwnership?.();
       await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps, {
         expectedEntry: currentEntry,
+        ...(assertPackageOwnership === undefined ? {} : { assertPackageOwnership }),
       });
+    };
+    if (deps.builtInNames.has(packageName)) {
+      const { descriptor, version } = await descriptorForConfig(packageName, deps);
+      await configure(descriptor, version);
     } else {
       const lifecycle = deps.withNpmPackageLifecycle ?? (async (_packageName, use) => use(async () => {}));
       await lifecycle(packageName, async (assertOwnership) => {
-        if ((await (deps.findInstalledNpmPackage ?? findInstalledNpmPackage)(packageName)) === null) {
-          throw new PluginNotInstalledError(packageName);
-        }
         await assertOwnership();
-        await commitPluginConfig(packageName, rendered.publicValues, rendered.secrets, previousSecret, deps, {
-          expectedEntry: currentEntry,
-          assertPackageOwnership: assertOwnership,
-        });
+        const installed = await installedForConfig(packageName, deps);
+        await assertOwnership();
+        const descriptor = await loadDescriptor(packageName, installed, deps);
+        await assertOwnership();
+        await configure(descriptor, installed.version, assertOwnership);
       });
     }
     deps.print(m.cli_plugin_configured({ plugin: packageName }));

@@ -11,6 +11,9 @@ const STALE_LOCK_MS = 5 * 60 * 1000;
 const LOCK_HEARTBEAT_MS = 10_000;
 const RETRIES = 8;
 const STARTTIME_UNAVAILABLE = "unavailable";
+const DEFAULT_WAIT_MS = 5_000;
+const PROCESS_STARTTIME_WAIT_MS = 250;
+const PROCESS_STARTTIME_TIMEOUT = Symbol("process-starttime-timeout");
 
 const LockSchema = z.object({
   pid: z.number().int().positive(),
@@ -49,14 +52,24 @@ async function processStarttime(pid: number): Promise<string | null> {
     }
     throw error;
   }
-  const stdout = child.stdout;
-  const text = stdout === null ? "" : await new Response(stdout).text();
-  const code = await child.exited;
-  if (code !== 0) {
-    return null;
-  }
-  const trimmed = text.trim();
-  return trimmed.length === 0 ? null : trimmed;
+  const inspection = (async () => {
+    const stdout = child.stdout;
+    const text = stdout === null ? "" : await new Response(stdout).text();
+    if ((await child.exited) !== 0) return null;
+    const trimmed = text.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  })();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timed = new Promise<typeof PROCESS_STARTTIME_TIMEOUT>((resolve) => {
+    timeout = setTimeout(() => resolve(PROCESS_STARTTIME_TIMEOUT), PROCESS_STARTTIME_WAIT_MS);
+  });
+  const result = await Promise.race([inspection, timed]);
+  if (timeout !== undefined) clearTimeout(timeout);
+  if (result !== PROCESS_STARTTIME_TIMEOUT) return result;
+  child.kill();
+  await child.exited.catch(() => {});
+  await inspection.catch(() => null);
+  return null;
 }
 
 function processIsAlive(pid: number): boolean {
@@ -88,13 +101,26 @@ async function removeIfUnchanged(
   expected: string,
   identity: Stats,
   assertFence: () => Promise<void>,
+  matchMtime = false,
 ): Promise<boolean> {
   try {
     const [text, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-    if (text !== expected || metadata.dev !== identity.dev || metadata.ino !== identity.ino) return false;
+    if (
+      text !== expected ||
+      metadata.dev !== identity.dev ||
+      metadata.ino !== identity.ino ||
+      (matchMtime && metadata.mtimeMs !== identity.mtimeMs)
+    ) {
+      return false;
+    }
     await assertFence();
     const [currentText, currentMetadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-    if (currentText !== expected || currentMetadata.dev !== identity.dev || currentMetadata.ino !== identity.ino) {
+    if (
+      currentText !== expected ||
+      currentMetadata.dev !== identity.dev ||
+      currentMetadata.ino !== identity.ino ||
+      (matchMtime && currentMetadata.mtimeMs !== identity.mtimeMs)
+    ) {
       return false;
     }
     await rm(path);
@@ -117,15 +143,25 @@ async function recoveryMarkerActive(path: string): Promise<boolean> {
   }
   const [parsed, metadata] = await Promise.all([Promise.resolve(parseLock(text)), stat(path).catch(() => null)]);
   const lock = parsed.success ? parsed.data : undefined;
-  const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
+  if (metadata === null) return false;
+  if (lock === undefined) {
+    if (Date.now() - metadata.mtimeMs <= STALE_LOCK_MS) return true;
+    try {
+      if ((await readFile(path, "utf8")) !== text) return true;
+      const currentMetadata = await stat(path);
+      if (!sameFileSnapshot(metadata, currentMetadata)) return true;
+      await rm(path);
+      return false;
+    } catch (error) {
+      if (error instanceof Error && isNodeCode(error, "ENOENT")) return false;
+      throw error;
+    }
+  }
   const alive = lock !== undefined && processIsAlive(lock.pid);
   const currentStarttime = lock === undefined || !alive ? null : await processStarttime(lock.pid);
   const identityVerifiable =
     alive && lock !== undefined && lock.starttime !== STARTTIME_UNAVAILABLE && currentStarttime !== null;
-  const stale =
-    lock === undefined
-      ? staleByHeartbeat
-      : !alive || (identityVerifiable && (currentStarttime !== lock.starttime || staleByHeartbeat));
+  const stale = !alive || (identityVerifiable && currentStarttime !== lock.starttime);
   if (!stale) return true;
   try {
     if ((await readFile(path, "utf8")) !== text) return true;
@@ -162,8 +198,9 @@ async function createRecoveryMarker(lockPath: string): Promise<{
   const owner = randomUUID();
   const path = `${lockPath}.recovery.${owner}`;
   const handle = await open(path, "wx", 0o600);
-  const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
+  let identity: Stats;
   try {
+    const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
     await handle.writeFile(
       JSON.stringify({
         pid: process.pid,
@@ -174,33 +211,38 @@ async function createRecoveryMarker(lockPath: string): Promise<{
       } satisfies LockFile),
     );
     await handle.sync();
+    identity = await handle.stat();
   } catch (error) {
     await rm(path, { force: true });
     await handle.close().catch(() => {});
     throw error;
   }
-  let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
-    const now = new Date();
-    void handle.utimes(now, now).catch(() => {});
-  }, LOCK_HEARTBEAT_MS);
-  heartbeat.unref?.();
   return {
     path,
     async assertActive() {
-      const current = parseLock(await readFile(path, "utf8"));
-      if (!current.success || current.data.owner !== owner || (await recoveryActive(lockPath, path))) {
+      const [current, metadata] = await Promise.all([readFile(path, "utf8").then(parseLock), stat(path)]);
+      if (
+        !current.success ||
+        current.data.owner !== owner ||
+        metadata.dev !== identity.dev ||
+        metadata.ino !== identity.ino
+      ) {
         throw new Error("Npm lock ownership lost");
       }
-      const now = new Date();
-      await handle.utimes(now, now);
     },
     async release() {
-      if (heartbeat !== undefined) {
-        clearInterval(heartbeat);
-        heartbeat = undefined;
-      }
       try {
-        await rm(path, { force: true });
+        const [current, metadata] = await Promise.all([readFile(path, "utf8").then(parseLock), stat(path)]);
+        if (
+          current.success &&
+          current.data.owner === owner &&
+          metadata.dev === identity.dev &&
+          metadata.ino === identity.ino
+        ) {
+          await rm(path);
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || !isNodeCode(error, "ENOENT")) throw error;
       } finally {
         await handle.close().catch(() => {});
       }
@@ -211,15 +253,21 @@ async function createRecoveryMarker(lockPath: string): Promise<{
 async function withRecoveryFence<T>(
   lockPath: string,
   action: (assertFence: () => Promise<void>) => Promise<T>,
+  deadline: number,
+  timeoutError: () => Error,
 ): Promise<T> {
   while (true) {
     if (await recoveryActive(lockPath)) {
+      if (Date.now() >= deadline) throw timeoutError();
       await Bun.sleep(25);
       continue;
     }
     const recovery = await createRecoveryMarker(lockPath);
     try {
-      if (await recoveryActive(lockPath, recovery.path)) continue;
+      if (await recoveryActive(lockPath, recovery.path)) {
+        if (Date.now() >= deadline) throw timeoutError();
+        continue;
+      }
       await recovery.assertActive();
       return await action(recovery.assertActive);
     } finally {
@@ -230,37 +278,27 @@ async function withRecoveryFence<T>(
   }
 }
 
-async function recoverStaleLock(path: string): Promise<boolean> {
-  if (await recoveryActive(path)) return false;
-  const recovery = await createRecoveryMarker(path);
+async function recoverStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
+  let text: string;
   try {
-    if (await recoveryActive(path, recovery.path)) return false;
-    let text: string;
-    try {
-      text = await readFile(path, "utf8");
-    } catch (error) {
-      if (error instanceof Error && isNodeCode(error, "ENOENT")) {
-        return true;
-      }
-      throw error;
-    }
-
-    const parsed = parseLock(text);
-    const lock = parsed.success ? parsed.data : undefined;
-    const metadata = await stat(path).catch(() => null);
-    const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
-    const ownerAlive = lock === undefined ? false : processIsAlive(lock.pid);
-    const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
-    const identityVerifiable =
-      ownerAlive && lock !== undefined && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== null;
-    const staleByOwner = lock === undefined || !ownerAlive || (identityVerifiable && ownerStarttime !== lock.starttime);
-    const stale = lock === undefined ? staleByHeartbeat : staleByOwner || (identityVerifiable && staleByHeartbeat);
-    if (!stale) return false;
-    if (metadata === null) return false;
-    return await removeIfUnchanged(path, text, metadata, recovery.assertActive);
-  } finally {
-    await recovery.release();
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (error instanceof Error && isNodeCode(error, "ENOENT")) return true;
+    throw error;
   }
+
+  const parsed = parseLock(text);
+  const lock = parsed.success ? parsed.data : undefined;
+  const metadata = await stat(path).catch(() => null);
+  const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > STALE_LOCK_MS;
+  const ownerAlive = lock === undefined ? false : processIsAlive(lock.pid);
+  const ownerStarttime = lock === undefined || !ownerAlive ? null : await processStarttime(lock.pid);
+  const identityVerifiable =
+    ownerAlive && lock !== undefined && lock.starttime !== STARTTIME_UNAVAILABLE && ownerStarttime !== null;
+  const staleByOwner = lock === undefined || !ownerAlive || (identityVerifiable && ownerStarttime !== lock.starttime);
+  const stale = lock === undefined ? staleByHeartbeat : staleByOwner || (identityVerifiable && staleByHeartbeat);
+  if (!stale || metadata === null) return false;
+  return removeIfUnchanged(path, text, metadata, assertFence, true);
 }
 
 function retryDelay(attempt: number): number {
@@ -268,9 +306,16 @@ function retryDelay(attempt: number): number {
   return Math.floor(base * (0.5 + Math.random()));
 }
 
-export async function acquireNpmInstallLock(pkg: string, cacheDir: string): Promise<NpmInstallLock> {
+export async function acquireNpmInstallLock(
+  pkg: string,
+  cacheDir: string,
+  options: { readonly waitMs?: number } = {},
+): Promise<NpmInstallLock> {
   const lockPath = join(cacheDir, LOCK_FILE);
   await mkdir(cacheDir, { recursive: true, mode: 0o700 });
+  const waitMs = options.waitMs ?? DEFAULT_WAIT_MS;
+  const deadline = Date.now() + waitMs;
+  const timeoutError = () => new NpmLockError(pkg);
   const starttime = (await processStarttime(process.pid)) ?? STARTTIME_UNAVAILABLE;
   const owner = randomUUID();
   const lock: LockFile = {
@@ -284,86 +329,36 @@ export async function acquireNpmInstallLock(pkg: string, cacheDir: string): Prom
 
   let failedGeneration: string | null = null;
   let attempts = 0;
-  while (attempts < RETRIES) {
-    if (await recoveryActive(lockPath)) {
-      await Bun.sleep(retryDelay(attempts));
-      continue;
-    }
-    try {
-      const handle = await open(lockPath, "wx", 0o600);
-      let identity: Stats | undefined;
-      try {
-        await handle.writeFile(content);
-        await handle.sync();
-        identity = await handle.stat();
-        if (await recoveryActive(lockPath)) {
-          await handle.close();
-          await withRecoveryFence(lockPath, (assertFence) =>
-            removeIfUnchanged(lockPath, content, identity as Stats, assertFence),
-          );
-          await Bun.sleep(retryDelay(attempts));
-          continue;
-        }
-      } catch (error) {
-        await handle.close().catch(() => {});
-        if (identity !== undefined) {
-          await withRecoveryFence(lockPath, (assertFence) =>
-            removeIfUnchanged(lockPath, content, identity as Stats, assertFence),
-          ).catch(() => {});
-        }
-        throw error;
-      }
-      let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
-        const now = new Date();
-        void handle.utimes(now, now).catch(() => {});
-      }, LOCK_HEARTBEAT_MS);
-      heartbeat.unref?.();
-      return {
-        async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
-          return withRecoveryFence(lockPath, async (assertFence) => {
-            const assertOwnership = async () => {
-              await assertFence();
-              const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, "utf8"), stat(lockPath)]);
-              if (
-                currentText !== content ||
-                currentMetadata.dev !== (identity as Stats).dev ||
-                currentMetadata.ino !== (identity as Stats).ino
-              ) {
-                throw new Error("Npm lock ownership lost");
-              }
-              const now = new Date();
-              await handle.utimes(now, now);
-            };
-            await assertOwnership();
-            const result = await action(assertOwnership);
-            await assertOwnership();
-            return result;
-          });
-        },
-        async release() {
+  while (attempts < RETRIES && Date.now() < deadline) {
+    const acquired = await withRecoveryFence(
+      lockPath,
+      async (assertFence) => {
+        try {
+          const handle = await open(lockPath, "wx", 0o600);
+          let identity: Stats | undefined;
           try {
-            await withRecoveryFence(lockPath, async (assertFence) => {
-              if (heartbeat !== undefined) {
-                clearInterval(heartbeat);
-                heartbeat = undefined;
-              }
-              await removeIfUnchanged(lockPath, content, identity as Stats, assertFence);
-            });
-          } finally {
+            await handle.writeFile(content);
+            await handle.sync();
+            identity = await handle.stat();
+            await assertFence();
+            return { handle, identity };
+          } catch (error) {
             await handle.close().catch(() => {});
+            if (identity !== undefined) {
+              await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
+            }
+            throw error;
           }
-        },
-      };
-    } catch (error) {
-      if (!(error instanceof Error)) {
-        throw error;
-      }
-      if (!isNodeCode(error, "EEXIST")) {
-        throw error;
-      }
-      if (await recoverStaleLock(lockPath)) {
-        continue;
-      }
+        } catch (error) {
+          if (!(error instanceof Error) || !isNodeCode(error, "EEXIST")) throw error;
+          return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
+        }
+      },
+      deadline,
+      timeoutError,
+    );
+    if (acquired === null) continue;
+    if (acquired === false) {
       const generation = await readFile(lockPath, "utf8").catch(() => null);
       if (generation !== failedGeneration) {
         failedGeneration = generation;
@@ -371,8 +366,64 @@ export async function acquireNpmInstallLock(pkg: string, cacheDir: string): Prom
       } else {
         attempts += 1;
       }
-      await Bun.sleep(retryDelay(attempts));
+      if (attempts >= RETRIES || Date.now() >= deadline) break;
+      await Bun.sleep(Math.min(retryDelay(attempts), Math.max(0, deadline - Date.now())));
+      continue;
     }
+    const { handle, identity } = acquired;
+    let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+      const now = new Date();
+      void handle.utimes(now, now).catch(() => {});
+    }, LOCK_HEARTBEAT_MS);
+    heartbeat.unref?.();
+    const verifyOwnership = async () => {
+      try {
+        const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, "utf8"), stat(lockPath)]);
+        if (currentText !== content || currentMetadata.dev !== identity.dev || currentMetadata.ino !== identity.ino) {
+          throw new Error("Npm lock ownership lost");
+        }
+      } catch (error) {
+        if (error instanceof Error && isNodeCode(error, "ENOENT")) throw new Error("Npm lock ownership lost");
+        throw error;
+      }
+    };
+    const assertOwnership = async () => {
+      await withRecoveryFence(
+        lockPath,
+        async (assertFence) => {
+          await assertFence();
+          await verifyOwnership();
+          const now = new Date();
+          await handle.utimes(now, now);
+        },
+        Date.now() + waitMs,
+        timeoutError,
+      );
+    };
+    return {
+      async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
+        await assertOwnership();
+        const result = await action(assertOwnership);
+        await assertOwnership();
+        return result;
+      },
+      async release() {
+        if (heartbeat !== undefined) {
+          clearInterval(heartbeat);
+          heartbeat = undefined;
+        }
+        try {
+          await withRecoveryFence(
+            lockPath,
+            (assertFence) => removeIfUnchanged(lockPath, content, identity, assertFence),
+            Date.now() + waitMs,
+            timeoutError,
+          );
+        } finally {
+          await handle.close().catch(() => {});
+        }
+      },
+    };
   }
   throw new NpmLockError(pkg);
 }

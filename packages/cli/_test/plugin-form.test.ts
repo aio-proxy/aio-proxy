@@ -148,6 +148,36 @@ describe("renderConfigSpec", () => {
     expect(cleared).toEqual({ publicValues: { mode: "simple" }, secrets: {} });
   });
 
+  test("drops secrets removed from the current descriptor even when its schema passes unknown keys through", async () => {
+    const sentinel = "retired-secret-sentinel";
+    const migrated = {
+      schema: zod.object({ endpoint: zod.string().url() }).passthrough(),
+      form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+    } as const;
+
+    const result = await renderConfigSpec(migrated, {
+      prompts: prompts(["https://example.test"]),
+      currentSecrets: { retiredToken: sentinel },
+    });
+
+    expect(result).toEqual({ publicValues: { endpoint: "https://example.test" }, secrets: {} });
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+  });
+
+  test("ignores clear-secret keys that are public fields in the current descriptor", async () => {
+    const publicOnly = {
+      schema: zod.object({ endpoint: zod.string().url().optional() }),
+      form: [{ type: "text", key: "endpoint", label: "Endpoint" }],
+    } as const;
+
+    const result = await renderConfigSpec(publicOnly, {
+      prompts: prompts(["https://example.test"]),
+      clearSecrets: ["endpoint"],
+    });
+
+    expect(result).toEqual({ publicValues: { endpoint: "https://example.test" }, secrets: {} });
+  });
+
   test("uses current defaults only when their values are compatible with the field type", async () => {
     const defaultsSpec = {
       schema: zod.object({
