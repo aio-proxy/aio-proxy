@@ -18,11 +18,6 @@ export enum ProviderProtocol {
   Gemini = "gemini",
 }
 
-export enum OAuthVendor {
-  GitHubCopilot = "github-copilot",
-  OpenAIChatGPT = "openai-chatgpt",
-}
-
 export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");

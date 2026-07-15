@@ -4,6 +4,7 @@ import usageSql from "./migrations/0001_usage.sql?raw";
 import requestLogSql from "./migrations/0002_request_log.sql?raw";
 import requestLogIndexesSql from "./migrations/0003_request_log_indexes.sql?raw";
 import oauthPluginsSql from "./migrations/0004_oauth_plugins.sql?raw";
+import dropLegacyAuthSql from "./migrations/0005_drop_legacy_auth.sql?raw";
 
 export type Migration = {
   readonly version: number;
@@ -18,6 +19,7 @@ const migrationSql = [
   ["0002_request_log.sql", requestLogSql],
   ["0003_request_log_indexes.sql", requestLogIndexesSql],
   ["0004_oauth_plugins.sql", oauthPluginsSql],
+  ["0005_drop_legacy_auth.sql", dropLegacyAuthSql],
 ] as const;
 
 export const MIGRATIONS: readonly Migration[] = migrationSql.map(([file, sql], index) => ({

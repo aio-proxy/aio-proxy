@@ -51,7 +51,6 @@
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/oauth": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -175,24 +174,6 @@
         "typescript": "catalog:",
       },
     },
-    "packages/oauth": {
-      "name": "@aio-proxy/oauth",
-      "version": "0.0.0",
-      "dependencies": {
-        "@aio-proxy/core": "workspace:*",
-        "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
-        "drizzle-orm": "catalog:",
-        "es-toolkit": "catalog:",
-        "jose": "catalog:",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@aio-proxy/infra": "workspace:*",
-        "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
       "version": "0.0.0",
@@ -244,7 +225,6 @@
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/oauth": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/provider-schemas": "0.1.1",
         "@aio-proxy/types": "workspace:*",
@@ -345,8 +325,6 @@
     "@aio-proxy/i18n": ["@aio-proxy/i18n@workspace:packages/i18n"],
 
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
-
-    "@aio-proxy/oauth": ["@aio-proxy/oauth@workspace:packages/oauth"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 

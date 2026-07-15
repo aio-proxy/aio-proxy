@@ -59,7 +59,7 @@ function createAccount(repository: PluginRepository, value: AccountWrite = accou
 }
 
 describe("plugin vault schema and opaque storage", () => {
-  test("creates the vault tables with the expected revision columns while preserving legacy auth", () => {
+  test("creates the vault tables without the legacy auth table", () => {
     const { handle } = openRepository();
     try {
       const columns = handle.sqlite.query("PRAGMA table_info(oauth_account)").all() as Array<{ name: string }>;
@@ -77,21 +77,15 @@ describe("plugin vault schema and opaque storage", () => {
         "expires_at",
         "updated_at",
       ]);
-
-      handle.sqlite
-        .query(
-          "INSERT INTO auth (vendor, provider_id, account_fingerprint, payload, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("legacy", "old-provider", "old-fingerprint", '{"token":"still-readable"}', 1);
-      expect(handle.sqlite.query("SELECT payload FROM auth WHERE vendor = ?").get("legacy")).toEqual({
-        payload: '{"token":"still-readable"}',
-      });
+      expect(
+        handle.sqlite.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth'").get(),
+      ).toBeNull();
     } finally {
       handle.close();
     }
   });
 
-  test("upgrades a populated pre-0004 database without losing legacy auth, request, or usage rows", () => {
+  test("upgrades a populated pre-0004 database by dropping legacy auth without losing request or usage rows", () => {
     const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-repository-upgrade-"));
     homes.push(home);
     const path = join(home, "aio-proxy.db");
@@ -136,9 +130,9 @@ describe("plugin vault schema and opaque storage", () => {
     const upgraded = openDb({ home });
     try {
       expect(upgraded.sqlite.query("PRAGMA user_version").get()).toEqual({ user_version: MIGRATIONS.length });
-      expect(upgraded.sqlite.query("SELECT payload FROM auth WHERE provider_id = ?").get("legacy-provider")).toEqual({
-        payload: '{"token":"retained"}',
-      });
+      expect(
+        upgraded.sqlite.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth'").get(),
+      ).toBeNull();
       expect(
         upgraded.sqlite
           .query("SELECT requested_model_id FROM request_log WHERE request_id = ?")
