@@ -22,6 +22,8 @@ export type GitHubCopilotCopy = {
   readonly enterpriseURLLabel: string;
   readonly enterpriseURLPlaceholder: string;
   readonly deviceInstructions?: string;
+  readonly refreshingToken?: string;
+  readonly waitingForAuthorization?: string;
 };
 
 export const englishCopy: GitHubCopilotCopy = {
@@ -32,6 +34,8 @@ export const englishCopy: GitHubCopilotCopy = {
   enterpriseURLLabel: "Enter your GitHub Enterprise URL or domain",
   enterpriseURLPlaceholder: "company.ghe.com or https://company.ghe.com",
   deviceInstructions: "Enter code",
+  refreshingToken: "Refreshing GitHub Copilot token",
+  waitingForAuthorization: "Waiting for GitHub authorization",
 };
 
 export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescriptor<undefined> {
@@ -96,7 +100,12 @@ export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescri
       ),
     login: async (context, options) => {
       const parsed = await accountOptions.schema.parseAsync(options);
-      return await loginToGitHubCopilot(context, parsed, copy.deviceInstructions ?? "Enter code");
+      return await loginToGitHubCopilot(context, parsed, {
+        deviceInstructions: copy.deviceInstructions ?? englishCopy.deviceInstructions ?? "Enter code",
+        refreshingToken: copy.refreshingToken ?? englishCopy.refreshingToken ?? "Refreshing GitHub Copilot token",
+        waitingForAuthorization:
+          copy.waitingForAuthorization ?? englishCopy.waitingForAuthorization ?? "Waiting for GitHub authorization",
+      });
     },
     catalog: {
       policy: { kind: "ttl", ttlMs: COPILOT_CATALOG_TTL_MS },

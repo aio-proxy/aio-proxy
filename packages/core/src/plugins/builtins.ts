@@ -22,6 +22,8 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         enterpriseURLLabel: m["oauth.github-copilot.enterprise_url.message"](),
         enterpriseURLPlaceholder: m["oauth.github-copilot.enterprise_url.placeholder"](),
         deviceInstructions: m["oauth.github-copilot.device_instructions"](),
+        refreshingToken: m["oauth.github-copilot.refreshing_token"](),
+        waitingForAuthorization: m["oauth.github-copilot.waiting_for_authorization"](),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

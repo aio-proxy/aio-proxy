@@ -78,6 +78,32 @@ describe("GitHub Copilot plugin", () => {
     expect(adapter.account.options.form[1]?.label).toBe("Domaine GitHub Entreprise");
   });
 
+  test("supports injectable localized login progress copy", async () => {
+    const adapter = await adapterFrom(
+      createGitHubCopilotPlugin({
+        adapterLabel: "Copilote GitHub",
+        deploymentTypeLabel: "Déploiement GitHub",
+        githubDotComLabel: "GitHub public",
+        enterpriseLabel: "GitHub Entreprise",
+        enterpriseURLLabel: "Domaine GitHub Entreprise",
+        enterpriseURLPlaceholder: "entreprise.example",
+        refreshingToken: "Actualisation du jeton GitHub Copilot",
+        waitingForAuthorization: "En attente de l’autorisation GitHub",
+      }),
+    );
+    const progress: string[] = [];
+
+    await withFetchMock(
+      fakeCopilotFetch({ tokenResponses: [{ error: "authorization_pending" }, { access_token: "github-token" }] }),
+      () =>
+        adapter.login(loginContext({ progress: (message) => progress.push(message) }), {
+          deploymentType: "github.com",
+        }),
+    );
+
+    expect(progress).toEqual(["En attente de l’autorisation GitHub", "Actualisation du jeton GitHub Copilot"]);
+  });
+
   test("credential parsing omits an absent Enterprise URL", async () => {
     const adapter = await adapterFrom(githubCopilotPlugin);
     const credential = await adapter.credentials.parseAsync({

@@ -29,10 +29,20 @@ export type GitHubCopilotCredential = {
   readonly enterpriseURL?: string;
 };
 
+type GitHubCopilotLoginCopy = {
+  readonly deviceInstructions: string;
+  readonly refreshingToken: string;
+  readonly waitingForAuthorization: string;
+};
+
 export async function loginToGitHubCopilot(
   context: OAuthLoginContext,
   options: GitHubAccountOptions,
-  deviceInstructions = "Enter code",
+  copy: GitHubCopilotLoginCopy = {
+    deviceInstructions: "Enter code",
+    refreshingToken: "Refreshing GitHub Copilot token",
+    waitingForAuthorization: "Waiting for GitHub authorization",
+  },
 ): Promise<{
   readonly fingerprint: string;
   readonly suggestedKey: string;
@@ -48,11 +58,11 @@ export async function loginToGitHubCopilot(
   await context.authorization.presentDeviceCode({
     url: device.verificationUriComplete ?? device.verificationUri,
     userCode: device.userCode,
-    instructions: `${deviceInstructions} ${device.userCode}`,
+    instructions: `${copy.deviceInstructions} ${device.userCode}`,
   });
 
-  const githubToken = await pollGitHubToken(authBase, device, context);
-  context.progress("Refreshing GitHub Copilot token");
+  const githubToken = await pollGitHubToken(authBase, device, context, copy.waitingForAuthorization);
+  context.progress(copy.refreshingToken);
   const copilot = await fetchCopilotToken(apiBase, githubToken, context.signal);
   const baseURL = getGitHubCopilotBaseURL(copilot.access, enterpriseURL);
   const user = await fetchGitHubUser(apiBase, githubToken, context.signal);
@@ -139,6 +149,7 @@ async function pollGitHubToken(
   authBase: string,
   device: Awaited<ReturnType<typeof requestDeviceCode>>,
   context: OAuthLoginContext,
+  waitingForAuthorization: string,
 ): Promise<string> {
   let interval = device.interval;
   const deadline = Date.now() + device.expiresIn * 1_000;
@@ -160,7 +171,7 @@ async function pollGitHubToken(
     );
     if (body.access_token !== undefined) return body.access_token;
     if (body.error === "authorization_pending") {
-      context.progress("Waiting for GitHub authorization");
+      context.progress(waitingForAuthorization);
       await abortableSleep(interval * 1_000, context.signal);
       continue;
     }

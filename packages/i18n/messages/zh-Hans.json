@@ -57,6 +57,22 @@
   "cli_provider_list_option_probe_description": "TODO(i18n): Probe each provider before printing.",
   "cli_provider_list_option_installed_description": "TODO(i18n): List runtime provider packages installed on disk.",
   "cli_provider_list_option_url_description": "TODO(i18n): Dashboard URL.",
+  "cli_provider_list_header_id": "标识",
+  "cli_provider_list_header_kind": "类型",
+  "cli_provider_list_header_enabled": "已启用",
+  "cli_provider_list_header_passthrough": "直通",
+  "cli_provider_list_header_last_status": "最近状态",
+  "cli_provider_list_header_last_latency": "最近延迟",
+  "cli_provider_list_header_state": "状态",
+  "cli_provider_list_header_catalog": "模型目录",
+  "cli_provider_list_header_plugin": "插件",
+  "cli_provider_list_header_capability": "能力",
+  "cli_provider_list_header_account": "账户",
+  "cli_provider_list_header_expires_at": "过期时间",
+  "cli_provider_list_header_catalog_last_success_at": "模型目录最近成功时间",
+  "cli_provider_list_header_diagnostic": "诊断",
+  "cli_provider_list_header_suggested_command": "建议命令",
+  "cli_provider_list_header_probe": "探测",
   "cli_provider_test_description": "TODO(i18n): Probe a single provider by id.",
   "cli_provider_test_option_url_description": "TODO(i18n): Dashboard URL.",
   "cli_plugin_description": "管理 OAuth 插件。",
@@ -161,7 +177,9 @@
         "message": "输入 GitHub Enterprise URL 或域名",
         "placeholder": "company.ghe.com 或 https://company.ghe.com"
       },
-      "device_instructions": "输入代码"
+      "device_instructions": "输入代码",
+      "refreshing_token": "正在刷新 GitHub Copilot 令牌",
+      "waiting_for_authorization": "正在等待 GitHub 授权"
     },
     "openai-chatgpt": {
       "login_label": "使用 ChatGPT（Plus/Pro）登录"

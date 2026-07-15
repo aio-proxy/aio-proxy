@@ -130,6 +130,7 @@ describe("provider commands", () => {
         const list = await runCliAsync(["provider", "list", "--url", url]);
         const testProvider = await runCliAsync(["provider", "test", "openai", "--url", url]);
         const failedProvider = await runCliAsync(["provider", "test", "slow-ai", "--url", url]);
+        const localized = await runCliAsync(["--lang", "zh-Hans", "provider", "list", "--url", url]);
 
         // Then
         expect(list.exitCode).toBe(0);
@@ -143,6 +144,7 @@ describe("provider commands", () => {
         expect(failedProvider.stdout).toContain("slow-ai");
         expect(failedProvider.stdout).toContain("FAIL");
         expect(failedProvider.stdout).not.toContain("openai");
+        expect(localized.stdout).toContain("标识 | 类型 | 已启用 | 直通 | 最近状态 | 最近延迟");
       },
     );
   });

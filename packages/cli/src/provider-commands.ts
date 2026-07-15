@@ -7,6 +7,7 @@ import {
   NpmPackageNameError,
   npmAdd,
 } from "@aio-proxy/core";
+import { m } from "@aio-proxy/i18n";
 import {
   type DashboardProviderSummary,
   DashboardProvidersResponseSchema,
@@ -97,22 +98,22 @@ async function providerInstalledList(): Promise<void> {
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
   const headers = [
-    "id",
-    "kind",
-    "enabled",
-    "passthrough",
-    "last_status",
-    "last_latency",
-    "state",
-    "catalog",
-    "plugin",
-    "capability",
-    "account",
-    "expires_at",
-    "catalog_last_success_at",
-    "diagnostic",
-    "suggested_command",
-    ...(probe ? ["probe"] : []),
+    m.cli_provider_list_header_id(),
+    m.cli_provider_list_header_kind(),
+    m.cli_provider_list_header_enabled(),
+    m.cli_provider_list_header_passthrough(),
+    m.cli_provider_list_header_last_status(),
+    m.cli_provider_list_header_last_latency(),
+    m.cli_provider_list_header_state(),
+    m.cli_provider_list_header_catalog(),
+    m.cli_provider_list_header_plugin(),
+    m.cli_provider_list_header_capability(),
+    m.cli_provider_list_header_account(),
+    m.cli_provider_list_header_expires_at(),
+    m.cli_provider_list_header_catalog_last_success_at(),
+    m.cli_provider_list_header_diagnostic(),
+    m.cli_provider_list_header_suggested_command(),
+    ...(probe ? [m.cli_provider_list_header_probe()] : []),
   ];
   console.log(headers.join(" | "));
   for (const provider of providers) {

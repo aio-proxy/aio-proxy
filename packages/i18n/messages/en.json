@@ -61,6 +61,22 @@
   "cli_provider_list_option_probe_description": "Probe each provider before printing.",
   "cli_provider_list_option_installed_description": "List runtime provider packages installed on disk.",
   "cli_provider_list_option_url_description": "Dashboard URL.",
+  "cli_provider_list_header_id": "id",
+  "cli_provider_list_header_kind": "kind",
+  "cli_provider_list_header_enabled": "enabled",
+  "cli_provider_list_header_passthrough": "passthrough",
+  "cli_provider_list_header_last_status": "last_status",
+  "cli_provider_list_header_last_latency": "last_latency",
+  "cli_provider_list_header_state": "state",
+  "cli_provider_list_header_catalog": "catalog",
+  "cli_provider_list_header_plugin": "plugin",
+  "cli_provider_list_header_capability": "capability",
+  "cli_provider_list_header_account": "account",
+  "cli_provider_list_header_expires_at": "expires_at",
+  "cli_provider_list_header_catalog_last_success_at": "catalog_last_success_at",
+  "cli_provider_list_header_diagnostic": "diagnostic",
+  "cli_provider_list_header_suggested_command": "suggested_command",
+  "cli_provider_list_header_probe": "probe",
   "cli_provider_test_description": "Probe a single provider by id.",
   "cli_provider_test_option_url_description": "Dashboard URL.",
   "cli_plugin_description": "Manage OAuth plugins.",
@@ -165,7 +181,9 @@
         "message": "Enter your GitHub Enterprise URL or domain",
         "placeholder": "company.ghe.com or https://company.ghe.com"
       },
-      "device_instructions": "Enter code"
+      "device_instructions": "Enter code",
+      "refreshing_token": "Refreshing GitHub Copilot token",
+      "waiting_for_authorization": "Waiting for GitHub authorization"
     },
     "openai-chatgpt": {
       "login_label": "Login with ChatGPT (Plus/Pro)"
