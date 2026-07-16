@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
+  type AtomicConfigLockReleaseError,
   npmPackageCacheDir,
   type PluginSecretSnapshot,
 } from "@aio-proxy/core";
@@ -1092,16 +1093,21 @@ describe("plugin lifecycle commands", () => {
     } as AtomicConfigFile;
 
     try {
-      await pluginConfig(
-        "secret-plugin",
-        {},
-        {
-          ...state.deps,
-          config: cleanupFailingConfig,
-          importPackage: async () => ({ default: descriptor }),
-          prompts: { ...state.deps.prompts, password: async () => "new" },
-        },
-      );
+      await expect(
+        pluginConfig(
+          "secret-plugin",
+          {},
+          {
+            ...state.deps,
+            config: cleanupFailingConfig,
+            importPackage: async () => ({ default: descriptor }),
+            prompts: { ...state.deps.prompts, password: async () => "new" },
+          },
+        ),
+      ).rejects.toMatchObject({
+        name: "AtomicConfigLockReleaseError",
+        cause: { code: "EACCES" },
+      } satisfies Partial<AtomicConfigLockReleaseError>);
       expect(state.values.get("secret-plugin")?.value).toEqual({ token: "new" });
       expect(JSON.parse(readFileSync(state.path, "utf8")).plugins).toEqual(["secret-plugin"]);
     } finally {

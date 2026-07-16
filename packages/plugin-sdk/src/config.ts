@@ -17,7 +17,7 @@ type FormFieldBase<TType extends string> = {
 
 export type FormField =
   | (FormFieldBase<"text"> & { readonly placeholder?: LocalizedText })
-  | (FormFieldBase<"secret"> & { readonly placeholder?: LocalizedText })
+  | FormFieldBase<"secret">
   | (FormFieldBase<"number"> & { readonly placeholder?: LocalizedText })
   | (FormFieldBase<"boolean"> & { readonly defaultValue?: boolean })
   | (FormFieldBase<"select"> & {

@@ -37,6 +37,21 @@ test("builds an idempotent append-only migration manifest without Drizzle metada
   expect(readFileSync(manifestPath, "utf8")).toContain("0002_request_log.sql");
 });
 
+test("check mode rejects a stale manifest without modifying it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "aio-proxy-migrations-check-"));
+  roots.push(root);
+  const migrations = join(root, "src", "db", "migrations");
+  mkdirSync(migrations, { recursive: true });
+  writeFileSync(join(migrations, "0000_auth.sql"), "CREATE TABLE auth (id text);\n");
+  const manifestPath = join(root, "src", "db", "migrations.manifest.ts");
+  writeFileSync(manifestPath, "stale manifest\n");
+
+  await expect(buildMigrationsManifest(root, { check: true })).rejects.toThrow(
+    "Migration manifest is stale; run `bun run build:migrations`",
+  );
+  expect(readFileSync(manifestPath, "utf8")).toBe("stale manifest\n");
+});
+
 test("migration hash mismatch directs historical SQL restoration before adding a new migration", () => {
   const error = new MigrationHashMismatchError(
     {

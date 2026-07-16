@@ -1267,6 +1267,83 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
   }
 });
 
+test("a credential diagnostic raised after close does not rebuild the server snapshot", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-closed-diagnostic-"));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  let credentialPort: CredentialPort<{ token: string }> | undefined;
+  let routerBuilds = 0;
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: "default",
+      label: "Example",
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error("not called");
+      },
+      catalog: {
+        policy: { kind: "static" },
+        async discover() {
+          throw new Error("not called");
+        },
+      },
+      async createRuntime({ credentials }) {
+        credentialPort = credentials;
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse({
+      providers: { person: { kind: "oauth", plugin: "@example/oauth", capability: "default" } },
+    }),
+    pluginRepository: repository,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
+    pluginLogger: () => {},
+    __test: {
+      createRouter(providers: never[]) {
+        routerBuilds++;
+        return new Router(providers);
+      },
+    },
+  } as never);
+
+  try {
+    expect(routerBuilds).toBe(1);
+    state.close();
+    const current = await credentialPort?.read();
+    if (credentialPort === undefined || current === undefined) throw new Error("credential port was not created");
+    await credentialPort
+      .refresh(current.revision, async () => {
+        throw new Error("late refresh failure");
+      })
+      .catch(() => {});
+    await flushMicrotasks();
+    await Bun.sleep(50);
+
+    expect(routerBuilds).toBe(1);
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("server recovery schedules the returned deadline and close prevents an in-flight run from rearming", async () => {
   jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-timer-"));

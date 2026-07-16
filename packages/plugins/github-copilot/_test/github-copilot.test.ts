@@ -116,6 +116,19 @@ describe("GitHub Copilot plugin", () => {
 
     expect("enterpriseURL" in credential).toBe(false);
   });
+
+  test("credential parsing rejects an invalid Copilot base URL", async () => {
+    const adapter = await adapterFrom(githubCopilotPlugin);
+
+    await expect(
+      adapter.credentials.parseAsync({
+        githubToken: "github-token",
+        copilotToken: "copilot-token",
+        expiresAt: 1,
+        baseURL: "not a URL",
+      }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("GitHub Copilot login", () => {
@@ -319,9 +332,11 @@ describe("GitHub Copilot catalog", () => {
           });
         }
         if (url.pathname === "/models") {
-          expect(new Headers(init?.headers).get("authorization")).toBe(
+          const headers = new Headers(init?.headers);
+          expect(headers.get("authorization")).toBe(
             "Bearer tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;",
           );
+          expect(headers.get("accept")).toBe("application/json");
           return modelResponse();
         }
         return Response.json({ error: `unexpected ${url.pathname}` }, { status: 404 });

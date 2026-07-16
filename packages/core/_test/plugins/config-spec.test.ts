@@ -93,6 +93,15 @@ describe("validateConfigSpec", () => {
     ).toThrow();
   });
 
+  test("rejects secret placeholders because masking is not a hint policy", () => {
+    expect(() =>
+      validateConfigSpec({
+        schema,
+        form: [{ type: "secret", key: "token", label: "Token", placeholder: "optional hint" }],
+      }),
+    ).toThrow();
+  });
+
   test.each([
     ["blank key", [{ type: "text", key: " ", label: "Name" }]],
     [

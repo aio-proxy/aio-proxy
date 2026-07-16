@@ -84,8 +84,9 @@ describe("renderConfigSpec", () => {
   });
 
   test("renders all six field types and keeps secrets out of public values", async () => {
+    const calls: { type: string; config: unknown; signal?: AbortSignal }[] = [];
     const result = await renderConfigSpec(spec, {
-      prompts: prompts(["https://example.test", "secret-value", "3", true, "us", '{"mode":"strict"}']),
+      prompts: prompts(["https://example.test", "secret-value", "3", true, "us", '{"mode":"strict"}'], calls),
     });
 
     expect(result).toEqual({
@@ -99,6 +100,7 @@ describe("renderConfigSpec", () => {
       secrets: { token: "secret-value" },
     });
     expect(result.publicValues).not.toHaveProperty("token");
+    expect(calls[1]?.config).toEqual({ message: "Token", mask: "*" });
   });
 
   test("skips fields whose when condition is false", async () => {

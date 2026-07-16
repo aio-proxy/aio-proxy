@@ -3,6 +3,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -12,8 +13,13 @@ import {
 } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { AtomicConfigCommitUncertainError, AtomicConfigFile, CONFIG_LOCK_WAIT_MS } from "../../src/plugins/config-file";
+import { basename, join } from "node:path";
+import {
+  AtomicConfigCommitUncertainError,
+  AtomicConfigFile,
+  AtomicConfigLockReleaseError,
+  CONFIG_LOCK_WAIT_MS,
+} from "../../src/plugins/config-file";
 
 const homes: string[] = [];
 const child = join(import.meta.dir, "config-lock-child.ts");
@@ -119,6 +125,50 @@ describe("AtomicConfigFile", () => {
 
     expect(existsSync(recoveryPath)).toBe(false);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ recovered: true });
+  });
+
+  test("changed recovery-marker content remains active without creating a competing fence", async () => {
+    const { dir, path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    const recoveryPath = `${lockPath}.recovery.changed-owner`;
+    writeFileSync(recoveryPath, JSON.stringify({ pid: 999_999, owner: "changed-owner", createdAt: 0 }));
+    utimesSync(recoveryPath, new Date(0), new Date(0));
+    const realReadFile = fsPromises.readFile.bind(fsPromises);
+    let reads = 0;
+    let resumeThirdRead!: () => void;
+    const thirdReadPaused = new Promise<void>((resolve) => {
+      resumeThirdRead = resolve;
+    });
+    let reachedThirdRead!: () => void;
+    const thirdReadReached = new Promise<void>((resolve) => {
+      reachedThirdRead = resolve;
+    });
+    const readFile = spyOn(fsPromises, "readFile").mockImplementation(async (target, options) => {
+      if (String(target) === recoveryPath) {
+        reads++;
+        if (reads === 2) {
+          writeFileSync(recoveryPath, JSON.stringify({ pid: process.pid, owner: "replacement-owner", createdAt: 1 }));
+        } else if (reads === 3) {
+          reachedThirdRead();
+          await thirdReadPaused;
+        }
+      }
+      return realReadFile(target, options as never);
+    });
+    const controller = new AbortController();
+    const pending = new AtomicConfigFile(path).replace((current) => current, { signal: controller.signal });
+
+    try {
+      await thirdReadReached;
+      expect(readdirSync(dir).filter((name) => name.startsWith(`${basename(lockPath)}.recovery.`))).toEqual([
+        `${basename(lockPath)}.recovery.changed-owner`,
+      ]);
+    } finally {
+      resumeThirdRead();
+      controller.abort(new Error("stop"));
+      await pending.catch(() => {});
+      readFile.mockRestore();
+    }
   });
 
   test("a process identity lookup that ignores termination is force-killed and bounded", async () => {
@@ -517,19 +567,31 @@ describe("AtomicConfigFile", () => {
     expect(statSync(path).mode & 0o777).toBe(0o604);
   });
 
-  test("a committed candidate is successful even when lock cleanup fails", async () => {
-    const { dir, path } = fixture("{}\n");
+  test("a lock cleanup failure rejects and leaves an owner that a later transaction can recover", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    const realUnlink = fsPromises.unlink.bind(fsPromises);
+    let failed = false;
+    const unlink = spyOn(fsPromises, "unlink").mockImplementation(async (target) => {
+      if (target === lockPath && !failed) {
+        failed = true;
+        throw new Error("release failed");
+      }
+      return realUnlink(target);
+    });
+
     try {
       await expect(
-        new AtomicConfigFile(path).replace((current) => ({ ...current, committed: true }), {
-          async verify() {
-            chmodSync(dir, 0o500);
-          },
-        }),
-      ).resolves.toBeUndefined();
+        new AtomicConfigFile(path).replace((current) => ({ ...current, committed: true })),
+      ).rejects.toBeInstanceOf(AtomicConfigLockReleaseError);
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true });
+      expect(existsSync(lockPath)).toBe(true);
+
+      ageLockWithUnavailableIdentity(lockPath);
+      await new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true, recovered: true });
     } finally {
-      chmodSync(dir, 0o700);
+      unlink.mockRestore();
     }
   });
 

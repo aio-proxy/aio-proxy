@@ -96,7 +96,7 @@ export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescri
         githubToken: zod.string(),
         copilotToken: zod.string(),
         expiresAt: zod.number(),
-        baseURL: zod.string(),
+        baseURL: zod.url(),
         enterpriseURL: zod.string().optional(),
       })
       .transform(

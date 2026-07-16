@@ -59,7 +59,10 @@ export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;
 `;
 }
 
-export async function buildMigrationsManifest(root: string): Promise<{
+export async function buildMigrationsManifest(
+  root: string,
+  options: { readonly check?: boolean } = {},
+): Promise<{
   readonly changed: boolean;
   readonly migrations: number;
 }> {
@@ -92,12 +95,20 @@ export async function buildMigrationsManifest(root: string): Promise<{
 
   const manifest = renderManifest(metadata);
   if (manifest === current) return { changed: false, migrations: metadata.length };
+  if (options.check === true) {
+    throw new Error("Migration manifest is stale; run `bun run build:migrations`");
+  }
   await writeFile(manifestPath, manifest);
   return { changed: true, migrations: metadata.length };
 }
 
 if (import.meta.main) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const result = await buildMigrationsManifest(root);
-  console.log(`${result.changed ? "Updated" : "Verified"} ${result.migrations} append-only migrations.`);
+  try {
+    const result = await buildMigrationsManifest(root, { check: process.argv.slice(2).includes("--check") });
+    console.log(`${result.changed ? "Updated" : "Verified"} ${result.migrations} append-only migrations.`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

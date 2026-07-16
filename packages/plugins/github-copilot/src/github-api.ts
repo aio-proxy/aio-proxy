@@ -270,6 +270,7 @@ export function githubApiBase(enterpriseURL: string | undefined): string {
 
 export function copilotHeaders(token: string): HeadersInit {
   return {
+    accept: "application/json",
     authorization: `Bearer ${token}`,
     "Copilot-Integration-Id": "vscode-chat",
     "Editor-Plugin-Version": "copilot-chat/0.35.0",

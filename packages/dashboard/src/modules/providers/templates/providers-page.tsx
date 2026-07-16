@@ -104,7 +104,7 @@ export const ProvidersPage: React.FC = () => {
             {row.original.expiresAt === undefined ? null : (
               <div className="text-muted-foreground text-xs">
                 {m["dashboard.providers.account.expires_at"]({
-                  value: new Date(row.original.expiresAt).toISOString(),
+                  value: new Date(row.original.expiresAt).toLocaleString(),
                 })}
               </div>
             )}
@@ -126,7 +126,9 @@ export const ProvidersPage: React.FC = () => {
             </div>
             {row.original.catalogLastSuccessAt === undefined ? null : (
               <div className="text-muted-foreground text-xs">
-                {m["dashboard.providers.catalog.last_success_at"]({ value: row.original.catalogLastSuccessAt })}
+                {m["dashboard.providers.catalog.last_success_at"]({
+                  value: new Date(row.original.catalogLastSuccessAt).toLocaleString(),
+                })}
               </div>
             )}
           </div>

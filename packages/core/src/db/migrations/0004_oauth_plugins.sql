@@ -54,8 +54,6 @@ CREATE TABLE `oauth_pending_operation` (
   `created_at` integer NOT NULL
 );
 
-CREATE INDEX `oauth_account_fingerprint_idx`
-  ON `oauth_account` (`plugin`, `capability`, `fingerprint`);
 CREATE INDEX `oauth_pending_created_at_idx`
   ON `oauth_pending_operation` (`created_at`);
 CREATE INDEX `oauth_pending_provider_idx`

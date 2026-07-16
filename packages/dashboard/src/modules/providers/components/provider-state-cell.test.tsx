@@ -148,8 +148,8 @@ describe("providers page diagnostics", () => {
     const row = within(screen.getByTestId("provider-row-copilot-octocat"));
     expect(row.getByText("@aio-proxy/plugin-github-copilot/default")).toBeTruthy();
     expect(row.getByText("octocat")).toBeTruthy();
-    expect(row.getByText(/2030-03-17T17:46:40.000Z/u)).toBeTruthy();
-    expect(row.getByText(/2026-07-14T00:00:00.000Z/u)).toBeTruthy();
+    expect(row.getByText(/Expires|过期时间/u)).toBeTruthy();
+    expect(row.getByText(/Last success|上次成功/u)).toBeTruthy();
     expect(row.getAllByText(/Stale|过期/u).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Install|安装/u })).toBeNull();
     expect(screen.queryByRole("button", { name: /Configure|配置/u })).toBeNull();

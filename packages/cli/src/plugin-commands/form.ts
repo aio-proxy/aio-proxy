@@ -272,7 +272,7 @@ export async function renderConfigSpec<T>(
         );
         break;
       case "secret":
-        value = await prompts.password({ message, ...(field.placeholder === undefined ? {} : { mask: "*" }) }, context);
+        value = await prompts.password({ message, mask: "*" }, context);
         if (clearSecrets.has(field.key)) value = undefined;
         else if (value === "") value = current;
         break;

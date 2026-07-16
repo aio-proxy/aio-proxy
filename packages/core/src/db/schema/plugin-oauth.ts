@@ -26,10 +26,7 @@ export const oauthAccount = sqliteTable(
     expiresAt: integer("expires_at"),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [
-    unique().on(table.plugin, table.capability, table.fingerprint),
-    index("oauth_account_fingerprint_idx").on(table.plugin, table.capability, table.fingerprint),
-  ],
+  (table) => [unique().on(table.plugin, table.capability, table.fingerprint)],
 );
 
 export const oauthCatalog = sqliteTable("oauth_catalog", {

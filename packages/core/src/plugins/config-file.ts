@@ -20,10 +20,20 @@ export type AtomicConfigTransactionOptions = {
 };
 
 export class AtomicConfigCommitUncertainError extends Error {
-  override readonly name = "AtomicConfigCommitUncertainError";
+  override readonly name: string = "AtomicConfigCommitUncertainError";
 
   constructor() {
     super("Config candidate was committed but its final state could not be confirmed");
+  }
+}
+
+export class AtomicConfigLockReleaseError extends AtomicConfigCommitUncertainError {
+  override readonly name = "AtomicConfigLockReleaseError";
+
+  constructor(cause: unknown) {
+    super();
+    this.message = `Config transaction completed but lock release failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+    this.cause = cause;
   }
 }
 
@@ -226,7 +236,7 @@ async function recoveryMarkerActive(path: string): Promise<boolean> {
   const stale = !alive || (identityVerifiable ? currentStarttime !== record.starttime : staleByHeartbeat);
   if (!stale) return true;
   try {
-    if ((await readFile(path, "utf8")) !== text) return false;
+    if ((await readFile(path, "utf8")) !== text) return true;
     const currentMetadata = await stat(path);
     if (!sameFileSnapshot(metadata, currentMetadata)) return true;
     await unlink(path);
@@ -559,8 +569,9 @@ export class AtomicConfigFile {
     const lock = await acquireLock(lockPath, options.signal);
     const tempPath = `${this.#path}.${process.pid}.${lock.owner}.tmp`;
     let original: Awaited<ReturnType<typeof originalFile>> | undefined;
+    let result: T;
     try {
-      return await lock.withOwnership(async (assertOwnership) => {
+      result = await lock.withOwnership(async (assertOwnership) => {
         options.signal?.throwIfAborted();
         original = await originalFile(this.#path);
         const current = parseConfig(original.bytes);
@@ -606,10 +617,18 @@ export class AtomicConfigFile {
           throw error;
         }
       });
-    } finally {
+    } catch (error) {
       await rm(tempPath, { force: true }).catch(() => {});
       await lock.release().catch(() => {});
+      throw error;
     }
+    await rm(tempPath, { force: true }).catch(() => {});
+    try {
+      await lock.release();
+    } catch (error) {
+      throw new AtomicConfigLockReleaseError(error);
+    }
+    return result;
   }
 
   async replace(

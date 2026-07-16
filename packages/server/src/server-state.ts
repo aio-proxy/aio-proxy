@@ -202,11 +202,15 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
 
   let startupDiagnosticRebuildPending = false;
   const queueRebuild = () => {
+    if (closed) return;
     if (!managerReady) {
       startupDiagnosticRebuildPending = true;
       return;
     }
-    void queue(() => commitConfig((manager.current() as Snapshot).config, "credential-diagnostic")).catch(() => {});
+    void queue(async () => {
+      if (closed) return;
+      await commitConfig((manager.current() as Snapshot).config, "credential-diagnostic");
+    }).catch(() => {});
   };
   const initial =
     options.providerInstances === undefined

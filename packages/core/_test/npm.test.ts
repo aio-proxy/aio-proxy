@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -366,6 +375,63 @@ describe("npmAdd", () => {
     expect(existsSync(markerPath)).toBe(false);
     await lock.release();
     rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test("Given changed recovery-marker content When acquiring Then no competing fence is created", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-changed-marker-"));
+    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
+    const markerPath = `${lockPath}.recovery.changed-owner`;
+    writeFileSync(
+      markerPath,
+      JSON.stringify({ pid: 999_999, createdAt: 0, owner: "changed-owner", starttime: "dead", version: 1 }),
+    );
+    utimesSync(markerPath, new Date(0), new Date(0));
+    const realReadFile = fsPromises.readFile.bind(fsPromises);
+    let reads = 0;
+    let resumeThirdRead!: () => void;
+    const thirdReadPaused = new Promise<void>((resolve) => {
+      resumeThirdRead = resolve;
+    });
+    let reachedThirdRead!: () => void;
+    const thirdReadReached = new Promise<void>((resolve) => {
+      reachedThirdRead = resolve;
+    });
+    const readFile = spyOn(fsPromises, "readFile").mockImplementation(async (target, options) => {
+      if (String(target) === markerPath) {
+        reads++;
+        if (reads === 2) {
+          writeFileSync(
+            markerPath,
+            JSON.stringify({
+              pid: process.pid,
+              createdAt: 1,
+              owner: "replacement-owner",
+              starttime: "unavailable",
+              version: 1,
+            }),
+          );
+        } else if (reads === 3) {
+          reachedThirdRead();
+          await thirdReadPaused;
+        }
+      }
+      return realReadFile(target, options as never);
+    });
+    const pending = acquireNpmInstallLock("changed-marker-provider", cacheDir, { waitMs: 100 });
+
+    try {
+      await thirdReadReached;
+      expect(readdirSync(cacheDir).filter((name) => name.startsWith(".aio-proxy-install.lock.recovery."))).toEqual([
+        ".aio-proxy-install.lock.recovery.changed-owner",
+      ]);
+      resumeThirdRead();
+      await expect(pending).rejects.toBeInstanceOf(NpmLockError);
+    } finally {
+      resumeThirdRead();
+      await pending.catch(() => {});
+      readFile.mockRestore();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 
   test("Given a stale recovery marker with unavailable live identity When acquiring Then it is reclaimed", async () => {

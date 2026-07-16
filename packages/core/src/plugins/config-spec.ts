@@ -113,11 +113,12 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
 
   switch (type) {
     case "text":
-    case "secret":
     case "number":
       return validatedPlaceholder === null
         ? undefined
         : { ...base, type, ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }) };
+    case "secret":
+      return placeholder === undefined ? { ...base, type } : undefined;
     case "boolean":
       return defaultValue === undefined || typeof defaultValue === "boolean"
         ? { ...base, type, ...(defaultValue === undefined ? {} : { defaultValue }) }

@@ -27,5 +27,6 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run --filter @aio-proxy/core build:migrations --check
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
