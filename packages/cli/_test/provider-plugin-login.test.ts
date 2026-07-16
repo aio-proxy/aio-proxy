@@ -81,7 +81,7 @@ function fixture(provider?: Record<string, unknown>) {
     repository: {} as ProviderLoginDeps["repository"],
     registry: registry(),
     isTTY: false,
-    selectCapability: async (references) => references[0] as string,
+    selectCapability: async (choices) => choices[0]?.reference ?? "",
     renderAccountOptions: async () => ({ publicValues: {}, secrets: {} }),
     createAuthorization: () => ({
       async presentDeviceCode() {},
@@ -116,8 +116,29 @@ describe("generic provider login capability resolution", () => {
       message = config.message;
       return config.choices[0]?.value ?? "";
     });
-    await expect(selectCapability(["@a/one#default"])).resolves.toBe("@a/one#default");
+    await expect(selectCapability([{ reference: "@a/one#default", label: "First account" }])).resolves.toBe(
+      "@a/one#default",
+    );
     expect(message).toBe("Select an OAuth capability.");
+  });
+
+  test("uses adapter labels for TTY choice names and canonical references for values", async () => {
+    await setLocale("zh-Hans");
+    let choices: readonly { readonly name: string; readonly value: string }[] = [];
+    const selectCapability = createCapabilitySelector(async (config) => {
+      choices = config.choices;
+      return config.choices[0]?.value ?? "";
+    });
+
+    await expect(
+      selectCapability([
+        {
+          reference: "@a/one#default",
+          label: { default: "First account", "zh-Hans": "第一个账户" },
+        },
+      ] as never),
+    ).resolves.toBe("@a/one#default");
+    expect(choices).toEqual([{ name: "第一个账户", value: "@a/one#default" }]);
   });
 
   test("manual-only confirmation uses the login signal", async () => {
@@ -153,6 +174,44 @@ describe("generic provider login capability resolution", () => {
     await providerLogin("unique", {}, state.deps);
 
     expect(state.printed).toEqual(["等待中", "created"]);
+  });
+
+  test("contains malformed, accessor-backed, and throwing runtime progress copy", async () => {
+    await setLocale("zh-Hans");
+    let reads = 0;
+    const accessor = { default: "Default" };
+    Object.defineProperty(accessor, "zh-Hans", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "must not print";
+      },
+    });
+    const throwing = new Proxy(
+      { default: "Default" },
+      {
+        get() {
+          throw new Error("plugin getter failure");
+        },
+        getOwnPropertyDescriptor() {
+          throw new Error("plugin descriptor failure");
+        },
+      },
+    );
+    const state = fixture();
+    state.deps = {
+      ...state.deps,
+      login: async (options) => {
+        for (const value of [{ "zh-Hans": "missing default" }, accessor, throwing]) {
+          options.progress?.(value as never);
+        }
+        return { providerId: "created" };
+      },
+    };
+
+    await expect(providerLogin("unique", {}, state.deps)).resolves.toBeUndefined();
+    expect(state.printed).toEqual(["created"]);
+    expect(reads).toBe(0);
   });
 
   test("resolves an unambiguous short capability ID", async () => {

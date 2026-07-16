@@ -149,6 +149,43 @@ describe("device-code presentation", () => {
     expect(printed).toEqual(["Device code: SAFE-CODE", "https://identity.example/device", "请在浏览器中完成"]);
   });
 
+  test("contains malformed, accessor-backed, and throwing runtime instructions", async () => {
+    let reads = 0;
+    const accessor = { default: "Default" };
+    Object.defineProperty(accessor, "zh-Hans", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "must not print";
+      },
+    });
+    const throwing = new Proxy(
+      { default: "Default" },
+      {
+        get() {
+          throw new Error("plugin getter failure");
+        },
+        getOwnPropertyDescriptor() {
+          throw new Error("plugin descriptor failure");
+        },
+      },
+    );
+    const values = [{ "zh-Hans": "missing default" }, accessor, throwing];
+
+    for (const instructions of values) {
+      const { deps, printed } = createDeps({ copyToClipboard: () => false, openBrowser: () => false });
+      await expect(
+        createCliAuthorizationPort({ ...deps, locale: "zh-Hans" }).presentDeviceCode({
+          url: "https://identity.example/device",
+          userCode: "SAFE-CODE",
+          instructions: instructions as never,
+        }),
+      ).resolves.toBeUndefined();
+      expect(printed).toEqual(["Device code: SAFE-CODE", "https://identity.example/device"]);
+    }
+    expect(reads).toBe(0);
+  });
+
   test("prints the user code when clipboard copy fails without failing authorization", async () => {
     const { deps, printed } = createDeps({ copyToClipboard: () => false, openBrowser: () => false });
 

@@ -57,12 +57,12 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       ...(description === undefined ? {} : { description: validatedDescription.data as LocalizedText }),
       account: { options: validatedOptions },
       credentials: credentials as OAuthAdapter["credentials"],
-      login: login as OAuthAdapter["login"],
+      login: login.bind(value) as OAuthAdapter["login"],
       catalog: {
         policy: policy as OAuthAdapter["catalog"]["policy"],
-        discover: discover as OAuthAdapter["catalog"]["discover"],
+        discover: discover.bind(catalog) as OAuthAdapter["catalog"]["discover"],
       },
-      createRuntime: createRuntime as OAuthAdapter["createRuntime"],
+      createRuntime: createRuntime.bind(value) as OAuthAdapter["createRuntime"],
     },
   };
 }

@@ -28,7 +28,12 @@ import {
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
 import { getLocale, m } from "@aio-proxy/i18n";
-import { type AuthorizationPort, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+import {
+  type AuthorizationPort,
+  type LocalizedText,
+  LocalizedTextSchema,
+  resolveLocalizedText,
+} from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
 import { openBrowser } from "../browser";
 import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from "./authorization";
@@ -39,12 +44,14 @@ type ConfigRecord = Record<string, unknown>;
 
 export type ProviderLoginOptions = { readonly provider?: string };
 
+type CapabilityChoice = { readonly reference: string; readonly label: LocalizedText };
+
 export type ProviderLoginDeps = {
   readonly config: AtomicConfigFile;
   readonly repository: PluginRepository;
   readonly registry: PluginRegistry;
   readonly isTTY: boolean;
-  readonly selectCapability: (references: readonly string[]) => Promise<string>;
+  readonly selectCapability: (choices: readonly CapabilityChoice[]) => Promise<string>;
   readonly renderAccountOptions: LoginOAuthAccountOptions["renderAccountOptions"];
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
@@ -101,11 +108,14 @@ type CapabilitySelectPrompt = (config: {
 
 export function createCapabilitySelector(
   prompt: CapabilitySelectPrompt = select as CapabilitySelectPrompt,
-): (references: readonly string[]) => Promise<string> {
-  return (references) =>
+): (choices: readonly CapabilityChoice[]) => Promise<string> {
+  return (choices) =>
     prompt({
       message: m.cli_provider_login_capability_prompt(),
-      choices: references.map((reference) => ({ name: reference, value: reference })),
+      choices: choices.map(({ reference, label }) => ({
+        name: resolveLocalizedText(label, getLocale()),
+        value: reference,
+      })),
     });
 }
 
@@ -130,10 +140,12 @@ function parseCanonical(value: string): OAuthCapabilityReference | null {
   return { plugin: value.slice(0, separator), capability: value.slice(separator + 1) };
 }
 
-function allCapabilities(registry: PluginRegistry): readonly OAuthCapabilityReference[] {
+function allCapabilities(
+  registry: PluginRegistry,
+): readonly (OAuthCapabilityReference & { readonly label: LocalizedText })[] {
   return registry
     .oauthCapabilities()
-    .map(({ plugin, capability }) => ({ plugin, capability }))
+    .map(({ plugin, capability, adapter }) => ({ plugin, capability, label: adapter.label }))
     .sort((left, right) => canonical(left).localeCompare(canonical(right)));
 }
 
@@ -163,7 +175,9 @@ async function choose(
     if (candidates.length === 1) return candidates[0] as OAuthCapabilityReference;
     throw new ProviderCapabilityAmbiguousError(inputValue ?? "", references);
   }
-  const selected = await deps.selectCapability(references);
+  const selected = await deps.selectCapability(
+    candidates.map((candidate) => ({ reference: canonical(candidate), label: candidate.label })),
+  );
   const resolved = parseCanonical(selected);
   if (
     resolved === null ||
@@ -329,7 +343,10 @@ export async function providerLogin(
       createAuthorization: deps.createAuthorization,
       diagnostics: deps.diagnostics,
       logger: deps.logger,
-      progress: (message) => deps.print(resolveLocalizedText(message, getLocale())),
+      progress: (message) => {
+        const parsed = LocalizedTextSchema.safeParse(message);
+        if (parsed.success) deps.print(resolveLocalizedText(parsed.data, getLocale()));
+      },
     });
     deps.print(result.providerId);
   } catch (error) {

@@ -97,6 +97,77 @@ describe("PluginRegistry staging", () => {
     expect(snapshot.registry.oauthCapabilities()).toHaveLength(0);
   });
 
+  test("preserves class adapter and catalog method receivers", async () => {
+    class Catalog {
+      readonly policy = { kind: "static" } as const;
+      readonly #model = "private-model";
+
+      async discover() {
+        return {
+          language: [{ id: this.#model }],
+          image: [],
+          embedding: [],
+          speech: [],
+          transcription: [],
+          reranking: [],
+        };
+      }
+    }
+
+    class Adapter {
+      readonly id = "class-adapter";
+      readonly label = { default: "Class adapter", "zh-Hans": "类适配器" } as const;
+      readonly account = { options: { schema: zod.object({}), form: [] } };
+      readonly credentials = zod.object({ token: zod.string() });
+      readonly catalog = new Catalog();
+      readonly #token = "private-token";
+
+      async login() {
+        return {
+          fingerprint: "class-account",
+          suggestedKey: "class-account",
+          credentials: { token: this.#token },
+        };
+      }
+
+      async createRuntime() {
+        return this.#token as never;
+      }
+    }
+
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [
+        {
+          packageName: "@example/class-adapter",
+          version: "1.0.0",
+          descriptor: definePlugin((api) => api.oauth.register(new Adapter() as OAuthAdapter)),
+        },
+      ],
+      enablements: [{ packageName: "@example/class-adapter" }],
+      importPackage: async () => {
+        throw new Error("must not import");
+      },
+    });
+    const resolved = snapshot.registry.resolveOAuth("@example/class-adapter", "class-adapter");
+    if (resolved === undefined) throw new Error("adapter not registered");
+
+    await expect(
+      resolved.login(
+        {
+          authorization: {} as never,
+          progress: () => {},
+          signal: new AbortController().signal,
+        },
+        {},
+      ),
+    ).resolves.toMatchObject({ credentials: { token: "private-token" } });
+    await expect(resolved.catalog.discover({} as never)).resolves.toMatchObject({
+      language: [{ id: "private-model" }],
+    });
+    await expect(resolved.createRuntime({} as never)).resolves.toBe("private-token");
+  });
+
   test.each([
     ["blank adapter id", fakeAdapter(" ")],
     ["blank label", fakeAdapter("blank-label", { label: " " })],
