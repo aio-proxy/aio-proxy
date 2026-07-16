@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
+import { abortableDelay } from "../../file-lock/delay";
+import { isNodeError, sameFileSnapshot } from "../../file-lock/fs";
 import { processIsAlive, processStarttime } from "../../file-lock/process-identity";
-import { acquireRecoveryFence } from "../../file-lock/recovery-fence";
+import { runWithRecoveryFence } from "../../file-lock/recovery-fence";
 import { clearAbandonedLock, reclaimAbandonedLock, rememberAbandonedLock } from "./abandoned-owner";
 
 export const CONFIG_LOCK_WAIT_MS = 15_000;
@@ -24,14 +26,8 @@ export type ConfigLock = {
   readonly release: () => Promise<void>;
 };
 
-const RECOVERY_TIMEOUT = Symbol("config-recovery-timeout");
-
-function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
-}
-
-function sameFileSnapshot(before: Stats, after: Stats): boolean {
-  return before.dev === after.dev && before.ino === after.ino && before.mtimeMs === after.mtimeMs;
+function configOwnerIsAlive(pid: number): boolean {
+  return process.platform === "win32" || processIsAlive(pid);
 }
 
 function parseLock(text: string): LockRecord | null {
@@ -65,52 +61,18 @@ async function withRecoveryFence<T>(
   startedAt = Date.now(),
   signal?: AbortSignal,
 ): Promise<T> {
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason);
-  signal?.addEventListener("abort", abort, { once: true });
-  const remaining = Math.max(0, CONFIG_LOCK_WAIT_MS - (Date.now() - startedAt));
-  const timeout = setTimeout(() => controller.abort(RECOVERY_TIMEOUT), remaining);
-  try {
-    signal?.throwIfAborted();
-    const fence = await acquireRecoveryFence({
+  return runWithRecoveryFence(
+    {
       lockPath,
       staleMs: CONFIG_LOCK_STALE_MS,
       heartbeatMs: CONFIG_LOCK_HEARTBEAT_MS,
-      signal: controller.signal,
-    });
-    try {
-      return await action(fence.assertOwned);
-    } finally {
-      await fence.close().catch(() => {});
-    }
-  } catch (error) {
-    if (controller.signal.reason === RECOVERY_TIMEOUT) {
-      throw new Error(`Timed out waiting for config recovery fence: ${lockPath}`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-  }
-}
-
-async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  if (signal === undefined) {
-    await Bun.sleep(milliseconds);
-    return;
-  }
-  signal.throwIfAborted();
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(done, milliseconds);
-    const abort = () => done(signal.reason);
-    function done(error?: unknown): void {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-      if (error === undefined) resolve();
-      else reject(error);
-    }
-    signal.addEventListener("abort", abort, { once: true });
-  });
+      deadline: startedAt + CONFIG_LOCK_WAIT_MS,
+      timeoutError: () => new Error(`Timed out waiting for config recovery fence: ${lockPath}`),
+      ownerIsAlive: configOwnerIsAlive,
+      ...(signal === undefined ? {} : { signal }),
+    },
+    action,
+  );
 }
 
 async function unlinkOwnedLock(
@@ -147,7 +109,7 @@ async function reclaimStaleLock(path: string, assertFence: () => Promise<void>):
   }
   const [record, metadata] = await Promise.all([Promise.resolve(parseLock(text)), stat(path).catch(() => null)]);
   const staleByHeartbeat = metadata === null || Date.now() - metadata.mtimeMs > CONFIG_LOCK_STALE_MS;
-  const alive = record !== null && processIsAlive(record.pid);
+  const alive = record !== null && configOwnerIsAlive(record.pid);
   const currentStarttime = record === null || !alive ? null : await processStarttime(record.pid);
   const identityVerifiable = alive && record?.starttime !== undefined && currentStarttime !== null;
   const stale =

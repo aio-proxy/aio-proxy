@@ -1,11 +1,9 @@
+import { isNodeError } from "./fs";
+
 export const PROCESS_STARTTIME_TIMEOUT = Symbol("process-starttime-timeout");
 
 const PROCESS_STARTTIME_WAIT_MS = 250;
 const PROCESS_STARTTIME_CLEANUP_WAIT_MS = 250;
-
-function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
-}
 
 function observe<T>(promise: Promise<T>): Promise<T> {
   void promise.catch(() => {});
@@ -13,7 +11,6 @@ function observe<T>(promise: Promise<T>): Promise<T> {
 }
 
 export function processIsAlive(pid: number): boolean {
-  if (process.platform === "win32") return true;
   try {
     process.kill(pid, 0);
     return true;

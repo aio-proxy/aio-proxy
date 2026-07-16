@@ -211,4 +211,28 @@ describe("AtomicConfigFile", () => {
       unlinkSync(recoveryPath);
     }
   });
+
+  test.serial("config treats Windows lock owners as alive without probing the PID", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999, owner: "windows-owner", createdAt: Date.now() }));
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    const kill = spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("missing"), { code: "ESRCH" });
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("still owned")), 100);
+    try {
+      await expect(
+        new AtomicConfigFile(path).replace((current) => ({ ...current, stolen: true }), { signal: controller.signal }),
+      ).rejects.toThrow("still owned");
+      expect(kill).not.toHaveBeenCalled();
+      expect(readFileSync(lockPath, "utf8")).toContain("windows-owner");
+    } finally {
+      clearTimeout(timeout);
+      kill.mockRestore();
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
+  });
 });

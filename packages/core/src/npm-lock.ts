@@ -4,8 +4,9 @@ import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { NpmLockError } from "./error";
+import { isNodeError } from "./file-lock/fs";
 import { processIsAlive, processStarttime } from "./file-lock/process-identity";
-import { acquireRecoveryFence } from "./file-lock/recovery-fence";
+import { runWithRecoveryFence } from "./file-lock/recovery-fence";
 
 const LOCK_FILE = ".aio-proxy-install.lock";
 const LOCK_VERSION = 1;
@@ -14,7 +15,6 @@ const LOCK_HEARTBEAT_MS = 10_000;
 const RETRIES = 8;
 const STARTTIME_UNAVAILABLE = "unavailable";
 const DEFAULT_WAIT_MS = 5_000;
-const RECOVERY_TIMEOUT = Symbol("npm-recovery-timeout");
 
 const LockSchema = z.object({
   pid: z.number().int().positive(),
@@ -30,10 +30,6 @@ export type NpmInstallLock = {
   readonly withOwnership: <T>(action: (assertOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly release: () => Promise<void>;
 };
-
-function isNodeCode(error: Error, code: string): boolean {
-  return "code" in error && typeof error.code === "string" && error.code === code;
-}
 
 function parseLock(text: string): ReturnType<typeof LockSchema.safeParse> {
   try {
@@ -74,7 +70,7 @@ async function removeIfUnchanged(
     await rm(path);
     return true;
   } catch (error) {
-    if (error instanceof Error && isNodeCode(error, "ENOENT")) return false;
+    if (isNodeError(error, "ENOENT")) return false;
     throw error;
   }
 }
@@ -85,26 +81,16 @@ async function withRecoveryFence<T>(
   deadline: number,
   timeoutError: () => Error,
 ): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(RECOVERY_TIMEOUT), Math.max(0, deadline - Date.now()));
-  try {
-    const fence = await acquireRecoveryFence({
+  return runWithRecoveryFence(
+    {
       lockPath,
       staleMs: STALE_LOCK_MS,
       heartbeatMs: LOCK_HEARTBEAT_MS,
-      signal: controller.signal,
-    });
-    try {
-      return await action(fence.assertOwned);
-    } finally {
-      await fence.close().catch(() => {});
-    }
-  } catch (error) {
-    if (controller.signal.reason === RECOVERY_TIMEOUT) throw timeoutError();
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+      deadline,
+      timeoutError,
+    },
+    action,
+  );
 }
 
 async function recoverStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
@@ -112,7 +98,7 @@ async function recoverStaleLock(path: string, assertFence: () => Promise<void>):
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    if (error instanceof Error && isNodeCode(error, "ENOENT")) return true;
+    if (isNodeError(error, "ENOENT")) return true;
     throw error;
   }
   const parsed = parseLock(text);
@@ -179,7 +165,7 @@ export async function acquireNpmInstallLock(
             throw error;
           }
         } catch (error) {
-          if (!(error instanceof Error) || !isNodeCode(error, "EEXIST")) throw error;
+          if (!isNodeError(error, "EEXIST")) throw error;
           return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
         }
       },
@@ -212,7 +198,7 @@ export async function acquireNpmInstallLock(
           throw new Error("Npm lock ownership lost");
         }
       } catch (error) {
-        if (error instanceof Error && isNodeCode(error, "ENOENT")) throw new Error("Npm lock ownership lost");
+        if (isNodeError(error, "ENOENT")) throw new Error("Npm lock ownership lost");
         throw error;
       }
     };

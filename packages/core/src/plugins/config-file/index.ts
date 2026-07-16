@@ -1,5 +1,6 @@
 import { chmod, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { isPlainObject } from "es-toolkit/predicate";
+import { isNodeError } from "../../file-lock/fs";
 import { acquireConfigLock } from "./lock";
 import { type ConfigRecord, digestProviderEntry, encodeCandidate, parseConfig } from "./serialization";
 
@@ -28,10 +29,6 @@ export class AtomicConfigLockReleaseError extends AtomicConfigCommitUncertainErr
     this.message = `Config transaction completed but lock release failed: ${cause instanceof Error ? cause.message : String(cause)}`;
     this.cause = cause;
   }
-}
-
-function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
 }
 
 async function originalFile(path: string): Promise<{ readonly bytes: Uint8Array | null; readonly mode: number }> {

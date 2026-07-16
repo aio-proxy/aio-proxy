@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
 import { readFile, stat, unlink } from "node:fs/promises";
+import { isNodeError, sameFileSnapshot } from "../../file-lock/fs";
 
 type AbandonedLockOwner = {
   readonly owner: string;
@@ -8,14 +9,6 @@ type AbandonedLockOwner = {
 };
 
 const abandonedLockOwners = new Map<string, AbandonedLockOwner>();
-
-function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
-}
-
-function sameFileSnapshot(before: Stats, after: Stats): boolean {
-  return before.dev === after.dev && before.ino === after.ino && before.mtimeMs === after.mtimeMs;
-}
 
 function ownerFrom(text: string): string | undefined {
   try {

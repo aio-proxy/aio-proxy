@@ -3,6 +3,8 @@ import type { Stats } from "node:fs";
 import { mkdir, open, readdir, readFile, stat, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { isPlainObject } from "es-toolkit/predicate";
+import { abortableDelay } from "./delay";
+import { isNodeError, sameFileSnapshot } from "./fs";
 import { processIsAlive, processStarttime } from "./process-identity";
 
 type RecoveryMarker = {
@@ -19,14 +21,7 @@ export type RecoveryFence = {
 
 const STARTTIME_UNAVAILABLE = "unavailable";
 const abandonedRecoveryMarkers = new Set<string>();
-
-function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
-}
-
-function sameFileSnapshot(before: Stats, after: Stats): boolean {
-  return before.dev === after.dev && before.ino === after.ino && before.mtimeMs === after.mtimeMs;
-}
+const RECOVERY_TIMEOUT = Symbol("recovery-timeout");
 
 function parseMarker(text: string): RecoveryMarker | null {
   try {
@@ -45,7 +40,7 @@ function parseMarker(text: string): RecoveryMarker | null {
   }
 }
 
-async function markerActive(path: string, staleMs: number): Promise<boolean> {
+async function markerActive(path: string, staleMs: number, ownerIsAlive: (pid: number) => boolean): Promise<boolean> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -59,7 +54,7 @@ async function markerActive(path: string, staleMs: number): Promise<boolean> {
     if (Date.now() - metadata.mtimeMs <= staleMs) return true;
     return removeIfUnchanged(path, text, metadata);
   }
-  const alive = processIsAlive(record.pid);
+  const alive = ownerIsAlive(record.pid);
   const currentStarttime = alive ? await processStarttime(record.pid) : null;
   const identityVerifiable =
     alive && record.starttime !== undefined && record.starttime !== STARTTIME_UNAVAILABLE && currentStarttime !== null;
@@ -81,7 +76,12 @@ async function removeIfUnchanged(path: string, text: string, metadata: Stats): P
   }
 }
 
-async function recoveryActive(lockPath: string, staleMs: number, excludePath?: string): Promise<boolean> {
+async function recoveryActive(
+  lockPath: string,
+  staleMs: number,
+  ownerIsAlive: (pid: number) => boolean,
+  excludePath?: string,
+): Promise<boolean> {
   const directory = dirname(lockPath);
   const prefix = `${basename(lockPath)}.recovery.`;
   let names: string[];
@@ -94,28 +94,10 @@ async function recoveryActive(lockPath: string, staleMs: number, excludePath?: s
   for (const name of names) {
     const path = join(directory, name);
     if (abandonedRecoveryMarkers.has(path)) continue;
-    if (path !== excludePath && name.startsWith(prefix) && (await markerActive(path, staleMs))) return true;
+    if (path !== excludePath && name.startsWith(prefix) && (await markerActive(path, staleMs, ownerIsAlive)))
+      return true;
   }
   return false;
-}
-
-async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  if (signal === undefined) {
-    await Bun.sleep(milliseconds);
-    return;
-  }
-  signal.throwIfAborted();
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(done, milliseconds);
-    const abort = () => done(signal.reason);
-    function done(error?: unknown): void {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-      if (error === undefined) resolve();
-      else reject(error);
-    }
-    signal.addEventListener("abort", abort, { once: true });
-  });
 }
 
 async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promise<RecoveryFence & { path: string }> {
@@ -184,19 +166,20 @@ export async function acquireRecoveryFence(input: {
   readonly staleMs: number;
   readonly heartbeatMs: number;
   readonly signal?: AbortSignal;
+  readonly ownerIsAlive?: (pid: number) => boolean;
 }): Promise<RecoveryFence> {
-  const { lockPath, staleMs, heartbeatMs, signal } = input;
+  const { lockPath, staleMs, heartbeatMs, signal, ownerIsAlive = processIsAlive } = input;
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   while (true) {
     signal?.throwIfAborted();
-    if (await recoveryActive(lockPath, staleMs)) {
+    if (await recoveryActive(lockPath, staleMs, ownerIsAlive)) {
       await abortableDelay(25, signal);
       continue;
     }
     signal?.throwIfAborted();
     const recovery = await createRecoveryFence(lockPath, heartbeatMs);
     try {
-      if (await recoveryActive(lockPath, staleMs, recovery.path)) {
+      if (await recoveryActive(lockPath, staleMs, ownerIsAlive, recovery.path)) {
         await recovery.close().catch(() => {});
         continue;
       }
@@ -207,5 +190,38 @@ export async function acquireRecoveryFence(input: {
       await recovery.close().catch(() => {});
       throw error;
     }
+  }
+}
+
+export async function runWithRecoveryFence<T>(
+  input: {
+    readonly lockPath: string;
+    readonly staleMs: number;
+    readonly heartbeatMs: number;
+    readonly deadline: number;
+    readonly timeoutError: () => Error;
+    readonly signal?: AbortSignal;
+    readonly ownerIsAlive?: (pid: number) => boolean;
+  },
+  action: (assertFence: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(input.signal?.reason);
+  input.signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(() => controller.abort(RECOVERY_TIMEOUT), Math.max(0, input.deadline - Date.now()));
+  try {
+    input.signal?.throwIfAborted();
+    const fence = await acquireRecoveryFence({ ...input, signal: controller.signal });
+    try {
+      return await action(fence.assertOwned);
+    } finally {
+      await fence.close().catch(() => {});
+    }
+  } catch (error) {
+    if (controller.signal.reason === RECOVERY_TIMEOUT) throw input.timeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    input.signal?.removeEventListener("abort", abort);
   }
 }
