@@ -15,11 +15,15 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
-function openRepository(): { readonly handle: OpenDbHandle; readonly repository: PluginRepository } {
+function openRepository(): {
+  readonly home: string;
+  readonly handle: OpenDbHandle;
+  readonly repository: PluginRepository;
+} {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-repository-"));
   homes.push(home);
   const handle = openDb({ home });
-  return { handle, repository: createPluginRepository(handle.sqlite) };
+  return { home, handle, repository: createPluginRepository(handle.sqlite) };
 }
 
 function catalog(id = "model-1"): ModelCatalog {
@@ -56,6 +60,23 @@ function account(providerId: string, overrides: Partial<AccountWrite> = {}): Acc
 function createAccount(repository: PluginRepository, value: AccountWrite = account("provider-1")): void {
   const pending = repository.stageAccountOperation({ kind: "create", targetDigest: "digest:create", account: value });
   repository.completeAccountOperation(pending.operationId);
+}
+
+function refreshCredential(
+  repository: PluginRepository,
+  providerId: string,
+  expectedRevision: number,
+  credential: unknown,
+  metadata?: { readonly label?: string; readonly expiresAt?: number },
+) {
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!repository.tryAcquireRefreshLease(providerId, owner, now, now + 60_000)) throw new Error("lease unavailable");
+  try {
+    return repository.compareAndSwapCredential(providerId, expectedRevision, owner, credential, metadata);
+  } finally {
+    repository.releaseRefreshLease(providerId, owner);
+  }
 }
 
 describe("plugin vault schema and opaque storage", () => {
@@ -196,7 +217,8 @@ describe("independent credential and runtime revisions", () => {
     const { handle, repository } = openRepository();
     try {
       createAccount(repository);
-      const refreshed = repository.compareAndSwapCredential(
+      const refreshed = refreshCredential(
+        repository,
         "provider-1",
         1,
         { accessToken: "rotated" },
@@ -206,7 +228,7 @@ describe("independent credential and runtime revisions", () => {
         },
       );
       expect(refreshed).toMatchObject({ revision: 2, runtimeRevision: 1, label: "Rotated", expiresAt: 999 });
-      expect(repository.compareAndSwapCredential("provider-1", 1, { accessToken: "stale" })).toBeNull();
+      expect(refreshCredential(repository, "provider-1", 1, { accessToken: "stale" })).toBeNull();
 
       const pending = repository.stageAccountOperation({
         kind: "update",
@@ -264,7 +286,7 @@ describe("pending operation compensation", () => {
       expect(created.previousRevision).toBeUndefined();
       repository.completeAccountOperation(created.operationId);
 
-      repository.compareAndSwapCredential("provider-1", 1, { accessToken: "latest-before-update" });
+      refreshCredential(repository, "provider-1", 1, { accessToken: "latest-before-update" });
       const updated = repository.stageAccountOperation({
         kind: "update",
         targetDigest: "digest:update",
@@ -312,7 +334,7 @@ describe("pending operation compensation", () => {
         account: account("provider-1", { credential: { accessToken: "replacement" } }),
       });
       expect(
-        repository.compareAndSwapCredential("provider-1", pending.appliedRevision, { accessToken: "newer" }),
+        refreshCredential(repository, "provider-1", pending.appliedRevision, { accessToken: "newer" }),
       ).toMatchObject({
         revision: 3,
         runtimeRevision: 2,
@@ -336,7 +358,7 @@ describe("pending operation compensation", () => {
         expectedRuntimeRevision: 1,
       });
       expect(refreshTolerant).toMatchObject({ kind: "delete", appliedRevision: 1, previousRevision: 1 });
-      repository.compareAndSwapCredential("provider-1", 1, { accessToken: "rotated" });
+      refreshCredential(repository, "provider-1", 1, { accessToken: "rotated" });
       expect(repository.finalizeDeleteOperation(refreshTolerant.operationId)).toBe("deleted");
       expect(repository.readAccount("provider-1")).toBeNull();
 
@@ -627,6 +649,27 @@ describe("catalogs, diagnostics, plugin secrets, and refresh leases", () => {
       repository.releaseRefreshLease("provider-1", "worker-2");
       expect(repository.tryAcquireRefreshLease("provider-1", "worker-3", 302, 450)).toBe(true);
     } finally {
+      handle.close();
+    }
+  });
+
+  test("credential CAS rejects a stale owner after another database handle takes over its expired lease", () => {
+    const { home, handle, repository } = openRepository();
+    const secondHandle = openDb({ home });
+    const second = createPluginRepository(secondHandle.sqlite);
+    try {
+      createAccount(repository);
+      expect(repository.tryAcquireRefreshLease("provider-1", "owner-a", 100, 200)).toBe(true);
+      expect(second.tryAcquireRefreshLease("provider-1", "owner-b", 201, Number.MAX_SAFE_INTEGER)).toBe(true);
+
+      expect(
+        repository.compareAndSwapCredential("provider-1", 1, "owner-a", { accessToken: "stale-owner" }),
+      ).toBeNull();
+      expect(
+        second.compareAndSwapCredential("provider-1", 1, "owner-b", { accessToken: "winning-owner" }),
+      ).toMatchObject({ revision: 2, credential: { accessToken: "winning-owner" } });
+    } finally {
+      secondHandle.close();
       handle.close();
     }
   });

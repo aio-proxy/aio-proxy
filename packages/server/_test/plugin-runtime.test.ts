@@ -50,6 +50,17 @@ const diagnostics: DiagnosticFactory = (code, options) => ({
 
 const emptyPluginOptionsDigest = pluginOptionsIdentityDigest({ public: undefined, secret: undefined });
 
+function refreshCredential(repository: PluginRepository, expectedRevision: number, credential: unknown): void {
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!repository.tryAcquireRefreshLease("person", owner, now, now + 60_000)) throw new Error("lease unavailable");
+  try {
+    repository.compareAndSwapCredential("person", expectedRevision, owner, credential);
+  } finally {
+    repository.releaseRefreshLease("person", owner);
+  }
+}
+
 function materializePluginProvider(
   options: Omit<MaterializePluginProviderOptions, "pluginOptionsDigest"> & {
     readonly pluginOptionsDigest?: MaterializePluginProviderOptions["pluginOptionsDigest"];
@@ -1062,7 +1073,7 @@ test("credential revision refresh stays visible without rebuilding the runtime",
   const first = await materializePluginProvider(options);
   const before = await first.cacheEntry?.credentials.read();
   expect(before).toBeDefined();
-  fixture.repository.compareAndSwapCredential("person", before?.revision ?? -1, { token: "new-secret" });
+  refreshCredential(fixture.repository, before?.revision ?? -1, { token: "new-secret" });
   const second = await materializePluginProvider({ ...options, previous: first.cacheEntry });
 
   expect(fixture.createCalls()).toBe(1);

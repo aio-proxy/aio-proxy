@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
-import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime } from "../src/runtime";
+import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from "../src/runtime";
 import type { ChatGPTCredential } from "../src/schema";
 
 type FetchCall = {
@@ -48,6 +48,29 @@ describe("OpenAI ChatGPT runtime", () => {
     expect(calls.every((call) => call.headers.get("authorization") === "Bearer fresh")).toBe(true);
   });
 
+  test("returns refreshed expiry metadata to the host credential port", async () => {
+    const originalFetch = globalThis.fetch;
+    let metadata: { readonly expiresAt?: number } | undefined;
+    const expired = credential({ accessToken: "expired", expiresAt: 0 });
+    const credentials: CredentialPort<ChatGPTCredential> = {
+      read: async () => ({ revision: 3, value: expired }),
+      refresh: async (revision, exchange) => {
+        const exchanged = await exchange({ revision, value: expired }, new AbortController().signal);
+        metadata = exchanged.metadata;
+        return { status: "updated", snapshot: { revision: revision + 1, value: exchanged.value } };
+      },
+    };
+    globalThis.fetch = async () =>
+      Response.json({ access_token: buildJwt({ chatgpt_account_id: "acct-refreshed" }), expires_in: 60 });
+
+    try {
+      const refreshed = await currentCredential(credentials);
+      expect(metadata).toEqual({ expiresAt: refreshed.expiresAt });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("replaces caller auth, injects ChatGPT headers, and rewrites Codex paths", async () => {
     const calls: FetchCall[] = [];
     const dynamicFetch = createOpenAIChatGPTDynamicFetch(
@@ -92,6 +115,10 @@ function credential(overrides: Partial<ChatGPTCredential> = {}): ChatGPTCredenti
     refreshToken: "refresh-token",
     ...overrides,
   };
+}
+
+function buildJwt(payload: object): string {
+  return ["header", Buffer.from(JSON.stringify(payload)).toString("base64url"), "signature"].join(".");
 }
 
 function staticCredentialPort(value: ChatGPTCredential): CredentialPort<ChatGPTCredential> {

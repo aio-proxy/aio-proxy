@@ -1,4 +1,5 @@
 import type { CredentialPort, CredentialSnapshot, ZodType } from "@aio-proxy/plugin-sdk";
+import { providerLoginCommand } from "@aio-proxy/types";
 import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
 import { redactPluginError } from "./diagnostic";
 import type { PluginRepository, StoredAccount } from "./repository";
@@ -20,6 +21,8 @@ export type CreateCredentialPortOptions<Credential> = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
+  readonly onCredentialChanged: () => void;
+  readonly pluginSecrets?: unknown;
 };
 
 export class CredentialValidationError extends Error {
@@ -206,9 +209,12 @@ function recordRefreshFailure<Credential>(
   });
   const diagnostic = options.diagnostics("CREDENTIAL_REFRESH_FAILED", {
     providerId: options.providerId,
-    retryable: true,
+    retryable: false,
+    suggestedCommand: providerLoginCommand(options.providerId),
   });
-  if (options.repository.writeDiagnostic(options.providerId, diagnostic)) options.onDiagnosticChanged();
+  try {
+    if (options.repository.writeDiagnostic(options.providerId, diagnostic)) options.onDiagnosticChanged();
+  } catch {}
 }
 
 export function createCredentialPort<Credential>(
@@ -230,7 +236,11 @@ export function createCredentialPort<Credential>(
           );
           try {
             const current = await guard.race(readValidated(options.providerId, options.schema, options.repository));
-            secretValues = stringLeaves(current.snapshot.value);
+            secretValues = [
+              ...stringLeaves(current.snapshot.value),
+              ...stringLeaves(current.account.secrets),
+              ...stringLeaves(options.pluginSecrets),
+            ];
             if (current.snapshot.revision !== expectedRevision) {
               return { status: "superseded", snapshot: current.snapshot };
             }
@@ -241,6 +251,7 @@ export function createCredentialPort<Credential>(
             const updated = options.repository.compareAndSwapCredential(
               options.providerId,
               expectedRevision,
+              owner,
               validated.value,
               exchanged.metadata,
             );
@@ -250,6 +261,13 @@ export function createCredentialPort<Credential>(
             }
             if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {
               options.onDiagnosticChanged();
+            }
+            if (
+              (exchanged.metadata?.label !== undefined && exchanged.metadata.label !== current.account.label) ||
+              (exchanged.metadata?.expiresAt !== undefined &&
+                exchanged.metadata.expiresAt !== current.account.expiresAt)
+            ) {
+              options.onCredentialChanged();
             }
             return { status: "updated", snapshot: { value: validated.value, revision: updated.revision } };
           } finally {

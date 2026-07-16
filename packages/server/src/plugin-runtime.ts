@@ -318,6 +318,8 @@ export async function materializePluginProvider(
       diagnostics: options.diagnostics,
       logger: options.logger,
       onDiagnosticChanged: options.onDiagnosticChanged,
+      onCredentialChanged: options.onDiagnosticChanged,
+      pluginSecrets: repository.readPluginSecret(config.plugin)?.value,
     }) as CredentialPort<unknown>;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,

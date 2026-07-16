@@ -94,6 +94,7 @@ export type PluginRepository = {
   readonly compareAndSwapCredential: (
     providerId: string,
     expectedRevision: number,
+    leaseOwner: string,
     credential: unknown,
     metadata?: { readonly label?: string; readonly expiresAt?: number },
   ) => StoredAccount | null;
@@ -266,11 +267,12 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
   function upsertDiagnostic(providerId: string, value: Diagnostic): boolean {
     const result = sqlite
       .query(
-        `INSERT INTO oauth_account_diagnostic (provider_id, code, diagnostic_json) VALUES (?, ?, ?)
+        `INSERT INTO oauth_account_diagnostic (provider_id, code, diagnostic_json)
+         SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM oauth_account WHERE provider_id = ?)
          ON CONFLICT (provider_id, code) DO UPDATE SET diagnostic_json = excluded.diagnostic_json
          WHERE oauth_account_diagnostic.diagnostic_json <> excluded.diagnostic_json`,
       )
-      .run(providerId, value.code, encodeJson(value));
+      .run(providerId, value.code, encodeJson(value), providerId);
     return result.changes > 0;
   }
 
@@ -599,7 +601,7 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
     releaseRefreshLease(providerId, owner) {
       sqlite.query("DELETE FROM oauth_refresh_lease WHERE provider_id = ? AND owner = ?").run(providerId, owner);
     },
-    compareAndSwapCredential(providerId, expectedRevision, credential, metadata) {
+    compareAndSwapCredential(providerId, expectedRevision, leaseOwner, credential, metadata) {
       const encoded = encodeJson(credential);
       return sqlite
         .transaction(() => {
@@ -608,7 +610,10 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           const result = sqlite
             .query(
               `UPDATE oauth_account SET credential_json = ?, revision = revision + 1, label = ?, expires_at = ?,
-               updated_at = ? WHERE provider_id = ? AND revision = ?`,
+               updated_at = ? WHERE provider_id = ? AND revision = ? AND EXISTS (
+                 SELECT 1 FROM oauth_refresh_lease
+                 WHERE provider_id = ? AND owner = ? AND expires_at > ?
+               )`,
             )
             .run(
               encoded,
@@ -617,6 +622,9 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
               Date.now(),
               providerId,
               expectedRevision,
+              providerId,
+              leaseOwner,
+              Date.now(),
             );
           if (result.changes === 0) return null;
           const updated = selectAccount.get(providerId);

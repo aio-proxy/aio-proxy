@@ -67,6 +67,19 @@ function fixture(initial: Record<string, unknown> = { plugins: [], providers: {}
   };
 }
 
+function refreshCredential(state: ReturnType<typeof fixture>, expectedRevision: number, credential: unknown) {
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!state.repository.tryAcquireRefreshLease("person", owner, now, now + 60_000)) {
+    throw new Error("lease unavailable");
+  }
+  try {
+    return state.repository.compareAndSwapCredential("person", expectedRevision, owner, credential);
+  } finally {
+    state.repository.releaseRefreshLease("person", owner);
+  }
+}
+
 type AdapterControls = {
   login?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["login"];
   discover?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["catalog"]["discover"];
@@ -654,7 +667,7 @@ describe("account login transaction", () => {
       }),
     );
     await started;
-    expect(state.repository.compareAndSwapCredential("person", 1, { token: "refresh" })?.revision).toBe(2);
+    expect(refreshCredential(state, 1, { token: "refresh" })?.revision).toBe(2);
     release();
     await relogin;
     expect(state.repository.readAccount("person")).toMatchObject({
@@ -856,7 +869,7 @@ describe("account login transaction", () => {
         transactions += 1;
         if (transactions === 1) return result as T;
         const applied = accountOf(state, "person");
-        state.repository.compareAndSwapCredential("person", applied.revision, { token: "newer" });
+        refreshCredential(state, applied.revision, { token: "newer" });
         throw new Error("write failed");
       },
     } as AtomicConfigFile;
@@ -925,7 +938,7 @@ describe("delete and crash recovery", () => {
       config: refreshed.config,
       repository: refreshed.repository,
     });
-    refreshed.repository.compareAndSwapCredential("person", 1, { token: "refresh" });
+    refreshCredential(refreshed, 1, { token: "refresh" });
     refreshed.sqlite
       .query("UPDATE oauth_pending_operation SET created_at = 0 WHERE operation_id = ?")
       .run(marker.operationId);
@@ -1083,7 +1096,7 @@ describe("delete and crash recovery", () => {
       },
     });
     const applied = accountOf(state, "person");
-    state.repository.compareAndSwapCredential("person", applied.revision, { token: "super-secret-token" });
+    refreshCredential(state, applied.revision, { token: "super-secret-token" });
     state.sqlite
       .query("UPDATE oauth_pending_operation SET created_at = 0 WHERE operation_id = ?")
       .run(operation.operationId);

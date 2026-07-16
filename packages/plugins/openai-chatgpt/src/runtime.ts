@@ -58,9 +58,10 @@ export async function currentCredential(port: CredentialPort<ChatGPTCredential>)
   if (current.value.expiresAt > Date.now() && current.value.accessToken.length > 0) return current.value;
 
   return (
-    await port.refresh(current.revision, async ({ value }, signal) => ({
-      value: await refreshAccessToken(value.refreshToken, { signal }),
-    }))
+    await port.refresh(current.revision, async ({ value }, signal) => {
+      const refreshed = await refreshAccessToken(value.refreshToken, { signal });
+      return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
+    })
   ).snapshot.value;
 }
 

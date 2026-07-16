@@ -15,7 +15,7 @@ import {
   type ToolSet,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
-import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
+import { type CredentialPort, definePlugin, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema } from "@aio-proxy/types";
 import { createAccountRemovalCoordinator } from "../src/account-removal";
 import { createSnapshotManager } from "../src/plugin-snapshot";
@@ -442,6 +442,76 @@ test("plugin option identity survives nested in-place schema transforms across s
     expect(runtimes).toBe(2);
     expect(setupValues).toHaveLength(3);
     expect(setupValues.every((value) => value instanceof URL)).toBe(true);
+  } finally {
+    state.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("credential expiry metadata rebuilds summaries without recreating the runtime", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-credential-summary-"));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  handle.close();
+  let credentials: CredentialPort<{ token: string }> | undefined;
+  let runtimes = 0;
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: "default",
+      label: "Example",
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error("not called");
+      },
+      catalog: {
+        policy: { kind: "static" },
+        async discover() {
+          throw new Error("stored catalog should be used");
+        },
+      },
+      async createRuntime(context) {
+        runtimes++;
+        credentials = context.credentials;
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse({
+      providers: { person: { kind: "oauth", plugin: "@example/oauth", capability: "default" } },
+    }),
+    dbHome: home,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
+  });
+
+  try {
+    if (credentials === undefined) throw new Error("credential port missing");
+    const current = await credentials.read();
+    await credentials.refresh(current.revision, async () => ({
+      value: { token: "rotated" },
+      metadata: { expiresAt: 123_456 },
+    }));
+    await flushMicrotasks();
+    await Bun.sleep(0);
+    await flushMicrotasks();
+
+    expect((await state.providerSummaries({ probe: false }))[0]?.expiresAt).toBe(123_456);
+    expect(runtimes).toBe(1);
   } finally {
     state.close();
     rmSync(home, { recursive: true, force: true });
@@ -1058,6 +1128,7 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-startup-diagnostic-"));
   const handle = openDb({ home });
   const repository = createPluginRepository(handle.sqlite);
+  repository.writePluginSecret("@example/oauth", null, { apiKey: "plugin-secret" });
   const operation = repository.stageAccountOperation({
     kind: "create",
     targetDigest: "create",
@@ -1067,7 +1138,7 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
       capability: "default",
       fingerprint: "person@example.com",
       options: {},
-      secrets: {},
+      secrets: { clientSecret: "account-secret" },
       credential: { token: "secret" },
       catalog: {
         kind: "replace",
@@ -1087,45 +1158,54 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
   });
   repository.completeAccountOperation(operation.operationId);
   handle.close();
-  const descriptor = definePlugin((api) => {
-    api.oauth.register({
-      id: "default",
-      label: "Example",
-      account: { options: { schema: zod.object({}), form: [] } },
-      credentials: zod.object({ token: zod.string() }),
-      async login() {
-        throw new Error("not called");
-      },
-      catalog: {
-        policy: { kind: "static" },
-        async discover() {
+  const descriptor = definePlugin(
+    (api, pluginOptions) => {
+      api.oauth.register({
+        id: "default",
+        label: "Example",
+        account: { options: { schema: zod.object({}), form: [] } },
+        credentials: zod.object({ token: zod.string() }),
+        async login() {
           throw new Error("not called");
         },
-      },
-      async createRuntime({ credentials }) {
-        const current = await credentials.read();
-        await credentials
-          .refresh(current.revision, async () => {
-            throw new Error("startup refresh failed");
-          })
-          .catch(() => {});
-        return {
-          provider: {
-            specificationVersion: "v4",
-            languageModel() {
-              throw new Error("not called");
-            },
-            imageModel() {
-              throw new Error("not called");
-            },
-            embeddingModel() {
-              throw new Error("not called");
-            },
+        catalog: {
+          policy: { kind: "static" },
+          async discover() {
+            throw new Error("not called");
           },
-        } as never;
+        },
+        async createRuntime({ credentials }) {
+          const current = await credentials.read();
+          await credentials
+            .refresh(current.revision, async () => {
+              throw new Error(`secret account-secret ${(pluginOptions as { apiKey: string }).apiKey}`);
+            })
+            .catch(() => {});
+          return {
+            provider: {
+              specificationVersion: "v4",
+              languageModel() {
+                throw new Error("not called");
+              },
+              imageModel() {
+                throw new Error("not called");
+              },
+              embeddingModel() {
+                throw new Error("not called");
+              },
+            },
+          } as never;
+        },
+      });
+    },
+    {
+      options: {
+        schema: zod.object({ apiKey: zod.string() }),
+        form: [{ type: "secret", key: "apiKey", label: "API key" }],
       },
-    });
-  });
+    },
+  );
+  const logs: unknown[] = [];
   const state = await createServerState({
     config: ConfigSchema.parse({
       providers: {
@@ -1134,7 +1214,7 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
     }),
     dbHome: home,
     builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
-    pluginLogger: () => {},
+    pluginLogger: (entry) => logs.push(entry),
   });
 
   try {
@@ -1142,6 +1222,7 @@ test("a credential diagnostic raised during initial runtime creation rebuilds af
       status: "unavailable",
       diagnostic: { code: "CREDENTIAL_REFRESH_FAILED" },
     });
+    expect(JSON.stringify(logs)).not.toMatch(/account-secret|plugin-secret/u);
   } finally {
     state.close();
     rmSync(home, { force: true, recursive: true });

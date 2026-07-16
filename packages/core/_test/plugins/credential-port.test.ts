@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zod } from "@aio-proxy/plugin-sdk";
-import type { Diagnostic } from "@aio-proxy/types";
+import { type Diagnostic, providerLoginCommand } from "@aio-proxy/types";
 import { type OpenDbHandle, openDb } from "../../src/db";
 import {
   CredentialRefreshTimeoutError,
@@ -29,7 +29,7 @@ function account(providerId: string, credential: unknown = { token: "initial-sec
     capability: "oauth",
     fingerprint: `${providerId}-fingerprint`,
     options: {},
-    secrets: {},
+    secrets: { clientSecret: "account-secret" },
     credential,
     label: "Example",
     expiresAt: 1,
@@ -46,6 +46,17 @@ function account(providerId: string, credential: unknown = { token: "initial-sec
 function createAccount(repository: PluginRepository, value: AccountWrite): void {
   const pending = repository.stageAccountOperation({ kind: "create", targetDigest: "create", account: value });
   repository.completeAccountOperation(pending.operationId);
+}
+
+function refreshCredential(repository: PluginRepository, expectedRevision: number, credential: unknown): void {
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!repository.tryAcquireRefreshLease("provider-1", owner, now, now + 60_000)) throw new Error("lease unavailable");
+  try {
+    repository.compareAndSwapCredential("provider-1", expectedRevision, owner, credential);
+  } finally {
+    repository.releaseRefreshLease("provider-1", owner);
+  }
 }
 
 function openFixture(providerIds: readonly string[] = ["provider-1"]): {
@@ -67,6 +78,7 @@ function diagnosticFactory(): DiagnosticFactory {
     summary: "Credential refresh failed",
     retryable: options.retryable,
     occurredAt: "2026-07-15T00:00:00.000Z",
+    ...(options.suggestedCommand === undefined ? {} : { suggestedCommand: options.suggestedCommand }),
   });
 }
 
@@ -78,6 +90,8 @@ function port(
     readonly diagnostics?: DiagnosticFactory;
     readonly logger?: PluginLogSink;
     readonly onDiagnosticChanged?: () => void;
+    readonly onCredentialChanged?: () => void;
+    readonly pluginSecrets?: unknown;
   } = {},
 ) {
   return createCredentialPort({
@@ -87,6 +101,8 @@ function port(
     diagnostics: overrides.diagnostics ?? diagnosticFactory(),
     logger: overrides.logger ?? (() => {}),
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
+    onCredentialChanged: overrides.onCredentialChanged ?? (() => {}),
+    pluginSecrets: overrides.pluginSecrets,
   });
 }
 
@@ -266,7 +282,7 @@ describe("credential refresh coordination", () => {
         return { value: { token: "must-not-run" } };
       });
       await Bun.sleep(20);
-      repository.compareAndSwapCredential("provider-1", current.revision, { token: "new-login" });
+      repository.compareAndSwapCredential("provider-1", current.revision, "other-owner", { token: "new-login" });
       repository.releaseRefreshLease("provider-1", "other-owner");
 
       const result = await refreshing;
@@ -283,7 +299,7 @@ describe("credential refresh coordination", () => {
     let notifications = 0;
     let diagnosticSummary = "Credential refresh failed";
     try {
-      repository.compareAndSwapCredential("provider-1", 1, { token: "valid-initial-secret" });
+      refreshCredential(repository, 1, { token: "valid-initial-secret" });
       const credentials = port(repository, "provider-1", {
         schema: zod.object({ token: zod.string().startsWith("valid-") }),
         diagnostics: (code, options) => ({
@@ -321,6 +337,53 @@ describe("credential refresh coordination", () => {
       );
       expect(notifications).toBe(2);
       expect(logs).toHaveLength(3);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("preserves the exchange error when the account is concurrently deleted before diagnostic persistence", async () => {
+    const { handle, repository } = openFixture();
+    try {
+      const credentials = port(repository);
+      const current = await credentials.read();
+      const primary = new Error("upstream rejected the rotating refresh token");
+
+      await expect(
+        credentials.refresh(current.revision, async () => {
+          repository.deleteAccount("provider-1");
+          throw primary;
+        }),
+      ).rejects.toBe(primary);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("redacts credential, account, and plugin secrets and records terminal re-login guidance", async () => {
+    const { handle, repository } = openFixture();
+    const logs: Parameters<PluginLogSink>[0][] = [];
+    try {
+      const credentials = port(repository, "provider-1", {
+        logger: (entry) => logs.push(entry),
+        pluginSecrets: { apiKey: "plugin-secret" },
+      });
+      const current = await credentials.read();
+      const failure = new Error("initial-secret account-secret plugin-secret");
+      failure.stack = `Error: initial-secret account-secret plugin-secret\n at refresh`;
+
+      await expect(credentials.refresh(current.revision, async () => Promise.reject(failure))).rejects.toBe(failure);
+
+      const serializedLog = JSON.stringify(logs);
+      expect(serializedLog).not.toMatch(/initial-secret|account-secret|plugin-secret/u);
+      expect(serializedLog.match(/\[REDACTED\]/gu)?.length).toBeGreaterThanOrEqual(3);
+      expect(repository.readDiagnostics("provider-1")).toEqual([
+        expect.objectContaining({
+          code: "CREDENTIAL_REFRESH_FAILED",
+          retryable: false,
+          suggestedCommand: providerLoginCommand("provider-1"),
+        }),
+      ]);
     } finally {
       handle.close();
     }
