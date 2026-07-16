@@ -9,6 +9,7 @@ import {
   npmPackageCacheDir,
   type PluginSecretSnapshot,
 } from "@aio-proxy/core";
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { FormSchemaValidationError } from "../src/plugin-commands/form";
 import {
@@ -390,6 +391,29 @@ describe("plugin lifecycle commands", () => {
     expect(output).toContain("third-party-plugin");
     expect(output).not.toContain("private.test");
     expect(output).not.toContain(secret);
+  });
+
+  test("list resolves plugin metadata using the current locale while retaining canonical identity", async () => {
+    const originalLocale = getLocale();
+    const packageName = "@example/localized-list";
+    const descriptor = definePlugin(() => {}, {
+      label: { default: "Localized plugin", "zh-Hans": "本地化插件" },
+      description: { default: "English description", "zh-Hans": "中文描述" },
+    });
+    const state = harness({ providers: {}, plugins: [packageName] });
+    const deps = {
+      ...state.deps,
+      builtInNames: new Set([packageName]),
+      builtIns: [{ packageName, version: "built-in", descriptor }],
+    };
+    try {
+      await setLocale("zh-Hans");
+      await pluginList({}, deps);
+      expect(state.lines.join("\n")).toContain(`本地化插件 (${packageName})`);
+      expect(state.lines.join("\n")).toContain("中文描述");
+    } finally {
+      await setLocale(originalLocale);
+    }
   });
 
   test("production list imports a real cached ESM plugin from its file URL exactly once", async () => {

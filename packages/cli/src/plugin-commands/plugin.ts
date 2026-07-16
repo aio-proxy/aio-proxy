@@ -28,8 +28,8 @@ import {
   withNpmPackageLifecycle,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
-import { m } from "@aio-proxy/i18n";
-import { isPluginDescriptor, type PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from "@aio-proxy/i18n";
+import { isPluginDescriptor, type PluginDescriptor, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { PluginPackageNameSchema } from "@aio-proxy/types";
 import { confirm, input, password, select } from "@inquirer/prompts";
 import { cloneInertJson, type PluginFormPrompts, renderConfigSpec } from "./form";
@@ -515,7 +515,11 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
             : installed.has(packageName)
               ? m.cli_plugin_state_configured()
               : m.cli_plugin_state_not_installed();
-      deps.print(`${packageName} ${state}`);
+      const label = loaded?.label === undefined ? undefined : resolveLocalizedText(loaded.label, getLocale());
+      const description =
+        loaded?.description === undefined ? undefined : resolveLocalizedText(loaded.description, getLocale());
+      const identity = label === undefined ? packageName : `${label} (${packageName})`;
+      deps.print(`${identity} ${state}${description === undefined ? "" : ` — ${description}`}`);
     }
   } finally {
     if (injected === undefined) deps.close?.();

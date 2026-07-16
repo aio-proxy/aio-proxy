@@ -79,6 +79,27 @@ function options(overrides: Record<string, unknown> = {}) {
 }
 
 describe("loadPluginRegistry", () => {
+  test("materializes descriptor display metadata as inert localized plain data", async () => {
+    const label = Object.create(null) as Record<string, string>;
+    label.default = "Example plugin";
+    label["zh-Hans"] = "示例插件";
+    const descriptor = definePlugin(() => {}, {
+      label,
+      description: { default: "Example description", "zh-Hans": "示例描述" },
+    } as never);
+    const snapshot = await loadPluginRegistry(
+      options({
+        builtIns: [{ packageName: "@example/metadata", version: "1.0.0", descriptor }],
+      }),
+    );
+
+    const loaded = snapshot.plugins.get("@example/metadata");
+    expect(loaded?.label).toEqual({ default: "Example plugin", "zh-Hans": "示例插件" });
+    expect(loaded?.label).not.toBe(label);
+    expect(Object.getPrototypeOf(loaded?.label as object)).toBe(Object.prototype);
+    expect(loaded?.description).toEqual({ default: "Example description", "zh-Hans": "示例描述" });
+  });
+
   test("invalid default export fails", async () => {
     install("@example/invalid-export");
     const snapshot = await loadPluginRegistry(

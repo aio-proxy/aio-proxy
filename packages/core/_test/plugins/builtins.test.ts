@@ -51,6 +51,10 @@ test("embedded adapters retain English and Chinese copy independent of creation 
   });
 
   const adapter = snapshot.registry.resolveOAuth("@aio-proxy/plugin-github-copilot", "default");
+  const plugin = snapshot.plugins.get("@aio-proxy/plugin-github-copilot");
+  expect(resolveLocalizedText(plugin?.label ?? "", "en")).toBe("GitHub Copilot");
+  expect(resolveLocalizedText(plugin?.label ?? "", "zh-Hans")).toBe("GitHub Copilot");
+  expect(resolveLocalizedText(plugin?.description ?? "", "zh-Hans")).toBe("使用 GitHub Copilot 账号访问模型");
   expect(resolveLocalizedText(adapter?.label ?? "", "en")).toBe("Login with GitHub Copilot");
   expect(resolveLocalizedText(adapter?.label ?? "", "zh-Hans")).toBe("使用 GitHub Copilot 登录");
   expect(resolveLocalizedText(adapter?.account.options.form[0]?.label ?? "", "zh-Hans")).toBe("选择 GitHub 部署类型");

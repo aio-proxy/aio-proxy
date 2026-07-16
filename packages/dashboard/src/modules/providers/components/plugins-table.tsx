@@ -1,4 +1,4 @@
-import { m } from "@aio-proxy/i18n";
+import { getLocale, m } from "@aio-proxy/i18n";
 import type { DashboardPluginSummary } from "@aio-proxy/types";
 import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import type React from "react";
@@ -9,10 +9,35 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { useDataTable } from "@/hooks/use-data-table";
 import { DiagnosticDetails } from "./diagnostic-details";
 
+type DashboardLocalizedText = NonNullable<DashboardPluginSummary["label"]>;
+
+const resolvePluginCopy = (text: DashboardLocalizedText): string => {
+  if (typeof text === "string") return text;
+  try {
+    const exact = Intl.getCanonicalLocales(getLocale())[0];
+    if (exact === undefined) return text.default;
+    const parsed = new Intl.Locale(exact);
+    const languageScript = parsed.script === undefined ? undefined : `${parsed.language}-${parsed.script}`;
+    for (const candidate of [exact, languageScript, parsed.language]) {
+      if (candidate !== undefined && text[candidate] !== undefined) return text[candidate];
+    }
+  } catch {}
+  return text.default;
+};
+
 const columns: ColumnDef<DashboardPluginSummary>[] = [
   {
     accessorKey: "packageName",
     header: () => m["dashboard.providers.plugins.table.col_package"](),
+    cell: ({ row }) => (
+      <div>
+        {row.original.label === undefined ? null : <div>{resolvePluginCopy(row.original.label)}</div>}
+        <div>{row.original.packageName}</div>
+        {row.original.description === undefined ? null : (
+          <div className="text-muted-foreground text-xs">{resolvePluginCopy(row.original.description)}</div>
+        )}
+      </div>
+    ),
   },
   {
     id: "source",

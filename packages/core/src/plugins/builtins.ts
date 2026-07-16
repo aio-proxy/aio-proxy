@@ -16,6 +16,11 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
       packageName: "@aio-proxy/plugin-github-copilot",
       version: GITHUB_COPILOT_PLUGIN_VERSION,
       descriptor: createGitHubCopilotPlugin({
+        pluginLabel: localized("GitHub Copilot", "GitHub Copilot"),
+        pluginDescription: localized(
+          "Use a GitHub Copilot account to access models",
+          "使用 GitHub Copilot 账号访问模型",
+        ),
         adapterLabel: localized("Login with GitHub Copilot", "使用 GitHub Copilot 登录"),
         deploymentTypeLabel: localized("Select GitHub deployment type", "选择 GitHub 部署类型"),
         githubDotComLabel: localized("GitHub.com", "GitHub.com"),
@@ -37,6 +42,11 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
       packageName: "@aio-proxy/plugin-openai-chatgpt",
       version: OPENAI_CHATGPT_PLUGIN_VERSION,
       descriptor: createOpenAIChatGPTPlugin({
+        pluginLabel: localized("OpenAI ChatGPT", "OpenAI ChatGPT"),
+        pluginDescription: localized(
+          "Use a ChatGPT Plus or Pro account to access models",
+          "使用 ChatGPT Plus 或 Pro 账号访问模型",
+        ),
         adapterLabel: localized("Login with ChatGPT (Plus/Pro)", "使用 ChatGPT（Plus/Pro）登录"),
       }) as unknown as PluginDescriptor<unknown>,
     },

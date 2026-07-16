@@ -1,4 +1,5 @@
 import type { ConfigSpec } from "./config";
+import type { LocalizedText } from "./localized-text";
 import type { OAuthAdapter } from "./oauth";
 
 export const PLUGIN_API_VERSION = 1 as const;
@@ -13,14 +14,22 @@ export type PluginApi = {
 export type PluginDescriptor<Options = undefined> = {
   readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
   readonly apiVersion: typeof PLUGIN_API_VERSION;
-  readonly metadata: { readonly options?: ConfigSpec<Options> };
+  readonly metadata: {
+    readonly label?: LocalizedText;
+    readonly description?: LocalizedText;
+    readonly options?: ConfigSpec<Options>;
+  };
   readonly setup: (api: PluginApi, options: Options) => void | Promise<void>;
 };
 
 export type PluginDescriptorShell = {
   readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
   readonly apiVersion: typeof PLUGIN_API_VERSION;
-  readonly metadata: { readonly options?: unknown };
+  readonly metadata: {
+    readonly label?: unknown;
+    readonly description?: unknown;
+    readonly options?: unknown;
+  };
   readonly setup: unknown;
 };
 

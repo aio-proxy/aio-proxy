@@ -28,10 +28,14 @@ const CHATGPT_SCOPE = "openid profile email offline_access" as const;
 const CHATGPT_ORIGINATOR = "codex_cli_rs" as const;
 
 export type OpenAIChatGPTCopy = {
+  readonly pluginLabel?: LocalizedText;
+  readonly pluginDescription?: LocalizedText;
   readonly adapterLabel: LocalizedText;
 };
 
 export const englishCopy: OpenAIChatGPTCopy = {
+  pluginLabel: "OpenAI ChatGPT",
+  pluginDescription: "Use a ChatGPT Plus or Pro account to access models",
   adapterLabel: "Login with ChatGPT (Plus/Pro)",
 };
 
@@ -89,9 +93,15 @@ export function createOpenAIChatGPTPlugin(copy: OpenAIChatGPTCopy): PluginDescri
     createRuntime: createOpenAIChatGPTRuntime,
   };
 
-  return definePlugin((api) => {
-    api.oauth.register(adapter);
-  });
+  return definePlugin(
+    (api) => {
+      api.oauth.register(adapter);
+    },
+    {
+      label: copy.pluginLabel ?? "OpenAI ChatGPT",
+      description: copy.pluginDescription ?? "Use a ChatGPT Plus or Pro account to access models",
+    },
+  );
 }
 
 function buildAuthorizationUrl(input: {

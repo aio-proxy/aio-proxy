@@ -7,6 +7,7 @@ import { zod } from "@aio-proxy/plugin-sdk";
 import { type Diagnostic, providerLoginCommand } from "@aio-proxy/types";
 import { type OpenDbHandle, openDb } from "../../src/db";
 import {
+  CredentialRefreshLeaseLostError,
   CredentialRefreshTimeoutError,
   CredentialValidationError,
   createCredentialPort,
@@ -289,6 +290,44 @@ describe("credential refresh coordination", () => {
       expect(result).toMatchObject({ status: "superseded", snapshot: { value: { token: "new-login" } } });
       expect(exchanges).toBe(0);
     } finally {
+      handle.close();
+    }
+  });
+
+  test("rejects terminally when an exchanged rotating token loses its lease without a revision winner", async () => {
+    const { home, handle, repository } = openFixture();
+    const competingHandle = openDb({ home });
+    const competing = createPluginRepository(competingHandle.sqlite);
+    let exchanges = 0;
+    try {
+      const credentials = port(repository);
+      const current = await credentials.read();
+      const refreshing = credentials.refresh(current.revision, async () => {
+        exchanges += 1;
+        competingHandle.sqlite
+          .query("UPDATE oauth_refresh_lease SET expires_at = 0 WHERE provider_id = ?")
+          .run("provider-1");
+        const now = Date.now();
+        expect(competing.tryAcquireRefreshLease("provider-1", "winner", now, now + 60_000)).toBe(true);
+        return { value: { token: "consumed-rotating-token" } };
+      });
+
+      await expect(refreshing).rejects.toBeInstanceOf(CredentialRefreshLeaseLostError);
+      expect(exchanges).toBe(1);
+      expect(repository.readAccount("provider-1")).toMatchObject({
+        credential: { token: "initial-secret" },
+        revision: current.revision,
+      });
+      expect(repository.readDiagnostics("provider-1")).toEqual([
+        expect.objectContaining({
+          code: "CREDENTIAL_REFRESH_FAILED",
+          retryable: false,
+          suggestedCommand: providerLoginCommand("provider-1"),
+        }),
+      ]);
+    } finally {
+      competing.releaseRefreshLease("provider-1", "winner");
+      competingHandle.close();
       handle.close();
     }
   });

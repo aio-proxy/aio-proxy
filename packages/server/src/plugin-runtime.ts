@@ -84,6 +84,7 @@ export type MaterializePluginProviderOptions = {
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
   readonly pluginOptionsDigest: PluginOptionsIdentityDigest;
+  readonly pluginSecrets?: unknown;
   readonly previous?: PluginRuntimeCacheEntry;
 };
 
@@ -137,6 +138,11 @@ function diagnosticState(diagnostic: Diagnostic): ProviderState {
 function summary(
   config: OAuthProvider,
   provider: RuntimeProviderInstance | undefined,
+  persisted?: {
+    readonly accountLabel?: string;
+    readonly expiresAt?: number;
+    readonly catalogLastSuccessAt?: string;
+  },
 ): Omit<DashboardProviderSummary, "state"> {
   return {
     id: config.id,
@@ -147,6 +153,11 @@ function summary(
     last_latency: null,
     name: config.name,
     clientModels: provider === undefined ? [] : [...new Set(modelRoutes(provider).map((route) => route.alias))],
+    plugin: config.plugin,
+    capability: config.capability,
+    ...(persisted?.accountLabel === undefined ? {} : { accountLabel: persisted.accountLabel }),
+    ...(persisted?.expiresAt === undefined ? {} : { expiresAt: persisted.expiresAt }),
+    ...(persisted?.catalogLastSuccessAt === undefined ? {} : { catalogLastSuccessAt: persisted.catalogLastSuccessAt }),
   };
 }
 
@@ -155,6 +166,7 @@ function failure(
   code: Parameters<DiagnosticFactory>[0],
   retryable: boolean,
   suggestedCommand?: string,
+  persisted?: Parameters<typeof summary>[2],
 ): PluginProviderMaterialization {
   const diagnostic = options.diagnostics(code, {
     plugin: options.config.plugin,
@@ -163,7 +175,7 @@ function failure(
     retryable,
     ...(suggestedCommand === undefined ? {} : { suggestedCommand }),
   });
-  return { summary: summary(options.config, undefined), state: diagnosticState(diagnostic) };
+  return { summary: summary(options.config, undefined, persisted), state: diagnosticState(diagnostic) };
 }
 
 function pluginVersion(plugins: PluginRegistrySnapshot, packageName: string): string | undefined {
@@ -260,10 +272,19 @@ export async function materializePluginProvider(
   }
   const adapter = plugins.registry.resolveOAuth(config.plugin, config.capability);
   if (adapter === undefined) return failure(options, "CAPABILITY_MISSING", false);
-  const account = repository.readAccount(config.id);
+  let account: ReturnType<PluginRepository["readAccount"]>;
+  try {
+    account = repository.readAccount(config.id);
+  } catch {
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
+  }
   if (account === null || account.plugin !== config.plugin || account.capability !== config.capability) {
     return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false);
   }
+  const accountSummary = {
+    ...(account.label === undefined ? {} : { accountLabel: account.label }),
+    ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
+  };
 
   let accountOptions: unknown;
   let accountOptionsDigest: `sha256:${string}`;
@@ -278,29 +299,43 @@ export async function materializePluginProvider(
     accountOptions = parsed.value;
     accountOptionsDigest = preTransformDigest;
   } catch {
-    return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id));
+    return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id), accountSummary);
   }
 
   let parsedCredential: Awaited<ReturnType<typeof parsePluginSchema>>;
   try {
     parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
   } catch (error) {
-    if (error instanceof PluginSchemaContractError) return failure(options, "PLUGIN_LOAD_FAILED", false);
+    if (error instanceof PluginSchemaContractError) {
+      return failure(options, "PLUGIN_LOAD_FAILED", false, undefined, accountSummary);
+    }
     throw error;
   }
   if (!parsedCredential.ok) {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id), accountSummary);
   }
-  const diagnostics = repository.readDiagnostics(config.id);
+  let diagnostics: readonly Diagnostic[];
+  try {
+    diagnostics = repository.readDiagnostics(config.id);
+  } catch {
+    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id), accountSummary);
+  }
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
     return {
-      summary: summary(config, undefined),
+      summary: summary(config, undefined, accountSummary),
       state: diagnosticState({ ...refreshFailure, suggestedCommand: providerLoginCommand(config.id) }),
     };
   }
 
-  let storedCatalog: StoredCatalog | null = repository.readCatalog(config.id);
+  let catalogReadFailed = false;
+  let storedCatalog: StoredCatalog | null;
+  try {
+    storedCatalog = repository.readCatalog(config.id);
+  } catch {
+    catalogReadFailed = true;
+    storedCatalog = null;
+  }
   if (storedCatalog !== null) {
     try {
       storedCatalog = { ...storedCatalog, catalog: validateModelCatalog(storedCatalog.catalog) };
@@ -309,7 +344,21 @@ export async function materializePluginProvider(
     }
   }
 
-  const unavailable = catalogDiagnostic(diagnostics);
+  const unavailable =
+    catalogDiagnostic(diagnostics) ??
+    (catalogReadFailed
+      ? options.diagnostics("CATALOG_UNAVAILABLE", {
+          plugin: config.plugin,
+          capability: config.capability,
+          providerId: config.id,
+          retryable: true,
+        })
+      : undefined);
+  const persistedSummary = (provider: RuntimeProviderInstance | undefined, catalog: StoredCatalog | null) =>
+    summary(config, provider, {
+      ...accountSummary,
+      ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
+    });
   const createCredentials = (): CredentialPort<unknown> =>
     createCredentialPort({
       providerId: config.id,
@@ -319,7 +368,7 @@ export async function materializePluginProvider(
       logger: options.logger,
       onDiagnosticChanged: options.onDiagnosticChanged,
       onCredentialChanged: options.onDiagnosticChanged,
-      pluginSecrets: repository.readPluginSecret(config.plugin)?.value,
+      pluginSecrets: options.pluginSecrets,
     }) as CredentialPort<unknown>;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
@@ -343,10 +392,10 @@ export async function materializePluginProvider(
         providerId: config.id,
         retryable: true,
       });
-    if (!config.enabled) return { summary: summary(config, undefined), state: diagnosticState(diagnostic) };
+    if (!config.enabled) return { summary: persistedSummary(undefined, null), state: diagnosticState(diagnostic) };
     const credentials = createCredentials();
     return {
-      summary: summary(config, undefined),
+      summary: persistedSummary(undefined, null),
       state: diagnosticState(diagnostic),
       catalogJob: catalogJobFor(credentials),
     };
@@ -374,7 +423,7 @@ export async function materializePluginProvider(
       ...(unavailable === undefined ? {} : { diagnostic: unavailable }),
     } as const;
     return {
-      summary: summary(config, undefined),
+      summary: persistedSummary(undefined, storedCatalog),
       state,
       ...(cacheEntry === undefined ? {} : { cacheEntry }),
     };
@@ -391,7 +440,7 @@ export async function materializePluginProvider(
     } as const;
     return {
       provider,
-      summary: summary(config, provider),
+      summary: persistedSummary(provider, storedCatalog),
       state,
       catalogJob,
       cacheEntry,
@@ -429,7 +478,7 @@ export async function materializePluginProvider(
       catalog: catalogFreshness(adapter.catalog.policy, storedCatalog, unavailable),
       ...(unavailable === undefined ? {} : { diagnostic: unavailable }),
     } as const;
-    return { provider, summary: summary(config, provider), state, catalogJob, cacheEntry };
+    return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   } catch (error) {
     options.logger({
       event: "plugin.runtime.create.failed",
@@ -437,7 +486,7 @@ export async function materializePluginProvider(
       context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
       error: { name: error instanceof Error ? error.name : "Error", message: "Plugin runtime creation failed" },
     });
-    return failure(options, "RUNTIME_CREATE_FAILED", true);
+    return failure(options, "RUNTIME_CREATE_FAILED", true, undefined, accountSummary);
   }
 }
 

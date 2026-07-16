@@ -749,6 +749,8 @@ describe("plugin and provider diagnostics", () => {
   test("accepts safe dashboard plugin summaries", () => {
     const failedPlugin = {
       packageName: "@example/broken",
+      label: { default: "Broken plugin", "zh-Hans": "损坏的插件" },
+      description: { default: "Example description", en: "Example description" },
       builtIn: false,
       version: "1.2.3",
       state: {

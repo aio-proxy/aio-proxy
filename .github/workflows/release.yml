@@ -36,15 +36,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
       - id: meta
         run: |
           version="$(jq -r .version npm/aio-proxy/package.json)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git rev-parse "v$version" >/dev/null 2>&1; then
-            echo "needs-release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "needs-release=true" >> "$GITHUB_OUTPUT"
-          fi
+          needs_release=false
+          git rev-parse "v$version" >/dev/null 2>&1 || needs_release=true
+          gh release view "v$version" >/dev/null 2>&1 || needs_release=true
+          for package_dir in \
+            packages/plugin-sdk \
+            npm/cli-darwin-arm64 \
+            npm/cli-darwin-x64 \
+            npm/cli-linux-arm64 \
+            npm/cli-linux-x64 \
+            npm/aio-proxy
+          do
+            name="$(jq -r .name "$package_dir/package.json")"
+            package_version="$(jq -r .version "$package_dir/package.json")"
+            npm view "$name@$package_version" version >/dev/null 2>&1 || needs_release=true
+          done
+          echo "needs-release=$needs_release" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     needs: check
@@ -109,19 +125,6 @@ jobs:
       - run: tar -xf npm-binaries.tar
       - name: Build public SDK
         run: bun run --filter @aio-proxy/plugin-sdk build
-      - name: Create GitHub Release
-        run: |
-          mkdir -p release-assets
-          cp npm/cli-darwin-arm64/bin/aio-proxy release-assets/aio-proxy-darwin-arm64
-          cp npm/cli-darwin-x64/bin/aio-proxy release-assets/aio-proxy-darwin-x64
-          cp npm/cli-linux-x64/bin/aio-proxy release-assets/aio-proxy-linux-x64
-          cp npm/cli-linux-arm64/bin/aio-proxy release-assets/aio-proxy-linux-arm64
-          gh release create "v${{ needs.check.outputs.version }}" \
-            release-assets/aio-proxy-* \
-            --title "v${{ needs.check.outputs.version }}" \
-            --generate-notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Configure npm auth
         run: printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > ~/.npmrc
         env:
@@ -130,3 +133,20 @@ jobs:
         run: bun scripts/publish-public-packages.ts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Create or update GitHub Release
+        run: |
+          mkdir -p release-assets
+          cp npm/cli-darwin-arm64/bin/aio-proxy release-assets/aio-proxy-darwin-arm64
+          cp npm/cli-darwin-x64/bin/aio-proxy release-assets/aio-proxy-darwin-x64
+          cp npm/cli-linux-x64/bin/aio-proxy release-assets/aio-proxy-linux-x64
+          cp npm/cli-linux-arm64/bin/aio-proxy release-assets/aio-proxy-linux-arm64
+          if gh release view "v${{ needs.check.outputs.version }}" >/dev/null 2>&1; then
+            gh release upload "v${{ needs.check.outputs.version }}" release-assets/aio-proxy-* --clobber
+          else
+            gh release create "v${{ needs.check.outputs.version }}" \
+              release-assets/aio-proxy-* \
+              --title "v${{ needs.check.outputs.version }}" \
+              --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

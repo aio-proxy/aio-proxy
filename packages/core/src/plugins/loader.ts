@@ -1,6 +1,8 @@
 import { pathToFileURL } from "node:url";
 import {
   isPluginDescriptor,
+  type LocalizedText,
+  LocalizedTextSchema,
   PLUGIN_API_VERSION,
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
@@ -30,6 +32,8 @@ export type PluginPackageImporter = (input: {
 
 export type LoadedPluginState = {
   readonly packageName: string;
+  readonly label?: LocalizedText;
+  readonly description?: LocalizedText;
   readonly version?: string;
   readonly builtIn: boolean;
   readonly state: PluginState;
@@ -99,7 +103,25 @@ function validateDescriptor(descriptor: unknown): PluginDescriptor<unknown> {
     throw new PluginHostError("PLUGIN_API_INCOMPATIBLE");
   }
   if (!isPluginDescriptor(descriptor)) throw new PluginHostError("PLUGIN_LOAD_FAILED");
-  return descriptor as PluginDescriptor<unknown>;
+  const typed = descriptor as PluginDescriptor<unknown>;
+  const label = LocalizedTextSchema.safeParse(typed.metadata.label);
+  const description = LocalizedTextSchema.safeParse(typed.metadata.description);
+  if (
+    (typed.metadata.label !== undefined && !label.success) ||
+    (typed.metadata.description !== undefined && !description.success)
+  ) {
+    throw new PluginHostError("PLUGIN_LOAD_FAILED");
+  }
+  return {
+    [PLUGIN_DESCRIPTOR_BRAND]: true,
+    apiVersion: PLUGIN_API_VERSION,
+    metadata: {
+      ...(typed.metadata.label === undefined ? {} : { label: label.data as LocalizedText }),
+      ...(typed.metadata.description === undefined ? {} : { description: description.data as LocalizedText }),
+      ...(typed.metadata.options === undefined ? {} : { options: typed.metadata.options }),
+    },
+    setup: typed.setup,
+  };
 }
 
 function validateImportedModule(value: unknown): PluginDescriptor<unknown> {
@@ -243,6 +265,8 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
   for (const candidate of candidates(options)) {
     let secretValues: readonly string[] = [];
     let version: string | undefined;
+    let label: LocalizedText | undefined;
+    let description: LocalizedText | undefined;
     try {
       const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
       secretValues = stringLeaves(secretOptions);
@@ -256,6 +280,8 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         version = candidate.builtIn.version;
         descriptor = validateDescriptor(candidate.builtIn.descriptor);
       }
+      label = descriptor.metadata.label;
+      description = descriptor.metadata.description;
 
       const staging = host.stage(candidate.packageName);
       const setup = Promise.resolve().then(async () => {
@@ -276,6 +302,8 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       staging.commit();
       plugins.set(candidate.packageName, {
         packageName: candidate.packageName,
+        ...(label === undefined ? {} : { label }),
+        ...(description === undefined ? {} : { description }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
         state: { status: "ready" },
@@ -283,6 +311,8 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     } catch (error) {
       plugins.set(candidate.packageName, {
         packageName: candidate.packageName,
+        ...(label === undefined ? {} : { label }),
+        ...(description === undefined ? {} : { description }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
         state: failedState(options, candidate.packageName, error, secretValues, candidate.configured),

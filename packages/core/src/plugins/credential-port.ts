@@ -257,6 +257,7 @@ export function createCredentialPort<Credential>(
             );
             if (updated === null) {
               const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
+              if (latest.snapshot.revision === expectedRevision) throw new CredentialRefreshLeaseLostError();
               return { status: "superseded", snapshot: latest.snapshot };
             }
             if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {

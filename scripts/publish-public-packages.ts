@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -6,20 +7,43 @@ const dependencySections = new Set(["dependencies", "devDependencies", "optional
 
 const unsupportedDependencyProtocols = ["catalog:", "workspace:"] as const;
 
-const commandOutput = (result: Bun.SpawnSyncReturns<Uint8Array>): string =>
-  `${result.stdout.toString()}${result.stderr.toString()}`;
+export interface CommandResult {
+  readonly exitCode: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}
 
-const run = (command: readonly string[], cwd?: string): Bun.SpawnSyncReturns<Uint8Array> => {
+export type CommandRunner = (command: readonly string[], cwd?: string) => CommandResult;
+
+export interface PackedPackageIdentity {
+  readonly integrity: string;
+  readonly name: string;
+  readonly version: string;
+}
+
+const commandOutput = (result: CommandResult): string => `${result.stdout}${result.stderr}`;
+
+const run: CommandRunner = (command, cwd) => {
   const result = Bun.spawnSync(command, {
     cwd,
     stderr: "pipe",
     stdout: "pipe",
   });
-  if (result.exitCode !== 0) {
-    throw new Error(`Command failed (${command.join(" ")}):\n${commandOutput(result)}`);
-  }
+  return {
+    exitCode: result.exitCode,
+    stderr: result.stderr.toString(),
+    stdout: result.stdout.toString(),
+  };
+};
+
+const runChecked = (command: readonly string[], cwd?: string): CommandResult => {
+  const result = run(command, cwd);
+  if (result.exitCode !== 0) throw commandFailure(command, result);
   return result;
 };
+
+const commandFailure = (command: readonly string[], result: CommandResult): Error =>
+  new Error(`Command failed (${command.join(" ")}):\n${commandOutput(result)}`);
 
 const visitDependencySections = (value: unknown, path: readonly string[] = []): void => {
   if (value === null || typeof value !== "object") return;
@@ -49,19 +73,32 @@ export const assertPublishableManifest = (manifest: unknown): void => {
 };
 
 const readPackedManifest = (tarball: string): unknown => {
-  const extracted = run(["tar", "-xOf", tarball, "package/package.json"]);
+  const extracted = runChecked(["tar", "-xOf", tarball, "package/package.json"]);
   try {
-    return JSON.parse(extracted.stdout.toString());
+    return JSON.parse(extracted.stdout);
   } catch (error) {
     throw new Error(`Packed package manifest is not valid JSON: ${tarball}`, { cause: error });
   }
+};
+
+export const getPackedPackageIdentity = (tarball: string): PackedPackageIdentity => {
+  const manifest = readPackedManifest(tarball);
+  assertPublishableManifest(manifest);
+  const packedManifest = manifest as Record<string, unknown>;
+  const name = packedManifest.name;
+  const version = packedManifest.version;
+  if (typeof name !== "string" || name.length === 0 || typeof version !== "string" || version.length === 0) {
+    throw new Error(`Packed package manifest must contain a non-empty name and version: ${tarball}`);
+  }
+  const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
+  return { integrity, name, version };
 };
 
 export const packPublicPackage = (packageDir: string, destination: string): string => {
   const absolutePackageDir = resolve(packageDir);
   const absoluteDestination = resolve(destination);
   mkdirSync(absoluteDestination, { recursive: true });
-  run([process.execPath, "pm", "pack", "--destination", absoluteDestination], absolutePackageDir);
+  runChecked([process.execPath, "pm", "pack", "--destination", absoluteDestination], absolutePackageDir);
 
   const tarballs = readdirSync(absoluteDestination)
     .filter((name) => name.endsWith(".tgz"))
@@ -72,13 +109,71 @@ export const packPublicPackage = (packageDir: string, destination: string): stri
 
   const tarball = tarballs[0];
   if (tarball === undefined) throw new Error(`Packed tarball missing from ${absoluteDestination}`);
-  assertPublishableManifest(readPackedManifest(tarball));
+  getPackedPackageIdentity(tarball);
   return tarball;
 };
 
-const publishTarball = (tarball: string): void => {
-  const result = run(["npm", "publish", tarball, "--access", "public"]);
-  process.stdout.write(commandOutput(result));
+type RegistryArtifact = "absent" | "matching";
+
+const inspectRegistryArtifact = (identity: PackedPackageIdentity, execute: CommandRunner): RegistryArtifact => {
+  const spec = `${identity.name}@${identity.version}`;
+  const command = ["npm", "view", spec, "--json"] as const;
+  const result = execute(command);
+  if (result.exitCode !== 0) {
+    if (/\bE404\b|\b404\b|not found/i.test(commandOutput(result))) return "absent";
+    throw commandFailure(command, result);
+  }
+
+  let published: unknown;
+  try {
+    published = JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(`Registry metadata is not valid JSON for ${spec}`, { cause: error });
+  }
+  const registryManifest =
+    published !== null && typeof published === "object" && !Array.isArray(published)
+      ? (published as Record<string, unknown>)
+      : {};
+  const publishedName = registryManifest.name;
+  const publishedVersion = registryManifest.version;
+  const dist = registryManifest.dist;
+  const publishedIntegrity =
+    dist !== null && typeof dist === "object" && !Array.isArray(dist)
+      ? (dist as Record<string, unknown>).integrity
+      : undefined;
+  if (
+    publishedName !== identity.name ||
+    publishedVersion !== identity.version ||
+    publishedIntegrity !== identity.integrity
+  ) {
+    throw new Error(`Registry artifact identity mismatch for ${spec}`);
+  }
+  return "matching";
+};
+
+export const publishVerifiedTarball = (
+  tarball: string,
+  execute: CommandRunner = run,
+): "already-published" | "published" => {
+  const identity = getPackedPackageIdentity(tarball);
+  if (inspectRegistryArtifact(identity, execute) === "matching") return "already-published";
+
+  const command = ["npm", "publish", tarball, "--access", "public"] as const;
+  const result = execute(command);
+  if (result.exitCode === 0) {
+    process.stdout.write(commandOutput(result));
+    return "published";
+  }
+
+  const publishError = commandFailure(command, result);
+  try {
+    if (inspectRegistryArtifact(identity, execute) === "matching") return "already-published";
+  } catch (verificationError) {
+    if (verificationError instanceof Error && /artifact identity mismatch/.test(verificationError.message)) {
+      throw verificationError;
+    }
+  }
+  throw publishError;
 };
 
 const repoRoot = resolve(import.meta.dir, "..");
@@ -97,7 +192,7 @@ if (import.meta.main) {
     const tarballs = publicPackageDirs.map((packageDir, index) =>
       packPublicPackage(join(repoRoot, packageDir), join(stagingDir, String(index))),
     );
-    for (const tarball of tarballs) publishTarball(tarball);
+    for (const tarball of tarballs) publishVerifiedTarball(tarball);
   } finally {
     rmSync(stagingDir, { recursive: true, force: true });
   }

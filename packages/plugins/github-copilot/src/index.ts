@@ -22,6 +22,8 @@ export const GITHUB_COPILOT_PLUGIN_VERSION = packageJson.version;
 export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 
 export type GitHubCopilotCopy = {
+  readonly pluginLabel?: LocalizedText;
+  readonly pluginDescription?: LocalizedText;
   readonly adapterLabel: LocalizedText;
   readonly deploymentTypeLabel: LocalizedText;
   readonly githubDotComLabel: LocalizedText;
@@ -34,6 +36,8 @@ export type GitHubCopilotCopy = {
 };
 
 export const englishCopy: GitHubCopilotCopy = {
+  pluginLabel: "GitHub Copilot",
+  pluginDescription: "Use a GitHub Copilot account to access models",
   adapterLabel: "Login with GitHub Copilot",
   deploymentTypeLabel: "Select GitHub deployment type",
   githubDotComLabel: "GitHub.com",
@@ -128,9 +132,15 @@ export function createGitHubCopilotPlugin(copy: GitHubCopilotCopy): PluginDescri
     createRuntime: createGitHubCopilotRuntime,
   };
 
-  return definePlugin((api) => {
-    api.oauth.register(adapter);
-  });
+  return definePlugin(
+    (api) => {
+      api.oauth.register(adapter);
+    },
+    {
+      label: copy.pluginLabel ?? "GitHub Copilot",
+      description: copy.pluginDescription ?? "Use a GitHub Copilot account to access models",
+    },
+  );
 }
 
 export default createGitHubCopilotPlugin(englishCopy);

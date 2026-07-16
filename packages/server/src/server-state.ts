@@ -558,6 +558,7 @@ async function buildSnapshot(
     oauthConfigs.map((provider) => {
       const previousEntry = previous?.runtimeCache.get(provider.id);
       const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
+      const pluginOptionInput = pluginOptionInputs.get(provider.plugin);
       if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
       return materializePluginProvider({
         config: provider,
@@ -567,6 +568,9 @@ async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
+        ...(pluginOptionInput === undefined || "error" in pluginOptionInput
+          ? {}
+          : { pluginSecrets: pluginOptionInput.secret }),
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
       });
     }),
@@ -616,26 +620,10 @@ async function buildSnapshot(
     const provider = oauthConfigs[index];
     if (provider !== undefined) assembledStates.set(provider.id, item.state);
   });
-  const configuredById = new Map(config.providers.map((provider) => [provider.id, provider] as const));
-  const accountById = new Map(repository.listAccounts().map((account) => [account.providerId, account] as const));
   const summaries = summaryBases.map((summary): DashboardProviderSummary => {
     const state = assembledStates.get(summary.id);
     if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
-    const configured = configuredById.get(summary.id);
-    if (configured?.kind !== ProviderKind.OAuth) return { ...summary, state };
-    const account = accountById.get(summary.id);
-    const matchingAccount =
-      account?.plugin === configured.plugin && account.capability === configured.capability ? account : undefined;
-    const catalog = matchingAccount === undefined ? null : repository.readCatalog(summary.id);
-    return {
-      ...summary,
-      state,
-      plugin: configured.plugin,
-      capability: configured.capability,
-      ...(matchingAccount?.label === undefined ? {} : { accountLabel: matchingAccount.label }),
-      ...(matchingAccount?.expiresAt === undefined ? {} : { expiresAt: matchingAccount.expiresAt }),
-      ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
-    };
+    return { ...summary, state };
   });
   return {
     config,

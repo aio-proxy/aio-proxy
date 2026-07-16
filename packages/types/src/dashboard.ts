@@ -13,8 +13,34 @@ import {
 
 export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
 
+const DashboardLocalizedTextValueSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value.trim() === value);
+
+export const DashboardLocalizedTextSchema = z.union([
+  DashboardLocalizedTextValueSchema,
+  z.record(z.string(), DashboardLocalizedTextValueSchema).superRefine((value, context) => {
+    if (!Object.hasOwn(value, "default")) {
+      context.addIssue({ code: "custom", message: "default localized text is required" });
+    }
+    for (const key of Object.keys(value)) {
+      if (key === "default") continue;
+      try {
+        if (Intl.getCanonicalLocales(key)[0] !== key) {
+          context.addIssue({ code: "custom", message: "localized text keys must be canonical" });
+        }
+      } catch {
+        context.addIssue({ code: "custom", message: "localized text keys must be language tags" });
+      }
+    }
+  }),
+]);
+
 export const DashboardPluginSummarySchema = z.object({
   packageName: z.string().min(1),
+  label: DashboardLocalizedTextSchema.optional(),
+  description: DashboardLocalizedTextSchema.optional(),
   builtIn: z.boolean(),
   version: z.string().optional(),
   state: PluginStateSchema,

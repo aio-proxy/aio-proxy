@@ -89,6 +89,8 @@ describe("dashboard static routes", () => {
         throw error;
       },
       {
+        label: { default: "Broken plugin", "zh-Hans": "损坏的插件" },
+        description: { default: "Broken plugin description", "zh-Hans": "损坏插件描述" },
         options: {
           schema: zod.object({ token: zod.string() }),
           form: [{ type: "secret", key: "token", label: "Token" }],
@@ -121,6 +123,8 @@ describe("dashboard static routes", () => {
       expect(plugins.status).toBe(200);
       expect(providers.status).toBe(200);
       expect(serialized).toContain("PLUGIN_LOAD_FAILED");
+      expect(serialized).toContain('"label":{"default":"Broken plugin","zh-Hans":"损坏的插件"}');
+      expect(serialized).toContain('"description":{"default":"Broken plugin description","zh-Hans":"损坏插件描述"}');
       expect(serialized).toContain("aio-proxy plugin config @example/broken");
       expect(serialized).toContain("broken-account");
       expect(serialized).not.toContain("plugin-secret-sentinel");

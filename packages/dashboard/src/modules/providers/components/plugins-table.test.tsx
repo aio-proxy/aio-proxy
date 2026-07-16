@@ -1,3 +1,4 @@
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import type { DashboardPluginSummary } from "@aio-proxy/types";
 import { describe, expect, test } from "@rstest/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -6,6 +7,8 @@ import { PluginsTable } from "./plugins-table";
 const plugins: readonly DashboardPluginSummary[] = [
   {
     packageName: "@aio-proxy/plugin-github-copilot",
+    label: { default: "GitHub Copilot", "zh-Hans": "GitHub Copilot 中文" },
+    description: { default: "Copilot account provider", "zh-Hans": "Copilot 账号提供方" },
     builtIn: true,
     version: "0.0.0",
     state: { status: "ready" },
@@ -28,6 +31,26 @@ const plugins: readonly DashboardPluginSummary[] = [
 ];
 
 describe("plugins table", () => {
+  test("resolves transported plugin metadata at render time without reloading plugin data", async () => {
+    const originalLocale = getLocale();
+    const plugin = plugins[0];
+    if (plugin === undefined) throw new Error("missing plugin fixture");
+    try {
+      await setLocale("en");
+      const rendered = render(<PluginsTable plugins={[plugin]} />);
+      expect(screen.getByText("GitHub Copilot")).toBeTruthy();
+      expect(screen.getByText("Copilot account provider")).toBeTruthy();
+
+      await setLocale("zh-Hans");
+      rendered.rerender(<PluginsTable plugins={[plugin]} />);
+      expect(screen.getByText("GitHub Copilot 中文")).toBeTruthy();
+      expect(screen.getByText("Copilot 账号提供方")).toBeTruthy();
+      expect(screen.getByText("@aio-proxy/plugin-github-copilot")).toBeTruthy();
+    } finally {
+      await setLocale(originalLocale);
+    }
+  });
+
   test("renders built-in and third-party plugin diagnostics without management controls", () => {
     render(<PluginsTable plugins={plugins} />);
 
