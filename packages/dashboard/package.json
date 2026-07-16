@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aio-proxy/i18n": "workspace:*",
+    "@aio-proxy/provider-schemas": "0.1.1",
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "@base-ui/react": "^1.6.0",
