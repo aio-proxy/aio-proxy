@@ -567,7 +567,7 @@ describe("AtomicConfigFile", () => {
     expect(statSync(path).mode & 0o777).toBe(0o604);
   });
 
-  test("a lock cleanup failure rejects and leaves an owner that a later transaction can recover", async () => {
+  test("a lock cleanup failure lets the same process immediately recover its exact abandoned owner", async () => {
     const { path } = fixture("{}\n");
     const lockPath = `${path}.lock`;
     const realUnlink = fsPromises.unlink.bind(fsPromises);
@@ -587,9 +587,62 @@ describe("AtomicConfigFile", () => {
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true });
       expect(existsSync(lockPath)).toBe(true);
 
-      ageLockWithUnavailableIdentity(lockPath);
-      await new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }));
+      const abandonedLock = readFileSync(lockPath, "utf8");
+      const controller = new AbortController();
+      const recovery = new AtomicConfigFile(path).replace((current) => ({ ...current, recovered: true }), {
+        signal: controller.signal,
+      });
+      try {
+        await expect(
+          Promise.race([
+            recovery,
+            Bun.sleep(500).then(() => {
+              throw new Error("exact abandoned config owner was not recovered immediately");
+            }),
+          ]),
+        ).resolves.toBeUndefined();
+      } finally {
+        controller.abort(new Error("test cleanup"));
+        await recovery.catch(() => {});
+      }
+      expect(abandonedLock).toContain(`"pid":${process.pid}`);
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true, recovered: true });
+    } finally {
+      unlink.mockRestore();
+    }
+  });
+
+  test("abandoned-owner recovery never unlinks a replacement lock", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    const realUnlink = fsPromises.unlink.bind(fsPromises);
+    let failed = false;
+    const unlink = spyOn(fsPromises, "unlink").mockImplementation(async (target) => {
+      if (target === lockPath && !failed) {
+        failed = true;
+        throw new Error("release failed");
+      }
+      return realUnlink(target);
+    });
+
+    try {
+      await expect(
+        new AtomicConfigFile(path).replace((current) => ({ ...current, committed: true })),
+      ).rejects.toBeInstanceOf(AtomicConfigLockReleaseError);
+      unlinkSync(lockPath);
+      const replacement = JSON.stringify({ pid: process.pid, owner: "replacement", createdAt: Date.now() });
+      writeFileSync(lockPath, replacement);
+
+      const controller = new AbortController();
+      const blocked = new AtomicConfigFile(path).replace((current) => ({ ...current, stolen: true }), {
+        signal: controller.signal,
+      });
+      await Bun.sleep(100);
+      controller.abort(new Error("replacement remains active"));
+      await expect(blocked).rejects.toThrow("replacement remains active");
+
+      expect(readFileSync(lockPath, "utf8")).toBe(replacement);
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ committed: true });
     } finally {
       unlink.mockRestore();
     }

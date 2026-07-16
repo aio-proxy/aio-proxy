@@ -44,6 +44,14 @@ type LockRecord = {
   readonly starttime?: string;
 };
 
+type AbandonedLockOwner = {
+  readonly owner: string;
+  readonly identity: Stats;
+  readonly text: string;
+};
+
+const abandonedLockOwners = new Map<string, AbandonedLockOwner>();
+
 function isRecord(value: unknown): value is ConfigRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -399,6 +407,42 @@ async function reclaimStaleLock(path: string, assertFence: () => Promise<void>):
   }
 }
 
+async function reclaimAbandonedLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
+  const abandoned = abandonedLockOwners.get(path);
+  if (abandoned === undefined) return false;
+  try {
+    const [text, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    if (
+      parseLock(text)?.owner !== abandoned.owner ||
+      text !== abandoned.text ||
+      metadata.dev !== abandoned.identity.dev ||
+      metadata.ino !== abandoned.identity.ino
+    ) {
+      abandonedLockOwners.delete(path);
+      return false;
+    }
+    await assertFence();
+    const [currentText, currentMetadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    if (
+      parseLock(currentText)?.owner !== abandoned.owner ||
+      currentText !== abandoned.text ||
+      !sameFileSnapshot(metadata, currentMetadata)
+    ) {
+      abandonedLockOwners.delete(path);
+      return false;
+    }
+    await unlink(path);
+    abandonedLockOwners.delete(path);
+    return true;
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) {
+      abandonedLockOwners.delete(path);
+      return true;
+    }
+    throw error;
+  }
+}
+
 async function acquireLock(
   path: string,
   signal?: AbortSignal,
@@ -422,18 +466,18 @@ async function acquireLock(
           const handle = await open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
           let identity: Stats | undefined;
           try {
-            await handle.writeFile(
-              JSON.stringify({
-                pid: process.pid,
-                owner,
-                createdAt: Date.now(),
-                ...(starttime === null ? {} : { starttime }),
-              } satisfies LockRecord),
-            );
+            const text = JSON.stringify({
+              pid: process.pid,
+              owner,
+              createdAt: Date.now(),
+              ...(starttime === null ? {} : { starttime }),
+            } satisfies LockRecord);
+            await handle.writeFile(text);
             await handle.sync();
             identity = await handle.stat();
             await assertFence();
-            return { handle, identity };
+            abandonedLockOwners.delete(path);
+            return { handle, identity, text };
           } catch (error) {
             await handle.close().catch(() => {});
             if (identity !== undefined) await unlinkOwnedLock(path, owner, identity, assertFence).catch(() => {});
@@ -441,6 +485,7 @@ async function acquireLock(
           }
         } catch (error) {
           if (!isNodeError(error, "EEXIST")) throw error;
+          if (await reclaimAbandonedLock(path, assertFence)) return null;
           return (await reclaimStaleLock(path, assertFence)) ? null : false;
         }
       },
@@ -453,7 +498,7 @@ async function acquireLock(
       await abortableDelay(50 + Math.floor(Math.random() * 25), signal);
       continue;
     }
-    const { handle, identity } = acquired;
+    const { handle, identity, text } = acquired;
     let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
       const now = new Date();
       void handle.utimes(now, now).catch(() => {});
@@ -495,6 +540,10 @@ async function acquireLock(
         }
         try {
           await withRecoveryFence(path, (assertFence) => unlinkOwnedLock(path, owner, identity, assertFence));
+          abandonedLockOwners.delete(path);
+        } catch (error) {
+          abandonedLockOwners.set(path, { owner, identity, text });
+          throw error;
         } finally {
           await handle.close().catch(() => {});
         }

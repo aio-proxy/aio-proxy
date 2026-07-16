@@ -179,3 +179,31 @@ PASS: exit 0, no output.
 - API E2E and build were satisfied by Turbo's content-addressed cache in the
   final run; the commands completed successfully and replayed the matching build
   logs.
+
+## Independent Review Follow-up
+
+### RED: immediate same-process recovery after release failure
+
+Added a regression that injects one main-lock unlink failure, leaves the live
+PID/starttime lock completely unchanged, and immediately starts a second
+transaction in the same process. The focused run failed after 500 ms with
+`exact abandoned config owner was not recovered immediately`, confirming that
+the live owner check permanently blocked recovery without manual lock aging or
+identity removal.
+
+### GREEN: exact abandoned-owner retry with replacement fencing
+
+Release failure now records a module-local cleanup capability containing the
+lock path's exact serialized owner record and file dev/inode identity. A later
+acquisition may reclaim it only inside the recovery fence, after exact content
+and identity matches followed by a second unchanged-file snapshot. Successful
+cleanup removes the registry entry; missing or replacement files invalidate it.
+
+The focused run passed the immediate recovery regression, the new replacement
+owner regression, and the existing paused-release fencing regression without
+modifying or aging the abandoned lock.
+
+Follow-up verification passed: the complete config-file suite (25 tests), the
+Task 7 Core/Server/Copilot affected suite (516 tests), repository check (with
+the existing 71 informational diagnostics and one warning), and repository
+build (7/7 tasks).
