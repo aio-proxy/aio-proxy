@@ -1,8 +1,10 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { providerStub, RouterLinkStub } from "../test-doubles";
+import { DeleteProviderDialogStub, providerStub, RouterLinkStub } from "../test-doubles";
 import { ProviderActionsMenu } from "./provider-actions-menu";
 import { ProviderStateCell } from "./provider-state-cell";
+
+rs.mock("./delete-provider-dialog", () => ({ DeleteProviderDialog: DeleteProviderDialogStub }));
 
 rs.mock("@tanstack/react-router", () => ({
   Link: RouterLinkStub,
