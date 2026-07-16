@@ -8,7 +8,7 @@ import { getLocale, setLocale } from "@aio-proxy/i18n";
 import packageJson from "../package.json" with { type: "json" };
 import { formatCliError } from "../src/main";
 import { LoopbackPortUnavailableError } from "../src/plugin-commands/loopback";
-import { localizeProviderLoginUserError, ProviderCapabilityNotFoundError } from "../src/plugin-commands/provider-login";
+import { ProviderCapabilityNotFoundError } from "../src/plugin-commands/provider-login";
 import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "./cli-test-helpers";
 
 describe("cli", () => {
@@ -132,26 +132,36 @@ describe("cli", () => {
     expect(probe).not.toContain("<id>");
   });
 
-  test("top-level rendering preserves only safe provider-login and loopback errors", async () => {
+  test("top-level rendering rejects raw provider-login errors and preserves loopback errors", async () => {
     const originalLocale = getLocale();
     await setLocale("en");
     try {
       const missing = formatCliError(new ProviderCapabilityNotFoundError("missing"), "en");
-      const conflict = formatCliError(
-        localizeProviderLoginUserError(new ProviderAccountAlreadyExistsError("existing")),
-        "en",
-      );
       const loopback = formatCliError(new LoopbackPortUnavailableError(1455), "en");
       const unknown = formatCliError(new Error("unknown plugin secret"), "en");
 
-      expect(missing.message).toBe("OAuth capability missing was not found.");
-      expect(conflict.message).toContain("provider existing");
+      expect(missing.message).toBe("Unexpected internal error.");
       expect(loopback.message).toBe("The local callback listener could not use port 1455.");
       expect(unknown.message).toBe("Unexpected internal error.");
       expect(unknown.message).not.toContain("unknown plugin secret");
     } finally {
       await setLocale(originalLocale);
     }
+  });
+
+  test("top-level rendering rejects forged mutable core provider errors", () => {
+    const forged = new ProviderAccountAlreadyExistsError("existing");
+    Object.defineProperties(forged, {
+      existingProviderId: { value: "\u001b]8;;https://attacker.invalid\u0007stolen", configurable: true },
+      suggestedCommand: { value: "secret extension command", configurable: true },
+    });
+    forged.message = "secret extension message";
+
+    const formatted = formatCliError(forged, "en");
+
+    expect(formatted.message).toBe("Unexpected internal error.");
+    expect(formatted.message).not.toContain("secret");
+    expect(formatted.message).not.toContain("attacker.invalid");
   });
 
   test("dashboard command reports not-yet-implemented on stderr and exits 2", () => {

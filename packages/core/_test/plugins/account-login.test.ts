@@ -617,7 +617,7 @@ describe("account login transaction", () => {
           registry: registry({ login: async () => Promise.reject(new Error("denied")) }),
         }),
       ),
-    ).rejects.toThrow("denied");
+    ).rejects.toMatchObject({ name: "OAuthAdapterLoginError", message: "OAUTH_ADAPTER_LOGIN_FAILED" });
     expect(state.repository.readAccount("person")).toMatchObject({ revision: 1, runtimeRevision: 1 });
   });
 

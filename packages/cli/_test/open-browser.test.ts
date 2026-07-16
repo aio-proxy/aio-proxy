@@ -1,16 +1,38 @@
 import { describe, expect, test } from "bun:test";
-import { browserCommand } from "../src/open-browser";
+import { createOpenBrowser } from "../src/open-browser";
 
-describe("browser command", () => {
-  test("passes a Windows OAuth URL containing state as one quoted argument", () => {
+describe("open browser", () => {
+  test("spawns the Windows browser command with the OAuth URL as one argument", () => {
     const url = "https://identity.example/authorize?client_id=a&state=secret-state";
-
-    const command = browserCommand(url, "win32");
-
-    expect(command).toEqual({
-      bin: "cmd",
-      args: ["/d", "/s", "/c", "start", '""', `"${url}"`],
+    const calls: unknown[][] = [];
+    let unrefs = 0;
+    const openBrowser = createOpenBrowser({
+      platform: "win32",
+      spawn: (...args: unknown[]) => {
+        calls.push(args);
+        return {
+          unref() {
+            unrefs += 1;
+          },
+        };
+      },
     });
-    expect(command.args.filter((argument) => argument.includes("state="))).toEqual([`"${url}"`]);
+
+    const opened = openBrowser(url);
+
+    expect(opened).toBe(true);
+    expect(calls).toEqual([
+      [
+        "cmd",
+        ["/d", "/s", "/c", "start", '""', `"${url}"`],
+        {
+          detached: true,
+          stdio: "ignore",
+          windowsVerbatimArguments: true,
+        },
+      ],
+    ]);
+    expect((calls[0]?.[1] as string[]).filter((argument) => argument.includes("state="))).toEqual([`"${url}"`]);
+    expect(unrefs).toBe(1);
   });
 });

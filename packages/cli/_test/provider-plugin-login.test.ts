@@ -17,13 +17,11 @@ import {
   createCapabilitySelector,
   createManualOnlyConfirmation,
   createProviderLoginDefaultDeps,
-  localizeProviderLoginUserError,
+  isProviderLoginUserError,
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityMismatchError,
   ProviderCapabilityNotFoundError,
   type ProviderLoginDeps,
-  ProviderTargetInvalidError,
-  ProviderTargetNotFoundError,
   providerLogin,
 } from "../src/plugin-commands/provider-login";
 
@@ -229,9 +227,8 @@ describe("generic provider login capability resolution", () => {
   test("lists canonical ambiguity choices in non-interactive mode", async () => {
     const state = fixture();
     await expect(providerLogin("default", {}, state.deps)).rejects.toMatchObject({
-      name: "ProviderCapabilityAmbiguousError",
+      name: "ProviderLoginPresentationError",
       message: "OAuth capability default is ambiguous. Choose one of: @a/one#default, @b/two#default.",
-      references: ["@a/one#default", "@b/two#default"],
     });
     expect(new ProviderCapabilityAmbiguousError("default", ["@a/one#default"]).references).toEqual(["@a/one#default"]);
   });
@@ -281,20 +278,23 @@ describe("generic provider login capability resolution", () => {
       targetProviderId: "target",
       capability: { plugin: "@a/one", capability: "unique" },
     });
-    await expect(providerLogin("@b/two#default", { provider: "target" }, state.deps)).rejects.toBeInstanceOf(
-      ProviderCapabilityMismatchError,
-    );
+    await expect(providerLogin("@b/two#default", { provider: "target" }, state.deps)).rejects.toMatchObject({
+      name: "ProviderLoginPresentationError",
+      message: "Requested capability @b/two#default does not match provider capability @a/one#unique.",
+    });
   });
 
   test("distinguishes missing, invalid, and cleanup-pending provider targets", async () => {
     const state = fixture();
-    await expect(providerLogin(undefined, { provider: "target" }, state.deps)).rejects.toBeInstanceOf(
-      ProviderTargetNotFoundError,
-    );
+    await expect(providerLogin(undefined, { provider: "target" }, state.deps)).rejects.toMatchObject({
+      name: "ProviderLoginPresentationError",
+      message: "OAuth provider target was not found.",
+    });
     const invalid = fixture({ kind: "api", protocol: "openai-compatible" });
-    await expect(providerLogin(undefined, { provider: "target" }, invalid.deps)).rejects.toBeInstanceOf(
-      ProviderTargetInvalidError,
-    );
+    await expect(providerLogin(undefined, { provider: "target" }, invalid.deps)).rejects.toMatchObject({
+      name: "ProviderLoginPresentationError",
+      message: "Provider target is not a valid OAuth provider.",
+    });
     const pending = fixture({ kind: "oauth", plugin: "@a/one", capability: "unique", enabled: true });
     pending.deps = {
       ...pending.deps,
@@ -305,25 +305,18 @@ describe("generic provider login capability resolution", () => {
     await expect(providerLogin(undefined, { provider: "target" }, pending.deps)).rejects.toThrow(
       "Provider target is pending account cleanup.",
     );
-    await expect(providerLogin("@missing/pkg#default", {}, state.deps)).rejects.toBeInstanceOf(
-      ProviderCapabilityNotFoundError,
-    );
+    await expect(providerLogin("@missing/pkg#default", {}, state.deps)).rejects.toMatchObject({
+      name: "ProviderLoginPresentationError",
+      message: "OAuth capability @missing/pkg#default was not found.",
+    });
     const unavailable = fixture({ kind: "oauth", plugin: "@missing/pkg", capability: "default", enabled: true });
-    await expect(providerLogin(undefined, { provider: "target" }, unavailable.deps)).rejects.toBeInstanceOf(
-      ProviderCapabilityNotFoundError,
-    );
+    await expect(providerLogin(undefined, { provider: "target" }, unavailable.deps)).rejects.toMatchObject({
+      name: "ProviderLoginPresentationError",
+      message: "OAuth capability @missing/pkg#default was not found.",
+    });
   });
 
-  test("localizes only the closed provider-login user-error family", () => {
-    const accountConflict = localizeProviderLoginUserError(new ProviderAccountAlreadyExistsError("existing"));
-    expect(accountConflict).toBeInstanceOf(ProviderAccountAlreadyExistsError);
-    expect((accountConflict as Error).message).toContain("provider existing");
-    const unknown = new Error("plugin secret");
-    expect(localizeProviderLoginUserError(unknown)).toBe(unknown);
-    expect(unknown.message).toBe("plugin secret");
-  });
-
-  test("duplicate account prints only the canonical re-login command and rethrows", async () => {
+  test("duplicate account rebuilds canonical guidance without printing it early", async () => {
     const state = fixture();
     state.deps = {
       ...state.deps,
@@ -334,7 +327,55 @@ describe("generic provider login capability resolution", () => {
     await expect(providerLogin("unique", {}, state.deps)).rejects.toThrow(
       "An account is already configured as provider existing. Run aio-proxy provider login --provider existing to re-login.",
     );
-    expect(state.printed).toEqual(["aio-proxy provider login --provider existing"]);
+    expect(state.printed).toEqual([]);
+  });
+
+  test("does not print a mutable suggested command before top-level safe rendering", async () => {
+    const state = fixture();
+    state.deps = {
+      ...state.deps,
+      login: async () => {
+        const error = new ProviderAccountAlreadyExistsError("existing");
+        Object.defineProperty(error, "suggestedCommand", { value: "secret extension command" });
+        throw error;
+      },
+    };
+
+    await expect(providerLogin("unique", {}, state.deps)).rejects.toBeInstanceOf(Error);
+    expect(state.printed).toEqual([]);
+  });
+
+  test("contains a forged core error thrown by the OAuth adapter boundary", async () => {
+    const host = createPluginRegistryHost();
+    const staging = host.stage("@evil/plugin");
+    staging.api.oauth.register({
+      ...adapter("default"),
+      async login() {
+        const error = new ProviderAccountAlreadyExistsError("existing");
+        Object.defineProperties(error, {
+          existingProviderId: { value: "secret provider", configurable: true },
+          suggestedCommand: { value: "secret extension command", configurable: true },
+        });
+        error.message = "secret extension message";
+        throw error;
+      },
+    });
+    staging.seal();
+    staging.commit();
+    const state = fixture();
+    const { login: _login, ...withoutInjectedLogin } = state.deps;
+    state.deps = { ...withoutInjectedLogin, registry: host.registry };
+
+    let thrown: unknown;
+    try {
+      await providerLogin("@evil/plugin#default", {}, state.deps);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({ name: "OAuthAdapterLoginError", message: "OAUTH_ADAPTER_LOGIN_FAILED" });
+    expect(isProviderLoginUserError(thrown)).toBe(false);
+    expect(state.printed).toEqual([]);
   });
 
   test("fingerprint mismatch is localized while the account service owns rollback", async () => {

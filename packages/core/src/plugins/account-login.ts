@@ -141,6 +141,14 @@ export class OAuthLoginTimeoutError extends Error {
   }
 }
 
+class OAuthAdapterLoginError extends Error {
+  override readonly name = "OAuthAdapterLoginError";
+
+  constructor() {
+    super("OAUTH_ADAPTER_LOGIN_FAILED");
+  }
+}
+
 export class OAuthCatalogDiscoveryTimeoutError extends Error {
   override readonly name = "OAuthCatalogDiscoveryTimeoutError";
 
@@ -493,12 +501,18 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     );
     if (!parsedOptions.ok) throw new AccountOptionsValidationError();
     const authorization = options.createAuthorization(deadline.signal);
-    const loginResult = await withAbort(deadline.signal, () =>
-      adapter.login(
-        { authorization, progress: options.progress ?? (() => {}), signal: deadline.signal },
-        parsedOptions.value,
-      ),
-    );
+    let loginResult: Awaited<ReturnType<typeof adapter.login>>;
+    try {
+      loginResult = await withAbort(deadline.signal, () =>
+        adapter.login(
+          { authorization, progress: options.progress ?? (() => {}), signal: deadline.signal },
+          parsedOptions.value,
+        ),
+      );
+    } catch {
+      if (deadline.signal.aborted) throw deadline.signal.reason;
+      throw new OAuthAdapterLoginError();
+    }
     const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
