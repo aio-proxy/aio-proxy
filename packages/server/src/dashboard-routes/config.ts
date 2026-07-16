@@ -6,6 +6,7 @@ import {
   NpmPackageJsonError,
   NpmPackageNameError,
   npmAdd,
+  PendingAccountOperationConflictError,
 } from "@aio-proxy/core";
 import {
   DashboardRequestLogsPageSizeSchema,
@@ -191,7 +192,7 @@ export const createDashboardRoutes = (state: ServerState) =>
       try {
         await state.configStore.deleteProvider(id);
       } catch (error) {
-        if (error instanceof AccountCleanupPendingError) {
+        if (error instanceof AccountCleanupPendingError || error instanceof PendingAccountOperationConflictError) {
           return context.json({ error: "provider account cleanup pending", id }, 409);
         }
         throw error;

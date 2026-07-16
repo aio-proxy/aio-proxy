@@ -1483,6 +1483,94 @@ test("a committed delete marker arms the server recovery timer", async () => {
   }
 });
 
+test("delete, re-add, and delete again only removes the account after every routed incarnation drains", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-readd-delete-"));
+  const configPath = join(home, "config.json");
+  const provider = { kind: "oauth", plugin: "@example/oauth", capability: "default" };
+  const input = { providers: { person: provider } };
+  writeFileSync(configPath, JSON.stringify(input));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: "default",
+      label: "Example",
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error("not called");
+      },
+      catalog: {
+        policy: { kind: "static" },
+        async discover() {
+          throw new Error("stored catalog should be used");
+        },
+      },
+      async createRuntime() {
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse(input),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
+  });
+  const oldestLease = state.acquireProviderSnapshot();
+
+  try {
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toContain("person");
+    await state.configStore.deleteProvider("person");
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
+    const first = repository.listPendingAccountOperations()[0];
+    if (first === undefined) throw new Error("first delete marker missing");
+
+    await state.configStore.mutateProviders((providers) => ({ ...providers, person: provider }));
+    expect(repository.readAccount("person")).not.toBeNull();
+    expect(repository.listPendingAccountOperations()).toEqual([]);
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toContain("person");
+    const readdedLease = state.acquireProviderSnapshot();
+
+    await state.configStore.deleteProvider("person");
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
+    const second = repository.listPendingAccountOperations()[0];
+    if (second === undefined) throw new Error("second delete marker missing");
+    expect(second.operationId).not.toBe(first.operationId);
+
+    oldestLease.release();
+    await flushMicrotasks();
+    expect(repository.finalizeDeleteOperation(first.operationId)).toBe("superseded");
+    expect(repository.readAccount("person")).not.toBeNull();
+    expect(repository.listPendingAccountOperations()).toEqual([second]);
+
+    readdedLease.release();
+    await waitUntil(() => repository.readAccount("person") === null);
+    expect(repository.listPendingAccountOperations()).toEqual([]);
+  } finally {
+    oldestLease.release();
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("server recovery schedules the earliest competing orphan and pending deadlines and close clears the later one", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-earliest-"));
   const configPath = join(home, "config.json");

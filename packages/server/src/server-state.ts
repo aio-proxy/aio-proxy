@@ -177,11 +177,9 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const reconciliationTimers = new Set<ReturnType<typeof setTimeout>>();
   let recoveryGeneration = 0;
   let closed = false;
-  const accountRemovals = createAccountRemovalCoordinator({
-    file: configFile,
-    repository,
-    onRecoveryNeeded: scheduleRecovery,
-  });
+  const queue = createFifoQueue();
+  let manager: ReturnType<typeof createSnapshotManager>;
+  let managerReady = false;
 
   if (configFile !== undefined) {
     await recoverAccounts(
@@ -195,9 +193,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     );
   }
 
-  const queue = createFifoQueue();
-  let manager: ReturnType<typeof createSnapshotManager>;
-  let managerReady = false;
   let startupDiagnosticRebuildPending = false;
   const queueRebuild = () => {
     if (!managerReady) {
@@ -221,6 +216,13 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
   manager = createSnapshotManager(initial);
   managerReady = true;
+  const accountRemovals = createAccountRemovalCoordinator({
+    file: configFile,
+    repository,
+    enqueue: queue,
+    canDeleteAccount: manager.canDeleteAccount,
+    onRecoveryNeeded: scheduleRecovery,
+  });
   const scheduler = new CatalogScheduler({
     repository,
     diagnostics,
@@ -243,9 +245,10 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const requestRecorder = createRequestRecorder({ store: requestLog });
   const logger = options.logger ?? defaultLogger;
   async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {
+    const previous = manager.current() as Snapshot;
     const candidate = await buildSnapshot(
       config,
-      manager.current() as Snapshot,
+      previous,
       options,
       repository,
       diagnostics,
@@ -255,6 +258,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     );
     const before = (manager.current() as Snapshot).summaries;
     const retired = manager.swap(candidate);
+    accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
     replaceCatalogJobs(candidate.catalogJobs);
     events.publish({ event: "config.changed", data: providerDiff(before, candidate.summaries) });
     return retired;

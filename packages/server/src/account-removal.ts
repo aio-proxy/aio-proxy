@@ -7,6 +7,7 @@ import {
   type PluginRepository,
 } from "@aio-proxy/core";
 import { OAuthPluginProviderSchema, ProviderKind } from "@aio-proxy/types";
+import type { FifoQueue } from "./fifo-queue";
 import type { RetiredProviderSnapshot } from "./runtime";
 
 export type AccountRemovalCoordinator = {
@@ -15,6 +16,10 @@ export type AccountRemovalCoordinator = {
     nextProviders: Readonly<Record<string, unknown>>,
   ) => readonly PendingAccountOperation[];
   readonly compensate: (operations: readonly PendingAccountOperation[]) => void;
+  readonly cancelReadded: (
+    previousProviders: Readonly<Record<string, unknown>>,
+    nextProviders: Readonly<Record<string, unknown>>,
+  ) => void;
   readonly scheduleRecovery: (operations: readonly PendingAccountOperation[]) => void;
   readonly finalizeAfterDrain: (
     operations: readonly PendingAccountOperation[],
@@ -43,6 +48,8 @@ function isOAuthProviderEntry(value: unknown): boolean {
 export function createAccountRemovalCoordinator(options: {
   readonly file: AtomicConfigFile | undefined;
   readonly repository: PluginRepository | undefined;
+  readonly enqueue?: FifoQueue;
+  readonly canDeleteAccount?: (providerId: string) => boolean;
   readonly onRecoveryNeeded?: (nextRunAt: number) => void;
 }): AccountRemovalCoordinator {
   const stageRemoved: AccountRemovalCoordinator["stageRemoved"] = (previousProviders, nextProviders) => {
@@ -81,14 +88,34 @@ export function createAccountRemovalCoordinator(options: {
     for (const operation of operations) options.repository?.compensateAccountOperation(operation.operationId);
   };
 
+  const cancelReadded: AccountRemovalCoordinator["cancelReadded"] = (previousProviders, nextProviders) => {
+    if (options.repository === undefined) return;
+    const readded = new Set(
+      Object.keys(nextProviders).filter((providerId) => !Object.hasOwn(previousProviders, providerId)),
+    );
+    if (readded.size === 0) return;
+    for (const operation of options.repository.listPendingAccountOperations()) {
+      if (operation.kind === "delete" && readded.has(operation.providerId)) {
+        options.repository.completeAccountOperation(operation.operationId);
+      }
+    }
+  };
+
   async function finalizeIfStillAbsent(operation: PendingAccountOperation): Promise<void> {
-    if (options.file === undefined || options.repository === undefined) return;
-    await options.file.transaction(async (current) => {
+    const { file, repository } = options;
+    if (file === undefined || repository === undefined) return;
+    await file.transaction(async (current) => {
+      const pending = repository
+        .listPendingAccountOperations?.()
+        .some((candidate) => candidate.operationId === operation.operationId);
+      if (pending === false) return { next: current, result: undefined };
       const providers = asProviderRecord(current["providers"]);
       if (Object.hasOwn(providers, operation.providerId)) {
-        options.repository?.completeAccountOperation(operation.operationId);
+        repository.completeAccountOperation(operation.operationId);
+      } else if (!(options.canDeleteAccount ?? (() => true))(operation.providerId)) {
+        scheduleRecovery([operation]);
       } else {
-        options.repository?.finalizeDeleteOperation(operation.operationId);
+        repository.finalizeDeleteOperation(operation.operationId);
       }
       return { next: current, result: undefined };
     });
@@ -107,7 +134,7 @@ export function createAccountRemovalCoordinator(options: {
     return Promise.all(
       operations.map(async (operation) => {
         await retired?.whenProviderDrained(operation.providerId);
-        await finalizeIfStillAbsent(operation);
+        await (options.enqueue ?? ((fn) => fn()))(() => finalizeIfStillAbsent(operation));
       }),
     )
       .then(() => undefined)
@@ -117,5 +144,5 @@ export function createAccountRemovalCoordinator(options: {
       });
   };
 
-  return { compensate, finalizeAfterDrain, scheduleRecovery, stageRemoved };
+  return { cancelReadded, compensate, finalizeAfterDrain, scheduleRecovery, stageRemoved };
 }

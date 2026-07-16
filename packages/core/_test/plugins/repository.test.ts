@@ -392,7 +392,7 @@ describe("pending operation compensation", () => {
     }
   });
 
-  test("blocks multiple pending deletes and prevents an old delete marker from deleting a recreated provider id", () => {
+  test("blocks recreation while a delete is pending and prevents its old marker from deleting a recreated id", () => {
     const { handle, repository } = openRepository();
     try {
       createAccount(repository);
@@ -402,15 +402,6 @@ describe("pending operation compensation", () => {
         providerId: "provider-1",
         expectedRuntimeRevision: 1,
       });
-      expect(() =>
-        repository.stageAccountOperation({
-          kind: "delete",
-          targetDigest: "absent",
-          providerId: "provider-1",
-          expectedRuntimeRevision: 1,
-        }),
-      ).toThrow();
-
       repository.deleteAccount("provider-1");
       expect(() =>
         repository.stageAccountOperation({
@@ -429,6 +420,62 @@ describe("pending operation compensation", () => {
       repository.completeAccountOperation(recreated.operationId);
       expect(repository.finalizeDeleteOperation(pending.operationId)).toBe("superseded");
       expect(repository.readAccount("provider-1")).toMatchObject({ credential: { accessToken: "new-incarnation" } });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("a later delete atomically supersedes the stale delete marker", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      const first = repository.stageAccountOperation({
+        kind: "delete",
+        targetDigest: "absent",
+        providerId: "provider-1",
+        expectedRuntimeRevision: 1,
+      });
+      const second = repository.stageAccountOperation({
+        kind: "delete",
+        targetDigest: "absent",
+        providerId: "provider-1",
+        expectedRuntimeRevision: 1,
+      });
+
+      expect(second.operationId).not.toBe(first.operationId);
+      expect(repository.finalizeDeleteOperation(first.operationId)).toBe("superseded");
+      expect(repository.listPendingAccountOperations()).toEqual([second]);
+      expect(repository.finalizeDeleteOperation(second.operationId)).toBe("deleted");
+      expect(repository.readAccount("provider-1")).toBeNull();
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("reports an incompatible pending operation as a named conflict", () => {
+    const { handle, repository } = openRepository();
+    try {
+      createAccount(repository);
+      repository.stageAccountOperation({
+        kind: "update",
+        targetDigest: "digest:update",
+        expectedRuntimeRevision: 1,
+        account: account("provider-1", { options: { generation: 2 } }),
+      });
+
+      expect(() =>
+        repository.stageAccountOperation({
+          kind: "delete",
+          targetDigest: "absent",
+          providerId: "provider-1",
+          expectedRuntimeRevision: 2,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          name: "PendingAccountOperationConflictError",
+          providerId: "provider-1",
+        }),
+      );
     } finally {
       handle.close();
     }

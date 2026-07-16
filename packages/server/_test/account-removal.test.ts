@@ -203,6 +203,44 @@ test("a failed delete finalizer re-arms recovery at the marker deadline", async 
   expect(scheduled).toEqual([456 + PENDING_OPERATION_TTL_MS, 456 + PENDING_OPERATION_TTL_MS]);
 });
 
+test("final deletion runs through the FIFO and stays pending while a snapshot still references the account", async () => {
+  const events: string[] = [];
+  const scheduled: number[] = [];
+  const operation = {
+    operationId: "delete:person",
+    providerId: "person",
+    kind: "delete" as const,
+    targetDigest: ABSENT_PROVIDER_DIGEST,
+    appliedRevision: 1,
+    createdAt: 789,
+  };
+  const coordinator = createAccountRemovalCoordinator({
+    file: {
+      transaction: async (fn: (current: Record<string, unknown>) => Promise<unknown>) => {
+        events.push("config-lock");
+        return fn({ providers: {} });
+      },
+    },
+    repository: {
+      finalizeDeleteOperation() {
+        events.push("deleted");
+        return "deleted";
+      },
+    },
+    enqueue: async (fn: () => Promise<unknown>) => {
+      events.push("fifo");
+      return fn();
+    },
+    canDeleteAccount: () => false,
+    onRecoveryNeeded: (nextRunAt: number) => scheduled.push(nextRunAt),
+  } as never);
+
+  await coordinator.finalizeAfterDrain([operation], undefined);
+
+  expect(events).toEqual(["fifo", "config-lock"]);
+  expect(scheduled).toEqual([789 + PENDING_OPERATION_TTL_MS, 789 + PENDING_OPERATION_TTL_MS]);
+});
+
 test("coordinates absent digest, snapshot drainage, and final config recheck", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-account-removal-"));
   const configPath = join(home, "config.json");

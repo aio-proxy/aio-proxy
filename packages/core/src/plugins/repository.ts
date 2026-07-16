@@ -70,6 +70,17 @@ export type StageAccountOperationInput =
       readonly expectedRuntimeRevision: number;
     };
 
+export class PendingAccountOperationConflictError extends Error {
+  override readonly name = "PendingAccountOperationConflictError";
+
+  constructor(
+    readonly providerId: string,
+    readonly pendingKind: PendingAccountOperation["kind"],
+  ) {
+    super("PENDING_ACCOUNT_OPERATION_CONFLICT");
+  }
+}
+
 export type PluginRepository = {
   readonly readPluginSecret: (plugin: string) => PluginSecretSnapshot | null;
   readonly writePluginSecret: (plugin: string, expectedRevision: number | null, value: unknown) => PluginSecretSnapshot;
@@ -245,13 +256,17 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
     return encodeJson(left) === encodeJson(right);
   }
 
-  function assertNoPendingOperation(providerId: string): void {
-    const pending = sqlite
-      .query<{ readonly operation_id: string }, [string]>(
-        "SELECT operation_id FROM oauth_pending_operation WHERE provider_id = ? LIMIT 1",
+  function pendingForProvider(providerId: string): Pick<PendingRow, "operation_id" | "kind"> | null {
+    return sqlite
+      .query<Pick<PendingRow, "operation_id" | "kind">, [string]>(
+        "SELECT operation_id, kind FROM oauth_pending_operation WHERE provider_id = ? LIMIT 1",
       )
       .get(providerId);
-    if (pending !== null) throw new Error("Account already has a pending operation");
+  }
+
+  function assertNoPendingOperation(providerId: string): void {
+    const pending = pendingForProvider(providerId);
+    if (pending !== null) throw new PendingAccountOperationConflictError(providerId, pending.kind);
   }
 
   function replaceCatalog(providerId: string, value: StoredCatalog): void {
@@ -494,7 +509,10 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           }
 
           const providerId = input.kind === "update" ? input.account.providerId : input.providerId;
-          assertNoPendingOperation(providerId);
+          const pending = pendingForProvider(providerId);
+          if (pending !== null && (input.kind !== "delete" || pending.kind !== "delete")) {
+            throw new PendingAccountOperationConflictError(providerId, pending.kind);
+          }
           const current = selectAccount.get(providerId);
           if (current === null || current.runtime_revision !== input.expectedRuntimeRevision) {
             throw new Error("Account runtime revision mismatch");
@@ -502,6 +520,9 @@ export function createPluginRepository(sqlite: Database): PluginRepository {
           const rollback = snapshot(current);
 
           if (input.kind === "delete") {
+            if (pending !== null) {
+              sqlite.query("DELETE FROM oauth_pending_operation WHERE operation_id = ?").run(pending.operation_id);
+            }
             return insertPending(providerId, "delete", input.targetDigest, current.runtime_revision, current.revision, {
               previous: rollback,
               applied: childSnapshot(providerId),

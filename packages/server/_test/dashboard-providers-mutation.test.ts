@@ -367,6 +367,53 @@ describe("dashboard provider CRUD", () => {
     }
   });
 
+  test("Dashboard DELETE returns 409 for an incompatible pending account operation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-dashboard-oauth-conflict-"));
+    const isolatedConfigPath = join(dir, "config.json");
+    const provider = { kind: "oauth", plugin: "@example/oauth", capability: "default" };
+    const input = { providers: { person: provider } };
+    writeFileSync(isolatedConfigPath, JSON.stringify(input));
+    const handle = openDb({ home: dir });
+    const repository = createPluginRepository(handle.sqlite);
+    seedOAuthAccount(repository);
+    repository.stageAccountOperation({
+      kind: "update",
+      targetDigest: "update",
+      expectedRuntimeRevision: 1,
+      account: {
+        providerId: "person",
+        plugin: "@example/oauth",
+        capability: "default",
+        fingerprint: "person@example.com",
+        options: { generation: 2 },
+        secrets: {},
+        credential: { token: "secret" },
+        catalog: { kind: "preserve", diagnostic: repository.readDiagnostics("person")[0] as never },
+      },
+    });
+    const state = await createServerState({
+      config: ConfigSchema.parse(input),
+      configPath: isolatedConfigPath,
+      pluginRepository: repository,
+      watchConfig: false,
+    });
+    const routes = createDashboardRoutes(state);
+
+    try {
+      const response = await routes.request("/providers/person", { method: "DELETE" });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "provider account cleanup pending", id: "person" });
+      expect(
+        (JSON.parse(readFileSync(isolatedConfigPath, "utf8")) as { providers: Record<string, unknown> }).providers,
+      ).toEqual({ person: provider });
+      expect(repository.readAccount("person")).not.toBeNull();
+    } finally {
+      state.close();
+      handle.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("12. DELETE nonexistent provider returns 404", async () => {
     const res = await req("DELETE", "/providers/ghost");
     expect(res.status).toBe(404);
