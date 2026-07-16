@@ -1378,6 +1378,104 @@ test("scheduled recovery waits behind an in-flight config mutation in the server
   }
 });
 
+test("startup recovery retains a delete marker while the disk provider has not committed to the Router", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-startup-delete-recovery-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      providers: {
+        person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+      },
+    }),
+  );
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  const account = repository.readAccount("person");
+  if (account === null) throw new Error("account fixture missing");
+  const pending = repository.stageAccountOperation({
+    kind: "delete",
+    targetDigest: "absent",
+    providerId: "person",
+    expectedRuntimeRevision: account.runtimeRevision,
+  });
+  handle.sqlite
+    .query("UPDATE oauth_pending_operation SET created_at = 0 WHERE operation_id = ?")
+    .run(pending.operationId);
+  const now = PENDING_OPERATION_TTL_MS + 1;
+  const recoveryScheduler = createManualRecoveryScheduler(now);
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    __test: { recoveryScheduler: recoveryScheduler.hooks },
+  } as never);
+
+  try {
+    expect(repository.readAccount("person")).not.toBeNull();
+    expect(repository.listPendingAccountOperations()).toHaveLength(1);
+    expect(recoveryScheduler.nextRunAt()).toBe(now + RECOVERY_DRAIN_RETRY_MS);
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("scheduled recovery retains a delete marker when disk re-add has not committed to the Router", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-scheduled-delete-recovery-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  const account = repository.readAccount("person");
+  if (account === null) throw new Error("account fixture missing");
+  const pending = repository.stageAccountOperation({
+    kind: "delete",
+    targetDigest: "absent",
+    providerId: "person",
+    expectedRuntimeRevision: account.runtimeRevision,
+  });
+  const recoveryScheduler = createManualRecoveryScheduler(pending.createdAt);
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    __test: { recoveryScheduler: recoveryScheduler.hooks },
+  } as never);
+
+  try {
+    const deadline = pending.createdAt + PENDING_OPERATION_TTL_MS;
+    expect(recoveryScheduler.nextRunAt()).toBe(deadline);
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        providers: {
+          person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+        },
+      }),
+    );
+
+    recoveryScheduler.advanceTo(deadline);
+    await waitUntil(() => recoveryScheduler.nextRunAt() === deadline + RECOVERY_DRAIN_RETRY_MS);
+
+    expect(repository.readAccount("person")).not.toBeNull();
+    expect(repository.listPendingAccountOperations()).toEqual([pending]);
+    expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("a rejected recovery run is logged with a fixed payload and retried", async () => {
   jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-rejection-"));

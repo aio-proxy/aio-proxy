@@ -68,6 +68,7 @@ export type RecoverPendingAccountOperationsOptions =
   | {
       readonly mode: "server";
       readonly canDeleteAccount: (providerId: string) => boolean;
+      readonly deleteMarkerOnProviderPresent?: "complete" | "retain";
       readonly now?: () => number;
     };
 
@@ -745,7 +746,11 @@ export async function recoverPendingAccountOperations(
           repository.completeAccountOperation(operation.operationId);
         }
       } else if (operation.kind === "delete") {
-        repository.completeAccountOperation(operation.operationId);
+        if (options.mode === "server" && options.deleteMarkerOnProviderPresent === "retain") {
+          nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
+        } else {
+          repository.completeAccountOperation(operation.operationId);
+        }
       } else {
         const status = repository.compensateAccountOperation(operation.operationId);
         if (status === "superseded") {

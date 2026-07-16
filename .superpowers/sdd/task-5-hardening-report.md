@@ -228,3 +228,86 @@ server TypeScript noEmit: exit 2 on the same unrelated dashboard route/provider-
 - `packages/server/_test/account-removal.test.ts`: added explicit no-complete/no-delete plus double-schedule coverage for disk presence, and corrected the direct disk-side re-add test to retain its marker.
 - `packages/server/_test/plugin-snapshot.test.ts`: releases `readdedLease` before `oldestLease`, asserts the account and second marker survive, then permits physical deletion only after the oldest lease drains.
 - Self-review found no async gap between the config presence check, snapshot fence, and repository finalization. A canceled marker is still detected by the pending-operation liveness check, so an old finalizer cannot re-arm or delete after a successful commit cancels it.
+
+## Recovery policy re-review remediation (2026-07-16)
+
+### RED
+
+Added startup and scheduled server-state recovery tests where the config file contains the provider but the current Router does not. Both tests exercise the real server FIFO/recovery scheduler and require the delete marker to remain pending with a bounded retry.
+
+```sh
+PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun test packages/server/_test/plugin-snapshot.test.ts --test-name-pattern "(startup|scheduled) recovery retains a delete marker"
+```
+
+Actual output before the production change:
+
+```text
+(fail) startup recovery retains a delete marker while the disk provider has not committed to the Router
+Expected length: 1
+Received length: 0
+
+(fail) scheduled recovery retains a delete marker when disk re-add has not committed to the Router
+error: timed out waiting for condition
+
+0 pass
+2 fail
+```
+
+The startup recovery completed the marker immediately, and scheduled recovery completed it instead of arranging the required drain retry.
+
+### GREEN
+
+`recoverPendingAccountOperations` now has an explicit server-only `deleteMarkerOnProviderPresent` policy. Its default remains `complete`, preserving existing direct/core and CLI behavior. All three server-state recovery calls explicitly use `retain`, so only the successful config commit path's `cancelReadded` clears a delete marker for a present provider.
+
+Because server tests load `@aio-proxy/core` through its built workspace package, core was rebuilt before rerunning the new tests:
+
+```sh
+PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun run --filter @aio-proxy/core build
+PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun test packages/server/_test/plugin-snapshot.test.ts --test-name-pattern "(startup|scheduled) recovery retains a delete marker"
+```
+
+Actual output:
+
+```text
+65 files generated in dist; build exit 0
+2 pass
+0 fail
+8 expect() calls
+```
+
+Task 5 focused command:
+
+```sh
+PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun test packages/core/_test/plugins/repository.test.ts packages/server/_test/account-removal.test.ts packages/server/_test/plugin-snapshot.test.ts packages/server/_test/dashboard-providers-mutation.test.ts
+```
+
+Actual output:
+
+```text
+103 pass
+0 fail
+365 expect() calls
+Ran 103 tests across 4 files. [4.76s]
+```
+
+Related regressions:
+
+```sh
+PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun test packages/core/_test/plugins/account-login.test.ts packages/server/_test/config-store.test.ts packages/server/_test/server-reload.test.ts
+```
+
+Actual output:
+
+```text
+56 pass
+0 fail
+231 expect() calls
+Ran 56 tests across 3 files. [6.59s]
+```
+
+Verification:
+
+```text
+Biome on the three changed source/test files: exit 0 (pre-existing informational useLiteralKeys notices only)
+git diff --check: exit 0
+```

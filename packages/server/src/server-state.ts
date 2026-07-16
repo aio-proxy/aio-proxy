@@ -186,7 +186,12 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       recoverAccounts(
         configFile,
         repository,
-        { mode: "server", canDeleteAccount: () => true, now: recoveryScheduler.now },
+        {
+          mode: "server",
+          canDeleteAccount: () => true,
+          deleteMarkerOnProviderPresent: "retain",
+          now: recoveryScheduler.now,
+        },
         {
           factory: diagnostics,
           logger: pluginLogger,
@@ -388,7 +393,12 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       const result = await recoverAccounts(
         configFile,
         repository,
-        { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
+        {
+          mode: "server",
+          canDeleteAccount: manager.canDeleteAccount,
+          deleteMarkerOnProviderPresent: "retain",
+          now: recoveryScheduler.now,
+        },
         { factory: diagnostics, logger: pluginLogger },
       );
       if (closed || generation !== recoveryGeneration) return;
@@ -431,7 +441,12 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       recoverAccounts(
         configFile,
         repository,
-        { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
+        {
+          mode: "server",
+          canDeleteAccount: manager.canDeleteAccount,
+          deleteMarkerOnProviderPresent: "retain",
+          now: recoveryScheduler.now,
+        },
         { factory: diagnostics, logger: pluginLogger },
       ),
     );
