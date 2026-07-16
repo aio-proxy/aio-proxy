@@ -680,7 +680,7 @@ describe("loopback authorization", () => {
     await expectPortAvailable(port);
   });
 
-  test("fixed-port bind failure only continues after explicit manual-only confirmation", async () => {
+  test("fixed-port bind failure is terminal and never opens the occupied redirect URI", async () => {
     setInteractive(true);
     const occupied = Bun.serve({
       hostname: "127.0.0.1",
@@ -694,24 +694,18 @@ describe("loopback authorization", () => {
     });
 
     try {
-      const denied = createDeps({ confirmManualOnly: async () => false });
-      await expect(runLoopbackAuthorization(fixedRequest, denied.deps)).rejects.toBeInstanceOf(
+      let confirmed = false;
+      const created = createDeps({
+        confirmManualOnly: async () => {
+          confirmed = true;
+          return false;
+        },
+      });
+      await expect(runLoopbackAuthorization(fixedRequest, created.deps)).rejects.toBeInstanceOf(
         LoopbackPortUnavailableError,
       );
-
-      let confirmedUri = "";
-      const allowed = createDeps({
-        confirmManualOnly: async (redirectUri) => {
-          confirmedUri = redirectUri;
-          return true;
-        },
-        readManualCallbackUrl: async () => `${confirmedUri}?code=manual-only&state=expected-state`,
-      });
-      await expect(runLoopbackAuthorization(fixedRequest, allowed.deps)).resolves.toEqual({
-        code: "manual-only",
-        redirectUri: `http://localhost:${fixedPort}/auth/callback`,
-      });
-      expect(confirmedUri).toBe(`http://localhost:${fixedPort}/auth/callback`);
+      expect(confirmed).toBe(false);
+      expect(created.opened).toEqual([]);
     } finally {
       await occupied.stop(true);
     }

@@ -15,9 +15,9 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-import { openBrowser } from "./browser";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
+import { openBrowser } from "./open-browser";
 import {
   FormJsonInvalidError,
   FormNumberInvalidError,
@@ -29,9 +29,9 @@ import {
   pluginPrune,
   pluginRemove,
 } from "./plugin-commands";
+import { isProviderLoginUserError } from "./plugin-commands/provider-login";
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
 
-setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
 
 const DEFAULT_CONFIG = {
@@ -183,7 +183,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   provider
     .command("login [capability]")
     .description(m.cli_provider_login_description())
-    .option("--provider <id>")
+    .option("--provider <id>", m.cli_provider_login_option_provider_description())
     .action(providerLogin);
   provider
     .command("test <provider-id>")
@@ -225,34 +225,30 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
+    setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {
-    if (err instanceof ServeListenError) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    if (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    if (
-      err instanceof FormNumberInvalidError ||
-      err instanceof FormJsonInvalidError ||
-      err instanceof FormSchemaValidationError ||
-      (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
-    ) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    const formatted = formatUserError(err, getLocale());
+    const formatted = formatCliError(err, getLocale());
     console.error(formatted.message);
     process.exitCode = 1;
   }
 };
+
+export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
+  if (
+    err instanceof ServeListenError ||
+    isProviderLoginUserError(err) ||
+    (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
+    err instanceof FormNumberInvalidError ||
+    err instanceof FormJsonInvalidError ||
+    err instanceof FormSchemaValidationError ||
+    (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
+  ) {
+    return { message: err.message };
+  }
+  return formatUserError(err, locale);
+}
 
 if (import.meta.main) {
   await main();

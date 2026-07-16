@@ -14,6 +14,7 @@ import {
   BuiltInPluginRemovalError,
   createCliPluginDiagnosticFactory,
   createDefaultPluginLifecycleDeps,
+  createPluginConfirmation,
   PluginConfigChangedError,
   PluginConfirmationRequiredError,
   PluginDescriptorInvalidError,
@@ -41,6 +42,17 @@ test("default plugin lifecycle dependencies bind embedded built-ins", () => {
   } finally {
     deps.close?.();
   }
+});
+
+test("plugin trust and destructive confirmation defaults to no", async () => {
+  let observed: { readonly message: string; readonly default?: boolean } | undefined;
+  const confirm = createPluginConfirmation(async (config) => {
+    observed = config;
+    return false;
+  });
+
+  await expect(confirm("Trust this plugin?")).resolves.toBe(false);
+  expect(observed).toEqual({ message: "Trust this plugin?", default: false });
 });
 
 function harness(initial: Record<string, unknown> = { providers: {}, plugins: [] }) {

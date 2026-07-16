@@ -3,7 +3,12 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ProviderAccountAlreadyExistsError } from "@aio-proxy/core";
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import packageJson from "../package.json" with { type: "json" };
+import { formatCliError } from "../src/main";
+import { LoopbackPortUnavailableError } from "../src/plugin-commands/loopback";
+import { localizeProviderLoginUserError, ProviderCapabilityNotFoundError } from "../src/plugin-commands/provider-login";
 import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "./cli-test-helpers";
 
 describe("cli", () => {
@@ -122,8 +127,31 @@ describe("cli", () => {
     expect(install).not.toContain("<pkg>");
     expect(login).toContain("[capability]");
     expect(login).toContain("--provider <id>");
+    expect(login).toContain("Re-login an existing OAuth provider by id.");
     expect(probe).toContain("<provider-id>");
     expect(probe).not.toContain("<id>");
+  });
+
+  test("top-level rendering preserves only safe provider-login and loopback errors", async () => {
+    const originalLocale = getLocale();
+    await setLocale("en");
+    try {
+      const missing = formatCliError(new ProviderCapabilityNotFoundError("missing"), "en");
+      const conflict = formatCliError(
+        localizeProviderLoginUserError(new ProviderAccountAlreadyExistsError("existing")),
+        "en",
+      );
+      const loopback = formatCliError(new LoopbackPortUnavailableError(1455), "en");
+      const unknown = formatCliError(new Error("unknown plugin secret"), "en");
+
+      expect(missing.message).toBe("OAuth capability missing was not found.");
+      expect(conflict.message).toContain("provider existing");
+      expect(loopback.message).toBe("The local callback listener could not use port 1455.");
+      expect(unknown.message).toBe("Unexpected internal error.");
+      expect(unknown.message).not.toContain("unknown plugin secret");
+    } finally {
+      await setLocale(originalLocale);
+    }
   });
 
   test("dashboard command reports not-yet-implemented on stderr and exits 2", () => {

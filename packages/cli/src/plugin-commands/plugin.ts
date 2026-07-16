@@ -156,6 +156,12 @@ export function createCliPluginDiagnosticFactory(): DiagnosticFactory {
   return createPluginDiagnosticFactory();
 }
 
+export function createPluginConfirmation(
+  prompt: typeof confirm = confirm,
+): (message: string, signal?: AbortSignal) => Promise<boolean> {
+  return (message, signal) => prompt({ message, default: false }, signal === undefined ? undefined : { signal });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -380,7 +386,7 @@ export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {
     builtIns: createEmbeddedBuiltIns(),
     isTTY: process.stdin.isTTY === true,
     prompts: { input, password, confirm, select },
-    confirm: (message, signal) => confirm({ message }, signal === undefined ? undefined : { signal }),
+    confirm: createPluginConfirmation(),
     npmAdd,
     withInstalledNpmPackage,
     withNpmPackageLifecycle,

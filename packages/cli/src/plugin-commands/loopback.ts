@@ -108,6 +108,26 @@ export class LoopbackAuthorizationUrlBuildError extends Error {
   }
 }
 
+const loopbackUserErrors = [
+  AuthorizationUrlInvalidError,
+  LoopbackRequestInvalidError,
+  LoopbackCallbackInvalidError,
+  LoopbackCallbackMismatchError,
+  LoopbackStateMismatchError,
+  LoopbackCodeMissingError,
+  LoopbackOAuthError,
+  LoopbackTimeoutError,
+  LoopbackAbortedError,
+  LoopbackPortUnavailableError,
+  LoopbackManualInputError,
+  LoopbackManualConfirmationError,
+  LoopbackAuthorizationUrlBuildError,
+] as const;
+
+export function isLoopbackUserError(error: unknown): error is Error {
+  return error instanceof Error && loopbackUserErrors.some((errorType) => error instanceof errorType);
+}
+
 type LoopbackResult = { readonly code: string; readonly redirectUri: string };
 type Settlement = { readonly ok: true; readonly value: LoopbackResult } | { readonly ok: false; readonly error: Error };
 type LoopbackServer = ReturnType<typeof Bun.serve>;
@@ -312,23 +332,7 @@ export async function runLoopbackAuthorization(
       }
       expectedRedirectUri = redirectUri(request, server.port);
     } catch {
-      if (request.redirect.port === "dynamic") {
-        throw new LoopbackPortUnavailableError(0);
-      }
-      expectedRedirectUri = redirectUri(request, request.redirect.port);
-      if (request.allowManualCallbackUrl && process.stdin.isTTY === true) {
-        let confirmed: boolean;
-        try {
-          confirmed = await deps.confirmManualOnly(expectedRedirectUri);
-        } catch {
-          throw new LoopbackManualConfirmationError();
-        }
-        if (!confirmed) {
-          throw new LoopbackPortUnavailableError(request.redirect.port);
-        }
-      } else {
-        throw new LoopbackPortUnavailableError(request.redirect.port);
-      }
+      throw new LoopbackPortUnavailableError(requestedPort);
     }
 
     if (deps.signal.aborted) {

@@ -35,9 +35,10 @@ import {
   resolveLocalizedText,
 } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
-import { openBrowser } from "../browser";
+import { openBrowser } from "../open-browser";
 import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from "./authorization";
 import { type PluginFormPrompts, renderConfigSpec } from "./form";
+import { isLoopbackUserError } from "./loopback";
 import { createCliPluginDiagnosticFactory } from "./plugin";
 
 type ConfigRecord = Record<string, unknown>;
@@ -101,6 +102,22 @@ export class ProviderCapabilityMismatchError extends Error {
   }
 }
 
+export class ProviderTargetNotFoundError extends Error {
+  override readonly name = "ProviderTargetNotFoundError";
+
+  constructor(readonly providerId: string) {
+    super(m.cli_provider_login_error_target_not_found({ provider: providerId }));
+  }
+}
+
+export class ProviderTargetInvalidError extends Error {
+  override readonly name = "ProviderTargetInvalidError";
+
+  constructor(readonly providerId: string) {
+    super(m.cli_provider_login_error_target_invalid({ provider: providerId }));
+  }
+}
+
 type CapabilitySelectPrompt = (config: {
   readonly message: string;
   readonly choices: readonly { readonly name: string; readonly value: string }[];
@@ -123,7 +140,7 @@ export function createManualOnlyConfirmation(
   signal: AbortSignal,
   prompt: typeof confirm = confirm,
 ): (redirectUri: string) => Promise<boolean> {
-  return (redirectUri) => prompt({ message: redirectUri }, { signal });
+  return (redirectUri) => prompt({ message: redirectUri, default: false }, { signal });
 }
 
 function isRecord(value: unknown): value is ConfigRecord {
@@ -155,7 +172,7 @@ async function choose(
   deps: Pick<ProviderLoginDeps, "isTTY" | "selectCapability">,
 ): Promise<OAuthCapabilityReference> {
   const available = allCapabilities(registry);
-  let candidates: readonly OAuthCapabilityReference[];
+  let candidates: ReturnType<typeof allCapabilities>;
   if (inputValue === undefined) {
     candidates = available;
   } else {
@@ -194,6 +211,9 @@ async function targetCapability(providerId: string, config: AtomicConfigFile): P
   return config.transaction(async (current) => {
     const providers = isRecord(current["providers"]) ? current["providers"] : {};
     const entry = providers[providerId];
+    if (entry === undefined) {
+      throw new ProviderTargetNotFoundError(providerId);
+    }
     if (
       !isRecord(entry) ||
       entry["kind"] !== "oauth" ||
@@ -201,7 +221,7 @@ async function targetCapability(providerId: string, config: AtomicConfigFile): P
       typeof entry["plugin"] !== "string" ||
       typeof entry["capability"] !== "string"
     ) {
-      throw new AccountCleanupPendingError(providerId);
+      throw new ProviderTargetInvalidError(providerId);
     }
     return {
       next: current,
@@ -277,7 +297,7 @@ export async function createProviderLoginDefaultDeps(
   }
 }
 
-function localizedProviderLoginError(error: unknown): unknown {
+export function localizeProviderLoginUserError(error: unknown): unknown {
   if (error instanceof ProviderAccountAlreadyExistsError) {
     error.message = m.cli_provider_login_error_account_exists({
       provider: error.existingProviderId,
@@ -312,6 +332,33 @@ function localizedProviderLoginError(error: unknown): unknown {
     error.message = m.cli_provider_login_error_provider_id_collision({ provider: error.providerId });
   }
   return error;
+}
+
+const providerLoginUserErrors = [
+  ProviderCapabilityNotFoundError,
+  ProviderCapabilityAmbiguousError,
+  ProviderCapabilityMismatchError,
+  ProviderTargetNotFoundError,
+  ProviderTargetInvalidError,
+  ProviderAccountAlreadyExistsError,
+  AccountCleanupPendingError,
+  ProviderAccountChangedError,
+  ProviderFingerprintMismatchError,
+  ProviderCapabilityTargetMismatchError,
+  OAuthLoginResultValidationError,
+  AccountOptionsValidationError,
+  ProviderConfigInvalidError,
+  OAuthLoginTimeoutError,
+  OAuthCapabilityRequiredError,
+  OAuthCapabilityUnavailableError,
+  ProviderIdCollisionError,
+] as const;
+
+export function isProviderLoginUserError(error: unknown): error is Error {
+  return (
+    isLoopbackUserError(error) ||
+    (error instanceof Error && providerLoginUserErrors.some((errorType) => error instanceof errorType))
+  );
 }
 
 export async function providerLogin(
@@ -350,7 +397,7 @@ export async function providerLogin(
     });
     deps.print(result.providerId);
   } catch (error) {
-    const localized = localizedProviderLoginError(error);
+    const localized = localizeProviderLoginUserError(error);
     if (localized instanceof ProviderAccountAlreadyExistsError) deps.print(localized.suggestedCommand);
     throw localized;
   } finally {

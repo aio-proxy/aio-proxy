@@ -17,10 +17,13 @@ import {
   createCapabilitySelector,
   createManualOnlyConfirmation,
   createProviderLoginDefaultDeps,
+  localizeProviderLoginUserError,
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityMismatchError,
   ProviderCapabilityNotFoundError,
   type ProviderLoginDeps,
+  ProviderTargetInvalidError,
+  ProviderTargetNotFoundError,
   providerLogin,
 } from "../src/plugin-commands/provider-login";
 
@@ -143,13 +146,16 @@ describe("generic provider login capability resolution", () => {
 
   test("manual-only confirmation uses the login signal", async () => {
     const controller = new AbortController();
+    let observedConfig: { readonly message: string; readonly default?: boolean } | undefined;
     let observedSignal: AbortSignal | undefined;
-    const confirmManualOnly = createManualOnlyConfirmation(controller.signal, async (_config, context) => {
+    const confirmManualOnly = createManualOnlyConfirmation(controller.signal, async (config, context) => {
+      observedConfig = config;
       observedSignal = context?.signal;
       return true;
     });
     await expect(confirmManualOnly("http://127.0.0.1/callback")).resolves.toBe(true);
     expect(observedSignal).toBe(controller.signal);
+    expect(observedConfig).toEqual({ message: "http://127.0.0.1/callback", default: false });
   });
 
   test("accepts canonical references and persists canonical plugin/capability", async () => {
@@ -280,11 +286,25 @@ describe("generic provider login capability resolution", () => {
     );
   });
 
-  test("missing target is cleanup-pending and unavailable canonical reference is typed", async () => {
+  test("distinguishes missing, invalid, and cleanup-pending provider targets", async () => {
     const state = fixture();
-    await expect(providerLogin(undefined, { provider: "target" }, state.deps)).rejects.toMatchObject({
-      name: "AccountCleanupPendingError",
-    });
+    await expect(providerLogin(undefined, { provider: "target" }, state.deps)).rejects.toBeInstanceOf(
+      ProviderTargetNotFoundError,
+    );
+    const invalid = fixture({ kind: "api", protocol: "openai-compatible" });
+    await expect(providerLogin(undefined, { provider: "target" }, invalid.deps)).rejects.toBeInstanceOf(
+      ProviderTargetInvalidError,
+    );
+    const pending = fixture({ kind: "oauth", plugin: "@a/one", capability: "unique", enabled: true });
+    pending.deps = {
+      ...pending.deps,
+      login: async () => {
+        throw new AccountCleanupPendingError("target");
+      },
+    };
+    await expect(providerLogin(undefined, { provider: "target" }, pending.deps)).rejects.toThrow(
+      "Provider target is pending account cleanup.",
+    );
     await expect(providerLogin("@missing/pkg#default", {}, state.deps)).rejects.toBeInstanceOf(
       ProviderCapabilityNotFoundError,
     );
@@ -292,6 +312,15 @@ describe("generic provider login capability resolution", () => {
     await expect(providerLogin(undefined, { provider: "target" }, unavailable.deps)).rejects.toBeInstanceOf(
       ProviderCapabilityNotFoundError,
     );
+  });
+
+  test("localizes only the closed provider-login user-error family", () => {
+    const accountConflict = localizeProviderLoginUserError(new ProviderAccountAlreadyExistsError("existing"));
+    expect(accountConflict).toBeInstanceOf(ProviderAccountAlreadyExistsError);
+    expect((accountConflict as Error).message).toContain("provider existing");
+    const unknown = new Error("plugin secret");
+    expect(localizeProviderLoginUserError(unknown)).toBe(unknown);
+    expect(unknown.message).toBe("plugin secret");
   });
 
   test("duplicate account prints only the canonical re-login command and rethrows", async () => {
