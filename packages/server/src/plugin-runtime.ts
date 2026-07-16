@@ -7,6 +7,7 @@ import {
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
+  PluginSchemaContractError,
   parsePluginSchema,
   type StoredCatalog,
   validateConfigSpec,
@@ -280,7 +281,13 @@ export async function materializePluginProvider(
     return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id));
   }
 
-  const parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
+  let parsedCredential: Awaited<ReturnType<typeof parsePluginSchema>>;
+  try {
+    parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
+  } catch (error) {
+    if (error instanceof PluginSchemaContractError) return failure(options, "PLUGIN_LOAD_FAILED", false);
+    throw error;
+  }
   if (!parsedCredential.ok) {
     return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
   }

@@ -241,10 +241,11 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
   const plugins = new Map<string, LoadedPluginState>();
 
   for (const candidate of candidates(options)) {
-    const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
-    const secretValues = stringLeaves(secretOptions);
+    let secretValues: readonly string[] = [];
     let version: string | undefined;
     try {
+      const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
+      secretValues = stringLeaves(secretOptions);
       let descriptor: PluginDescriptor<unknown>;
       if (candidate.builtIn === undefined) {
         const installed = await findInstalledNpmPackage(candidate.packageName);

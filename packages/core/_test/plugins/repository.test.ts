@@ -600,6 +600,19 @@ describe("catalogs, diagnostics, plugin secrets, and refresh leases", () => {
     }
   });
 
+  test("corrupt plugin secret JSON is reported instead of treated as absent", () => {
+    const { handle, repository } = openRepository();
+    try {
+      handle.sqlite
+        .query("INSERT INTO plugin_secret (plugin, value_json, revision, updated_at) VALUES (?, ?, 1, ?)")
+        .run("@aio-proxy/corrupt", "{", Date.now());
+
+      expect(() => repository.readPluginSecret("@aio-proxy/corrupt")).toThrow(SyntaxError);
+    } finally {
+      handle.close();
+    }
+  });
+
   test("refresh lease acquisition, renewal, expiry takeover, and owner release are conditional", () => {
     const { handle, repository } = openRepository();
     try {

@@ -373,6 +373,32 @@ describe("loadPluginRegistry", () => {
     expect(snapshot.plugins.get("@example/builtin-options")?.state.status).toBe("failed");
   });
 
+  test("a throwing plugin secret reader fails only that plugin", async () => {
+    const broken = definePlugin(() => {});
+    const healthy = definePlugin((api) => api.oauth.register(adapter()));
+    const snapshot = await loadPluginRegistry(
+      options({
+        builtIns: [
+          { packageName: "@example/broken-secret", version: "1.0.0", descriptor: broken },
+          { packageName: "@example/healthy", version: "1.0.0", descriptor: healthy },
+        ],
+        secrets: {
+          readPluginSecret(plugin: string) {
+            if (plugin === "@example/broken-secret") throw new Error("secret read failed");
+            return undefined;
+          },
+        },
+      }),
+    );
+
+    expect(snapshot.plugins.get("@example/broken-secret")?.state).toMatchObject({
+      status: "failed",
+      diagnostic: { code: "PLUGIN_LOAD_FAILED" },
+    });
+    expect(snapshot.plugins.get("@example/healthy")?.state.status).toBe("ready");
+    expect(snapshot.registry.resolveOAuth("@example/healthy", "default")).toBeDefined();
+  });
+
   test("successful imports cache by packageName@version but setup reruns for each snapshot", async () => {
     install("@example/cached", "2.0.0");
     let imports = 0;

@@ -872,6 +872,41 @@ test("failed plugin setup remains snapshot data and does not block API or AI SDK
   }
 });
 
+test("corrupt stored plugin secret fails only that plugin and preserves healthy providers", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-corrupt-plugin-secret-"));
+  const handle = openDb({ home });
+  handle.sqlite
+    .query("INSERT INTO plugin_secret (plugin, value_json, revision, updated_at) VALUES (?, ?, 1, ?)")
+    .run("@example/broken", "{", Date.now());
+  const repository = createPluginRepository(handle.sqlite);
+  const state = await createServerState({
+    config: ConfigSchema.parse({
+      providers: {
+        stable: {
+          kind: "api",
+          protocol: "openai-compatible",
+          baseURL: "https://stable.example.test/v1",
+          models: ["stable-model"],
+        },
+      },
+    }),
+    pluginRepository: repository,
+    builtIns: [{ packageName: "@example/broken", version: "1.0.0", descriptor: definePlugin(() => {}) }],
+    pluginLogger: () => {},
+  });
+
+  try {
+    expect(state.currentProviderSnapshot().plugins.plugins.get("@example/broken")).toMatchObject({
+      state: { status: "failed", diagnostic: { code: "PLUGIN_LOAD_FAILED" } },
+    });
+    expect(state.currentProviderSnapshot().router.resolve("stable-model")[0]?.provider.id).toBe("stable");
+  } finally {
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("invalid and legacy provider summaries remain visible but never enter Router candidates", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-invalid-router-exclusion-"));
   const state = await createServerState({

@@ -859,6 +859,84 @@ test("only repairable existing-account failures suggest targeted provider login"
   ]);
 });
 
+test.each([
+  [
+    "throws",
+    {
+      safeParse() {},
+      safeParseAsync() {
+        throw new Error("schema exploded");
+      },
+    },
+  ],
+  [
+    "returns a malformed result",
+    {
+      safeParse() {},
+      async safeParseAsync() {
+        return { success: "yes" };
+      },
+    },
+  ],
+])("a credential schema that %s fails only its provider with a contract diagnostic", async (_name, schema) => {
+  const broken = runtimeFixture({ kind: "static" }, { providerId: "broken" });
+  const healthy = runtimeFixture({ kind: "static" }, { providerId: "healthy" });
+  const adapter = broken.plugins.registry.resolveOAuth("@example/oauth", "default");
+  if (adapter === undefined) throw new Error("adapter fixture missing");
+  const contexts: unknown[] = [];
+  const localDiagnostics: DiagnosticFactory = (code, options) => {
+    contexts.push({ code, ...options });
+    return diagnostics(code, options);
+  };
+  const config = (id: string) =>
+    ({
+      id,
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: "@example/oauth",
+      capability: "default",
+    }) as const;
+
+  const [brokenResult, healthyResult] = await Promise.all([
+    materializePluginProvider({
+      config: config("broken"),
+      repository: broken.repository,
+      plugins: {
+        ...broken.plugins,
+        registry: {
+          resolveOAuth: () => ({ ...adapter, credentials: schema }),
+          oauthCapabilities: () => [],
+        },
+      } as never,
+      diagnostics: localDiagnostics,
+      logger: () => {},
+      onDiagnosticChanged: () => {},
+    }),
+    materializePluginProvider({
+      config: config("healthy"),
+      repository: healthy.repository,
+      plugins: healthy.plugins,
+      diagnostics: localDiagnostics,
+      logger: () => {},
+      onDiagnosticChanged: () => {},
+    }),
+  ]);
+
+  expect(brokenResult.state).toMatchObject({
+    status: "unavailable",
+    diagnostic: { code: "PLUGIN_LOAD_FAILED" },
+  });
+  expect(brokenResult.state.diagnostic?.suggestedCommand).toBeUndefined();
+  expect(healthyResult.state.status).toBe("ready");
+  expect(contexts).toContainEqual({
+    code: "PLUGIN_LOAD_FAILED",
+    plugin: "@example/oauth",
+    capability: "default",
+    providerId: "broken",
+    retryable: false,
+  });
+});
+
 test("runtime creation timeout isolates a hung provider from another provider materialization", async () => {
   const hung = runtimeFixture({ kind: "static" }, { createRuntime: async () => new Promise<never>(() => {}) });
   const fast = runtimeFixture({ kind: "static" });

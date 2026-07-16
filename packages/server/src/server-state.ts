@@ -486,14 +486,26 @@ async function buildSnapshot(
       publicPluginOptions.set(provider.plugin, undefined);
     }
   }
-  const pluginOptionInputs = new Map(
-    [...publicPluginOptions].map(([packageName, publicOptions]) => [
-      packageName,
-      { public: publicOptions, secret: repository.readPluginSecret(packageName)?.value },
-    ]),
+  const pluginOptionInputs = new Map<
+    string,
+    { public: unknown; secret: unknown } | { public: unknown; error: unknown }
+  >(
+    [...publicPluginOptions].map(([packageName, publicOptions]) => {
+      try {
+        return [
+          packageName,
+          { public: publicOptions, secret: repository.readPluginSecret(packageName)?.value },
+        ] as const;
+      } catch (error) {
+        return [packageName, { public: publicOptions, error }] as const;
+      }
+    }),
   );
   const pluginOptionsDigests = new Map(
-    [...pluginOptionInputs].map(([packageName, input]) => [packageName, pluginOptionsIdentityDigest(input)]),
+    [...pluginOptionInputs].map(([packageName, input]) => [
+      packageName,
+      pluginOptionsIdentityDigest("error" in input ? { public: input.public, secret: undefined } : input),
+    ]),
   );
   const plugins = await loadPluginRegistry({
     enablements: config.plugins,
@@ -501,7 +513,13 @@ async function buildSnapshot(
     diagnostics,
     importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
     logger,
-    secrets: { readPluginSecret: (plugin) => pluginOptionInputs.get(plugin)?.secret },
+    secrets: {
+      readPluginSecret(plugin) {
+        const input = pluginOptionInputs.get(plugin);
+        if (input !== undefined && "error" in input) throw input.error;
+        return input?.secret;
+      },
+    },
   });
   const nonOAuth = {
     ...config,
