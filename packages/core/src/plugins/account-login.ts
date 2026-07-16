@@ -149,6 +149,33 @@ class OAuthAdapterLoginError extends Error {
   }
 }
 
+const hostAuthorizationErrors = new WeakMap<object, unknown>();
+
+function hostAuthorizationError(error: unknown): Error {
+  const carrier = new Error("HOST_AUTHORIZATION_FAILED");
+  hostAuthorizationErrors.set(carrier, error);
+  return carrier;
+}
+
+function protectedAuthorization(authorization: AuthorizationPort): AuthorizationPort {
+  return {
+    async presentDeviceCode(input) {
+      try {
+        await authorization.presentDeviceCode(input);
+      } catch (error) {
+        throw hostAuthorizationError(error);
+      }
+    },
+    async loopback(input) {
+      try {
+        return await authorization.loopback(input);
+      } catch (error) {
+        throw hostAuthorizationError(error);
+      }
+    },
+  };
+}
+
 export class OAuthCatalogDiscoveryTimeoutError extends Error {
   override readonly name = "OAuthCatalogDiscoveryTimeoutError";
 
@@ -500,7 +527,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       parsePluginSchema(adapter.account.options.schema, merged),
     );
     if (!parsedOptions.ok) throw new AccountOptionsValidationError();
-    const authorization = options.createAuthorization(deadline.signal);
+    const authorization = protectedAuthorization(options.createAuthorization(deadline.signal));
     let loginResult: Awaited<ReturnType<typeof adapter.login>>;
     try {
       loginResult = await withAbort(deadline.signal, () =>
@@ -509,8 +536,11 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
           parsedOptions.value,
         ),
       );
-    } catch {
+    } catch (error) {
       if (deadline.signal.aborted) throw deadline.signal.reason;
+      if (typeof error === "object" && error !== null && hostAuthorizationErrors.has(error)) {
+        throw hostAuthorizationErrors.get(error);
+      }
       throw new OAuthAdapterLoginError();
     }
     const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);

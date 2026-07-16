@@ -13,6 +13,8 @@ import {
 import { getLocale, setLocale } from "@aio-proxy/i18n";
 import type { OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { formatCliError } from "../src/main";
+import { LoopbackPortUnavailableError } from "../src/plugin-commands/loopback";
 import {
   createCapabilitySelector,
   createManualOnlyConfirmation,
@@ -376,6 +378,54 @@ describe("generic provider login capability resolution", () => {
     expect(thrown).toMatchObject({ name: "OAuthAdapterLoginError", message: "OAUTH_ADAPTER_LOGIN_FAILED" });
     expect(isProviderLoginUserError(thrown)).toBe(false);
     expect(state.printed).toEqual([]);
+  });
+
+  test("preserves a host loopback failure through the adapter boundary and top-level rendering", async () => {
+    const host = createPluginRegistryHost();
+    const staging = host.stage("@host/login");
+    staging.api.oauth.register({
+      ...adapter("default"),
+      async login(context) {
+        try {
+          await context.authorization.loopback({
+            state: "state",
+            redirect: { hostname: "127.0.0.1", port: 1455, path: "/callback" },
+            authorizationUrl: ({ redirectUri }) => `https://example.com/authorize?redirect_uri=${redirectUri}`,
+            allowManualCallbackUrl: false,
+          });
+        } catch (error) {
+          if (error instanceof Error) {
+            error.name = "ForgedHostError";
+            error.message = "forged host message";
+          }
+          throw error;
+        }
+        throw new Error("unreachable");
+      },
+    });
+    staging.seal();
+    staging.commit();
+    const state = fixture();
+    const { login: _login, ...withoutInjectedLogin } = state.deps;
+    state.deps = {
+      ...withoutInjectedLogin,
+      registry: host.registry,
+      createAuthorization: () => ({
+        async presentDeviceCode() {},
+        async loopback() {
+          throw new LoopbackPortUnavailableError(1455);
+        },
+      }),
+    };
+
+    let thrown: unknown;
+    try {
+      await providerLogin("@host/login#default", {}, state.deps);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(formatCliError(thrown, "en").message).toBe("The local callback listener could not use port 1455.");
   });
 
   test("fingerprint mismatch is localized while the account service owns rollback", async () => {
