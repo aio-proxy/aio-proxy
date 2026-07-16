@@ -14,7 +14,6 @@
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
-    "@aio-proxy/provider-schemas": "0.1.1",
     "@aio-proxy/types": "workspace:*",
     "date-fns": "^4.4.0",
     "es-toolkit": "catalog:",
