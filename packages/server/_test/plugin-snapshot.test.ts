@@ -1670,13 +1670,13 @@ test("delete, re-add, and delete again only removes the account after every rout
     if (second === undefined) throw new Error("second delete marker missing");
     expect(second.operationId).not.toBe(first.operationId);
 
-    oldestLease.release();
+    readdedLease.release();
     await flushMicrotasks();
     expect(repository.finalizeDeleteOperation(first.operationId)).toBe("superseded");
     expect(repository.readAccount("person")).not.toBeNull();
     expect(repository.listPendingAccountOperations()).toEqual([second]);
 
-    readdedLease.release();
+    oldestLease.release();
     await waitUntil(() => repository.readAccount("person") === null);
     expect(repository.listPendingAccountOperations()).toEqual([]);
   } finally {

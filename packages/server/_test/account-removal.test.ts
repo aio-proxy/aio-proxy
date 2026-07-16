@@ -241,6 +241,41 @@ test("final deletion runs through the FIFO and stays pending while a snapshot st
   expect(scheduled).toEqual([789 + PENDING_OPERATION_TTL_MS, 789 + PENDING_OPERATION_TTL_MS]);
 });
 
+test("final deletion stays pending when the provider is present on disk", async () => {
+  const events: string[] = [];
+  const scheduled: number[] = [];
+  const operation = {
+    operationId: "delete:person",
+    providerId: "person",
+    kind: "delete" as const,
+    targetDigest: ABSENT_PROVIDER_DIGEST,
+    appliedRevision: 1,
+    createdAt: 987,
+  };
+  const coordinator = createAccountRemovalCoordinator({
+    file: {
+      transaction: async (fn: (current: Record<string, unknown>) => Promise<unknown>) =>
+        fn({ providers: { person: { kind: "oauth" } } }),
+    },
+    repository: {
+      listPendingAccountOperations: () => [operation],
+      completeAccountOperation() {
+        events.push("completed");
+      },
+      finalizeDeleteOperation() {
+        events.push("deleted");
+        return "deleted";
+      },
+    },
+    onRecoveryNeeded: (nextRunAt: number) => scheduled.push(nextRunAt),
+  } as never);
+
+  await coordinator.finalizeAfterDrain([operation], undefined);
+
+  expect(events).toEqual([]);
+  expect(scheduled).toEqual([987 + PENDING_OPERATION_TTL_MS, 987 + PENDING_OPERATION_TTL_MS]);
+});
+
 test("coordinates absent digest, snapshot drainage, and final config recheck", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-account-removal-"));
   const configPath = join(home, "config.json");
@@ -301,7 +336,7 @@ test("coordinates absent digest, snapshot drainage, and final config recheck", a
   }
 });
 
-test("re-adding an invalid OAuth row before drain preserves the account and completes its marker", async () => {
+test("a disk-side re-add before drain preserves the account and keeps its marker pending", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-account-removal-"));
   const configPath = join(home, "config.json");
   const invalid = { kind: "oauth", plugin: "@example/oauth", capability: "" };
@@ -347,7 +382,7 @@ test("re-adding an invalid OAuth row before drain preserves the account and comp
     releaseDrain();
     await finalizing;
     expect(repository.readAccount("person")).not.toBeNull();
-    expect(repository.listPendingAccountOperations()).toEqual([]);
+    expect(repository.listPendingAccountOperations()).toEqual(staged);
   } finally {
     handle.close();
     rmSync(home, { force: true, recursive: true });

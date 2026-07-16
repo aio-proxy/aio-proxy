@@ -88,14 +88,12 @@ export function createAccountRemovalCoordinator(options: {
     for (const operation of operations) options.repository?.compensateAccountOperation(operation.operationId);
   };
 
-  const cancelReadded: AccountRemovalCoordinator["cancelReadded"] = (previousProviders, nextProviders) => {
+  const cancelReadded: AccountRemovalCoordinator["cancelReadded"] = (_previousProviders, nextProviders) => {
     if (options.repository === undefined) return;
-    const readded = new Set(
-      Object.keys(nextProviders).filter((providerId) => !Object.hasOwn(previousProviders, providerId)),
-    );
-    if (readded.size === 0) return;
+    const presentProviderIds = new Set(Object.keys(nextProviders));
+    if (presentProviderIds.size === 0) return;
     for (const operation of options.repository.listPendingAccountOperations()) {
-      if (operation.kind === "delete" && readded.has(operation.providerId)) {
+      if (operation.kind === "delete" && presentProviderIds.has(operation.providerId)) {
         options.repository.completeAccountOperation(operation.operationId);
       }
     }
@@ -111,7 +109,7 @@ export function createAccountRemovalCoordinator(options: {
       if (pending === false) return { next: current, result: undefined };
       const providers = asProviderRecord(current["providers"]);
       if (Object.hasOwn(providers, operation.providerId)) {
-        repository.completeAccountOperation(operation.operationId);
+        scheduleRecovery([operation]);
       } else if (!(options.canDeleteAccount ?? (() => true))(operation.providerId)) {
         scheduleRecovery([operation]);
       } else {
