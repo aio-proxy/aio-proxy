@@ -117,7 +117,7 @@ export class MigrationHashMismatchError extends AioProxyError {
   ) {
     super(
       "MigrationHashMismatchError",
-      `migration v${migration.version} (${migration.file}) hash mismatch; binary expected ${migration.sha256}, got ${actualSha256}. Restore historical migration ${migration.file} to its recorded contents. To change the schema, add the next append-only migration, then run \`bun run build:migrations\`.`,
+      `migration v${migration.version} (${migration.file}) hash mismatch; binary expected ${migration.sha256}, got ${actualSha256}. Restore historical migration ${migration.file}. To change the schema, update the Drizzle schema and run \`bun run build:migrations\` to generate a new migration.`,
     );
   }
 }

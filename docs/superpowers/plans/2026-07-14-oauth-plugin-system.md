@@ -3216,3 +3216,6 @@ PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk git commit 
 - [ ] Dashboard is read-only and displays only safe diagnostics.
 - [ ] Provider deletion cascades account data; plugin removal and prune preserve account/vault data according to policy.
 - [ ] No legacy OAuth abstraction or package remains.
+# Migration note
+
+The project remained unreleased after this plan was executed. The final implementation therefore supersedes the staged `0004`/`0005` migration steps below with one Drizzle-generated baseline and committed metadata.

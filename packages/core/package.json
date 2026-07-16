@@ -24,7 +24,7 @@
   "scripts": {
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
-    "build:migrations": "bun scripts/build-migrations.ts",
+    "build:migrations": "drizzle-kit generate",
     "test": "bun run test:unit",
     "test:unit": "bun test _test"
   },
@@ -48,6 +48,7 @@
     "@opencode-ai/models": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "drizzle-orm": "catalog:",
+    "es-toolkit": "catalog:",
     "openai": "catalog:",
     "zod": "catalog:"
   },

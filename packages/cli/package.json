@@ -9,7 +9,7 @@
   "scripts": {
     "build:binary": "bun scripts/build-binary.ts",
     "test": "bun run test:unit",
-    "test:unit": "bun test _test",
+    "test:unit": "bun test --preload=./_test/setup.ts _test",
     "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun src/main.ts serve",
     "start": "bun src/main.ts serve"
   },
@@ -21,7 +21,8 @@
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
-    "commander": "15"
+    "commander": "15",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

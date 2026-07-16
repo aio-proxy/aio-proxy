@@ -786,7 +786,7 @@ CLI command、ConfigSpec renderer、trust prompt、device-code presentation、br
 
 不提供旧 config/auth migration，也不把旧 vendor 记录转换成新账号。宿主级配置仍可启动，但旧 OAuth entry 会按 provider 粒度降级为 `LEGACY_OAUTH_CONFIG_UNSUPPORTED`、从 Router 排除，并提示用户删除旧条目后重新登录；宿主不会静默转换或猜测账号身份。
 
-实现提交按两阶段迁移保持中间版本可运行：先新增 plugin vault tables 并保留 legacy `auth`，待 server/CLI 已切换且 `packages/oauth` 删除时，再用后续 append-only migration drop legacy table。发布结果仍是 clean break，不读取或转换旧 payload。
+项目尚未发布，不保留迁移历史。实现完成后以当前 schema 生成单一 Drizzle baseline，并提交 SQL、journal 与 snapshot；发布结果仍是 clean break，不读取或转换旧 payload。
 
 ## 测试策略
 

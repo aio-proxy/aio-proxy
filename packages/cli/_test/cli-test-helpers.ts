@@ -12,7 +12,6 @@ const cliEnv = (env: CliEnv) => ({
   LANGUAGE: undefined,
   LC_ALL: undefined,
   LC_MESSAGES: undefined,
-  AIO_PROXY_HOME: env.AIO_PROXY_HOME,
   ...env,
 });
 

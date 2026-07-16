@@ -8,6 +8,7 @@ import {
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
 import { type DiagnosticCode, type PluginEnablement, type PluginState, pluginConfigCommand } from "@aio-proxy/types";
+import { isPlainObject } from "es-toolkit/predicate";
 import { findInstalledNpmPackage, type NpmPackageInfo } from "../npm";
 import { validateConfigSpec } from "./config-spec";
 import { type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
@@ -76,9 +77,7 @@ function isRecord(value: unknown): value is Readonly<Record<PropertyKey, unknown
 }
 
 function isPlainRecord(value: unknown): value is Readonly<Record<PropertyKey, unknown>> {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return isPlainObject(value);
 }
 
 function isEmptyRecord(value: unknown): boolean {

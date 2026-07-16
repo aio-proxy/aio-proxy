@@ -7,6 +7,7 @@ import {
   type PluginRepository,
 } from "@aio-proxy/core";
 import { OAuthPluginProviderSchema, ProviderKind } from "@aio-proxy/types";
+import { minBy } from "es-toolkit/array";
 import type { FifoQueue } from "./fifo-queue";
 import type { RetiredProviderSnapshot } from "./runtime";
 
@@ -120,11 +121,8 @@ export function createAccountRemovalCoordinator(options: {
   }
 
   function scheduleRecovery(operations: readonly PendingAccountOperation[]): void {
-    const nextRunAt = operations.reduce<number | undefined>((earliest, operation) => {
-      const deadline = operation.createdAt + PENDING_OPERATION_TTL_MS;
-      return earliest === undefined ? deadline : Math.min(earliest, deadline);
-    }, undefined);
-    if (nextRunAt !== undefined) options.onRecoveryNeeded?.(nextRunAt);
+    const earliest = minBy(operations, (operation) => operation.createdAt);
+    if (earliest !== undefined) options.onRecoveryNeeded?.(earliest.createdAt + PENDING_OPERATION_TTL_MS);
   }
 
   const finalizeAfterDrain: AccountRemovalCoordinator["finalizeAfterDrain"] = (operations, retired) => {

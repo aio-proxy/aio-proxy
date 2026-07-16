@@ -1,5 +1,6 @@
 import { m } from "@aio-proxy/i18n";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
+import { escapeRegExp } from "es-toolkit/string";
 
 export type DiagnosticContext = {
   readonly plugin?: string;
@@ -97,10 +98,6 @@ const SENSITIVE_FIELDS = new Set([
 
 function safeFallback(): RedactedPluginError {
   return { name: "Error", message: SAFE_ERROR_MESSAGE };
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function jsonStringEnd(input: string, start: number): number | undefined {

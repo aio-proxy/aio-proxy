@@ -13,7 +13,7 @@
         "rslib.config.ts",
         "tsconfig.json"
       ],
-      "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**", "src/db/migrations.manifest.ts"]
+      "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**"]
     },
     "test": {
       "dependsOn": ["build", "^build"],

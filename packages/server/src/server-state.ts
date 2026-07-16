@@ -31,6 +31,7 @@ import {
   ProviderKind,
   type ProviderState,
 } from "@aio-proxy/types";
+import { compact } from "es-toolkit/array";
 import { ZodError } from "zod";
 import { asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
 import { CatalogScheduler } from "./catalog-scheduler";
@@ -576,14 +577,11 @@ async function buildSnapshot(
     }),
   );
   const providerById = new Map(
-    [...base.providers, ...oauth.flatMap((item) => (item.provider === undefined ? [] : [item.provider]))].map(
+    [...base.providers, ...compact(oauth.map((item) => item.provider))].map(
       (provider) => [provider.id, provider] as const,
     ),
   );
-  const providers = config.providers.flatMap((configured) => {
-    const provider = providerById.get(configured.id);
-    return provider === undefined ? [] : [provider];
-  });
+  const providers = compact(config.providers.map((configured) => providerById.get(configured.id)));
   const summaryById = new Map(
     [...base.summaries, ...oauth.map((item) => item.summary)].map((summary) => [summary.id, summary] as const),
   );
@@ -600,10 +598,7 @@ async function buildSnapshot(
           clientModels: [],
         }) satisfies Omit<DashboardProviderSummary, "state">,
     ),
-    ...config.providers.flatMap((configured) => {
-      const summary = summaryById.get(configured.id);
-      return summary === undefined ? [] : [summary];
-    }),
+    ...compact(config.providers.map((configured) => summaryById.get(configured.id))),
   ];
   const assembledStates = new Map<string, ProviderState>();
   for (const provider of nonOAuth.providers) assembledStates.set(provider.id, { status: "ready" });
@@ -632,9 +627,13 @@ async function buildSnapshot(
     providers,
     router: createRouter(providers),
     summaries,
-    catalogJobs: oauth.flatMap((item) => (item.catalogJob === undefined ? [] : [item.catalogJob])),
+    catalogJobs: compact(oauth.map((item) => item.catalogJob)),
     runtimeCache: new Map(
-      oauth.flatMap((item) => (item.cacheEntry === undefined ? [] : [[item.summary.id, item.cacheEntry] as const])),
+      compact(
+        oauth.map((item) =>
+          item.cacheEntry === undefined ? undefined : ([item.summary.id, item.cacheEntry] as const),
+        ),
+      ),
     ),
     providerStates: providerStatesFromSummaries(summaries),
   };

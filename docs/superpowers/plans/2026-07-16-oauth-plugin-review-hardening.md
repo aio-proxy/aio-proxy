@@ -448,3 +448,6 @@ Dispatch one fix agent with the complete finding list, require focused failing t
 - [ ] **Step 4: Update the durable ledger and push**
 
 Record every task commit range and review verdict in `.superpowers/sdd/progress.md`, commit the ledger if tracked by the branch workflow, push `codex/oauth-plugin-system-design`, and wait for GitHub CI. Do not reply to or resolve GitHub review threads unless the user explicitly requests that write action.
+# Migration note
+
+The project remained unreleased after this plan was executed. The final implementation therefore replaces the custom append-only manifest check below with one Drizzle-generated baseline, committed metadata, and a clean-tree CI check.

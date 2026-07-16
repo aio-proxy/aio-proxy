@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { chmod, mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { isPlainObject } from "es-toolkit/predicate";
 
 export const CONFIG_LOCK_WAIT_MS = 15_000;
 export const CONFIG_LOCK_STALE_MS = 60_000;
@@ -52,10 +53,6 @@ type AbandonedLockOwner = {
 
 const abandonedLockOwners = new Map<string, AbandonedLockOwner>();
 
-function isRecord(value: unknown): value is ConfigRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isNodeError(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
 }
@@ -67,7 +64,7 @@ function sameFileSnapshot(before: Stats | null, after: Stats): boolean {
 function parseConfig(bytes: Uint8Array | null): ConfigRecord {
   if (bytes === null || bytes.byteLength === 0) return {};
   const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-  if (!isRecord(value)) throw new Error("Config root must be an object");
+  if (!isPlainObject(value)) throw new Error("Config root must be an object");
   return value;
 }
 
@@ -200,7 +197,7 @@ async function unlinkOwnedLock(
 function parseLock(text: string): LockRecord | null {
   try {
     const value: unknown = JSON.parse(text);
-    if (!isRecord(value)) return null;
+    if (!isPlainObject(value)) return null;
     const { pid, owner, createdAt, starttime } = value;
     return typeof pid === "number" &&
       Number.isSafeInteger(pid) &&
@@ -689,7 +686,7 @@ export class AtomicConfigFile {
 
   async providerEntry(providerId: string): Promise<unknown | undefined> {
     const providers = (await this.read())["providers"];
-    return isRecord(providers) ? providers[providerId] : undefined;
+    return isPlainObject(providers) ? providers[providerId] : undefined;
   }
 
   async providerEntryDigest(providerId: string): Promise<string | null> {

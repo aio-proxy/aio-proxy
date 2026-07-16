@@ -32,6 +32,7 @@ import { getLocale, m } from "@aio-proxy/i18n";
 import { isPluginDescriptor, type PluginDescriptor, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { PluginPackageNameSchema } from "@aio-proxy/types";
 import { confirm, input, password, select } from "@inquirer/prompts";
+import { isPlainObject } from "es-toolkit/predicate";
 import { cloneInertJson, type PluginFormPrompts, renderConfigSpec } from "./form";
 
 type ConfigRecord = Record<string, unknown>;
@@ -181,7 +182,7 @@ function requirePluginPackageName(value: string): string {
 }
 
 function publicOptionsOf(entry: unknown): Record<string, unknown> {
-  return Array.isArray(entry) && isRecord(entry[1]) ? entry[1] : {};
+  return Array.isArray(entry) && isPlainObject(entry[1]) ? entry[1] : {};
 }
 
 function pluginEntry(packageName: string, publicValues: Record<string, unknown>): unknown {
@@ -202,7 +203,7 @@ function removePlugin(config: ConfigRecord, packageName: string): ConfigRecord {
 }
 
 function secretRecord(snapshot: PluginSecretSnapshot | null): Record<string, unknown> {
-  return isRecord(snapshot?.value) ? snapshot.value : {};
+  return isPlainObject(snapshot?.value) ? snapshot.value : {};
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

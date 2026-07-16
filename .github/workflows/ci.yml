@@ -27,6 +27,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run --filter @aio-proxy/core build:migrations --check
+      - run: test -f packages/core/src/db/migrations/meta/_journal.json
+      - run: bun run --filter @aio-proxy/core build:migrations
+      - run: test -z "$(git status --short --untracked-files=all -- packages/core/src/db/migrations)"
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api

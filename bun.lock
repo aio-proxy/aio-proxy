@@ -56,6 +56,7 @@
         "@aio-proxy/types": "workspace:*",
         "@inquirer/prompts": "^8.5.2",
         "commander": "15",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -86,6 +87,7 @@
         "@openrouter/ai-sdk-provider": "catalog:",
         "ai": "catalog:",
         "drizzle-orm": "catalog:",
+        "es-toolkit": "catalog:",
         "openai": "catalog:",
         "zod": "catalog:",
       },

@@ -1,5 +1,6 @@
 import type { CredentialPort, CredentialSnapshot, ZodType } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
+import { delay } from "es-toolkit/promise";
 import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
 import { redactPluginError } from "./diagnostic";
 import type { PluginRepository, StoredAccount } from "./repository";
@@ -82,10 +83,6 @@ function singleFlight<Credential>(
   };
   void flight.then(cleanup, cleanup);
   return flight;
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function stringLeaves(value: unknown): readonly string[] {
@@ -191,7 +188,7 @@ async function waitForLease<Credential>(
       if (current.snapshot.revision !== expectedRevision) return { acquired: false, snapshot: current.snapshot };
     }
     waited = true;
-    await sleep(REFRESH_POLL_MS + Math.floor(Math.random() * REFRESH_POLL_JITTER_MS));
+    await delay(REFRESH_POLL_MS + Math.floor(Math.random() * REFRESH_POLL_JITTER_MS));
   }
   throw new CredentialRefreshWaitTimeoutError();
 }

@@ -162,11 +162,12 @@ raw ISO strings.
 
 ## Build and runtime reliability
 
-Migration generation supports a real `--check` mode. Check mode never writes;
-it exits non-zero when the committed manifest differs from the SQL inputs. CI
-runs the check. Migration SQL is fixed to LF through `.gitattributes`, and the
-redundant non-unique index duplicating
-`UNIQUE(plugin, capability, fingerprint)` is removed before release.
+Because the project has not been released, migration history is squashed into
+one Drizzle-generated baseline. Its SQL, journal, and snapshot are committed.
+CI reruns `drizzle-kit generate` and requires the migration directory to remain
+clean. Migration SQL is fixed to LF through `.gitattributes`, and the redundant
+non-unique index duplicating `UNIQUE(plugin, capability, fingerprint)` is
+removed before release.
 
 Config lock release failures are observable and cannot report a successful
 transaction while leaving a live-owner lock behind. Recovery-marker content
