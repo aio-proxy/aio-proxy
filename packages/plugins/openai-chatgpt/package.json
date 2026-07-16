@@ -1,6 +1,7 @@
 {
   "name": "@aio-proxy/plugin-openai-chatgpt",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "files": [
     "dist"
@@ -27,8 +28,5 @@
     "@rslib/core": "catalog:",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

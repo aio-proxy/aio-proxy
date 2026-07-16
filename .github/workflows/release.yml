@@ -58,6 +58,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run i18n:compile
       - run: bun run build:dashboard
+      - name: Build embedded plugin workspace packages
+        run: |
+          bun run --filter @aio-proxy/plugin-sdk build
+          bun run --filter @aio-proxy/plugin-github-copilot build
+          bun run --filter @aio-proxy/plugin-openai-chatgpt build
       - run: bun run --filter @aio-proxy/cli build:binary
       - run: tar -cf npm-binaries.tar npm/cli-*/bin/aio-proxy
       - uses: actions/upload-artifact@v4
@@ -102,31 +107,8 @@ jobs:
         with:
           name: npm-binaries
       - run: tar -xf npm-binaries.tar
-      - name: Build public packages
-        run: |
-          bun run --filter @aio-proxy/plugin-sdk build
-          bun run --filter @aio-proxy/plugin-github-copilot build
-          bun run --filter @aio-proxy/plugin-openai-chatgpt build
-      - name: Smoke-test public package tarballs
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          for package_dir in \
-            packages/plugin-sdk \
-            packages/plugins/github-copilot \
-            packages/plugins/openai-chatgpt
-          do
-            output_dir="$RUNNER_TEMP/$(basename "$package_dir")"
-            mkdir -p "$output_dir"
-            (
-              cd "$package_dir"
-              bun pm pack --destination "$output_dir"
-            )
-            tarballs=("$output_dir"/*.tgz)
-            test "${#tarballs[@]}" -eq 1
-            tar -tzf "${tarballs[0]}" | grep -Fx package/dist/index.js >/dev/null
-            tar -tzf "${tarballs[0]}" | grep -Fx package/dist/index.d.ts >/dev/null
-          done
+      - name: Build public SDK
+        run: bun run --filter @aio-proxy/plugin-sdk build
       - name: Create GitHub Release
         run: |
           mkdir -p release-assets
@@ -144,7 +126,7 @@ jobs:
         run: printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > ~/.npmrc
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Publish to npm
-        run: bunx changeset publish
+      - name: Publish verified public packages
+        run: bun scripts/publish-public-packages.ts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
