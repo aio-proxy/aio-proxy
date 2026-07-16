@@ -61,7 +61,7 @@
 - `packages/cli/src/plugin-commands/plugin.ts` implements plugin add/list/config/remove/prune.
 - `packages/cli/src/plugin-commands/provider-login.ts` resolves a capability and runs the host login transaction.
 - `packages/plugins/github-copilot/` owns GitHub account configuration, device flow, Copilot refresh/discovery, ProviderV4, and raw transport.
-- `packages/plugins/openai-chatgpt/` owns PKCE/state, token exchange/refresh, static catalog, ChatGPT ProviderV4, and dynamic auth fetch.
+- `packages/plugins/openai-chatgpt/` owns PKCE/state, token exchange/refresh, the raw Codex bundled models catalog with a six-hour TTL, ChatGPT ProviderV4, and dynamic auth fetch.
 - `packages/server/src/plugin-runtime.ts` materializes available OAuth accounts into routing capabilities.
 - `packages/server/src/catalog-scheduler.ts` schedules host-owned static/TTL catalog refresh without plugin lifecycle hooks.
 - `packages/server/src/server-state.ts` builds and atomically swaps registry/provider/runtime/router snapshots.
@@ -2125,11 +2125,11 @@ PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk git commit 
 - Modify: `bun.lock`
 
 **Interfaces:**
-- Produces: default v1 descriptor, `createOpenAIChatGPTPlugin(copy)`, and version export.
+- Produces: default v1 descriptor, `createOpenAIChatGPTPlugin(presentationText)`, and version export.
 - Registers: OAuth capability ID `default`.
 - Uses: fixed host loopback `http://localhost:1455/auth/callback` with manual callback URL enabled.
 - Credential: access token, rotating refresh token, expiry, and ChatGPT account ID.
-- Catalog: static language model list.
+- Catalog: raw Codex bundled models JSON with a six-hour TTL, retaining every API-supported model including hidden models.
 
 As in Task 9, copy the implementation and fixtures. Keep every legacy `packages/oauth` file intact through Task 12 so intermediate commits continue to build and test; Task 13 performs the single package deletion.
 
@@ -2144,7 +2144,7 @@ Assert:
 - login returns account ID as fingerprint and `chatgpt-${accountId}` as suggested key;
 - authorization code exchange posts the selected redirect URI;
 - refresh retains the previous refresh token when upstream omits a new one and stores a new one when supplied;
-- static catalog contains the four current models;
+- the raw Codex bundled models catalog keeps every API-supported model, including hidden models, in priority order;
 - concurrent expired requests reach `CredentialPort.refresh`, not a plugin-local CAS;
 - dynamic fetch injects access/account headers and rewrites Responses/Completions paths to the Codex endpoint.
 
@@ -2173,7 +2173,7 @@ Use package name `@aio-proxy/plugin-openai-chatgpt` and dependencies:
 
 Do not depend on the `zod` package; copy/migrate every schema import to `zod` from `@aio-proxy/plugin-sdk`. Do not move the old loopback server; Task 6 replaced it with host-owned authorization.
 
-- [ ] **Step 4: Implement login and static catalog**
+- [ ] **Step 4: Implement login and the raw Codex bundled models catalog**
 
 Generate PKCE and state inside the plugin, then:
 
@@ -2202,7 +2202,7 @@ return {
 };
 ```
 
-Return the fixed model list in `catalog.discover()` with every non-language modality set to `[]`.
+Fetch the Codex bundled models JSON in `catalog.discover()`, retain every `supported_in_api` model regardless of visibility, sort by priority, and use a six-hour TTL. Keep every non-language modality set to `[]`.
 
 - [ ] **Step 5: Implement dynamic credential refresh and ProviderV4**
 
@@ -2224,12 +2224,12 @@ async function currentCredential(port: CredentialPort<ChatGPTCredential>) {
 
 Remove caller authorization, inject `Bearer <accessToken>`, `ChatGPT-Account-Id`, `Originator`, `User-Agent`, and a fresh session ID. Delegate all required ProviderV4 methods to `createOpenAI()` and return no raw resolver in v1.
 
-- [ ] **Step 6: Export English default copy and localized factory**
+- [ ] **Step 6: Export English default presentation text and localized factory**
 
 Use the same pattern as Copilot:
 
 ```ts
-export default createOpenAIChatGPTPlugin(englishCopy);
+export default createOpenAIChatGPTPlugin(englishPresentationText);
 ```
 
 The public package remains independent of private i18n. Read `../package.json` at build time and export the synchronized version:

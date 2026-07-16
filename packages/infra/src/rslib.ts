@@ -16,7 +16,11 @@ export const defineLibraryConfig = (options: LibraryBuildConfig = {}): RslibConf
         dts: true,
         source: {
           entry: {
-            index: ["./src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}", "!./src/**/*.d.ts"],
+            index: [
+              "./src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+              "!./src/**/*.d.ts",
+              "!./src/**/*.test.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+            ],
           },
         },
         output: {

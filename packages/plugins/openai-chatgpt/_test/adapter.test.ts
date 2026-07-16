@@ -90,8 +90,22 @@ describe("OpenAI ChatGPT plugin", () => {
     });
   });
 
-  test("discovers the fixed language model catalog", async () => {
+  test("discovers the Codex language model catalog", async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
+    globalThis.fetch = async () =>
+      Response.json({
+        models: [
+          { slug: "hidden", display_name: "Hidden", priority: 2, supported_in_api: true, visibility: "hide" },
+          {
+            slug: "unsupported",
+            display_name: "Unsupported",
+            priority: 0,
+            supported_in_api: false,
+            visibility: "list",
+          },
+          { slug: "visible", display_name: "Visible", priority: 1, supported_in_api: true, visibility: "list" },
+        ],
+      });
 
     const catalog = await adapter.catalog.discover({
       credentials: unusedCredentialPort(),
@@ -101,10 +115,8 @@ describe("OpenAI ChatGPT plugin", () => {
 
     expect(catalog).toEqual({
       language: [
-        { id: "gpt-5.5", displayName: "GPT-5.5" },
-        { id: "gpt-5.4", displayName: "GPT-5.4" },
-        { id: "gpt-5.4-mini", displayName: "GPT-5.4 mini" },
-        { id: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark" },
+        { id: "visible", displayName: "Visible" },
+        { id: "hidden", displayName: "Hidden" },
       ],
       image: [],
       embedding: [],
@@ -112,7 +124,7 @@ describe("OpenAI ChatGPT plugin", () => {
       transcription: [],
       reranking: [],
     });
-    expect(adapter.catalog.policy).toEqual({ kind: "static" });
+    expect(adapter.catalog.policy).toEqual({ kind: "ttl", ttlMs: 6 * 60 * 60_000 });
   });
 });
 

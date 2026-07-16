@@ -404,7 +404,7 @@ OAuth SDK 不把所有登录压缩成模糊的 `onAuth(url)`。宿主向 adapter
 
 GitHub Copilot built-in 使用此 flow。GitHub Enterprise 的部署类型与 enterprise URL 在调用 flow 前由账号级 ConfigSpec 收集。
 
-Copilot model catalog 使用 6 小时 TTL；ChatGPT 内置固定模型目录使用 `static` policy。
+Copilot model catalog 使用 6 小时 TTL；ChatGPT 从 Codex bundled models JSON 读取 raw catalog，同样使用 6 小时 TTL，并保留所有 `supported_in_api` 模型，包括 visibility 为 hidden 的模型。
 
 ### Localhost loopback flow
 
@@ -743,7 +743,7 @@ Built-in plugin implementation 统一放在 `packages/plugins/*`，workspace 增
 - 固定 localhost loopback constraint；
 - code exchange 与 refresh；
 - OpenAI account fingerprint；
-- static catalog；
+- Codex bundled models raw catalog、6 小时 TTL，以及包含 hidden 在内的全部 API-supported models；
 - ChatGPT ProviderV4 runtime。
 
 发布包名为 `@aio-proxy/plugin-openai-chatgpt`。
@@ -871,7 +871,7 @@ CLI command、ConfigSpec renderer、trust prompt、device-code presentation、br
 
 - GitHub.com 与 GitHub Enterprise ConfigSpec。
 - GitHub device-code flow、Copilot token、user fingerprint、model discovery 与 transport metadata。
-- ChatGPT PKCE/state、固定 redirect URI、token exchange、refresh 与 static models。
+- ChatGPT PKCE/state、固定 redirect URI、token exchange、refresh，以及包含 hidden API-supported models 的 Codex bundled models raw catalog（6 小时 TTL）。
 - Built-in label、description、instructions 与 form 文案通过 `packages/i18n`；第三方字符串保持 opaque。
 - 测试使用 mock fetch、fake clock 与本地 loopback，不访问真实 OAuth endpoint。
 

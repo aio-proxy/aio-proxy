@@ -1,4 +1,4 @@
-import { isPlainObject } from "es-toolkit/compat";
+import { isPlainObject } from "es-toolkit/predicate";
 import { decodeJwt } from "jose";
 
 type JwtPayload = ReturnType<typeof decodeJwt>;
