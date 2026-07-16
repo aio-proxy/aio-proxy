@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export type LocaleTextMap = Readonly<{ readonly default: string } & Readonly<Record<string, string>>>;
 export type LocalizedText = string | LocaleTextMap;
+const INVALID_LOCALIZED_TEXT = Symbol("invalid localized text");
 
 function materialize(value: unknown): LocalizedText | undefined {
   if (typeof value === "string") return value.trim() === "" || value.trim() !== value ? undefined : value;
@@ -34,9 +35,16 @@ function materialize(value: unknown): LocalizedText | undefined {
   return Object.fromEntries(Object.entries(copy)) as LocaleTextMap;
 }
 
-export const LocalizedTextSchema = z
-  .custom<LocalizedText>((value) => materialize(value) !== undefined)
-  .transform((value) => materialize(value) as LocalizedText);
+export const LocalizedTextSchema = z.preprocess(
+  (value) => {
+    try {
+      return materialize(value) ?? INVALID_LOCALIZED_TEXT;
+    } catch {
+      return INVALID_LOCALIZED_TEXT;
+    }
+  },
+  z.custom<LocalizedText>((value) => value !== INVALID_LOCALIZED_TEXT),
+);
 
 export function resolveLocalizedText(text: LocalizedText, locale: string): string {
   if (typeof text === "string") return text;

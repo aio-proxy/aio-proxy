@@ -46,4 +46,36 @@ describe("LocalizedText", () => {
     Object.assign(cyclic, { en: cyclic });
     expect(LocalizedTextSchema.safeParse(cyclic).success).toBe(false);
   });
+
+  test("materializes a stateful proxy exactly once", () => {
+    let ownKeysCalls = 0;
+    const source = { default: "Default", en: "English" };
+    const proxy = new Proxy(source, {
+      ownKeys(target) {
+        ownKeysCalls += 1;
+        if (ownKeysCalls > 1) throw new Error("second materialization");
+        return Reflect.ownKeys(target);
+      },
+    });
+
+    const parsed = LocalizedTextSchema.safeParse(proxy);
+
+    expect(parsed).toEqual({ success: true, data: source });
+    expect(parsed.success && parsed.data).not.toBe(source);
+    expect(ownKeysCalls).toBe(1);
+  });
+
+  test.each(["getPrototypeOf", "ownKeys"] as const)("contains throwing %s traps", (trap) => {
+    const proxy = new Proxy(
+      { default: "Default" },
+      {
+        [trap]() {
+          throw new Error("plugin reflection failure");
+        },
+      },
+    );
+
+    expect(() => LocalizedTextSchema.safeParse(proxy)).not.toThrow();
+    expect(LocalizedTextSchema.safeParse(proxy).success).toBe(false);
+  });
 });
