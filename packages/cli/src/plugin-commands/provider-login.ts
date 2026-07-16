@@ -27,8 +27,8 @@ import {
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
-import { m } from "@aio-proxy/i18n";
-import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from "@aio-proxy/i18n";
+import { type AuthorizationPort, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
 import { openBrowser } from "../browser";
 import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from "./authorization";
@@ -329,6 +329,7 @@ export async function providerLogin(
       createAuthorization: deps.createAuthorization,
       diagnostics: deps.diagnostics,
       logger: deps.logger,
+      progress: (message) => deps.print(resolveLocalizedText(message, getLocale())),
     });
     deps.print(result.providerId);
   } catch (error) {

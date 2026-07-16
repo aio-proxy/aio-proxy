@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
+import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { createEmbeddedBuiltIns } from "../../src/plugins/builtins";
 import { loadPluginRegistry } from "../../src/plugins/loader";
 
@@ -36,7 +37,7 @@ test("reserved identities always load embedded descriptors without package looku
   expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(["0.0.0", "0.0.0"]);
 });
 
-test("embedded adapter copy follows the current locale", async () => {
+test("embedded adapters retain English and Chinese copy independent of creation locale", async () => {
   await setLocale("zh-Hans");
   const snapshot = await loadPluginRegistry({
     enablements: [],
@@ -50,6 +51,7 @@ test("embedded adapter copy follows the current locale", async () => {
   });
 
   const adapter = snapshot.registry.resolveOAuth("@aio-proxy/plugin-github-copilot", "default");
-  expect(adapter?.label).toBe("使用 GitHub Copilot 登录");
-  expect(adapter?.account.options.form[0]?.label).toBe("选择 GitHub 部署类型");
+  expect(resolveLocalizedText(adapter?.label ?? "", "en")).toBe("Login with GitHub Copilot");
+  expect(resolveLocalizedText(adapter?.label ?? "", "zh-Hans")).toBe("使用 GitHub Copilot 登录");
+  expect(resolveLocalizedText(adapter?.account.options.form[0]?.label ?? "", "zh-Hans")).toBe("选择 GitHub 部署类型");
 });

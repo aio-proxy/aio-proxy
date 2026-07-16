@@ -1,4 +1,11 @@
-import type { ConfigSpec, FormCondition, FormField, JsonValue } from "@aio-proxy/plugin-sdk";
+import {
+  type ConfigSpec,
+  type FormCondition,
+  type FormField,
+  type JsonValue,
+  type LocalizedText,
+  LocalizedTextSchema,
+} from "@aio-proxy/plugin-sdk";
 import { isPluginZodSchema } from "./schema";
 
 export type ValidatedConfigSpec<T = unknown> = {
@@ -32,8 +39,13 @@ function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonVal
   return valid;
 }
 
-function validOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
+function localizedText(value: unknown): LocalizedText | undefined {
+  const parsed = LocalizedTextSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function optionalLocalizedText(value: unknown): LocalizedText | null | undefined {
+  return value === undefined ? undefined : (localizedText(value) ?? null);
 }
 
 function validateWhen(value: unknown, knownKeys: ReadonlySet<string>): value is FormCondition | undefined {
@@ -49,42 +61,82 @@ function primitiveKey(value: string | number | boolean): string {
   return `${typeof value}:${String(value)}`;
 }
 
-function validateSelectOptions(value: unknown): boolean {
-  if (!Array.isArray(value) || value.length === 0) return false;
+function validateSelectOptions(value: unknown):
+  | readonly {
+      readonly value: string | number | boolean;
+      readonly label: LocalizedText;
+      readonly description?: LocalizedText;
+    }[]
+  | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
   const seen = new Set<string>();
+  const validated: {
+    value: string | number | boolean;
+    label: LocalizedText;
+    description?: LocalizedText;
+  }[] = [];
   for (const option of value) {
-    if (!isRecord(option)) return false;
+    if (!isRecord(option)) return undefined;
     const { value: optionValue, label, description } = option;
-    if (!["string", "number", "boolean"].includes(typeof optionValue)) return false;
-    if (typeof optionValue === "number" && !Number.isFinite(optionValue)) return false;
-    if (typeof label !== "string" || label.trim() === "" || !validOptionalString(description)) return false;
+    if (!["string", "number", "boolean"].includes(typeof optionValue)) return undefined;
+    if (typeof optionValue === "number" && !Number.isFinite(optionValue)) return undefined;
+    const validatedLabel = localizedText(label);
+    const validatedDescription = optionalLocalizedText(description);
+    if (validatedLabel === undefined || validatedDescription === null) return undefined;
     const key = primitiveKey(optionValue as string | number | boolean);
-    if (seen.has(key)) return false;
+    if (seen.has(key)) return undefined;
     seen.add(key);
+    validated.push({
+      value: optionValue as string | number | boolean,
+      label: validatedLabel,
+      ...(validatedDescription === undefined ? {} : { description: validatedDescription }),
+    });
   }
-  return true;
+  return validated;
 }
 
-function validateField(value: unknown, knownKeys: ReadonlySet<string>): value is FormField {
-  if (!isRecord(value)) return false;
+function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormField | undefined {
+  if (!isRecord(value)) return undefined;
   const { key, label, description, when, type, placeholder, defaultValue, options } = value;
-  if (typeof key !== "string" || key.trim() === "" || key !== key.trim()) return false;
-  if (knownKeys.has(key) || typeof label !== "string" || label.trim() === "" || label !== label.trim()) return false;
-  if (!validOptionalString(description) || !validateWhen(when, knownKeys)) return false;
+  if (typeof key !== "string" || key.trim() === "" || key !== key.trim()) return undefined;
+  const validatedLabel = localizedText(label);
+  const validatedDescription = optionalLocalizedText(description);
+  if (knownKeys.has(key) || validatedLabel === undefined || validatedDescription === null) return undefined;
+  if (!validateWhen(when, knownKeys)) return undefined;
+  const base = {
+    key,
+    label: validatedLabel,
+    ...(validatedDescription === undefined ? {} : { description: validatedDescription }),
+    ...(when === undefined ? {} : { when: { key: when.key, equals: when.equals } }),
+  };
+  const validatedPlaceholder = optionalLocalizedText(placeholder);
 
   switch (type) {
     case "text":
     case "secret":
     case "number":
-      return validOptionalString(placeholder);
+      return validatedPlaceholder === null
+        ? undefined
+        : { ...base, type, ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }) };
     case "boolean":
-      return defaultValue === undefined || typeof defaultValue === "boolean";
-    case "select":
-      return validateSelectOptions(options);
+      return defaultValue === undefined || typeof defaultValue === "boolean"
+        ? { ...base, type, ...(defaultValue === undefined ? {} : { defaultValue }) }
+        : undefined;
+    case "select": {
+      const validatedOptions = validateSelectOptions(options);
+      return validatedOptions === undefined ? undefined : { ...base, type, options: validatedOptions };
+    }
     case "json":
-      return validOptionalString(placeholder) && (defaultValue === undefined || isJsonValue(defaultValue));
+      return validatedPlaceholder !== null && (defaultValue === undefined || isJsonValue(defaultValue))
+        ? {
+            ...base,
+            type,
+            ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }),
+            ...(defaultValue === undefined ? {} : { defaultValue }),
+          }
+        : undefined;
     default:
-      return false;
+      return undefined;
   }
 }
 
@@ -97,11 +149,14 @@ export function validateConfigSpec<T = unknown>(value: unknown): ValidatedConfig
 
   const keys = new Set<string>();
   const secretKeys = new Set<string>();
+  const validatedForm: FormField[] = [];
   for (const field of form) {
-    if (!validateField(field, keys)) throw new ConfigSpecValidationError();
-    keys.add(field.key);
-    if (field.type === "secret") secretKeys.add(field.key);
+    const validated = validateField(field, keys);
+    if (validated === undefined) throw new ConfigSpecValidationError();
+    validatedForm.push(validated);
+    keys.add(validated.key);
+    if (validated.type === "secret") secretKeys.add(validated.key);
   }
 
-  return { spec: value as ConfigSpec<T>, secretKeys };
+  return { spec: { schema: schema as ConfigSpec<T>["schema"], form: validatedForm }, secretKeys };
 }

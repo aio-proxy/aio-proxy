@@ -1,4 +1,4 @@
-import type { OAuthAdapter, PluginApi } from "@aio-proxy/plugin-sdk";
+import { type LocalizedText, LocalizedTextSchema, type OAuthAdapter, type PluginApi } from "@aio-proxy/plugin-sdk";
 import { CapabilityIdSchema } from "@aio-proxy/types";
 import { validateConfigSpec } from "./config-spec";
 import { isPluginZodSchema } from "./schema";
@@ -20,12 +20,16 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error("Invalid OAuth adapter");
-  const { id: rawId, label, account, credentials, login, createRuntime, catalog } = value;
+  const { id: rawId, label, description, account, credentials, login, createRuntime, catalog } = value;
   const id = CapabilityIdSchema.parse(rawId);
-  if (typeof label !== "string" || label.trim() === "") throw new Error("Invalid OAuth adapter");
+  const validatedLabel = LocalizedTextSchema.safeParse(label);
+  const validatedDescription = LocalizedTextSchema.safeParse(description);
+  if (!validatedLabel.success || (description !== undefined && !validatedDescription.success)) {
+    throw new Error("Invalid OAuth adapter");
+  }
   if (!isRecord(account)) throw new Error("Invalid OAuth adapter");
   const { options } = account;
-  validateConfigSpec(options);
+  const validatedOptions = validateConfigSpec(options).spec;
   if (!isPluginZodSchema(credentials)) throw new Error("Invalid OAuth adapter");
   if (typeof login !== "function" || typeof createRuntime !== "function") throw new Error("Invalid OAuth adapter");
   if (!isRecord(catalog)) throw new Error("Invalid OAuth adapter");
@@ -45,7 +49,22 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       throw new Error("Invalid OAuth adapter");
     }
   }
-  return { id, adapter: value as OAuthAdapter };
+  return {
+    id,
+    adapter: {
+      id,
+      label: validatedLabel.data,
+      ...(description === undefined ? {} : { description: validatedDescription.data as LocalizedText }),
+      account: { options: validatedOptions },
+      credentials: credentials as OAuthAdapter["credentials"],
+      login: login as OAuthAdapter["login"],
+      catalog: {
+        policy: policy as OAuthAdapter["catalog"]["policy"],
+        discover: discover as OAuthAdapter["catalog"]["discover"],
+      },
+      createRuntime: createRuntime as OAuthAdapter["createRuntime"],
+    },
+  };
 }
 
 export type PluginStagingRegistry = {

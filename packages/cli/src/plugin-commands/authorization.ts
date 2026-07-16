@@ -1,5 +1,5 @@
-import { m } from "@aio-proxy/i18n";
-import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from "@aio-proxy/i18n";
+import { type AuthorizationPort, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from "./loopback";
 
 export type CliAuthorizationDeps = {
@@ -19,6 +19,7 @@ export type CliAuthorizationDeps = {
   readonly confirmManualOnly: (redirectUri: string) => Promise<boolean>;
   readonly signal: AbortSignal;
   readonly now?: () => number;
+  readonly locale?: string;
 };
 
 export function createDefaultCliAuthorizationCopy(): CliAuthorizationDeps["copy"] {
@@ -72,7 +73,7 @@ export function createCliAuthorizationPort(deps: CliAuthorizationDeps): Authoriz
       }
       deps.print(url.href);
       if (input.instructions !== undefined) {
-        deps.print(input.instructions);
+        deps.print(resolveLocalizedText(input.instructions, deps.locale ?? getLocale()));
       }
     },
     loopback: (input) => runLoopbackAuthorization(input, deps),

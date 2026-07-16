@@ -1,6 +1,6 @@
 import { parsePluginSchema, validateConfigSpec } from "@aio-proxy/core";
-import { m } from "@aio-proxy/i18n";
-import type { ConfigSpec, FormField } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from "@aio-proxy/i18n";
+import { type ConfigSpec, type FormField, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
 
 type PromptContext = { readonly signal?: AbortSignal };
@@ -20,6 +20,7 @@ export type RenderConfigSpecOptions = {
   readonly currentSecrets?: Readonly<Record<string, unknown>>;
   readonly clearSecrets?: readonly string[];
   readonly signal?: AbortSignal;
+  readonly locale?: string;
 };
 
 export type RenderConfigSpecResult = {
@@ -54,8 +55,9 @@ function assertNever(value: never): never {
   throw new Error(`Unsupported form field: ${String(value)}`);
 }
 
-function promptMessage(field: FormField): string {
-  return field.description === undefined ? field.label : `${field.label} (${field.description})`;
+function promptMessage(field: FormField, locale: string): string {
+  const label = resolveLocalizedText(field.label, locale);
+  return field.description === undefined ? label : `${label} (${resolveLocalizedText(field.description, locale)})`;
 }
 
 function visible(field: FormField, values: Readonly<Record<string, unknown>>): boolean {
@@ -244,6 +246,7 @@ export async function renderConfigSpec<T>(
   const currentSecrets = options.currentSecrets ?? {};
   const clearSecrets = new Set((options.clearSecrets ?? []).filter((key) => secretKeys.has(key)));
   const formKeys = new Set(spec.form.map((field) => field.key));
+  const locale = options.locale ?? getLocale();
   const collected: Record<string, unknown> = Object.fromEntries(
     Object.entries(currentSecrets).filter(([key]) => secretKeys.has(key)),
   );
@@ -252,7 +255,7 @@ export async function renderConfigSpec<T>(
   for (const field of spec.form) {
     if (!visible(field, collected)) continue;
     let value: unknown;
-    const message = promptMessage(field);
+    const message = promptMessage(field, locale);
     const current = field.type === "secret" ? currentSecrets[field.key] : currentPublic[field.key];
     const promptDefault = compatibleDefault(field, current);
     switch (field.type) {
@@ -260,7 +263,9 @@ export async function renderConfigSpec<T>(
         value = await prompts.input(
           {
             message,
-            ...(field.placeholder === undefined ? {} : { placeholder: field.placeholder }),
+            ...(field.placeholder === undefined
+              ? {}
+              : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
             ...(promptDefault === undefined ? {} : { default: promptDefault as string }),
           },
           context,
@@ -276,7 +281,9 @@ export async function renderConfigSpec<T>(
           await prompts.input(
             {
               message,
-              ...(field.placeholder === undefined ? {} : { placeholder: field.placeholder }),
+              ...(field.placeholder === undefined
+                ? {}
+                : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
               ...(promptDefault === undefined ? {} : { default: String(promptDefault) }),
             },
             context,
@@ -294,9 +301,11 @@ export async function renderConfigSpec<T>(
           {
             message,
             choices: field.options.map((option) => ({
-              name: option.label,
+              name: resolveLocalizedText(option.label, locale),
               value: option.value,
-              ...(option.description === undefined ? {} : { description: option.description }),
+              ...(option.description === undefined
+                ? {}
+                : { description: resolveLocalizedText(option.description, locale) }),
             })),
             ...(promptDefault === undefined ? {} : { default: promptDefault }),
           },
@@ -309,7 +318,9 @@ export async function renderConfigSpec<T>(
           await prompts.input(
             {
               message,
-              ...(field.placeholder === undefined ? {} : { placeholder: field.placeholder }),
+              ...(field.placeholder === undefined
+                ? {}
+                : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
               ...(fallback === undefined ? {} : { default: JSON.stringify(fallback) }),
             },
             context,

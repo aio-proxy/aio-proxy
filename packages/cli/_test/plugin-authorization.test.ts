@@ -137,6 +137,18 @@ describe("device-code presentation", () => {
     ]);
   });
 
+  test("resolves localized device instructions at presentation time", async () => {
+    const { deps, printed } = createDeps({ copyToClipboard: () => false, openBrowser: () => false });
+
+    await createCliAuthorizationPort({ ...deps, locale: "zh-Hans" }).presentDeviceCode({
+      url: "https://identity.example/device",
+      userCode: "SAFE-CODE",
+      instructions: { default: "Finish in browser", "zh-Hans": "请在浏览器中完成" },
+    });
+
+    expect(printed).toEqual(["Device code: SAFE-CODE", "https://identity.example/device", "请在浏览器中完成"]);
+  });
+
   test("prints the user code when clipboard copy fails without failing authorization", async () => {
     const { deps, printed } = createDeps({ copyToClipboard: () => false, openBrowser: () => false });
 

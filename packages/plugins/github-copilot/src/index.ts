@@ -1,4 +1,11 @@
-import { type ConfigSpec, definePlugin, type OAuthAdapter, type PluginDescriptor, zod } from "@aio-proxy/plugin-sdk";
+import {
+  type ConfigSpec,
+  definePlugin,
+  type LocalizedText,
+  type OAuthAdapter,
+  type PluginDescriptor,
+  zod,
+} from "@aio-proxy/plugin-sdk";
 import packageJson from "../package.json" with { type: "json" };
 import {
   discoverGitHubCopilotModels,
@@ -15,15 +22,15 @@ export const GITHUB_COPILOT_PLUGIN_VERSION = packageJson.version;
 export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 
 export type GitHubCopilotCopy = {
-  readonly adapterLabel: string;
-  readonly deploymentTypeLabel: string;
-  readonly githubDotComLabel: string;
-  readonly enterpriseLabel: string;
-  readonly enterpriseURLLabel: string;
-  readonly enterpriseURLPlaceholder: string;
-  readonly deviceInstructions?: string;
-  readonly refreshingToken?: string;
-  readonly waitingForAuthorization?: string;
+  readonly adapterLabel: LocalizedText;
+  readonly deploymentTypeLabel: LocalizedText;
+  readonly githubDotComLabel: LocalizedText;
+  readonly enterpriseLabel: LocalizedText;
+  readonly enterpriseURLLabel: LocalizedText;
+  readonly enterpriseURLPlaceholder: LocalizedText;
+  readonly deviceInstructions?: LocalizedText;
+  readonly refreshingToken?: LocalizedText;
+  readonly waitingForAuthorization?: LocalizedText;
 };
 
 export const englishCopy: GitHubCopilotCopy = {

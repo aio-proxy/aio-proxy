@@ -1,4 +1,11 @@
-import { type ConfigSpec, definePlugin, type OAuthAdapter, type PluginDescriptor, zod } from "@aio-proxy/plugin-sdk";
+import {
+  type ConfigSpec,
+  definePlugin,
+  type LocalizedText,
+  type OAuthAdapter,
+  type PluginDescriptor,
+  zod,
+} from "@aio-proxy/plugin-sdk";
 import packageJson from "../package.json" with { type: "json" };
 import { CHATGPT_CLIENT_ID, exchangeCodeForTokens } from "./oauth-flow";
 import { generatePKCE, generateState } from "./pkce";
@@ -21,7 +28,7 @@ const CHATGPT_SCOPE = "openid profile email offline_access" as const;
 const CHATGPT_ORIGINATOR = "codex_cli_rs" as const;
 
 export type OpenAIChatGPTCopy = {
-  readonly adapterLabel: string;
+  readonly adapterLabel: LocalizedText;
 };
 
 export const englishCopy: OpenAIChatGPTCopy = {

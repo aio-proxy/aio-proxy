@@ -10,6 +10,7 @@ import {
   ProviderFingerprintMismatchError,
   ProviderIdCollisionError,
 } from "@aio-proxy/core";
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import type { OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { zod } from "@aio-proxy/plugin-sdk";
 import {
@@ -24,7 +25,9 @@ import {
 } from "../src/plugin-commands/provider-login";
 
 const roots: string[] = [];
-afterEach(() => {
+const originalLocale = getLocale();
+afterEach(async () => {
+  await setLocale(originalLocale);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -134,6 +137,22 @@ describe("generic provider login capability resolution", () => {
     expect(state.calls[0]).toBe("recover");
     expect(state.calls[1]).toMatchObject({ capability: { plugin: "@a/one", capability: "unique" } });
     expect(state.printed).toEqual(["created"]);
+  });
+
+  test("resolves localized progress copy before printing", async () => {
+    await setLocale("zh-Hans");
+    const state = fixture();
+    state.deps = {
+      ...state.deps,
+      login: async (options) => {
+        options.progress?.({ default: "Waiting", "zh-Hans": "等待中" });
+        return { providerId: "created" };
+      },
+    };
+
+    await providerLogin("unique", {}, state.deps);
+
+    expect(state.printed).toEqual(["等待中", "created"]);
   });
 
   test("resolves an unambiguous short capability ID", async () => {

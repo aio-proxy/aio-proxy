@@ -1,11 +1,12 @@
 import type { ZodType } from "zod";
 import type { ConfigSpec } from "./config";
+import type { LocalizedText } from "./localized-text";
 import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";
 
 export type DeviceCodePresentation = {
   readonly url: string;
   readonly userCode: string;
-  readonly instructions?: string;
+  readonly instructions?: LocalizedText;
 };
 
 export type LoopbackRequest = {
@@ -26,7 +27,7 @@ export type AuthorizationPort = {
 
 export type OAuthLoginContext = {
   readonly authorization: AuthorizationPort;
-  readonly progress: (message: string) => void;
+  readonly progress: (message: LocalizedText) => void;
   readonly signal: AbortSignal;
 };
 
@@ -74,7 +75,8 @@ export type RuntimeContext<Credential, AccountOptions> = {
 
 export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly id: string;
-  readonly label: string;
+  readonly label: LocalizedText;
+  readonly description?: LocalizedText;
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;

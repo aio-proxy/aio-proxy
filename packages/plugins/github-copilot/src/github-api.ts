@@ -1,6 +1,7 @@
 import type {
   CredentialPort,
   CredentialSnapshot,
+  LocalizedText,
   ModelDescriptor,
   OAuthLoginContext,
   ProtocolId,
@@ -30,9 +31,9 @@ export type GitHubCopilotCredential = {
 };
 
 type GitHubCopilotLoginCopy = {
-  readonly deviceInstructions: string;
-  readonly refreshingToken: string;
-  readonly waitingForAuthorization: string;
+  readonly deviceInstructions: LocalizedText;
+  readonly refreshingToken: LocalizedText;
+  readonly waitingForAuthorization: LocalizedText;
 };
 
 export async function loginToGitHubCopilot(
@@ -58,7 +59,7 @@ export async function loginToGitHubCopilot(
   await context.authorization.presentDeviceCode({
     url: device.verificationUriComplete ?? device.verificationUri,
     userCode: device.userCode,
-    instructions: `${copy.deviceInstructions} ${device.userCode}`,
+    instructions: appendDeviceCode(copy.deviceInstructions, device.userCode),
   });
 
   const githubToken = await pollGitHubToken(authBase, device, context, copy.waitingForAuthorization);
@@ -80,6 +81,13 @@ export async function loginToGitHubCopilot(
     },
     expiresAt: copilot.expires,
   };
+}
+
+function appendDeviceCode(text: LocalizedText, code: string): LocalizedText {
+  if (typeof text === "string") return `${text} ${code}`;
+  return Object.fromEntries(
+    Object.entries(text).map(([locale, value]) => [locale, `${value} ${code}`]),
+  ) as LocalizedText;
 }
 
 export async function discoverGitHubCopilotModels(
@@ -149,7 +157,7 @@ async function pollGitHubToken(
   authBase: string,
   device: Awaited<ReturnType<typeof requestDeviceCode>>,
   context: OAuthLoginContext,
-  waitingForAuthorization: string,
+  waitingForAuthorization: LocalizedText,
 ): Promise<string> {
   let interval = device.interval;
   const deadline = Date.now() + device.expiresIn * 1_000;

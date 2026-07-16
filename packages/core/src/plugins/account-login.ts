@@ -2,6 +2,7 @@ import type {
   AuthorizationPort,
   ConfigSpec,
   CredentialPort,
+  LocalizedText,
   OAuthAdapter,
   OAuthLoginResult,
 } from "@aio-proxy/plugin-sdk";
@@ -48,7 +49,7 @@ export type LoginOAuthAccountOptions = {
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
-  readonly progress?: (message: string) => void;
+  readonly progress?: (message: LocalizedText) => void;
   readonly signal?: AbortSignal;
   readonly now?: () => number;
 };
