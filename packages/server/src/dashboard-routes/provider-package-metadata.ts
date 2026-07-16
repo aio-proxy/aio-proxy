@@ -1,5 +1,4 @@
 import { BUNDLED_PROVIDER_PACKAGES, BUNDLED_PROVIDER_VERSIONS, findInstalledNpmPackage } from "@aio-proxy/core";
-import { hasProviderOptionsSchema, providerOptionsSchema } from "@aio-proxy/provider-schemas";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { isTrustedProviderPackage } from "../provider-package-trust";
@@ -12,15 +11,6 @@ export type ProviderPackageStatusResponse = {
   readonly trusted: boolean;
   readonly state: "bundled" | "installed" | "missing";
   readonly version?: string;
-  readonly schemaAvailable: boolean;
-};
-
-export type ProviderOptionsSchemaResponse = {
-  readonly npm: string;
-  readonly packageVersion: string;
-  readonly factoryName: string;
-  readonly schema: Readonly<Record<string, unknown>>;
-  readonly warnings: readonly { readonly code: string; readonly path: string }[];
 };
 
 export const providerPackageQueryValidator = validator("query", (raw, context) => {
@@ -40,7 +30,6 @@ export const providerPackageStatus = async (npm: string): Promise<ProviderPackag
       trusted: isTrustedProviderPackage(npm),
       state: "bundled",
       version: BUNDLED_PROVIDER_VERSIONS[npm as (typeof BUNDLED_PROVIDER_PACKAGES)[number]],
-      schemaAvailable: hasProviderOptionsSchema(npm),
     };
   }
 
@@ -50,20 +39,5 @@ export const providerPackageStatus = async (npm: string): Promise<ProviderPackag
     trusted: isTrustedProviderPackage(npm),
     state: installed === null ? "missing" : "installed",
     ...(installed === null ? {} : { version: installed.version }),
-    schemaAvailable: hasProviderOptionsSchema(npm),
-  };
-};
-
-export const providerPackageOptionsSchema = (npm: string): ProviderOptionsSchemaResponse | undefined => {
-  const entry = providerOptionsSchema(npm);
-  if (entry === undefined || entry.schema === null) {
-    return undefined;
-  }
-  return {
-    npm,
-    packageVersion: entry.packageVersion,
-    factoryName: entry.factoryName,
-    schema: entry.schema,
-    warnings: entry.warnings,
   };
 };

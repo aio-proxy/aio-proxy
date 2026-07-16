@@ -27,11 +27,7 @@ import {
   ProviderNotFoundError,
   replaceProvider,
 } from "./provider-mutation";
-import {
-  providerPackageOptionsSchema,
-  providerPackageQueryValidator,
-  providerPackageStatus,
-} from "./provider-package-metadata";
+import { providerPackageQueryValidator, providerPackageStatus } from "./provider-package-metadata";
 import { redactSecrets } from "./provider-secrets";
 
 const ProviderInstallRequestSchema = z.object({
@@ -114,12 +110,6 @@ export const createDashboardRoutes = (state: ServerState) =>
     .get("/providers/package-status", providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid("query").npm)),
     )
-    .get("/providers/options-schema", providerPackageQueryValidator, (context) => {
-      const schema = providerPackageOptionsSchema(context.req.valid("query").npm);
-      return schema === undefined
-        ? context.json({ code: "schema_unavailable", error: "provider options schema unavailable" }, 404)
-        : context.json(schema);
-    })
     .get("/providers/:id/edit-view", (context) => {
       const id = context.req.param("id");
       const data = state.currentConfig().providers.find((entry) => entry.id === id);
