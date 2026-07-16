@@ -101,8 +101,6 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
     helper = m["dashboard.providers.form.options_installing_trusted_package"]({ packageName });
   } else if (schemaState.phase === "install_deferred") {
     helper = m["dashboard.providers.form.options_install_package"]();
-  } else if (schemaState.phase === "loading_schema") {
-    helper = m["dashboard.providers.form.options_schema_loading"]();
   } else if (schemaState.phase === "schema_unavailable") {
     helper = m["dashboard.providers.form.options_schema_unavailable"]();
   } else if (schemaState.phase === "install_error") {
@@ -118,7 +116,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
       ? m["dashboard.providers.form.options_object_error"]()
       : hasSchemaError || requiredRootMissing
         ? m["dashboard.providers.form.options_schema_error"]()
-        : schemaState.schemaResolution === "error"
+        : schemaState.phase === "status_error" || schemaState.schemaResolution === "error"
           ? m["dashboard.providers.form.options_schema_load_error"]()
           : null;
   const errorId = `${field.name}-error`;

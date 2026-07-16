@@ -2,13 +2,11 @@ import { describe, expect, test } from "@rstest/core";
 import {
   initialProviderOptionsSchemaState,
   providerOptionsSchemaTransition,
-  providerSchemaRefetchEvent,
   providerStatusRefetchEvent,
 } from "../hooks/use-provider-options-schema";
 import {
   ProviderPackageRequestError,
   providerInstallRequestBody,
-  providerOptionsSchemaQueryOptions,
   providerPackageStatusQueryOptions,
   throwRequestError,
 } from "../services/provider-options-schema-service";
@@ -32,16 +30,38 @@ describe("provider options editor", () => {
     expect(isProviderOptionsObject("value")).toBe(false);
   });
 
+  test("commits resolve the local catalog schema immediately", () => {
+    const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+      type: "package_committed",
+      packageName: "@ai-sdk/openai-compatible",
+    });
+    expect(committed).toMatchObject({
+      phase: "checking",
+      schemaResolution: "ready",
+      schemaPackage: "@ai-sdk/openai-compatible",
+    });
+    expect(committed.schema).toBeDefined();
+
+    const unknown = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+      type: "package_committed",
+      packageName: "@vendor/custom-provider",
+    });
+    expect(unknown).toMatchObject({
+      phase: "checking",
+      schemaResolution: "unavailable",
+      schema: undefined,
+      schemaPackage: null,
+    });
+  });
+
   test("blocks pending schema workflow phases but allows warning and unavailable fallbacks", () => {
     const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
     const invalidNoSchema = { ...validNoSchema, valid: false };
 
     expect(providerOptionsAreValid(true, validNoSchema, "idle", undefined, "unknown")).toBe(false);
     expect(providerOptionsAreValid(true, validNoSchema, "checking", undefined, "unknown")).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "installing", undefined, "loading")).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "install_required", undefined, "loading")).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "loading_schema", undefined, "loading")).toBe(false);
-    expect(providerOptionsAreValid(true, validNoSchema, "schema_error", undefined, "error")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "installing", undefined, "unavailable")).toBe(false);
+    expect(providerOptionsAreValid(true, validNoSchema, "install_required", undefined, "unavailable")).toBe(false);
     expect(providerOptionsAreValid(true, validNoSchema, "ready", undefined, "ready")).toBe(false);
     expect(providerOptionsAreValid(true, validNoSchema, "schema_unavailable", undefined, "unavailable")).toBe(true);
     expect(providerOptionsAreValid(true, validNoSchema, "install_error", undefined, "unavailable")).toBe(true);
@@ -50,70 +70,45 @@ describe("provider options editor", () => {
   });
 
   test("keeps embedded schema resolution independent from a failed trusted install", () => {
-    const schema = { type: "object", required: ["apiKey"] };
     const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
       type: "package_committed",
-      packageName: "@ai-sdk/example",
+      packageName: "@ai-sdk/openai-compatible",
     });
+    expect(committed).toMatchObject({ phase: "checking", schemaResolution: "ready" });
+    expect(committed.schema).toBeDefined();
+
     const missing = providerOptionsSchemaTransition(committed, {
       type: "status_loaded",
-      packageName: "@ai-sdk/example",
+      packageName: "@ai-sdk/openai-compatible",
       generation: 1,
-      status: { trusted: true, state: "missing", schemaAvailable: true },
+      status: { trusted: true, state: "missing" },
     });
     const installing = providerOptionsSchemaTransition(missing, { type: "install_started" });
     const failed = providerOptionsSchemaTransition(installing, {
       type: "install_failed",
-      packageName: "@ai-sdk/example",
+      packageName: "@ai-sdk/openai-compatible",
       generation: 1,
       errorCode: "install_failed",
     });
-    const validNoSchema = { valid: true, syntaxValid: true, pending: false, markers: [], schema: undefined };
 
-    expect(failed).toMatchObject({ phase: "install_error", schemaResolution: "loading", schema: undefined });
-    expect(providerOptionsAreValid(true, validNoSchema, failed.phase, failed.schema, failed.schemaResolution)).toBe(
-      false,
-    );
+    expect(failed).toMatchObject({ phase: "install_error", schemaResolution: "ready", errorCode: "install_failed" });
+    expect(failed.schema).toBeDefined();
 
-    const loaded = providerOptionsSchemaTransition(failed, {
-      type: "schema_loaded",
-      packageName: "@ai-sdk/example",
-      generation: 1,
-      schema,
-      warnings: [],
-    });
     const schemaError = {
       valid: false,
       syntaxValid: true,
       pending: false,
       markers: [{ severity: "error" as const }],
-      schema,
+      schema: failed.schema,
     };
     const schemaValid = { ...schemaError, valid: true, markers: [] };
 
-    expect(loaded).toMatchObject({ phase: "install_error", schemaResolution: "ready", schema });
-    expect(providerOptionsAreValid(true, schemaError, loaded.phase, loaded.schema, loaded.schemaResolution)).toBe(
+    expect(providerOptionsAreValid(true, schemaError, failed.phase, failed.schema, failed.schemaResolution)).toBe(
       false,
     );
-    expect(providerOptionsAreValid(true, schemaValid, loaded.phase, loaded.schema, loaded.schemaResolution, {})).toBe(
+    expect(providerOptionsAreValid(true, schemaValid, failed.phase, failed.schema, failed.schemaResolution, {})).toBe(
       true,
     );
-
-    const loadedBeforeFailure = providerOptionsSchemaTransition(installing, {
-      type: "schema_loaded",
-      packageName: "@ai-sdk/example",
-      generation: 1,
-      schema,
-      warnings: [],
-    });
-    expect(
-      providerOptionsSchemaTransition(loadedBeforeFailure, {
-        type: "install_failed",
-        packageName: "@ai-sdk/example",
-        generation: 1,
-        errorCode: "install_failed",
-      }),
-    ).toMatchObject({ phase: "install_error", schemaResolution: "ready", schema });
   });
 
   test("blocks status failures including invalid package names", () => {
@@ -141,18 +136,20 @@ describe("provider options editor", () => {
   test("allows schema-less fallback after a failed install only once unavailability is explicit", () => {
     const committed = providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
       type: "package_committed",
-      packageName: "@ai-sdk/schema-less",
+      packageName: "@vendor/custom-provider",
     });
+    expect(committed).toMatchObject({ phase: "checking", schemaResolution: "unavailable", schema: undefined });
+
     const missing = providerOptionsSchemaTransition(committed, {
       type: "status_loaded",
-      packageName: "@ai-sdk/schema-less",
+      packageName: "@vendor/custom-provider",
       generation: 1,
-      status: { trusted: true, state: "missing", schemaAvailable: false },
+      status: { trusted: true, state: "missing" },
     });
     const installing = providerOptionsSchemaTransition(missing, { type: "install_started" });
     const failed = providerOptionsSchemaTransition(installing, {
       type: "install_failed",
-      packageName: "@ai-sdk/schema-less",
+      packageName: "@vendor/custom-provider",
       generation: 1,
       errorCode: "install_failed",
     });
@@ -227,7 +224,7 @@ describe("provider options editor", () => {
       type: "status_loaded",
       packageName: "@ai-sdk/openai",
       generation: 1,
-      status: { trusted: true, state: "missing", schemaAvailable: true },
+      status: { trusted: true, state: "missing" },
     });
 
     expect(initialMissing).toMatchObject({ phase: "install_deferred", effect: undefined });
@@ -242,7 +239,7 @@ describe("provider options editor", () => {
         type: "status_loaded",
         packageName: "@ai-sdk/openai",
         generation: 2,
-        status: { trusted: true, state: "missing", schemaAvailable: true },
+        status: { trusted: true, state: "missing" },
       }),
     ).toMatchObject({ phase: "installing", effect: { type: "install", confirmed: false } });
   });
@@ -256,16 +253,11 @@ describe("provider options editor", () => {
 });
 
 describe("provider options schema service", () => {
-  test("package status and schema query keys include the package", () => {
+  test("package status query key includes the package", () => {
     expect(providerPackageStatusQueryOptions("@ai-sdk/openai").queryKey).toEqual([
       "providers",
       "package-status",
       "@ai-sdk/openai",
-    ]);
-    expect(providerOptionsSchemaQueryOptions("@ai-sdk/google").queryKey).toEqual([
-      "providers",
-      "options-schema",
-      "@ai-sdk/google",
     ]);
   });
 
@@ -298,7 +290,7 @@ describe("provider options schema workflow", () => {
       type: "status_loaded",
       packageName: "@ai-sdk/openai",
       generation: 1,
-      status: { trusted: true, state: "missing", schemaAvailable: true },
+      status: { trusted: true, state: "missing" },
     });
     const retry = providerOptionsSchemaTransition(deferred, {
       type: "package_committed",
@@ -316,7 +308,7 @@ describe("provider options schema workflow", () => {
         type: "status_loaded",
         packageName: "@ai-sdk/openai",
         generation: 2,
-        status: { trusted: true, state: "missing", schemaAvailable: true },
+        status: { trusted: true, state: "missing" },
       }),
     ).toMatchObject({ phase: "installing", effect: { type: "install", confirmed: false } });
   });
@@ -330,7 +322,7 @@ describe("provider options schema workflow", () => {
       type: "status_loaded",
       packageName: "community-provider",
       generation: 1,
-      status: { trusted: false, state: "missing", schemaAvailable: true },
+      status: { trusted: false, state: "missing" },
     });
     const installing = providerOptionsSchemaTransition(
       providerOptionsSchemaTransition(required, { type: "install_confirmed" }),
@@ -351,7 +343,7 @@ describe("provider options schema workflow", () => {
       type: "status_loaded",
       packageName: "community-provider",
       generation: 2,
-      status: { trusted: false, state: "missing", schemaAvailable: true },
+      status: { trusted: false, state: "missing" },
     });
 
     expect(retry).toMatchObject({ phase: "checking", commitGeneration: 2 });
@@ -386,7 +378,7 @@ describe("provider options schema workflow", () => {
   test("fresh status errors win over cached status data", () => {
     expect(
       providerStatusRefetchEvent("@ai-sdk/openai", 2, {
-        data: { npm: "@ai-sdk/openai", trusted: true, state: "installed", schemaAvailable: true },
+        data: { npm: "@ai-sdk/openai", trusted: true, state: "installed" },
         error: new ProviderPackageRequestError(502, "status_upstream_failed"),
       }),
     ).toEqual({
@@ -394,20 +386,6 @@ describe("provider options schema workflow", () => {
       packageName: "@ai-sdk/openai",
       generation: 2,
       errorCode: "status_upstream_failed",
-    });
-  });
-
-  test("fresh schema errors win over cached schema data", () => {
-    expect(
-      providerSchemaRefetchEvent("@ai-sdk/openai", 3, {
-        data: { schema: { type: "object" }, warnings: [] },
-        error: new ProviderPackageRequestError(503, "schema_upstream_failed"),
-      }),
-    ).toEqual({
-      type: "schema_failed",
-      packageName: "@ai-sdk/openai",
-      generation: 3,
-      errorCode: "schema_upstream_failed",
     });
   });
 
@@ -440,7 +418,7 @@ describe("provider options schema workflow", () => {
           type: "status_loaded",
           packageName: "@ai-sdk/google",
           generation: 0,
-          status: { trusted: true, state: "missing", schemaAvailable: true },
+          status: { trusted: true, state: "missing" },
         },
       ),
     ).toMatchObject({ phase: "installing", effect: { type: "install", confirmed: false } });
@@ -453,7 +431,7 @@ describe("provider options schema workflow", () => {
         type: "status_loaded",
         packageName: "community-provider",
         generation: 0,
-        status: { trusted: false, state: "missing", schemaAvailable: true },
+        status: { trusted: false, state: "missing" },
       },
     );
 
@@ -471,61 +449,58 @@ describe("provider options schema workflow", () => {
 
   test("schema availability is independent of package install state", () => {
     const installedWithSchema = providerOptionsSchemaTransition(
-      { ...initialProviderOptionsSchemaState, phase: "checking", committedPackage: "with-schema" },
+      providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+        type: "package_committed",
+        packageName: "@ai-sdk/openai-compatible",
+      }),
       {
         type: "status_loaded",
-        packageName: "with-schema",
-        generation: 0,
-        status: { trusted: false, state: "installed", schemaAvailable: true },
+        packageName: "@ai-sdk/openai-compatible",
+        generation: 1,
+        status: { trusted: false, state: "installed" },
       },
     );
     const installedWithoutSchema = providerOptionsSchemaTransition(
-      { ...initialProviderOptionsSchemaState, phase: "checking", committedPackage: "without-schema" },
+      providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+        type: "package_committed",
+        packageName: "@vendor/custom-provider",
+      }),
       {
         type: "status_loaded",
-        packageName: "without-schema",
-        generation: 0,
-        status: { trusted: true, state: "installed", schemaAvailable: false },
+        packageName: "@vendor/custom-provider",
+        generation: 1,
+        status: { trusted: true, state: "installed" },
       },
     );
 
-    expect(installedWithSchema.phase).toBe("loading_schema");
+    expect(installedWithSchema.phase).toBe("ready");
     expect(installedWithoutSchema.phase).toBe("schema_unavailable");
   });
 
   test("async completions for an old package are ignored", () => {
     const current = {
       ...initialProviderOptionsSchemaState,
-      phase: "loading_schema" as const,
+      phase: "checking" as const,
       committedPackage: "@ai-sdk/google",
+      commitGeneration: 1,
     };
 
     expect(
       providerOptionsSchemaTransition(current, {
-        type: "schema_loaded",
+        type: "status_loaded",
         packageName: "@ai-sdk/openai",
-        generation: 0,
-        schema: { type: "string" },
-        warnings: [],
+        generation: 1,
+        status: { trusted: true, state: "installed" },
       }),
     ).toBe(current);
     expect(
       providerOptionsSchemaTransition(current, {
         type: "install_failed",
         packageName: "@ai-sdk/openai",
-        generation: 0,
+        generation: 1,
         errorCode: "install_failed",
       }),
     ).toBe(current);
-  });
-
-  test("schema missing is an explicit fallback state", () => {
-    expect(
-      providerOptionsSchemaTransition(
-        { ...initialProviderOptionsSchemaState, phase: "loading_schema", committedPackage: "schema-less" },
-        { type: "schema_missing", packageName: "schema-less", generation: 0 },
-      ),
-    ).toMatchObject({ phase: "schema_unavailable", schema: undefined, warnings: [] });
   });
 
   test("same-package recommit increments generation and restarts status synchronization", () => {
@@ -545,8 +520,9 @@ describe("provider options schema workflow", () => {
       phase: "checking",
       committedPackage: "@ai-sdk/openai",
       commitGeneration: 4,
-      schema: undefined,
+      schemaResolution: "ready",
     });
+    expect(committed.schema).toBeDefined();
   });
 
   test("same-package completions from an older generation are ignored", () => {
@@ -562,24 +538,18 @@ describe("provider options schema workflow", () => {
         type: "status_loaded",
         packageName: "@ai-sdk/openai",
         generation: 1,
-        status: { trusted: true, state: "installed", schemaAvailable: true },
+        status: { trusted: true, state: "installed" },
       }),
     ).toBe(current);
 
-    const installingWithSchema = {
-      ...current,
-      phase: "install_error" as const,
-      schemaResolution: "loading" as const,
-    };
+    const installing = { ...current, phase: "installing" as const };
     expect(
-      providerOptionsSchemaTransition(installingWithSchema, {
-        type: "schema_loaded",
+      providerOptionsSchemaTransition(installing, {
+        type: "install_succeeded",
         packageName: "@ai-sdk/openai",
         generation: 1,
-        schema: { type: "object" },
-        warnings: [],
       }),
-    ).toBe(installingWithSchema);
+    ).toBe(installing);
   });
 
   test("phase-inappropriate completions are ignored", () => {
@@ -597,7 +567,7 @@ describe("provider options schema workflow", () => {
         type: "status_loaded",
         packageName: "@ai-sdk/openai",
         generation: 1,
-        status: { trusted: true, state: "missing", schemaAvailable: true },
+        status: { trusted: true, state: "missing" },
       }),
     ).toBe(current);
   });
@@ -611,7 +581,7 @@ describe("provider options schema workflow", () => {
       type: "status_loaded",
       packageName: "@ai-sdk/openai",
       generation: 1,
-      status: { trusted: true, state: "missing", schemaAvailable: true },
+      status: { trusted: true, state: "missing" },
     });
     const installing = providerOptionsSchemaTransition(missing, { type: "install_started" });
     const checking = providerOptionsSchemaTransition(installing, {
@@ -625,7 +595,7 @@ describe("provider options schema workflow", () => {
         type: "status_loaded",
         packageName: "@ai-sdk/openai",
         generation: 1,
-        status: { trusted: true, state: "missing", schemaAvailable: true },
+        status: { trusted: true, state: "missing" },
       }),
     ).toMatchObject({
       phase: "install_error",
@@ -633,24 +603,5 @@ describe("provider options schema workflow", () => {
       effect: undefined,
       errorCode: "package_still_missing",
     });
-  });
-
-  test("transient schema errors do not enable schema-less fallback", () => {
-    expect(
-      providerOptionsSchemaTransition(
-        {
-          ...initialProviderOptionsSchemaState,
-          phase: "loading_schema",
-          committedPackage: "@ai-sdk/openai",
-          commitGeneration: 1,
-        },
-        {
-          type: "schema_failed",
-          packageName: "@ai-sdk/openai",
-          generation: 1,
-          errorCode: "request_failed",
-        },
-      ),
-    ).toMatchObject({ phase: "schema_error", schema: undefined, errorCode: "request_failed" });
   });
 });
