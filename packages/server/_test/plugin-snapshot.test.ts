@@ -18,6 +18,7 @@ import { openDb } from "@aio-proxy/core/db";
 import { type CredentialPort, definePlugin, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema } from "@aio-proxy/types";
 import { createAccountRemovalCoordinator } from "../src/account-removal";
+import { createDashboardRoutes } from "../src/dashboard-routes/config";
 import { createSnapshotManager } from "../src/plugin-snapshot";
 import { handleProtocolRequest } from "../src/routes/pipeline";
 import { createServerState } from "../src/server-state";
@@ -149,6 +150,43 @@ function seedOAuthAccount(repository: PluginRepository, catalog: "missing" | "re
     },
   });
   repository.completeAccountOperation(operation.operationId);
+}
+
+function routedOAuthDescriptor(onCreateRuntime: () => void | Promise<void> = () => {}) {
+  return definePlugin((api) => {
+    api.oauth.register({
+      id: "default",
+      label: "Example",
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error("not called");
+      },
+      catalog: {
+        policy: { kind: "static" },
+        async discover() {
+          throw new Error("stored catalog should be used");
+        },
+      },
+      async createRuntime() {
+        await onCreateRuntime();
+        return {
+          provider: {
+            specificationVersion: "v4",
+            languageModel() {
+              throw new Error("not called");
+            },
+            imageModel() {
+              throw new Error("not called");
+            },
+            embeddingModel() {
+              throw new Error("not called");
+            },
+          },
+        } as never;
+      },
+    });
+  });
 }
 
 test("an acquired old snapshot drains only after its one-shot lease releases", async () => {
@@ -1279,6 +1317,67 @@ test("server recovery schedules the returned deadline and close prevents an in-f
   }
 });
 
+test("scheduled recovery waits behind an in-flight config mutation in the server FIFO", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fifo-"));
+  const configPath = join(home, "config.json");
+  writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  const runtimeStarted = deferred();
+  const releaseRuntime = deferred();
+  const recoveryScheduler = createManualRecoveryScheduler(Date.now());
+  let recoveries = 0;
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    builtIns: [
+      {
+        packageName: "@example/oauth",
+        version: "1.0.0",
+        descriptor: routedOAuthDescriptor(async () => {
+          runtimeStarted.resolve();
+          await releaseRuntime.promise;
+        }),
+      },
+    ],
+    __test: {
+      recoveryScheduler: recoveryScheduler.hooks,
+      async recoverPendingAccountOperations() {
+        recoveries++;
+        return recoveries === 2 ? { nextRunAt: recoveryScheduler.hooks.now() + 1 } : {};
+      },
+    },
+  } as never);
+
+  try {
+    expect(recoveries).toBe(2);
+    const mutation = state.configStore.mutateProviders((providers) => ({
+      ...providers,
+      person: { kind: "oauth", plugin: "@example/oauth", capability: "default" },
+    }));
+    await runtimeStarted.promise;
+
+    const recoveryRunAt = recoveryScheduler.nextRunAt();
+    if (recoveryRunAt === undefined) throw new Error("recovery timer missing");
+    recoveryScheduler.advanceTo(recoveryRunAt);
+    await flushMicrotasks();
+    expect(recoveries).toBe(2);
+
+    releaseRuntime.resolve();
+    await mutation;
+    await waitUntil(() => recoveries === 3);
+  } finally {
+    releaseRuntime.resolve();
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("a rejected recovery run is logged with a fixed payload and retried", async () => {
   jest.useFakeTimers();
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-rejection-"));
@@ -1427,8 +1526,8 @@ test("a failed delete finalizer is retried by the marker recovery deadline", asy
     expect(recoveryScheduler.nextRunAt()).toBe(pending.createdAt + PENDING_OPERATION_TTL_MS);
 
     recoveryScheduler.advanceTo(pending.createdAt + PENDING_OPERATION_TTL_MS);
-    expect(recoveries).toBe(3);
     await recoveryFinished.promise;
+    expect(recoveries).toBe(3);
     expect(finalizeAttempts).toBe(2);
     expect(repository.readAccount("person")).toBeNull();
     expect(repository.listPendingAccountOperations()).toEqual([]);
@@ -1483,6 +1582,52 @@ test("a committed delete marker arms the server recovery timer", async () => {
   }
 });
 
+test("a failed re-add commit does not cancel the prior delete marker", async () => {
+  const home = mkdtempSync(join(tmpdir(), "aio-proxy-readd-rollback-"));
+  const configPath = join(home, "config.json");
+  const provider = { kind: "oauth", plugin: "@example/oauth", capability: "default" };
+  const input = { providers: { person: provider } };
+  writeFileSync(configPath, JSON.stringify(input));
+  const handle = openDb({ home });
+  const repository = createPluginRepository(handle.sqlite);
+  seedOAuthAccount(repository);
+  let catalogJobReplacements = 0;
+  const state = await createServerState({
+    config: ConfigSchema.parse(input),
+    configPath,
+    watchConfig: false,
+    dbHome: home,
+    pluginRepository: repository,
+    builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor: routedOAuthDescriptor() }],
+    __test: {
+      onCatalogJobsReplaced() {
+        catalogJobReplacements++;
+        if (catalogJobReplacements === 3) throw new Error("catalog job replacement failed");
+      },
+    },
+  } as never);
+  const lease = state.acquireProviderSnapshot();
+
+  try {
+    await state.configStore.deleteProvider("person");
+    const marker = repository.listPendingAccountOperations()[0];
+    if (marker === undefined) throw new Error("delete marker missing");
+
+    await expect(
+      state.configStore.mutateProviders((providers) => ({ ...providers, person: provider })),
+    ).rejects.toThrow("catalog job replacement failed");
+
+    expect((await new AtomicConfigFile(configPath).read())["providers"]).toEqual({});
+    expect(repository.listPendingAccountOperations()).toEqual([marker]);
+    expect(repository.readAccount("person")).not.toBeNull();
+  } finally {
+    lease.release();
+    state.close();
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("delete, re-add, and delete again only removes the account after every routed incarnation drains", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-delete-readd-delete-"));
   const configPath = join(home, "config.json");
@@ -1492,39 +1637,7 @@ test("delete, re-add, and delete again only removes the account after every rout
   const handle = openDb({ home });
   const repository = createPluginRepository(handle.sqlite);
   seedOAuthAccount(repository);
-  const descriptor = definePlugin((api) => {
-    api.oauth.register({
-      id: "default",
-      label: "Example",
-      account: { options: { schema: zod.object({}), form: [] } },
-      credentials: zod.object({ token: zod.string() }),
-      async login() {
-        throw new Error("not called");
-      },
-      catalog: {
-        policy: { kind: "static" },
-        async discover() {
-          throw new Error("stored catalog should be used");
-        },
-      },
-      async createRuntime() {
-        return {
-          provider: {
-            specificationVersion: "v4",
-            languageModel() {
-              throw new Error("not called");
-            },
-            imageModel() {
-              throw new Error("not called");
-            },
-            embeddingModel() {
-              throw new Error("not called");
-            },
-          },
-        } as never;
-      },
-    });
-  });
+  const descriptor = routedOAuthDescriptor();
   const state = await createServerState({
     config: ConfigSchema.parse(input),
     configPath,
@@ -1534,10 +1647,12 @@ test("delete, re-add, and delete again only removes the account after every rout
     builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
   });
   const oldestLease = state.acquireProviderSnapshot();
+  const routes = createDashboardRoutes(state);
 
   try {
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toContain("person");
-    await state.configStore.deleteProvider("person");
+    const firstDelete = await routes.request("/providers/person", { method: "DELETE" });
+    expect(firstDelete.status).toBe(200);
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
     const first = repository.listPendingAccountOperations()[0];
     if (first === undefined) throw new Error("first delete marker missing");
@@ -1548,7 +1663,8 @@ test("delete, re-add, and delete again only removes the account after every rout
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toContain("person");
     const readdedLease = state.acquireProviderSnapshot();
 
-    await state.configStore.deleteProvider("person");
+    const secondDelete = await routes.request("/providers/person", { method: "DELETE" });
+    expect(secondDelete.status).toBe(200);
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).not.toContain("person");
     const second = repository.listPendingAccountOperations()[0];
     if (second === undefined) throw new Error("second delete marker missing");

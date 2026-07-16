@@ -182,14 +182,16 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   let managerReady = false;
 
   if (configFile !== undefined) {
-    await recoverAccounts(
-      configFile,
-      repository,
-      { mode: "server", canDeleteAccount: () => true, now: recoveryScheduler.now },
-      {
-        factory: diagnostics,
-        logger: pluginLogger,
-      },
+    await queue(() =>
+      recoverAccounts(
+        configFile,
+        repository,
+        { mode: "server", canDeleteAccount: () => true, now: recoveryScheduler.now },
+        {
+          factory: diagnostics,
+          logger: pluginLogger,
+        },
+      ),
     );
   }
 
@@ -258,9 +260,9 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     );
     const before = (manager.current() as Snapshot).summaries;
     const retired = manager.swap(candidate);
-    accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
     replaceCatalogJobs(candidate.catalogJobs);
     events.publish({ event: "config.changed", data: providerDiff(before, candidate.summaries) });
+    accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
     return retired;
   }
 
@@ -418,18 +420,20 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
         recoveryTimer = undefined;
         recoveryRunAt = undefined;
         if (closed || generation !== recoveryGeneration) return;
-        void runRecovery(generation);
+        void queue(() => runRecovery(generation)).catch(() => {});
       },
       Math.max(0, nextRunAt - recoveryScheduler.now()),
     );
   }
 
   if (configFile !== undefined) {
-    const recovered = await recoverAccounts(
-      configFile,
-      repository,
-      { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
-      { factory: diagnostics, logger: pluginLogger },
+    const recovered = await queue(() =>
+      recoverAccounts(
+        configFile,
+        repository,
+        { mode: "server", canDeleteAccount: manager.canDeleteAccount, now: recoveryScheduler.now },
+        { factory: diagnostics, logger: pluginLogger },
+      ),
     );
     if (recovered.nextRunAt !== undefined) scheduleRecovery(recovered.nextRunAt);
   }
