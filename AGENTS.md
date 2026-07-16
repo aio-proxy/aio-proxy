@@ -11,6 +11,49 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
 
+## Coding Standards
+
+### Utilities
+
+- Search the codebase before adding a utility.
+- Prefer `es-toolkit`, or a composition of its functions, for generic collection, object, string, and function utilities.
+- Do not hand-write utilities without business meaning when `es-toolkit` already provides equivalent behavior.
+- Keep trivial native JavaScript when it is clearer, such as `map`, `filter`, `some`, `every`, object spread, or a simple loop.
+- Prefer narrow imports such as `es-toolkit/array`, `es-toolkit/object`, and `es-toolkit/function`.
+- Avoid `es-toolkit/compat` unless lodash-compatible behavior is explicitly required.
+- Each workspace package using `es-toolkit` must declare it with `"es-toolkit": "catalog:"`.
+- When selecting an `es-toolkit` function or verifying its import path, behavior, or FP signature, consult the official documentation index: https://es-toolkit.dev/llms.txt
+- Load only the relevant referenced documentation page. Do not load `llms-full.txt` unless broad API research is explicitly required.
+
+### Functional Pipelines
+
+- Prefer `es-toolkit/fp` for multi-step, side-effect-free collection transformations when `pipe` makes the data flow clearer.
+- Do not convert loops that rely on early exit, mutation, async sequencing, streaming, or state-machine behavior into functional pipelines.
+- Do not assume `es-toolkit/fp` is faster. For performance-sensitive code, benchmark the actual path and prefer a single loop when it avoids repeated traversal or intermediate allocations.
+
+### File Size
+
+- Handwritten code files, including tests, should not exceed 300 lines.
+- At 240 lines, evaluate whether the file has accumulated multiple responsibilities and split it before adding more.
+- Generated files, externally managed files, migrations, and declarative fixtures are exempt.
+- New files must follow these limits. Existing files over 300 lines must not grow and should be split when materially modified.
+
+### File Splitting
+
+- Split files by responsibility, not by moving arbitrary lines into a generic helper file.
+- When extracting private collaborators from `foo.ts`, prefer a private directory such as `foo/index.ts` and `foo/bar.ts`.
+- `foo/index.ts` is the public entry point and should contain only exports and lightweight orchestration.
+- Private modules such as `foo/bar.ts` must not be exported from higher-level barrels or imported from outside the `foo/` directory.
+- Keep business-specific operations named and colocated with their domain. Do not move them into generic `utils.ts` files.
+- Avoid circular dependencies when splitting files.
+
+### Change Quality
+
+- Do not add another utility dependency when the standard library, platform, or `es-toolkit` covers the requirement.
+- Non-trivial behavior changes require the smallest relevant automated test.
+- Run `bun run check` and the affected package tests before considering a change complete.
+- Comments should explain constraints or reasoning, not restate the code.
+
 ## Cross-Protocol Routing
 
 Provider selection is model-first:

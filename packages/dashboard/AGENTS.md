@@ -45,14 +45,6 @@ This file is the frontend authority for `packages/dashboard`.
 - Default capabilities are sorting, filtering, pagination, and column visibility.
 - Table state stays local to the component or module unless explicitly requested.
 
-## Utilities
-
-- `es-toolkit` is the standard reusable utility library.
-- Do not hand-write reusable utilities that `es-toolkit` already provides, including `debounce`, `throttle`, `groupBy`, `keyBy`, `partition`, `uniqBy`, `sortBy`, `pick`, `omit`, `chunk`, `compact`, deep merge, and clone helpers.
-- Prefer native JavaScript for trivial one-liners like `map`, `filter`, `some`, `every`, and simple object spreads.
-- Prefer tree-shakable category imports such as `es-toolkit/array`, `es-toolkit/function`, and `es-toolkit/object`.
-- Avoid `es-toolkit/compat` unless explicitly migrating lodash-compatible behavior.
-
 ## Copy And i18n
 
 - All user-facing copy must come from i18n messages.
