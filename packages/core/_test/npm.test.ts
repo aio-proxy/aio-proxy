@@ -26,6 +26,8 @@ import {
 import { acquireNpmInstallLock } from "../src/npm-lock";
 
 const homes: string[] = [];
+const PROCESS_CLEANUP_TEST_BUDGET_MS = 5_000;
+const PROCESS_CLEANUP_TEST_TIMEOUT_MS = 7_000;
 
 async function waitForFile(path: string): Promise<void> {
   const deadline = Date.now() + 2_000;
@@ -467,46 +469,50 @@ describe("npmAdd", () => {
     }
   });
 
-  test("Given process identity ignores termination When locking Then SIGKILL cleanup stays bounded", async () => {
-    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-hung-identity-"));
-    const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
-    const originalSpawn = mutableBun.spawn;
-    const killSignals: unknown[] = [];
-    mutableBun.spawn = (() => {
-      const stdout = new ReadableStream<Uint8Array>({
-        pull() {
-          return new Promise<void>(() => {});
-        },
-        cancel() {
-          return new Promise<void>(() => {});
-        },
-      });
-      return {
-        stdout,
-        exited: new Promise<number>(() => {}),
-        kill(signal?: unknown) {
-          killSignals.push(signal);
-        },
-      } as unknown as ReturnType<typeof Bun.spawn>;
-    }) as typeof Bun.spawn;
-    let lock: Awaited<ReturnType<typeof acquireNpmInstallLock>> | undefined;
-    const pending = acquireNpmInstallLock("hung-identity-provider", cacheDir, { waitMs: 2_500 });
-    try {
-      lock = await Promise.race([
-        pending,
-        Bun.sleep(2_500).then(() => {
-          throw new Error("npm identity cleanup exceeded its budget");
-        }),
-      ]);
-      expect(killSignals.length).toBeGreaterThan(0);
-      expect(killSignals.every((signal) => signal === 9)).toBe(true);
-    } finally {
-      mutableBun.spawn = originalSpawn;
-      void pending.catch(() => {});
-      await lock?.release();
-      rmSync(cacheDir, { recursive: true, force: true });
-    }
-  });
+  test(
+    "Given process identity ignores termination When locking Then SIGKILL cleanup stays bounded",
+    async () => {
+      const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-hung-identity-"));
+      const mutableBun = Bun as unknown as { spawn: typeof Bun.spawn };
+      const originalSpawn = mutableBun.spawn;
+      const killSignals: unknown[] = [];
+      mutableBun.spawn = (() => {
+        const stdout = new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise<void>(() => {});
+          },
+          cancel() {
+            return new Promise<void>(() => {});
+          },
+        });
+        return {
+          stdout,
+          exited: new Promise<number>(() => {}),
+          kill(signal?: unknown) {
+            killSignals.push(signal);
+          },
+        } as unknown as ReturnType<typeof Bun.spawn>;
+      }) as typeof Bun.spawn;
+      let lock: Awaited<ReturnType<typeof acquireNpmInstallLock>> | undefined;
+      const pending = acquireNpmInstallLock("hung-identity-provider", cacheDir, { waitMs: 2_500 });
+      try {
+        lock = await Promise.race([
+          pending,
+          Bun.sleep(PROCESS_CLEANUP_TEST_BUDGET_MS).then(() => {
+            throw new Error("npm identity cleanup exceeded its budget");
+          }),
+        ]);
+        expect(killSignals.length).toBeGreaterThan(0);
+        expect(killSignals.every((signal) => signal === 9)).toBe(true);
+      } finally {
+        mutableBun.spawn = originalSpawn;
+        void pending.catch(() => {});
+        await lock?.release();
+        rmSync(cacheDir, { recursive: true, force: true });
+      }
+    },
+    PROCESS_CLEANUP_TEST_TIMEOUT_MS,
+  );
 
   test("Given stdout reader is released When cleanup cancels Then locking still completes", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-released-reader-"));
