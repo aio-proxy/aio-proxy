@@ -41,13 +41,22 @@ export const beginJsonValidation = (
   state: JsonValidationState,
   draft: string,
   schema: JsonSchema | undefined,
-): JsonValidationState => ({
-  generation: state.generation + 1,
-  draft,
-  schema,
-  pending: true,
-  markers: [],
-});
+): JsonValidationState =>
+  schema === undefined
+    ? {
+        generation: state.generation + 1,
+        draft,
+        schema: undefined,
+        pending: false,
+        markers: [],
+      }
+    : {
+        generation: state.generation + 1,
+        draft,
+        schema,
+        pending: true,
+        markers: [],
+      };
 
 export const completeJsonValidation = (
   state: JsonValidationState,

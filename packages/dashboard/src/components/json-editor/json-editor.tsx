@@ -70,6 +70,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
   useEffect(() => {
     if (
+      schema === undefined ||
       !editor ||
       !monaco ||
       !validationState.pending ||

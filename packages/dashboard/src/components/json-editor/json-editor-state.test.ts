@@ -63,6 +63,28 @@ describe("JsonEditor state", () => {
     });
   });
 
+  test("undefined schema completes immediately with empty markers", () => {
+    const initial = createJsonValidationState("{}", { required: ["apiKey"] });
+    const next = beginJsonValidation(initial, '{"custom":true}', undefined);
+
+    expect(next).toMatchObject({
+      draft: '{"custom":true}',
+      schema: undefined,
+      pending: false,
+      markers: [],
+    });
+    expect(next.generation).toBe(initial.generation + 1);
+    // Omit `schema: undefined` — under exactOptionalPropertyTypes, `schema?: JsonSchema`
+    // rejects an explicit undefined property (IDE/tsc); validity does not need it here.
+    expect(
+      mergeJsonValidation({
+        syntaxValid: true,
+        markers: next.markers,
+        pending: next.pending,
+      }).valid,
+    ).toBe(true);
+  });
+
   test("registry preserves other mounted editor schemas", () => {
     const applied: unknown[] = [];
     const registry = createJsonSchemaRegistry((schemas) => applied.push(schemas));
