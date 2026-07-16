@@ -134,7 +134,7 @@
         "options_json_error": "JSON 格式无效",
         "options_object_error": "选项必须是 JSON 对象。",
         "options_schema_error": "选项不符合提供商架构。",
-        "options_schema_load_error": "无法加载选项架构。在完成校验前无法保存。",
+        "options_schema_load_error": "无法检查提供商包。在完成检查前无法保存。",
         "options_checking_package": "正在检查包 {packageName}…",
         "options_installing_trusted_package": "正在安装受信任的包 {packageName}…",
         "options_install_package": "安装提供商包",

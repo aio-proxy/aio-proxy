@@ -156,7 +156,7 @@
         "options_json_error": "Invalid JSON",
         "options_object_error": "Options must be a JSON object.",
         "options_schema_error": "Options do not match the provider schema.",
-        "options_schema_load_error": "The options schema could not be loaded. Saving is blocked until validation can complete.",
+        "options_schema_load_error": "The provider package could not be checked. Saving is blocked until this completes.",
         "options_checking_package": "Checking package {packageName}…",
         "options_installing_trusted_package": "Installing trusted package {packageName}…",
         "options_install_package": "Install provider package",
