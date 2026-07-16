@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "rslib",
-    "test": "bun test _test",
+    "test": "bun run test:unit",
     "test:unit": "bun test"
   },
   "dependencies": {

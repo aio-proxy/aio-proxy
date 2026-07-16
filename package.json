@@ -50,7 +50,7 @@
     "build": "turbo run build",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "dev": "turbo run dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run check && turbo run test:unit",
+    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types",
     "changeset": "changeset"
   },
   "devDependencies": {
