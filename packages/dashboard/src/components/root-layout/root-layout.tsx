@@ -12,9 +12,9 @@ export const RootLayout: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableColorScheme={false} enableSystem storageKey="theme">
         <TooltipProvider>
-          <SidebarProvider>
+          <SidebarProvider className="bg-sidebar">
             <SideMenu />
-            <SidebarInset className="h-[calc(100dvh-1rem)]">
+            <SidebarInset className="h-dvh bg-transparent">
               <Outlet />
             </SidebarInset>
             <Toaster />

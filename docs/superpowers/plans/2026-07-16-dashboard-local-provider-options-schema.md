@@ -253,7 +253,7 @@ Expected: PASS.
 - Modify: `packages/dashboard/src/modules/providers/components/provider-options-editor.tsx`
 - Modify: `packages/i18n/messages/en.json`
 - Modify: `packages/i18n/messages/zh-Hans.json`
-- Run: `bun run i18n:compile` after message edits
+- Run: `bun run --filter @aio-proxy/i18n build` after message edits (paraglide compile — there is no `i18n:compile` script)
 
 **Interfaces:**
 - Consumes: `resolveLocalProviderOptionsSchema(packageName)`
@@ -271,7 +271,7 @@ Expected: PASS.
 - Retarget `dashboard.providers.form.options_schema_load_error` copy to package-status failure (schema HTTP load no longer exists), e.g.:
   - en: `The provider package could not be checked. Saving is blocked until this completes.`
   - zh-Hans: `无法检查提供商包。在完成检查前无法保存。`
-- Leave unused `options_schema_loading` in messages (no unused-key lint).
+- Keep `options_schema_loading` in messages — it is currently used by the `loading_schema` helper branch (`provider-options-editor.tsx`) and becomes unused only after this task removes that branch; leave it (biome has no unused-key lint).
 
 - [ ] **Step 1: Rewrite / delete tests by name (do this before production edits)**
 
@@ -373,6 +373,11 @@ In the hook:
 - Keep status query + install mutation.
 - Delete `providerSchemaRefetchEvent`.
 
+Also delete the now-dead reducer code in the same file (removing the schema events/phases orphans it):
+
+- `resolveSchemaAvailability` — loses all callers once `status_loaded` no longer branches on `schemaAvailable`.
+- The `schema_loaded` / `schema_missing` / `schema_failed` branch inside `rejectsCompletion` — those events no longer exist.
+
 In `provider-options-schema-service.ts`:
 
 - Delete `providerOptionsSchemaQueryOptions`.
@@ -390,7 +395,7 @@ externalInvalid={!rootValid || requiredRootMissing || schemaState.schemaResoluti
 
 and FieldError when `schemaState.phase === "status_error" || schemaState.schemaResolution === "error"` using `options_schema_load_error` (after retargeted copy).
 
-Update i18n strings as specified above; run `rtk bun run i18n:compile`.
+Update i18n strings as specified above; run `bun run --filter @aio-proxy/i18n build` (paraglide compile — no `i18n:compile` script exists).
 
 `provider-form-fields-ai-sdk.tsx` only uses the hook result API (`commitPackage`, `changePackage`, `phase`, etc.) — no `schemaAvailable` field; no change required unless types break.
 

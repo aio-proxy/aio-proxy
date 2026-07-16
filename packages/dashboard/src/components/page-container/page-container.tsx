@@ -17,19 +17,19 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
 }) => {
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-border border-b px-4">
+      <header className="flex h-16 items-center justify-between px-4">
         <div className="flex min-w-0 items-center gap-1 truncate">
           {!!backTo && (
             <Button variant="ghost" size="icon" render={<Link to={backTo} preload="intent" />}>
               <ArrowLeftIcon />
             </Button>
           )}
-          <h1 className="inline font-semibold text-sm/normal">{title}</h1>
+          <h1 className="inline font-semibold font-heading text-xl">{title}</h1>
         </div>
         {extra && <div className="ml-2">{extra}</div>}
       </header>
       <ScrollArea className="h-full min-h-0 flex-1">
-        <div className="p-3">{children}</div>
+        <div className="px-3 pb-3">{children}</div>
         <ScrollBar orientation="vertical" />
       </ScrollArea>
     </>

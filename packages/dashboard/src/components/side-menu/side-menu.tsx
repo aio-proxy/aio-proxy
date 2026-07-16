@@ -76,7 +76,7 @@ export const SideMenu: React.FC = () => {
   const location = useLocation();
 
   return (
-    <Sidebar variant="inset">
+    <Sidebar variant="floating">
       <SidebarHeader>
         <div className="ml-3">
           <div className="mb-1 flex items-center gap-1">
@@ -103,7 +103,7 @@ export const SideMenu: React.FC = () => {
                   const isActive = item.isActive ? item.isActive(location.pathname) : false;
                   return (
                     <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton isActive={isActive} render={<Link to={item.to} />}>
+                      <SidebarMenuButton isActive={isActive} render={<Link to={item.to!} />}>
                         <item.icon />
                         <span>{item.label}</span>
                       </SidebarMenuButton>

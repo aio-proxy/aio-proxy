@@ -98,6 +98,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/provider-schemas": "0.1.1",
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@base-ui/react": "^1.6.0",
@@ -194,7 +195,6 @@
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/oauth": "workspace:*",
-        "@aio-proxy/provider-schemas": "0.1.1",
         "@aio-proxy/types": "workspace:*",
         "date-fns": "^4.4.0",
         "es-toolkit": "catalog:",

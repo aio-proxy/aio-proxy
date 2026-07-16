@@ -44,20 +44,6 @@ export const providerPackageStatusQueryOptions = (packageName: string) =>
     },
   });
 
-export const providerOptionsSchemaQueryOptions = (packageName: string) =>
-  queryOptions({
-    queryKey: ["providers", "options-schema", packageName],
-    queryFn: async () => {
-      const response = await dashboardClient.dashboard.api.providers["options-schema"].$get({
-        query: { npm: packageName },
-      });
-      if (!response.ok) {
-        return throwRequestError(response);
-      }
-      return response.json();
-    },
-  });
-
 export const installProviderPackage = async ({
   packageName,
   confirmed,
