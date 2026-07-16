@@ -15,7 +15,7 @@
   "scripts": {
     "build": "rslib",
     "test": "bun test _test",
-    "test:unit": "bun test _test"
+    "test:unit": "bun test"
   },
   "dependencies": {
     "@aio-proxy/plugin-sdk": "workspace:*",

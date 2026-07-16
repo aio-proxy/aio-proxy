@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./_test/setup.ts _test"
+    "test:unit": "bun test --preload=./_test/setup.ts"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
