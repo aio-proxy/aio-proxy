@@ -37,7 +37,12 @@ export const DataTableToolbar: React.FC<Props> = ({
   columnsLabel,
   columnLabel,
 }) => {
-  const form = useForm({ defaultValues: { tableFilter: "" } });
+  const form = useForm({
+    defaultValues: {
+      tableFilter: "",
+      columnVisibility: { ...columnVisibility },
+    },
+  });
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-2">
@@ -59,15 +64,22 @@ export const DataTableToolbar: React.FC<Props> = ({
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="outline" />}>{columnsLabel}</DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {table.getAllLeafColumns().map((column) => (
-            <DropdownMenuCheckboxItem
-              key={column.id}
-              checked={columnVisibility[column.id] !== false}
-              onCheckedChange={(checked) => column.toggleVisibility(checked)}
-            >
-              {columnLabel(column.id)}
-            </DropdownMenuCheckboxItem>
-          ))}
+          <form.Field name="columnVisibility">
+            {(field) =>
+              table.getAllLeafColumns().map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  checked={field.state.value[column.id] !== false}
+                  onCheckedChange={(checked) => {
+                    field.handleChange({ ...field.state.value, [column.id]: checked });
+                    column.toggleVisibility(checked);
+                  }}
+                >
+                  {columnLabel(column.id)}
+                </DropdownMenuCheckboxItem>
+              ))
+            }
+          </form.Field>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
