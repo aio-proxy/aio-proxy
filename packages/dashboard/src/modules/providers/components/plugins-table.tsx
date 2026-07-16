@@ -89,13 +89,13 @@ export const PluginsTable: React.FC<{ readonly plugins: readonly DashboardPlugin
   "use no memo";
 
   // TanStack exposes changing state through a stable mutable table instance.
-  const { table, columnVisibility } = useDataTable(plugins, columns);
+  const { table, columnVisibilityForm } = useDataTable(plugins, columns);
 
   return (
     <div className="space-y-4">
       <DataTableToolbar
         table={table}
-        columnVisibility={columnVisibility}
+        columnVisibilityForm={columnVisibilityForm}
         filterId="plugins-table-filter"
         filterLabel={m["dashboard.providers.plugins.table.filter"]()}
         columnsLabel={m["dashboard.providers.plugins.table.columns"]()}

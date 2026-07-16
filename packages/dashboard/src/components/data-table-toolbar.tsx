@@ -9,10 +9,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import type { ColumnVisibilityForm } from "@/hooks/use-data-table";
 
 type VisibilityColumn = {
   readonly id: string;
-  readonly toggleVisibility: (value?: boolean) => void;
 };
 
 type TableControls = {
@@ -22,7 +22,7 @@ type TableControls = {
 
 type Props = {
   readonly table: TableControls;
-  readonly columnVisibility: Readonly<Record<string, boolean>>;
+  readonly columnVisibilityForm: ColumnVisibilityForm;
   readonly filterId: string;
   readonly filterLabel: string;
   readonly columnsLabel: string;
@@ -31,22 +31,17 @@ type Props = {
 
 export const DataTableToolbar: React.FC<Props> = ({
   table,
-  columnVisibility,
+  columnVisibilityForm,
   filterId,
   filterLabel,
   columnsLabel,
   columnLabel,
 }) => {
-  const form = useForm({
-    defaultValues: {
-      tableFilter: "",
-      columnVisibility: { ...columnVisibility },
-    },
-  });
+  const filterForm = useForm({ defaultValues: { tableFilter: "" } });
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-2">
-      <form.Field name="tableFilter">
+      <filterForm.Field name="tableFilter">
         {(field) => (
           <Field className="max-w-xs">
             <FieldLabel htmlFor={filterId}>{filterLabel}</FieldLabel>
@@ -60,26 +55,23 @@ export const DataTableToolbar: React.FC<Props> = ({
             />
           </Field>
         )}
-      </form.Field>
+      </filterForm.Field>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="outline" />}>{columnsLabel}</DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <form.Field name="columnVisibility">
+          <columnVisibilityForm.Field name="columnVisibility">
             {(field) =>
               table.getAllLeafColumns().map((column) => (
                 <DropdownMenuCheckboxItem
                   key={column.id}
                   checked={field.state.value[column.id] !== false}
-                  onCheckedChange={(checked) => {
-                    field.handleChange({ ...field.state.value, [column.id]: checked });
-                    column.toggleVisibility(checked);
-                  }}
+                  onCheckedChange={(checked) => field.handleChange({ ...field.state.value, [column.id]: checked })}
                 >
                   {columnLabel(column.id)}
                 </DropdownMenuCheckboxItem>
               ))
             }
-          </form.Field>
+          </columnVisibilityForm.Field>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

@@ -1,6 +1,8 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { DeleteProviderDialogStub, providerStub, RouterLinkStub } from "../test-doubles";
+import { DeleteProviderDialogStub } from "../delete-provider-dialog-stub";
+import { providerStub } from "../provider-fixtures";
+import { RouterLinkStub } from "../router-link-stub";
 import { ProviderActionsMenu } from "./provider-actions-menu";
 import { ProviderStateCell } from "./provider-state-cell";
 

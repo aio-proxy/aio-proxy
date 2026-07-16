@@ -151,7 +151,7 @@ export const ProvidersPage: React.FC = () => {
     ],
     [],
   );
-  const { table, columnVisibility } = useDataTable(providers, columns);
+  const { table, columnVisibilityForm } = useDataTable(providers, columns);
   const isLoading = providersQuery.isLoading || pluginsQuery.isLoading;
 
   return (
@@ -199,7 +199,7 @@ export const ProvidersPage: React.FC = () => {
               <div className="flex flex-col gap-4">
                 <DataTableToolbar
                   table={table}
-                  columnVisibility={columnVisibility}
+                  columnVisibilityForm={columnVisibilityForm}
                   filterId="providers-table-filter"
                   filterLabel={m["dashboard.providers.table.filter"]()}
                   columnsLabel={m["dashboard.providers.table.columns"]()}

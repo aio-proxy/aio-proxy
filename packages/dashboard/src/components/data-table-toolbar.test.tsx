@@ -1,6 +1,6 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import type { ColumnDef } from "@tanstack/react-table";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
 import { useDataTable } from "@/hooks/use-data-table";
 import { DataTableToolbar } from "./data-table-toolbar";
@@ -13,12 +13,12 @@ const columnLabel = (): string => "Name";
 let toolbarTable: ReturnType<typeof useDataTable<Row>>["table"];
 
 const ToolbarHarness: React.FC = () => {
-  const { table, columnVisibility } = useDataTable(data, columns);
+  const { table, columnVisibilityForm } = useDataTable(data, columns);
   toolbarTable = table;
   return (
     <DataTableToolbar
       table={table}
-      columnVisibility={columnVisibility}
+      columnVisibilityForm={columnVisibilityForm}
       filterId="table-filter"
       filterLabel="Filter"
       columnsLabel="Columns"
@@ -37,16 +37,23 @@ describe("data table toolbar", () => {
     expect(setGlobalFilter).toHaveBeenCalledWith("row");
   });
 
-  test("exposes and refreshes checkbox state when stable props retain the table instance", async () => {
+  test("keeps table and checkbox visibility synchronized", async () => {
     render(<ToolbarHarness />);
 
-    const trigger = screen.getByRole("button", { name: "Columns" });
-    fireEvent.click(trigger);
-    const visibleItem = await screen.findByRole("menuitemcheckbox", { name: "Name", checked: true });
-    expect(visibleItem).toHaveAttribute("aria-checked", "true");
+    act(() => toolbarTable.getColumn("name")?.toggleVisibility(false));
+    expect(toolbarTable.getColumn("name")?.getIsVisible()).toBe(false);
 
-    fireEvent.click(visibleItem);
     fireEvent.click(screen.getByRole("button", { name: "Columns" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: "Name" })).toHaveAttribute("aria-checked", "false");
+    const hiddenItem = await screen.findByRole("menuitemcheckbox", { name: "Name" });
+    expect(hiddenItem).toHaveAttribute("aria-checked", "false");
+
+    const column = toolbarTable.getColumn("name");
+    if (column === undefined) throw new Error("Expected name column");
+    const toggleVisibility = rs.spyOn(column, "toggleVisibility");
+    fireEvent.click(hiddenItem);
+    expect(toggleVisibility).not.toHaveBeenCalled();
+    expect(column.getIsVisible()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Columns" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: "Name" })).toHaveAttribute("aria-checked", "true");
   });
 });
