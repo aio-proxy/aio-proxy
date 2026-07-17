@@ -5,6 +5,10 @@ name = "aio-proxy"
 [setup]
 script = '''
 cd "$CODEX_WORKTREE_PATH"
+reference_source="$CODEX_SOURCE_TREE_PATH/.reference"
+if [ -d "$reference_source" ] && [ ! -e .reference ] && [ ! -L .reference ]; then
+  ln -s "$reference_source" .reference
+fi
 bun install
 bun run build
 '''
