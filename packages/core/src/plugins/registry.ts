@@ -20,13 +20,28 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function validateQuota(value: unknown): NonNullable<OAuthAdapter["quota"]> | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error("Invalid OAuth adapter");
+  const { read, reset } = value;
+  if (typeof read !== "function" || (reset !== undefined && typeof reset !== "function")) {
+    throw new Error("Invalid OAuth adapter");
+  }
+  const boundRead = read.bind(value) as NonNullable<OAuthAdapter["quota"]>["read"];
+  if (reset === undefined) return { read: boundRead };
+  return {
+    read: boundRead,
+    reset: reset.bind(value) as NonNullable<NonNullable<OAuthAdapter["quota"]>["reset"]>,
+  };
+}
+
 function validateAdapter(
   value: unknown,
   plugin: string,
   logger: PluginLogSink,
 ): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error("Invalid OAuth adapter");
-  const { id: rawId, label, description, icon, account, credentials, login, createRuntime, catalog } = value;
+  const { id: rawId, label, description, icon, account, credentials, login, createRuntime, catalog, quota } = value;
   const id = CapabilityIdSchema.parse(rawId);
   const validatedIcon = icon === undefined ? undefined : validateOAuthIcon(icon);
   if (validatedIcon !== undefined && !validatedIcon.ok) {
@@ -47,6 +62,7 @@ function validateAdapter(
   const validatedOptions = validateConfigSpec(options).spec;
   if (!isPluginZodSchema(credentials)) throw new Error("Invalid OAuth adapter");
   if (typeof login !== "function" || typeof createRuntime !== "function") throw new Error("Invalid OAuth adapter");
+  const validatedQuota = validateQuota(quota);
   if (!isRecord(catalog)) throw new Error("Invalid OAuth adapter");
   const { discover, policy } = catalog;
   if (typeof discover !== "function" || !isRecord(policy)) {
@@ -79,6 +95,7 @@ function validateAdapter(
         discover: discover.bind(catalog) as OAuthAdapter["catalog"]["discover"],
       },
       createRuntime: createRuntime.bind(value) as OAuthAdapter["createRuntime"],
+      ...(validatedQuota === undefined ? {} : { quota: validatedQuota }),
     },
   };
 }

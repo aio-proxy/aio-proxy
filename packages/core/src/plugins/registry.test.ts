@@ -98,7 +98,7 @@ describe("PluginRegistry staging", () => {
     expect(snapshot.registry.oauthCapabilities()).toHaveLength(0);
   });
 
-  test("preserves class adapter and catalog method receivers", async () => {
+  test("preserves class adapter, catalog, and quota method receivers", async () => {
     class Catalog {
       readonly policy = { kind: "static" } as const;
       readonly #model = "private-model";
@@ -121,6 +121,17 @@ describe("PluginRegistry staging", () => {
       readonly account = { options: { schema: zod.object({}), form: [] } };
       readonly credentials = zod.object({ token: zod.string() });
       readonly catalog = new Catalog();
+      readonly quota = new (class {
+        #resetCount = 0;
+
+        async read() {
+          return { items: [{ id: "primary", label: "Primary", remainingRatio: this.#resetCount }] };
+        }
+
+        async reset() {
+          this.#resetCount += 1;
+        }
+      })();
       readonly #token = "private-token";
 
       async login() {
@@ -167,6 +178,14 @@ describe("PluginRegistry staging", () => {
       language: [{ id: "private-model" }],
     });
     await expect(resolved.createRuntime({} as never) as unknown as Promise<string>).resolves.toBe("private-token");
+    if (resolved.quota === undefined) throw new Error("quota not registered");
+    await expect(resolved.quota.read({} as never)).resolves.toMatchObject({
+      items: [{ remainingRatio: 0 }],
+    });
+    await resolved.quota.reset?.({} as never);
+    await expect(resolved.quota.read({} as never)).resolves.toMatchObject({
+      items: [{ remainingRatio: 1 }],
+    });
   });
 
   test("retains valid icons and degrades invalid icons without logging their data", async () => {
@@ -222,6 +241,11 @@ describe("PluginRegistry staging", () => {
     ["missing catalog discover", fakeAdapter("discover", { catalog: { policy: { kind: "static" } } })],
     ["missing runtime", fakeAdapter("runtime", { createRuntime: undefined })],
     ["non-positive ttl", fakeAdapter("ttl", { catalog: { policy: { kind: "ttl", ttlMs: 0 }, discover() {} } })],
+    ["null quota", fakeAdapter("quota-null", { quota: null })],
+    ["array quota", fakeAdapter("quota-array", { quota: [] })],
+    ["missing quota read", fakeAdapter("quota-read-missing", { quota: {} })],
+    ["non-function quota read", fakeAdapter("quota-read-invalid", { quota: { read: "invalid" } })],
+    ["non-function quota reset", fakeAdapter("quota-reset-invalid", { quota: { read() {}, reset: "invalid" } })],
   ])("rejects %s atomically", async (_name, adapter) => {
     const snapshot = await loadPluginRegistry({
       ...base,
@@ -238,5 +262,9 @@ describe("PluginRegistry staging", () => {
       },
     });
     expect(snapshot.registry.oauthCapabilities()).toHaveLength(0);
+    expect(snapshot.plugins.get(`@example/${adapter.id || "invalid"}`)?.state).toMatchObject({
+      status: "failed",
+      diagnostic: { code: "PLUGIN_LOAD_FAILED" },
+    });
   });
 });

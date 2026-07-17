@@ -71,6 +71,33 @@ export type AccountContext<Credential, AccountOptions> = {
   readonly signal: AbortSignal;
 };
 
+export type OAuthQuotaItem = {
+  readonly id: string;
+  readonly label: LocalizedText;
+  readonly remainingRatio?: number;
+  readonly resetsAt?: number;
+};
+
+export type OAuthQuotaResetCredit = {
+  readonly id: string;
+  readonly expiresAt?: number;
+};
+
+export type OAuthQuotaResetCredits = {
+  readonly availableCount: number;
+  readonly items?: readonly OAuthQuotaResetCredit[];
+};
+
+export type OAuthQuotaSnapshot = {
+  readonly items: readonly OAuthQuotaItem[];
+  readonly resetCredits?: OAuthQuotaResetCredits;
+};
+
+export type OAuthQuotaCapability<AccountOptions, Credential> = {
+  readonly read: (context: AccountContext<Credential, AccountOptions>) => Promise<OAuthQuotaSnapshot>;
+  readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
+};
+
 export type RuntimeContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
@@ -90,4 +117,5 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;
   };
   readonly createRuntime: (context: RuntimeContext<Credential, AccountOptions>) => Promise<OAuthRuntimeResult>;
+  readonly quota?: OAuthQuotaCapability<AccountOptions, Credential>;
 };
