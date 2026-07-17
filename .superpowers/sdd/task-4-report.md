@@ -1,25 +1,60 @@
-# Task 4 Report: Fence Credential Refresh and Preserve Error Semantics
+# Task 4 Report
 
-## RED
+## Status
 
-The first focused core run failed exactly on the three intended regressions: a stale lease owner committed after takeover, concurrent account deletion replaced the exchange error with a SQLite foreign-key error, and account/plugin secrets remained in refresh logs. The ChatGPT runtime test separately failed because refresh metadata omitted `expiresAt`; the server snapshot test failed because the provider summary kept the old expiry.
-
-## GREEN
-
-The required focused command passed twice with 68 tests, 0 failures, and 286 assertions after a successful repository build. `bun run build`, the related account-login/plugin-runtime tests (60 tests), scoped Biome validation, and `git diff --check` also passed.
-
-## Changes
-
-- Fenced credential CAS by credential revision, unexpired refresh lease, and lease owner in one immediate SQLite transaction.
-- Made diagnostic insertion account-conditional and persistence best-effort so secondary storage failures cannot replace the primary refresh error.
-- Redacted credential, account, and plugin secret leaves from refresh error messages and stacks.
-- Stored refresh failures as terminal diagnostics with targeted re-login guidance.
-- Returned ChatGPT `expiresAt` metadata and reused the existing snapshot rebuild queue so summaries converge without changing runtime identity.
+DONE
 
 ## Commit
 
-`fix(oauth): fence rotating credential refresh`
+- `cdf59ff` — `test: enable colocated bun test discovery`
+- `1395229` — `test: preserve package verification paths`
+- `d210005` — `test: preserve root verification coverage`
+
+## Changes
+
+- Changed `test:unit` to `bun test` in core, plugin SDK, GitHub Copilot, and OpenAI ChatGPT packages.
+- Changed CLI and server `test:unit` to `bun test --preload=./_test/setup.ts`.
+- Preserved all existing `test` scripts and CLI/server preload behavior.
+- `bun.lock` was unchanged.
+- Follow-up: changed plugin SDK `test` to run both `test:unit` and `test:types`.
+- Follow-up: changed OpenAI ChatGPT `test` to delegate to `test:unit`.
+- Follow-up: added plugin SDK `test:types` explicitly to root `preflight` after `turbo run test:unit`.
+- Follow-up: changed GitHub Copilot `test` to delegate to `test:unit`.
+
+## Verification
+
+- `rtk bun run --filter @aio-proxy/core test:unit` — 463 passed across 45 files.
+- `rtk bun run --filter @aio-proxy/cli test:unit` — 147 passed across 11 files.
+- `rtk bun run --filter @aio-proxy/server test:unit` — 376 passed across 28 files.
+- `rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test:unit` — 26 passed across 5 files, including `src/catalog.test.ts` and all existing `_test/` suites.
+- `rtk bun run --filter @aio-proxy/plugin-sdk test:unit` — 16 passed across 2 files.
+- `rtk bun run --filter @aio-proxy/plugin-sdk test:types` — passed.
+- `rtk bun run --filter @aio-proxy/plugin-github-copilot test:unit` — 20 passed across 2 files.
+- `rtk bun run check` — exit 0; reported pre-existing informational Biome diagnostics outside this change.
+- `rtk git diff --check` — passed before commit.
+
+## Follow-up Verification
+
+- `rtk bun run --filter @aio-proxy/plugin-sdk test` — 16 unit tests passed across 2 files, then `tsc -p tsconfig.test.json` passed; exit 0.
+- `rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test` — 26 tests passed across 5 files, including `src/catalog.test.ts` and all existing `_test/` suites; exit 0.
+- `rtk git diff --check` — passed before follow-up commit.
+- Manifest assertions confirmed plugin SDK `test` includes unit and type suites, and ChatGPT `test` delegates to `test:unit`.
+- `bun.lock` remained unchanged.
+
+## Final Follow-up Verification
+
+- `rtk bun run --filter @aio-proxy/plugin-sdk test:types` — TypeScript contract checks passed; exit 0.
+- `rtk bun run --filter @aio-proxy/plugin-github-copilot test` — 20 tests passed across 2 files through `test:unit`; exit 0.
+- Manifest validation confirmed root `preflight` runs `bun run --filter @aio-proxy/plugin-sdk test:types` after all unit suites.
+- Manifest validation confirmed GitHub Copilot `test` delegates to `bun run test:unit` while `test:unit` remains exact `bun test`.
+- `rtk git diff --check` — passed before final follow-up commit.
+- `bun.lock` remained unchanged.
+
+## Review
+
+- Spec review: no findings.
+- Review follow-ups resolved all findings: plugin SDK type contracts remain in package and root verification paths, and both built-in plugin `test` scripts delegate to broad `test:unit` discovery.
 
 ## Concerns
 
-The repository-wide `bun run check` remains blocked by pre-existing Biome diagnostics in unrelated CLI/types files. All task files pass scoped Biome validation.
+- None.

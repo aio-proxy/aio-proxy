@@ -971,10 +971,47 @@ rtk git commit -m "refactor(copilot): split adapter responsibilities" -m "Co-aut
 ### Task 10: Run Final Verification
 
 **Files:**
-- No production files; verification and PR-state inspection only.
+- Modify tests only: split every touched handwritten test file over 300 lines into directly discovered concern files.
+- Modify: `.superpowers/sdd/task-10-brief.md`
+- Modify: `.superpowers/sdd/task-10-report.md`
+- Modify: `docs/superpowers/plans/2026-07-17-oauth-plugin-main-compliance.md`
+- No production files.
 
 **Interfaces:**
 - Confirms: the rebased branch passes all checks, contains no oversized touched handwritten files, and addresses the open ChatGPT catalog comment.
+
+- [x] **Step 0: Close the strict touched-test size gate without behavior changes**
+
+The exact gate identified 10 oversized touched test files. Split them by their
+existing concerns into directly discovered Bun test files, using local support
+only when at least two split files share it. Preserve every test name,
+assertion, and behavior, and keep every new test/support file at or below 300
+lines.
+
+Focused comparison commands:
+
+```bash
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/core-final rtk bun test \
+  packages/core/_test/request-log-{write,summary,list}.test.ts \
+  packages/core/_test/router-{resolution,aliases}.test.ts
+
+rtk proxy sh -c 'cd packages/server && \
+  AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/server-final \
+  bun test --preload=./_test/setup.ts \
+  _test/anthropic-messages-{native,model,failures,count-tokens}.test.ts \
+  _test/dashboard-providers-mutation-{basic,aliases,concurrency}.test.ts \
+  _test/gemini-generate-content-{native,model,stream,routing}.test.ts \
+  _test/openai-completions-{native,model-stream,usage,fallback,errors,boundaries}.test.ts \
+  _test/openai-responses-{native,model,unsupported}.test.ts \
+  _test/pipeline-{boundaries,raw-fallback,model-stream,terminal}.test.ts \
+  _test/server-{health-models,model-ordering,config,provider-probe,plugin-install}.test.ts'
+
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/types-final rtk bun test \
+  packages/types/_test/schemas-{config-acceptance,config-rejection,provider-mutation,provider-alias-mutation,events}.test.ts
+```
+
+Expected and observed: Core 34 tests / 90 assertions, Server 165 tests / 498
+assertions, Types 44 tests / 70 assertions, all with zero failures.
 
 - [ ] **Step 1: Check touched source sizes without adding repository tooling**
 
@@ -996,9 +1033,10 @@ Expected: no output.
 
 ```bash
 rtk bun run check
-rtk bun run test:unit
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/unit rtk bun run test:unit
 rtk bun run build
-rtk bun run --filter @aio-proxy/cli build:binary
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/cli-binary rtk bun run --filter @aio-proxy/cli build:binary
+rtk bunx tsc --noEmit -p packages/server/tsconfig.json
 rtk git diff --check
 rtk git status --short
 ```
