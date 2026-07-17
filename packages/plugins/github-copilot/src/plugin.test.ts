@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import { loginContext, withFetchMock } from "../_test/test-support";
+import { deviceFlowFetch, loginContext, withFetchMock } from "../_test/test-support";
 import packageJson from "../package.json" with { type: "json" };
 import githubCopilotPlugin, {
   COPILOT_CATALOG_TTL_MS,
@@ -103,10 +103,12 @@ describe("GitHub Copilot plugin", () => {
     );
     const progress: unknown[] = [];
 
-    await withFetchMock(localizedLoginFetch(), () =>
-      adapter.login(loginContext({ progress: (message) => progress.push(message) }), {
-        deploymentType: "github.com",
-      }),
+    await withFetchMock(
+      deviceFlowFetch({ tokenResponses: [{ error: "authorization_pending" }, { access_token: "github-token" }] }),
+      () =>
+        adapter.login(loginContext({ progress: (message) => progress.push(message) }), {
+          deploymentType: "github.com",
+        }),
     );
 
     expect(progress).toEqual(["En attente de l’autorisation GitHub", "Actualisation du jeton GitHub Copilot"]);
@@ -162,26 +164,4 @@ async function adapterFrom(
   );
   if (registered === undefined) throw new Error("GitHub Copilot OAuth adapter was not registered");
   return registered;
-}
-
-function localizedLoginFetch(): typeof fetch {
-  const tokenResponses = [{ error: "authorization_pending" }, { access_token: "github-token" }];
-  return async (input) => {
-    const path = new URL(input.toString()).pathname;
-    if (path === "/login/device/code") {
-      return Response.json({
-        device_code: "device",
-        user_code: "ABCD",
-        verification_uri: "https://github.com/login/device",
-        interval: 0,
-        expires_in: 600,
-      });
-    }
-    if (path === "/login/oauth/access_token") return Response.json(tokenResponses.shift());
-    if (path === "/copilot_internal/v2/token") {
-      return Response.json({ token: "copilot-token", expires_at: 9_999_999_999 });
-    }
-    if (path === "/user") return Response.json({ id: 12345, login: "octocat" });
-    return Response.json({}, { status: 404 });
-  };
 }

@@ -45,3 +45,41 @@ export async function withFetchMock<T>(fetchImpl: typeof fetch, run: () => Promi
     globalThis.fetch = originalFetch;
   }
 }
+
+export function deviceFlowFetch(
+  options: {
+    readonly expiresIn?: number;
+    readonly interval?: number;
+    readonly tokenResponses?: readonly Record<string, string>[];
+    readonly onRequest?: (url: URL) => void;
+    readonly onTokenPoll?: () => void;
+  } = {},
+): typeof fetch {
+  const tokenResponses = [...(options.tokenResponses ?? [{ access_token: "github-token" }])];
+  return async (input) => {
+    const url = new URL(input.toString());
+    options.onRequest?.(url);
+    if (url.pathname === "/login/device/code") {
+      return Response.json({
+        device_code: "device",
+        user_code: "ABCD",
+        verification_uri: "https://github.com/login/device",
+        verification_uri_complete: "https://github.com/login/device?user_code=ABCD",
+        interval: options.interval ?? 0,
+        expires_in: options.expiresIn ?? 600,
+      });
+    }
+    if (url.pathname === "/login/oauth/access_token") {
+      options.onTokenPoll?.();
+      return Response.json(tokenResponses.shift() ?? tokenResponses.at(-1) ?? { error: "authorization_pending" });
+    }
+    if (url.pathname === "/copilot_internal/v2/token") {
+      return Response.json({
+        token: "tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;",
+        expires_at: 9_999_999_999,
+      });
+    }
+    if (url.pathname === "/user") return Response.json({ id: 12345, login: "octocat" });
+    return Response.json({ error: `unexpected ${url.pathname}` }, { status: 404 });
+  };
+}

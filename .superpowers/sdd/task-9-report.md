@@ -28,6 +28,7 @@ Base: `dd43a962bb925b497cf494739a218f7da6286b16`
 
 ## Build, Check, and Integration
 
+- `rtk bun test packages/plugins/github-copilot/src/plugin.test.ts packages/plugins/github-copilot/src/github-api/login.test.ts`: PASS — 15 tests, 0 failures, 31 expectations.
 - `rtk bun run --filter @aio-proxy/plugin-github-copilot build`: PASS — Rslib generated 11 modules and declarations.
 - `rtk bunx biome check packages/plugins/github-copilot`: PASS — 21 files checked, no diagnostics.
 - `rtk bun run check`: PASS — 604 files checked; 0 errors, with 3 pre-existing warnings and 61 pre-existing informational diagnostics outside Task 9.
@@ -43,23 +44,23 @@ Command: `rtk proxy sh -c 'find packages/plugins/github-copilot/src -name "*.ts"
 
 All handwritten production and test files are below 300 lines. Largest changed files:
 
-- `src/github-api/login.test.ts`: 220
-- `src/plugin.test.ts`: 187
+- `src/github-api/login.test.ts`: 182
+- `src/plugin.test.ts`: 167
 - `src/plugin.ts`: 147
 - `src/github-api/login.ts`: 139
 - `src/github-api/catalog.test.ts`: 73
 - `src/github-api/credential.test.ts`: 48
 
-The complete `src` tree is 1,209 lines across 16 TypeScript files. The genuinely shared package-local test support is 47 lines.
+The complete `src` tree is 1,151 lines across 16 TypeScript files. The genuinely shared package-local test support is 85 lines.
 
 ## Diff Audit
 
 Command: `rtk proxy git diff dd43a96 --stat -- packages/plugins/github-copilot`
 
-- 19 files changed, 1,072 insertions, 1,000 deletions.
+- 19 files changed, 1,052 insertions, 1,000 deletions.
 - Removed: `_test/github-copilot.test.ts`, `src/github-api.ts`.
 - Added the seven requested `github-api/` production files, `src/plugin.ts`, and the five requested colocated test files.
-- Added `_test/test-support.ts` for `loginContext` (2 callers), `credentialPort` (3 callers), and `withFetchMock` (5 callers); `_test/runtime.test.ts` now reuses it.
+- Added `_test/test-support.ts` for `deviceFlowFetch` (2 callers), `loginContext` (2 callers), `credentialPort` (3 callers), and `withFetchMock` (5 callers); `_test/runtime.test.ts` now reuses it.
 - Modified `src/index.ts` and `tsconfig.json` beyond those replacements.
 - No Task 4 file is included in the Task 9 diff.
 
@@ -68,7 +69,8 @@ Command: `rtk proxy git diff dd43a96 --stat -- packages/plugins/github-copilot`
 - Standards review found duplicated fetch-mock setup across five files; it was replaced with package-local `_test/test-support.ts` used by all five callers.
 - Follow-up review required plugin-owned schema/policy assertions to remain in `plugin.test.ts`; the invalid Enterprise schema case and TTL descriptor case now live there, while `github-api/login.test.ts` and `github-api/catalog.test.ts` exercise only their modules.
 - `COPILOT_CATALOG_TTL_MS` is defined once in `github-api/catalog.ts`, consumed by `plugin.ts`, and re-exported as the same binding from the package index.
-- The shared support module exports only three genuinely shared fixtures: `loginContext`, `credentialPort`, and `withFetchMock`. The single-use adapter extraction remains private to `plugin.test.ts`.
+- The shared support module exports only genuinely shared fixtures: `deviceFlowFetch`, `loginContext`, `credentialPort`, and `withFetchMock`. The single-use adapter extraction remains private to `plugin.test.ts`.
+- The final standards follow-up moved the duplicated four-endpoint device-flow fetch fixture out of `plugin.test.ts` and `github-api/login.test.ts`; both now reuse configurable `deviceFlowFetch` from non-shipped test support.
 - Follow-up package tests, build, package check, full check, built-in integration test, line audit, export audit, and diff check all passed.
 
 ## Export and Packaging Audit
