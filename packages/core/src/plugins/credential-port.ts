@@ -1,8 +1,7 @@
 import type { CredentialPort, CredentialSnapshot, ZodType } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import { delay } from "es-toolkit/promise";
-import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
-import { redactPluginError } from "./diagnostic";
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
 import type { PluginRepository, StoredAccount } from "./repository/index";
 import { parsePluginSchema } from "./schema";
 
@@ -83,26 +82,6 @@ function singleFlight<Credential>(
   };
   void flight.then(cleanup, cleanup);
   return flight;
-}
-
-function stringLeaves(value: unknown): readonly string[] {
-  const leaves: string[] = [];
-  const seen = new Set<object>();
-  const visit = (current: unknown): void => {
-    if (typeof current === "string") {
-      leaves.push(current);
-      return;
-    }
-    if (typeof current !== "object" || current === null || seen.has(current)) return;
-    seen.add(current);
-    try {
-      for (const child of Object.values(current)) visit(child);
-    } catch {
-      return;
-    }
-  };
-  visit(value);
-  return leaves;
 }
 
 type RefreshLeaseGuard = {
@@ -234,15 +213,15 @@ export function createCredentialPort<Credential>(
           try {
             const current = await guard.race(readValidated(options.providerId, options.schema, options.repository));
             secretValues = [
-              ...stringLeaves(current.snapshot.value),
-              ...stringLeaves(current.account.secrets),
-              ...stringLeaves(options.pluginSecrets),
+              ...collectSecretStrings(current.snapshot.value),
+              ...collectSecretStrings(current.account.secrets),
+              ...collectSecretStrings(options.pluginSecrets),
             ];
             if (current.snapshot.revision !== expectedRevision) {
               return { status: "superseded", snapshot: current.snapshot };
             }
             const exchanged = await guard.exchange((signal) => exchange(current.snapshot, signal));
-            secretValues = [...secretValues, ...stringLeaves(exchanged.value)];
+            secretValues = [...secretValues, ...collectSecretStrings(exchanged.value)];
             const validated = await guard.race(parsePluginSchema(options.schema, exchanged.value));
             if (!validated.ok) throw new CredentialValidationError(validated.issues);
             const updated = options.repository.compareAndSwapCredential(

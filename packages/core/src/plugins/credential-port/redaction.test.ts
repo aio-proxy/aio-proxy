@@ -116,3 +116,30 @@ test("redacts credential, account, and plugin secrets and records terminal re-lo
     handle.close();
   }
 });
+
+test("refresh failure redaction skips hostile nested plugin secret properties and collects later array values", async () => {
+  const { handle, repository } = fixtures.open();
+  const nested: Record<string, unknown> = {};
+  Object.defineProperty(nested, "blocked", {
+    enumerable: true,
+    get() {
+      throw new Error("blocked getter");
+    },
+  });
+  Object.assign(nested, { tokens: ["refresh-array-secret", ""], cycle: nested });
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  try {
+    const credentials = port(repository, "provider-1", {
+      logger: (entry) => logs.push(entry),
+      pluginSecrets: { nested },
+    });
+    const current = await credentials.read();
+    const failure = new Error("refresh-array-secret");
+
+    await expect(credentials.refresh(current.revision, async () => Promise.reject(failure))).rejects.toBe(failure);
+
+    expect(JSON.stringify(logs)).not.toContain("refresh-array-secret");
+  } finally {
+    handle.close();
+  }
+});

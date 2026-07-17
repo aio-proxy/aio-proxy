@@ -1,7 +1,7 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from "@aio-proxy/plugin-sdk";
 import { validateModelCatalog } from "../catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
-import { type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
 import { resolveProviderId } from "../provider-id";
 import type { PluginRegistry } from "../registry";
 import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository/index";
@@ -32,7 +32,6 @@ import {
   providerEntry,
   providerRecord,
   sameCapability,
-  stringLeaves,
   structuredEntry,
   validatedAccountOptions,
   validatedLoginResult,
@@ -166,7 +165,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
         code: "CATALOG_UNAVAILABLE",
         context: { plugin: initial.capability.plugin, capability: initial.capability.capability },
         error: redactPluginError(error, {
-          secretValues: [...stringLeaves(rendered.secrets), ...stringLeaves(credentials.current())],
+          secretValues: [...collectSecretStrings(rendered.secrets), ...collectSecretStrings(credentials.current())],
         }),
       });
     } finally {

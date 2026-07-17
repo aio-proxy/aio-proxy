@@ -79,10 +79,21 @@ export async function runLoopbackAuthorization(
           return handleCallback(incoming.url);
         },
       });
+    } catch {
+      if (request.redirect.port === "dynamic" || !request.allowManualCallbackUrl || process.stdin.isTTY !== true) {
+        throw new LoopbackPortUnavailableError(requestedPort);
+      }
+      expectedRedirectUri = redirectUri(request, requestedPort);
+      let confirmed = false;
+      try {
+        confirmed = await deps.confirmManualOnly(expectedRedirectUri);
+      } catch {}
+      if (deps.signal.aborted) throw new LoopbackAbortedError();
+      if (!confirmed) throw new LoopbackPortUnavailableError(requestedPort);
+    }
+    if (server !== undefined) {
       if (server.port === undefined) throw new LoopbackPortUnavailableError(requestedPort);
       expectedRedirectUri = redirectUri(request, server.port);
-    } catch {
-      throw new LoopbackPortUnavailableError(requestedPort);
     }
 
     if (deps.signal.aborted) throw new LoopbackAbortedError();

@@ -172,6 +172,33 @@ function redactText(input: string, secretValues: readonly string[]): string {
   return output;
 }
 
+export function collectSecretStrings(value: unknown): readonly string[] {
+  const secrets = new Set<string>();
+  const seen = new Set<object>();
+  const visit = (current: unknown): void => {
+    if (typeof current === "string") {
+      if (current !== "") secrets.add(current);
+      return;
+    }
+    if (typeof current !== "object" || current === null || seen.has(current)) return;
+    seen.add(current);
+    let keys: readonly PropertyKey[];
+    try {
+      keys = Reflect.ownKeys(current);
+    } catch {
+      return;
+    }
+    for (const key of keys) {
+      try {
+        if (!Reflect.getOwnPropertyDescriptor(current, key)?.enumerable) continue;
+        visit(Reflect.get(current, key));
+      } catch {}
+    }
+  };
+  visit(value);
+  return [...secrets];
+}
+
 export function redactPluginError(error: unknown, redaction: PluginErrorRedaction = {}): RedactedPluginError {
   try {
     const secretValues = redaction.secretValues ?? [];

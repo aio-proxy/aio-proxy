@@ -1,9 +1,45 @@
 import { describe, expect, test } from "bun:test";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
-import { createPluginDiagnosticFactory, type DiagnosticFactory, redactPluginError } from "../../src/plugins/diagnostic";
+import {
+  collectSecretStrings,
+  createPluginDiagnosticFactory,
+  type DiagnosticFactory,
+  redactPluginError,
+} from "../../src/plugins/diagnostic";
 import { loadPluginRegistry } from "../../src/plugins/loader/index";
 
 describe("redactPluginError", () => {
+  test("collects unique non-empty strings without following cycles or failing on hostile properties", () => {
+    const shared = { value: "shared-secret" };
+    const hostile = new Proxy(
+      { blocked: "unread", values: ["array-secret", "", shared] },
+      {
+        get(target, key, receiver) {
+          if (key === "blocked") throw new Error("blocked getter");
+          return Reflect.get(target, key, receiver);
+        },
+      },
+    );
+    const uninspectable = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error("blocked proxy keys");
+        },
+      },
+    );
+    const input: Record<string, unknown> = {
+      first: "root-secret",
+      shared,
+      duplicate: shared,
+      hostile,
+      uninspectable,
+    };
+    Object.assign(input, { cycle: input });
+
+    expect(collectSecretStrings(input)).toEqual(["root-secret", "shared-secret", "array-secret"]);
+  });
+
   test("removes OAuth material, URLs, causes, stacks, and arbitrary third-party secrets", () => {
     const thirdPartySecret = "third-party-secret-value";
     const error = new Error(

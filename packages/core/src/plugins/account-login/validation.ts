@@ -53,18 +53,6 @@ export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
   }
   ConfigSchema.parse({ ...candidate, providers: legacyProviders });
 }
-export function stringLeaves(value: unknown, seen = new Set<object>()): string[] {
-  if (typeof value === "string") return value.length === 0 ? [] : [value];
-  if (typeof value !== "object" || value === null || seen.has(value)) return [];
-  seen.add(value);
-  try {
-    return Object.values(value).flatMap((item) => stringLeaves(item, seen));
-  } catch {
-    return [];
-  } finally {
-    seen.delete(value);
-  }
-}
 export async function validatedAccountOptions<Options, Credential>(
   adapter: OAuthAdapter<Options, Credential>,
   rendered: { readonly publicValues: unknown; readonly secrets: unknown },

@@ -30,12 +30,11 @@ const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export function validateDescriptor(descriptor: unknown): PluginDescriptor<unknown> {
-  if (
-    isRecord(descriptor) &&
-    Reflect.get(descriptor, PLUGIN_DESCRIPTOR_BRAND) === true &&
-    Reflect.get(descriptor, "apiVersion") !== PLUGIN_API_VERSION
-  ) {
-    throw new PluginHostError("PLUGIN_API_INCOMPATIBLE");
+  if (isRecord(descriptor)) {
+    const apiVersion = Reflect.get(descriptor, "apiVersion");
+    if (Number.isInteger(apiVersion) && apiVersion !== PLUGIN_API_VERSION) {
+      throw new PluginHostError("PLUGIN_API_INCOMPATIBLE");
+    }
   }
   if (!isPluginDescriptor(descriptor)) throw new PluginHostError("PLUGIN_LOAD_FAILED");
   const typed = descriptor as PluginDescriptor<unknown>;

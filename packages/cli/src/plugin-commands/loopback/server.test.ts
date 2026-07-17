@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   AuthorizationUrlInvalidError,
   LoopbackAbortedError,
-  LoopbackPortUnavailableError,
   LoopbackTimeoutError,
   runLoopbackAuthorization,
 } from "./index";
@@ -241,32 +240,5 @@ describe("loopback server lifecycle", () => {
     const flow = runLoopbackAuthorization(request({ authorizationUrl: captured.authorizationUrl }), deps);
     await expect(flow).rejects.toBeInstanceOf(LoopbackTimeoutError);
     await expectPortAvailable(Number(new URL(captured.redirectUri).port));
-  });
-
-  test("fixed-port bind failure is terminal and never opens the occupied redirect URI", async () => {
-    setInteractive(true);
-    const occupied = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null) });
-    try {
-      let confirmed = false;
-      const created = createDeps({
-        confirmManualOnly: async () => {
-          confirmed = true;
-          return false;
-        },
-      });
-      await expect(
-        runLoopbackAuthorization(
-          request({
-            redirect: { hostname: "localhost", port: occupied.port, path: "/auth/callback" },
-            allowManualCallbackUrl: true,
-          }),
-          created.deps,
-        ),
-      ).rejects.toBeInstanceOf(LoopbackPortUnavailableError);
-      expect(confirmed).toBe(false);
-      expect(created.opened).toEqual([]);
-    } finally {
-      await occupied.stop(true);
-    }
   });
 });

@@ -26,7 +26,8 @@
     "dev": "rslib --watch --no-clean",
     "build:migrations": "drizzle-kit generate",
     "test": "bun run test:unit",
-    "test:unit": "bun test"
+    "test:unit": "bun test",
+    "test:artifact": "bun test ./_test/build-entry.smoke.ts"
   },
   "dependencies": {
     "@aio-proxy/i18n": "workspace:*",

@@ -7,13 +7,13 @@ import {
   zod,
 } from "@aio-proxy/plugin-sdk";
 import {
+  COPILOT_CATALOG_TTL_MS,
   discoverGitHubCopilotModels,
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
   loginToGitHubCopilot,
   normalizeEnterpriseURL,
 } from "./github-api";
-import { COPILOT_CATALOG_TTL_MS } from "./github-api/catalog";
 import { createGitHubCopilotRuntime } from "./runtime";
 
 export type GitHubCopilotPresentationText = {

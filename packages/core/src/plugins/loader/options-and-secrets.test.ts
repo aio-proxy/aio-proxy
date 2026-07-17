@@ -1,3 +1,4 @@
+import type { PluginLogSink } from "../diagnostic";
 import {
   adapter,
   definePlugin,
@@ -117,6 +118,45 @@ test("public config cannot supply a secret field and plugin secret is merged", a
   );
   expect(accepted.plugins.get("@example/secret-options")?.state.status).toBe("ready");
   expect(received).toEqual({ endpoint: "x", token: "private" });
+});
+
+test("secret collection skips hostile nested properties and still redacts later array values", async () => {
+  install("@example/hostile-secret-options");
+  const nested: Record<string, unknown> = {};
+  Object.defineProperty(nested, "blocked", {
+    enumerable: true,
+    get() {
+      throw new Error("blocked getter");
+    },
+  });
+  Object.assign(nested, { tokens: ["loader-array-secret", ""], cycle: nested });
+  let setupCalled = false;
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  const descriptor = definePlugin(
+    () => {
+      setupCalled = true;
+      throw new Error("loader-array-secret");
+    },
+    {
+      options: {
+        schema: zod.object({ nested: zod.any() }),
+        form: [],
+      },
+    },
+  );
+
+  const snapshot = await loadPluginRegistry(
+    options({
+      enablements: [{ packageName: "@example/hostile-secret-options" }],
+      importPackage: async () => ({ default: descriptor }),
+      logger: (entry: Parameters<PluginLogSink>[0]) => logs.push(entry),
+      secrets: { readPluginSecret: () => ({ nested }) },
+    }),
+  );
+
+  expect(setupCalled).toBe(true);
+  expect(snapshot.plugins.get("@example/hostile-secret-options")?.state.status).toBe("failed");
+  expect(JSON.stringify(logs)).not.toContain("loader-array-secret");
 });
 
 test.each([

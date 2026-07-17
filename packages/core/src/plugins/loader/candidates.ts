@@ -18,15 +18,6 @@ const isPlainRecord = (value: unknown): value is Readonly<Record<PropertyKey, un
 const isEmptyRecord = (value: unknown) =>
   value === undefined || (isPlainRecord(value) && Reflect.ownKeys(value).length === 0);
 
-export function stringLeaves(value: unknown, seen = new Set<object>()): string[] {
-  if (typeof value === "string") return value === "" ? [] : [value];
-  if (typeof value !== "object" || value === null || seen.has(value)) return [];
-  seen.add(value);
-  const leaves = Object.values(value).flatMap((item) => stringLeaves(item, seen));
-  seen.delete(value);
-  return leaves;
-}
-
 export async function prepareOptions(
   descriptor: PluginDescriptor<unknown>,
   publicOptions: unknown,

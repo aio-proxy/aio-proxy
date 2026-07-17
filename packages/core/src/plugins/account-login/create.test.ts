@@ -113,6 +113,32 @@ test("initial discovery failure commits with CATALOG_UNAVAILABLE while re-login 
   expect(state.repository.readDiagnostics("person")).toMatchObject([{ code: "CATALOG_UNAVAILABLE" }]);
 });
 
+test("catalog failure redaction skips hostile nested secret properties and collects later array values", async () => {
+  const state = fixture();
+  const nested: Record<string, unknown> = {};
+  Object.defineProperty(nested, "blocked", {
+    enumerable: true,
+    get() {
+      throw new Error("blocked getter");
+    },
+  });
+  Object.assign(nested, { tokens: ["login-array-secret", ""], cycle: nested });
+  const logs: Parameters<PluginLogSink>[0][] = [];
+
+  await expect(
+    createAccount(state, {
+      renderAccountOptions: async () => ({
+        publicValues: { tenant: "work" },
+        secrets: { secret: "hidden", nested },
+      }),
+      registry: registry({ discover: async () => Promise.reject(new Error("login-array-secret")) }),
+      logger: (entry) => logs.push(entry),
+    }),
+  ).rejects.toThrow("blocked getter");
+
+  expect(JSON.stringify(logs)).not.toContain("login-array-secret");
+});
+
 test("duplicate fingerprint reports canonical re-login only for a live structured entry", async () => {
   const state = fixture();
   await createAccount(state);

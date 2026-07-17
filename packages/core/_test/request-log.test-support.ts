@@ -2,9 +2,9 @@ import { afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequestLogStore, openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { DashboardUsageOverviewResponseSchema, ProviderKind } from "@aio-proxy/types";
 import { eq } from "drizzle-orm";
+import { createRequestLogStore, openDb, requestLog, usage } from "../src/db";
 
 export { createRequestLogStore, DashboardUsageOverviewResponseSchema, eq, openDb, requestLog, usage };
 

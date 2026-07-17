@@ -42,6 +42,7 @@
   "scripts": {
     "check": "biome check package.json turbo.json tsconfig.json biome.json packages",
     "test:unit": "turbo run test:unit",
+    "test:artifact": "bun run --filter @aio-proxy/core test:artifact && bun run --filter @aio-proxy/i18n test:artifact",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test",
     "e2e": "turbo run e2e",
@@ -50,7 +51,7 @@
     "build": "turbo run build",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "dev": "turbo run dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types",
+    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types && bun run build && bun run test:artifact",
     "changeset": "changeset"
   },
   "devDependencies": {

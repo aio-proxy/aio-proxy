@@ -1,9 +1,9 @@
 import type { LocalizedText, PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import type { PluginEnablement, PluginState } from "@aio-proxy/types";
 import { findInstalledNpmPackage } from "../../npm";
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic";
 import { createPluginRegistryHost, type PluginRegistry } from "../registry";
-import { candidates, failedState, prepareOptions, stringLeaves } from "./candidates";
+import { candidates, failedState, prepareOptions } from "./candidates";
 import {
   loadThirdPartyDescriptor,
   observedPromiseDeadline,
@@ -58,7 +58,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     let description: LocalizedText | undefined;
     try {
       const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
-      secretValues = stringLeaves(secretOptions);
+      secretValues = collectSecretStrings(secretOptions);
       let descriptor: PluginDescriptor<unknown>;
       if (candidate.builtIn === undefined) {
         const installed = await findInstalledNpmPackage(candidate.packageName);

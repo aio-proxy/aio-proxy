@@ -63,6 +63,26 @@ test("apiVersion mismatch fails with incompatibility", async () => {
   });
 });
 
+test("future descriptor brand with an unsupported integer apiVersion fails with incompatibility", async () => {
+  install("@example/future-incompatible");
+  const descriptor = {
+    [Symbol.for("@aio-proxy/plugin-sdk/descriptor/v2")]: true,
+    apiVersion: 2,
+    metadata: {},
+    setup() {},
+  };
+  const snapshot = await loadPluginRegistry(
+    options({
+      enablements: [{ packageName: "@example/future-incompatible" }],
+      importPackage: async () => ({ default: descriptor }),
+    }),
+  );
+  expect(snapshot.plugins.get("@example/future-incompatible")?.state).toMatchObject({
+    status: "failed",
+    diagnostic: { code: "PLUGIN_API_INCOMPATIBLE" },
+  });
+});
+
 test("built-in apiVersion mismatch also fails with incompatibility", async () => {
   const descriptor = { ...definePlugin(() => {}), apiVersion: 999 } as unknown as PluginDescriptor<unknown>;
   const snapshot = await loadPluginRegistry(
