@@ -1014,8 +1014,12 @@ AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/types-final rtk bun test \
   packages/types/_test/schemas-{config-acceptance,config-rejection,provider-mutation,provider-alias-mutation,events}.test.ts
 ```
 
-Expected and observed: Core 34 tests / 90 assertions, Server 165 tests / 498
-assertions, Types 44 tests / 70 assertions, all with zero failures.
+Historical split baseline: Core 34 tests / 90 assertions, Server 165 tests /
+498 assertions, and Types 44 tests / 70 assertions, all with zero failures.
+After final review, the Server suite intentionally adds the dedicated
+`pathless server setup does not inherit prior fixture mutations` regression
+test with three assertions. The exact final Server split command passes 166
+tests / 501 assertions with zero failures across 29 files.
 
 - [x] **Step 1: Check touched source sizes without adding repository tooling**
 

@@ -204,7 +204,9 @@ describe("dashboard provider CRUD", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("config file path is not configured");
+  });
 
+  test("pathless server setup does not inherit prior fixture mutations", async () => {
     const priorMutationProbe = await requestPathless({
       kind: "api",
       id: "newapi",

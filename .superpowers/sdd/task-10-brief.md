@@ -39,10 +39,13 @@ AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/types-final rtk bun test \
   packages/types/_test/schemas-{config-acceptance,config-rejection,provider-mutation,provider-alias-mutation,events}.test.ts
 ```
 
-Expected: Core remains 34 tests / 90 assertions, Server remains 165 tests /
-498 assertions, and Types remains 44 tests / 70 assertions. Every new
-handwritten test and support file is at most 300 lines, original test names and
-assertions are preserved, and no side-effect import shell is introduced.
+Historical split baseline: Core 34 tests / 90 assertions, Server 165 tests /
+498 assertions, and Types 44 tests / 70 assertions. The final post-review
+Server suite is 166 tests / 501 assertions because it adds the dedicated
+`pathless server setup does not inherit prior fixture mutations` regression
+test with three assertions. Every original test name and assertion remains,
+every new handwritten test and support file is at most 300 lines, and no
+side-effect import shell is introduced.
 
 - [x] **Step 1: Check touched source sizes without adding repository tooling**
 

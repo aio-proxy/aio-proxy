@@ -43,14 +43,17 @@ Support modules contain fixtures/helpers only; no one-line side-effect import
 shells were introduced. Shared local support is consumed by at least two split
 files, and mutable temporary homes/configs are scoped per test file.
 
-Fresh post-split focused results:
+Historical post-split focused results before review-only regression coverage:
 
 - Core: 34 passed, 90 assertions, 0 failed across 5 test files.
 - Server: 165 passed, 498 assertions, 0 failed across 29 test files.
 - Types: 44 passed, 70 assertions, 0 failed across 5 test files.
 
-All original test names, assertions, and behavior were preserved. The largest
-new handwritten test/support file is
+All original test names, assertions, and behavior were preserved. Final review
+then added one dedicated Server regression test with three new assertions, so
+the final Server split total is 166 tests / 501 assertions; final assertions
+are intentionally not identical to the historical 165/498 baseline. The
+largest new handwritten test/support file is
 `packages/server/_test/gemini-generate-content-model.test.ts` at 256 lines;
 there are no changed or new handwritten JavaScript/TypeScript files over 300
 lines.
@@ -181,3 +184,36 @@ Result: 81 passed, 233 assertions, 0 failed across 17 files.
 - The brief, plan, and report explicitly record the tracked Task 4 report as an
   intentional carried artifact.
 - No broad suite and no GitHub write was performed in this fix round.
+
+## Final Re-Review Evidence
+
+The last re-review requested that the fixture-isolation coverage be visible as
+its own test rather than hidden inside original test 15.
+
+- Preserved the original test name
+  `15. POST without a configured config path returns 409` and restored it to
+  its original two assertions.
+- Moved the three fixture-isolation assertions unchanged into the immediately
+  following dedicated test:
+  `pathless server setup does not inherit prior fixture mutations`.
+- Focused Dashboard mutation command passed 31 tests / 79 assertions with zero
+  failures across 3 files.
+- The exact full Server split command from the Task 10 brief was rerun with
+  isolated `AIO_PROXY_HOME`:
+
+```bash
+rtk proxy sh -c 'cd packages/server && \
+  AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/server-final \
+  bun test --preload=./_test/setup.ts \
+  _test/anthropic-messages-{native,model,failures,count-tokens}.test.ts \
+  _test/dashboard-providers-mutation-{basic,aliases,concurrency}.test.ts \
+  _test/gemini-generate-content-{native,model,stream,routing}.test.ts \
+  _test/openai-completions-{native,model-stream,usage,fallback,errors,boundaries}.test.ts \
+  _test/openai-responses-{native,model,unsupported}.test.ts \
+  _test/pipeline-{boundaries,raw-fallback,model-stream,terminal}.test.ts \
+  _test/server-{health-models,model-ordering,config,provider-probe,plugin-install}.test.ts'
+```
+
+Result: 166 passed, 501 assertions, 0 failed across 29 files. This final total
+is the historical 165/498 split baseline plus one review regression test and
+three assertions.
