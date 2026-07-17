@@ -28,6 +28,15 @@
             "functions": ["cn", "cva"]
           }
         }
+      },
+      "style": {
+        "noExcessiveLinesPerFile": {
+          "level": "warn",
+          "options": {
+            "maxLines": 300,
+            "skipBlankLines": true
+          }
+        }
       }
     }
   },
