@@ -15,3 +15,21 @@ test.serial("processIsAlive probes Windows PIDs for npm lock semantics", () => {
     Object.defineProperty(process, "platform", { value: originalPlatform });
   }
 });
+
+test.serial("processIsAlive rethrows non-Error process.kill failures", () => {
+  const failure = Symbol("kill-failure");
+  const kill = spyOn(process, "kill").mockImplementation(() => {
+    throw failure;
+  });
+  try {
+    let thrown: unknown;
+    try {
+      processIsAlive(999_999);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBe(failure);
+  } finally {
+    kill.mockRestore();
+  }
+});

@@ -209,19 +209,20 @@ export async function runWithRecoveryFence<T>(
   const abort = () => controller.abort(input.signal?.reason);
   input.signal?.addEventListener("abort", abort, { once: true });
   const timeout = setTimeout(() => controller.abort(RECOVERY_TIMEOUT), Math.max(0, input.deadline - Date.now()));
+  let fence: RecoveryFence;
   try {
     input.signal?.throwIfAborted();
-    const fence = await acquireRecoveryFence({ ...input, signal: controller.signal });
-    try {
-      return await action(fence.assertOwned);
-    } finally {
-      await fence.close().catch(() => {});
-    }
+    fence = await acquireRecoveryFence({ ...input, signal: controller.signal });
   } catch (error) {
     if (controller.signal.reason === RECOVERY_TIMEOUT) throw input.timeoutError();
     throw error;
   } finally {
     clearTimeout(timeout);
     input.signal?.removeEventListener("abort", abort);
+  }
+  try {
+    return await action(fence.assertOwned);
+  } finally {
+    await fence.close().catch(() => {});
   }
 }

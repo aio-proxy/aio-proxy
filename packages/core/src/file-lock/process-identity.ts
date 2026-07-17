@@ -15,6 +15,7 @@ export function processIsAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
+    if (!(error instanceof Error)) throw error;
     return !isNodeError(error, "ESRCH");
   }
 }

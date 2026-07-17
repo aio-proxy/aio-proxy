@@ -235,4 +235,24 @@ describe("AtomicConfigFile", () => {
       Object.defineProperty(process, "platform", { value: originalPlatform });
     }
   });
+
+  test.serial("config treats non-Error liveness failures as alive", async () => {
+    const { path } = fixture("{}\n");
+    const lockPath = `${path}.lock`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999, owner: "unknown-owner", createdAt: Date.now() }));
+    const kill = spyOn(process, "kill").mockImplementation(() => {
+      throw Symbol("kill-failure");
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("still owned")), 100);
+    try {
+      await expect(
+        new AtomicConfigFile(path).replace((current) => ({ ...current, stolen: true }), { signal: controller.signal }),
+      ).rejects.toThrow("still owned");
+      expect(readFileSync(lockPath, "utf8")).toContain("unknown-owner");
+    } finally {
+      clearTimeout(timeout);
+      kill.mockRestore();
+    }
+  });
 });

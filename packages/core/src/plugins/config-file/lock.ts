@@ -27,7 +27,12 @@ export type ConfigLock = {
 };
 
 function configOwnerIsAlive(pid: number): boolean {
-  return process.platform === "win32" || processIsAlive(pid);
+  if (process.platform === "win32") return true;
+  try {
+    return processIsAlive(pid);
+  } catch {
+    return true;
+  }
 }
 
 function parseLock(text: string): LockRecord | null {
