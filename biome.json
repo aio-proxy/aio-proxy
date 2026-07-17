@@ -4,6 +4,7 @@
     "includes": [
       "**",
       "!**/dist",
+      "!packages/core/src/db/migrations.manifest.ts",
       "!packages/dashboard/src/route-tree.gen.ts",
       "!packages/i18n/project.inlang/.meta.json",
       "!packages/i18n/src/paraglide"
