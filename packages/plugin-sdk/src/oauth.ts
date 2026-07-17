@@ -3,6 +3,10 @@ import type { ConfigSpec } from "./config";
 import type { LocalizedText } from "./localized-text";
 import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";
 
+export type LobeIconKey = AioProxyLobeIconKey;
+
+export type OAuthIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
+
 export type DeviceCodePresentation = {
   readonly url: string;
   readonly userCode: string;
@@ -77,6 +81,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly id: string;
   readonly label: LocalizedText;
   readonly description?: LocalizedText;
+  readonly icon?: OAuthIcon;
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;

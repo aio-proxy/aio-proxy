@@ -4,7 +4,7 @@
 
 **Goal:** Add an optional OAuth capability icon whose LobeHub keys are exact in the published SDK declaration, while URL/data icons are safely validated and invalid display metadata degrades without failing the plugin.
 
-**Architecture:** `@aio-proxy/plugin-sdk` owns a build-only Rslib plugin that scans `@lobehub/icons-static-svg`, writes one exact type declaration below Rsbuild's cache path, redirects declaration resolution with Rslib's `dts.alias`, and lets `dts.bundle` inline the union into `dist/index.d.ts`. Core owns runtime classification and sanitization; registry staging logs and strips invalid icons but still commits the capability. No generated source file or standalone codegen command is introduced.
+**Architecture:** `@aio-proxy/plugin-sdk` evaluates its Rslib config to scan `@lobehub/icons-static-svg` and atomically write an exact global-helper declaration below Rsbuild's cache path before Rslib initializes declaration generation. The deterministic declaration is passed as `banner.dts`, so `dts.bundle` emits the exact union without a private type-module import. Core owns runtime classification and sanitization; registry staging logs and strips invalid icons but still commits the capability. No generated source file or standalone codegen command is introduced.
 
 **Tech Stack:** Bun 1.3.14, TypeScript 6, Rslib 0.23.2, Rsbuild 2.1.4, API Extractor 7.58.11, `@lobehub/icons-static-svg` 1.93.0, Bun test.
 
@@ -14,8 +14,9 @@
 - `PLUGIN_API_VERSION` remains `1`; `OAuthAdapter.icon` is optional.
 - `bun run build` and `bun run preflight` are the only authoritative declaration flows; do not add `generate:*`, `postinstall`, or a manually invoked codegen command.
 - The exact key module lives below `api.context.cachePath`; no generated key source is committed.
-- Source/editor type checking resolves the private key specifier to a broad placeholder, while Rslib `dts.alias` overrides it with the exact cached declaration during build.
+- Source/editor type checking sees a broad global-helper placeholder; config evaluation supplies the exact helper declaration to the final Rslib declaration banner during build.
 - `plugin-sdk` alone enables `dts.bundle: true`; the shared Rslib defaults remain bundleless.
+- `@microsoft/api-extractor` is root-hoisted because Bun's isolated linker does not expose a package-local optional peer to Rslib's dynamic import; only `plugin-sdk` enables and uses `dts.bundle`.
 - The final `dist/index.d.ts` contains the exact union and contains no private specifier, placeholder reference, or cache path.
 - Runtime JavaScript contains no complete Lobe key array, `Set`, or existence lookup.
 - Lobe slugs match `/^[a-z0-9]+(?:-[a-z0-9]+)*$/u`.
@@ -38,14 +39,17 @@
 - Modify: `packages/plugin-sdk/tsconfig.json`
 - Modify: `packages/plugin-sdk/rslib.config.ts`
 - Modify: `packages/plugin-sdk/package.json`
+- Modify: `package.json`
 - Modify: `turbo.json`
 - Modify: `bun.lock`
 - Create: `packages/plugin-sdk/_test/build-artifact.test.ts`
 
 **Interfaces:**
-- Produces: `LobeIconKey`, `OAuthIcon`, `LOBE_ICON_KEY_SPECIFIER`, `resolveLobeIconPackage(fromUrl)`, `iconKeysFromFileNames(fileNames)`, `readLobeIconKeys(iconsDirectory)`, `renderLobeIconKeyDeclaration(keys)`, `lobeIconTypePath(cachePath, version)`, and `createLobeIconTypePlugin(options)`.
-- Consumes: `defineLibraryConfig()` merge-by-library-id behavior and Rslib `dts.alias` precedence over tsconfig `paths`.
-- Private specifier: `#aio-proxy/lobe-icon-key`.
+- Produces: `LobeIconKey`, `OAuthIcon`, `LOBE_ICON_KEY_HELPER`, `resolveLobeIconPackage(fromUrl)`, `iconKeysFromFileNames(fileNames)`, `readLobeIconKeys(iconsDirectory)`, `renderLobeIconKeyDeclaration(keys)`, `lobeIconTypePath(cachePath, version)`, `prepareLobeIconTypeBuild(options)`, and `createLobeIconTypePlugin(options)`.
+- Consumes: `defineLibraryConfig()` merge-by-library-id behavior and Rslib's `banner.dts` declaration rollup hook.
+- Source helper: `AioProxyLobeIconKey`.
+
+**Implemented lifecycle correction:** The private-specifier, `tsconfig.paths`, and `dts.alias` snippets below are superseded. Rslib 0.23.2 reads the source tsconfig before plugin `setup`, while API Extractor later reloads that original tsconfig and preserves alias imports. The implemented build instead writes `declare type AioProxyLobeIconKey = ...` under the cache during config evaluation and passes the same deterministic content through `banner.dts`; source keeps only a broad global placeholder. This keeps generation inside the single build flow and leaves no type-module specifier in the artifact.
 
 - [ ] **Step 1: Write failing generator and artifact tests**
 
@@ -260,37 +264,42 @@ import { join } from "node:path";
 import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
 import {
   createLobeIconTypePlugin,
-  LOBE_ICON_KEY_SPECIFIER,
-  lobeIconTypePath,
+  prepareLobeIconTypeBuild,
   resolveLobeIconPackage,
 } from "./build/lobe-icon-keys";
 
 const rootPath = import.meta.dirname;
 const lobeIcons = resolveLobeIconPackage(import.meta.url);
-const declarationPath = lobeIconTypePath(join(rootPath, "node_modules", ".cache"), lobeIcons.version);
+const lobeIconBuild = prepareLobeIconTypeBuild({
+  ...lobeIcons,
+  cachePath: join(rootPath, "node_modules", ".cache"),
+});
 
 export default defineLibraryConfig({
   root: rootPath,
-  plugins: [createLobeIconTypePlugin({ ...lobeIcons, declarationPath })],
+  plugins: [createLobeIconTypePlugin({ declarationPath: lobeIconBuild.declarationPath, version: lobeIcons.version })],
+  banner: { dts: lobeIconBuild.declaration },
   lib: [
     {
       id: "library",
       dts: {
         bundle: true,
-        alias: { [LOBE_ICON_KEY_SPECIFIER]: declarationPath },
       },
     },
   ],
 });
 ```
 
-Add these `devDependencies` to `packages/plugin-sdk/package.json`:
+Add the icon source as a `plugin-sdk` build dependency and root-hoist API Extractor for Rslib's Bun-isolated optional-peer lookup:
 
 ```json
-{
-  "@lobehub/icons-static-svg": "1.93.0",
-  "@microsoft/api-extractor": "7.58.11"
-}
+// packages/plugin-sdk/package.json
+{ "@lobehub/icons-static-svg": "1.93.0" }
+```
+
+```json
+// package.json
+{ "@microsoft/api-extractor": "7.58.11" }
 ```
 
 Add `"test:artifact": "bun test ./_test/build-artifact.test.ts"` to the SDK scripts. Add `"build/**"` to the root `turbo.json` `build.inputs` array so edits to the Rslib build module invalidate Turbo's build cache. Run `rtk bun install` to update `bun.lock`.

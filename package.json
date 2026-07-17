@@ -59,6 +59,7 @@
     "@changesets/cli": "^2.31.0",
     "@commitlint/cli": "^21.2.0",
     "@commitlint/config-conventional": "^21.2.0",
+    "@microsoft/api-extractor": "7.58.11",
     "@types/bun": "catalog:",
     "lefthook": "^2.1.9",
     "turbo": "^2.10.1",

@@ -63,7 +63,7 @@
 | --- | --- |
 | Icon 所有权 | 属于 `OAuthAdapter` capability，不属于 plugin package metadata |
 | Icon 写法 | 一个字符串联合：Lobe key、HTTP/HTTPS URL 或受限图片 data URL |
-| Lobe key 类型 | `plugin-sdk` 的 Rslib plugin 在 build 内扫描依赖、写入 build cache，通过 `dts.alias` 供 declaration emit 使用，并由 bundled declaration 内联精确 union |
+| Lobe key 类型 | `plugin-sdk` 在 Rslib 配置求值时扫描依赖、写入 build cache，并以 `banner.dts` 注入 bundled declaration 的精确 union |
 | Lobe key 构建入口 | `bun run build`/`bun run preflight` 是唯一权威 declaration 构建；不增加独立 codegen script 或 postinstall |
 | Lobe key 运行时校验 | 不发布完整 key 列表；只校验 slug 语法，精确存在性由 TypeScript union 保证 |
 | 非法 icon | 丢弃 icon 并记录结构化警告；插件和 capability 继续加载 |
@@ -170,30 +170,29 @@ build-owned Rslib plugin。该 plugin 是生成入口；仓库不增加 `generat
 1. Rslib plugin 在 build setup 中解析已安装的固定版本 package。
 2. 枚举 `icons/*.svg`，去掉 `.svg`，验证 slug，按字典序稳定排序并检测重复；重复 key
    属于 build error，不能静默去重。
-3. 在 `api.context.cachePath` 下写入确定性的精确类型模块：
+3. 在确定性的 Rsbuild cache 路径下写入精确 helper declaration：
 
    ```ts
-   export type LobeIconKey = "anthropic" | "codex-color" | "openai";
+   declare type AioProxyLobeIconKey = "anthropic" | "codex-color" | "openai";
    ```
 
-   Cache 文件使用 plugin/package version 命名空间并原子更新。Plugin 每次 build 都重新解析和
+   Cache 文件使用 plugin/package version 命名空间并原子更新。配置求值每次 build 都重新解析和
    验证输入，不能把已有 cache 当作依赖缺失或扫描失败时的 fallback。
 
-4. SDK 源码通过一个不公开的稳定 specifier 引用 `LobeIconKey`。普通源码 tsconfig 将该
-   specifier 指向宽 placeholder，使尚未 build 的 `plugin-sdk` 源码和编辑器仍可解析类型。
-5. `plugin-sdk` 的 Rslib 配置把同一 specifier 通过 `dts.alias` 指向 cache 中的精确类型模块。
-   当前 Rslib 的 declaration plugin 会让 `dts.alias` 覆盖同名 tsconfig `paths`，因此 build
-   declaration 使用精确模块，而源码编辑器继续使用 placeholder。这里不生成派生 tsconfig：
-   Rslib 在 Rsbuild plugin `setup` 之前读取 `source.tsconfigPath`，由 plugin 生成该文件存在
-   生命周期时序问题。
-6. `plugin-sdk` 单独启用 `dts.bundle: true`；API Extractor 将精确 union 内联进最终
-   `dist/index.d.ts`。共享 Rslib 配置和其他 workspace package 继续使用 bundleless dts。
-7. 若 Rspack 在类型擦除前请求该私有 specifier，plugin 可以通过 `api.resolve` 将其指向
-   cache 中不含运行时数据的类型模块；该 hook 不承担 declaration resolution。
+4. SDK 源码的 placeholder 只声明同名 global helper 为 `string`，因此尚未 build 的
+   `plugin-sdk` 源码、编辑器和裸 `tsc` 仍可解析宽类型。
+5. Rslib 0.23.2 在 Rsbuild plugin `setup` 前读取 `source.tsconfigPath`，且 API Extractor
+   在 rollup 时重新读取该 tsconfig；`dts.alias` 只能影响初始 declaration emit，不能使
+   API Extractor 内联 private/path-mapped module。因此精确 declaration 必须在配置求值时写入，
+   并作为 `banner.dts` 传给最终 rollup，而不是生成派生 tsconfig 或依赖 alias 生命周期。
+6. `plugin-sdk` 单独启用 `dts.bundle: true`；其公开 `LobeIconKey` alias 指向该 banner helper，
+   使最终 `dist/index.d.ts` 包含精确 union。共享 Rslib 配置和其他 workspace package 继续使用
+   bundleless dts。Rsbuild plugin 的 `setup` 仅断言 cache path 一致；它不承担生成时序。
 
-最终 npm artifact 不能包含私有 specifier、placeholder 或 build cache 绝对路径，也不发布
-key array/Set 的 JavaScript 运行时数据。`@microsoft/api-extractor` 仅作为 `plugin-sdk` 的
-构建期依赖。
+最终 npm artifact 不能包含 placeholder 或 build cache 绝对路径，也不发布 key array/Set 的
+JavaScript 运行时数据。`@lobehub/icons-static-svg` 是 `plugin-sdk` 的构建期依赖；Bun isolated
+依赖布局要求 Rslib 动态加载的 `@microsoft/api-extractor` 位于 root `devDependencies`，尽管只有
+`plugin-sdk` 启用并使用 `dts.bundle`。
 
 Workspace consumer 按 package exports 解析 `@aio-proxy/plugin-sdk`，当前两个 built-in plugin
 实际读取 `dist/index.d.ts`；Turbo 的 `build` 依赖保证 SDK 先于它们构建。因此精确 union 会在
