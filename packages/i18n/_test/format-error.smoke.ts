@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
@@ -12,14 +11,6 @@ import {
 import * as runtime from "../src/paraglide/runtime";
 
 describe("formatUserError", () => {
-  test("does not call setLocale in source", () => {
-    // Given
-    const source = readFileSync("packages/i18n/src/format-error.ts", "utf8");
-
-    // When / Then
-    expect(source).not.toContain("setLocale(");
-  });
-
   test("formats provider errors without mutating global locale", () => {
     // Given
     runtime.setLocale("en");

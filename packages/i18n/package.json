@@ -15,7 +15,7 @@
     "dev": "paraglide-js compile --emit-ts-declarations --watch",
     "test": "bun run test:unit",
     "test:unit": "cd ../.. && bun test packages/i18n/_test/*.test.ts",
-    "test:artifact": "cd ../.. && bun test ./packages/i18n/_test/compile-output.smoke.ts"
+    "test:artifact": "cd ../.. && bun test ./packages/i18n/_test/*.smoke.ts"
   },
   "dependencies": {
     "@inlang/paraglide-js": "catalog:",

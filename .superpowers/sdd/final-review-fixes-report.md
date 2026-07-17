@@ -30,32 +30,76 @@ Base and branch:
 
 Clean package-unit proof:
 
-1. `rtk mv packages/core/dist /tmp/aio-proxy-core-dist-c797 && rtk mv packages/i18n/dist /tmp/aio-proxy-i18n-dist-c797`
-2. `rtk bun run --filter @aio-proxy/core test:unit` → exit 0, 468 pass, 0 fail.
-3. `rtk bun run --filter @aio-proxy/i18n test:unit` → 13 pass, 0 fail, 25 expects.
-4. Restored both ignored `dist` directories.
+1. Temporarily moved both ignored i18n generated paths out of the checkout:
+   `packages/i18n/dist` and `packages/i18n/src/paraglide`.
+2. RED: `rtk bun run --filter @aio-proxy/i18n test:unit` → exit 1;
+   `format-error.test.ts` failed to import `../src/paraglide/runtime` after the
+   other 7 tests passed.
+3. Split the source-only `setLocale` assertion into
+   `format-error-source.test.ts` and the five generated-runtime formatting
+   assertions into `format-error.smoke.ts`.
+4. GREEN with both generated paths still absent: the same direct package unit
+   command → 8 pass, 0 fail, 13 expects. Restored both ignored paths.
 
 Build-smoke proof:
 
 - `rtk bun run --filter @aio-proxy/i18n build` → exit 0.
+- `rtk bun run --filter @aio-proxy/i18n test:artifact` → 8 pass, 0 fail,
+  23 expects across `compile-output.smoke.ts` and `format-error.smoke.ts`.
 - Initial Core build found test-only TS4111/implicit-any issues; fixed them. `rtk bun run --filter @aio-proxy/core build` then exited 0.
 - Initial artifact command exposed Bun's requirement for `./` when explicitly running non-`*.test.ts` files; fixed both scripts.
-- Final `rtk bun run test:artifact` after root build → Core 1 pass/0 fail/4 expects; i18n 3 pass/0 fail/11 expects.
+- Final graph-backed artifact phase in `preflight` → Core 1 pass/0 fail/4
+  expects; i18n 8 pass/0 fail/23 expects.
 
 Script wiring:
 
 - Core: `test:artifact = bun test ./_test/build-entry.smoke.ts`
-- i18n: `test:artifact = cd ../.. && bun test ./packages/i18n/_test/compile-output.smoke.ts`
-- Root: `test:artifact` runs both package smoke commands.
-- Root `preflight`: check → unit → Plugin SDK types → root build → artifact smoke.
+- i18n: `test:artifact = cd ../.. && bun test ./packages/i18n/_test/*.smoke.ts`
+- Root: `test:artifact = turbo run test:artifact`.
+- Turbo: `test:artifact` depends on the same package's `build`; a focused dry
+  run showed both `@aio-proxy/core#test:artifact -> @aio-proxy/core#build` and
+  `@aio-proxy/i18n#test:artifact -> @aio-proxy/i18n#build`.
+- Root `preflight`: check → Turbo unit → Plugin SDK types → graph-backed
+  artifact smoke, with no duplicate explicit whole-repository build.
+- Direct Core/i18n `test:unit` scripts contain only test commands and do not
+  generate or mutate output. Root Turbo unit execution may still build declared
+  workspace prerequisites before invoking those scripts.
+
+## TTY verification hang follow-up
+
+- The first follow-up preflight was launched with a PTY and stopped after the
+  first two `plugin add` tests. Process inspection showed no TCP listener and no
+  child process; Bun was idle in `kevent64` with TTY/Inquirer handles open.
+- RED reproduction with a 20-second guard:
+  `rtk perl -e 'alarm 20; exec @ARGV' bun test --preload=./_test/setup.ts src/plugin-commands/loopback/fixed-port-fallback.test.ts src/plugin-commands/plugin/add.test.ts`
+  printed `Trust and install third-party-plugin? (y/N)` in the test named
+  `non-interactive refusal and built-in add do not create config, database, or package cache`,
+  then exited 142 after SIGALRM. `add.test.ts` alone reproduced under a TTY;
+  fixed-port fallback alone passed 2/2, ruling out a listener leak as the
+  necessary cause.
+- Root cause: the test described a non-interactive contract but called default
+  dependencies whose `isTTY` value came from the verification process. Under a
+  PTY it opened the real confirmation prompt.
+- Minimal fix: the test now explicitly injects the existing `isTTY: false`
+  dependency seam and closes the default dependencies; production behavior is
+  unchanged.
+- GREEN: the exact guarded two-file TTY command → 10 pass, 0 fail, 35 expects
+  in under one second. Guarded full CLI TTY run → 148 pass, 0 fail, 425 expects
+  in 14.65 seconds.
 
 ## Final verification
 
-- `rtk bun run check` → exit 0; 645 files checked, 3 non-failing warnings and 61 informational diagnostics already present in the branch.
-- `rtk bun run test:unit -- --concurrency=2` → exit 0. Aggregated package logs: 1,288 pass, 1 skip, 0 fail across 208 files (CLI 148; Core 468; i18n 13; Dashboard 113; GitHub Copilot 26; OpenAI ChatGPT 26; Plugin SDK 16; Server 379; Types 99). The later CLI test-file split was reverified by the 13-test focused command above.
-- `rtk bun run build` → 7/7 build tasks successful.
+- `rtk perl -e 'alarm 600; exec @ARGV' bun run preflight` → exit 0.
+  `check` examined 646 files with the same 3 non-failing warnings and 61 infos;
+  Turbo unit completed 16/16 tasks; Plugin SDK types exited 0; Turbo artifact
+  completed 9/9 tasks.
+- Aggregated unit logs: 1,283 pass, 1 skip, 0 fail (CLI 148; Core 468;
+  i18n 8; Dashboard 113; GitHub Copilot 26; OpenAI ChatGPT 26; Plugin SDK 16;
+  Server 379; Types 99).
+- Artifact logs: Core 1 plus i18n 8 = 9 pass, 0 fail. Combined unit and
+  artifact coverage remains 1,292 tests, plus the one intentional skip.
 - `rtk bunx tsc -p packages/server/tsconfig.json --noEmit` → exit 0.
-- Exact touched TypeScript gate: 26 existing touched `.ts`/`.tsx` files, 0 over 300 lines. Largest: `account-login/login.ts` at 299 lines.
+- Exact touched TypeScript gate: 30 touched `.ts`/`.tsx` files, 0 over 300 lines. Largest: `account-login/login.ts` at 299 lines.
 - `rtk git diff --check` → exit 0.
 - `rtk rg -n 'github-api/catalog' packages/plugins/github-copilot/src -g '*.ts'` → exit 1, no private imports.
 - `rtk rg -n 'resolvePluginCopy' packages/dashboard/src -g '*.ts' -g '*.tsx'` → exit 1, no Dashboard resolver copy.

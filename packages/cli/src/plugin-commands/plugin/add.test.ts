@@ -42,20 +42,26 @@ describe("plugin add", () => {
   test("non-interactive refusal and built-in add do not create config, database, or package cache", async () => {
     const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-cli-"));
     scope.trackHome(home);
+    let defaultDeps: PluginLifecycleDeps | undefined;
     const previousHome = process.env.AIO_PROXY_HOME;
     const previousLog = console.log;
     process.env.AIO_PROXY_HOME = home;
     console.log = () => {};
     try {
-      await expect(pluginAdd("third-party-plugin", {})).rejects.toBeInstanceOf(PluginConfirmationRequiredError);
+      defaultDeps = createDefaultPluginLifecycleDeps();
+      const nonInteractiveDeps = { ...defaultDeps, isTTY: false };
+      await expect(pluginAdd("third-party-plugin", {}, nonInteractiveDeps)).rejects.toBeInstanceOf(
+        PluginConfirmationRequiredError,
+      );
       expect(existsSync(join(home, "aio-proxy.db"))).toBe(false);
       expect(existsSync(join(home, "config.jsonc"))).toBe(false);
       expect(existsSync(join(home, "packages"))).toBe(false);
-      await pluginAdd("@aio-proxy/plugin-github-copilot", {});
+      await pluginAdd("@aio-proxy/plugin-github-copilot", {}, nonInteractiveDeps);
       expect(existsSync(join(home, "aio-proxy.db"))).toBe(false);
       expect(existsSync(join(home, "config.jsonc"))).toBe(false);
       expect(existsSync(join(home, "packages"))).toBe(false);
     } finally {
+      defaultDeps?.close?.();
       if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
       else process.env.AIO_PROXY_HOME = previousHome;
       console.log = previousLog;

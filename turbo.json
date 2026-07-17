@@ -31,6 +31,10 @@
       "dependsOn": ["build"],
       "outputs": []
     },
+    "test:artifact": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
     "e2e": {
       "dependsOn": ["build"],
       "cache": false,
