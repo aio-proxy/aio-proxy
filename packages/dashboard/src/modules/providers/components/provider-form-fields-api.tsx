@@ -1,11 +1,12 @@
 import { m } from "@aio-proxy/i18n";
-import type { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderProtocol } from "@aio-proxy/types";
+import { ProtocolLabel } from "@/components/protocol-label";
 import { TagsInput } from "@/components/tags-input";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { API_PROVIDER_PROTOCOLS, ProviderFormMode } from "../constants";
+import { ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
 import { ProviderAliasFields } from "./provider-alias";
 import { ProviderCommonFields } from "./provider-common-fields";
@@ -71,12 +72,9 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {API_PROVIDER_PROTOCOLS.map((protocol) => (
-                    <SelectItem key={protocol.value} value={protocol.value}>
-                      <span className="flex items-center gap-2">
-                        <protocol.icon />
-                        {protocol.label}
-                      </span>
+                  {Object.values(ProviderProtocol).map((protocol) => (
+                    <SelectItem key={protocol} value={protocol}>
+                      <ProtocolLabel protocol={protocol} />
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -11,6 +11,7 @@ if [ -d "$reference_source" ] && [ ! -e .reference ] && [ ! -L .reference ]; the
 fi
 bun install
 bun run build
+codegraph init
 '''
 
 [[actions]]
