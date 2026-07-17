@@ -5,10 +5,10 @@ import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?react";
 import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg?react";
 import { cn } from "@/lib/utils";
 
-type Props = {
+interface ProtocolLabelProps {
   protocol: ProviderProtocol | string;
   className?: string;
-};
+}
 
 const PROTOCOL_LABELS = {
   [ProviderProtocol.OpenAICompatible]: {
@@ -32,7 +32,7 @@ const PROTOCOL_LABELS = {
 const isProviderProtocol = (value: string): value is ProviderProtocol =>
   Object.values(ProviderProtocol).includes(value as ProviderProtocol);
 
-export const ProtocolLabel: React.FC<Props> = ({ protocol, className }) => {
+export const ProtocolLabel: React.FC<ProtocolLabelProps> = ({ protocol, className }) => {
   if (!isProviderProtocol(protocol)) {
     return <span className={className}>{protocol}</span>;
   }
