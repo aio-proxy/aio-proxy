@@ -1,10 +1,14 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import type { PluginLogSink } from "../diagnostic";
 import { CredentialValidationError } from "../index";
 import type { PluginRepository } from "../repository";
-import { openFixture, port } from "./test-support";
+import { createFixtureScope, port } from "./test-support";
+
+const fixtures = createFixtureScope();
+
+afterEach(() => fixtures.cleanup());
 
 function refreshCredential(repository: PluginRepository, expectedRevision: number, credential: unknown): void {
   const owner = crypto.randomUUID();
@@ -18,7 +22,7 @@ function refreshCredential(repository: PluginRepository, expectedRevision: numbe
 }
 
 test("validates exchanged credentials before CAS and never puts credentials or original errors in diagnostics", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   const logs: Parameters<PluginLogSink>[0][] = [];
   let notifications = 0;
   let diagnosticSummary = "Credential refresh failed";
@@ -67,7 +71,7 @@ test("validates exchanged credentials before CAS and never puts credentials or o
 });
 
 test("preserves the exchange error when the account is concurrently deleted before diagnostic persistence", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   try {
     const credentials = port(repository);
     const current = await credentials.read();
@@ -85,7 +89,7 @@ test("preserves the exchange error when the account is concurrently deleted befo
 });
 
 test("redacts credential, account, and plugin secrets and records terminal re-login guidance", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   const logs: Parameters<PluginLogSink>[0][] = [];
   try {
     const credentials = port(repository, "provider-1", {

@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { deferred, openFixture, port } from "./test-support";
+import { createFixtureScope, deferred, port } from "./test-support";
 
 const childPath = fileURLToPath(new URL("../../../_test/plugins/refresh-lease-child.ts", import.meta.url));
+const fixtures = createFixtureScope();
+
+afterEach(() => fixtures.cleanup());
 
 async function childOutput(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promise<string> {
   const [output, stderr, exitCode] = await Promise.all([
@@ -26,8 +30,26 @@ async function waitForLine(child: Bun.Subprocess<"ignore", "pipe", "pipe">, expe
   reader.releaseLock();
 }
 
+test("fixture scopes clean only their own temporary directories", () => {
+  const firstScope = createFixtureScope();
+  const secondScope = createFixtureScope();
+  const first = firstScope.open();
+  const second = secondScope.open();
+  try {
+    first.handle.close();
+    second.handle.close();
+    firstScope.cleanup();
+
+    expect(existsSync(first.home)).toBe(false);
+    expect(existsSync(second.home)).toBe(true);
+  } finally {
+    firstScope.cleanup();
+    secondScope.cleanup();
+  }
+});
+
 test("deduplicates concurrent refresh calls for one provider in one process", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   try {
     const credentials = port(repository);
     const first = await credentials.read();
@@ -54,8 +76,8 @@ test("deduplicates concurrent refresh calls for one provider in one process", as
 });
 
 test("does not share a refresh flight across repositories with the same provider id", async () => {
-  const firstFixture = openFixture();
-  const secondFixture = openFixture();
+  const firstFixture = fixtures.open();
+  const secondFixture = fixtures.open();
   const firstGate = deferred();
   const firstStarted = deferred();
   const secondStarted = deferred();
@@ -91,7 +113,7 @@ test("does not share a refresh flight across repositories with the same provider
 });
 
 test("does not serialize refresh exchanges for different providers", async () => {
-  const { handle, repository } = openFixture(["provider-1", "provider-2"]);
+  const { handle, repository } = fixtures.open(["provider-1", "provider-2"]);
   try {
     const firstGate = deferred();
     const firstStarted = deferred();
@@ -119,7 +141,7 @@ test("does not serialize refresh exchanges for different providers", async () =>
 });
 
 test("allows exactly one exchange across two processes sharing one SQLite database", async () => {
-  const { home, handle, repository } = openFixture();
+  const { home, handle, repository } = fixtures.open();
   const expectedRevision = repository.readAccount("provider-1")?.revision;
   if (expectedRevision === undefined) throw new Error("missing fixture account");
   handle.close();
@@ -139,7 +161,7 @@ test("allows exactly one exchange across two processes sharing one SQLite databa
 });
 
 test("takes over an expired lease after its owner process is killed", async () => {
-  const { home, handle, repository } = openFixture();
+  const { home, handle, repository } = fixtures.open();
   const owner = Bun.spawn([process.execPath, childPath, "hold", home, "provider-1", "150"], {
     cwd: process.cwd(),
     stdout: "pipe",
@@ -160,7 +182,7 @@ test("takes over an expired lease after its owner process is killed", async () =
 });
 
 test("returns superseded without exchange when the revision changes while waiting for a lease", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   try {
     const credentials = port(repository);
     const current = await credentials.read();
@@ -183,7 +205,7 @@ test("returns superseded without exchange when the revision changes while waitin
 });
 
 test("refresh changes only credential revision and notifies once when clearing an existing diagnostic", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   let notifications = 0;
   try {
     repository.writeDiagnostic("provider-1", {

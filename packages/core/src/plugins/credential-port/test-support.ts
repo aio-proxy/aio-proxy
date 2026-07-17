@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zod } from "@aio-proxy/plugin-sdk";
@@ -7,8 +7,6 @@ import { type OpenDbHandle, openDb } from "../../db";
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
 import { createCredentialPort } from "../index";
 import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository";
-
-const homes: string[] = [];
 
 function account(providerId: string, credential: unknown = { token: "initial-secret" }): AccountWrite {
   return {
@@ -36,17 +34,29 @@ function createAccount(repository: PluginRepository, value: AccountWrite): void 
   repository.completeAccountOperation(pending.operationId);
 }
 
-function openFixture(providerIds: readonly string[] = ["provider-1"]): {
-  readonly home: string;
-  readonly handle: OpenDbHandle;
-  readonly repository: PluginRepository;
+function createFixtureScope(): {
+  readonly open: (providerIds?: readonly string[]) => {
+    readonly home: string;
+    readonly handle: OpenDbHandle;
+    readonly repository: PluginRepository;
+  };
+  readonly cleanup: () => void;
 } {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-credential-port-"));
-  homes.push(home);
-  const handle = openDb({ home });
-  const repository = createPluginRepository(handle.sqlite);
-  for (const providerId of providerIds) createAccount(repository, account(providerId));
-  return { home, handle, repository };
+  const homes = new Set<string>();
+  return {
+    open(providerIds = ["provider-1"]) {
+      const home = mkdtempSync(join(tmpdir(), "aio-proxy-credential-port-"));
+      homes.add(home);
+      const handle = openDb({ home });
+      const repository = createPluginRepository(handle.sqlite);
+      for (const providerId of providerIds) createAccount(repository, account(providerId));
+      return { home, handle, repository };
+    },
+    cleanup() {
+      for (const home of homes) rmSync(home, { recursive: true, force: true });
+      homes.clear();
+    },
+  };
 }
 
 function diagnosticFactory(): DiagnosticFactory {
@@ -91,4 +101,4 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve };
 }
 
-export { deferred, openFixture, port };
+export { createFixtureScope, deferred, port };

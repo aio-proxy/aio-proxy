@@ -4,10 +4,13 @@ import { providerLoginCommand } from "@aio-proxy/types";
 import { openDb } from "../../db";
 import { CredentialRefreshLeaseLostError, CredentialRefreshTimeoutError } from "../index";
 import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository";
-import { deferred, openFixture, port } from "./test-support";
+import { createFixtureScope, deferred, port } from "./test-support";
+
+const fixtures = createFixtureScope();
 
 afterEach(() => {
   jest.useRealTimers();
+  fixtures.cleanup();
 });
 
 function account(providerId: string, credential: unknown): AccountWrite {
@@ -32,7 +35,7 @@ function account(providerId: string, credential: unknown): AccountWrite {
 }
 
 async function expectRenewalFailure(renewRefreshLease: PluginRepository["renewRefreshLease"]): Promise<void> {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   const exchangeGate = deferred();
   let signal: AbortSignal | undefined;
   try {
@@ -72,7 +75,7 @@ async function expectCurrentValidationRenewalFailure(
   renewRefreshLease: PluginRepository["renewRefreshLease"],
   rejectLateValidation = false,
 ): Promise<void> {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   const validationGate = deferred();
   let validationStarted = false;
   let exchanges = 0;
@@ -118,7 +121,7 @@ async function expectCurrentValidationRenewalFailure(
 }
 
 test("rejects terminally when an exchanged rotating token loses its lease without a revision winner", async () => {
-  const { home, handle, repository } = openFixture();
+  const { home, handle, repository } = fixtures.open();
   const competingHandle = openDb({ home });
   const competing = createPluginRepository(competingHandle.sqlite);
   let exchanges = 0;
@@ -156,7 +159,7 @@ test("rejects terminally when an exchanged rotating token loses its lease withou
 });
 
 test("returns superseded when re-login wins during exchange and leaves its runtime revision unchanged", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   try {
     const credentials = port(repository);
     const current = await credentials.read();
@@ -189,7 +192,7 @@ test("returns superseded when re-login wins during exchange and leaves its runti
 });
 
 test("aborts at the 30 second deadline and releases the lease even when exchange ignores abort", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   let signal: AbortSignal | undefined;
   try {
     const credentials = port(repository);
@@ -235,7 +238,7 @@ test("contains renewal and late validation errors before exchange when current c
 });
 
 test("rejects without CAS when the lease is lost during refreshed credential validation", async () => {
-  const { handle, repository } = openFixture();
+  const { handle, repository } = fixtures.open();
   const validationGate = deferred();
   let validationCount = 0;
   let refreshedValidationStarted = false;

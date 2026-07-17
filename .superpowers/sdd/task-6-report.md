@@ -4,7 +4,7 @@
 
 Split the three oversized Core plugin modules into responsibility-focused private directories, moved the four legacy plugin test monoliths into the 15 required colocated test files, and preserved the public API and behavior.
 
-The final implementation keeps every handwritten production and test file at or below 300 lines. The largest target test is `credential-port/lease-loss.test.ts` at 291 lines; the largest target production file is `account-login/login.ts` at 300 lines.
+The final implementation keeps every handwritten production and test file at or below 300 lines. The largest target test is `credential-port/lease-loss.test.ts` at 294 lines; the largest target production file is `account-login/login.ts` at 300 lines.
 
 ## Baseline and TDD evidence
 
@@ -42,7 +42,7 @@ Initial split result:
 - 359 assertions
 - 15 test files
 
-The initial split test and assertion counts exactly matched the baseline. A review-driven authorization regression test was added later, bringing the final focused totals to 103 tests and 360 assertions.
+The initial split test and assertion counts exactly matched the baseline. Review-driven authorization and fixture-cleanup regression tests were added later, bringing the final focused totals to 104 tests and 362 assertions.
 
 ## Production split
 
@@ -116,7 +116,7 @@ Compared the old monolith exports at base commit `c3069f2f7a5a24de4535850ee2a249
 rtk bun test packages/core/src/plugins/account-login packages/core/src/plugins/repository packages/core/src/plugins/loader packages/core/src/plugins/credential-port
 ```
 
-Result: 103 pass, 0 fail, 360 assertions across 15 files.
+Result: 104 pass, 0 fail, 362 assertions across 15 files.
 
 ### Core build and declarations
 
@@ -132,7 +132,7 @@ Result: exit 0; declaration generation succeeded; 89 library files generated.
 rtk bun test --reporter=dot packages/core
 ```
 
-Result: 462 pass, 0 fail, 1,170 assertions across 63 files.
+Result: 463 pass, 0 fail, 1,172 assertions across 63 files.
 
 ### Focused Biome
 
@@ -160,7 +160,7 @@ rtk git diff --check
 Results:
 
 - Every target TypeScript file is at most 300 lines.
-- Largest test: 291 lines.
+- Largest test: 294 lines.
 - Largest production file: 300 lines.
 - `git diff --check`: exit 0.
 
@@ -170,11 +170,12 @@ The pre-existing modification to `.superpowers/sdd/task-4-report.md` was preserv
 
 ## Review closure
 
-The post-implementation review identified and closed three gaps:
+The post-implementation review identified and closed four gaps:
 
 1. Authorization carrier lookup again distinguishes WeakMap membership from a stored value. An authorization port rejection with `undefined` is now rethrown as `undefined` instead of being replaced with `OAuthAdapterLoginError`.
 2. `preflight` now lives in `login.ts`. Authorization invocation and preservation live in `deadline.ts`, account option parsing lives in `validation.ts`, and superseded-compensation diagnostic construction lives in `recovery.ts`. This keeps `validation.ts` limited to parsing, capability checks, staged-write validation, login-result validation, and in-memory credential validation.
-3. `credential-port/test-support.ts` now exports only `deferred`, `openFixture`, and `port`, each shared by at least two test files. Process helpers moved to `concurrency.test.ts`, renewal-failure helpers moved to `lease-loss.test.ts`, and credential mutation moved to `redaction.test.ts`.
+3. `credential-port/test-support.ts` now exports only `createFixtureScope`, `deferred`, and `port`, each shared by at least two test files. Process helpers moved to `concurrency.test.ts`, renewal-failure helpers moved to `lease-loss.test.ts`, and credential mutation moved to `redaction.test.ts`.
+4. Credential-port temporary directories are owned by per-test-file fixture scopes. Each file's `afterEach` removes only directories created through its own scope, so concurrently running files cannot delete one another's active SQLite directory. The obsolete shared write-only home tracking was removed.
 
 ### Authorization regression RED/GREEN
 
@@ -186,4 +187,16 @@ rtk bun test packages/core/src/plugins/account-login/relogin.test.ts
 
 Before the fix, the new case failed with an `OAuthAdapterLoginError` where `{ status: "rejected", error: undefined }` was expected: 6 pass, 1 fail, 17 assertions.
 
-After restoring explicit carrier membership, the same file passed 7 tests with 17 assertions. The final 15-file focused suite passed 103 tests with 360 assertions.
+After restoring explicit carrier membership, the same file passed 7 tests with 17 assertions. At that review stage, the 15-file focused suite passed 103 tests with 360 assertions.
+
+### Fixture cleanup regression RED/GREEN
+
+Focused RED command:
+
+```bash
+rtk bun test packages/core/src/plugins/credential-port/concurrency.test.ts
+```
+
+Before `createFixtureScope` existed, the new isolation case failed at module load with `Export named 'createFixtureScope' not found`: 0 pass, 1 fail, 1 error.
+
+After adding per-file scopes, the same file passed 8 tests with 20 assertions. The regression proves that cleaning one scope removes its directory while a second scope's directory remains active. The complete credential-port suite passed 19 tests with 78 assertions, and the final 15-file focused suite passed 104 tests with 362 assertions.
