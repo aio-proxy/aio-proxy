@@ -1,8 +1,35 @@
 import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runWithRecoveryFence } from "./recovery-fence";
+
+test.serial("acquisition filesystem errors are not translated after the deadline", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
+  const openError = new Error("recovery marker open failed");
+  const open = spyOn(fsPromises, "open").mockImplementation((async () => {
+    await Bun.sleep(50);
+    throw openError;
+  }) as never);
+  try {
+    await expect(
+      runWithRecoveryFence(
+        {
+          lockPath: join(dir, "config.lock"),
+          staleMs: 60_000,
+          heartbeatMs: 10_000,
+          deadline: Date.now() + 10,
+          timeoutError: () => new Error("acquisition timed out"),
+        },
+        async () => undefined,
+      ),
+    ).rejects.toBe(openError);
+  } finally {
+    open.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test.serial("action errors are not translated after the acquisition deadline", async () => {
   const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));

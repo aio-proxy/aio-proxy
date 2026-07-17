@@ -214,7 +214,7 @@ export async function runWithRecoveryFence<T>(
     input.signal?.throwIfAborted();
     fence = await acquireRecoveryFence({ ...input, signal: controller.signal });
   } catch (error) {
-    if (controller.signal.reason === RECOVERY_TIMEOUT) throw input.timeoutError();
+    if (error === RECOVERY_TIMEOUT) throw input.timeoutError();
     throw error;
   } finally {
     clearTimeout(timeout);
