@@ -5,10 +5,11 @@
 Implemented and verified against starting commit
 `024fadf55bd852e72230574bfbe2661389cb239a`.
 
-The Task 7 brief was corrected to describe the actual provider-login public
-contract: the existing provider-login error classes plus
-`isProviderLoginUserError` and its private safe-error provenance behavior. The
-repository has no `providerLoginErrors` export, so none was invented.
+The authoritative implementation plan and generated Task 7 brief were
+corrected to describe the actual provider-login public contract: the existing
+provider-login error classes plus `isProviderLoginUserError` and its private
+safe-error provenance behavior. The repository has no `providerLoginErrors`
+export, so none was invented.
 
 ## Delivered
 
@@ -114,7 +115,7 @@ aio-proxy plugin --help -> add, list, config, remove, and prune commands present
   - `plugin/configure.test.ts`: 288 lines
   - `plugin/descriptor-security.test.ts`: 284 lines
   - `plugin/remove.test.ts`: 284 lines
-  - `loopback/server.test.ts`: 269 lines
+  - `loopback/server.test.ts`: 272 lines
 - The four legacy test files are absent.
 - All 13 required colocated test files exist.
 - Existing imports from CLI production code and remaining tests still target
@@ -128,7 +129,9 @@ aio-proxy plugin --help -> add, list, config, remove, and prune commands present
 
 ## Files Changed
 
-- Corrected `.superpowers/sdd/task-7-brief.md` and replaced this report.
+- Corrected the authoritative plan at
+  `docs/superpowers/plans/2026-07-17-oauth-plugin-main-compliance.md`, corrected
+  `.superpowers/sdd/task-7-brief.md`, and replaced this report.
 - Deleted:
   - `packages/cli/src/plugin-commands/{plugin,provider-login,loopback,form}.ts`
   - `packages/cli/_test/plugin-commands.test.ts`
@@ -160,6 +163,22 @@ baseline exactly.
 The two-axis review was performed manually because the repository's review
 workflow normally delegates the axes to sub-agents, while this task explicitly
 disallowed spawning sub-agents.
+
+## Review Follow-up
+
+- Corrected the authoritative Task 7 interface statement, rather than only the
+  generated brief, to name the actual provider-login error/provenance contract.
+- Moved the single-use `requireFixedCallbackTestPort` fixture out of
+  `loopback/test-support.ts` and into `server.test.ts`; shared support now
+  contains only fixtures reused by the loopback test files.
+- Fresh verification after the review fixes:
+  - affected server suite: 12 tests, 34 assertions, 0 failures;
+  - isolated Task 7 suite: 121 tests, 318 assertions, 0 failures;
+  - isolated full CLI suite: 147 tests, 420 assertions, 0 failures;
+  - targeted Biome: clean;
+  - repository `bun run check`: exit 0 with only the existing 3 warnings and 57
+    informational diagnostics outside Task 7;
+  - line audit: `server.test.ts` 272 lines and `test-support.ts` 80 lines.
 
 ## Concerns
 

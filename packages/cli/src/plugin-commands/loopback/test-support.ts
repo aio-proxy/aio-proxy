@@ -78,14 +78,3 @@ export async function expectPortAvailable(port: number): Promise<void> {
   });
   await probe.stop(true);
 }
-
-export async function requireFixedCallbackTestPort(): Promise<void> {
-  let probe: ReturnType<typeof Bun.serve> | undefined;
-  try {
-    probe = Bun.serve({ hostname: "127.0.0.1", port: 1_455, fetch: () => new Response(null) });
-  } catch {
-    throw new Error("Fixed-callback test requires 127.0.0.1:1455 to be free; release the listener and retry.");
-  } finally {
-    await probe?.stop(true);
-  }
-}

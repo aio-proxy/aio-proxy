@@ -653,7 +653,8 @@ rtk git commit -m "refactor(core): split oauth persistence responsibilities" -m 
 
 **Interfaces:**
 - Preserves all imports through `plugin-commands/plugin`, `provider-login`, `loopback`, and `form`.
-- Preserves CLI errors included in `pluginErrors`, `providerLoginErrors`, and loopback user-error classification.
+- Preserves CLI errors included in `pluginErrors`, the existing provider-login error classes and
+  `isProviderLoginUserError` safe-error provenance behavior, and loopback user-error classification.
 
 - [ ] **Step 1: Run the CLI baseline**
 

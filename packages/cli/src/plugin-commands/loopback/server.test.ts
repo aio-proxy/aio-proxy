@@ -6,15 +6,7 @@ import {
   LoopbackTimeoutError,
   runLoopbackAuthorization,
 } from "./index";
-import {
-  copy,
-  createDeps,
-  expectPortAvailable,
-  request,
-  requireFixedCallbackTestPort,
-  resetInteractive,
-  setInteractive,
-} from "./test-support";
+import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from "./test-support";
 
 afterEach(resetInteractive);
 
@@ -29,6 +21,17 @@ function authorizationCapture(url = "https://identity.example/authorize") {
       return redirectUri;
     },
   };
+}
+
+async function requireFixedCallbackTestPort(): Promise<void> {
+  let probe: ReturnType<typeof Bun.serve> | undefined;
+  try {
+    probe = Bun.serve({ hostname: "127.0.0.1", port: 1_455, fetch: () => new Response(null) });
+  } catch {
+    throw new Error("Fixed-callback test requires 127.0.0.1:1455 to be free; release the listener and retry.");
+  } finally {
+    await probe?.stop(true);
+  }
 }
 
 describe("loopback server lifecycle", () => {
