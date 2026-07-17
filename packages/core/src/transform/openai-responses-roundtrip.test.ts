@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { OpenAIResponsesRequest } from "../../src/index";
-import { modelMessagesToOpenAIResponses, openAIResponsesToModelMessages, parseOpenAIResponses } from "../../src/index";
+import type { OpenAIResponsesRequest } from "../index";
+import { modelMessagesToOpenAIResponses, openAIResponsesToModelMessages, parseOpenAIResponses } from "../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/openai-responses`;
+const fixtureRoot = `${import.meta.dir}/../../_test/fixtures/openai-responses`;
 
 type FixtureFile = "string-input.json" | "message-array.json" | "reasoning-tools.json";
 
@@ -21,10 +21,7 @@ describe("OpenAI Responses transform", () => {
     const request = await readFixture("message-array.json");
 
     const converted = openAIResponsesToModelMessages(request);
-    const roundTrip = modelMessagesToOpenAIResponses({
-      model: request.model,
-      ...converted,
-    });
+    const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
 
     expect(roundTrip).toEqual(request);
   });
@@ -41,42 +38,32 @@ describe("OpenAI Responses transform", () => {
   });
 
   test("Given provider options reasoning When transformed Then it is used as a fallback", () => {
-    // Given
     const settings = {
-      providerOptions: {
-        openai: { reasoningEffort: "high", reasoningSummary: "detailed" },
-      },
+      providerOptions: { openai: { reasoningEffort: "high", reasoningSummary: "detailed" } },
     } as const;
 
-    // When
     const request = modelMessagesToOpenAIResponses({
       model: "gpt-5",
       messages: [{ role: "user", content: "Solve this." }],
       settings,
     });
 
-    // Then
     expect(request.reasoning).toEqual({ effort: "high", summary: "detailed" });
   });
 
   test("Given portable and provider options reasoning When transformed Then portable settings win", () => {
-    // Given
     const settings = {
       reasoning: "low",
       reasoningSummary: "concise",
-      providerOptions: {
-        openai: { reasoningEffort: "high", reasoningSummary: "detailed" },
-      },
+      providerOptions: { openai: { reasoningEffort: "high", reasoningSummary: "detailed" } },
     } as const;
 
-    // When
     const request = modelMessagesToOpenAIResponses({
       model: "gpt-5",
       messages: [{ role: "user", content: "Solve this." }],
       settings,
     });
 
-    // Then
     expect(request.reasoning).toEqual({ effort: "low", summary: "concise" });
   });
 
@@ -96,12 +83,7 @@ describe("OpenAI Responses transform", () => {
           required: ["query"],
         },
       },
-      {
-        type: "custom",
-        name: "emit_raw",
-        description: "Emit raw data",
-        format: { type: "text" },
-      },
+      { type: "custom", name: "emit_raw", description: "Emit raw data", format: { type: "text" } },
     ]);
   });
 });

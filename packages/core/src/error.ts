@@ -140,7 +140,7 @@ export class GeminiInlineDataTooLargeError extends AioProxyError {
 
 export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   readonly code = "UNSUPPORTED_OPENAI_RESPONSES_FEATURE";
-  readonly status = 400;
+  readonly status = 501;
 
   constructor(
     readonly feature: string,

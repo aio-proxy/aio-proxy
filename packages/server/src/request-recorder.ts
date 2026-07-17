@@ -1,12 +1,19 @@
 import type { RequestAttemptLog, RequestLogStore } from "@aio-proxy/core/db";
 import type { RequestOutcome, UsageRow } from "@aio-proxy/types";
+import {
+  logServerEvent,
+  type RequestRecorderPersistenceFailedLog,
+  type ServerLogSink,
+  serverErrorType,
+} from "./server-log";
 import type { UsageCompletion } from "./usage-capture";
 
 const RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const UNPARSED_REQUESTED_MODEL_ID = "<unparsed>";
 
 export type RequestRecorder = {
-  readonly begin: (input: { readonly inboundProtocol: string; readonly requestedModelId: string }) => RequestSession;
+  readonly begin: (input: { readonly inboundProtocol: string; readonly requestedModelId?: string }) => RequestSession;
 };
 
 export type RequestAttemptInput = Omit<RequestAttemptLog, "index">;
@@ -23,8 +30,9 @@ export type RequestFinishInput = {
 
 export type RequestSession = {
   readonly requestId: string;
+  readonly identify: (input: { readonly requestedModelId: string }) => void;
   readonly attempt: (input: RequestAttemptInput) => void;
-  readonly finish: (input: RequestFinishInput) => void;
+  readonly finish: (input: RequestFinishInput) => boolean;
   readonly finishFrom: (
     attempt: Omit<RequestAttemptInput, "outcome" | "statusCode" | "errorCode">,
     completion: Promise<UsageCompletion>,
@@ -34,55 +42,52 @@ export type RequestSession = {
 export function createRequestRecorder(options: {
   readonly store: RequestLogStore;
   readonly now?: () => Date;
-  readonly logger?: (error: unknown) => void;
+  readonly logger?: ServerLogSink;
 }): RequestRecorder {
   const now = options.now ?? (() => new Date());
   let lastPrunedAt = now();
-  safely(() => options.store.prune(new Date(lastPrunedAt.getTime() - RETENTION_MS)), options.logger);
+  persistSafely(() => options.store.prune(new Date(lastPrunedAt.getTime() - RETENTION_MS)), options.logger, {
+    operation: "prune",
+  });
 
   return {
     begin(input) {
       const current = now();
       if (current.getTime() - lastPrunedAt.getTime() >= PRUNE_INTERVAL_MS) {
         lastPrunedAt = current;
-        safely(() => options.store.prune(new Date(current.getTime() - RETENTION_MS)), options.logger);
+        persistSafely(() => options.store.prune(new Date(current.getTime() - RETENTION_MS)), options.logger, {
+          operation: "prune",
+        });
       }
 
       const requestId = crypto.randomUUID();
       const startedAt = current;
       const attempts: RequestAttemptLog[] = [];
-      let finished = false;
+      let requestedModelId = input.requestedModelId ?? UNPARSED_REQUESTED_MODEL_ID;
+      let identified = input.requestedModelId !== undefined;
+      let state: "pending" | "async-owned" | "finished" = "pending";
 
-      const session: RequestSession = {
-        requestId,
-        attempt(attempt) {
-          if (!finished) {
-            attempts.push({ ...attempt, index: attempts.length });
-          }
-        },
-        finish(finish) {
-          if (finished) {
-            return;
-          }
-          finished = true;
-          if (finish.attempt !== undefined) {
-            attempts.push({ ...finish.attempt, index: attempts.length });
-          }
-          const completedAt = now();
-          const base = {
-            requestId,
-            inboundProtocol: input.inboundProtocol,
-            requestedModelId: input.requestedModelId,
-            ...(finish.finalProviderId === undefined ? {} : { finalProviderId: finish.finalProviderId }),
-            ...(finish.finalModelId === undefined ? {} : { finalModelId: finish.finalModelId }),
-            ...(finish.finalStatusCode === undefined ? {} : { finalStatusCode: finish.finalStatusCode }),
-            ...(finish.errorCode === undefined ? {} : { errorCode: finish.errorCode }),
-            attempts,
-            startedAt,
-            completedAt,
-            durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
-          };
-          safely(() => {
+      const complete = (finish: RequestFinishInput): void => {
+        state = "finished";
+        if (finish.attempt !== undefined) {
+          attempts.push({ ...finish.attempt, index: attempts.length });
+        }
+        const completedAt = now();
+        const base = {
+          requestId,
+          inboundProtocol: input.inboundProtocol,
+          requestedModelId,
+          ...(finish.finalProviderId === undefined ? {} : { finalProviderId: finish.finalProviderId }),
+          ...(finish.finalModelId === undefined ? {} : { finalModelId: finish.finalModelId }),
+          ...(finish.finalStatusCode === undefined ? {} : { finalStatusCode: finish.finalStatusCode }),
+          ...(finish.errorCode === undefined ? {} : { errorCode: finish.errorCode }),
+          attempts,
+          startedAt,
+          completedAt,
+          durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
+        };
+        persistSafely(
+          () => {
             if (finish.outcome === "success" && finish.usage !== undefined) {
               options.store.insertFinal({
                 ...base,
@@ -96,14 +101,49 @@ export function createRequestRecorder(options: {
             } else {
               options.store.insertFinal({ ...base, outcome: finish.outcome });
             }
-          }, options.logger);
+          },
+          options.logger,
+          { operation: "insert_final", requestId },
+        );
+      };
+
+      const session: RequestSession = {
+        requestId,
+        identify(identity) {
+          if (state !== "pending") return;
+          if (!identified) {
+            requestedModelId = identity.requestedModelId;
+            identified = true;
+            return;
+          }
+          if (requestedModelId === identity.requestedModelId) return;
+          if (options.logger !== undefined) {
+            logServerEvent(options.logger, {
+              event: "request.recorder_invariant",
+              requestId,
+              invariant: "requested_model_conflict",
+            });
+          }
+        },
+        attempt(attempt) {
+          if (state === "pending") {
+            attempts.push({ ...attempt, index: attempts.length });
+          }
+        },
+        finish(finish) {
+          if (state !== "pending") return false;
+          complete(finish);
+          return true;
         },
         finishFrom(attempt, completion) {
+          if (state !== "pending") return;
+          state = "async-owned";
           void completion.then(
             (terminal) => {
+              if (state !== "async-owned") return;
               const statusCode = "statusCode" in terminal ? terminal.statusCode : undefined;
               const errorCode = terminal.outcome === "failure" ? terminal.errorCode : undefined;
-              session.finish({
+              complete({
                 outcome: terminal.outcome,
                 finalProviderId: attempt.providerId,
                 finalModelId: attempt.modelId,
@@ -119,7 +159,8 @@ export function createRequestRecorder(options: {
               });
             },
             () => {
-              session.finish({
+              if (state !== "async-owned") return;
+              complete({
                 outcome: "failure",
                 finalProviderId: attempt.providerId,
                 finalModelId: attempt.modelId,
@@ -134,12 +175,20 @@ export function createRequestRecorder(options: {
   };
 }
 
-function safely(task: () => void, logger: ((error: unknown) => void) | undefined): void {
+function persistSafely(
+  task: () => void,
+  logger: ServerLogSink | undefined,
+  failure: Omit<RequestRecorderPersistenceFailedLog, "errorType" | "event">,
+): void {
   try {
     task();
   } catch (error) {
-    try {
-      logger?.(error);
-    } catch {}
+    if (logger !== undefined) {
+      logServerEvent(logger, {
+        event: "request.recorder_persistence_failed",
+        ...failure,
+        errorType: serverErrorType(error),
+      });
+    }
   }
 }

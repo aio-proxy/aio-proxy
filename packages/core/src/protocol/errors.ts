@@ -24,6 +24,8 @@ export const openAICompletionsErrors: ProtocolErrorMapper = {
 };
 
 export const openAIResponsesErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof OpenAIResponsesUnsupportedFeatureError ? openAIUnsupported(error.feature) : undefined,
   requestError(error) {
     if (error instanceof OpenAIResponsesUnsupportedFeatureError) {
       return openAIUnsupported(error.feature);

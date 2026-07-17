@@ -1,11 +1,12 @@
 import { ProviderProtocol } from "@aio-proxy/types";
+import { z } from "zod";
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses";
 import { OpenAIResponsesUnsupportedFeatureError } from "../error";
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses";
 import { openAIResponsesToModelMessages } from "../transform/openai-responses";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAIResponsesErrors } from "./errors";
-import { readJsonRequest, rewriteJsonRequestModel } from "./request";
+import { readJsonRequest } from "./request";
 import { functionToolSet } from "./tools";
 
 export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesRequest, EmptyProtocolContext>({
@@ -15,9 +16,13 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   },
   model: (request) => request.model,
   variant: (request) => request.reasoning?.effort,
+  requestDiagnostics: (request) =>
+    request.background === true ? [{ feature: "background", action: "dropped", effectiveMode: "synchronous" }] : [],
   wantsStream: (request) => request.stream === true,
   rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel ? Promise.resolve(raw.clone()) : rewriteJsonRequestModel(raw, resolvedModel);
+    return request.model === resolvedModel && request.background === undefined
+      ? Promise.resolve(raw.clone())
+      : rewriteOpenAIResponsesRequest(raw, resolvedModel);
   },
   modelInvocation(request) {
     const transformed = openAIResponsesToModelMessages(request);
@@ -36,3 +41,15 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
 });
+
+const jsonObjectSchema = z.object({}).catchall(z.unknown());
+
+async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string): Promise<Request> {
+  const { background: _background, ...body } = jsonObjectSchema.parse(await readJsonRequest(raw));
+  const headers = new Headers(raw.headers);
+  headers.delete("content-length");
+  return new Request(raw, {
+    body: JSON.stringify({ ...body, model: resolvedModel }),
+    headers,
+  });
+}

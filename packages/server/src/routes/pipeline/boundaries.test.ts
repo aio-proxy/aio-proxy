@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { handleProtocolRequest } from "../src/routes/pipeline";
-import { attemptsOf, MAX_BODY_BYTES, pipeline } from "./pipeline.test-support";
 import {
   defineProtocolAdapter,
   defineProviderRouteSource,
@@ -12,10 +10,12 @@ import {
   rawProvider,
   settleRecording,
   textStream,
-} from "./pipeline-helpers";
+} from "../../../_test/pipeline-helpers";
+import { handleProtocolRequest } from "./index";
+import { attemptsOf, MAX_BODY_BYTES, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
-  test("rejects Content-Length above 8 MiB before parse, recording, or provider dispatch", async () => {
+  test("rejects Content-Length above 8 MiB before parse or provider dispatch", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
 
@@ -24,11 +24,11 @@ describe("shared protocol routing pipeline", () => {
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: { code: "too_large", message: "Request body too large" } });
     expect(harness.context.parseCalls).toBe(0);
-    expect(harness.recording.begins).toEqual([]);
+    expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);
   });
 
-  test("rejects malformed Content-Length before parse, recording, or provider dispatch", async () => {
+  test("rejects malformed Content-Length before parse or provider dispatch", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
 
@@ -36,11 +36,11 @@ describe("shared protocol routing pipeline", () => {
 
     expect(response.status).toBe(413);
     expect(harness.context.parseCalls).toBe(0);
-    expect(harness.recording.begins).toEqual([]);
+    expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);
   });
 
-  test("rejects a chunked body above 8 MiB before recording or provider dispatch", async () => {
+  test("rejects a chunked body above 8 MiB before provider dispatch", async () => {
     const provider = rawProvider({ id: "raw", modelId: REQUESTED_MODEL });
     const route = defineProviderRouteSource([provider]);
     let chunks = 0;
@@ -63,7 +63,7 @@ describe("shared protocol routing pipeline", () => {
 
     expect(response.status).toBe(413);
     expect(await response.json()).toMatchObject({ error: { code: "request_too_large" } });
-    expect(route.recording.begins).toEqual([]);
+    expect(route.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);
   });
 
@@ -75,7 +75,7 @@ describe("shared protocol routing pipeline", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: { code: "request_error", message: "Invalid test request" } });
-    expect(harness.recording.begins).toEqual([]);
+    expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);
   });
 
@@ -89,7 +89,8 @@ describe("shared protocol routing pipeline", () => {
     expect(await response.json()).toEqual({
       error: { code: "model_not_found", message: expect.stringContaining("missing") },
     });
-    expect(harness.recording.begins).toEqual([]);
+    expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
+    expect(harness.recording.identities).toEqual([{ requestedModelId: "missing" }]);
     expect(provider.calls.raw).toEqual([]);
   });
 
@@ -111,9 +112,8 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.usage.passthrough).toHaveLength(1);
     expect(harness.usage.stream).toHaveLength(0);
     expect(attemptsOf(harness.recording)).toEqual([{ outcome: "success", providerId: "hybrid", statusCode: 200 }]);
-    expect(harness.recording.begins).toEqual([
-      { inboundProtocol: ProviderProtocol.OpenAICompatible, requestedModelId: REQUESTED_MODEL },
-    ]);
+    expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
+    expect(harness.recording.identities).toEqual([{ requestedModelId: REQUESTED_MODEL }]);
     expect(harness.recording.attempts[0]).toEqual(
       expect.objectContaining({
         durationMs: expect.any(Number),
@@ -147,17 +147,31 @@ describe("shared protocol routing pipeline", () => {
     expect(backup.calls.model).toHaveLength(0);
     expect(harness.recording.finals).toEqual([
       expect.objectContaining({
+        errorCode: "invalid_request",
         finalModelId: "primary-model",
         finalProviderId: "primary",
         finalStatusCode: 400,
         outcome: "failure",
         attempt: expect.objectContaining({
+          errorCode: "invalid_request",
           modelId: "primary-model",
           outcome: "failure",
           providerId: "primary",
           statusCode: 400,
         }),
       }),
+    ]);
+    expect(harness.logs).toEqual([
+      {
+        event: "request.rejected",
+        requestId: "request-1",
+        inboundProtocol: ProviderProtocol.OpenAICompatible,
+        requestedModelId: REQUESTED_MODEL,
+        path: "/v1/test",
+        statusCode: 400,
+        errorCode: "invalid_request",
+        errorType: "SyntaxError",
+      },
     ]);
   });
 

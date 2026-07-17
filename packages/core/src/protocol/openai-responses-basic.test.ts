@@ -4,7 +4,7 @@ import {
   openAIResponsesAdapter,
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
-} from "../../src/index";
+} from "../index";
 
 describe("openAIResponsesAdapter", () => {
   test("defaults to non-stream and exposes routing, tools, and current writers", async () => {
@@ -41,11 +41,7 @@ describe("openAIResponsesAdapter", () => {
       new Request("https://proxy.test/v1/responses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "alias",
-          input: "hello",
-          tools: [{ type: "custom", name: "emit_raw" }],
-        }),
+        body: JSON.stringify({ model: "alias", input: "hello", tools: [{ type: "custom", name: "emit_raw" }] }),
       }),
       {},
     );

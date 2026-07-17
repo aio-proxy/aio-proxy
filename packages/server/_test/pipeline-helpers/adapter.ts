@@ -11,12 +11,14 @@ export function defineProtocolAdapter(
   options: {
     readonly modelInvocationError?: Error;
     readonly onModelEgress?: (value: unknown) => void;
+    readonly parseError?: Error;
   } = {},
 ) {
   return defineCoreProtocolAdapter<TestProtocolRequest, TestProtocolContext>({
     protocol,
     async parse(raw, context) {
       context.parseCalls += 1;
+      if (options.parseError !== undefined) throw options.parseError;
       const value: unknown = await raw.clone().json();
       if (
         typeof value !== "object" ||

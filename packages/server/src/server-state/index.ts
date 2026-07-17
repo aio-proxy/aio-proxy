@@ -25,20 +25,15 @@ import { createSnapshotManager } from "../plugin-snapshot";
 import { providerDiff } from "../provider-runtime";
 import { createRequestRecorder } from "../request-recorder";
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
+import type { ServerLogSink } from "../server-log";
 import { createUsageCapture } from "../usage-capture";
 import { createProviderSummaries } from "./probe";
 import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
 import { reloadSnapshot } from "./reload";
 import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
-import type {
-  ConfigReloadLog,
-  ConfigReloadResult,
-  InternalServerStateOptions,
-  ServerState,
-  ServerStateOptions,
-} from "./types";
+import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from "./types";
 
-const defaultLogger = (entry: ConfigReloadLog): void => console.error(JSON.stringify(entry));
+const defaultLogger: ServerLogSink = (entry) => console.error(JSON.stringify(entry));
 const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
@@ -125,8 +120,8 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const requestLog = createRequestLogStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
-  const requestRecorder = createRequestRecorder({ store: requestLog });
   const logger = options.logger ?? defaultLogger;
+  const requestRecorder = createRequestRecorder({ store: requestLog, logger });
 
   async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {
     const previous = manager.current() as Snapshot;
@@ -211,6 +206,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     modelsDevCatalog,
     reload,
     requestLog,
+    logger,
     requestRecorder,
     usageCapture,
   };

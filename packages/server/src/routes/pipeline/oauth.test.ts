@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { PluginRawResolverError, PluginRawTransportError } from "../src/plugin-runtime";
-import { attemptsOf, pipeline } from "./pipeline.oauth.test-support";
-import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "./pipeline-helpers";
+import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "../../../_test/pipeline-helpers";
+import { PluginRawResolverError, PluginRawTransportError } from "../../plugin-runtime";
+import { attemptsOf, pipeline } from "./oauth.test-support";
 
 describe("OAuth plugin raw pipeline", () => {
   test.each(["resolver", "response"] as const)("falls back after a malformed plugin raw %s failure", async (stage) => {

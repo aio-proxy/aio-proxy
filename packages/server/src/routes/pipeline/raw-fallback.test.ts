@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { attemptsOf, pipeline } from "./pipeline.test-support";
-import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "./pipeline-helpers";
+import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "../../../_test/pipeline-helpers";
+import { attemptsOf, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
   test.each([429, 503])("falls back after raw status %d", async (status) => {

@@ -1,6 +1,7 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from "@aio-proxy/core";
 import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from "@aio-proxy/types";
 import type { RequestRecorder } from "./request-recorder";
+import type { ServerLogSink } from "./server-log";
 import type { UsageCapture } from "./usage-capture";
 
 export type RuntimeModelMetadata = {
@@ -64,6 +65,7 @@ export type RetiredProviderSnapshot = {
 export type ProviderRouteSource = {
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
+  readonly logger: ServerLogSink;
   readonly requestRecorder: RequestRecorder;
   readonly usageCapture: UsageCapture;
 };

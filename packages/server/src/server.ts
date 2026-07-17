@@ -14,6 +14,7 @@ import { createGeminiGenerateContentRoutes } from "./routes/gemini-generate-cont
 import { createOpenAICompletionsRoutes } from "./routes/openai-completions";
 import { createOpenAIResponsesRoutes } from "./routes/openai-responses";
 import type { RuntimeProviderInput, RuntimeProviderInstance } from "./runtime";
+import type { ServerLogSink } from "./server-log";
 import { createServerState, type ServerState } from "./server-state";
 
 export const serverDefaults = {
@@ -36,6 +37,7 @@ export type CreateServerOptions = {
   readonly port?: number;
   readonly host?: string;
   readonly dashboardAssets?: DashboardAssets;
+  readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
 };
 
@@ -203,6 +205,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
       ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
       ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
       ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
     }),
     options.port ?? config.server.port,

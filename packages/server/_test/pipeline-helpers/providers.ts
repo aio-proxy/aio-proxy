@@ -74,6 +74,7 @@ export function defineProviderRouteSource(
     passthrough: [] as PassthroughUsageOptions[],
     stream: [] as StreamUsageOptions[],
   };
+  const logs: unknown[] = [];
   const usageCapture: UsageCapture = {
     passthrough(options) {
       usage.passthrough.push(options);
@@ -98,10 +99,11 @@ export function defineProviderRouteSource(
       release() {},
     }),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
+    logger: (entry) => logs.push(entry),
     requestRecorder: recording.recorder,
     usageCapture,
   } satisfies ProviderRouteSource;
-  return { recording, source, usage };
+  return { logs, recording, source, usage };
 }
 
 function providerCalls(): FakeProvider["calls"] {
