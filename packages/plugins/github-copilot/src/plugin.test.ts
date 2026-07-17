@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { OAuthLoginContext } from "@aio-proxy/plugin-sdk";
-import { adapterFrom, withFetchMock } from "../_test/test-support";
+import type { OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import { loginContext, withFetchMock } from "../_test/test-support";
 import packageJson from "../package.json" with { type: "json" };
-import githubCopilotPlugin, { GITHUB_COPILOT_PLUGIN_VERSION } from ".";
+import githubCopilotPlugin, {
+  COPILOT_CATALOG_TTL_MS,
+  GITHUB_COPILOT_PLUGIN_VERSION,
+  type GitHubAccountOptions,
+  type GitHubCopilotCredential,
+} from ".";
 import { createGitHubCopilotPlugin } from "./plugin";
 
 describe("GitHub Copilot plugin", () => {
@@ -42,6 +47,28 @@ describe("GitHub Copilot plugin", () => {
         enterpriseURL: " https://company.ghe.com/path ",
       }),
     ).resolves.toEqual({ deploymentType: "enterprise", enterpriseURL: "https://company.ghe.com" });
+  });
+
+  test("rejects an invalid Enterprise domain before fetching", async () => {
+    const adapter = await adapterFrom(githubCopilotPlugin);
+    let fetched = false;
+
+    await withFetchMock(
+      async () => {
+        fetched = true;
+        return Response.json({});
+      },
+      async () => {
+        await expect(
+          adapter.login(loginContext(), {
+            deploymentType: "enterprise",
+            enterpriseURL: "not a host name",
+          }),
+        ).rejects.toThrow("GitHub Enterprise URL or domain is required");
+      },
+    );
+
+    expect(fetched).toBe(false);
   });
 
   test("supports injectable localized account copy", async () => {
@@ -110,20 +137,31 @@ describe("GitHub Copilot plugin", () => {
       }),
     ).rejects.toThrow();
   });
+
+  test("uses the catalog-owned six-hour TTL policy", async () => {
+    const adapter = await adapterFrom(githubCopilotPlugin);
+
+    expect(COPILOT_CATALOG_TTL_MS).toBe(6 * 60 * 60_000);
+    expect(adapter.catalog.policy).toEqual({ kind: "ttl", ttlMs: COPILOT_CATALOG_TTL_MS });
+  });
 });
 
-function loginContext(overrides: Partial<OAuthLoginContext> = {}): OAuthLoginContext {
-  return {
-    authorization: {
-      presentDeviceCode: async () => undefined,
-      loopback: async () => {
-        throw new Error("unexpected loopback flow");
+async function adapterFrom(
+  descriptor: PluginDescriptor<undefined>,
+): Promise<OAuthAdapter<GitHubAccountOptions, GitHubCopilotCredential>> {
+  let registered: OAuthAdapter<GitHubAccountOptions, GitHubCopilotCredential> | undefined;
+  await descriptor.setup(
+    {
+      oauth: {
+        register(adapter) {
+          registered = adapter as unknown as OAuthAdapter<GitHubAccountOptions, GitHubCopilotCredential>;
+        },
       },
     },
-    progress: () => undefined,
-    signal: new AbortController().signal,
-    ...overrides,
-  };
+    undefined,
+  );
+  if (registered === undefined) throw new Error("GitHub Copilot OAuth adapter was not registered");
+  return registered;
 }
 
 function localizedLoginFetch(): typeof fetch {

@@ -2,9 +2,7 @@ import { afterEach, describe, expect, jest, test } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { OAuthLoginContext } from "@aio-proxy/plugin-sdk";
-import { adapterFrom, withFetchMock } from "../../_test/test-support";
-import githubCopilotPlugin from "..";
+import { loginContext, withFetchMock } from "../../_test/test-support";
 import { loginToGitHubCopilot } from ".";
 
 afterEach(() => {
@@ -12,28 +10,6 @@ afterEach(() => {
 });
 
 describe("GitHub Copilot login", () => {
-  test("rejects an invalid Enterprise domain before fetching", async () => {
-    const adapter = await adapterFrom(githubCopilotPlugin);
-    let fetched = false;
-
-    await withFetchMock(
-      async () => {
-        fetched = true;
-        return Response.json({});
-      },
-      async () => {
-        await expect(
-          adapter.login(loginContext(), {
-            deploymentType: "enterprise",
-            enterpriseURL: "not a host name",
-          }),
-        ).rejects.toThrow("GitHub Enterprise URL or domain is required");
-      },
-    );
-
-    expect(fetched).toBe(false);
-  });
-
   test("supports injectable localized login progress copy", async () => {
     const progress: string[] = [];
 
@@ -196,25 +172,6 @@ describe("GitHub Copilot login", () => {
     expect(polls).toBe(1);
   });
 });
-
-function loginContext(
-  overrides: Partial<OAuthLoginContext> & {
-    readonly presentDeviceCode?: OAuthLoginContext["authorization"]["presentDeviceCode"];
-  } = {},
-): OAuthLoginContext {
-  const { presentDeviceCode, ...context } = overrides;
-  return {
-    authorization: {
-      presentDeviceCode: presentDeviceCode ?? (async () => undefined),
-      loopback: async () => {
-        throw new Error("unexpected loopback flow");
-      },
-    },
-    progress: () => undefined,
-    signal: new AbortController().signal,
-    ...context,
-  };
-}
 
 function fakeCopilotFetch(
   options: {

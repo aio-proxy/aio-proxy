@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
+import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
 import type { GitHubAccountOptions, GitHubCopilotCredential } from "../src";
 import { createGitHubCopilotRuntime } from "../src/runtime";
-import { withFetchMock } from "./test-support";
+import { credentialPort, withFetchMock } from "./test-support";
 
 describe("GitHub Copilot runtime", () => {
   test("selects language providers from canonical catalog protocol metadata", async () => {
-    const credentials = mutableCredentialPort(validCredential("copilot-token"));
+    const credentials = credentialPort(validCredential("copilot-token"));
     const runtime = await createGitHubCopilotRuntime({
       credentials: credentials.port,
       options: { deploymentType: "github.com" },
@@ -22,7 +22,7 @@ describe("GitHub Copilot runtime", () => {
 
   test("dynamic provider fetch refreshes credentials without rebuilding the runtime", async () => {
     const refreshSignal = new AbortController().signal;
-    const credentials = mutableCredentialPort(
+    const credentials = credentialPort(
       {
         githubToken: "github-token",
         copilotToken: "expired-token",
@@ -149,7 +149,7 @@ describe("GitHub Copilot runtime", () => {
     },
   ] as const) {
     test(`${scenario.name} doGenerate uses the current Copilot credential and protocol request shape`, async () => {
-      const credentials = mutableCredentialPort(validCredential(scenario.token));
+      const credentials = credentialPort(validCredential(scenario.token));
       const runtime = await createGitHubCopilotRuntime({
         credentials: credentials.port,
         options: { deploymentType: "github.com" },
@@ -183,7 +183,7 @@ describe("GitHub Copilot runtime", () => {
   }
 
   test("raw resolver matches model protocol and preserves request details while rewriting origin", async () => {
-    const credentials = mutableCredentialPort(validCredential("raw-token"));
+    const credentials = credentialPort(validCredential("raw-token"));
     const runtime = await createGitHubCopilotRuntime({
       credentials: credentials.port,
       options: { deploymentType: "github.com" },
@@ -246,22 +246,6 @@ function validCredential(copilotToken: string): GitHubCopilotCredential {
     copilotToken,
     expiresAt: Date.now() + 60_000,
     baseURL: "https://api.githubcopilot.com",
-  };
-}
-
-function mutableCredentialPort(initial: GitHubCopilotCredential, refreshSignal = new AbortController().signal) {
-  let snapshot = { value: initial, revision: 1 };
-  return {
-    port: {
-      read: async () => snapshot,
-      refresh: async (expectedRevision, exchange) => {
-        if (expectedRevision !== snapshot.revision) return { status: "superseded" as const, snapshot };
-        const refreshed = await exchange(snapshot, refreshSignal);
-        snapshot = { value: refreshed.value, revision: snapshot.revision + 1 };
-        return { status: "updated" as const, snapshot };
-      },
-    } satisfies CredentialPort<GitHubCopilotCredential>,
-    current: () => snapshot,
   };
 }
 

@@ -13,6 +13,7 @@ import {
   loginToGitHubCopilot,
   normalizeEnterpriseURL,
 } from "./github-api";
+import { COPILOT_CATALOG_TTL_MS } from "./github-api/catalog";
 import { createGitHubCopilotRuntime } from "./runtime";
 
 export type GitHubCopilotPresentationText = {
@@ -121,7 +122,7 @@ export function createGitHubCopilotPlugin(
       });
     },
     catalog: {
-      policy: { kind: "ttl", ttlMs: 6 * 60 * 60_000 },
+      policy: { kind: "ttl", ttlMs: COPILOT_CATALOG_TTL_MS },
       discover: async (context) => ({
         language: await discoverGitHubCopilotModels(context.credentials, context.signal),
         image: [],

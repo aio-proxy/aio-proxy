@@ -1,17 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { CredentialPort, ProtocolId } from "@aio-proxy/plugin-sdk";
-import { adapterFrom, withFetchMock } from "../../_test/test-support";
-import githubCopilotPlugin, { COPILOT_CATALOG_TTL_MS } from "..";
+import type { ProtocolId } from "@aio-proxy/plugin-sdk";
+import { credentialPort, withFetchMock } from "../../_test/test-support";
 import { discoverGitHubCopilotModels, type GitHubCopilotCredential } from ".";
 
 describe("GitHub Copilot catalog", () => {
-  test("uses a six-hour TTL policy", async () => {
-    const adapter = await adapterFrom(githubCopilotPlugin);
-
-    expect(COPILOT_CATALOG_TTL_MS).toBe(6 * 60 * 60_000);
-    expect(adapter.catalog.policy).toEqual({ kind: "ttl", ttlMs: 6 * 60 * 60_000 });
-  });
-
   test("filters hidden or non-chat models and maps supported protocols", async () => {
     const credential: GitHubCopilotCredential = {
       githubToken: "github-token",
@@ -19,9 +11,7 @@ describe("GitHub Copilot catalog", () => {
       expiresAt: 9_999_999_999_000,
       baseURL: "https://api.individual.githubcopilot.com",
     };
-    const credentials = {
-      read: async () => ({ value: credential, revision: 1 }),
-    } as CredentialPort<GitHubCopilotCredential>;
+    const credentials = credentialPort(credential);
 
     const models = await withFetchMock(
       async (_input, init) => {
@@ -30,7 +20,7 @@ describe("GitHub Copilot catalog", () => {
         expect(headers.get("accept")).toBe("application/json");
         return modelResponse();
       },
-      () => discoverGitHubCopilotModels(credentials, new AbortController().signal),
+      () => discoverGitHubCopilotModels(credentials.port, new AbortController().signal),
     );
 
     expect(models).toEqual([

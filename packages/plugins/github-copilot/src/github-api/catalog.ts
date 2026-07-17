@@ -4,6 +4,8 @@ import { currentGitHubCopilotCredential } from "./credential";
 import { copilotHeaders, fetchJson } from "./http";
 import type { GitHubCopilotCredential } from "./types";
 
+export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
+
 export async function discoverGitHubCopilotModels(
   credentials: CredentialPort<GitHubCopilotCredential>,
   signal: AbortSignal,
