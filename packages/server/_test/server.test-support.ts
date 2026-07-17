@@ -53,7 +53,7 @@ export const testCapabilities: ModelsDevCapabilities = {
   },
 };
 
-export type ExpectedModelMetadata = {
+type ExpectedModelMetadata = {
   readonly capabilities?: ModelsDevCapabilities;
   readonly created?: number;
   readonly createdAt?: string;

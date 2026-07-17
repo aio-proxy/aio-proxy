@@ -2,17 +2,19 @@
 
 ## Status
 
-PASS
+LOCAL IMPLEMENTATION VERIFIED; REMOTE PUBLICATION PENDING
 
 The strict touched-file size gate is closed. The 10 oversized touched test
 files were split by existing concern without production-code changes, every
 split suite preserved its baseline test and assertion counts, and all local
 verification commands passed.
 
-PR #29 remains `CONFLICTING`/`DIRTY` because its published head is still
+The local Task 10 implementation and verification gates are complete. PR #29
+remains `CONFLICTING`/`DIRTY` because its published head is still
 `4f0423f97235acf65852e032c6139108ff5acf6a`, while this verified local history
-has not been pushed. PR inspection was read-only; no review reply, resolution,
-or other GitHub write was made.
+has not been pushed. Publication and the final remote mergeability recheck are
+pending an authorized finishing choice. PR inspection was read-only; no review
+reply, resolution, or other GitHub write was made.
 
 ## Branch and Environment
 
@@ -112,8 +114,70 @@ GitHub write action.
 
 ## Final Scope
 
-- Preserved the tracked `.superpowers/sdd/task-4-report.md` modification.
+- Carried the tracked `.superpowers/sdd/task-4-report.md` modification as an
+  intentional earlier-task correction that was already present when Task 10
+  began; documenting it here makes the Task 10 commit scope match the diff.
 - Included every test split, the Task 10 brief and plan updates, and this Task
   10 report.
 - Changed no production code.
 - Removed only `/tmp/aio-proxy-task10-split.VLyfky` after verification.
+
+## Final Reviewer Follow-Up
+
+The final reviewer identified one mutable-fixture risk and several support and
+status-documentation cleanups. This follow-up changed tests/support and Task 10
+documents only; no production code changed.
+
+### Pathless fixture regression
+
+- Added a direct regression assertion that mutates the main fixture config with
+  a `leak-probe` provider, creates a pathless server, and verifies the provider
+  is absent there.
+- RED evidence: the first run failed with `Expected: false`, `Received: true`,
+  proving `requestPathlessProviders` reused the mutable fixture config.
+- Fix: every pathless server now receives a fresh `structuredClone` of the
+  original seed config.
+- GREEN evidence: the focused basic file passed 16 tests / 41 assertions.
+- Final Dashboard command:
+
+```bash
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-review-fix/dashboard-final \
+  rtk bun test --preload=./_test/setup.ts \
+  _test/dashboard-providers-mutation-{basic,aliases,concurrency}.test.ts
+```
+
+Result: 30 passed, 79 assertions, 0 failed across 3 files.
+
+### Protocol support consolidation
+
+- Consolidated the four identical temporary-home implementations into the
+  dedicated directory-level
+  `packages/server/_test/temporary-homes.test-support.ts` helper, reused by the
+  Anthropic, Gemini, OpenAI Completions, and OpenAI Responses support modules.
+- Removed the unnecessary exports `nativeFetch`, `usageJson`, and
+  `ExpectedModelMetadata` while retaining their module-local use.
+- Focused protocol command covered all split files affected by the shared
+  helper:
+
+```bash
+AIO_PROXY_HOME=/tmp/aio-proxy-task10-review-fix/protocols \
+  rtk bun test --preload=./_test/setup.ts \
+  _test/anthropic-messages-{native,model,failures,count-tokens}.test.ts \
+  _test/gemini-generate-content-{native,model,stream,routing}.test.ts \
+  _test/openai-completions-{native,model-stream,usage,fallback,errors,boundaries}.test.ts \
+  _test/openai-responses-{native,model,unsupported}.test.ts
+```
+
+Result: 81 passed, 233 assertions, 0 failed across 17 files.
+- Scoped Biome initially checked 8 touched test/support files and applied only
+  formatting/import fixes; the final scoped check passed cleanly.
+
+### Status and carried artifact
+
+- The brief and authoritative plan now mark local split, size, full local
+  verification, and read-only PR inspection steps complete.
+- Remote publication and the post-push mergeability recheck are a separate
+  unchecked finishing step because force-push is not authorized.
+- The brief, plan, and report explicitly record the tracked Task 4 report as an
+  intentional carried artifact.
+- No broad suite and no GitHub write was performed in this fix round.

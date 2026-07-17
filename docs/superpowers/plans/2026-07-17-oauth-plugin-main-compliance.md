@@ -975,10 +975,14 @@ rtk git commit -m "refactor(copilot): split adapter responsibilities" -m "Co-aut
 - Modify: `.superpowers/sdd/task-10-brief.md`
 - Modify: `.superpowers/sdd/task-10-report.md`
 - Modify: `docs/superpowers/plans/2026-07-17-oauth-plugin-main-compliance.md`
+- Carry forward: tracked `.superpowers/sdd/task-4-report.md`, an intentional
+  earlier-task correction already present when Task 10 began.
 - No production files.
 
 **Interfaces:**
-- Confirms: the rebased branch passes all checks, contains no oversized touched handwritten files, and addresses the open ChatGPT catalog comment.
+- Confirms locally: the rebased branch passes all checks, contains no oversized touched handwritten files, and addresses the open ChatGPT catalog comment.
+- Records remotely: the current published PR state; publication and the final
+  mergeability recheck remain pending an authorized finishing choice.
 
 - [x] **Step 0: Close the strict touched-test size gate without behavior changes**
 
@@ -1013,7 +1017,7 @@ AIO_PROXY_HOME=/tmp/aio-proxy-task10-split/types-final rtk bun test \
 Expected and observed: Core 34 tests / 90 assertions, Server 165 tests / 498
 assertions, Types 44 tests / 70 assertions, all with zero failures.
 
-- [ ] **Step 1: Check touched source sizes without adding repository tooling**
+- [x] **Step 1: Check touched source sizes without adding repository tooling**
 
 ```bash
 rtk proxy sh -c '
@@ -1029,7 +1033,7 @@ done
 
 Expected: no output.
 
-- [ ] **Step 2: Run complete verification**
+- [x] **Step 2: Run complete local verification**
 
 ```bash
 rtk bun run check
@@ -1043,18 +1047,35 @@ rtk git status --short
 
 Expected: all commands pass; the worktree contains only intentional changes.
 
-- [ ] **Step 3: Recheck PR comments and mergeability**
+- [x] **Step 3: Inspect current PR comments and published mergeability**
 
 ```bash
 rtk proxy python3 /Users/bytedance/.codex/plugins/cache/openai-curated-remote/github/0.1.8-2841cf9749ae/skills/gh-address-comments/scripts/fetch_comments.py
 rtk gh pr view 29 --json mergeable,mergeStateStatus,headRefOid
 ```
 
-Expected: the ChatGPT catalog comment is addressed by code; PR mergeability is no longer `CONFLICTING`. Do not reply to or resolve the GitHub thread without explicit user authorization.
+Observed: the ChatGPT catalog comment is addressed in verified local code, but
+the published PR head remains `CONFLICTING`/`DIRTY`. Do not reply to or resolve
+the GitHub thread without explicit user authorization.
+
+- [ ] **Step 4: Publish the verified branch and recheck remote mergeability**
+
+This is a finishing choice, not a local verification step. Only after explicit
+authorization to push:
+
+```bash
+rtk git push --force-with-lease origin codex/oauth-plugin-system-design
+rtk gh pr view 29 --json mergeable,mergeStateStatus,headRefOid
+```
+
+Expected after authorized publication: the PR head matches the verified local
+commit and mergeability is re-evaluated. Force-push is not authorized yet, so
+this step remains pending.
 
 ## Self-Review
 
 - Spec coverage: rebase/conflicts, corrected Dashboard type interpretation, raw ChatGPT catalog with hidden models retained, es-toolkit import, Dashboard form/component rules, Bun colocation, all confirmed production/test size violations, and final PR comment verification are covered.
 - Intentionally excluded: moving shared DTOs from `@aio-proxy/types` to `@aio-proxy/server`, adding Rstest outside Dashboard, calling Codex's internal authenticated `/models` endpoint, and changing OAuth behavior during file splits.
-- Placeholder scan: tasks name exact files, interfaces, test commands, expected outcomes, split boundaries, and commit commands; no deferred implementation decisions remain.
+- Placeholder scan: local verification has no deferred implementation
+  decisions; remote publication remains an explicit finishing choice.
 - Type consistency: catalog exports, TTL constant, public OAuth/core/CLI/server signatures, and directory entry points match current names.

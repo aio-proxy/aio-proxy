@@ -20,9 +20,10 @@ const seedConfig = {
     "seed-oauth": { kind: "oauth" as const, vendor: "legacy-provider", enabled: true },
   },
 };
+const createSeedConfig = () => structuredClone(seedConfig);
 
 export async function createDashboardProviderFixture(prefix: string) {
-  const config = structuredClone(seedConfig);
+  const config = createSeedConfig();
   const tmpDir = mkdtempSync(join(tmpdir(), prefix));
   const configPath = join(tmpDir, "config.jsonc");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -40,8 +41,12 @@ export async function createDashboardProviderFixture(prefix: string) {
         headers: method === "GET" ? {} : { Origin: ORIGIN, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
+    requestPathlessProviders: async () => {
+      const pathless = await createServer({ config: createSeedConfig(), port: PORT });
+      return pathless.request("/dashboard/api/providers");
+    },
     requestPathless: async (body: unknown) => {
-      const pathless = await createServer({ config, port: PORT });
+      const pathless = await createServer({ config: createSeedConfig(), port: PORT });
       return pathless.request("/dashboard/api/providers", {
         method: "POST",
         headers: { Origin: ORIGIN, "Content-Type": "application/json" },

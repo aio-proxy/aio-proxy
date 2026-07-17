@@ -3,7 +3,7 @@ import { createDashboardProviderFixture } from "./dashboard-providers-mutation.t
 
 const decoder = new TextDecoder();
 const fixture = await createDashboardProviderFixture("aio-dashboard-provider-basic-");
-const { cleanup, onDisk, req, requestPathless } = fixture;
+const { cleanup, onDisk, req, requestPathless, requestPathlessProviders } = fixture;
 const postProvider = (body: unknown) => req("POST", "/providers", body);
 
 async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
@@ -204,5 +204,25 @@ describe("dashboard provider CRUD", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("config file path is not configured");
+
+    const priorMutationProbe = await requestPathless({
+      kind: "api",
+      id: "newapi",
+      protocol: "openai-compatible",
+      baseURL: "https://newapi.example.com",
+    });
+    expect(priorMutationProbe.status).toBe(409);
+    expect((await priorMutationProbe.json()).error).toBe("config file path is not configured");
+
+    Object.assign(fixture.config.providers, {
+      "leak-probe": {
+        kind: "api",
+        protocol: "openai-compatible",
+        baseURL: "https://leak.example.com",
+      },
+    });
+    const pathlessProviders = await requestPathlessProviders();
+    const pathlessBody = await pathlessProviders.json();
+    expect(pathlessBody.providers.some((provider: { id: string }) => provider.id === "leak-probe")).toBe(false);
   });
 });

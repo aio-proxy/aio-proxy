@@ -1,16 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  AiSdkProviderError,
-  type AiSdkProviderInstance,
-  type ApiProviderInstance,
-  createAiSdkProvider,
-} from "@aio-proxy/core";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
-import { createServer } from "@aio-proxy/server";
-import { ProviderProtocol } from "@aio-proxy/types";
-import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
+import type { TextStreamPart, ToolSet } from "ai";
+
+export { createTempHomes } from "./temporary-homes.test-support";
 
 export const messagesRequest = {
   model: "claude-sonnet-4-5",
@@ -18,20 +9,6 @@ export const messagesRequest = {
   messages: [{ role: "user", content: "Hello proxy" }],
   stream: true,
 };
-export function createTempHomes(prefix: string) {
-  const homes: string[] = [];
-  return {
-    cleanup: () => {
-      for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
-    },
-    tempHome: () => {
-      const home = mkdtempSync(join(tmpdir(), prefix));
-      homes.push(home);
-      return home;
-    },
-  };
-}
-
 export async function recorded(home: string) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const handle = openDb({ home });

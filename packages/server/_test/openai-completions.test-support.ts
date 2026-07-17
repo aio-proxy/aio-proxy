@@ -1,24 +1,16 @@
 import { expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  AiSdkProviderError,
-  type AiSdkProviderInstance,
-  type ApiProviderInstance,
-  createAiSdkProvider,
-} from "@aio-proxy/core";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import type { createServer } from "@aio-proxy/server";
-import { ProviderProtocol } from "@aio-proxy/types";
-import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "ai";
+import type { TextStreamPart, ToolSet } from "ai";
+
+export { createTempHomes } from "./temporary-homes.test-support";
 
 export const chatRequest = {
   model: "gpt-4o-mini",
   messages: [{ role: "user", content: "Hello proxy" }],
   stream: true,
 };
-export const nativeFetch = globalThis.fetch;
+const nativeFetch = globalThis.fetch;
 
 export function mockModelsDevCatalog(): void {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
@@ -64,21 +56,7 @@ export class AbortStreamError extends Error {
   override readonly name = "AbortError";
 }
 
-export function createTempHomes(prefix: string) {
-  const homes: string[] = [];
-  return {
-    cleanup: () => {
-      for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
-    },
-    tempHome: () => {
-      const home = mkdtempSync(join(tmpdir(), prefix));
-      homes.push(home);
-      return home;
-    },
-  };
-}
-
-export async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
+async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
   const usageResponse = await app.request("/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider");
   expect(usageResponse.status).toBe(200);
   return usageResponse.json();
