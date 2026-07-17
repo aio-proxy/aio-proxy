@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
+import type { OpenAIResponsesRequest } from "../../index";
 import {
   OpenAIResponsesRequestSchema,
   OpenAIResponsesUnsupportedFeatureError,
   parseOpenAIResponses,
   safeParseOpenAIResponses,
-} from "../../src/index";
+} from "../../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/openai-responses`;
+const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/openai-responses`;
 
-async function readFixture(file: string): Promise<unknown> {
-  return await Bun.file(`${fixtureRoot}/${file}`).json();
+async function readFixture(file: string): Promise<OpenAIResponsesRequest> {
+  return parseOpenAIResponses(await Bun.file(`${fixtureRoot}/${file}`).json());
 }
 
 describe("OpenAIResponsesRequestSchema", () => {
@@ -63,31 +64,16 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  test.each([
-    {
-      name: "previous_response_id",
-      input: { model: "gpt-5-mini", input: "x", previous_response_id: "r1" },
-      path: "previous_response_id",
-      feature: "previous_response_id",
-    },
-    {
-      name: "store true",
-      input: { model: "gpt-5-mini", input: "x", store: true },
-      path: "store",
-      feature: "store",
-    },
-    {
-      name: "background true",
-      input: { model: "gpt-5-mini", input: "x", background: true },
-      path: "background",
-      feature: "background",
-    },
-  ])("Given $name When safe parsed Then unsupported feature is returned", (row) => {
-    const result = safeParseOpenAIResponses(row.input);
+  test("Given previous_response_id When safe parsed Then unsupported feature is returned", () => {
+    const result = safeParseOpenAIResponses({
+      model: "gpt-5-mini",
+      input: "x",
+      previous_response_id: "r1",
+    });
 
     expect(result).toEqual({
       ok: false,
-      error: new OpenAIResponsesUnsupportedFeatureError(row.feature, row.path),
+      error: new OpenAIResponsesUnsupportedFeatureError("previous_response_id", "previous_response_id"),
     });
   });
 

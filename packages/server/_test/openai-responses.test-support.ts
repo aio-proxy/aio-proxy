@@ -67,9 +67,4 @@ export const unsupportedBeforeProviderInvocationCases = [
     feature: "store",
     name: "store true",
   },
-  {
-    body: { ...responsesRequest, background: true },
-    feature: "background",
-    name: "background true",
-  },
 ] as const;

@@ -13,13 +13,14 @@ import type { ConfigStore } from "../config-store";
 import type { DashboardEventHub, DashboardEventLimits } from "../dashboard-events";
 import type { CatalogJobDescriptor } from "../plugin-runtime";
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
+import type { ConfigReloadLog, ServerLogSink } from "../server-log";
 
 export type ServerStateOptions = {
   readonly config: Config;
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
-  readonly logger?: (entry: ConfigReloadLog) => void;
+  readonly logger?: ServerLogSink;
   readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;
@@ -46,12 +47,6 @@ export type ServerStateTestHooks = {
 
 export type InternalServerStateOptions = ServerStateOptions & { readonly __test?: ServerStateTestHooks };
 
-export type ConfigReloadLog = {
-  readonly error: string;
-  readonly event: "config.reload_failed";
-  readonly stage: "parse" | "providers" | "router" | "alias-collision";
-};
-
 export type ConfigChangedData = Extract<DashboardEvent, { readonly event: "config.changed" }>["data"];
 export type ReloadFailure = { readonly error: string; readonly ok: false; readonly stage: ConfigReloadLog["stage"] };
 export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChangedData } | ReloadFailure;
@@ -70,3 +65,5 @@ export type ServerState = ProviderRouteSource & {
 };
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };
+
+export type { ConfigReloadLog } from "../server-log";

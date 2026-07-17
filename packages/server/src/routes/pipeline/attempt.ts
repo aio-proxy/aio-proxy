@@ -1,9 +1,10 @@
 import type { ModelEgressContext, ModelInvocation, ProtocolAdapter, RouterResolution } from "@aio-proxy/core";
 import type { ProviderProtocol } from "@aio-proxy/types";
-import type { RequestAttemptInput } from "../../request-recorder";
+import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
 import { isInboundAbort, terminalCompletion } from "../../route-observation";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../../runtime";
 import { failedAttempt, finalFailure, shouldFallbackStatus } from "./failure";
+import { logRequestRejected } from "./logging";
 import { createSseResponse, preflightStream, retainResponseBody } from "./stream";
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
@@ -12,7 +13,8 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly request: TRequest;
-  readonly requestedModel: string;
+  readonly requestedModelId: string;
+  readonly session: RequestSession;
   readonly source: ProviderRouteSource;
   readonly deferRelease: () => void;
   readonly release: () => void;
@@ -26,14 +28,12 @@ export async function attemptCandidates<TRequest, TContext>({
   rawRequest,
   release,
   request,
-  requestedModel,
+  requestedModelId,
+  session,
   source,
 }: AttemptCandidatesOptions<TRequest, TContext>): Promise<Response> {
-  const session = source.requestRecorder.begin({
-    inboundProtocol: adapter.protocol,
-    requestedModelId: requestedModel,
-  });
   let invocation: ModelInvocation | undefined;
+  let invocationUnsupported: Response | undefined;
   let lastFailure: Response | undefined;
 
   for (const [index, candidate] of candidates.entries()) {
@@ -80,16 +80,45 @@ export async function attemptCandidates<TRequest, TContext>({
 
       const model = provider.model;
       if (model !== undefined) {
-        if (invocation === undefined) {
+        if (invocation === undefined && invocationUnsupported === undefined) {
           try {
             invocation = adapter.modelInvocation(request, context);
           } catch (error) {
-            const mapped = adapter.errors.requestError(error);
-            if (mapped === undefined) throw error;
-            session.finish(finalFailure(attemptBase(provider, candidate.modelId, startedAt), mapped.status));
-            return mapped;
+            const unsupported = adapter.errors.modelUnsupported?.(error);
+            if (unsupported !== undefined) {
+              invocationUnsupported = unsupported;
+            } else {
+              const mapped = adapter.errors.requestError(error);
+              if (mapped === undefined) throw error;
+              const errorCode = mapped.status === 501 ? "unsupported_feature" : "invalid_request";
+              session.finish(
+                finalFailure(attemptBase(provider, candidate.modelId, startedAt), mapped.status, errorCode),
+              );
+              logRequestRejected({
+                source,
+                session,
+                rawRequest,
+                inboundProtocol: adapter.protocol,
+                requestedModelId,
+                statusCode: mapped.status,
+                errorCode,
+                error,
+              });
+              return mapped;
+            }
           }
         }
+        if (invocationUnsupported !== undefined) {
+          const base = attemptBase(provider, candidate.modelId, startedAt);
+          if (hasNext) {
+            session.attempt(failedAttempt(base, invocationUnsupported.status, "unsupported_feature"));
+            lastFailure = invocationUnsupported;
+            continue;
+          }
+          session.finish(finalFailure(base, invocationUnsupported.status, "unsupported_feature"));
+          return invocationUnsupported;
+        }
+        if (invocation === undefined) throw new TypeError("Protocol adapter returned no model invocation");
         await model.ensureAvailable?.();
         const captured = source.usageCapture.stream({
           providerId: provider.id,
@@ -144,7 +173,7 @@ export async function attemptCandidates<TRequest, TContext>({
       const mapped = adapter.errors.provider(error);
       if (mapped === undefined) {
         const attempt = { ...attemptBase(provider, candidate.modelId, startedAt), outcome: "failure" as const };
-        session.finish({ outcome: "failure", finalProviderId: provider.id, finalModelId: candidate.modelId, attempt });
+        session.attempt(attempt);
         throw error;
       }
 

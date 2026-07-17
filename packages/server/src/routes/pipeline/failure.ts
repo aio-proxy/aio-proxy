@@ -2,17 +2,23 @@ import type { RequestAttemptInput, RequestFinishInput } from "../../request-reco
 
 type AttemptBase = Omit<RequestAttemptInput, "outcome" | "statusCode" | "errorCode">;
 
-export function failedAttempt(base: AttemptBase, statusCode: number): RequestAttemptInput {
-  return { ...base, outcome: "failure", statusCode };
+export function failedAttempt(base: AttemptBase, statusCode: number, errorCode?: string): RequestAttemptInput {
+  return {
+    ...base,
+    outcome: "failure",
+    statusCode,
+    ...(errorCode === undefined ? {} : { errorCode }),
+  };
 }
 
-export function finalFailure(base: AttemptBase, statusCode: number): RequestFinishInput {
+export function finalFailure(base: AttemptBase, statusCode: number, errorCode?: string): RequestFinishInput {
   return {
     outcome: "failure",
     finalProviderId: base.providerId,
     finalModelId: base.modelId,
     finalStatusCode: statusCode,
-    attempt: failedAttempt(base, statusCode),
+    ...(errorCode === undefined ? {} : { errorCode }),
+    attempt: failedAttempt(base, statusCode, errorCode),
   };
 }
 

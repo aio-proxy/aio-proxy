@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
-import { pipeline } from "./pipeline.oauth.test-support";
-import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording, textStream } from "./pipeline-helpers";
+import {
+  jsonRequest,
+  REQUESTED_MODEL,
+  rawProvider,
+  settleRecording,
+  textStream,
+} from "../../../_test/pipeline-helpers";
+import { pipeline } from "./oauth.test-support";
 
 describe("OAuth pipeline helper capabilities", () => {
   test("uses model capability when the raw resolver returns undefined for a protocol mismatch", async () => {

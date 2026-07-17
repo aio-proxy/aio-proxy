@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { openAICompletionsAdapter } from "@aio-proxy/core";
-import { handleProtocolRequest } from "../src/routes/pipeline";
-import { attemptsOf, pipeline } from "./pipeline.test-support";
 import {
   cancellableTextStream,
   defineProtocolAdapter,
@@ -14,7 +12,9 @@ import {
   settleRecording,
   textStream,
   textThenErrorStream,
-} from "./pipeline-helpers";
+} from "../../../_test/pipeline-helpers";
+import { handleProtocolRequest } from "./index";
+import { attemptsOf, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
   test.each([

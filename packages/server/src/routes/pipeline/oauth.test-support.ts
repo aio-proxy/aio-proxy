@@ -1,13 +1,11 @@
-import { handleProtocolRequest } from "../src/routes/pipeline";
-import type { UsageCompletion } from "../src/usage-capture";
 import {
   createProtocolContext,
   defineProtocolAdapter,
   defineProviderRouteSource,
   type FakeProvider,
-} from "./pipeline-helpers";
-
-export const MAX_BODY_BYTES = 8 * 1_024 * 1_024;
+} from "../../../_test/pipeline-helpers";
+import type { UsageCompletion } from "../../usage-capture";
+import { handleProtocolRequest } from "./index";
 
 export function pipeline(
   fixtures: readonly FakeProvider[],

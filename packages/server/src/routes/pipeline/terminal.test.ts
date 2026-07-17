@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
-import { attemptsOf, pipeline } from "./pipeline.test-support";
-import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "./pipeline-helpers";
+import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from "../../../_test/pipeline-helpers";
+import { attemptsOf, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
   test("records inbound abort as cancelled and does not fall back", async () => {
@@ -89,7 +89,9 @@ describe("shared protocol routing pipeline", () => {
       { outcome: "failure", providerId: "primary", statusCode: undefined },
     ]);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalModelId: "primary-model", finalProviderId: "primary", outcome: "failure" }),
+      expect.objectContaining({ errorCode: "internal_error", outcome: "failure" }),
     );
+    expect(harness.recording.finals[0]).not.toHaveProperty("finalProviderId");
+    expect(harness.recording.finals[0]).not.toHaveProperty("finalModelId");
   });
 });
