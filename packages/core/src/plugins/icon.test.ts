@@ -8,6 +8,7 @@ describe("validateOAuthIcon", () => {
     "http://example.com/icon.svg",
     "https://cdn.example.com/icon.webp",
     "data:image/svg+xml;charset=utf-8,%3Csvg%2F%3E",
+    "data:image/png,%89PNG%0D%0A%1A%0A",
     "data:image/png;base64,iVBORw0KGgo=",
     "data:image/webp;base64,UklGRg==",
     "data:image/gif;base64,R0lGODlh",
@@ -24,6 +25,8 @@ describe("validateOAuthIcon", () => {
     "http:///missing-host.svg",
     "data:text/html,%3Cb%3Ex%3C%2Fb%3E",
     "data:image/jpeg;base64,/9j/",
+    'data:image/svg+xml;charset="utf-8\r\nx=y",%3Csvg%2F%3E',
+    "data:image/png,%8G",
     `data:image/png,${"a".repeat(MAX_OAUTH_ICON_BYTES)}`,
   ])("rejects an invalid icon without returning it", (icon) => {
     const result = validateOAuthIcon(icon);
