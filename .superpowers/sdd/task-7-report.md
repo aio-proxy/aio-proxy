@@ -1,209 +1,172 @@
-# Task 7 Report: OAuth Plugin Review Hardening
+# Task 7 Report: Split CLI Plugin Commands and Colocate Tests
 
 ## Status
 
-Implemented and verified against starting HEAD
-`183debe1e405c0e025914d63b517fe6da766de54`.
+Implemented and verified against starting commit
+`024fadf55bd852e72230574bfbe2661389cb239a`.
+
+The Task 7 brief was corrected to describe the actual provider-login public
+contract: the existing provider-login error classes plus
+`isProviderLoginUserError` and its private safe-error provenance behavior. The
+repository has no `providerLoginErrors` export, so none was invented.
 
 ## Delivered
 
-- Added a non-mutating migration-manifest `--check` mode, stable stale-manifest
-  error handling, CI enforcement, SQL LF normalization, and removal of the
-  redundant OAuth account fingerprint index from both migration SQL and schema.
-- Made successful config commits with failed lock release observable through
-  `AtomicConfigLockReleaseError`, while preserving the committed-state signal
-  inherited from `AtomicConfigCommitUncertainError` so callers do not compensate
-  already-committed secrets.
-- Aligned config recovery-marker fencing with the conservative npm behavior:
-  changed marker contents remain active and cannot cause a competing recovery
-  fence to be created.
-- Guarded both diagnostic rebuild enqueue and queued execution after server
-  shutdown.
-- Tightened GitHub Copilot credential parsing to require a valid URL and restored
-  `Accept: application/json` for model discovery.
-- Removed secret placeholders from the plugin SDK contract and validator; CLI
-  secret prompts now always mask input independently of placeholder semantics.
-- Rendered provider expiry and catalog timestamps with the browser's current
-  locale and added deterministic rendering coverage.
+- Replaced the four plugin-command monoliths with responsibility-focused
+  directories while preserving imports through `plugin`, `provider-login`,
+  `loopback`, and `form`.
+- Split plugin lifecycle behavior into errors, config-entry handling,
+  descriptor staging/compensation, dependency construction, add, configure,
+  remove/list/prune, and a public barrel.
+- Split provider login into capability selection, dependencies, safe
+  presentation/provenance, errors, and orchestration.
+- Split loopback callback parsing/errors from listener lifecycle, and split
+  form JSON/error helpers from prompt traversal.
+- Deleted the four legacy `_test` monoliths and recreated their coverage in the
+  exact 13 required colocated test files, with one directory-local
+  `test-support.ts` per command directory.
+- Preserved confirmation and prompt behavior, descriptor isolation, inert JSON
+  boundaries, config/secret compensation, uncertain commits, lock-release
+  failures, provider-login safe rendering, and loopback user-error
+  classification.
 
-## TDD RED / GREEN Evidence
+## TDD Evidence
 
-### Migration check mode
+### Baseline
 
-RED: `packages/core/_test/migrations-build.test.ts` showed that the stale
-manifest path did not yet support a read-only check failure.
+The literal baseline command inherited a developer database whose schema was
+newer than the checked-out compiled Core and therefore failed during suite
+loading with `DatabaseSchemaTooNewError` (schema 6 versus compiled schema 1).
+Running the same four legacy files with a temporary isolated `AIO_PROXY_HOME`
+passed:
 
-GREEN:
+```text
+121 pass
+0 fail
+318 expect() calls
+4 files
+```
+
+### Structural RED
+
+After removing the monolith tests and adding the required colocated test
+skeletons before their local support modules existed:
+
+```text
+0 pass
+13 fail
+13 errors
+```
+
+All failures were the expected missing directory-local `test-support` imports.
+
+### GREEN
 
 ```sh
-PATH="$HOME/.cargo/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH" rtk bun test packages/core/_test/migrations-build.test.ts
+rtk proxy sh -c 'home=$(mktemp -d); trap '\''rm -rf "$home"'\'' EXIT; AIO_PROXY_HOME="$home" bun test packages/cli/src/plugin-commands/plugin packages/cli/src/plugin-commands/provider-login packages/cli/src/plugin-commands/loopback packages/cli/src/plugin-commands/form'
 ```
 
-The stale-manifest test rejects with
-`Migration manifest is stale; run \`bun run build:migrations\`` and confirms the
-fixture manifest is unchanged.
-
-### Config and npm lock reliability
-
-RED:
-
-- Config lock cleanup failures were swallowed after a successful commit.
-- Changed recovery-marker content could be treated as inactive, permitting a
-  competing recovery marker.
-- The old CLI regression expected a committed transaction with cleanup failure
-  to resolve successfully.
-
-GREEN:
-
-- Config cleanup failure rejects as `AtomicConfigLockReleaseError`, retains the
-  committed bytes, leaves recoverable owner identity, and permits a later stale
-  owner recovery.
-- Config and npm tests pause the third marker read and prove that no competing
-  recovery marker appears after marker content changes.
-- CLI coverage proves the applied secret remains committed while the release
-  error is observable.
-
-### Closed server rebuild guard
-
-RED: the new late credential diagnostic test observed two router builds after
-`state.close()` instead of one.
-
-GREEN: enqueue and queued execution both check closed state; the router remains
-at one build.
-
-### GitHub Copilot validation and headers
-
-RED: invalid `baseURL` credentials parsed successfully and model discovery did
-not send the JSON Accept header.
-
-GREEN: `zod.url()` rejects the invalid URL and model discovery sends
-`accept: application/json`.
-
-### Secret placeholder and masking separation
-
-RED: the SDK/validator still accepted secret placeholders and CLI masking was
-conditional on their presence.
-
-GREEN: secret placeholders are absent from the SDK type, rejected by the core
-validator, and CLI password prompts always receive `{ mask: "*" }`.
-
-### Dashboard locale rendering
-
-RED: provider expiry used ISO formatting and catalog timestamps were passed
-through unchanged.
-
-GREEN: the page calls `toLocaleString()` for both values; the deterministic test
-spies on `Date.prototype.toLocaleString` and verifies both no-argument calls.
-
-## Focused Verification
-
 ```text
-bun test packages/core/_test packages/server/_test/plugin-snapshot.test.ts packages/plugins/github-copilot/_test
-PASS: 515 tests, 0 failures.
-
-bun test packages/dashboard/src/modules/providers/components/provider-state-cell.test.tsx packages/dashboard/src/modules/providers/templates/providers-page.test.tsx
-PASS: 20 tests, 0 failures.
+121 pass
+0 fail
+318 expect() calls
+13 files
 ```
 
-The first repository-wide unit run exposed one old CLI expectation that lock
-release cleanup failure should resolve successfully. The implementation and
-test were updated to the approved observable-error semantics while retaining
-the applied secret. The complete rerun then passed.
+This exactly preserves the baseline test and assertion totals.
 
-## Repository-wide Verification
+The literal non-isolated colocated command again reached the stale developer
+database after 114 passing tests and failed between tests for the same schema
+mismatch. No Task 7 assertion failed; the isolated run above is the clean
+comparison.
 
-All commands were run with the required PATH and `rtk` prefix.
+## Required Verification
 
 ```text
-bun run --filter @aio-proxy/core build:migrations --check
-PASS: Verified 6 append-only migrations; exit 0.
-Manifest SHA-256 before and after:
-3901e62f9fabdcb0a362ed0f0bf7f045ee5ecb76a7d564cf1aa0fe7748d9b549
+Isolated `bun run --filter @aio-proxy/cli test:unit`
+PASS: 147 tests, 0 failures, 420 assertions, 20 files.
 
-bun run check
-PASS: exit 0; 71 existing informational diagnostics and one existing warning.
+`bun run --filter @aio-proxy/cli build:binary`
+PASS: darwin-arm64, darwin-x64, linux-arm64, and linux-x64 binaries built.
 
-bun run test:unit -- --concurrency=2
-PASS: Turbo 16 successful / 16 total; no test failures.
-Notable package totals include Core 464/464 and CLI 146/146.
+`bun run build`
+PASS: Turbo 7 successful / 7 total.
 
-bun run test:e2e:api
-PASS: Turbo 7 successful / 7 total; exit 0 (cache-valid replay).
+`bun run check`
+PASS: exit 0. Biome reported only 3 warnings and 57 informational diagnostics
+outside the Task 7 files; there were no check errors.
 
-bun run build
-PASS: Turbo 7 successful / 7 total; exit 0 (cache-valid replay).
-
-git diff --check
+`git diff --check`
 PASS: exit 0, no output.
 ```
 
+Binary smoke verification used an isolated home:
+
+```text
+aio-proxy --version -> 0.0.0
+aio-proxy plugin --help -> add, list, config, remove, and prune commands present
+```
+
+## Structural Audits
+
+- All changed handwritten source and test files are at most 300 lines.
+- Largest files after formatting:
+  - `plugin/configure.test.ts`: 288 lines
+  - `plugin/descriptor-security.test.ts`: 284 lines
+  - `plugin/remove.test.ts`: 284 lines
+  - `loopback/server.test.ts`: 269 lines
+- The four legacy test files are absent.
+- All 13 required colocated test files exist.
+- Existing imports from CLI production code and remaining tests still target
+  the unchanged four directory entry paths.
+- Public export audit against the starting monoliths confirmed preservation of
+  plugin commands/options/dependencies/errors/helpers,
+  `isProviderLoginUserError`, provider-login commands/options/dependencies/error
+  classes, loopback errors/classification/runner, and form public types/errors/
+  `cloneInertJson`/`renderConfigSpec`.
+- Build and test commands produced no tracked generated-file changes.
+
 ## Files Changed
 
-- `.gitattributes`
-- `.github/workflows/ci.yml`
-- `packages/core/scripts/build-migrations.ts`
-- `packages/core/src/db/migrations/0004_oauth_plugins.sql`
-- `packages/core/src/db/schema/plugin-oauth.ts`
-- `packages/core/src/db/migrations.manifest.ts`
-- `packages/core/src/plugins/config-file.ts`
-- `packages/core/src/plugins/config-spec.ts`
-- `packages/plugin-sdk/src/config.ts`
-- `packages/cli/src/plugin-commands/form.ts`
-- `packages/server/src/server-state.ts`
-- `packages/plugins/github-copilot/src/index.ts`
-- `packages/plugins/github-copilot/src/github-api.ts`
-- `packages/dashboard/src/modules/providers/templates/providers-page.tsx`
-- Corresponding focused tests in Core, CLI, Server, Copilot, and Dashboard.
+- Corrected `.superpowers/sdd/task-7-brief.md` and replaced this report.
+- Deleted:
+  - `packages/cli/src/plugin-commands/{plugin,provider-login,loopback,form}.ts`
+  - `packages/cli/_test/plugin-commands.test.ts`
+  - `packages/cli/_test/provider-plugin-login.test.ts`
+  - `packages/cli/_test/plugin-authorization.test.ts`
+  - `packages/cli/_test/plugin-form.test.ts`
+- Added the planned production modules and colocated tests under:
+  - `packages/cli/src/plugin-commands/plugin/`
+  - `packages/cli/src/plugin-commands/provider-login/`
+  - `packages/cli/src/plugin-commands/loopback/`
+  - `packages/cli/src/plugin-commands/form/`
 
 ## Self-review
 
-- Migration check mode compares generated content before any write and returns a
-  stable nonzero CLI result on mismatch.
-- The release-error subtype deliberately inherits committed-state uncertainty so
-  existing compensation guards continue to protect committed credentials.
-- Action failures remain primary: cleanup is best-effort on the error path, while
-  release failure after a successful transaction is surfaced explicitly.
-- Recovery-marker content changes are handled conservatively in both lock
-  implementations.
-- Server shutdown is checked at both scheduling boundaries, covering diagnostics
-  raised before and after queued work begins.
-- Secret masking no longer depends on display-hint metadata.
-- No unrelated source changes were introduced.
+### Standards axis
+
+No findings. The split follows the repository's responsibility-based file
+rules, all handwritten files remain below 300 lines, tests are colocated, and
+shared fixtures remain directory-local. No generic repository-wide utility or
+new dependency was introduced. Biome passes for every Task 7 file.
+
+### Spec axis
+
+No findings. Each requested module and exact test file exists, legacy files are
+removed, the four import surfaces and existing error contracts remain intact,
+the binary compiles, and clean-environment test/assertion totals match the
+baseline exactly.
+
+The two-axis review was performed manually because the repository's review
+workflow normally delegates the axes to sub-agents, while this task explicitly
+disallowed spawning sub-agents.
 
 ## Concerns
 
-- Full unit output included one handled server diagnostic log showing the new
-  observable release failure (`ENOENT` for a recovery marker); the associated
-  test passed and no repository-wide gate failed. This is worth watching if the
-  same race appears in production telemetry.
-- API E2E and build were satisfied by Turbo's content-addressed cache in the
-  final run; the commands completed successfully and replayed the matching build
-  logs.
-
-## Independent Review Follow-up
-
-### RED: immediate same-process recovery after release failure
-
-Added a regression that injects one main-lock unlink failure, leaves the live
-PID/starttime lock completely unchanged, and immediately starts a second
-transaction in the same process. The focused run failed after 500 ms with
-`exact abandoned config owner was not recovered immediately`, confirming that
-the live owner check permanently blocked recovery without manual lock aging or
-identity removal.
-
-### GREEN: exact abandoned-owner retry with replacement fencing
-
-Release failure now records a module-local cleanup capability containing the
-lock path's exact serialized owner record and file dev/inode identity. A later
-acquisition may reclaim it only inside the recovery fence, after exact content
-and identity matches followed by a second unchanged-file snapshot. Successful
-cleanup removes the registry entry; missing or replacement files invalidate it.
-
-The focused run passed the immediate recovery regression, the new replacement
-owner regression, and the existing paused-release fencing regression without
-modifying or aging the abandoned lock.
-
-Follow-up verification passed: the complete config-file suite (25 tests), the
-Task 7 Core/Server/Copilot affected suite (516 tests), repository check (with
-the existing 71 informational diagnostics and one warning), and repository
-build (7/7 tasks).
+- The default local `AIO_PROXY_HOME` currently contains database schema version
+  6 while the checked-out compiled Core expects version 1. Any verification
+  that initializes server state must use a clean temporary home until that
+  developer environment is upgraded or isolated. This is external to the Task
+  7 diff and is reproducible before and after the refactor.
+- `.superpowers/sdd/task-4-report.md` was already modified before this task. It
+  was not edited or staged.
