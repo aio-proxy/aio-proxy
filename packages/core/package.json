@@ -24,7 +24,7 @@
   "scripts": {
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
-    "build:migrations": "drizzle-kit generate",
+    "build:migrations": "bun scripts/build-migrations.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test",
     "test:artifact": "bun test ./_test/build-entry.smoke.ts"
