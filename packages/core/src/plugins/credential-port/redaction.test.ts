@@ -1,0 +1,107 @@
+import {
+  CredentialValidationError,
+  expect,
+  openFixture,
+  type PluginLogSink,
+  port,
+  providerLoginCommand,
+  refreshCredential,
+  test,
+  zod,
+} from "./test-support";
+
+test("validates exchanged credentials before CAS and never puts credentials or original errors in diagnostics", async () => {
+  const { handle, repository } = openFixture();
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  let notifications = 0;
+  let diagnosticSummary = "Credential refresh failed";
+  try {
+    refreshCredential(repository, 1, { token: "valid-initial-secret" });
+    const credentials = port(repository, "provider-1", {
+      schema: zod.object({ token: zod.string().startsWith("valid-") }),
+      diagnostics: (code, options) => ({
+        code,
+        summary: diagnosticSummary,
+        retryable: options.retryable,
+        occurredAt: "2026-07-15T00:00:00.000Z",
+      }),
+      logger: (entry) => logs.push(entry),
+      onDiagnosticChanged: () => {
+        notifications += 1;
+      },
+    });
+    const current = await credentials.read();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(
+        credentials.refresh(current.revision, async () => ({ value: { token: "invalid-refreshed-secret" } })),
+      ).rejects.toBeInstanceOf(CredentialValidationError);
+    }
+    expect(notifications).toBe(1);
+
+    diagnosticSummary = "Credential refresh failed again";
+    await expect(
+      credentials.refresh(current.revision, async () => ({ value: { token: "invalid-refreshed-secret" } })),
+    ).rejects.toBeInstanceOf(CredentialValidationError);
+
+    expect(repository.readAccount("provider-1")).toMatchObject({
+      credential: { token: "valid-initial-secret" },
+      revision: 2,
+    });
+    expect(repository.readDiagnostics("provider-1")).toHaveLength(1);
+    expect(repository.readDiagnostics("provider-1")[0]?.summary).toBe("Credential refresh failed again");
+    expect(JSON.stringify(repository.readDiagnostics("provider-1"))).not.toMatch(
+      /valid-initial-secret|invalid-refreshed-secret/,
+    );
+    expect(notifications).toBe(2);
+    expect(logs).toHaveLength(3);
+  } finally {
+    handle.close();
+  }
+});
+
+test("preserves the exchange error when the account is concurrently deleted before diagnostic persistence", async () => {
+  const { handle, repository } = openFixture();
+  try {
+    const credentials = port(repository);
+    const current = await credentials.read();
+    const primary = new Error("upstream rejected the rotating refresh token");
+
+    await expect(
+      credentials.refresh(current.revision, async () => {
+        repository.deleteAccount("provider-1");
+        throw primary;
+      }),
+    ).rejects.toBe(primary);
+  } finally {
+    handle.close();
+  }
+});
+
+test("redacts credential, account, and plugin secrets and records terminal re-login guidance", async () => {
+  const { handle, repository } = openFixture();
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  try {
+    const credentials = port(repository, "provider-1", {
+      logger: (entry) => logs.push(entry),
+      pluginSecrets: { apiKey: "plugin-secret" },
+    });
+    const current = await credentials.read();
+    const failure = new Error("initial-secret account-secret plugin-secret");
+    failure.stack = `Error: initial-secret account-secret plugin-secret\n at refresh`;
+
+    await expect(credentials.refresh(current.revision, async () => Promise.reject(failure))).rejects.toBe(failure);
+
+    const serializedLog = JSON.stringify(logs);
+    expect(serializedLog).not.toMatch(/initial-secret|account-secret|plugin-secret/u);
+    expect(serializedLog.match(/\[REDACTED\]/gu)?.length).toBeGreaterThanOrEqual(3);
+    expect(repository.readDiagnostics("provider-1")).toEqual([
+      expect.objectContaining({
+        code: "CREDENTIAL_REFRESH_FAILED",
+        retryable: false,
+        suggestedCommand: providerLoginCommand("provider-1"),
+      }),
+    ]);
+  } finally {
+    handle.close();
+  }
+});
