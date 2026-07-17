@@ -17,6 +17,7 @@ export {
 export * from "./icon";
 export * from "./loader/index";
 export * from "./provider-id";
+export * from "./quota";
 export * from "./registry";
 export * from "./repository/index";
 export * from "./schema";
