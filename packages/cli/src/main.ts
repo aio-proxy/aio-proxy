@@ -15,12 +15,23 @@ import {
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-import { openBrowser } from "./browser";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
+import { openBrowser } from "./open-browser";
+import {
+  FormJsonInvalidError,
+  FormNumberInvalidError,
+  FormSchemaValidationError,
+  pluginAdd,
+  pluginConfig,
+  pluginErrors,
+  pluginList,
+  pluginPrune,
+  pluginRemove,
+} from "./plugin-commands";
+import { isProviderLoginUserError } from "./plugin-commands/provider-login";
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from "./provider-commands";
 
-setLocale(resolveLocaleFromArgv(process.argv));
 const VERSION = packageJson.version;
 
 const DEFAULT_CONFIG = {
@@ -113,7 +124,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
-  const app = createServer({
+  const app = await createServer({
     config,
     configPath: resolvedConfigPath,
     dashboardAssets,
@@ -169,12 +180,43 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option("--probe", m.cli_provider_list_option_probe_description())
     .option("--installed", m.cli_provider_list_option_installed_description())
     .action(providerList);
-  provider.command("login <vendor>").description(m.cli_provider_login_description()).action(providerLogin);
+  provider
+    .command("login [capability]")
+    .description(m.cli_provider_login_description())
+    .option("--provider <id>", m.cli_provider_login_option_provider_description())
+    .action(providerLogin);
   provider
     .command("test <provider-id>")
     .description(m.cli_provider_test_description())
     .option("--url <url>", m.cli_provider_test_option_url_description())
     .action(providerTest);
+  const plugin = program.command("plugin").description(m.cli_plugin_description());
+  plugin
+    .command("add <package>")
+    .description(m.cli_plugin_add_description())
+    .option("--yes", m.cli_plugin_add_option_yes_description())
+    .option("--registry <url>", m.cli_plugin_add_option_registry_description())
+    .action((packageName, options) => pluginAdd(packageName, options));
+  plugin
+    .command("list")
+    .description(m.cli_plugin_list_description())
+    .action(() => pluginList({}));
+  plugin
+    .command("config <package>")
+    .description(m.cli_plugin_config_description())
+    .option("--clear-secret <key...>", m.cli_plugin_config_option_clear_secret_description())
+    .action((packageName, options) => pluginConfig(packageName, options));
+  plugin
+    .command("remove <package>")
+    .description(m.cli_plugin_remove_description())
+    .option("--purge-secrets", m.cli_plugin_remove_option_purge_secrets_description())
+    .option("--yes", m.cli_plugin_remove_option_yes_description())
+    .action((packageName, options) => pluginRemove(packageName, options));
+  plugin
+    .command("prune")
+    .description(m.cli_plugin_prune_description())
+    .option("--yes", m.cli_plugin_prune_option_yes_description())
+    .action((options) => pluginPrune(options));
   program.command("model").description(m.cli_model_description());
   program.command("trace").description(m.cli_trace_description());
 
@@ -183,24 +225,30 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
+    setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {
-    if (err instanceof ServeListenError) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    if (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    const formatted = formatUserError(err, getLocale());
+    const formatted = formatCliError(err, getLocale());
     console.error(formatted.message);
     process.exitCode = 1;
   }
 };
+
+export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
+  if (
+    err instanceof ServeListenError ||
+    isProviderLoginUserError(err) ||
+    (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
+    err instanceof FormNumberInvalidError ||
+    err instanceof FormJsonInvalidError ||
+    err instanceof FormSchemaValidationError ||
+    (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
+  ) {
+    return { message: err.message };
+  }
+  return formatUserError(err, locale);
+}
 
 if (import.meta.main) {
   await main();

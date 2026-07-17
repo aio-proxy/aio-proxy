@@ -32,6 +32,9 @@ interface DataTablePaginationProps {
 }
 
 export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table, pageSizeOptions }) => {
+  "use no memo";
+
+  // TanStack exposes changing state through a stable mutable table instance.
   const { pageIndex, pageSize } = table.getState().pagination;
   const form = useForm({ defaultValues: { pageSize } });
   const items = getPaginationItems(table.getPageOptions(), pageIndex);

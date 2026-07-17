@@ -106,51 +106,56 @@ type ModelListItem = OpenAIModel &
   };
 
 async function listModels(state: ServerState) {
-  const selected = pipe(
-    state.currentProviderSnapshot().providers,
-    filter((provider) => provider.enabled),
-    flatMap((provider) =>
-      modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
-    ),
-    uniqBy(({ id }) => id),
-  );
+  const lease = state.acquireProviderSnapshot();
+  try {
+    const selected = pipe(
+      lease.snapshot.providers,
+      filter((provider) => provider.enabled),
+      flatMap((provider) =>
+        modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
+      ),
+      uniqBy(({ id }) => id),
+    );
 
-  const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
+    const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
 
-  return pipe(
-    selected,
-    map(({ id, modelId, provider }): ModelListItem => {
-      const aliasMetadata = catalog?.metadata(id);
-      const upstreamMetadata =
-        id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
-      const metadata = aliasMetadata ?? upstreamMetadata;
-      const timestamps = modelTimestamps(metadata?.releaseDate);
-      return {
-        capabilities: metadata?.capabilities ?? null,
-        created: timestamps.created,
-        created_at: timestamps.createdAt,
-        display_name: modelDisplayName(
+    return pipe(
+      selected,
+      map(({ id, modelId, provider }): ModelListItem => {
+        const aliasMetadata = catalog?.metadata(id);
+        const upstreamMetadata =
+          id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
+        const metadata = aliasMetadata ?? upstreamMetadata;
+        const timestamps = modelTimestamps(metadata?.releaseDate);
+        return {
+          capabilities: metadata?.capabilities ?? null,
+          created: timestamps.created,
+          created_at: timestamps.createdAt,
+          display_name: modelDisplayName(
+            id,
+            modelId,
+            provider,
+            aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
+          ),
           id,
-          modelId,
-          provider,
-          aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
-        ),
-        id,
-        max_input_tokens: metadata?.maxInputTokens ?? null,
-        max_tokens: metadata?.maxTokens ?? null,
-        object: "model",
-        owned_by: provider.id,
-        type: "model",
-      };
-    }),
-    (data) => ({
-      data,
-      first_id: data[0]?.id ?? null,
-      has_more: false,
-      last_id: data.at(-1)?.id ?? null,
-      object: "list" as const,
-    }),
-  );
+          max_input_tokens: metadata?.maxInputTokens ?? null,
+          max_tokens: metadata?.maxTokens ?? null,
+          object: "model",
+          owned_by: provider.id,
+          type: "model",
+        };
+      }),
+      (data) => ({
+        data,
+        first_id: data[0]?.id ?? null,
+        has_more: false,
+        last_id: data.at(-1)?.id ?? null,
+        object: "list" as const,
+      }),
+    );
+  } finally {
+    lease.release();
+  }
 }
 
 function modelDisplayName(
@@ -177,7 +182,7 @@ function modelTimestamps(releaseDate: string | undefined): { readonly created: n
   return { created: getUnixTime(date), createdAt: date.toISOString() };
 }
 
-const routes = createRoutes(createServerState({ config: defaultConfig }));
+const routes = createRoutes(await createServerState({ config: defaultConfig }));
 
 export const app = routes;
 export type AppType = typeof routes;
@@ -188,10 +193,10 @@ export const bunServer = {
   fetch: app.fetch,
 };
 
-export const createServer = (options: CreateServerOptions): AppType => {
+export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
   const config = ConfigSchema.parse(options.config);
   return createRoutes(
-    createServerState({
+    await createServerState({
       config,
       ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
       ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),

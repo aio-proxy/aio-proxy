@@ -51,11 +51,12 @@
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/oauth": "workspace:*",
+        "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@inquirer/prompts": "^8.5.2",
         "commander": "15",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -75,6 +76,10 @@
         "@ai-sdk/openai-compatible": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@ai-sdk/xai": "catalog:",
+        "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/plugin-github-copilot": "workspace:*",
+        "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
+        "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
@@ -82,6 +87,7 @@
         "@openrouter/ai-sdk-provider": "catalog:",
         "ai": "catalog:",
         "drizzle-orm": "catalog:",
+        "es-toolkit": "catalog:",
         "openai": "catalog:",
         "zod": "catalog:",
       },
@@ -98,6 +104,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/provider-schemas": "0.1.1",
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -170,20 +177,47 @@
         "typescript": "catalog:",
       },
     },
-    "packages/oauth": {
-      "name": "@aio-proxy/oauth",
+    "packages/plugin-sdk": {
+      "name": "@aio-proxy/plugin-sdk",
       "version": "0.0.0",
       "dependencies": {
-        "@aio-proxy/core": "workspace:*",
-        "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
-        "drizzle-orm": "catalog:",
-        "es-toolkit": "catalog:",
-        "jose": "catalog:",
+        "@ai-sdk/provider": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/plugins/github-copilot": {
+      "name": "@aio-proxy/plugin-github-copilot",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/anthropic": "catalog:",
+        "@ai-sdk/openai": "catalog:",
+        "@ai-sdk/openai-compatible": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/plugins/openai-chatgpt": {
+      "name": "@aio-proxy/plugin-openai-chatgpt",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/openai": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
+        "jose": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
@@ -194,7 +228,7 @@
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
-        "@aio-proxy/oauth": "workspace:*",
+        "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "date-fns": "^4.4.0",
         "es-toolkit": "catalog:",
@@ -294,7 +328,11 @@
 
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
-    "@aio-proxy/oauth": ["@aio-proxy/oauth@workspace:packages/oauth"],
+    "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
+
+    "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
+
+    "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@aio-proxy/provider-schemas": ["@aio-proxy/provider-schemas@0.1.1", "", { "peerDependencies": { "zod": "^4.1.5" }, "optionalPeers": ["zod"] }, "sha512-jYutoOrOFeCvt6qImGjZ3S9GpqPC/8b5mo1dSrWxJr86V4+wjXi0bX/8eiOJ0IpkT9b5QJJVrCCUbPb6X7jGZw=="],
 

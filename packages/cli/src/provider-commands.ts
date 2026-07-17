@@ -1,7 +1,5 @@
-import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import {
-  configPath,
   listInstalledNpmPackages,
   NpmInstallError,
   NpmPackageEntrypointError,
@@ -11,18 +9,13 @@ import {
 } from "@aio-proxy/core";
 import { m } from "@aio-proxy/i18n";
 import {
-  Auth,
-  githubCopilotOAuthProvider,
-  normalizeDomain,
-  type OAuthLoginForm,
-  type OAuthLoginInput,
-  type OAuthPrompt,
-} from "@aio-proxy/oauth";
-import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from "@aio-proxy/types";
-import { confirm, input, select } from "@inquirer/prompts";
-import { openAIChatGPTOAuthProvider } from "../../oauth/src/openai-chatgpt";
-import { openBrowser } from "./browser";
+  type DashboardProviderSummary,
+  DashboardProvidersResponseSchema,
+  dashboardProviderSuggestedCommand,
+} from "@aio-proxy/types";
+import { confirm } from "@inquirer/prompts";
 import { ProviderDashboardError } from "./errors";
+import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from "./plugin-commands/provider-login";
 
 export type ProviderInstallOptions = {
   readonly yes?: boolean;
@@ -34,13 +27,6 @@ export type ProviderListOptions = {
   readonly installed?: boolean;
   readonly probe?: boolean;
   readonly url?: string;
-};
-
-export type ProviderLoginOptions = Record<string, never>;
-
-type LoginForCliResult = {
-  readonly payload: Record<string, unknown>;
-  readonly providerId: string;
 };
 
 const defaultDashboardUrl = "http://127.0.0.1:22078";
@@ -62,168 +48,8 @@ export async function providerInstall(pkg: string, options: ProviderInstallOptio
   console.log(`${pkg} ${installed.version} ${installed.entrypoint}`);
 }
 
-export async function providerLogin(vendor: string, _options: ProviderLoginOptions): Promise<void> {
-  const normalizedVendor = vendor === "copilot" ? "github-copilot" : vendor === "chatgpt" ? "openai-chatgpt" : vendor;
-
-  const result =
-    normalizedVendor === "github-copilot"
-      ? await runCopilotLoginForCli()
-      : normalizedVendor === "openai-chatgpt"
-        ? await runChatGPTLoginForCli()
-        : undefined;
-  if (result === undefined) {
-    console.error(m.cli_provider_login_unknown_vendor({ vendor }));
-    process.exitCode = 1;
-    return;
-  }
-
-  const resolvedConfigPath = configPath();
-  const config = JSON.parse(await Bun.file(resolvedConfigPath).text()) as { providers?: Record<string, unknown> };
-  const providers = config.providers ?? {};
-  providers[result.providerId] = {
-    kind: "oauth",
-    vendor: normalizedVendor,
-  };
-  await Bun.write(resolvedConfigPath, `${JSON.stringify({ ...config, providers }, null, 2)}\n`);
-  console.log(result.providerId);
-}
-
-async function runCopilotLoginForCli(): Promise<LoginForCliResult> {
-  const fake = (process.env as { readonly AIO_PROXY_TEST_COPILOT_LOGIN?: string }).AIO_PROXY_TEST_COPILOT_LOGIN;
-  if (fake !== undefined) {
-    const result = JSON.parse(fake) as LoginForCliResult;
-    Auth.set("github-copilot", result.providerId, result.payload, result.providerId);
-    return result;
-  }
-
-  const result = await githubCopilotOAuthProvider.login(
-    await collectOAuthLoginInput(githubCopilotOAuthProvider.loginForm),
-    {
-      onAuth: ({ url, instructions, userCode }) => {
-        clearProgressLine();
-        if (userCode !== undefined && copyToClipboard(userCode)) {
-          console.log("Copied GitHub device code to clipboard.");
-        }
-        if (openBrowser(url)) {
-          console.log("Opened GitHub login in your default browser.");
-        }
-        console.log(url);
-        if (instructions !== undefined) {
-          console.log(instructions);
-        }
-      },
-      onProgress: (message) => writeProgressLine(message),
-    },
-  );
-  clearProgressLine();
-  return { payload: result.payload, providerId: result.providerId };
-}
-
-async function runChatGPTLoginForCli(): Promise<LoginForCliResult> {
-  const fake = (process.env as { readonly AIO_PROXY_TEST_CHATGPT_LOGIN?: string }).AIO_PROXY_TEST_CHATGPT_LOGIN;
-  if (fake !== undefined) {
-    const result = JSON.parse(fake) as LoginForCliResult;
-    Auth.set("openai-chatgpt", result.providerId, result.payload, result.providerId);
-    return result;
-  }
-
-  const result = await openAIChatGPTOAuthProvider.login(
-    await collectOAuthLoginInput(openAIChatGPTOAuthProvider.loginForm),
-    {
-      onAuth: ({ url }) => {
-        clearProgressLine();
-        if (openBrowser(url)) {
-          console.log("Opened ChatGPT login in your default browser.");
-        }
-        console.log(url);
-      },
-      onProgress: (message) => writeProgressLine(message),
-    },
-  );
-  clearProgressLine();
-  return { payload: result.payload, providerId: result.providerId };
-}
-
-async function collectOAuthLoginInput(form: OAuthLoginForm): Promise<OAuthLoginInput> {
-  if (process.stdin.isTTY !== true) {
-    return {};
-  }
-
-  const values: Record<string, string | undefined> = {};
-  for (const prompt of form.prompts) {
-    if (!shouldShowPrompt(prompt, values)) {
-      continue;
-    }
-    if (prompt.type === "select") {
-      values[prompt.key] = await select({
-        message: prompt.message,
-        choices: prompt.options.map((option) => ({
-          name: option.label,
-          value: option.value,
-          ...(option.hint === undefined ? {} : { description: option.hint }),
-        })),
-      });
-      continue;
-    }
-    values[prompt.key] = await input({
-      message: prompt.placeholder === undefined ? prompt.message : `${prompt.message} (${prompt.placeholder})`,
-      validate: (value) => validateTextPrompt(prompt, value),
-    });
-  }
-
-  return values;
-}
-
-function shouldShowPrompt(prompt: OAuthPrompt, values: Record<string, string | undefined>): boolean {
-  if (prompt.when === undefined) {
-    return true;
-  }
-  return prompt.when.op === "eq" && values[prompt.when.key] === prompt.when.value;
-}
-
-function validateTextPrompt(prompt: Extract<OAuthPrompt, { type: "text" }>, value: string): true | string {
-  if (prompt.validate?.required === true && value.trim() === "") {
-    return "URL or domain is required";
-  }
-  if (prompt.validate?.format === "domain-or-url" && normalizeDomain(value) === null) {
-    return "Please enter a valid URL (e.g., company.ghe.com or https://company.ghe.com)";
-  }
-  return true;
-}
-
-function writeProgressLine(message: string): void {
-  if (process.stderr.isTTY !== true) {
-    return;
-  }
-  process.stderr.write(`\r${message}...`);
-}
-
-function clearProgressLine(): void {
-  if (process.stderr.isTTY !== true) {
-    return;
-  }
-  process.stderr.write("\r\x1b[2K");
-}
-
-function copyToClipboard(value: string): boolean {
-  const commands =
-    process.platform === "darwin"
-      ? [{ bin: "pbcopy", args: [] as string[] }]
-      : process.platform === "win32"
-        ? [{ bin: "clip", args: [] as string[] }]
-        : [
-            { bin: "wl-copy", args: [] as string[] },
-            { bin: "xclip", args: ["-selection", "clipboard"] },
-            { bin: "xsel", args: ["--clipboard", "--input"] },
-          ];
-
-  return commands.some((command) => {
-    try {
-      return spawnSync(command.bin, command.args, { input: value, stdio: ["pipe", "ignore", "ignore"] }).status === 0;
-    } catch {
-      return false;
-    }
-  });
+export async function providerLogin(capability: string | undefined, options: ProviderLoginOptions): Promise<void> {
+  await pluginProviderLogin(capability, options);
 }
 
 async function confirmInstall(pkg: string): Promise<boolean> {
@@ -271,9 +97,27 @@ async function providerInstalledList(): Promise<void> {
 }
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
-  const headers = ["id", "kind", "enabled", "passthrough", "last_status", "last_latency", ...(probe ? ["probe"] : [])];
+  const headers = [
+    m.cli_provider_list_header_id(),
+    m.cli_provider_list_header_kind(),
+    m.cli_provider_list_header_enabled(),
+    m.cli_provider_list_header_passthrough(),
+    m.cli_provider_list_header_last_status(),
+    m.cli_provider_list_header_last_latency(),
+    m.cli_provider_list_header_state(),
+    m.cli_provider_list_header_catalog(),
+    m.cli_provider_list_header_plugin(),
+    m.cli_provider_list_header_capability(),
+    m.cli_provider_list_header_account(),
+    m.cli_provider_list_header_expires_at(),
+    m.cli_provider_list_header_catalog_last_success_at(),
+    m.cli_provider_list_header_diagnostic(),
+    m.cli_provider_list_header_suggested_command(),
+    ...(probe ? [m.cli_provider_list_header_probe()] : []),
+  ];
   console.log(headers.join(" | "));
   for (const provider of providers) {
+    const diagnostic = provider.state.diagnostic;
     console.log(
       [
         provider.id,
@@ -282,6 +126,15 @@ function printProviderTable(providers: readonly DashboardProviderSummary[], prob
         String(provider.passthrough),
         provider.last_status,
         provider.last_latency === null ? "-" : String(provider.last_latency),
+        provider.state.status,
+        provider.state.status === "ready" ? (provider.state.catalog ?? "-") : "-",
+        provider.plugin ?? "-",
+        provider.capability ?? "-",
+        provider.accountLabel ?? "-",
+        provider.expiresAt === undefined ? "-" : new Date(provider.expiresAt).toISOString(),
+        provider.catalogLastSuccessAt ?? "-",
+        diagnostic?.summary ?? "-",
+        dashboardProviderSuggestedCommand(provider) ?? "-",
         ...(probe ? [provider.probe ?? "FAIL"] : []),
       ].join(" | "),
     );

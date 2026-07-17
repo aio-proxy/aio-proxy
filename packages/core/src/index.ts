@@ -99,15 +99,20 @@ export {
 } from "./models-dev-catalog";
 export {
   findInstalledNpmPackage,
+  isNpmPackageName,
   type NpmPackageInfo,
   npmAdd,
   npmPackageCacheDir,
+  removeNpmPackageCache,
+  withInstalledNpmPackage,
+  withNpmPackageLifecycle,
 } from "./npm";
 export {
   type InstalledNpmPackage,
   listInstalledNpmPackages,
 } from "./npm-list";
 export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths";
+export * from "./plugins";
 export * from "./protocol";
 export {
   type AiSdkProviderFactoryOptions,
@@ -133,10 +138,12 @@ export {
   resolveApiKey,
 } from "./provider/api";
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
+export { createProviderV4Invoke, validateProviderV4 } from "./provider/provider-v4";
 export {
   type ModelRoute,
   modelRoutes,
   type ProviderInstance,
+  type RoutableProvider,
   Router,
   type RouterCandidate,
   type RouterResolution,

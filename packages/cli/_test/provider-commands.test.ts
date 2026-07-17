@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Auth } from "@aio-proxy/oauth";
 import { output, runCli, runCliAsync } from "./cli-test-helpers";
 
 const jsonHeaders = { "content-type": "application/json" } as const;
@@ -15,6 +14,23 @@ type FakeDashboardProvider = {
   readonly last_status: string;
   readonly last_latency: number | null;
   readonly probe?: "OK" | "FAIL";
+  readonly state?:
+    | { readonly status: "ready"; readonly catalog?: "fresh" | "stale" }
+    | {
+        readonly status: "unavailable";
+        readonly diagnostic: {
+          readonly code: string;
+          readonly summary: string;
+          readonly retryable: boolean;
+          readonly occurredAt: string;
+          readonly suggestedCommand?: string;
+        };
+      };
+  readonly plugin?: string;
+  readonly capability?: string;
+  readonly accountLabel?: string;
+  readonly expiresAt?: number;
+  readonly catalogLastSuccessAt?: string;
 };
 
 const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], run: (url: string) => Promise<void>) => {
@@ -33,6 +49,7 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
         .filter((provider) => filter === null || provider.id === filter)
         .map((provider) => ({
           clientModels: [],
+          state: { status: "ready" },
           ...provider,
           ...(probe ? { probe: provider.probe ?? "OK" } : {}),
         }));
@@ -48,95 +65,13 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
 };
 
 describe("provider commands", () => {
-  test.each([
-    "copilot",
-    "github-copilot",
-  ])("provider login %s writes github-copilot provider config returned by login service", async (vendor) => {
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
-    const configPath = join(dir, "config.jsonc");
-    writeFileSync(configPath, JSON.stringify({ providers: {} }));
+  test("provider login exposes an optional capability and explicit provider target", () => {
+    const result = runCli(["provider", "login", "--help"]);
 
-    try {
-      const result = await runCliAsync(["provider", "login", vendor], {
-        AIO_PROXY_HOME: dir,
-        AIO_PROXY_TEST_COPILOT_LOGIN: JSON.stringify({
-          providerId: "copilot-12345",
-          payload: {
-            access: "copilot-token",
-            refresh: "github-token",
-            expires: Date.now() + 60_000,
-            baseUrl: "https://api.individual.githubcopilot.com",
-            models: [{ id: "gpt-5-mini", transport: "openai-compatible" }],
-          },
-        }),
-      });
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("copilot-12345");
-      expect(await Bun.file(configPath).json()).toEqual({
-        providers: {
-          "copilot-12345": {
-            kind: "oauth",
-            vendor: "github-copilot",
-          },
-        },
-      });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    "chatgpt",
-    "openai-chatgpt",
-  ])("provider login %s writes oauth config and stores auth payload", async (vendor) => {
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
-    const configPath = join(dir, "config.jsonc");
-    writeFileSync(configPath, JSON.stringify({ providers: {} }));
-    const providerId = "chatgpt-account-123";
-    const payload = {
-      access: "chatgpt-access",
-      accountId: "account-123",
-      expires: Date.now() + 60_000,
-      refresh: "chatgpt-refresh",
-      models: [{ id: "gpt-5.5", displayName: "GPT-5.5" }],
-    };
-    const previousHome = process.env.AIO_PROXY_HOME;
-    process.env.AIO_PROXY_HOME = dir;
-
-    try {
-      const result = await runCliAsync(["provider", "login", vendor], {
-        AIO_PROXY_HOME: dir,
-        AIO_PROXY_TEST_CHATGPT_LOGIN: JSON.stringify({
-          providerId,
-          payload,
-        }),
-      });
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(providerId);
-      expect(Auth.get("openai-chatgpt", providerId)?.payload).toEqual(payload);
-
-      expect(await Bun.file(configPath).json()).toEqual({
-        providers: {
-          [providerId]: {
-            kind: "oauth",
-            vendor: "openai-chatgpt",
-          },
-        },
-      });
-    } finally {
-      try {
-        Auth.del("openai-chatgpt", providerId);
-      } finally {
-        if (previousHome === undefined) {
-          delete process.env.AIO_PROXY_HOME;
-        } else {
-          process.env.AIO_PROXY_HOME = previousHome;
-        }
-        rmSync(dir, { recursive: true, force: true });
-      }
-    }
+    expect(result.exitCode).toBe(0);
+    const stdout = result.stdout.toString();
+    expect(stdout).toContain("[capability]");
+    expect(stdout).toContain("--provider <id>");
   });
 
   test("provider list prints packages installed in the runtime cache", () => {
@@ -195,6 +130,7 @@ describe("provider commands", () => {
         const list = await runCliAsync(["provider", "list", "--url", url]);
         const testProvider = await runCliAsync(["provider", "test", "openai", "--url", url]);
         const failedProvider = await runCliAsync(["provider", "test", "slow-ai", "--url", url]);
+        const localized = await runCliAsync(["--lang", "zh-Hans", "provider", "list", "--url", url]);
 
         // Then
         expect(list.exitCode).toBe(0);
@@ -208,6 +144,63 @@ describe("provider commands", () => {
         expect(failedProvider.stdout).toContain("slow-ai");
         expect(failedProvider.stdout).toContain("FAIL");
         expect(failedProvider.stdout).not.toContain("openai");
+        expect(localized.stdout).toContain("标识 | 类型 | 已启用 | 直通 | 最近状态 | 最近延迟");
+      },
+    );
+  });
+
+  test("provider list prints availability metadata and a provider-targeted credential recovery command", async () => {
+    await withFakeDashboard(
+      [
+        {
+          id: "copilot-octocat",
+          kind: "oauth",
+          enabled: true,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          state: { status: "ready", catalog: "stale" },
+          plugin: "@aio-proxy/plugin-github-copilot",
+          capability: "default",
+          accountLabel: "octocat",
+          expiresAt: 1_900_000_000_000,
+          catalogLastSuccessAt: "2026-07-14T00:00:00.000Z",
+        },
+        {
+          id: "chatgpt-personal",
+          kind: "oauth",
+          enabled: true,
+          passthrough: false,
+          last_status: "unknown",
+          last_latency: null,
+          state: {
+            status: "unavailable",
+            diagnostic: {
+              code: "CREDENTIAL_REFRESH_FAILED",
+              summary: "Credential refresh failed.",
+              retryable: true,
+              occurredAt: "2026-07-14T00:00:00.000Z",
+              suggestedCommand: "aio-proxy provider login default",
+            },
+          },
+          plugin: "@aio-proxy/plugin-openai-chatgpt",
+          capability: "default",
+        },
+      ],
+      async (url) => {
+        const result = await runCliAsync(["provider", "list", "--url", url]);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("ready");
+        expect(result.stdout).toContain("stale");
+        expect(result.stdout).toContain("@aio-proxy/plugin-github-copilot");
+        expect(result.stdout).toContain("default");
+        expect(result.stdout).toContain("octocat");
+        expect(result.stdout).toContain("2026-07-14T00:00:00.000Z");
+        expect(result.stdout).toContain("unavailable");
+        expect(result.stdout).toContain("Credential refresh failed.");
+        expect(result.stdout).toContain("aio-proxy provider login --provider chatgpt-personal");
+        expect(result.stdout).not.toContain("aio-proxy provider login default");
       },
     );
   });

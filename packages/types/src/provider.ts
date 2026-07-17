@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantKey } from "./common";
+import { CapabilityIdSchema, PluginPackageNameSchema } from "./plugin";
 import { type ProviderAlias, validateAliasTargets } from "./provider-alias";
 
 export { validateAliasTargets } from "./provider-alias";
@@ -15,11 +16,6 @@ export enum ProviderProtocol {
   OpenAICompatible = "openai-compatible",
   Anthropic = "anthropic",
   Gemini = "gemini",
-}
-
-export enum OAuthVendor {
-  GitHubCopilot = "github-copilot",
-  OpenAIChatGPT = "openai-chatgpt",
 }
 
 export const ProviderProtocolSchema = z
@@ -49,11 +45,15 @@ export const ApiProviderSchema = z.object({
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
 });
 
-export const OAuthProviderSchema = z.object({
-  kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a local OAuth account."),
+export const OAuthPluginProviderSchema = z.object({
+  kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a plugin OAuth account."),
   ...SharedProviderSchemaBase,
-  vendor: z.enum(OAuthVendor).describe("OAuth vendor."),
+  plugin: PluginPackageNameSchema,
+  capability: CapabilityIdSchema,
+  options: z.record(z.string(), z.unknown()).optional(),
 });
+
+export const OAuthProviderSchema = OAuthPluginProviderSchema;
 
 export const AiSdkProviderSchema = z.object({
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
@@ -159,6 +159,8 @@ export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;
 export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
 export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
+export type OAuthPluginProviderInput = z.input<typeof OAuthPluginProviderSchema>;
+export type OAuthPluginProvider = z.output<typeof OAuthPluginProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;
 export type AiSdkProvider = z.output<typeof AiSdkProviderSchema>;
 export type ApiProviderMutationBodyInput = z.input<typeof ApiProviderMutationBodySchema>;

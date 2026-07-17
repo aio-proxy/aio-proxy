@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { providerLoginCommand } from "./commands";
 import { IdSchema } from "./common";
+import { type DiagnosticCode, PluginStateSchema, ProviderStateSchema } from "./plugin";
 import { ProviderKind, ProviderProtocolSchema } from "./provider";
 import {
   RequestOutcomeSchema,
@@ -11,9 +13,46 @@ import {
 
 export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
 
+const DashboardLocalizedTextValueSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value.trim() === value);
+
+export const DashboardLocalizedTextSchema = z.union([
+  DashboardLocalizedTextValueSchema,
+  z.record(z.string(), DashboardLocalizedTextValueSchema).superRefine((value, context) => {
+    if (!Object.hasOwn(value, "default")) {
+      context.addIssue({ code: "custom", message: "default localized text is required" });
+    }
+    for (const key of Object.keys(value)) {
+      if (key === "default") continue;
+      try {
+        if (Intl.getCanonicalLocales(key)[0] !== key) {
+          context.addIssue({ code: "custom", message: "localized text keys must be canonical" });
+        }
+      } catch {
+        context.addIssue({ code: "custom", message: "localized text keys must be language tags" });
+      }
+    }
+  }),
+]);
+
+export const DashboardPluginSummarySchema = z.object({
+  packageName: z.string().min(1),
+  label: DashboardLocalizedTextSchema.optional(),
+  description: DashboardLocalizedTextSchema.optional(),
+  builtIn: z.boolean(),
+  version: z.string().optional(),
+  state: PluginStateSchema,
+});
+
+export const DashboardPluginsResponseSchema = z.object({
+  plugins: z.array(DashboardPluginSummarySchema),
+});
+
 export const DashboardProviderSummarySchema = z.object({
   id: IdSchema,
-  kind: z.enum(ProviderKind),
+  kind: z.union([z.enum(ProviderKind), z.literal("invalid")]),
   enabled: z.boolean(),
   passthrough: z.boolean(),
   last_status: z.string(),
@@ -22,6 +61,12 @@ export const DashboardProviderSummarySchema = z.object({
   name: z.string().optional(),
   clientModels: z.array(z.string()).readonly(),
   hasApiKey: z.boolean().optional(),
+  state: ProviderStateSchema,
+  plugin: z.string().optional(),
+  capability: z.string().optional(),
+  accountLabel: z.string().optional(),
+  expiresAt: z.number().int().optional(),
+  catalogLastSuccessAt: z.string().datetime().optional(),
 });
 
 export const DashboardProvidersResponseSchema = z.object({
@@ -153,8 +198,31 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
 
 export type DashboardProviderProbeInput = z.input<typeof DashboardProviderProbeSchema>;
 export type DashboardProviderProbe = z.output<typeof DashboardProviderProbeSchema>;
+export type DashboardPluginSummaryInput = z.input<typeof DashboardPluginSummarySchema>;
+export type DashboardPluginSummary = z.output<typeof DashboardPluginSummarySchema>;
+export type DashboardPluginsResponseInput = z.input<typeof DashboardPluginsResponseSchema>;
+export type DashboardPluginsResponse = z.output<typeof DashboardPluginsResponseSchema>;
 export type DashboardProviderSummaryInput = z.input<typeof DashboardProviderSummarySchema>;
 export type DashboardProviderSummary = z.output<typeof DashboardProviderSummarySchema>;
+
+const providerLoginDiagnosticCodes: ReadonlySet<DiagnosticCode> = new Set([
+  "ACCOUNT_OPTIONS_INVALID",
+  "CREDENTIALS_MISSING_OR_INVALID",
+  "CREDENTIAL_REFRESH_FAILED",
+]);
+
+export const dashboardProviderSuggestedCommand = (
+  provider: Pick<DashboardProviderSummary, "id" | "state">,
+): string | undefined => {
+  const diagnostic = provider.state.diagnostic;
+  if (diagnostic === undefined) return undefined;
+  if (diagnostic.suggestedCommand === undefined) return undefined;
+  if (providerLoginDiagnosticCodes.has(diagnostic.code)) {
+    return providerLoginCommand(provider.id);
+  }
+  return diagnostic.suggestedCommand;
+};
+
 export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersResponseSchema>;
 export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;
 export type DashboardUsageSummaryInput = z.input<typeof DashboardUsageSummarySchema>;

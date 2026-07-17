@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, sep } from "node:path";
 import { z } from "zod";
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from "./error";
@@ -37,6 +37,17 @@ function packageNameParts(pkg: string): readonly string[] {
     return pkg.split("/");
   }
   throw new NpmPackageNameError(pkg);
+}
+
+export function isNpmPackageName(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    packageNameParts(value);
+    return true;
+  } catch (error) {
+    if (error instanceof NpmPackageNameError) return false;
+    throw error;
+  }
 }
 
 export function npmPackageCacheDir(pkg: string): string {
@@ -152,25 +163,66 @@ async function runInstall(pkg: string, registry: string, cacheDir: string): Prom
 }
 
 export async function npmAdd(pkg: string, registry: string = REGISTRY): Promise<NpmPackageInfo> {
-  const hit = await findInstalledNpmPackage(pkg);
-  if (hit !== null) {
-    return hit;
-  }
+  return withNpmPackageLifecycle(pkg, async () => {
+    const hit = await findInstalledNpmPackage(pkg);
+    return hit ?? ensureInstalledNpmPackage(pkg, registry);
+  });
+}
 
+async function ensureInstalledNpmPackage(pkg: string, registry: string): Promise<NpmPackageInfo> {
   const cacheDir = npmPackageCacheDir(pkg);
   const lock = await acquireNpmInstallLock(pkg, cacheDir);
   try {
-    const lockedHit = await findInstalledNpmPackage(pkg);
-    if (lockedHit !== null) {
-      return lockedHit;
-    }
-    await runInstall(pkg, registry, cacheDir);
-    const installed = await findInstalledNpmPackage(pkg);
-    if (installed === null) {
-      throw new NpmPackageJsonError(packageJsonPath(pkg));
-    }
-    return installed;
+    return await lock.withOwnership(async (assertOwnership) => {
+      const lockedHit = await findInstalledNpmPackage(pkg);
+      if (lockedHit !== null) return lockedHit;
+      await assertOwnership();
+      await runInstall(pkg, registry, cacheDir);
+      await assertOwnership();
+      const installed = await findInstalledNpmPackage(pkg);
+      if (installed === null) {
+        throw new NpmPackageJsonError(packageJsonPath(pkg));
+      }
+      return installed;
+    });
   } finally {
     await lock.release();
   }
+}
+
+export async function withNpmPackageLifecycle<T>(
+  pkg: string,
+  use: (assertOwnership: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  const lockDir = join(packagesDir(), ".locks", encodeURIComponent(pkg));
+  const lock = await acquireNpmInstallLock(pkg, lockDir);
+  try {
+    return await lock.withOwnership(use);
+  } finally {
+    await lock.release();
+  }
+}
+
+export async function withInstalledNpmPackage<T>(
+  pkg: string,
+  registry: string | undefined,
+  use: (installed: NpmPackageInfo, assertOwnership: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  return withNpmPackageLifecycle(pkg, async (assertOwnership) => {
+    const installed = await ensureInstalledNpmPackage(pkg, registry ?? REGISTRY);
+    await assertOwnership();
+    return use(installed, assertOwnership);
+  });
+}
+
+export async function removeNpmPackageCache(pkg: string, canRemove?: () => Promise<boolean>): Promise<boolean> {
+  const cacheDir = npmPackageCacheDir(pkg);
+  if (!existsSync(cacheDir)) return false;
+  return withNpmPackageLifecycle(pkg, async (assertOwnership) => {
+    if (canRemove !== undefined && !(await canRemove())) return false;
+    if (!existsSync(cacheDir)) return false;
+    await assertOwnership();
+    await rm(cacheDir, { recursive: true, force: true });
+    return true;
+  });
 }

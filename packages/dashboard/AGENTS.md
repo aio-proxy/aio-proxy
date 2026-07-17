@@ -7,7 +7,9 @@ This file is the frontend authority for `packages/dashboard`.
 - The dashboard is a React/Rsbuild package served under `/dashboard/`.
 - Use Bun workspace commands from the repo root, for example `bun run --filter @aio-proxy/dashboard build`.
 - Do not edit `src/route-tree.gen.ts`; TanStack Router generates it.
-- Keep browser-only code in this package. Shared API types come from `@aio-proxy/server`.
+- Keep browser-only code in this package.
+- Dashboard API route and client types must come from the typed Hono client exported by `@aio-proxy/server`.
+- Shared domain models and DTOs may be imported from `@aio-proxy/types`; do not redeclare them in the dashboard.
 
 ## UI Components
 

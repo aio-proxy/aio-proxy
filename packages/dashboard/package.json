@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aio-proxy/i18n": "workspace:*",
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/provider-schemas": "0.1.1",
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",

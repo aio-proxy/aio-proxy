@@ -11,10 +11,16 @@
       "path": "./packages/i18n"
     },
     {
-      "path": "./packages/core"
+      "path": "./packages/plugin-sdk"
     },
     {
-      "path": "./packages/oauth"
+      "path": "./packages/plugins/github-copilot"
+    },
+    {
+      "path": "./packages/plugins/openai-chatgpt"
+    },
+    {
+      "path": "./packages/core"
     },
     {
       "path": "./packages/server"

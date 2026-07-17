@@ -1,30 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "@aio-proxy/server";
-import { ConfigSchema, ProviderProtocol } from "@aio-proxy/types";
+import { ConfigSchema } from "@aio-proxy/types";
 import { createServerState } from "../src/server-state";
 
 const decoder = new TextDecoder();
 
-const configWithProvider = (id: string, baseURL: string) => ({
-  providers: {
-    [id]: {
-      kind: "api",
-      protocol: ProviderProtocol.OpenAICompatible,
-      baseURL,
-      models: [`${id}-model`],
-      alias: { [`${id}-model`]: { model: `${id}-model`, preserve: false } },
-    },
-  },
-});
-
-const writeConfig = (path: string, config: unknown): void => {
-  writeFileSync(path, `${JSON.stringify(config)}\n`);
-};
-
-const settleWatcher = () => Bun.sleep(50);
+import { configWithProvider, settleWatcher, writeConfig } from "./server-reload.oauth.test-support";
 
 async function waitForProviderIds(
   state: ReturnType<typeof createServerState>,
@@ -71,66 +54,6 @@ async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<s
 }
 
 describe("server reload", () => {
-  test("Given conflicting preserved alias config reload When reload is requested Then old provider keeps serving", async () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-reload-"));
-    const configPath = join(dir, "config.jsonc");
-    const upstream = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      fetch() {
-        return Response.json({ servedBy: "old-openai" }, { status: 208 });
-      },
-    });
-    const initialConfig = configWithProvider("old-openai", `http://127.0.0.1:${upstream.port}`);
-    writeConfig(configPath, initialConfig);
-    const app = createServer({
-      config: initialConfig,
-      configPath,
-      watchConfig: false,
-    });
-
-    try {
-      writeConfig(configPath, {
-        providers: {
-          duplicate: {
-            kind: "api",
-            protocol: ProviderProtocol.OpenAICompatible,
-            baseURL: "https://duplicate.example.com",
-            models: ["first-model", "second-model"],
-            alias: {
-              "first-model": { model: "second-model", preserve: false },
-              firstAlias: { model: "first-model", preserve: true },
-            },
-          },
-        },
-      });
-
-      // When
-      const reload = await app.request("/dashboard/api/reload", {
-        headers: { Origin: "http://127.0.0.1:22078" },
-        method: "POST",
-      });
-      const chat = await app.request("/v1/chat/completions", {
-        body: JSON.stringify({
-          model: "old-openai-model",
-          messages: [{ role: "user", content: "still there" }],
-        }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      });
-      const body = await chat.json();
-
-      // Then
-      expect(reload.status).toBe(409);
-      expect(chat.status).toBe(208);
-      expect(body).toEqual({ servedBy: "old-openai" });
-    } finally {
-      await upstream.stop(true);
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test("Given direct config write When watcher observes file Then providers reload", async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-watch-write-"));
@@ -138,7 +61,7 @@ describe("server reload", () => {
     const initialConfig = configWithProvider("old-openai", "https://old.test");
     const nextConfig = configWithProvider("new-openai", "https://new.test");
     writeConfig(configPath, initialConfig);
-    const state = createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
+    const state = await createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
     const stream = new Response(state.events.stream());
 
     try {
@@ -166,7 +89,7 @@ describe("server reload", () => {
     const middleConfig = configWithProvider("middle-openai", "https://middle.test");
     const nextConfig = configWithProvider("new-openai", "https://new.test");
     writeConfig(configPath, initialConfig);
-    const state = createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
+    const state = await createServerState({ config: ConfigSchema.parse(initialConfig), configPath });
 
     try {
       // When

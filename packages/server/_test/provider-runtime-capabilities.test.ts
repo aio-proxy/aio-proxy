@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
-import { ConfigSchema, OAuthVendor, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { materializeProviders, materializeRuntimeProvider } from "../src/provider-runtime";
-import type { OAuthProviderInstance, RuntimeProviderInstance } from "../src/runtime";
+import type { RuntimeProviderInstance } from "../src/runtime";
 import { createServerState } from "../src/server-state";
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
@@ -43,11 +43,16 @@ test("materializes a configured API provider with raw and bridged model capabili
   });
 
   expect(bridgeCalls).toBe(1);
-  expect(runtime.providers[0]?.raw?.protocol).toBe(ProviderProtocol.OpenAICompatible);
+  expect(
+    runtime.providers[0]?.raw?.resolve({
+      protocol: ProviderProtocol.OpenAICompatible,
+      modelId: "test",
+    }),
+  ).toBeDefined();
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
 });
 
-test("materializes AI SDK and OAuth inputs with model capabilities only", () => {
+test("materializes AI SDK inputs with model capabilities only", () => {
   const ensureAvailable = async () => {};
   const invoke = () => new ReadableStream();
   const aiSdk = {
@@ -57,21 +62,20 @@ test("materializes AI SDK and OAuth inputs with model capabilities only", () => 
     invoke,
     kind: ProviderKind.AiSdk,
   } satisfies AiSdkProviderInstance;
-  const oauth = {
-    enabled: true,
-    id: "oauth",
-    invoke,
-    kind: ProviderKind.OAuth,
-    vendor: OAuthVendor.GitHubCopilot,
-  } satisfies OAuthProviderInstance;
-
   const aiSdkRuntime = materializeRuntimeProvider(aiSdk);
-  const oauthRuntime = materializeRuntimeProvider(oauth);
 
   expect(aiSdkRuntime.raw).toBeUndefined();
   expect(aiSdkRuntime.model).toEqual({ ensureAvailable, invoke });
-  expect(oauthRuntime.raw).toBeUndefined();
-  expect(oauthRuntime.model).toEqual({ invoke });
+});
+
+test("rejects an injected runtime provider without raw or model capabilities", () => {
+  expect(() =>
+    materializeRuntimeProvider({
+      enabled: true,
+      id: "invalid",
+      kind: ProviderKind.OAuth,
+    } as never),
+  ).toThrow("must expose a raw or model capability");
 });
 
 test("materializes an API input whose raw placeholder is undefined", () => {
@@ -89,7 +93,7 @@ test("materializes an API input whose raw placeholder is undefined", () => {
   const runtime = materializeRuntimeProvider(provider);
 
   expect(runtime).not.toBe(provider);
-  expect(runtime.raw).toEqual({ invoke: passthrough, protocol: ProviderProtocol.Anthropic });
+  expect(runtime.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: "test" })?.invoke).toBe(passthrough);
   expect(runtime.model).toBeUndefined();
 });
 
@@ -127,7 +131,7 @@ test("materializes an AI SDK input instead of accepting an inherited model capab
   expect(runtime.model?.invoke).toBe(invoke);
 });
 
-test("materializes an injected API test double without baseURL through the snapshot seam", () => {
+test("materializes an injected API test double without baseURL through the snapshot seam", async () => {
   const passthrough = async () => new Response();
   const provider = {
     enabled: true,
@@ -137,7 +141,7 @@ test("materializes an injected API test double without baseURL through the snaps
     protocol: ProviderProtocol.Anthropic,
   } satisfies Omit<ApiProviderInstance, "baseURL">;
   const dbHome = mkdtempSync(join(tmpdir(), "aio-proxy-provider-capabilities-"));
-  const state = createServerState({
+  const state = await createServerState({
     config: ConfigSchema.parse({ providers: {} }),
     dbHome,
     providerInstances: [provider as unknown as ApiProviderInstance],
@@ -146,7 +150,7 @@ test("materializes an injected API test double without baseURL through the snaps
   try {
     const runtime = state.currentProviderSnapshot().providers[0];
 
-    expect(runtime?.raw).toEqual({ invoke: passthrough, protocol: ProviderProtocol.Anthropic });
+    expect(runtime?.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: "test" })?.invoke).toBe(passthrough);
     expect(runtime?.model).toBeUndefined();
   } finally {
     state.close();
@@ -167,7 +171,7 @@ test("returns an already materialized provider unchanged", () => {
   expect(materializeRuntimeProvider(provider)).toBe(provider);
 });
 
-test("keeps the model capability reference stable across snapshot reads", () => {
+test("keeps the model capability reference stable across snapshot reads", async () => {
   const dbHome = mkdtempSync(join(tmpdir(), "aio-proxy-provider-capabilities-"));
   const provider = {
     enabled: true,
@@ -175,7 +179,7 @@ test("keeps the model capability reference stable across snapshot reads", () => 
     invoke: () => new ReadableStream(),
     kind: ProviderKind.AiSdk,
   } satisfies AiSdkProviderInstance;
-  const state = createServerState({
+  const state = await createServerState({
     config: ConfigSchema.parse({ providers: {} }),
     dbHome,
     providerInstances: [provider],
@@ -206,7 +210,7 @@ test("replaces the model capability object only after config reload", async () =
     },
   });
   writeFileSync(configPath, JSON.stringify(config));
-  const state = createServerState({ config, configPath, dbHome, watchConfig: false });
+  const state = await createServerState({ config, configPath, dbHome, watchConfig: false });
 
   try {
     const before = state.currentProviderSnapshot().providers[0]?.model;
@@ -234,7 +238,7 @@ test("replaces the model capability object only after config reload", async () =
   }
 });
 
-test("does not materialize configured providers before building an injected snapshot", () => {
+test("does not materialize configured providers before building an injected snapshot", async () => {
   const config = ConfigSchema.parse({
     providers: {
       configured: {
@@ -265,11 +269,14 @@ test("does not materialize configured providers before building an injected snap
     kind: ProviderKind.AiSdk,
   } satisfies AiSdkProviderInstance;
   const dbHome = mkdtempSync(join(tmpdir(), "aio-proxy-provider-capabilities-"));
-  const state = createServerState({ config, dbHome, providerInstances: [provider] });
+  const state = await createServerState({ config, dbHome, providerInstances: [provider] });
 
   try {
     expect(baseURLReads).toBe(0);
-    expect(state.currentProviderSnapshot().providers.map((entry) => entry.id)).toEqual(["injected"]);
+    const snapshot = state.currentProviderSnapshot();
+    const summaries = await state.providerSummaries({ probe: false });
+    expect(snapshot.providers.map((entry) => entry.id)).toEqual(["injected"]);
+    expect(snapshot.providerStates?.get("injected")).toBe(summaries[0]?.state);
   } finally {
     state.close();
     rmSync(dbHome, { force: true, recursive: true });

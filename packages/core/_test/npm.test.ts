@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NpmLockError } from "../src";
-import { NpmInstallError, npmAdd, npmPackageCacheDir } from "../src/index";
-import { acquireNpmInstallLock } from "../src/npm-lock";
+import {
+  findInstalledNpmPackage,
+  listInstalledNpmPackages,
+  NpmInstallError,
+  npmAdd,
+  npmPackageCacheDir,
+  packagesDir,
+  removeNpmPackageCache,
+  withInstalledNpmPackage,
+} from "../src/index";
 
 const homes: string[] = [];
 
@@ -12,6 +19,7 @@ function sandboxHome(): string {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-npm-home-"));
   homes.push(home);
   process.env.HOME = home;
+  process.env.AIO_PROXY_HOME = home;
   return home;
 }
 
@@ -93,6 +101,7 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
   }
   delete process.env.HOME;
+  delete process.env.AIO_PROXY_HOME;
 });
 
 describe("npmAdd", () => {
@@ -167,33 +176,65 @@ describe("npmAdd", () => {
       registry.stop();
     }
   });
+});
 
-  test("Given ps is unavailable When lock owner is alive Then lock is not recycled", async () => {
-    // Given
-    const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-live-lock-"));
-    const lockPath = join(cacheDir, ".aio-proxy-install.lock");
-    const lockText = JSON.stringify({
-      pid: process.pid,
-      createdAt: Date.now(),
-      starttime: "different-starttime",
-      version: 1,
+describe("isolated npm cache lifecycle", () => {
+  test("lists only the requested cache root package, never its dependencies", async () => {
+    sandboxHome();
+    writeCachedPackage("root-plugin", "1.0.0");
+    writeCachedPackage("dependency-package", "9.0.0");
+    const dependencyDir = join(npmPackageCacheDir("root-plugin"), "node_modules", "dependency-package");
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(
+      join(dependencyDir, "package.json"),
+      JSON.stringify({ name: "dependency-package", version: "9.0.0" }),
+    );
+
+    expect((await listInstalledNpmPackages()).map((pkg) => pkg.packageName)).toEqual([
+      "dependency-package",
+      "root-plugin",
+    ]);
+  });
+
+  test("cache removal is idempotent", async () => {
+    sandboxHome();
+    writeCachedPackage("removable-plugin", "1.0.0");
+    expect(await removeNpmPackageCache("removable-plugin")).toBe(true);
+    expect(await removeNpmPackageCache("removable-plugin")).toBe(false);
+  });
+
+  test("an installed package stays locked through its caller's config commit", async () => {
+    sandboxHome();
+    writeCachedPackage("racing-plugin", "1.0.0");
+    let allowCommit!: () => void;
+    const commit = new Promise<void>((resolve) => {
+      allowCommit = resolve;
     });
-    writeFileSync(lockPath, lockText, { flag: "wx" });
-    const originalSpawn = Bun.spawn;
-    Bun.spawn = () => {
-      throw new Error("ps unavailable");
-    };
+    let callbackEntered!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      callbackEntered = resolve;
+    });
+    let removalGuardCalled = false;
 
-    try {
-      // When
-      const result = acquireNpmInstallLock("aio-proxy-live-lock-provider", cacheDir);
+    const add = withInstalledNpmPackage("racing-plugin", undefined, async () => {
+      callbackEntered();
+      await commit;
+    });
+    await entered;
+    const lifecycleLock = join(packagesDir(), ".locks", encodeURIComponent("racing-plugin"), ".aio-proxy-install.lock");
+    expect(existsSync(lifecycleLock)).toBe(true);
+    expect(lifecycleLock.startsWith(npmPackageCacheDir("racing-plugin"))).toBe(false);
+    const remove = removeNpmPackageCache("racing-plugin", async () => {
+      removalGuardCalled = true;
+      return false;
+    });
+    await Bun.sleep(20);
+    expect(removalGuardCalled).toBe(false);
 
-      // Then
-      await expect(result).rejects.toBeInstanceOf(NpmLockError);
-      expect(readFileSync(lockPath, "utf8")).toBe(lockText);
-    } finally {
-      Bun.spawn = originalSpawn;
-      rmSync(cacheDir, { recursive: true, force: true });
-    }
+    allowCommit();
+    await add;
+    expect(await remove).toBe(false);
+    expect(removalGuardCalled).toBe(true);
+    expect(await findInstalledNpmPackage("racing-plugin")).not.toBeNull();
   });
 });

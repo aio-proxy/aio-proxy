@@ -8,8 +8,7 @@ import {
 } from "@aio-proxy/core";
 import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { createOAuthRuntimeProvider } from "./oauth-runtime";
-import type { RuntimeProviderInput, RuntimeProviderInstance } from "./runtime";
+import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
 
@@ -23,8 +22,10 @@ const openAIResponsesProbeMaxOutputTokens = 16;
 export type ProviderRuntime = {
   readonly providers: readonly RuntimeProviderInstance[];
   readonly probes: ReadonlyMap<string, ProviderProbe>;
-  readonly summaries: readonly DashboardProviderSummary[];
+  readonly summaries: readonly ProviderRuntimeSummary[];
 };
+
+export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, "state">;
 
 export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
@@ -36,8 +37,15 @@ export function materializeRuntimeProvider(
 
   if (provider.kind === ProviderKind.Api) {
     return {
-      ...provider,
-      raw: { protocol: provider.protocol, invoke: provider.passthrough },
+      id: provider.id,
+      kind: provider.kind,
+      enabled: provider.enabled,
+      ...(provider.models === undefined ? {} : { models: provider.models }),
+      ...(provider.alias === undefined ? {} : { alias: provider.alias }),
+      hasApiKey: provider.apiKey !== undefined,
+      raw: {
+        resolve: ({ protocol }) => (protocol === provider.protocol ? { invoke: provider.passthrough } : undefined),
+      },
       ...(options.apiBridge === undefined
         ? {}
         : {
@@ -51,19 +59,48 @@ export function materializeRuntimeProvider(
     };
   }
 
-  return {
-    ...provider,
-    model: {
-      ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
-      invoke: provider.invoke,
-    },
-  };
+  if (provider.kind === ProviderKind.AiSdk) {
+    return {
+      id: provider.id,
+      kind: provider.kind,
+      enabled: provider.enabled,
+      ...(provider.models === undefined ? {} : { models: provider.models }),
+      ...(provider.alias === undefined ? {} : { alias: provider.alias }),
+      model: {
+        ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
+        invoke: provider.invoke,
+      },
+    };
+  }
+
+  throw new TypeError("Runtime provider must expose a raw or model capability");
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
+  const raw = Object.hasOwn(provider, "raw") ? (provider as { readonly raw?: unknown }).raw : undefined;
+  const model = Object.hasOwn(provider, "model") ? (provider as { readonly model?: unknown }).model : undefined;
+  if (raw !== undefined && !isRuntimeRawCapability(raw)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
+  }
+  if (model !== undefined && !isModelTransport(model)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid model capability`);
+  }
+  return raw !== undefined || model !== undefined;
+}
+
+function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
+  return typeof value === "object" && value !== null && "resolve" in value && typeof value.resolve === "function";
+}
+
+function isModelTransport(value: unknown): value is ModelTransport {
   return (
-    ("raw" in provider && Object.hasOwn(provider, "raw") && provider.raw !== undefined) ||
-    ("model" in provider && Object.hasOwn(provider, "model") && provider.model !== undefined)
+    typeof value === "object" &&
+    value !== null &&
+    "invoke" in value &&
+    typeof value.invoke === "function" &&
+    (!("ensureAvailable" in value) ||
+      value.ensureAvailable === undefined ||
+      typeof value.ensureAvailable === "function")
   );
 }
 
@@ -71,7 +108,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   const bridgeApiProvider = options.bridgeApiProvider ?? bridgeApiProviderToAiSdk;
   const probes = new Map<string, ProviderProbe>();
   const providers: RuntimeProviderInstance[] = [];
-  const summaries: DashboardProviderSummary[] = [];
+  const summaries: ProviderRuntimeSummary[] = [];
   for (const provider of config.providers) {
     const id = providerId(provider);
     if (!provider.enabled) {
@@ -97,11 +134,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         break;
       }
       case ProviderKind.OAuth: {
-        const oauth = createOAuthRuntimeProvider(provider);
-        const instance = materializeRuntimeProvider(oauth);
-        probes.set(id, () => probeAiSdk(oauth));
-        providers.push(instance);
-        summaries.push(providerSummary(instance, provider.name));
+        summaries.push(providerConfigSummary(provider));
         break;
       }
       default:
@@ -116,7 +149,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   };
 }
 
-export function providerSummary(provider: RuntimeProviderInstance, name?: string): DashboardProviderSummary {
+export function providerSummary(provider: RuntimeProviderInstance, name?: string): ProviderRuntimeSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -125,13 +158,16 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
     last_status: "unknown",
     last_latency: null,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
-    name: name ?? ("name" in provider ? provider.name : undefined),
+    ...(name === undefined ? {} : { name }),
     clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
-    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
+    hasApiKey: provider.kind === ProviderKind.Api ? provider.hasApiKey : undefined,
   };
 }
 
-export function providerDiff(before: readonly DashboardProviderSummary[], after: readonly DashboardProviderSummary[]) {
+export function providerDiff(
+  before: readonly Pick<DashboardProviderSummary, "id">[],
+  after: readonly Pick<DashboardProviderSummary, "id">[],
+) {
   const beforeIds = new Set(before.map((provider) => provider.id));
   const afterIds = new Set(after.map((provider) => provider.id));
   return {
@@ -146,7 +182,7 @@ function providerId(provider: Provider): string {
   return provider.id;
 }
 
-function providerConfigSummary(provider: Provider): DashboardProviderSummary {
+function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
   const clientModels = [...new Set(modelRoutes(provider).map((route) => route.alias))];
   return {
     id: provider.id,

@@ -13,9 +13,8 @@ describe("createConfigStore mutex", () => {
     let reloads = 0;
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => {
+      verify: async () => {
         reloads += 1;
-        return { ok: true as const };
       },
     });
 
@@ -44,7 +43,9 @@ describe("createConfigStore mutex", () => {
 
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => ({ ok: false as const, error: "invalid alias target" }),
+      verify: async () => {
+        throw new Error("invalid alias target");
+      },
     });
 
     await expect(store.mutateProviders((record) => ({ ...record, b: { kind: "api" } }))).rejects.toThrow(
@@ -63,11 +64,10 @@ describe("createConfigStore mutex", () => {
     chmodSync(configPath, 0o600);
     const store = createConfigStore({
       getConfigPath: () => configPath,
-      reload: async () => ({ ok: true as const }),
+      verify: async () => undefined,
     });
 
     await store.mutateProviders((record) => ({ ...record, added: { kind: "api" } }));
-
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
     rmSync(dir, { recursive: true, force: true });
   });

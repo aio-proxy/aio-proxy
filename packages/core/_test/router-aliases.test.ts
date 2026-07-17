@@ -1,0 +1,225 @@
+import { describe, expect, test } from "bun:test";
+import { ProviderProtocol } from "@aio-proxy/types";
+import type { ProviderInstance } from "../src/index";
+import { modelRoutes, Router, RouterModelCollisionError, RouterModelNotFoundError } from "../src/index";
+
+const legacyOAuth = {
+  kind: "oauth",
+  id: "legacy-oauth",
+  vendor: "legacy-provider",
+  models: ["claude-sonnet-4-5"],
+  alias: { sonnet: { model: "claude-sonnet-4-5", preserve: false } },
+} satisfies ProviderInstance;
+
+const openai = {
+  kind: "api",
+  id: "openai",
+  protocol: ProviderProtocol.OpenAIResponse,
+  models: ["gpt-5-mini"],
+  alias: { mini: { model: "gpt-5-mini", preserve: true } },
+} satisfies ProviderInstance;
+
+describe("Router", () => {
+  test("exposes a preserved variant target under its original model id", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: true } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5")).toEqual([{ provider, modelId: "gpt-5" }]);
+  });
+
+  test("reuses an explicit self-alias for a preserved variant targeting the same model", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        "gpt-5": { model: "gpt-5", preserve: false },
+        mini: {
+          model: "gpt-5-mini",
+          preserve: false,
+          variants: { high: { model: "gpt-5", preserve: true } },
+        },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5")).toEqual([{ provider, modelId: "gpt-5" }]);
+  });
+
+  test("deduplicates identical preserved routes within a provider", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        mini: { model: "gpt-5-mini", preserve: true },
+        fast: { model: "gpt-5-mini", preserve: true },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+  });
+
+  test("rejects an explicit alias that conflicts with a preserved model id", () => {
+    const provider = {
+      ...openai,
+      alias: {
+        "gpt-5-mini": { model: "gpt-5", preserve: false },
+        mini: { model: "gpt-5-mini", preserve: true },
+      },
+      models: ["gpt-5-mini", "gpt-5"],
+    } satisfies ProviderInstance;
+
+    expect(() => new Router([provider])).toThrow(RouterModelCollisionError);
+  });
+
+  test("provider-qualified aliases only return the requested provider", () => {
+    const other = {
+      kind: "api",
+      id: "other",
+      protocol: ProviderProtocol.OpenAICompatible,
+      models: ["other-mini"],
+      alias: { mini: { model: "other-mini", preserve: false } },
+    } satisfies ProviderInstance;
+
+    const router = new Router([openai, other]);
+
+    expect(router.resolve("other/mini")).toEqual([{ provider: other, modelId: "other-mini" }]);
+  });
+
+  test("throws a 404 sentinel for a missing alias", () => {
+    const router = new Router([openai]);
+
+    expect(() => router.resolve("missing")).toThrow(RouterModelNotFoundError);
+    try {
+      router.resolve("missing");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RouterModelNotFoundError);
+      if (error instanceof RouterModelNotFoundError) {
+        expect(error.code).toBe("MODEL_NOT_FOUND");
+        expect(error.status).toBe(404);
+      }
+    }
+  });
+
+  test("ignores disabled providers", () => {
+    const router = new Router([{ ...openai, enabled: false }]);
+
+    expect(() => router.resolve("gpt-5-mini")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("openai/gpt-5-mini")).toThrow(RouterModelNotFoundError);
+  });
+
+  test("resolves the plan QA legacy OAuth sonnet alias", () => {
+    const router = new Router([legacyOAuth]);
+
+    const resolved = router.resolve("sonnet");
+
+    expect(resolved).toEqual([{ provider: legacyOAuth, modelId: "claude-sonnet-4-5" }]);
+  });
+
+  test("routes a configured model when no alias is present", () => {
+    const provider = {
+      ...openai,
+      alias: undefined,
+      models: ["gpt-5-mini"],
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+    expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider, modelId: "gpt-5-mini" }]);
+  });
+
+  test("hides non-preserved targets for added aliases", () => {
+    const provider = {
+      ...openai,
+      id: "anthropic-aliases",
+      models: ["upstream-opus-48", "upstream-opus-46", "upstream-sonnet-46", "untouched"],
+      alias: {
+        "claude-opus-4-8": { model: "upstream-opus-48", preserve: false },
+        "claude-opus-4-6": { model: "upstream-opus-46", preserve: false },
+        "claude-sonnet-4-6": {
+          model: "upstream-sonnet-46",
+          preserve: false,
+          variants: { fast: { model: "upstream-opus-46", preserve: false } },
+        },
+      },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "claude-opus-4-8", modelId: "upstream-opus-48" },
+      { alias: "claude-opus-4-6", modelId: "upstream-opus-46" },
+      { alias: "claude-sonnet-4-6", modelId: "upstream-sonnet-46" },
+      { alias: "untouched", modelId: "untouched" },
+    ]);
+    expect(router.resolve("claude-opus-4-8")).toEqual([{ provider, modelId: "upstream-opus-48" }]);
+    expect(router.resolve("claude-sonnet-4-6", "fast")).toEqual([{ provider, modelId: "upstream-opus-46" }]);
+    expect(() => router.resolve("upstream-opus-48")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-opus-46")).toThrow(RouterModelNotFoundError);
+    expect(() => router.resolve("upstream-sonnet-46")).toThrow(RouterModelNotFoundError);
+    expect(router.resolve("untouched")).toEqual([{ provider, modelId: "untouched" }]);
+  });
+
+  test("lets an alias shadow a same-named configured model while keeping its target routable", () => {
+    const provider = {
+      ...openai,
+      models: ["old", "new"],
+      alias: { old: { model: "new", preserve: false } },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(modelRoutes(provider)).toEqual([
+      { alias: "old", modelId: "new" },
+      { alias: "new", modelId: "new" },
+    ]);
+    expect(router.resolve("old")).toEqual([{ provider, modelId: "new" }]);
+    expect(router.resolve("new")).toEqual([{ provider, modelId: "new" }]);
+  });
+
+  test("resolves a fully-qualified preserved original model id", () => {
+    const router = new Router([openai]);
+
+    const resolved = router.resolve("openai/gpt-5-mini");
+
+    expect(resolved).toEqual([{ provider: openai, modelId: "gpt-5-mini" }]);
+  });
+
+  test("treats a preserved self-alias as a single route", () => {
+    const selfAlias = {
+      ...openai,
+      alias: { "gpt-5-mini": { model: "gpt-5-mini", preserve: true } },
+    } satisfies ProviderInstance;
+    const router = new Router([selfAlias]);
+
+    expect(router.resolve("gpt-5-mini")).toEqual([{ provider: selfAlias, modelId: "gpt-5-mini" }]);
+    expect(router.resolve("openai/gpt-5-mini")).toEqual([{ provider: selfAlias, modelId: "gpt-5-mini" }]);
+  });
+
+  test("rejects a preserved provider route that conflicts with an explicit alias variant", () => {
+    const conflicting = {
+      kind: "api",
+      id: "dupe",
+      protocol: ProviderProtocol.OpenAIResponse,
+      models: ["first", "second"],
+      alias: {
+        first: {
+          model: "first",
+          preserve: false,
+          variants: { high: { model: "second", preserve: false } },
+        },
+        firstAlias: { model: "first", preserve: true },
+      },
+    } satisfies ProviderInstance;
+
+    expect(() => new Router([conflicting])).toThrow(/dupe/);
+  });
+});

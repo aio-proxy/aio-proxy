@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from "@aio-proxy/core";
-import { createServer } from "@aio-proxy/server";
+import { createServer as createBaseServer } from "@aio-proxy/server";
 
 const installRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify(body),
@@ -17,6 +17,8 @@ const installRequest = (body: Record<string, unknown>) => ({
 describe("dashboard provider package metadata", () => {
   let home: string;
   let previousHome: string | undefined;
+  const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
+    createBaseServer({ ...options, dbHome: home });
 
   beforeEach(() => {
     previousHome = process.env.AIO_PROXY_HOME;
@@ -34,7 +36,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("package status returns runtime fields only", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
     const response = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fopenai-compatible");
 
     expect(response.status).toBe(200);
@@ -51,7 +53,7 @@ describe("dashboard provider package metadata", () => {
     const packageDir = join(npmPackageCacheDir(installedPackage), "node_modules", "@vendor", "installed-provider");
     mkdirSync(packageDir, { recursive: true });
     writeFileSync(join(packageDir, "package.json"), JSON.stringify({ version: "1.2.3" }));
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const installed = await app.request("/dashboard/api/providers/package-status?npm=%40vendor%2Finstalled-provider");
     const missing = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fmissing-provider");
@@ -68,9 +70,8 @@ describe("dashboard provider package metadata", () => {
       state: "missing",
     });
   });
-
   test("invalid package names return a stable code", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request("/dashboard/api/providers/package-status?npm=..%2Fbad");
 
@@ -82,7 +83,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("trusted packages may install without confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -94,7 +95,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("trusted packages may install with explicit false confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -110,7 +111,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("untrusted packages require explicit confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",
@@ -125,7 +126,7 @@ describe("dashboard provider package metadata", () => {
   });
 
   test("untrusted packages reject explicit false confirmation", async () => {
-    const app = createServer({ config: { providers: {} } });
+    const app = await createServer({ config: { providers: {} } });
 
     const response = await app.request(
       "/dashboard/api/providers/install",

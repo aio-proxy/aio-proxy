@@ -1,11 +1,14 @@
 import {
+  AccountCleanupPendingError,
   NpmInstallError,
   NpmLockError,
   NpmPackageEntrypointError,
   NpmPackageJsonError,
   NpmPackageNameError,
   npmAdd,
+  PendingAccountOperationConflictError,
 } from "@aio-proxy/core";
+import type { RequestLogsQuery } from "@aio-proxy/core/db";
 import {
   DashboardRequestLogsPageSizeSchema,
   type ProviderMutationBody,
@@ -95,12 +98,31 @@ const RequestLogsQuerySchema = z.object({
 
 const requestLogsValidator = validator("query", (raw, context) => {
   const parsed = RequestLogsQuerySchema.safeParse(raw);
-  return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
+  return parsed.success
+    ? toRequestLogsQuery(parsed.data)
+    : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
 });
+
+function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): RequestLogsQuery {
+  return {
+    page: query.page,
+    pageSize: query.pageSize,
+    ...(query.startedAfter === undefined ? {} : { startedAfter: query.startedAfter }),
+    ...(query.completedBefore === undefined ? {} : { completedBefore: query.completedBefore }),
+    ...(query.requestId === undefined ? {} : { requestId: query.requestId }),
+    ...(query.outcome === undefined ? {} : { outcome: query.outcome }),
+    ...(query.inboundProtocol === undefined ? {} : { inboundProtocol: query.inboundProtocol }),
+    ...(query.requestedModelId === undefined ? {} : { requestedModelId: query.requestedModelId }),
+    ...(query.finalProviderId === undefined ? {} : { finalProviderId: query.finalProviderId }),
+    ...(query.finalModelId === undefined ? {} : { finalModelId: query.finalModelId }),
+    ...(query.finalStatusCode === undefined ? {} : { finalStatusCode: query.finalStatusCode }),
+  };
+}
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
+    .get("/plugins", (context) => context.json({ plugins: state.pluginSummaries() }))
     .get("/providers", async (context) => {
       const filter = context.req.query("filter");
       const probe = context.req.query("probe") === "true";
@@ -183,13 +205,17 @@ export const createDashboardRoutes = (state: ServerState) =>
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const id = context.req.param("id");
-      if (!state.currentConfig().providers.some((entry) => entry.id === id)) {
+      if ((await state.providerSummaries({ filter: id, probe: false })).length === 0) {
         return context.json({ error: "provider not found" }, 404);
       }
-      await state.configStore.mutateProviders((record) => {
-        const { [id]: _removed, ...rest } = record;
-        return rest;
-      });
+      try {
+        await state.configStore.deleteProvider(id);
+      } catch (error) {
+        if (error instanceof AccountCleanupPendingError || error instanceof PendingAccountOperationConflictError) {
+          return context.json({ error: "provider account cleanup pending", id }, 409);
+        }
+        throw error;
+      }
       return context.json({ ok: true, id });
     })
     .get("/providers/:id", providerProbeValidator, async (context) => {

@@ -20,9 +20,9 @@ function tempHome(): string {
   return home;
 }
 
-function seededApp() {
+async function seededApp() {
   const home = tempHome();
-  const app = createServer({ config: { providers: {} }, dbHome: home });
+  const app = await createServer({ config: { providers: {} }, dbHome: home });
   const handle = openDb({ home });
   const store = createRequestLogStore(handle.db);
   const completedAt = new Date();
@@ -74,7 +74,9 @@ function seededApp() {
 
 describe("GET /dashboard/api/usage", () => {
   test("returns the requested overview with pinned provider series", async () => {
-    const response = await seededApp().request("/dashboard/api/usage?range=24h&metric=requests&groupBy=provider");
+    const response = await (await seededApp()).request(
+      "/dashboard/api/usage?range=24h&metric=requests&groupBy=provider",
+    );
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -103,7 +105,7 @@ describe("GET /dashboard/api/usage", () => {
   });
 
   test("uses the default range, metric, and grouping", async () => {
-    const response = await seededApp().request("/dashboard/api/usage");
+    const response = await (await seededApp()).request("/dashboard/api/usage");
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -111,7 +113,7 @@ describe("GET /dashboard/api/usage", () => {
   });
 
   test.each(["range=1h", "metric=latency", "groupBy=protocol"])("rejects invalid query %s", async (query) => {
-    const response = await seededApp().request(`/dashboard/api/usage?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/usage?${query}`);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "validation failed", details: expect.any(Array) });

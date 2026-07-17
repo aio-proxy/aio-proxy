@@ -8,12 +8,12 @@
   },
   "scripts": {
     "test": "bun run test:unit",
-    "test:unit": "bun test _test"
+    "test:unit": "bun test --preload=./_test/setup.ts"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
-    "@aio-proxy/oauth": "workspace:*",
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "date-fns": "^4.4.0",
     "es-toolkit": "catalog:",
