@@ -1,24 +1,56 @@
 import {
+  AtomicConfigCommitUncertainError,
+  type AtomicConfigFile,
   createEmbeddedBuiltIns,
-  createModelsDevCatalog,
   type DiagnosticFactory,
-  type FetchModelsDevProviders,
   loadPluginRegistry,
-  type ModelsDevCatalog,
+  type PendingAccountOperation,
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
   type Router,
 } from "@aio-proxy/core";
-import { type Config, type DashboardProviderSummary, ProviderKind, type ProviderState } from "@aio-proxy/types";
+import {
+  type Config,
+  ConfigSchema,
+  type DashboardProviderSummary,
+  ProviderKind,
+  type ProviderState,
+} from "@aio-proxy/types";
 import { compact } from "es-toolkit/array";
 import { ZodError } from "zod";
-import { materializePluginProvider, pluginOptionsIdentityDigest } from "../plugin-runtime";
-import { materializeProviders, materializeRuntimeProvider, providerSummary } from "../provider-runtime";
-import type { RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
-import type { ReloadFailure, ServerStateOptions, Snapshot } from "./types";
+import { type AccountRemovalCoordinator, asProviderRecord } from "../account-removal";
+import {
+  type CatalogJobDescriptor,
+  materializePluginProvider,
+  type PluginRuntimeCacheEntry,
+  pluginOptionsIdentityDigest,
+} from "../plugin-runtime";
+import type { SnapshotManager } from "../plugin-snapshot";
+import {
+  materializeProviders,
+  materializeRuntimeProvider,
+  type ProviderProbe,
+  providerDiff,
+  providerSummary,
+} from "../provider-runtime";
+import type {
+  ProviderRouteSnapshot,
+  RetiredProviderSnapshot,
+  RuntimeProviderInput,
+  RuntimeProviderInstance,
+} from "../runtime";
+import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure, ServerStateOptions } from "./types";
 
-const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
+export type Snapshot = ProviderRouteSnapshot & {
+  readonly config: Config;
+  readonly plugins: PluginRegistrySnapshot;
+  readonly probes: ReadonlyMap<string, ProviderProbe>;
+  readonly summaries: readonly DashboardProviderSummary[];
+  readonly catalogJobs: readonly CatalogJobDescriptor[];
+  readonly runtimeCache: ReadonlyMap<string, PluginRuntimeCacheEntry>;
+  readonly providerStates: ReadonlyMap<string, ProviderState>;
+};
 
 function providerStatesFromSummaries(
   summaries: readonly DashboardProviderSummary[],
@@ -213,21 +245,55 @@ export function reloadError(error: unknown): ReloadFailure {
   return { ok: false, error: String(error), stage: "providers" };
 }
 
-export function createModelsDevCatalogTask(
-  fetchProviders?: FetchModelsDevProviders,
-): () => Promise<ModelsDevCatalog | undefined> {
-  let catalog: { readonly expiresAt: number; readonly task: Promise<ModelsDevCatalog | undefined> } | undefined;
-  return () => {
-    const now = Date.now();
-    if (catalog === undefined || catalog.expiresAt <= now) {
-      catalog = {
-        expiresAt: now + PRICE_CATALOG_TTL_MS,
-        task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
-          if (error instanceof Error) return undefined;
-          throw error;
-        }),
-      };
+export async function reloadSnapshot({
+  accountRemovals,
+  commitConfig,
+  configFile,
+  logger,
+  manager,
+  retainedOperations = [],
+}: {
+  readonly accountRemovals: AccountRemovalCoordinator;
+  readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
+  readonly configFile: AtomicConfigFile | undefined;
+  readonly logger: (entry: ConfigReloadLog) => void;
+  readonly manager: SnapshotManager;
+  readonly retainedOperations?: readonly PendingAccountOperation[];
+}): Promise<ConfigReloadResult> {
+  try {
+    const before = (manager.current() as Snapshot).summaries;
+    if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, "reload");
+    else {
+      const staged: PendingAccountOperation[] = [...retainedOperations];
+      const newlyStaged: PendingAccountOperation[] = [];
+      const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
+      let retired: RetiredProviderSnapshot | undefined;
+      try {
+        await configFile.transaction(async (current) => {
+          const previous = manager.current() as Snapshot;
+          const previousProviders = Object.fromEntries(
+            Object.entries(providerConfigRecord(previous.config)).filter(
+              ([providerId]) => !retainedProviderIds.has(providerId),
+            ),
+          );
+          const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
+          newlyStaged.push(...detected);
+          staged.push(...detected);
+          retired = await commitConfig(ConfigSchema.parse(current), "reload");
+          return { next: current, result: undefined };
+        });
+      } catch (error) {
+        if (retired !== undefined) void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
+        else if (error instanceof AtomicConfigCommitUncertainError) accountRemovals.scheduleRecovery(staged);
+        else accountRemovals.compensate(newlyStaged);
+        throw error;
+      }
+      void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
     }
-    return catalog.task;
-  };
+    return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
+  } catch (error) {
+    const result = reloadError(error);
+    logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
+    return result;
+  }
 }

@@ -68,7 +68,6 @@ describe("createConfigStore mutex", () => {
     });
 
     await store.mutateProviders((record) => ({ ...record, added: { kind: "api" } }));
-
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
     rmSync(dir, { recursive: true, force: true });
   });

@@ -19,10 +19,10 @@ DONE
 ## Size and Structure Audit
 
 - Every new production, test, and support file is at most 300 lines.
-- Largest new production file: `packages/server/src/server-state/index.ts` at 299 lines.
+- Largest new production file: `packages/server/src/server-state/snapshot.ts` at 299 lines.
 - Largest new test file: `packages/server/_test/plugin-runtime/materialize.test.ts` at 284 lines.
 - Modified legacy oversized tests all returned below their pre-task sizes:
-  - `config-store.test.ts`: 692 to 75 lines.
+  - `config-store.test.ts`: 692 to 74 lines, matching its actual pre-PR size.
   - `dashboard-providers-mutation.test.ts`: 695 to 486 lines.
   - `pipeline.test.ts`: 678 to 619 lines.
   - `server-reload.test.ts`: 309 to 119 lines.
@@ -33,21 +33,23 @@ DONE
 ## Verification
 
 - Required baseline was run before refactoring and passed.
-- `rtk bun run --filter @aio-proxy/server test:unit` — 376 passed, 0 failed, 1,177 assertions across 54 files.
+- `rtk bun run --filter @aio-proxy/server test:unit` — 378 passed, 0 failed, 1,179 assertions across 54 files.
+- `rtk bun x tsc --noEmit -p packages/server/tsconfig.json` — passed with no diagnostics.
 - `rtk bun run --filter @aio-proxy/types test:unit` — 99 passed, 1 skipped, 0 failed, 197 assertions across 7 files. This includes all 32 tests in `src/plugin.test.ts`.
 - `rtk bun run --filter @aio-proxy/types build` — passed; Rslib generated declarations and 12 distribution files.
-- `rtk bun run check` — exit 0; reported the existing 3 warnings and 51 informational diagnostics outside Task 8.
+- `rtk bun run check` — exit 0; reported 3 warnings and 61 informational diagnostics.
 - `rtk git diff --check` — passed.
 - The required line-count command passed; the production split ranges from 6 to 299 lines per file.
 
-## Server Build Command Mismatch
+## Server Typecheck Gate
 
-The brief requires `rtk bun run --filter @aio-proxy/server build`, but `@aio-proxy/server` has no `build` script, so Bun reports `No packages matched the filter` and exits 1. As compile evidence, `rtk bun x tsc --noEmit -p packages/server/tsconfig.json` was run after fixing the new Task 8 indexed-access error. Its remaining 13 diagnostics are the pre-existing errors in:
+The Server package has no `build` script. The authoritative plan and generated Task 8 brief now use the valid compile gate:
 
-- `packages/server/src/dashboard-routes/config.ts`
-- `packages/server/src/dashboard-routes/provider-mutation.ts`
+```text
+rtk bun x tsc --noEmit -p packages/server/tsconfig.json
+```
 
-No Task 8 file remains in the TypeScript diagnostic output.
+The dashboard request-log query now constructs exact optional properties, and provider mutation errors/indexed records satisfy the Server compiler options. The gate passes with no diagnostics.
 
 ## Self-review
 
@@ -58,4 +60,23 @@ No Task 8 file remains in the TypeScript diagnostic output.
 
 ## Concerns
 
-- The Server package still lacks the build script named by the Task 8 brief. This task does not add a new build system or resolve the unrelated dashboard TypeScript errors.
+- None.
+
+## Review Fixes
+
+- Restored plugin boundary record validation for both runtime results and raw transports. Arrays carrying forged `provider` or `invoke` properties are rejected.
+- Added two focused regression tests for those array-shaped boundary values.
+- Moved reload transaction staging, compensation, finalization, and failure mapping out of `server-state/index.ts` into `server-state/snapshot.ts`.
+- Moved provider summary/probe orchestration and status caching into `server-state/probe.ts`.
+- Moved private `Snapshot` type ownership from `server-state/types.ts` to `server-state/snapshot.ts`.
+- Reduced `server-state/index.ts` to 254 lines while keeping orchestration and public exports there; `snapshot.ts` remains within the limit at 299 lines.
+- Restored `packages/server/_test/config-store.test.ts` to 74 lines without removing a test or assertion.
+- Corrected the Task 8 command in both `docs/superpowers/plans/2026-07-17-oauth-plugin-main-compliance.md` and `.superpowers/sdd/task-8-brief.md`.
+
+## Review RED/GREEN Evidence
+
+- RED: the new focused capability tests reported 2 passed and 2 failed because arrays carrying `provider` and `invoke` properties crossed the plugin boundary.
+- GREEN: the focused capability suite passed 4 tests after adding record guards.
+- The Server no-emit gate initially reproduced 13 diagnostics in dashboard request-log and provider-mutation code. After the minimal typing fixes it passed with no diagnostics, and the 40 focused dashboard tests passed.
+- The state/reload/probe focused verification passed 86 tests after extraction.
+- One concurrent verification attempt ran Server no-emit while the Types build was cleaning/regenerating declarations and produced `TS6305` dependency-output errors. That raced result was discarded; after Types build completed, the same Server no-emit command passed in isolation.

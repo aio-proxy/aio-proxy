@@ -4,28 +4,15 @@ import type {
   ModelsDevCatalog,
   PluginLogSink,
   PluginPackageImporter,
-  PluginRegistrySnapshot,
   PluginRepository,
   Router,
 } from "@aio-proxy/core";
 import type { RequestLogStore } from "@aio-proxy/core/db";
-import type {
-  Config,
-  DashboardEvent,
-  DashboardPluginSummary,
-  DashboardProviderSummary,
-  ProviderState,
-} from "@aio-proxy/types";
+import type { Config, DashboardEvent, DashboardPluginSummary, DashboardProviderSummary } from "@aio-proxy/types";
 import type { ConfigStore } from "../config-store";
 import type { DashboardEventHub, DashboardEventLimits } from "../dashboard-events";
-import type { CatalogJobDescriptor, PluginRuntimeCacheEntry } from "../plugin-runtime";
-import type { ProviderProbe } from "../provider-runtime";
-import type {
-  ProviderRouteSnapshot,
-  ProviderRouteSource,
-  RuntimeProviderInput,
-  RuntimeProviderInstance,
-} from "../runtime";
+import type { CatalogJobDescriptor } from "../plugin-runtime";
+import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
 
 export type ServerStateOptions = {
   readonly config: Config;
@@ -83,15 +70,3 @@ export type ServerState = ProviderRouteSource & {
 };
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };
-
-export type Snapshot = ProviderRouteSnapshot & {
-  readonly config: Config;
-  readonly plugins: PluginRegistrySnapshot;
-  readonly probes: ReadonlyMap<string, ProviderProbe>;
-  readonly summaries: readonly DashboardProviderSummary[];
-  readonly catalogJobs: readonly CatalogJobDescriptor[];
-  readonly runtimeCache: ReadonlyMap<string, PluginRuntimeCacheEntry>;
-  readonly providerStates: ReadonlyMap<string, ProviderState>;
-};
-
-export type ProviderStatus = { readonly last_latency: number | null; readonly last_status: string };

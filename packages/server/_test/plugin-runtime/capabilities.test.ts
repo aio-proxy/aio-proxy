@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from "../../src/plugin-runtime";
+import { createRuntimeProvider, rawCapability } from "../../src/plugin-runtime/capabilities";
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
@@ -12,6 +13,45 @@ test("maps every internal provider protocol to the plugin SDK protocol", () => {
     [ProviderProtocol.Anthropic]: "anthropic",
     [ProviderProtocol.Gemini]: "gemini",
   });
+});
+
+test("rejects an array runtime carrying a provider property", () => {
+  const provider = {
+    specificationVersion: "v4",
+    languageModel() {
+      throw new Error("not called");
+    },
+    imageModel() {
+      throw new Error("not called");
+    },
+    embeddingModel() {
+      throw new Error("not called");
+    },
+  };
+  const runtime = Object.assign([], { provider });
+
+  expect(() =>
+    createRuntimeProvider(
+      {
+        id: "person",
+        kind: ProviderKind.OAuth,
+        enabled: true,
+        plugin: "@example/oauth",
+        capability: "default",
+      },
+      runtime,
+      catalog,
+    ),
+  ).toThrow("Invalid ProviderV4 runtime");
+});
+
+test("rejects an array raw transport carrying an invoke property", () => {
+  const transport = Object.assign([], { invoke: async () => new Response("ok") });
+  const raw = rawCapability(() => transport as never, catalog);
+
+  expect(() => raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "model" })).toThrow(
+    PluginRawResolverError,
+  );
 });
 
 test("plugin raw capability receives catalog metadata and rejects malformed transports", async () => {

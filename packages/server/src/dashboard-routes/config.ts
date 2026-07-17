@@ -8,6 +8,7 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from "@aio-proxy/core";
+import type { RequestLogsQuery } from "@aio-proxy/core/db";
 import {
   DashboardRequestLogsPageSizeSchema,
   type ProviderMutationBody,
@@ -97,8 +98,26 @@ const RequestLogsQuerySchema = z.object({
 
 const requestLogsValidator = validator("query", (raw, context) => {
   const parsed = RequestLogsQuerySchema.safeParse(raw);
-  return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
+  return parsed.success
+    ? toRequestLogsQuery(parsed.data)
+    : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
 });
+
+function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): RequestLogsQuery {
+  return {
+    page: query.page,
+    pageSize: query.pageSize,
+    ...(query.startedAfter === undefined ? {} : { startedAfter: query.startedAfter }),
+    ...(query.completedBefore === undefined ? {} : { completedBefore: query.completedBefore }),
+    ...(query.requestId === undefined ? {} : { requestId: query.requestId }),
+    ...(query.outcome === undefined ? {} : { outcome: query.outcome }),
+    ...(query.inboundProtocol === undefined ? {} : { inboundProtocol: query.inboundProtocol }),
+    ...(query.requestedModelId === undefined ? {} : { requestedModelId: query.requestedModelId }),
+    ...(query.finalProviderId === undefined ? {} : { finalProviderId: query.finalProviderId }),
+    ...(query.finalModelId === undefined ? {} : { finalModelId: query.finalModelId }),
+    ...(query.finalStatusCode === undefined ? {} : { finalStatusCode: query.finalStatusCode }),
+  };
+}
 
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()

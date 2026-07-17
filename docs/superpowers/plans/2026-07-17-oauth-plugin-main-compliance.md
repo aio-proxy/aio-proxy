@@ -880,12 +880,12 @@ Apply the same rule to `packages/types/_test/schemas.test.ts`: move OAuth plugin
 
 ```bash
 rtk bun run --filter @aio-proxy/server test:unit
-rtk bun run --filter @aio-proxy/server build
+rtk bun x tsc --noEmit -p packages/server/tsconfig.json
 rtk bun run --filter @aio-proxy/types test:unit
 rtk proxy sh -c 'find packages/server/src/plugin-runtime packages/server/src/server-state packages/server/src/routes/pipeline -name "*.ts" -exec wc -l {} +'
 ```
 
-Expected: all tests/builds pass; every new file is at most 300 lines; route files still contain no provider-kind branching or fallback loops.
+Expected: all tests/typechecks pass; every new file is at most 300 lines; route files still contain no provider-kind branching or fallback loops.
 
 - [ ] **Step 7: Commit**
 

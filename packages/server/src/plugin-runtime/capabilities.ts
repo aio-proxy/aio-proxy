@@ -24,7 +24,12 @@ export function rawCapability(rawResolver: RawResolver | undefined, catalog: Mod
         ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
       });
       if (transport === undefined) return undefined;
-      if (typeof transport !== "object" || transport === null || typeof transport.invoke !== "function") {
+      if (
+        typeof transport !== "object" ||
+        transport === null ||
+        Array.isArray(transport) ||
+        typeof transport.invoke !== "function"
+      ) {
         throw new PluginRawResolverError();
       }
       return {
@@ -55,6 +60,7 @@ export function createRuntimeProvider(
   if (
     typeof result !== "object" ||
     result === null ||
+    Array.isArray(result) ||
     !("provider" in result) ||
     !validateProviderV4(result.provider)
   ) {

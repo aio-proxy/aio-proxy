@@ -1,10 +1,12 @@
 import { dirname } from "node:path";
 import {
-  AtomicConfigCommitUncertainError,
   AtomicConfigFile,
+  createModelsDevCatalog,
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
+  type FetchModelsDevProviders,
+  type ModelsDevCatalog,
   type PendingAccountOperation,
   type PluginLogSink,
   RECOVERY_DRAIN_RETRY_MS,
@@ -12,13 +14,8 @@ import {
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import {
-  type Config,
-  ConfigSchema,
-  type DashboardPluginSummary,
-  type DashboardProviderSummary,
-} from "@aio-proxy/types";
-import { asProviderRecord, createAccountRemovalCoordinator } from "../account-removal";
+import { type Config, ConfigSchema, type DashboardPluginSummary } from "@aio-proxy/types";
+import { createAccountRemovalCoordinator } from "../account-removal";
 import { CatalogScheduler } from "../catalog-scheduler";
 import { createConfigStore } from "../config-store";
 import { watchConfigFile } from "../config-watcher";
@@ -29,28 +26,26 @@ import { providerDiff } from "../provider-runtime";
 import { createRequestRecorder } from "../request-recorder";
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
 import { createUsageCapture } from "../usage-capture";
-import { mergeStatus, runProbe } from "./probe";
+import { createProviderSummaries } from "./probe";
 import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
 import {
   buildSnapshot,
   buildSnapshotWithProviders,
-  createModelsDevCatalogTask,
   providerConfigRecord,
-  reloadError,
+  reloadSnapshot,
+  type Snapshot,
 } from "./snapshot";
 import type {
   ConfigReloadLog,
   ConfigReloadResult,
   InternalServerStateOptions,
-  ProviderStatus,
-  ProviderSummaryOptions,
   ServerState,
   ServerStateOptions,
-  Snapshot,
 } from "./types";
 
 const defaultLogger = (entry: ConfigReloadLog): void => console.error(JSON.stringify(entry));
 const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
+const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
@@ -60,7 +55,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const testHooks = (options as InternalServerStateOptions).__test;
   const createRouter =
     testHooks?.createRouter ?? ((providers: readonly RuntimeProviderInstance[]) => new Router(providers));
-  const statuses = new Map<string, ProviderStatus>();
   const events = createDashboardEventHub(options.eventLimits);
   const dbHandle = openServerDb(options);
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
@@ -159,44 +153,8 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     return retired;
   }
 
-  async function reloadNow(retainedOperations: readonly PendingAccountOperation[] = []): Promise<ConfigReloadResult> {
-    try {
-      const before = (manager.current() as Snapshot).summaries;
-      if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, "reload");
-      else {
-        const staged: PendingAccountOperation[] = [...retainedOperations];
-        const newlyStaged: PendingAccountOperation[] = [];
-        const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
-        let retired: RetiredProviderSnapshot | undefined;
-        try {
-          await configFile.transaction(async (current) => {
-            const previous = manager.current() as Snapshot;
-            const previousProviders = Object.fromEntries(
-              Object.entries(providerConfigRecord(previous.config)).filter(
-                ([providerId]) => !retainedProviderIds.has(providerId),
-              ),
-            );
-            const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
-            newlyStaged.push(...detected);
-            staged.push(...detected);
-            retired = await commitConfig(ConfigSchema.parse(current), "reload");
-            return { next: current, result: undefined };
-          });
-        } catch (error) {
-          if (retired !== undefined) void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
-          else if (error instanceof AtomicConfigCommitUncertainError) accountRemovals.scheduleRecovery(staged);
-          else accountRemovals.compensate(newlyStaged);
-          throw error;
-        }
-        void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
-      }
-      return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
-    } catch (error) {
-      const result = reloadError(error);
-      logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
-      return result;
-    }
-  }
+  const reloadNow = (retainedOperations: readonly PendingAccountOperation[] = []) =>
+    reloadSnapshot({ accountRemovals, commitConfig, configFile, logger, manager, retainedOperations });
 
   recovery = createRecovery({
     configFile,
@@ -230,28 +188,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     }
   }
 
-  async function providerSummaries({
-    filter,
-    probe,
-  }: ProviderSummaryOptions): Promise<readonly DashboardProviderSummary[]> {
-    const lease = manager.acquire();
-    try {
-      const active = lease.snapshot as Snapshot;
-      const rows = active.summaries.filter((provider) => filter === undefined || provider.id === filter);
-      if (!probe) return rows.map((provider) => mergeStatus(provider, statuses.get(provider.id)));
-      return await Promise.all(
-        rows.map(async (provider) => {
-          const started = performance.now();
-          const probeStatus = await runProbe(provider.id, active.probes);
-          const status = { last_latency: Math.round(performance.now() - started), last_status: probeStatus };
-          statuses.set(provider.id, status);
-          return { ...provider, ...status, probe: probeStatus };
-        }),
-      );
-    } finally {
-      lease.release();
-    }
-  }
+  const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow());
   const watcher =
@@ -289,7 +226,25 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
-export { createModelsDevCatalogTask } from "./snapshot";
+export function createModelsDevCatalogTask(
+  fetchProviders?: FetchModelsDevProviders,
+): () => Promise<ModelsDevCatalog | undefined> {
+  let catalog: { readonly expiresAt: number; readonly task: Promise<ModelsDevCatalog | undefined> } | undefined;
+  return () => {
+    const now = Date.now();
+    if (catalog === undefined || catalog.expiresAt <= now) {
+      catalog = {
+        expiresAt: now + PRICE_CATALOG_TTL_MS,
+        task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
+          if (error instanceof Error) return undefined;
+          throw error;
+        }),
+      };
+    }
+    return catalog.task;
+  };
+}
+
 export type {
   ConfigReloadLog,
   ConfigReloadResult,
