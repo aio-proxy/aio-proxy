@@ -63,7 +63,7 @@
 | --- | --- |
 | Icon 所有权 | 属于 `OAuthAdapter` capability，不属于 plugin package metadata |
 | Icon 写法 | 一个字符串联合：Lobe key、HTTP/HTTPS URL 或受限图片 data URL |
-| Lobe key 类型 | `plugin-sdk` 的 Rslib plugin 在 build 内扫描依赖、写入 build cache，并由 bundled declaration 内联精确 union |
+| Lobe key 类型 | `plugin-sdk` 的 Rslib plugin 在 build 内扫描依赖、写入 build cache，通过 `dts.alias` 供 declaration emit 使用，并由 bundled declaration 内联精确 union |
 | Lobe key 构建入口 | `bun run build`/`bun run preflight` 是唯一权威 declaration 构建；不增加独立 codegen script 或 postinstall |
 | Lobe key 运行时校验 | 不发布完整 key 列表；只校验 slug 语法，精确存在性由 TypeScript union 保证 |
 | 非法 icon | 丢弃 icon 并记录结构化警告；插件和 capability 继续加载 |
@@ -181,8 +181,11 @@ build-owned Rslib plugin。该 plugin 是生成入口；仓库不增加 `generat
 
 4. SDK 源码通过一个不公开的稳定 specifier 引用 `LobeIconKey`。普通源码 tsconfig 将该
    specifier 指向宽 placeholder，使尚未 build 的 `plugin-sdk` 源码和编辑器仍可解析类型。
-5. Rslib plugin 在 cache 中生成一个继承 package tsconfig 的派生 tsconfig，并把同一
-   specifier 改指向精确类型模块。Declaration generation 只使用该派生 tsconfig。
+5. `plugin-sdk` 的 Rslib 配置把同一 specifier 通过 `dts.alias` 指向 cache 中的精确类型模块。
+   当前 Rslib 的 declaration plugin 会让 `dts.alias` 覆盖同名 tsconfig `paths`，因此 build
+   declaration 使用精确模块，而源码编辑器继续使用 placeholder。这里不生成派生 tsconfig：
+   Rslib 在 Rsbuild plugin `setup` 之前读取 `source.tsconfigPath`，由 plugin 生成该文件存在
+   生命周期时序问题。
 6. `plugin-sdk` 单独启用 `dts.bundle: true`；API Extractor 将精确 union 内联进最终
    `dist/index.d.ts`。共享 Rslib 配置和其他 workspace package 继续使用 bundleless dts。
 7. 若 Rspack 在类型擦除前请求该私有 specifier，plugin 可以通过 `api.resolve` 将其指向
