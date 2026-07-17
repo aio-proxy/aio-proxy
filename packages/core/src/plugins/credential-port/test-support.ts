@@ -6,7 +6,7 @@ import type { Diagnostic } from "@aio-proxy/types";
 import { type OpenDbHandle, openDb } from "../../db";
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
 import { createCredentialPort } from "../index";
-import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository";
+import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository/index";
 
 function account(providerId: string, credential: unknown = { token: "initial-secret" }): AccountWrite {
   return {

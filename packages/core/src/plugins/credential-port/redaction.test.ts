@@ -3,7 +3,7 @@ import { zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import type { PluginLogSink } from "../diagnostic";
 import { CredentialValidationError } from "../index";
-import type { PluginRepository } from "../repository";
+import type { PluginRepository } from "../repository/index";
 import { createFixtureScope, port } from "./test-support";
 
 const fixtures = createFixtureScope();

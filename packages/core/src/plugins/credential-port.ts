@@ -3,7 +3,7 @@ import { providerLoginCommand } from "@aio-proxy/types";
 import { delay } from "es-toolkit/promise";
 import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
 import { redactPluginError } from "./diagnostic";
-import type { PluginRepository, StoredAccount } from "./repository";
+import type { PluginRepository, StoredAccount } from "./repository/index";
 import { parsePluginSchema } from "./schema";
 
 const REFRESH_LEASE_MS = 45_000;

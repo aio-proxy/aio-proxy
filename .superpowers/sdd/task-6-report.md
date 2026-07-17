@@ -132,7 +132,7 @@ Result: exit 0; declaration generation succeeded; 89 library files generated.
 rtk bun test --reporter=dot packages/core
 ```
 
-Result: 463 pass, 0 fail, 1,172 assertions across 63 files.
+Result: 464 pass, 0 fail, 1,176 assertions across 64 files.
 
 ### Focused Biome
 
@@ -170,12 +170,13 @@ The pre-existing modification to `.superpowers/sdd/task-4-report.md` was preserv
 
 ## Review closure
 
-The post-implementation review identified and closed four gaps:
+The post-implementation review identified and closed five gaps:
 
 1. Authorization carrier lookup again distinguishes WeakMap membership from a stored value. An authorization port rejection with `undefined` is now rethrown as `undefined` instead of being replaced with `OAuthAdapterLoginError`.
 2. `preflight` now lives in `login.ts`. Authorization invocation and preservation live in `deadline.ts`, account option parsing lives in `validation.ts`, and superseded-compensation diagnostic construction lives in `recovery.ts`. This keeps `validation.ts` limited to parsing, capability checks, staged-write validation, login-result validation, and in-memory credential validation.
 3. `credential-port/test-support.ts` now exports only `createFixtureScope`, `deferred`, and `port`, each shared by at least two test files. Process helpers moved to `concurrency.test.ts`, renewal-failure helpers moved to `lease-loss.test.ts`, and credential mutation moved to `redaction.test.ts`.
 4. Credential-port temporary directories are owned by per-test-file fixture scopes. Each file's `afterEach` removes only directories created through its own scope, so concurrently running files cannot delete one another's active SQLite directory. The obsolete shared write-only home tracking was removed.
+5. Every Core import or export targeting the moved `account-login`, `loader`, and `repository` directories now uses an explicit `/index` specifier. This keeps the root package API unchanged while making unbundled ESM JavaScript and declaration emission resolve the directory entry points deterministically.
 
 ### Authorization regression RED/GREEN
 
@@ -200,3 +201,19 @@ rtk bun test packages/core/src/plugins/credential-port/concurrency.test.ts
 Before `createFixtureScope` existed, the new isolation case failed at module load with `Export named 'createFixtureScope' not found`: 0 pass, 1 fail, 1 error.
 
 After adding per-file scopes, the same file passed 8 tests with 20 assertions. The regression proves that cleaning one scope removes its directory while a second scope's directory remains active. The complete credential-port suite passed 19 tests with 78 assertions, and the final 15-file focused suite passed 104 tests with 362 assertions.
+
+### Built package entry regression RED/GREEN
+
+Task 7's CLI baseline exposed an emitted-package failure where `dist/plugins/index.js` could target sibling files such as `./account-login.js` even though the moved implementation is emitted at `account-login/index.js`.
+
+The new artifact smoke test rebuilds Core, scans every emitted `.js` and `.d.ts` import/export for bare `account-login`, `loader`, or `repository` directory targets, then dynamically imports `packages/core/dist/index.js` in a fresh Bun process and verifies functions exported from all three moved modules.
+
+Focused RED command:
+
+```bash
+rtk bun test packages/core/_test/build-entry.test.ts
+```
+
+Before explicit `/index` specifiers, the audit failed with ten unresolved emitted declaration targets across `plugins/index.d.ts`, `builtins.d.ts`, `credential-port.d.ts`, and account-login/credential-port declarations: 0 pass, 1 fail.
+
+After updating every Core source and legacy Core test caller, the smoke passed 1 test with 4 assertions. A standalone Core build generated 89 files and exited 0. The exact four-file Task 7 CLI baseline, run with an isolated temporary `AIO_PROXY_HOME` to avoid the user's newer schema-6 database, passed 121 tests with 318 assertions. The final full Core suite passed 464 tests with 1,176 assertions across 64 files.

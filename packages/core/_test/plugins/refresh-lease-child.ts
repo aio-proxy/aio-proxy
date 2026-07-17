@@ -1,7 +1,7 @@
 import { zod } from "@aio-proxy/plugin-sdk";
 import { openDb } from "../../src/db";
 import { createCredentialPort } from "../../src/plugins/credential-port";
-import { createPluginRepository } from "../../src/plugins/repository";
+import { createPluginRepository } from "../../src/plugins/repository/index";
 
 const [mode, home, providerId, argument, delayArgument] = process.argv.slice(2);
 if (mode === undefined || home === undefined || providerId === undefined) {

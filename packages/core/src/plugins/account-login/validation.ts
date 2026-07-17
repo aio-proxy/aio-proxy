@@ -1,6 +1,6 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
-import type { StoredAccount } from "../repository";
+import type { StoredAccount } from "../repository/index";
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
 import {

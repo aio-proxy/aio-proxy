@@ -8,7 +8,7 @@ import { type OpenDbHandle, openDb } from "../../db";
 import { AtomicConfigCommitUncertainError, AtomicConfigFile, digestProviderEntry } from "../config-file";
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
 import { createPluginRegistryHost, type PluginRegistry } from "../registry";
-import { createPluginRepository, type PluginRepository } from "../repository";
+import { createPluginRepository, type PluginRepository } from "../repository/index";
 import {
   ABSENT_PROVIDER_DIGEST,
   AccountCleanupPendingError,

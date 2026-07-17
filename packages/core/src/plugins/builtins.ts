@@ -1,7 +1,7 @@
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from "@aio-proxy/plugin-github-copilot";
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "@aio-proxy/plugin-openai-chatgpt";
 import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import type { BuiltInPluginDefinition } from "./loader";
+import type { BuiltInPluginDefinition } from "./loader/index";
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   "@aio-proxy/plugin-github-copilot",

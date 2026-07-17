@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { definePlugin, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
 import { npmPackageCacheDir } from "../../src/npm";
 import type { DiagnosticFactory } from "../../src/plugins/diagnostic";
-import { loadPluginRegistry } from "../../src/plugins/loader";
+import { loadPluginRegistry } from "../../src/plugins/loader/index";
 
 const originalHome = process.env.AIO_PROXY_HOME;
 const home = mkdtempSync(`${tmpdir()}/aio-proxy-plugin-registry-`);

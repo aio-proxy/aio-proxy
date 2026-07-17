@@ -3,7 +3,7 @@ import { zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import { openDb } from "../../db";
 import { CredentialRefreshLeaseLostError, CredentialRefreshTimeoutError } from "../index";
-import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository";
+import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository/index";
 import { createFixtureScope, deferred, port } from "./test-support";
 
 const fixtures = createFixtureScope();

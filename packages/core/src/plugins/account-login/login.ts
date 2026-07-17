@@ -4,7 +4,7 @@ import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProvider
 import { type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
 import { resolveProviderId } from "../provider-id";
 import type { PluginRegistry } from "../registry";
-import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository";
+import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository/index";
 import {
   CATALOG_DISCOVERY_TIMEOUT_MS,
   childDeadline,

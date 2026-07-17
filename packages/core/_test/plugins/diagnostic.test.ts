@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { createPluginDiagnosticFactory, type DiagnosticFactory, redactPluginError } from "../../src/plugins/diagnostic";
-import { loadPluginRegistry } from "../../src/plugins/loader";
+import { loadPluginRegistry } from "../../src/plugins/loader/index";
 
 describe("redactPluginError", () => {
   test("removes OAuth material, URLs, causes, stacks, and arbitrary third-party secrets", () => {

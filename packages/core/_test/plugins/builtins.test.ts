@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { createEmbeddedBuiltIns } from "../../src/plugins/builtins";
-import { loadPluginRegistry } from "../../src/plugins/loader";
+import { loadPluginRegistry } from "../../src/plugins/loader/index";
 
 const diagnostics = (code: string) => ({
   code,
