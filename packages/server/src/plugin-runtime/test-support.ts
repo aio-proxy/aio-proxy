@@ -13,7 +13,7 @@ import {
   type MaterializePluginProviderOptions,
   materializePluginProvider as materializePluginProviderWithDigest,
   pluginOptionsIdentityDigest,
-} from "../../src/plugin-runtime";
+} from "./index";
 
 export const homes: string[] = [];
 const handles: OpenDbHandle[] = [];

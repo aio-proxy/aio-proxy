@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from "../../src/plugin-runtime";
+import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from "./index";
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);

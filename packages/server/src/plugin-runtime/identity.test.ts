@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
-import { pluginOptionsIdentityDigest } from "../../src/plugin-runtime";
+import { pluginOptionsIdentityDigest } from "./index";
 import {
   catalog,
   cleanup,

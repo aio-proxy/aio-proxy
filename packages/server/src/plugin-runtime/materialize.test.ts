@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { loadPluginRegistry, Router } from "@aio-proxy/core";
 import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
-import { createServerState } from "../../src/server-state";
+import { createServerState } from "../server-state";
 import { cleanup, diagnostics, homes, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
