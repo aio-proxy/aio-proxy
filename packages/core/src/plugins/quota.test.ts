@@ -63,19 +63,27 @@ describe("validateOAuthQuotaSnapshot", () => {
     expect(result.resetCredits?.availableCount).toBe(7);
   });
 
-  test("allows repeated sibling values and keeps item and reset-credit ID namespaces separate", () => {
-    const label = { default: "Shared", "zh-Hans": "共享" };
-    const result = validateOAuthQuotaSnapshot({
-      items: [
-        { id: "shared", label },
-        { id: "other", label },
-      ],
-      resetCredits: { availableCount: 1, items: [{ id: "shared" }] },
-    });
+  test("cleans up item record ancestors before checking duplicate IDs", () => {
+    const item = { id: "same", label: "Shared" };
+    expectInvalid({ items: [item, item] }, ["items", 1, "id"]);
+  });
 
-    expect(result.items[0]?.label).toEqual(label);
-    expect(result.items[1]?.label).toEqual(label);
-    expect(result.items[0]?.label).not.toBe(result.items[1]?.label);
+  test("cleans up array ancestors between root and reset-credit items", () => {
+    const items: [] = [];
+    const input = { items, resetCredits: { availableCount: 0, items } };
+
+    expect(validateOAuthQuotaSnapshot(input)).toEqual(input);
+  });
+
+  test("preserves nonblank item IDs including surrounding whitespace", () => {
+    const result = validateOAuthQuotaSnapshot({ items: [{ id: "  unchanged  ", label: "Whitespace" }] });
+    expect(result.items[0]?.id).toBe("  unchanged  ");
+  });
+
+  test("uses the fixed quota validation error name and message", () => {
+    const error = new OAuthQuotaValidationError([]);
+    expect(error.name).toBe("OAuthQuotaValidationError");
+    expect(error.message).toBe("Plugin quota snapshot is invalid");
   });
 
   test.each([
