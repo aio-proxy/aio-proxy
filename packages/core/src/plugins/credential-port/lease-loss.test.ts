@@ -1,25 +1,121 @@
-import {
-  account,
-  afterEach,
-  CredentialRefreshLeaseLostError,
-  CredentialRefreshTimeoutError,
-  createPluginRepository,
-  deferred,
-  expect,
-  expectCurrentValidationRenewalFailure,
-  expectRenewalFailure,
-  jest,
-  openDb,
-  openFixture,
-  port,
-  providerLoginCommand,
-  test,
-  zod,
-} from "./test-support";
+import { afterEach, expect, jest, test } from "bun:test";
+import { zod } from "@aio-proxy/plugin-sdk";
+import { providerLoginCommand } from "@aio-proxy/types";
+import { openDb } from "../../db";
+import { CredentialRefreshLeaseLostError, CredentialRefreshTimeoutError } from "../index";
+import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository";
+import { deferred, openFixture, port } from "./test-support";
 
 afterEach(() => {
   jest.useRealTimers();
 });
+
+function account(providerId: string, credential: unknown): AccountWrite {
+  return {
+    providerId,
+    plugin: "@aio-proxy/example",
+    capability: "oauth",
+    fingerprint: `${providerId}-fingerprint`,
+    options: {},
+    secrets: { clientSecret: "account-secret" },
+    credential,
+    label: "Example",
+    expiresAt: 1,
+    catalog: {
+      kind: "replace",
+      value: {
+        catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+        refreshedAt: 1,
+      },
+    },
+  };
+}
+
+async function expectRenewalFailure(renewRefreshLease: PluginRepository["renewRefreshLease"]): Promise<void> {
+  const { handle, repository } = openFixture();
+  const exchangeGate = deferred();
+  let signal: AbortSignal | undefined;
+  try {
+    const credentials = port({ ...repository, renewRefreshLease });
+    const current = await credentials.read();
+    jest.useFakeTimers();
+    const refreshing = credentials.refresh(current.revision, async (_snapshot, deadlineSignal) => {
+      signal = deadlineSignal;
+      await exchangeGate.promise;
+      return { value: { token: "must-not-be-written" } };
+    });
+    let rejection: unknown;
+    void refreshing.catch((error: unknown) => {
+      rejection = error;
+    });
+    jest.advanceTimersByTime(0);
+    for (let index = 0; index < 50 && signal === undefined; index++) await Promise.resolve();
+    expect(signal?.aborted).toBe(false);
+    jest.advanceTimersByTime(15_000);
+    for (let index = 0; index < 20 && rejection === undefined; index++) await Promise.resolve();
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain("refresh lease");
+    expect(signal?.aborted).toBe(true);
+    expect(repository.readAccount("provider-1")).toMatchObject({
+      credential: { token: "initial-secret" },
+      revision: current.revision,
+    });
+    expect(repository.tryAcquireRefreshLease("provider-1", "next-owner", Date.now(), Date.now() + 1_000)).toBe(true);
+  } finally {
+    exchangeGate.resolve();
+    for (let index = 0; index < 10; index++) await Promise.resolve();
+    handle.close();
+  }
+}
+
+async function expectCurrentValidationRenewalFailure(
+  renewRefreshLease: PluginRepository["renewRefreshLease"],
+  rejectLateValidation = false,
+): Promise<void> {
+  const { handle, repository } = openFixture();
+  const validationGate = deferred();
+  let validationStarted = false;
+  let exchanges = 0;
+  const schema = zod.object({ token: zod.string() }).superRefine(async () => {
+    validationStarted = true;
+    await validationGate.promise;
+    if (rejectLateValidation) throw new Error("late current validation failure");
+  });
+  const current = repository.readAccount("provider-1");
+  if (current === null) throw new Error("missing fixture account");
+  jest.useFakeTimers();
+  const refreshing = port({ ...repository, renewRefreshLease }, "provider-1", { schema }).refresh(
+    current.revision,
+    async () => {
+      exchanges += 1;
+      return { value: { token: "must-not-exchange" } };
+    },
+  );
+  let rejection: unknown;
+  void refreshing.catch((error: unknown) => {
+    rejection = error;
+  });
+  try {
+    jest.advanceTimersByTime(0);
+    for (let index = 0; index < 50 && !validationStarted; index++) await Promise.resolve();
+    expect(validationStarted).toBe(true);
+    jest.advanceTimersByTime(15_000);
+    for (let index = 0; index < 20 && rejection === undefined; index++) await Promise.resolve();
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain("refresh lease");
+    expect(exchanges).toBe(0);
+    expect(repository.readAccount("provider-1")).toMatchObject({
+      credential: { token: "initial-secret" },
+      revision: current.revision,
+    });
+    expect(repository.tryAcquireRefreshLease("provider-1", "next-owner", Date.now(), Date.now() + 1_000)).toBe(true);
+  } finally {
+    validationGate.resolve();
+    await refreshing.catch(() => {});
+    for (let index = 0; index < 10; index++) await Promise.resolve();
+    handle.close();
+  }
+}
 
 test("rejects terminally when an exchanged rotating token loses its lease without a revision winner", async () => {
   const { home, handle, repository } = openFixture();

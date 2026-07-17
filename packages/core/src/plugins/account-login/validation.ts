@@ -1,31 +1,19 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
-import { ConfigSchema, OAuthPluginProviderSchema, providerLoginCommand } from "@aio-proxy/types";
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
-import type { PluginRepository, StoredAccount } from "../repository";
+import { ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
+import type { StoredAccount } from "../repository";
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
 import {
   AccountCleanupPendingError,
+  AccountOptionsValidationError,
   type OAuthCapabilityReference,
-  OAuthCapabilityRequiredError,
   OAuthLoginResultValidationError,
   ProviderAccountAlreadyExistsError,
-  ProviderCapabilityTargetMismatchError,
   ProviderConfigInvalidError,
 } from "./errors";
-import type { LoginOAuthAccountOptions } from "./login";
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
-export type Preflight = {
-  readonly capability: OAuthCapabilityReference;
-  readonly account?: StoredAccount;
-  readonly runtimeRevision?: number;
-  readonly fingerprint?: string;
-  readonly publicOptions: Readonly<Record<string, unknown>>;
-  readonly secrets: Readonly<Record<string, unknown>>;
-};
-
 export function isRecord(value: unknown): value is PlainRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -76,6 +64,19 @@ export function stringLeaves(value: unknown, seen = new Set<object>()): string[]
   } finally {
     seen.delete(value);
   }
+}
+export async function validatedAccountOptions<Options, Credential>(
+  adapter: OAuthAdapter<Options, Credential>,
+  rendered: { readonly publicValues: unknown; readonly secrets: unknown },
+  signal: AbortSignal,
+) {
+  const { publicValues, secrets } = rendered;
+  if (!isRecord(publicValues) || !isRecord(secrets)) throw new AccountOptionsValidationError();
+  const parsed = await withAbort(signal, () =>
+    parsePluginSchema(adapter.account.options.schema, { ...publicValues, ...secrets }),
+  );
+  if (!parsed.ok) throw new AccountOptionsValidationError();
+  return parsed;
 }
 export async function validatedLoginResult<Credential>(
   adapter: OAuthAdapter<unknown, Credential>,
@@ -147,44 +148,6 @@ export function inMemoryCredentialPort<Credential>(
     current: () => value,
   };
 }
-export async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
-  signal.throwIfAborted();
-  if (options.targetProviderId === undefined) {
-    if (options.capability === undefined) throw new OAuthCapabilityRequiredError();
-    return { capability: options.capability, publicOptions: {}, secrets: {} };
-  }
-  return options.config.transaction(
-    async (current) => {
-      signal.throwIfAborted();
-      const entry = structuredEntry(providerRecord(current)[options.targetProviderId as string]);
-      const account = options.repository.readAccount(options.targetProviderId as string);
-      if (entry === null || account === null) throw new AccountCleanupPendingError(options.targetProviderId as string);
-      const targetCapability = capabilityOf(entry);
-      if (!accountMatches(account, targetCapability))
-        throw new AccountCleanupPendingError(options.targetProviderId as string);
-      if (options.capability !== undefined && !sameCapability(options.capability, targetCapability)) {
-        throw new ProviderCapabilityTargetMismatchError(options.capability, targetCapability);
-      }
-      const pendingDelete = options.repository
-        .listPendingAccountOperations()
-        .find((operation) => operation.providerId === options.targetProviderId && operation.kind === "delete");
-      signal.throwIfAborted();
-      if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
-      return {
-        next: current,
-        result: {
-          capability: targetCapability,
-          account,
-          runtimeRevision: account.runtimeRevision,
-          fingerprint: account.fingerprint,
-          publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
-          secrets: isRecord(account.secrets) ? account.secrets : {},
-        },
-      };
-    },
-    { signal },
-  );
-}
 export function providerEntry(
   plugin: string,
   capability: string,
@@ -207,30 +170,4 @@ export function duplicateOrCleanup(account: StoredAccount, providers: Record<str
   return entry !== null && accountMatches(account, capabilityOf(entry))
     ? new ProviderAccountAlreadyExistsError(account.providerId)
     : new AccountCleanupPendingError(account.providerId);
-}
-export function safeSupersededDiagnostic(
-  providerId: string,
-  repository: PluginRepository,
-  diagnostics?: DiagnosticFactory,
-  logger?: PluginLogSink,
-  now = Date.now(),
-): void {
-  if (repository.readAccount(providerId) === null) return;
-  const suggestedCommand = providerLoginCommand(providerId);
-  repository.writeDiagnostic(
-    providerId,
-    diagnostics?.("AUTHORIZATION_FAILED", { providerId, retryable: true, suggestedCommand }) ?? {
-      code: "AUTHORIZATION_FAILED",
-      summary: "ACCOUNT_OPERATION_SUPERSEDED",
-      retryable: true,
-      occurredAt: new Date(now).toISOString(),
-      suggestedCommand,
-    },
-  );
-  logger?.({
-    event: "plugin.account.compensation.superseded",
-    code: "AUTHORIZATION_FAILED",
-    context: { providerId },
-    error: { name: "Error", message: "ACCOUNT_OPERATION_SUPERSEDED" },
-  });
 }

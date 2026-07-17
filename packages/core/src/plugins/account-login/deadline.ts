@@ -1,5 +1,5 @@
-import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
-import { OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from "./errors";
+import type { AuthorizationPort, LocalizedText, OAuthAdapter } from "@aio-proxy/plugin-sdk";
+import { OAuthAdapterLoginError, OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from "./errors";
 
 export const LOGIN_TIMEOUT_MS = 20 * 60_000;
 export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
@@ -30,8 +30,30 @@ export function protectedAuthorization(authorization: AuthorizationPort): Author
   };
 }
 
-export function preservedAuthorizationError(error: unknown): unknown | undefined {
-  return typeof error === "object" && error !== null ? hostAuthorizationErrors.get(error) : undefined;
+export function preservedAuthorizationError(
+  error: unknown,
+): { readonly found: false } | { readonly found: true; readonly value: unknown } {
+  if (typeof error !== "object" || error === null || !hostAuthorizationErrors.has(error)) return { found: false };
+  return { found: true, value: hostAuthorizationErrors.get(error) };
+}
+
+export async function loginWithProtectedAuthorization<Options, Credential>(
+  adapter: OAuthAdapter<Options, Credential>,
+  createAuthorization: () => AuthorizationPort,
+  progress: (message: LocalizedText) => void,
+  signal: AbortSignal,
+  options: Options,
+): Promise<Awaited<ReturnType<OAuthAdapter<Options, Credential>["login"]>>> {
+  try {
+    return await withAbort(signal, () =>
+      adapter.login({ authorization: protectedAuthorization(createAuthorization()), progress, signal }, options),
+    );
+  } catch (error) {
+    if (signal.aborted) throw signal.reason;
+    const preserved = preservedAuthorizationError(error);
+    if (preserved.found) throw preserved.value;
+    throw new OAuthAdapterLoginError();
+  }
 }
 
 export function deadlineController(parent?: AbortSignal): { readonly signal: AbortSignal; readonly close: () => void } {

@@ -115,6 +115,37 @@ test("authorization failure preserves the old account revision", async () => {
   expect(state.repository.readAccount("person")).toMatchObject({ revision: 1, runtimeRevision: 1 });
 });
 
+test("authorization rejection preserves undefined as the rejection value", async () => {
+  const state = fixture();
+  const outcome = await loginOAuthAccount(
+    options(state, {
+      createAuthorization: () => ({
+        async presentDeviceCode() {
+          throw undefined;
+        },
+        async loopback() {
+          return { code: "unused", redirectUri: "http://127.0.0.1/callback" };
+        },
+      }),
+      registry: registry({
+        login: async ({ authorization }) => {
+          await authorization.presentDeviceCode({
+            url: "https://identity.example/device",
+            userCode: "CODE",
+            instructions: "Authorize",
+          });
+          throw new Error("unreachable");
+        },
+      }),
+    }),
+  ).then(
+    () => ({ status: "fulfilled" as const }),
+    (error: unknown) => ({ status: "rejected" as const, error }),
+  );
+
+  expect(outcome).toEqual({ status: "rejected", error: undefined });
+});
+
 test("explicit re-login rejects fingerprint mismatch without changing the old revision", async () => {
   const state = fixture();
   await createAccount(state);

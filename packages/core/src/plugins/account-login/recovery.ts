@@ -1,4 +1,4 @@
-import { ConfigSchema } from "@aio-proxy/types";
+import { ConfigSchema, providerLoginCommand } from "@aio-proxy/types";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
 import type { PendingAccountOperation, PluginRepository } from "../repository";
@@ -9,7 +9,6 @@ import {
   capabilityOf,
   isRecord,
   providerRecord,
-  safeSupersededDiagnostic,
   structuredEntry,
   validateStagedOAuthWrite,
 } from "./validation";
@@ -33,6 +32,33 @@ export type RecoverPendingAccountOperationsOptions =
       readonly deleteMarkerOnProviderPresent?: "complete" | "retain";
       readonly now?: () => number;
     };
+
+export function safeSupersededDiagnostic(
+  providerId: string,
+  repository: PluginRepository,
+  diagnostics?: DiagnosticFactory,
+  logger?: PluginLogSink,
+  now = Date.now(),
+): void {
+  if (repository.readAccount(providerId) === null) return;
+  const suggestedCommand = providerLoginCommand(providerId);
+  repository.writeDiagnostic(
+    providerId,
+    diagnostics?.("AUTHORIZATION_FAILED", { providerId, retryable: true, suggestedCommand }) ?? {
+      code: "AUTHORIZATION_FAILED",
+      summary: "ACCOUNT_OPERATION_SUPERSEDED",
+      retryable: true,
+      occurredAt: new Date(now).toISOString(),
+      suggestedCommand,
+    },
+  );
+  logger?.({
+    event: "plugin.account.compensation.superseded",
+    code: "AUTHORIZATION_FAILED",
+    context: { providerId },
+    error: { name: "Error", message: "ACCOUNT_OPERATION_SUPERSEDED" },
+  });
+}
 
 export async function deleteOAuthAccount(options: DeleteOAuthAccountOptions): Promise<PendingAccountOperation> {
   let staged: PendingAccountOperation | undefined;

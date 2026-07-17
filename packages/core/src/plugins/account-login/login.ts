@@ -1,29 +1,27 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from "@aio-proxy/plugin-sdk";
 import { validateModelCatalog } from "../catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
-import { redactPluginError } from "../diagnostic";
+import { type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
 import { resolveProviderId } from "../provider-id";
 import type { PluginRegistry } from "../registry";
 import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository";
-import { parsePluginSchema } from "../schema";
 import {
   CATALOG_DISCOVERY_TIMEOUT_MS,
   childDeadline,
   deadlineController,
-  preservedAuthorizationError,
-  protectedAuthorization,
+  loginWithProtectedAuthorization,
   withAbort,
 } from "./deadline";
 import {
   AccountCleanupPendingError,
-  AccountOptionsValidationError,
-  OAuthAdapterLoginError,
   type OAuthCapabilityReference,
+  OAuthCapabilityRequiredError,
   OAuthCapabilityUnavailableError,
   ProviderAccountChangedError,
+  ProviderCapabilityTargetMismatchError,
   ProviderFingerprintMismatchError,
 } from "./errors";
+import { safeSupersededDiagnostic } from "./recovery";
 import {
   accountMatches,
   capabilityOf,
@@ -31,13 +29,12 @@ import {
   inMemoryCredentialPort,
   isRecord,
   type PlainRecord,
-  preflight,
   providerEntry,
   providerRecord,
-  safeSupersededDiagnostic,
   sameCapability,
   stringLeaves,
   structuredEntry,
+  validatedAccountOptions,
   validatedLoginResult,
   validateStagedOAuthWrite,
 } from "./validation";
@@ -66,7 +63,52 @@ export type LoginOAuthAccountOptions = {
   readonly now?: () => number;
 };
 export type LoginOAuthAccountResult = { readonly providerId: string };
-
+type Preflight = {
+  readonly capability: OAuthCapabilityReference;
+  readonly account?: StoredAccount;
+  readonly runtimeRevision?: number;
+  readonly fingerprint?: string;
+  readonly publicOptions: Readonly<Record<string, unknown>>;
+  readonly secrets: Readonly<Record<string, unknown>>;
+};
+async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
+  signal.throwIfAborted();
+  const providerId = options.targetProviderId;
+  if (providerId === undefined) {
+    if (options.capability === undefined) throw new OAuthCapabilityRequiredError();
+    return { capability: options.capability, publicOptions: {}, secrets: {} };
+  }
+  return options.config.transaction(
+    async (current) => {
+      signal.throwIfAborted();
+      const entry = structuredEntry(providerRecord(current)[providerId]);
+      const account = options.repository.readAccount(providerId);
+      if (entry === null || account === null) throw new AccountCleanupPendingError(providerId);
+      const capability = capabilityOf(entry);
+      if (!accountMatches(account, capability)) throw new AccountCleanupPendingError(providerId);
+      if (options.capability !== undefined && !sameCapability(options.capability, capability)) {
+        throw new ProviderCapabilityTargetMismatchError(options.capability, capability);
+      }
+      const pendingDelete = options.repository
+        .listPendingAccountOperations()
+        .find((operation) => operation.providerId === providerId && operation.kind === "delete");
+      signal.throwIfAborted();
+      if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
+      return {
+        next: current,
+        result: {
+          capability,
+          account,
+          runtimeRevision: account.runtimeRevision,
+          fingerprint: account.fingerprint,
+          publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
+          secrets: isRecord(account.secrets) ? account.secrets : {},
+        },
+      };
+    },
+    { signal },
+  );
+}
 export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Promise<LoginOAuthAccountResult> {
   const deadline = deadlineController(options.signal);
   try {
@@ -82,29 +124,14 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
         signal: deadline.signal,
       }),
     );
-    if (!isRecord(rendered.publicValues) || !isRecord(rendered.secrets)) throw new AccountOptionsValidationError();
-    const parsedOptions = await withAbort(deadline.signal, () =>
-      parsePluginSchema(adapter.account.options.schema, { ...rendered.publicValues, ...rendered.secrets }),
+    const parsedOptions = await validatedAccountOptions(adapter, rendered, deadline.signal);
+    const loginResult = await loginWithProtectedAuthorization(
+      adapter,
+      () => options.createAuthorization(deadline.signal),
+      options.progress ?? (() => {}),
+      deadline.signal,
+      parsedOptions.value,
     );
-    if (!parsedOptions.ok) throw new AccountOptionsValidationError();
-    let loginResult: Awaited<ReturnType<typeof adapter.login>>;
-    try {
-      loginResult = await withAbort(deadline.signal, () =>
-        adapter.login(
-          {
-            authorization: protectedAuthorization(options.createAuthorization(deadline.signal)),
-            progress: options.progress ?? (() => {}),
-            signal: deadline.signal,
-          },
-          parsedOptions.value,
-        ),
-      );
-    } catch (error) {
-      if (deadline.signal.aborted) throw deadline.signal.reason;
-      const preserved = preservedAuthorizationError(error);
-      if (preserved !== undefined) throw preserved;
-      throw new OAuthAdapterLoginError();
-    }
     const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);

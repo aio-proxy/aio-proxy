@@ -1,14 +1,30 @@
-import {
-  childOutput,
-  childPath,
-  deferred,
-  diagnosticFactory,
-  expect,
-  openFixture,
-  port,
-  test,
-  waitForLine,
-} from "./test-support";
+import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
+import { deferred, openFixture, port } from "./test-support";
+
+const childPath = fileURLToPath(new URL("../../../_test/plugins/refresh-lease-child.ts", import.meta.url));
+
+async function childOutput(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promise<string> {
+  const [output, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (exitCode !== 0) throw new Error(`child failed (${exitCode}): ${stderr}`);
+  return output;
+}
+
+async function waitForLine(child: Bun.Subprocess<"ignore", "pipe", "pipe">, expected: string): Promise<void> {
+  const reader = child.stdout.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  while (!output.includes(expected)) {
+    const chunk = await reader.read();
+    if (chunk.done) throw new Error(`child exited before printing ${expected}`);
+    output += decoder.decode(chunk.value, { stream: true });
+  }
+  reader.releaseLock();
+}
 
 test("deduplicates concurrent refresh calls for one provider in one process", async () => {
   const { handle, repository } = openFixture();
@@ -170,7 +186,12 @@ test("refresh changes only credential revision and notifies once when clearing a
   const { handle, repository } = openFixture();
   let notifications = 0;
   try {
-    repository.writeDiagnostic("provider-1", diagnosticFactory()("CREDENTIAL_REFRESH_FAILED", { retryable: true }));
+    repository.writeDiagnostic("provider-1", {
+      code: "CREDENTIAL_REFRESH_FAILED",
+      summary: "Credential refresh failed",
+      retryable: true,
+      occurredAt: "2026-07-15T00:00:00.000Z",
+    });
     const credentials = port(repository, "provider-1", {
       onDiagnosticChanged: () => {
         notifications += 1;

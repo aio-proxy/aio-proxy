@@ -1,14 +1,21 @@
-import {
-  CredentialValidationError,
-  expect,
-  openFixture,
-  type PluginLogSink,
-  port,
-  providerLoginCommand,
-  refreshCredential,
-  test,
-  zod,
-} from "./test-support";
+import { expect, test } from "bun:test";
+import { zod } from "@aio-proxy/plugin-sdk";
+import { providerLoginCommand } from "@aio-proxy/types";
+import type { PluginLogSink } from "../diagnostic";
+import { CredentialValidationError } from "../index";
+import type { PluginRepository } from "../repository";
+import { openFixture, port } from "./test-support";
+
+function refreshCredential(repository: PluginRepository, expectedRevision: number, credential: unknown): void {
+  const owner = crypto.randomUUID();
+  const now = Date.now();
+  if (!repository.tryAcquireRefreshLease("provider-1", owner, now, now + 60_000)) throw new Error("lease unavailable");
+  try {
+    repository.compareAndSwapCredential("provider-1", expectedRevision, owner, credential);
+  } finally {
+    repository.releaseRefreshLease("provider-1", owner);
+  }
+}
 
 test("validates exchanged credentials before CAS and never puts credentials or original errors in diagnostics", async () => {
   const { handle, repository } = openFixture();

@@ -4,7 +4,7 @@
 
 Split the three oversized Core plugin modules into responsibility-focused private directories, moved the four legacy plugin test monoliths into the 15 required colocated test files, and preserved the public API and behavior.
 
-The final implementation keeps every handwritten production and test file below 300 lines. The largest target test is `repository/pending-operations.test.ts` at 280 lines; the largest target production file is `account-login/login.ts` at 273 lines.
+The final implementation keeps every handwritten production and test file at or below 300 lines. The largest target test is `credential-port/lease-loss.test.ts` at 291 lines; the largest target production file is `account-login/login.ts` at 300 lines.
 
 ## Baseline and TDD evidence
 
@@ -35,14 +35,14 @@ Command:
 rtk bun test packages/core/src/plugins/account-login packages/core/src/plugins/repository packages/core/src/plugins/loader packages/core/src/plugins/credential-port
 ```
 
-Final result:
+Initial split result:
 
 - 102 pass
 - 0 fail
 - 359 assertions
 - 15 test files
 
-The test and assertion counts exactly match the baseline.
+The initial split test and assertion counts exactly matched the baseline. A review-driven authorization regression test was added later, bringing the final focused totals to 103 tests and 360 assertions.
 
 ## Production split
 
@@ -51,8 +51,8 @@ The test and assertion counts exactly match the baseline.
 - `account-login/index.ts`: public surface only
 - `account-login/errors.ts`: exported errors and the private adapter error
 - `account-login/deadline.ts`: abort/deadline and authorization error handling
-- `account-login/validation.ts`: config/provider parsing, validation, preflight, and in-memory credential behavior
-- `account-login/login.ts`: login and re-login orchestration
+- `account-login/validation.ts`: config/provider parsing, validation, and in-memory credential behavior
+- `account-login/login.ts`: preflight plus login and re-login orchestration
 - `account-login/recovery.ts`: delete staging, pending-operation recovery, and orphan cleanup
 
 ### Repository
@@ -96,7 +96,7 @@ credential-port/redaction.test.ts
 
 Directory-local `test-support.ts` files hold fixtures shared by at least two colocated tests. Shared support does not install cross-file cleanup hooks because Bun runs the files concurrently and one file could otherwise close another file's SQLite or timer resources. Each fixture uses a unique temporary directory; `lease-loss.test.ts` owns its fake-timer reset.
 
-The credential refresh child-process helper remains at `packages/core/_test/plugins/refresh-lease-child.ts` and is referenced by the colocated credential-port support.
+The credential refresh child-process helper remains at `packages/core/_test/plugins/refresh-lease-child.ts` and is referenced directly by `credential-port/concurrency.test.ts`.
 
 ## Public API audit
 
@@ -116,7 +116,7 @@ Compared the old monolith exports at base commit `c3069f2f7a5a24de4535850ee2a249
 rtk bun test packages/core/src/plugins/account-login packages/core/src/plugins/repository packages/core/src/plugins/loader packages/core/src/plugins/credential-port
 ```
 
-Result: 102 pass, 0 fail, 359 assertions across 15 files.
+Result: 103 pass, 0 fail, 360 assertions across 15 files.
 
 ### Core build and declarations
 
@@ -132,7 +132,7 @@ Result: exit 0; declaration generation succeeded; 89 library files generated.
 rtk bun test --reporter=dot packages/core
 ```
 
-Result: 461 pass, 0 fail, 1,169 assertions across 63 files.
+Result: 462 pass, 0 fail, 1,170 assertions across 63 files.
 
 ### Focused Biome
 
@@ -160,10 +160,30 @@ rtk git diff --check
 Results:
 
 - Every target TypeScript file is at most 300 lines.
-- Largest test: 280 lines.
-- Largest production file: 273 lines.
+- Largest test: 291 lines.
+- Largest production file: 300 lines.
 - `git diff --check`: exit 0.
 
 ## Worktree hygiene
 
 The pre-existing modification to `.superpowers/sdd/task-4-report.md` was preserved and excluded from this task. Accidental edits to five `config-file` tests were restored exactly to base before final verification.
+
+## Review closure
+
+The post-implementation review identified and closed three gaps:
+
+1. Authorization carrier lookup again distinguishes WeakMap membership from a stored value. An authorization port rejection with `undefined` is now rethrown as `undefined` instead of being replaced with `OAuthAdapterLoginError`.
+2. `preflight` now lives in `login.ts`. Authorization invocation and preservation live in `deadline.ts`, account option parsing lives in `validation.ts`, and superseded-compensation diagnostic construction lives in `recovery.ts`. This keeps `validation.ts` limited to parsing, capability checks, staged-write validation, login-result validation, and in-memory credential validation.
+3. `credential-port/test-support.ts` now exports only `deferred`, `openFixture`, and `port`, each shared by at least two test files. Process helpers moved to `concurrency.test.ts`, renewal-failure helpers moved to `lease-loss.test.ts`, and credential mutation moved to `redaction.test.ts`.
+
+### Authorization regression RED/GREEN
+
+Focused RED command:
+
+```bash
+rtk bun test packages/core/src/plugins/account-login/relogin.test.ts
+```
+
+Before the fix, the new case failed with an `OAuthAdapterLoginError` where `{ status: "rejected", error: undefined }` was expected: 6 pass, 1 fail, 17 assertions.
+
+After restoring explicit carrier membership, the same file passed 7 tests with 17 assertions. The final 15-file focused suite passed 103 tests with 360 assertions.
