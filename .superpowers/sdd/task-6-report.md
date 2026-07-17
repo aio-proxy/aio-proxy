@@ -170,13 +170,14 @@ The pre-existing modification to `.superpowers/sdd/task-4-report.md` was preserv
 
 ## Review closure
 
-The post-implementation review identified and closed five gaps:
+The post-implementation review identified and closed six gaps:
 
 1. Authorization carrier lookup again distinguishes WeakMap membership from a stored value. An authorization port rejection with `undefined` is now rethrown as `undefined` instead of being replaced with `OAuthAdapterLoginError`.
 2. `preflight` now lives in `login.ts`. Authorization invocation and preservation live in `deadline.ts`, account option parsing lives in `validation.ts`, and superseded-compensation diagnostic construction lives in `recovery.ts`. This keeps `validation.ts` limited to parsing, capability checks, staged-write validation, login-result validation, and in-memory credential validation.
 3. `credential-port/test-support.ts` now exports only `createFixtureScope`, `deferred`, and `port`, each shared by at least two test files. Process helpers moved to `concurrency.test.ts`, renewal-failure helpers moved to `lease-loss.test.ts`, and credential mutation moved to `redaction.test.ts`.
 4. Credential-port temporary directories are owned by per-test-file fixture scopes. Each file's `afterEach` removes only directories created through its own scope, so concurrently running files cannot delete one another's active SQLite directory. The obsolete shared write-only home tracking was removed.
 5. Every Core import or export targeting the moved `account-login`, `loader`, and `repository` directories now uses an explicit `/index` specifier. This keeps the root package API unchanged while making unbundled ESM JavaScript and declaration emission resolve the directory entry points deterministically.
+6. The built-package smoke test is read-only. It audits and imports the already-built Core artifact without launching another Core build, so concurrent Turbo consumers cannot race with a nested build mutating the shared `dist` directory. Build ordering belongs to Turbo: `@aio-proxy/core#test:unit` depends on `build`.
 
 ### Authorization regression RED/GREEN
 
@@ -206,7 +207,7 @@ After adding per-file scopes, the same file passed 8 tests with 20 assertions. T
 
 Task 7's CLI baseline exposed an emitted-package failure where `dist/plugins/index.js` could target sibling files such as `./account-login.js` even though the moved implementation is emitted at `account-login/index.js`.
 
-The new artifact smoke test rebuilds Core, scans every emitted `.js` and `.d.ts` import/export for bare `account-login`, `loader`, or `repository` directory targets, then dynamically imports `packages/core/dist/index.js` in a fresh Bun process and verifies functions exported from all three moved modules.
+The new artifact smoke test scans the already-built Core artifact's emitted `.js` and `.d.ts` import/export specifiers for bare `account-login`, `loader`, or `repository` directory targets, then dynamically imports `packages/core/dist/index.js` in a fresh Bun process and verifies functions exported from all three moved modules. The test only reads `packages/core/dist`; Turbo owns the prerequisite build through `@aio-proxy/core#test:unit`'s dependency on `build`.
 
 Focused RED command:
 
@@ -217,3 +218,5 @@ rtk bun test packages/core/_test/build-entry.test.ts
 Before explicit `/index` specifiers, the audit failed with ten unresolved emitted declaration targets across `plugins/index.d.ts`, `builtins.d.ts`, `credential-port.d.ts`, and account-login/credential-port declarations: 0 pass, 1 fail.
 
 After updating every Core source and legacy Core test caller, the smoke passed 1 test with 4 assertions. A standalone Core build generated 89 files and exited 0. The exact four-file Task 7 CLI baseline, run with an isolated temporary `AIO_PROXY_HOME` to avoid the user's newer schema-6 database, passed 121 tests with 318 assertions. The final full Core suite passed 464 tests with 1,176 assertions across 64 files.
+
+The packaging-concurrency review's structural RED found the smoke launching `bun run --filter @aio-proxy/core build` from inside the test. After removing that nested build, structural GREEN confirmed the test contains no `@aio-proxy/core` invocation. A forced single-concurrency Turbo run built dependencies and Core before Core `test:unit`, then passed all 7 tasks; the Core suite again passed 464 tests with 1,176 assertions across 64 files, including the 1-test, 4-assertion artifact smoke.

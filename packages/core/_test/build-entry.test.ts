@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "../../..");
 const coreDist = join(repoRoot, "packages/core/dist");
+const coreEntry = join(coreDist, "index.js");
 
 function artifactFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -14,12 +15,7 @@ function artifactFiles(directory: string): string[] {
 }
 
 test("built package entry resolves moved plugin directories", () => {
-  const build = Bun.spawnSync([process.execPath, "run", "--filter", "@aio-proxy/core", "build"], {
-    cwd: repoRoot,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  expect(build.exitCode).toBe(0);
+  expect(existsSync(coreEntry)).toBe(true);
 
   const unresolved = artifactFiles(coreDist).flatMap((file) => {
     const source = readFileSync(file, "utf8");
