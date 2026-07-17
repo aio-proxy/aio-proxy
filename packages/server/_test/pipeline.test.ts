@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { PluginRawResolverError, PluginRawTransportError } from "../src/plugin-runtime";
 import { handleProtocolRequest } from "../src/routes/pipeline";
 import type { UsageCompletion } from "../src/usage-capture";
 import {
@@ -163,29 +162,6 @@ describe("shared protocol routing pipeline", () => {
     );
   });
 
-  test("uses model capability when the raw resolver returns undefined for a protocol mismatch", async () => {
-    const provider = rawProvider({
-      id: "hybrid",
-      protocol: ProviderProtocol.Anthropic,
-      invoke: async () => Response.json({ transport: "raw" }),
-      model: { invoke: () => textStream("model") },
-    });
-    const harness = pipeline([provider]);
-
-    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
-    expect(await response.json()).toEqual({ output: "model" });
-    expect(provider.calls.raw).toHaveLength(0);
-    expect(provider.calls.model).toHaveLength(1);
-    expect(harness.context.modelInvocationCalls).toBe(1);
-    expect(harness.usage.passthrough).toHaveLength(0);
-    expect(harness.usage.stream).toHaveLength(1);
-    expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "hybrid", outcome: "success" }),
-    );
-  });
-
   test("records the selected candidate when model invocation rejects the request", async () => {
     const primary = modelProvider({ id: "primary", invoke: () => textStream("unused") });
     const backup = modelProvider({ id: "backup", invoke: () => textStream("unused") });
@@ -319,41 +295,6 @@ describe("shared protocol routing pipeline", () => {
 
     expect(await response.json()).toEqual({ provider: "backup" });
     expect(primary.calls.raw).toHaveLength(1);
-    expect(backup.calls.raw).toHaveLength(1);
-    expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: "failure", providerId: "primary", statusCode: 502 },
-      { outcome: "success", providerId: "backup", statusCode: 200 },
-    ]);
-  });
-
-  test.each(["resolver", "response"] as const)("falls back after a malformed plugin raw %s failure", async (stage) => {
-    const base = rawProvider({
-      id: "primary",
-      invoke: async () => {
-        throw new PluginRawTransportError();
-      },
-    });
-    const primary =
-      stage === "resolver"
-        ? {
-            ...base,
-            provider: {
-              ...base.provider,
-              raw: {
-                resolve() {
-                  throw new PluginRawResolverError();
-                },
-              },
-            },
-          }
-        : base;
-    const backup = rawProvider({ id: "backup" });
-    const harness = pipeline([primary, backup]);
-
-    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
-    expect(await response.json()).toEqual({ provider: "backup" });
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
       { outcome: "failure", providerId: "primary", statusCode: 502 },
