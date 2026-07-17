@@ -12,7 +12,7 @@ export const pluginProtocol = {
   gemini: "gemini",
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
-export function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
+function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
   const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
   return {

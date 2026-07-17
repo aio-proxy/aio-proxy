@@ -28,13 +28,8 @@ import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtim
 import { createUsageCapture } from "../usage-capture";
 import { createProviderSummaries } from "./probe";
 import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
-import {
-  buildSnapshot,
-  buildSnapshotWithProviders,
-  providerConfigRecord,
-  reloadSnapshot,
-  type Snapshot,
-} from "./snapshot";
+import { reloadSnapshot } from "./reload";
+import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
 import type {
   ConfigReloadLog,
   ConfigReloadResult,

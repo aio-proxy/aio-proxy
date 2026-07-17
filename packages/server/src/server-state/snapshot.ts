@@ -1,46 +1,28 @@
 import {
-  AtomicConfigCommitUncertainError,
-  type AtomicConfigFile,
   createEmbeddedBuiltIns,
   type DiagnosticFactory,
   loadPluginRegistry,
-  type PendingAccountOperation,
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
   type Router,
 } from "@aio-proxy/core";
-import {
-  type Config,
-  ConfigSchema,
-  type DashboardProviderSummary,
-  ProviderKind,
-  type ProviderState,
-} from "@aio-proxy/types";
+import { type Config, type DashboardProviderSummary, ProviderKind, type ProviderState } from "@aio-proxy/types";
 import { compact } from "es-toolkit/array";
-import { ZodError } from "zod";
-import { type AccountRemovalCoordinator, asProviderRecord } from "../account-removal";
 import {
   type CatalogJobDescriptor,
   materializePluginProvider,
   type PluginRuntimeCacheEntry,
   pluginOptionsIdentityDigest,
 } from "../plugin-runtime";
-import type { SnapshotManager } from "../plugin-snapshot";
 import {
   materializeProviders,
   materializeRuntimeProvider,
   type ProviderProbe,
-  providerDiff,
   providerSummary,
 } from "../provider-runtime";
-import type {
-  ProviderRouteSnapshot,
-  RetiredProviderSnapshot,
-  RuntimeProviderInput,
-  RuntimeProviderInstance,
-} from "../runtime";
-import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure, ServerStateOptions } from "./types";
+import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
+import type { ServerStateOptions } from "./types";
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
@@ -230,70 +212,4 @@ export function buildSnapshotWithProviders(
 
 export function emptyPluginSnapshot(): PluginRegistrySnapshot {
   return { registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] }, plugins: new Map() };
-}
-
-export function reloadError(error: unknown): ReloadFailure {
-  if (error instanceof SyntaxError || error instanceof ZodError)
-    return { ok: false, error: error.message, stage: "parse" };
-  if (error instanceof Error) {
-    return {
-      ok: false,
-      error: error.message,
-      stage: error.name === "RouterModelCollisionError" ? "alias-collision" : "providers",
-    };
-  }
-  return { ok: false, error: String(error), stage: "providers" };
-}
-
-export async function reloadSnapshot({
-  accountRemovals,
-  commitConfig,
-  configFile,
-  logger,
-  manager,
-  retainedOperations = [],
-}: {
-  readonly accountRemovals: AccountRemovalCoordinator;
-  readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
-  readonly configFile: AtomicConfigFile | undefined;
-  readonly logger: (entry: ConfigReloadLog) => void;
-  readonly manager: SnapshotManager;
-  readonly retainedOperations?: readonly PendingAccountOperation[];
-}): Promise<ConfigReloadResult> {
-  try {
-    const before = (manager.current() as Snapshot).summaries;
-    if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, "reload");
-    else {
-      const staged: PendingAccountOperation[] = [...retainedOperations];
-      const newlyStaged: PendingAccountOperation[] = [];
-      const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
-      let retired: RetiredProviderSnapshot | undefined;
-      try {
-        await configFile.transaction(async (current) => {
-          const previous = manager.current() as Snapshot;
-          const previousProviders = Object.fromEntries(
-            Object.entries(providerConfigRecord(previous.config)).filter(
-              ([providerId]) => !retainedProviderIds.has(providerId),
-            ),
-          );
-          const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
-          newlyStaged.push(...detected);
-          staged.push(...detected);
-          retired = await commitConfig(ConfigSchema.parse(current), "reload");
-          return { next: current, result: undefined };
-        });
-      } catch (error) {
-        if (retired !== undefined) void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
-        else if (error instanceof AtomicConfigCommitUncertainError) accountRemovals.scheduleRecovery(staged);
-        else accountRemovals.compensate(newlyStaged);
-        throw error;
-      }
-      void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
-    }
-    return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
-  } catch (error) {
-    const result = reloadError(error);
-    logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
-    return result;
-  }
 }

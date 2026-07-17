@@ -49,11 +49,13 @@ Create:
 server-state/index.ts
 server-state/types.ts
 server-state/snapshot.ts
+server-state/reload.ts
 server-state/recovery.ts
 server-state/probe.ts
 ```
 
 - `snapshot.ts`: `Snapshot`, provider summaries, `buildSnapshot`, `buildSnapshotWithProviders`, empty plugin snapshot.
+- `reload.ts`: reload transaction staging, compensation, finalization, and protocol-independent failure logging.
 - `recovery.ts`: recovery scheduler/timer and pending-operation scheduling.
 - `probe.ts`: status merge and provider probe.
 - `index.ts`: `createServerState`, DB opening, public types, and lightweight orchestration.

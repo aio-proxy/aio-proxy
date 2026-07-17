@@ -1,10 +1,40 @@
 import { afterEach, expect, test } from "bun:test";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from "../../src/plugin-runtime";
-import { createRuntimeProvider, rawCapability } from "../../src/plugin-runtime/capabilities";
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
+
+const providerConfig = {
+  id: "person",
+  kind: ProviderKind.OAuth,
+  enabled: true,
+  plugin: "@example/oauth",
+  capability: "default",
+} as const;
+
+const providerV4 = () => ({
+  specificationVersion: "v4" as const,
+  languageModel() {
+    throw new Error("not called");
+  },
+  imageModel() {
+    throw new Error("not called");
+  },
+  embeddingModel() {
+    throw new Error("not called");
+  },
+});
+
+const materializeFixture = (fixture: ReturnType<typeof runtimeFixture>) =>
+  materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
 
 test("maps every internal provider protocol to the plugin SDK protocol", () => {
   expect(validatePluginProtocolMap()).toEqual({
@@ -15,43 +45,30 @@ test("maps every internal provider protocol to the plugin SDK protocol", () => {
   });
 });
 
-test("rejects an array runtime carrying a provider property", () => {
-  const provider = {
-    specificationVersion: "v4",
-    languageModel() {
-      throw new Error("not called");
-    },
-    imageModel() {
-      throw new Error("not called");
-    },
-    embeddingModel() {
-      throw new Error("not called");
-    },
-  };
-  const runtime = Object.assign([], { provider });
+test("rejects an array runtime carrying a provider property", async () => {
+  const runtime = Object.assign([], { provider: providerV4() });
+  const fixture = runtimeFixture({ kind: "static" }, { createRuntime: async () => runtime as never });
 
-  expect(() =>
-    createRuntimeProvider(
-      {
-        id: "person",
-        kind: ProviderKind.OAuth,
-        enabled: true,
-        plugin: "@example/oauth",
-        capability: "default",
-      },
-      runtime,
-      catalog,
-    ),
-  ).toThrow("Invalid ProviderV4 runtime");
+  const result = await materializeFixture(fixture);
+
+  expect(result.provider).toBeUndefined();
+  expect(result.state).toMatchObject({ status: "unavailable", diagnostic: { code: "RUNTIME_CREATE_FAILED" } });
 });
 
-test("rejects an array raw transport carrying an invoke property", () => {
+test("rejects an array raw transport carrying an invoke property", async () => {
   const transport = Object.assign([], { invoke: async () => new Response("ok") });
-  const raw = rawCapability(() => transport as never, catalog);
-
-  expect(() => raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "model" })).toThrow(
-    PluginRawResolverError,
+  const fixture = runtimeFixture(
+    { kind: "static" },
+    {
+      createRuntime: async () => ({ provider: providerV4(), raw: () => transport as never }),
+    },
   );
+
+  const result = await materializeFixture(fixture);
+
+  expect(() =>
+    result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "model" }),
+  ).toThrow(PluginRawResolverError);
 });
 
 test("plugin raw capability receives catalog metadata and rejects malformed transports", async () => {
@@ -62,18 +79,7 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
       catalog: { ...catalog, language: [{ id: "model", displayName: "Model", metadata: { region: "us" } }] },
       createRuntime: async () =>
         ({
-          provider: {
-            specificationVersion: "v4",
-            languageModel() {
-              throw new Error("not called");
-            },
-            imageModel() {
-              throw new Error("not called");
-            },
-            embeddingModel() {
-              throw new Error("not called");
-            },
-          },
+          provider: providerV4(),
           raw(input) {
             observed.push(input);
             if (input.modelId === "bad-resolver") return { invoke: "invalid" } as never;
