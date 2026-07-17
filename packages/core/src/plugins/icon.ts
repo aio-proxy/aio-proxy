@@ -23,6 +23,14 @@ function decodeDataUrlPayload(value: string): string | undefined {
   return decoded;
 }
 
+function hasRawControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
+
 function validDataUrl(value: string): boolean {
   const comma = value.indexOf(",");
   if (comma < 0) return false;
@@ -38,8 +46,10 @@ function validDataUrl(value: string): boolean {
     }
   }
   try {
+    const rawPayload = value.slice(comma + 1);
+    if (!sawBase64 && hasRawControlCharacter(rawPayload)) return false;
     new URL(value);
-    const payload = decodeDataUrlPayload(value.slice(comma + 1));
+    const payload = decodeDataUrlPayload(rawPayload);
     if (payload === undefined) return false;
     if (sawBase64) atob(payload);
     return true;
