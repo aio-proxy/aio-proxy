@@ -15,7 +15,7 @@
     "build": "rslib",
     "test": "bun run test:unit && bun run test:types",
     "test:artifact": "bun test ./_test/build-artifact.test.ts",
-    "test:unit": "bun test",
+    "test:unit": "bun test ./_test/descriptor.test.ts ./_test/localized-text.test.ts ./build/lobe-icon-keys.test.ts",
     "test:types": "tsc -p tsconfig.test.json"
   },
   "dependencies": {

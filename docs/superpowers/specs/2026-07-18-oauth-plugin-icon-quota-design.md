@@ -161,16 +161,16 @@ Quota 使用 `AccountContext`，因为读取与 reset 都需要相同的 credent
 ### LobeIconKey 生成
 
 `@lobehub/icons-static-svg` 只发布 `icons/*.svg`，没有 JavaScript export、manifest
-或官方 key union。`@aio-proxy/plugin-sdk` 因此以该包作为构建期依赖，并单独启用一个
-build-owned Rslib plugin。该 plugin 是生成入口；仓库不增加 `generate:*` script、`postinstall`
-或需要开发者预先执行的 codegen 命令。
+或官方 key union。`@aio-proxy/plugin-sdk` 因此以该包作为构建期依赖，并在 Rslib 配置求值
+期间生成精确声明。`bun run build` 是唯一生成入口；仓库不增加 `generate:*` script、
+`postinstall` 或需要开发者预先执行的 codegen 命令。
 
 构建流程如下：
 
-1. Rslib plugin 在 build setup 中解析已安装的固定版本 package。
-2. 枚举 `icons/*.svg`，去掉 `.svg`，验证 slug，按字典序稳定排序并检测重复；重复 key
+1. Rslib 配置求值解析已安装的固定版本 package。
+2. 配置求值枚举 `icons/*.svg`，去掉 `.svg`，验证 slug，按字典序稳定排序并检测重复；重复 key
    属于 build error，不能静默去重。
-3. 在确定性的 Rsbuild cache 路径下写入精确 helper declaration：
+3. 配置求值在确定性的 Rsbuild cache 路径下写入精确 helper declaration：
 
    ```ts
    declare type AioProxyLobeIconKey = "anthropic" | "codex-color" | "openai";
