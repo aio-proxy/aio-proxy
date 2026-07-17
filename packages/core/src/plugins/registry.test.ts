@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { definePlugin, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
-import { npmPackageCacheDir } from "../../src/npm";
-import type { DiagnosticFactory } from "../../src/plugins/diagnostic";
-import { loadPluginRegistry } from "../../src/plugins/loader/index";
+import { npmPackageCacheDir } from "../npm";
+import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
+import { loadPluginRegistry } from "./loader/index";
 
-const originalHome = process.env.AIO_PROXY_HOME;
+const homeEnv = "AIO_PROXY_HOME";
+const originalHome = process.env[homeEnv];
 const home = mkdtempSync(`${tmpdir()}/aio-proxy-plugin-registry-`);
 
 function install(packageName: string) {
@@ -17,14 +18,14 @@ function install(packageName: string) {
 }
 
 beforeAll(() => {
-  process.env.AIO_PROXY_HOME = home;
+  process.env[homeEnv] = home;
   install("@example/broken");
   install("@example/duplicate");
 });
 
 afterAll(() => {
-  if (originalHome === undefined) delete process.env.AIO_PROXY_HOME;
-  else process.env.AIO_PROXY_HOME = originalHome;
+  if (originalHome === undefined) delete process.env[homeEnv];
+  else process.env[homeEnv] = originalHome;
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -165,7 +166,51 @@ describe("PluginRegistry staging", () => {
     await expect(resolved.catalog.discover({} as never)).resolves.toMatchObject({
       language: [{ id: "private-model" }],
     });
-    await expect(resolved.createRuntime({} as never)).resolves.toBe("private-token");
+    await expect(resolved.createRuntime({} as never) as unknown as Promise<string>).resolves.toBe("private-token");
+  });
+
+  test("retains valid icons and degrades invalid icons without logging their data", async () => {
+    const invalidIcon = "data:text/html,private-icon-payload";
+    const logs: Parameters<PluginLogSink>[0][] = [];
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [
+        {
+          packageName: "@example/icons",
+          version: "1.0.0",
+          descriptor: definePlugin((api) => {
+            api.oauth.register(fakeAdapter("valid", { icon: "openai" }));
+            api.oauth.register(fakeAdapter("invalid", { icon: invalidIcon }));
+            api.oauth.register(fakeAdapter("legacy"));
+          }),
+        },
+      ],
+      enablements: [{ packageName: "@example/icons" }],
+      importPackage: async () => {
+        throw new Error("must not import");
+      },
+      logger: (entry) => logs.push(entry),
+    });
+
+    const valid = snapshot.registry.resolveOAuth("@example/icons", "valid");
+    const invalid = snapshot.registry.resolveOAuth("@example/icons", "invalid");
+    const legacy = snapshot.registry.resolveOAuth("@example/icons", "legacy");
+    if (valid === undefined || invalid === undefined || legacy === undefined) throw new Error("adapter not registered");
+
+    expect(valid.icon).toBe("openai");
+    expect(invalid.icon).toBeUndefined();
+    expect(legacy.icon).toBeUndefined();
+    expect(logs).toEqual([
+      {
+        event: "plugin.oauth.icon.invalid",
+        code: "PLUGIN_ICON_INVALID",
+        context: { plugin: "@example/icons", capability: "invalid" },
+        error: { name: "OAuthIconValidationError", message: "OAuth adapter icon was ignored" },
+      },
+    ]);
+    const serialized = JSON.stringify(logs[0]);
+    expect(serialized).not.toContain(invalidIcon);
+    expect(serialized).not.toContain("private-icon-payload");
   });
 
   test.each([
