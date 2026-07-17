@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
 import type { GitHubAccountOptions, GitHubCopilotCredential } from "../src";
 import { createGitHubCopilotRuntime } from "../src/runtime";
+import { withFetchMock } from "./test-support";
 
 describe("GitHub Copilot runtime", () => {
   test("selects language providers from canonical catalog protocol metadata", async () => {
@@ -262,16 +263,6 @@ function mutableCredentialPort(initial: GitHubCopilotCredential, refreshSignal =
     } satisfies CredentialPort<GitHubCopilotCredential>,
     current: () => snapshot,
   };
-}
-
-async function withFetchMock<T>(fetchImpl: typeof fetch, run: () => Promise<T>): Promise<T> {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = fetchImpl;
-  try {
-    return await run();
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
 }
 
 const _optionsCompile: GitHubAccountOptions = { deploymentType: "github.com" };
