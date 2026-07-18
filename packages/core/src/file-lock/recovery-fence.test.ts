@@ -1,9 +1,33 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runWithRecoveryFence } from "./recovery-fence";
+
+test.serial("reclaims a fresh malformed marker left by an interrupted publisher", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
+  const lockPath = join(dir, "config.lock");
+  const markerPath = `${lockPath}.recovery.interrupted`;
+  writeFileSync(markerPath, "");
+  try {
+    await expect(
+      runWithRecoveryFence(
+        {
+          lockPath,
+          staleMs: 60_000,
+          heartbeatMs: 10_000,
+          deadline: Date.now() + 100,
+          timeoutError: () => new Error("acquisition timed out"),
+        },
+        async () => "acquired",
+      ),
+    ).resolves.toBe("acquired");
+    expect(existsSync(markerPath)).toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test.serial("acquisition filesystem errors are not translated after the deadline", async () => {
   const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));

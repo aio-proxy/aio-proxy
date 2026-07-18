@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProviderAccountAlreadyExistsError } from "@aio-proxy/core";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
+import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "../_test/cli-test-helpers";
 import packageJson from "../package.json" with { type: "json" };
-import { formatCliError } from "../src/main";
-import { LoopbackPortUnavailableError } from "../src/plugin-commands/loopback";
-import { ProviderCapabilityNotFoundError } from "../src/plugin-commands/provider-login";
-import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "./cli-test-helpers";
+import { formatCliError } from "./main";
+import { LoopbackPortUnavailableError } from "./plugin-commands/loopback";
+import { ProviderCapabilityNotFoundError } from "./plugin-commands/provider-login";
 
 describe("cli", () => {
   test("prints package version when requested", () => {

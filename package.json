@@ -40,7 +40,7 @@
     }
   },
   "scripts": {
-    "check": "biome check package.json turbo.json tsconfig.json biome.json packages",
+    "check": "biome check package.json turbo.json tsconfig.json biome.json dev-task-graph.test.ts packages",
     "test:unit": "turbo run test:unit",
     "test:artifact": "turbo run test:artifact",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
@@ -50,8 +50,9 @@
     "i18n:compile": "bun run --filter @aio-proxy/i18n build",
     "build": "turbo run build",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
-    "dev": "turbo run dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types && bun run test:artifact",
+    "dev:prepare": "turbo run build --filter=@aio-proxy/core",
+    "dev": "bun run dev:prepare && turbo run dev serve:dev --filter=!@aio-proxy/infra",
+    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types && bun run test:artifact && bun test dev-task-graph.test.ts",
     "changeset": "changeset"
   },
   "devDependencies": {

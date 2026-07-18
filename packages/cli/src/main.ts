@@ -120,7 +120,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   const host = options.host ?? "127.0.0.1";
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
   const apiUrl = `http://${host}:${port}`;
-  const dashboardUrl = `${apiUrl}/dashboard`;
+  const dashboardUrl = deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
@@ -135,7 +135,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   console.error(
     m.cli_serve_started({
       apiUrl: `http://${server.hostname}:${server.port}`,
-      dashboardUrl: `http://${server.hostname}:${server.port}/dashboard`,
+      dashboardUrl,
     }),
   );
   if (options.open === true) {

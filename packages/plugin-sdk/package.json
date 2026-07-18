@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit && bun run test:types",
     "test:unit": "bun test",
     "test:types": "tsc -p tsconfig.test.json"
