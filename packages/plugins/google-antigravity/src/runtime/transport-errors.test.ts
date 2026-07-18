@@ -156,6 +156,24 @@ test("switches endpoint when SSE preflight exceeds its replay bound before commi
   expect(origins).toEqual(["https://daily-cloudcode-pa.googleapis.com", "https://cloudcode-pa.googleapis.com"]);
 });
 
+test("does not switch endpoint after post-model replay capture exceeds its bound", async () => {
+  const origins: string[] = [];
+  const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';
+  const oversized = `data: ${"x".repeat(1024 * 1024 + 1)}`;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input) => {
+      origins.push(new URL(String(input)).origin);
+      return sseResponse(origins.length === 1 ? modelEvent + oversized : modelEvent);
+    },
+  });
+
+  const response = await transport.execute(executeInput({ stream: true }));
+
+  expect(await response.text()).toBe(modelEvent + oversized);
+  expect(origins).toEqual(["https://daily-cloudcode-pa.googleapis.com"]);
+});
+
 test("does not switch endpoint after an unknown preflight reader failure", async () => {
   const failure = new Error("stream implementation failure");
   let requests = 0;

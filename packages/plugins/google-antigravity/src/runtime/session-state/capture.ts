@@ -6,7 +6,13 @@ import {
   createSseReplayState,
   failSseReplay,
   replayFromJsonPayload,
+  type SseReplayState,
 } from "./replay-accumulator";
+
+const MAX_CAPTURE_EVENT_CHARS = 1024 * 1024;
+const MAX_CAPTURE_TOTAL_BYTES = 1024 * 1024;
+const MAX_CAPTURE_ENTRIES = 1024;
+const encoder = new TextEncoder();
 
 export async function captureReasoningReplay(
   response: Response,
@@ -32,32 +38,69 @@ function captureSse(response: Response, modelId: string, scope: ReplayScope, cac
   if (body === null) return response;
   const decoder = new TextDecoder();
   const state = createSseReplayState();
+  let active = true;
+  let capturedBytes = 0;
+  const stopCapture = () => {
+    if (!active) return;
+    active = false;
+    failSseReplay(state);
+  };
   const parser = createParser({
+    maxBufferSize: MAX_CAPTURE_EVENT_CHARS,
     onEvent(event) {
+      if (!active) return;
+      if (event.data.length > MAX_CAPTURE_EVENT_CHARS) {
+        stopCapture();
+        return;
+      }
+      capturedBytes += encoder.encode(event.data).byteLength;
+      if (capturedBytes > MAX_CAPTURE_TOTAL_BYTES) {
+        stopCapture();
+        return;
+      }
       try {
         appendSseReplayPayload(state, modelId, JSON.parse(event.data));
+        if (replayEntryCount(state) > MAX_CAPTURE_ENTRIES) stopCapture();
       } catch {
-        failSseReplay(state);
+        stopCapture();
       }
     },
     onError() {
-      failSseReplay(state);
+      stopCapture();
     },
   });
   const stream = body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        parser.feed(decoder.decode(chunk, { stream: true }));
+        if (active) {
+          try {
+            parser.feed(decoder.decode(chunk, { stream: true }));
+          } catch {
+            stopCapture();
+          }
+        }
         controller.enqueue(chunk);
       },
       flush() {
-        const tail = decoder.decode();
-        if (tail !== "") parser.feed(tail);
-        parser.reset({ consume: true });
+        if (!active) return;
+        try {
+          const tail = decoder.decode();
+          if (tail !== "") parser.feed(tail);
+          parser.reset({ consume: true });
+        } catch {
+          stopCapture();
+        }
+        if (!active) return;
         const replay = completedSseReplay(state);
         if (replay !== undefined) cache.commit(scope, replay);
       },
     }),
   );
   return new Response(stream, { headers: response.headers, status: response.status, statusText: response.statusText });
+}
+
+function replayEntryCount(state: SseReplayState): number {
+  let count = state.parts.length;
+  for (const calls of state.streamedCalls.active.values()) count += calls.length;
+  return count;
 }
