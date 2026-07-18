@@ -1,17 +1,6 @@
 import { z } from "zod";
-import { OpenAIResponsesUnsupportedFeatureError } from "../../error";
 
 const idSchema = z.string().min(1);
-const unsupportedItemTypes = [
-  "computer_call",
-  "computer_call_output",
-  "shell_call",
-  "shell_call_output",
-  "apply_patch_call",
-  "apply_patch_call_output",
-  "file_search_call",
-  "file_search_call_output",
-] as const;
 
 const textPartSchema = z
   .object({
@@ -87,18 +76,3 @@ export const openAIResponsesInputItemSchema = z.union([
 export type OpenAIResponsesInputMessage = z.output<typeof inputMessageSchema>;
 export type OpenAIResponsesInputItem = z.output<typeof openAIResponsesInputItemSchema>;
 export type OpenAIResponsesTextPart = z.output<typeof textPartSchema>;
-
-export function unsupportedInputItemFeature(input: unknown): OpenAIResponsesUnsupportedFeatureError | undefined {
-  if (typeof input !== "object" || input === null || !("input" in input) || !Array.isArray(input.input)) {
-    return undefined;
-  }
-
-  for (const [index, item] of input.input.entries()) {
-    if (typeof item !== "object" || item === null || !("type" in item) || typeof item.type !== "string") continue;
-    if (unsupportedItemTypes.some((type) => type === item.type)) {
-      return new OpenAIResponsesUnsupportedFeatureError(item.type, `input.${index}.type`);
-    }
-  }
-
-  return undefined;
-}

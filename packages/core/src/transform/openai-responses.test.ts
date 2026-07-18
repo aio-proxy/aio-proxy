@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
@@ -57,33 +57,41 @@ test("converts function-call history", () => {
   ]);
 });
 
-test("rejects opaque reasoning on the model path", () => {
+test("logs and ignores opaque reasoning on the model path", () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const reasoning = {
+    type: "reasoning" as const,
+    id: "rs_1",
+    encrypted_content: "opaque",
+    summary: [{ type: "summary_text" as const, text: "Do not expose this." }],
+  };
   const request = parseOpenAIResponses({
     model: "gpt-5.6-terra",
-    input: [
-      {
-        type: "reasoning",
-        id: "rs_1",
-        encrypted_content: "opaque",
-        summary: [{ type: "summary_text", text: "Do not expose this." }],
-      },
-    ],
+    input: [reasoning, { role: "user", content: "hello" }],
   });
 
-  expect(() => openAIResponsesToModelMessages(request)).toThrow(
-    new OpenAIResponsesUnsupportedFeatureError("reasoning", "input.0.type"),
-  );
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: "user", content: "hello" }]);
+    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "reasoning");
+  } finally {
+    warn.mockRestore();
+  }
 });
 
-test("rejects an item reference on the model path", () => {
+test("logs and ignores an item reference on the model path", () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const reference = { type: "item_reference" as const, id: "item_1" };
   const request = parseOpenAIResponses({
     model: "gpt-5.6-terra",
-    input: [{ type: "item_reference", id: "item_1" }],
+    input: [reference, { role: "user", content: "hello" }],
   });
 
-  expect(() => openAIResponsesToModelMessages(request)).toThrow(
-    new OpenAIResponsesUnsupportedFeatureError("item_reference", "input.0.type"),
-  );
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: "user", content: "hello" }]);
+    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "item_reference");
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test("rejects invalid function arguments", () => {

@@ -55,7 +55,10 @@ function inputMessages(items: readonly OpenAIResponsesInputItem[]): ModelMessage
 
     switch (item.type) {
       case "reasoning":
-        throw new OpenAIResponsesUnsupportedFeatureError("reasoning", `input.${index}.type`);
+      case "item_reference":
+        console.warn("[aio-proxy] Unsupported OpenAI Responses input item", item.type);
+        previousType = undefined;
+        break;
       case "function_call":
         toolNames.set(item.call_id, item.name);
         appendToolCall(messages, previousType, {
@@ -80,8 +83,6 @@ function inputMessages(items: readonly OpenAIResponsesInputItem[]): ModelMessage
         previousType = item.type;
         break;
       }
-      case "item_reference":
-        throw new OpenAIResponsesUnsupportedFeatureError("item_reference", `input.${index}.type`);
     }
   }
 

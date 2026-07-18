@@ -11,8 +11,8 @@ import {
 } from "../../../_test/pipeline-helpers";
 import { handleProtocolRequest } from ".";
 
-test("skips a model candidate that cannot represent reasoning and continues to raw", async () => {
-  const model = modelProvider({ id: "model", invoke: () => textStream("not called") });
+test("drops reasoning and uses the model candidate", async () => {
+  const model = modelProvider({ id: "model", invoke: () => textStream("model response") });
   const raw = rawProvider({ id: "raw", protocol: ProviderProtocol.OpenAIResponse });
   const route = defineProviderRouteSource([model, raw]);
   const rawRequest = new Request("https://proxy.test/v1/responses", {
@@ -32,9 +32,9 @@ test("skips a model candidate that cannot represent reasoning and continues to r
   });
   await settleRecording();
 
-  expect(await response.json()).toEqual({ provider: "raw" });
-  expect(model.calls.model).toHaveLength(0);
-  expect(raw.calls.raw).toHaveLength(1);
+  expect(await response.json()).toMatchObject({ output_text: "model response", status: "completed" });
+  expect(model.calls.model).toHaveLength(1);
+  expect(raw.calls.raw).toHaveLength(0);
   expect(
     route.recording.attempts.map(({ errorCode, outcome, providerId, statusCode }) => ({
       errorCode,
@@ -42,15 +42,12 @@ test("skips a model candidate that cannot represent reasoning and continues to r
       providerId,
       statusCode,
     })),
-  ).toEqual([
-    { errorCode: "unsupported_feature", outcome: "failure", providerId: "model", statusCode: 501 },
-    { errorCode: undefined, outcome: "success", providerId: "raw", statusCode: 200 },
-  ]);
+  ).toEqual([{ errorCode: undefined, outcome: "success", providerId: "model", statusCode: undefined }]);
 });
 
-test("materializes one unsupported conversion across model-only candidates", async () => {
-  const first = modelProvider({ id: "first", invoke: () => textStream("not called") });
-  const second = modelProvider({ id: "second", invoke: () => textStream("not called") });
+test("materializes once after dropping an item reference", async () => {
+  const first = modelProvider({ id: "first", invoke: () => textStream("model response") });
+  const second = modelProvider({ id: "second", invoke: () => textStream("unused") });
   const route = defineProviderRouteSource([first, second]);
   let materializations = 0;
   const adapter = {
@@ -71,15 +68,14 @@ test("materializes one unsupported conversion across model-only candidates", asy
 
   const response = await handleProtocolRequest({ adapter, context: {}, rawRequest, source: route.source });
 
-  expect(response.status).toBe(501);
+  expect(response.status).toBe(200);
   expect(materializations).toBe(1);
+  expect(first.calls.model).toHaveLength(1);
+  expect(second.calls.model).toHaveLength(0);
   expect(
-    route.recording.attempts.map(({ errorCode, providerId, statusCode }) => ({ errorCode, providerId, statusCode })),
-  ).toEqual([
-    { errorCode: "unsupported_feature", providerId: "first", statusCode: 501 },
-    { errorCode: "unsupported_feature", providerId: "second", statusCode: 501 },
-  ]);
-  expect(route.recording.finals[0]).toEqual(expect.objectContaining({ errorCode: "unsupported_feature" }));
+    route.recording.attempts.map(({ outcome, providerId, statusCode }) => ({ outcome, providerId, statusCode })),
+  ).toEqual([{ outcome: "success", providerId: "first", statusCode: undefined }]);
+  expect(route.recording.finals[0]).toEqual(expect.objectContaining({ outcome: "success" }));
 });
 
 test("fails fast on invalid function arguments without trying raw", async () => {

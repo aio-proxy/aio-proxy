@@ -1,6 +1,7 @@
+import { compact } from "es-toolkit/array";
 import { z } from "zod";
 import { OpenAIResponsesUnsupportedFeatureError } from "../../error";
-import { openAIResponsesInputItemSchema, unsupportedInputItemFeature } from "./input-items";
+import { openAIResponsesInputItemSchema } from "./input-items";
 import { openAIResponsesToolSchema, supportedTools, unsupportedToolFeature } from "./tools";
 
 const idSchema = z.string().min(1);
@@ -13,7 +14,25 @@ const unsupportedProbeSchema = z
 
 export const OpenAIResponsesRequestSchema = z.object({
   model: idSchema,
-  input: z.union([z.string(), z.array(openAIResponsesInputItemSchema).min(1)]),
+  input: z.union([
+    z.string(),
+    z
+      .array(
+        z.unknown().transform((item) => {
+          const parsed = openAIResponsesInputItemSchema.safeParse(item);
+          if (!parsed.success) {
+            const type =
+              typeof item === "object" && item !== null && "type" in item && typeof item.type === "string"
+                ? item.type
+                : "unknown";
+            console.warn("[aio-proxy] Unsupported OpenAI Responses input item", type);
+          }
+          return parsed.success ? parsed.data : undefined;
+        }),
+      )
+      .min(1)
+      .transform(compact),
+  ]),
   tools: z.array(openAIResponsesToolSchema).optional(),
   reasoning: z
     .object({
@@ -67,7 +86,7 @@ function unsupportedFeature(input: unknown): OpenAIResponsesUnsupportedFeatureEr
     }
   }
 
-  return unsupportedInputItemFeature(input) ?? unsupportedToolFeature(input);
+  return unsupportedToolFeature(input);
 }
 
 function supportedRequest(request: RawOpenAIResponsesRequest): OpenAIResponsesRequest {

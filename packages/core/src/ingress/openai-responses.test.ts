@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { OpenAIResponsesRequest } from "../index";
-import { OpenAIResponsesUnsupportedFeatureError, parseOpenAIResponses, safeParseOpenAIResponses } from "../index";
+import { parseOpenAIResponses } from "../index";
 
 test("accepts a developer message", () => {
   const request: OpenAIResponsesRequest = {
@@ -47,17 +47,21 @@ test("accepts background true for synchronous downgrade", () => {
   expect(parseOpenAIResponses(request)).toEqual(request);
 });
 
-test("identifies an unsupported built-in item", () => {
-  const result = safeParseOpenAIResponses({
-    model: "gpt-5.6-terra",
-    input: [{ type: "computer_call", id: "computer_1" }],
-  });
+test("logs and ignores unsupported input items", () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const additionalTools = { type: "additional_tools", role: "developer", tools: [] };
+  const computerCall = { type: "computer_call", id: "computer_1" };
 
-  expect(result).toEqual({
-    ok: false,
-    error: new OpenAIResponsesUnsupportedFeatureError("computer_call", "input.0.type"),
-  });
-  if (!result.ok && result.error instanceof OpenAIResponsesUnsupportedFeatureError) {
-    expect(result.error.status).toBe(501);
+  try {
+    expect(
+      parseOpenAIResponses({
+        model: "gpt-5.6-terra",
+        input: [{ role: "user", content: "hello" }, additionalTools, computerCall],
+      }).input,
+    ).toEqual([{ role: "user", content: "hello" }]);
+    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "additional_tools");
+    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "computer_call");
+  } finally {
+    warn.mockRestore();
   }
 });

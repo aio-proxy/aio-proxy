@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openAICompletionsAdapter, openAIResponsesAdapter } from "@aio-proxy/core";
+import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { defineProviderRouteSource, jsonRequest, REQUESTED_MODEL, rawProvider } from "../../../_test/pipeline-helpers";
 import { handleProtocolRequest } from "./index";
@@ -93,84 +93,6 @@ describe("shared protocol pipeline rejection lifecycle", () => {
       },
     ]);
     expect(provider.calls.raw).toEqual([]);
-  });
-
-  test("records parse-time unsupported features with a stable error code", async () => {
-    const provider = rawProvider({
-      id: "responses",
-      modelId: REQUESTED_MODEL,
-      protocol: ProviderProtocol.OpenAIResponse,
-    });
-    const route = defineProviderRouteSource([provider]);
-
-    const response = await handleProtocolRequest({
-      adapter: openAIResponsesAdapter,
-      context: {},
-      rawRequest: jsonRequest({
-        model: REQUESTED_MODEL,
-        input: [{ type: "computer_call", id: "computer_1" }],
-      }),
-      source: route.source,
-    });
-
-    expect(response.status).toBe(501);
-    expect(route.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAIResponse }]);
-    expect(route.recording.identities).toEqual([]);
-    expect(route.recording.attempts).toEqual([]);
-    expect(route.recording.finals).toEqual([
-      { outcome: "failure", finalStatusCode: 501, errorCode: "unsupported_feature" },
-    ]);
-    expect(route.logs).toEqual([
-      {
-        event: "request.rejected",
-        requestId: "request-1",
-        inboundProtocol: ProviderProtocol.OpenAIResponse,
-        path: "/v1/test",
-        statusCode: 501,
-        errorCode: "unsupported_feature",
-        errorType: "OpenAIResponsesUnsupportedFeatureError",
-      },
-    ]);
-    expect(provider.calls.raw).toEqual([]);
-  });
-
-  test("allowlists schema issue fields in rejection logs", async () => {
-    const sensitiveMarker = "secret-role-must-not-be-logged";
-    const provider = rawProvider({
-      id: "responses",
-      modelId: REQUESTED_MODEL,
-      protocol: ProviderProtocol.OpenAIResponse,
-    });
-    const route = defineProviderRouteSource([provider]);
-
-    const response = await handleProtocolRequest({
-      adapter: openAIResponsesAdapter,
-      context: {},
-      rawRequest: new Request(`http://localhost/v1/responses?token=${sensitiveMarker}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: REQUESTED_MODEL, input: [{ role: sensitiveMarker, content: "hello" }] }),
-      }),
-      source: route.source,
-    });
-
-    expect(response.status).toBe(400);
-    expect(route.logs).toHaveLength(1);
-    expect(route.logs[0]).toMatchObject({
-      event: "request.rejected",
-      requestId: "request-1",
-      inboundProtocol: ProviderProtocol.OpenAIResponse,
-      path: "/v1/responses",
-      statusCode: 400,
-      errorCode: "invalid_request",
-      errorType: "ZodError",
-    });
-    const issues = (route.logs[0] as { readonly issues?: unknown }).issues;
-    expect(Array.isArray(issues)).toBe(true);
-    if (!Array.isArray(issues)) throw new TypeError("Expected sanitized issues");
-    expect(issues).not.toHaveLength(0);
-    for (const issue of issues) expect(Object.keys(issue).sort()).toEqual(["code", "path"]);
-    expect(JSON.stringify(route.logs)).not.toContain(sensitiveMarker);
   });
 
   test("finishes a request session when streamed parsing exceeds the body limit", async () => {

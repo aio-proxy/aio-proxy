@@ -1,5 +1,4 @@
-import { describe, expect, test } from "bun:test";
-import { ZodError } from "zod";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { OpenAIResponsesRequest } from "../../index";
 import {
   OpenAIResponsesRequestSchema,
@@ -33,25 +32,25 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(parseOpenAIResponses(input)).toEqual(input);
   });
 
-  test("Given invalid input role When safe parsed Then Zod path names input", () => {
-    const result = OpenAIResponsesRequestSchema.safeParse({
-      model: "gpt-5-mini",
-      input: [{ role: "tool", content: "bad" }],
-    });
+  test("Given unparseable input items When parsed Then they are logged and ignored", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const sensitiveMarker = "secret-role-must-not-be-logged";
+    const invalidRole = { role: sensitiveMarker, content: "bad" };
+    const invalidContent = { role: "user", content: [{ type: "input_text" }] };
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["input"]);
+    try {
+      expect(
+        parseOpenAIResponses({
+          model: "gpt-5-mini",
+          input: [invalidRole, invalidContent],
+        }).input,
+      ).toEqual([]);
+      expect(warn).toHaveBeenNthCalledWith(1, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
+      expect(warn).toHaveBeenNthCalledWith(2, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveMarker);
+    } finally {
+      warn.mockRestore();
     }
-  });
-
-  test("Given invalid content part When parsed Then ZodError is thrown", () => {
-    expect(() =>
-      parseOpenAIResponses({
-        model: "gpt-5-mini",
-        input: [{ role: "user", content: [{ type: "input_text" }] }],
-      }),
-    ).toThrow(ZodError);
   });
 
   test.each(["none", "xhigh"])("Given current reasoning effort %s When parsed Then request is accepted", (effort) => {
