@@ -48,10 +48,13 @@ test("fixture scopes clean only their own temporary directories", () => {
   }
 });
 
-test("deduplicates concurrent refresh calls for one provider in one process", async () => {
+test.each([
+  ["default and explicit runtime", undefined, "runtime"],
+  ["control-plane", "control-plane", "control-plane"],
+] as const)("deduplicates concurrent %s refresh calls for one provider in one process", async (_name, leftMode, rightMode) => {
   const { handle, repository } = fixtures.open();
   try {
-    const credentials = port(repository);
+    const credentials = port(repository, "provider-1", { ...(leftMode === undefined ? {} : { mode: leftMode }) });
     const first = await credentials.read();
     const gate = deferred();
     let exchanges = 0;
@@ -62,7 +65,7 @@ test("deduplicates concurrent refresh calls for one provider in one process", as
     };
 
     const leftPromise = credentials.refresh(first.revision, exchange);
-    const rightPromise = port(repository).refresh(first.revision, exchange);
+    const rightPromise = port(repository, "provider-1", { mode: rightMode }).refresh(first.revision, exchange);
     await Promise.resolve();
     gate.resolve();
     const [left, right] = await Promise.all([leftPromise, rightPromise]);

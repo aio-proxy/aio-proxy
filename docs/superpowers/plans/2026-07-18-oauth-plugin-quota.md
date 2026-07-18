@@ -27,7 +27,8 @@
 - Same-Provider-ID resets serialize; different Provider IDs remain concurrent.
 - Ordinary read single-flight is not implemented in v1. It remains a future MAY optimization and no TTL cache is introduced.
 - Quota failures produce structured redacted logs but never write persistent provider routing diagnostics or change provider state.
-- New server tests are colocated under `packages/server/src`; the materially modified legacy plugin-runtime tests are moved beside their source in the account-refactor task.
+- New and materially modified server tests are colocated under `packages/server/src`, including the plugin-runtime tests used by the account-refactor task.
+- `packages/server/_test/setup.ts` remains the canonical Bun preload; it is the only intentional legacy `_test` path in this plan.
 - Shell commands use `rtk`.
 - Commits append `Co-authored-by: Codex <noreply@openai.com>`.
 
@@ -37,9 +38,9 @@
 
 **Files:**
 - Modify: `packages/plugin-sdk/src/oauth.ts`
-- Modify: `packages/plugin-sdk/_test/register.types.ts`
+- Modify: `packages/plugin-sdk/src/oauth.types.ts`
 - Modify: `packages/core/src/plugins/registry.ts`
-- Modify: `packages/core/_test/plugins/registry.test.ts`
+- Modify: `packages/core/src/plugins/registry.test.ts`
 
 **Interfaces:**
 - Produces: `OAuthQuotaItem`, `OAuthQuotaResetCredit`, `OAuthQuotaResetCredits`, `OAuthQuotaSnapshot`, and `OAuthQuotaCapability<AccountOptions, Credential>`.
@@ -48,7 +49,7 @@
 
 - [ ] **Step 1: Write failing SDK type and registry contract tests**
 
-Extend `packages/plugin-sdk/_test/register.types.ts` with a concrete quota adapter:
+Extend `packages/plugin-sdk/src/oauth.types.ts` with a concrete quota adapter:
 
 ```ts
 const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
@@ -84,7 +85,7 @@ const invalidResetAt: OAuthQuotaItem = { id: "primary", label: "Primary", resets
 void invalidResetAt;
 ```
 
-Extend `packages/core/_test/plugins/registry.test.ts` with:
+Extend `packages/core/src/plugins/registry.test.ts` with:
 
 - a class-backed quota object whose `read()` and `reset()` use a private field, proving receiver binding survives snapshot reconstruction;
 - an old adapter without `quota`, proving it still registers;
@@ -96,7 +97,7 @@ Run:
 
 ```bash
 rtk bun run --filter @aio-proxy/plugin-sdk test:types
-rtk bun test packages/core/_test/plugins/registry.test.ts
+rtk bun test packages/core/src/plugins/registry.test.ts
 ```
 
 Expected: FAIL because the SDK types and registry quota handling do not exist.
@@ -169,7 +170,7 @@ Run:
 
 ```bash
 rtk bun run --filter @aio-proxy/plugin-sdk test:types
-rtk bun test packages/core/_test/plugins/registry.test.ts
+rtk bun test packages/core/src/plugins/registry.test.ts
 rtk bun run --filter @aio-proxy/core build
 ```
 
@@ -178,7 +179,7 @@ Expected: valid class receivers work, malformed quota shapes fail the entire plu
 - [ ] **Step 6: Commit the SDK and registration contract**
 
 ```bash
-git add packages/plugin-sdk/src/oauth.ts packages/plugin-sdk/_test/register.types.ts packages/core/src/plugins/registry.ts packages/core/_test/plugins/registry.test.ts
+git add packages/plugin-sdk/src/oauth.ts packages/plugin-sdk/src/oauth.types.ts packages/core/src/plugins/registry.ts packages/core/src/plugins/registry.test.ts
 git commit -m "feat(plugin-sdk): define oauth quota capability" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -186,7 +187,7 @@ git commit -m "feat(plugin-sdk): define oauth quota capability" -m "Co-authored-
 
 **Files:**
 - Create: `packages/core/src/plugins/quota.ts`
-- Create: `packages/core/_test/plugins/quota.test.ts`
+- Create: `packages/core/src/plugins/quota.test.ts`
 - Modify: `packages/core/src/plugins/index.ts`
 
 **Interfaces:**
@@ -196,7 +197,7 @@ git commit -m "feat(plugin-sdk): define oauth quota capability" -m "Co-authored-
 
 - [ ] **Step 1: Write the failing quota validation matrix**
 
-Create `packages/core/_test/plugins/quota.test.ts` with a valid fixture:
+Create `packages/core/src/plugins/quota.test.ts` with a valid fixture:
 
 ```ts
 const validSnapshot = () => ({
@@ -232,7 +233,7 @@ The tests must assert:
 Run:
 
 ```bash
-rtk bun test packages/core/_test/plugins/quota.test.ts
+rtk bun test packages/core/src/plugins/quota.test.ts
 ```
 
 Expected: FAIL because the validator and error class do not exist.
@@ -331,7 +332,7 @@ Export the validator and error from `packages/core/src/plugins/index.ts`.
 Run:
 
 ```bash
-rtk bun test packages/core/_test/plugins/quota.test.ts
+rtk bun test packages/core/src/plugins/quota.test.ts
 rtk bun run --filter @aio-proxy/core build
 ```
 
@@ -340,7 +341,7 @@ Expected: all validation tests pass, including path assertions and copy identity
 - [ ] **Step 6: Commit quota result validation**
 
 ```bash
-git add packages/core/src/plugins/quota.ts packages/core/src/plugins/index.ts packages/core/_test/plugins/quota.test.ts
+git add packages/core/src/plugins/quota.ts packages/core/src/plugins/index.ts packages/core/src/plugins/quota.test.ts
 git commit -m "feat(plugins): validate oauth quota snapshots" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -350,43 +351,29 @@ git commit -m "feat(plugins): validate oauth quota snapshots" -m "Co-authored-by
 - Create: `packages/server/src/plugin-account.ts`
 - Create: `packages/server/src/plugin-account.test.ts`
 - Modify: `packages/server/src/plugin-runtime/materialize.ts`
-- Move: `packages/server/_test/plugin-runtime/capabilities.test.ts` -> `packages/server/src/plugin-runtime/capabilities.test.ts`
-- Move: `packages/server/_test/plugin-runtime/catalog.test.ts` -> `packages/server/src/plugin-runtime/catalog.test.ts`
-- Move: `packages/server/_test/plugin-runtime/diagnostics.test.ts` -> `packages/server/src/plugin-runtime/diagnostics.test.ts`
-- Move: `packages/server/_test/plugin-runtime/identity.test.ts` -> `packages/server/src/plugin-runtime/identity.test.ts`
-- Move: `packages/server/_test/plugin-runtime/materialize.test.ts` -> `packages/server/src/plugin-runtime/materialize.test.ts`
-- Move: `packages/server/_test/plugin-runtime/test-support.ts` -> `packages/server/src/plugin-runtime/test-support.ts`
+- Modify: `packages/server/src/plugin-runtime/capabilities.test.ts`
+- Modify: `packages/server/src/plugin-runtime/catalog.test.ts`
+- Modify: `packages/server/src/plugin-runtime/diagnostics.test.ts`
+- Modify: `packages/server/src/plugin-runtime/identity.test.ts`
+- Modify: `packages/server/src/plugin-runtime/materialize.test.ts`
+- Modify: `packages/server/src/plugin-runtime/test-support.ts`
 
 **Interfaces:**
-- Produces: `OAuthPluginAccountPreparationError`, `PreparedOAuthPluginAccount`, and `prepareOAuthPluginAccount(options)`.
-- `PreparedOAuthPluginAccount` exposes `adapter`, validated `accountOptions`, stored `account`, `accountSummary`, `accountOptionsIdentity`, and `createCredentials()`.
+- Produces: `OAuthPluginAccountPreparationError`, runtime `PreparedOAuthPluginAccount`, control-plane `PreparedOAuthControlPlaneAccount`, and `prepareOAuthPluginAccount(options)` overloads.
+- Runtime preparation exposes the stored `account` and `accountOptionsIdentity` needed for runtime identity, and its credential factory retains the legacy raw `pluginSecrets` input for dynamic refresh-error redaction.
+- Control-plane preparation exposes only collected `secretValues`; it omits the stored account and identity and its credential factory captures only copied `pluginSecretValues` strings.
 - Preserves: every existing `materializePluginProvider()` diagnostic, suggested login command, runtime identity input, credential callback, and plugin secret redaction behavior.
 
-- [ ] **Step 1: Move the materially affected legacy tests beside their source**
+- [ ] **Step 1: Verify the colocated plugin-runtime tests before refactoring**
 
-Use `git mv` for the six files listed above. Update only these imports:
-
-```ts
-// capabilities.test.ts and identity.test.ts
-from "../../src/plugin-runtime"
-to "./index"
-
-// materialize.test.ts
-from "../../src/server-state"
-to "../server-state"
-
-// test-support.ts
-from "../../src/plugin-runtime"
-to "./index"
-```
-
-Run the moved tests once before refactoring:
+The six plugin-runtime test/support files listed above live beside their source and use local
+`./index` or sibling-module imports. Run them once before refactoring:
 
 ```bash
 rtk bun test --preload=packages/server/_test/setup.ts packages/server/src/plugin-runtime
 ```
 
-Expected: PASS, proving the move itself did not alter behavior.
+Expected: PASS, establishing the colocated runtime baseline before the shared preparation change.
 
 - [ ] **Step 2: Write failing shared preparation tests**
 
@@ -400,7 +387,8 @@ Create `packages/server/src/plugin-account.test.ts`. Reuse the SQLite repository
 - `PluginSchemaContractError` maps to `PLUGIN_LOAD_FAILED` without login guidance;
 - failed/missing plugin and missing capability preserve the existing diagnostic codes;
 - account label and expiry are copied into `accountSummary`;
-- `onDiagnosticChanged` and `pluginSecrets` are forwarded to the created credential port.
+- runtime `onDiagnosticChanged` and raw `pluginSecrets` are forwarded to the created credential port;
+- control-plane input accepts only `pluginSecretValues`, returns no stored account/identity, redacts those values, and does not retain a later mutation of the raw plugin-secret object used to collect them.
 
 - [ ] **Step 3: Verify RED**
 
@@ -417,14 +405,7 @@ Expected: FAIL because the shared preparation module does not exist.
 Create `packages/server/src/plugin-account.ts` with these public internal types:
 
 ```ts
-import type {
-  CredentialPortMode,
-  DiagnosticFactory,
-  PluginLogSink,
-  PluginRegistrySnapshot,
-  PluginRepository,
-  StoredAccount,
-} from "@aio-proxy/core";
+import type { DiagnosticFactory, PluginLogSink, PluginRegistrySnapshot, PluginRepository, StoredAccount } from "@aio-proxy/core";
 import type { CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import type { DiagnosticCode, OAuthProvider } from "@aio-proxy/types";
 
@@ -444,29 +425,46 @@ export class OAuthPluginAccountPreparationError extends Error {
   }
 }
 
-export type PreparedOAuthPluginAccount = {
+type PreparedOAuthAccountBase = {
   readonly adapter: OAuthAdapter;
-  readonly account: StoredAccount;
   readonly accountOptions: unknown;
-  readonly accountOptionsIdentity: { readonly public: unknown; readonly secret: unknown };
   readonly accountSummary: OAuthAccountSummary;
   readonly createCredentials: () => CredentialPort<unknown>;
 };
+
+export type PreparedOAuthPluginAccount = PreparedOAuthAccountBase & {
+  readonly credentialMode: "runtime";
+  readonly account: StoredAccount;
+  readonly accountOptionsIdentity: { readonly public: unknown; readonly secret: unknown };
+};
+
+export type PreparedOAuthControlPlaneAccount = PreparedOAuthAccountBase & {
+  readonly credentialMode: "control-plane";
+  readonly secretValues: readonly string[];
+};
 ```
 
-Implement:
+Use a mode-discriminated input:
 
 ```ts
-export async function prepareOAuthPluginAccount(options: {
+type PrepareOAuthPluginAccountBaseOptions = {
   readonly config: OAuthProvider;
   readonly plugins: PluginRegistrySnapshot;
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
-  readonly credentialMode?: CredentialPortMode;
   readonly onDiagnosticChanged: () => void;
-  readonly pluginSecrets?: unknown;
-}): Promise<PreparedOAuthPluginAccount>;
+};
+
+export type PrepareOAuthPluginAccountOptions = PrepareOAuthPluginAccountBaseOptions &
+  (
+    | { readonly credentialMode?: "runtime"; readonly pluginSecrets?: unknown; readonly pluginSecretValues?: never }
+    | {
+        readonly credentialMode: "control-plane";
+        readonly pluginSecrets?: never;
+        readonly pluginSecretValues?: readonly string[];
+      }
+  );
 ```
 
 Move the existing logic from `materializePluginProvider()` in this exact order:
@@ -477,8 +475,12 @@ Move the existing logic from `materializePluginProvider()` in this exact order:
 4. account summary creation;
 5. config-spec secret-key enforcement and merged account-options parse;
 6. credential schema parse and `PluginSchemaContractError` mapping;
-7. `createCredentialPort()` closure with the existing diagnostics, logger, callbacks, plugin secrets,
-   and optional credential mode. Omitted mode preserves the existing runtime behavior.
+7. Normalize omitted mode to runtime. Build the runtime credential factory with raw `pluginSecrets`
+   so later nested values remain dynamically redactable. For control-plane, copy the supplied
+   `pluginSecretValues`, collect stored credential/account-secret strings before return, and create
+   the credential factory through a separate helper whose options contain only those strings.
+8. Return the stored account and account-options identity only for runtime; return collected
+   `secretValues` only for control-plane.
 
 Use `isPlainObject` from `es-toolkit/predicate` for public and stored secret option containers instead
 of a handwritten generic record check. This keeps literal/null-prototype JSON option objects valid
@@ -529,7 +531,7 @@ Expected: all tests pass; `materialize.ts` falls below 240 lines; no runtime ide
 - [ ] **Step 7: Commit the shared account seam and test move**
 
 ```bash
-git add packages/server/src/plugin-account.ts packages/server/src/plugin-account.test.ts packages/server/src/plugin-runtime packages/server/_test/plugin-runtime
+git add packages/server/src/plugin-account.ts packages/server/src/plugin-account.test.ts packages/server/src/plugin-runtime
 git commit -m "refactor(server): share oauth account preparation" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -667,7 +669,7 @@ export async function withOAuthQuotaContext<T>(
 ): Promise<T>;
 ```
 
-The function must acquire a lease first and release it in `finally`. From `lease.snapshot.config`, find the exact Provider ID and require `ProviderKind.OAuth`. Read the current plugin secret for redaction/credential refresh support, seed `secretValues` from stored credential/account/plugin secret data, and call `prepareOAuthPluginAccount()` with `credentialMode: "control-plane"`. Require `adapter.quota`, create one tracking credential port, and construct `AccountContext`. The tracking wrapper adds strings from parsed/transformed reads, exchange inputs/results, and refresh results to `secretValues`. Do not retain the complete stored account or raw plugin secret after seeding. Map provider/capability/account preparation failures to a new `OAuthQuotaCapabilityUnavailableError`; do not call the plugin on those paths. Do not inspect `RuntimeProviderInstance.raw/model`.
+The function must acquire a lease first and release it in `finally`. From `lease.snapshot.config`, find the exact Provider ID and require `ProviderKind.OAuth`. Read the current plugin secret, immediately reduce it with `collectSecretStrings()`, and call `prepareOAuthPluginAccount()` with `credentialMode: "control-plane"` plus `pluginSecretValues`; never pass the raw object into preparation or the credential port. Require `adapter.quota`, seed the quota `Set` from the control-plane preparation's stored credential/account/plugin `secretValues`, create one tracking credential port, and construct `AccountContext`. The tracking wrapper adds strings from parsed/transformed reads, exchange inputs/results, and refresh results to `secretValues`. `PreparedOAuthQuotaContext` must not directly or transitively retain the complete stored account or raw plugin secret. Map provider/capability/account preparation failures to a new `OAuthQuotaCapabilityUnavailableError`; do not call the plugin on those paths. Do not inspect `RuntimeProviderInstance.raw/model`.
 
 The control-plane credential mode preserves read/lease/single-flight/exchange/schema/CAS/metadata/result semantics and credential-failure logging. It suppresses persistent `CREDENTIAL_REFRESH_FAILED` diagnostic write/clear and both diagnostic/credential callbacks, so quota refresh cannot rebuild routing state.
 
@@ -876,7 +878,7 @@ Run:
 
 ```bash
 rtk bun run --filter @aio-proxy/plugin-sdk test
-rtk bun test packages/core/_test/plugins/registry.test.ts packages/core/_test/plugins/quota.test.ts
+rtk bun test packages/core/src/plugins/registry.test.ts packages/core/src/plugins/quota.test.ts
 rtk bun run --filter @aio-proxy/core build
 rtk bun run --filter @aio-proxy/server test:unit
 rtk bun run check

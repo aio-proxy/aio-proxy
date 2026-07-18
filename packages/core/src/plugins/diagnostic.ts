@@ -1,4 +1,4 @@
-import { isProxy } from "node:util/types";
+import { isMap, isProxy, isSet } from "node:util/types";
 import { m } from "@aio-proxy/i18n";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 import { escapeRegExp } from "es-toolkit/string";
@@ -189,14 +189,14 @@ export function collectSecretStrings(value: unknown): readonly string[] {
     if (typeof current !== "object" || current === null || seen.has(current) || isProxy(current)) return;
     seen.add(current);
 
-    if (current instanceof Map) {
+    if (isMap(current)) {
       try {
         Map.prototype.forEach.call(current, (mapValue: unknown, mapKey: unknown) => {
           visit(mapKey);
           visit(mapValue);
         });
       } catch {}
-    } else if (current instanceof Set) {
+    } else if (isSet(current)) {
       try {
         Set.prototype.forEach.call(current, (setValue: unknown) => visit(setValue));
       } catch {}

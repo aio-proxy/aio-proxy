@@ -16,18 +16,20 @@ test("control-plane refresh logs failures without persisting routing diagnostics
     mode: "control-plane",
     onDiagnosticChanged: () => diagnosticChanges++,
     onCredentialChanged: () => credentialChanges++,
+    pluginSecretValues: ["plugin-secret"],
   });
   const before = repository.readDiagnostics("provider-1");
   const current = await credentials.read();
 
   await expect(
     credentials.refresh(current.revision, async () => {
-      throw new Error("refresh failed");
+      throw new Error("refresh failed with plugin-secret");
     }),
-  ).rejects.toThrow("refresh failed");
+  ).rejects.toThrow("refresh failed with plugin-secret");
 
   expect(logs).toHaveLength(1);
   expect(logs[0]?.code).toBe("CREDENTIAL_REFRESH_FAILED");
+  expect(logs[0]?.error.message).toBe("refresh failed with [REDACTED]");
   expect(repository.readDiagnostics("provider-1")).toEqual(before);
   expect(diagnosticChanges).toBe(0);
   expect(credentialChanges).toBe(0);

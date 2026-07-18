@@ -42,6 +42,24 @@ describe("redactPluginError", () => {
     expect(getterReads).toBe(0);
   });
 
+  test("detects Map and Set without traversing a proxy-backed prototype chain", () => {
+    let prototypeTraps = 0;
+    const proxyPrototype = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          prototypeTraps++;
+          throw new Error("prototype traversal blocked");
+        },
+      },
+    );
+    const value = Object.create(proxyPrototype);
+    Object.defineProperty(value, "secret", { value: "own-secret", enumerable: false });
+
+    expect(collectSecretStrings(value)).toEqual(["own-secret"]);
+    expect(prototypeTraps).toBe(0);
+  });
+
   test("collects Map, Set, symbol, non-enumerable, array, and class data fields through cycles", () => {
     const symbol = Symbol("secret");
     class CredentialBox {

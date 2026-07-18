@@ -80,18 +80,29 @@ function port(
     readonly onDiagnosticChanged?: () => void;
     readonly onCredentialChanged?: () => void;
     readonly pluginSecrets?: unknown;
+    readonly pluginSecretValues?: readonly string[];
   } = {},
 ) {
-  return createCredentialPort({
+  const base = {
     providerId,
     schema: overrides.schema ?? zod.object({ token: zod.string() }),
     repository,
     diagnostics: overrides.diagnostics ?? diagnosticFactory(),
     logger: overrides.logger ?? (() => {}),
-    ...(overrides.mode === undefined ? {} : { mode: overrides.mode }),
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
     onCredentialChanged: overrides.onCredentialChanged ?? (() => {}),
-    pluginSecrets: overrides.pluginSecrets,
+  };
+  if (overrides.mode === "control-plane") {
+    return createCredentialPort({
+      ...base,
+      mode: "control-plane",
+      ...(overrides.pluginSecretValues === undefined ? {} : { pluginSecretValues: overrides.pluginSecretValues }),
+    });
+  }
+  return createCredentialPort({
+    ...base,
+    ...(overrides.mode === undefined ? {} : { mode: "runtime" as const }),
+    ...(overrides.pluginSecrets === undefined ? {} : { pluginSecrets: overrides.pluginSecrets }),
   });
 }
 

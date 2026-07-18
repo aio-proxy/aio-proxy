@@ -67,7 +67,7 @@ async function prepareContext(
     if (provider?.kind !== ProviderKind.OAuth) {
       throw new OAuthQuotaCapabilityUnavailableError();
     }
-    const pluginSecrets = dependencies.repository.readPluginSecret(provider.plugin)?.value;
+    const pluginSecretValues = collectSecretStrings(dependencies.repository.readPluginSecret(provider.plugin)?.value);
     const prepared = await prepareOAuthPluginAccount({
       config: provider,
       plugins: lease.snapshot.plugins,
@@ -76,14 +76,12 @@ async function prepareContext(
       logger: dependencies.logger,
       credentialMode: "control-plane",
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
-      ...(pluginSecrets === undefined ? {} : { pluginSecrets }),
+      pluginSecretValues,
     });
     if (prepared.adapter.quota === undefined) {
       throw new OAuthQuotaCapabilityUnavailableError();
     }
-    const secretValues = new Set(
-      collectSecretStrings([prepared.account.credential, prepared.account.secrets, pluginSecrets]),
-    );
+    const secretValues = new Set(prepared.secretValues);
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext["adapter"],
       accountContext: {

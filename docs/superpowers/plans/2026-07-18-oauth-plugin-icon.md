@@ -339,12 +339,12 @@ git commit -m "feat(plugin-sdk): generate exact oauth icon keys" -m "Co-authored
 
 **Files:**
 - Create: `packages/core/src/plugins/icon.ts`
-- Create: `packages/core/_test/plugins/icon.test.ts`
+- Create: `packages/core/src/plugins/icon.test.ts`
 - Modify: `packages/core/src/plugins/diagnostic.ts`
 - Modify: `packages/core/src/plugins/index.ts`
 - Modify: `packages/core/src/plugins/registry.ts`
 - Modify: `packages/core/src/plugins/loader/index.ts`
-- Modify: `packages/core/_test/plugins/registry.test.ts`
+- Modify: `packages/core/src/plugins/registry.test.ts`
 
 **Interfaces:**
 - Produces: `MAX_OAUTH_ICON_BYTES = 256 * 1024`, `OAuthIconValidationResult`, and `validateOAuthIcon(value)`.
@@ -353,11 +353,11 @@ git commit -m "feat(plugin-sdk): generate exact oauth icon keys" -m "Co-authored
 
 - [ ] **Step 1: Write failing icon classification and registry degradation tests**
 
-Create `packages/core/_test/plugins/icon.test.ts` with this acceptance matrix:
+Create `packages/core/src/plugins/icon.test.ts` with this acceptance matrix:
 
 ```ts
 import { describe, expect, test } from "bun:test";
-import { MAX_OAUTH_ICON_BYTES, validateOAuthIcon } from "../../src/plugins/icon";
+import { MAX_OAUTH_ICON_BYTES, validateOAuthIcon } from "./icon";
 
 describe("validateOAuthIcon", () => {
   test.each([
@@ -391,7 +391,7 @@ describe("validateOAuthIcon", () => {
 });
 ```
 
-Extend `packages/core/_test/plugins/registry.test.ts` with:
+Extend `packages/core/src/plugins/registry.test.ts` with:
 
 - one adapter using a valid icon and asserting the resolved snapshot retains it;
 - one adapter using an invalid data URL and asserting the capability still commits with `icon === undefined`;
@@ -403,7 +403,7 @@ Extend `packages/core/_test/plugins/registry.test.ts` with:
 Run:
 
 ```bash
-rtk bun test packages/core/_test/plugins/icon.test.ts packages/core/_test/plugins/registry.test.ts
+rtk bun test packages/core/src/plugins/icon.test.ts packages/core/src/plugins/registry.test.ts
 ```
 
 Expected: FAIL because icon validation, the log code, logger-aware registry staging, and icon copying do not exist.
@@ -498,7 +498,7 @@ Reconstruct the adapter with `icon` only when validation succeeded. Never includ
 Run:
 
 ```bash
-rtk bun test packages/core/_test/plugins/icon.test.ts packages/core/_test/plugins/registry.test.ts packages/core/src/plugins/loader
+rtk bun test packages/core/src/plugins/icon.test.ts packages/core/src/plugins/registry.test.ts packages/core/src/plugins/loader
 rtk bun run --filter @aio-proxy/core build
 ```
 
@@ -561,7 +561,7 @@ Run:
 ```bash
 rtk bun run --filter @aio-proxy/plugin-sdk test
 rtk bun run --filter @aio-proxy/plugin-sdk test:artifact
-rtk bun test packages/core/_test/plugins/icon.test.ts packages/core/_test/plugins/registry.test.ts
+rtk bun test packages/core/src/plugins/icon.test.ts packages/core/src/plugins/registry.test.ts
 rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test:unit
 rtk bun run --filter @aio-proxy/plugin-github-copilot test:unit
 rtk bun run check

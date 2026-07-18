@@ -1,5 +1,6 @@
 import {
-  type CredentialPortMode,
+  type CreateCredentialPortOptions,
+  collectSecretStrings,
   createCredentialPort,
   type DiagnosticFactory,
   type PluginLogSink,
@@ -30,25 +31,46 @@ export class OAuthPluginAccountPreparationError extends Error {
   }
 }
 
-export type PreparedOAuthPluginAccount = {
+type PreparedOAuthAccountBase = {
   readonly adapter: OAuthAdapter;
-  readonly account: StoredAccount;
   readonly accountOptions: unknown;
-  readonly accountOptionsIdentity: { readonly public: unknown; readonly secret: unknown };
   readonly accountSummary: OAuthAccountSummary;
   readonly createCredentials: () => CredentialPort<unknown>;
 };
 
-type PrepareOAuthPluginAccountOptions = {
+export type PreparedOAuthPluginAccount = PreparedOAuthAccountBase & {
+  readonly credentialMode: "runtime";
+  readonly account: StoredAccount;
+  readonly accountOptionsIdentity: { readonly public: unknown; readonly secret: unknown };
+};
+
+export type PreparedOAuthControlPlaneAccount = PreparedOAuthAccountBase & {
+  readonly credentialMode: "control-plane";
+  readonly secretValues: readonly string[];
+};
+
+type PrepareOAuthPluginAccountBaseOptions = {
   readonly config: OAuthProvider;
   readonly plugins: PluginRegistrySnapshot;
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
-  readonly credentialMode?: CredentialPortMode;
   readonly onDiagnosticChanged: () => void;
-  readonly pluginSecrets?: unknown;
 };
+
+export type PrepareOAuthPluginAccountOptions = PrepareOAuthPluginAccountBaseOptions &
+  (
+    | {
+        readonly credentialMode?: "runtime";
+        readonly pluginSecrets?: unknown;
+        readonly pluginSecretValues?: never;
+      }
+    | {
+        readonly credentialMode: "control-plane";
+        readonly pluginSecrets?: never;
+        readonly pluginSecretValues?: readonly string[];
+      }
+  );
 
 function unavailable(
   code: DiagnosticCode,
@@ -58,9 +80,30 @@ function unavailable(
   return new OAuthPluginAccountPreparationError(code, accountSummary, suggestLogin);
 }
 
+function credentialFactory(
+  options: CreateCredentialPortOptions<unknown>,
+): PreparedOAuthAccountBase["createCredentials"] {
+  return () => createCredentialPort(options);
+}
+
+export function prepareOAuthPluginAccount(
+  options: PrepareOAuthPluginAccountBaseOptions & {
+    readonly credentialMode: "control-plane";
+    readonly pluginSecrets?: never;
+    readonly pluginSecretValues?: readonly string[];
+  },
+): Promise<PreparedOAuthControlPlaneAccount>;
+export function prepareOAuthPluginAccount(
+  options: PrepareOAuthPluginAccountBaseOptions & {
+    readonly credentialMode?: "runtime";
+    readonly pluginSecrets?: unknown;
+    readonly pluginSecretValues?: never;
+  },
+): Promise<PreparedOAuthPluginAccount>;
+
 export async function prepareOAuthPluginAccount(
   options: PrepareOAuthPluginAccountOptions,
-): Promise<PreparedOAuthPluginAccount> {
+): Promise<PreparedOAuthPluginAccount | PreparedOAuthControlPlaneAccount> {
   const { config, plugins, repository } = options;
   const loaded = plugins.plugins.get(config.plugin);
   if (loaded === undefined || loaded.state.status === "failed") {
@@ -109,23 +152,41 @@ export async function prepareOAuthPluginAccount(
   }
   if (!parsedCredential.ok) throw unavailable("CREDENTIALS_MISSING_OR_INVALID", accountSummary, true);
 
+  const credentialBase = {
+    providerId: config.id,
+    schema: adapter.credentials,
+    repository,
+    diagnostics: options.diagnostics,
+    logger: options.logger,
+    onDiagnosticChanged: options.onDiagnosticChanged,
+    onCredentialChanged: options.onDiagnosticChanged,
+  };
+  if (options.credentialMode === "control-plane") {
+    const pluginSecretValues = [...(options.pluginSecretValues ?? [])];
+    return {
+      credentialMode: "control-plane",
+      adapter,
+      accountOptions,
+      accountSummary,
+      secretValues: collectSecretStrings([account.credential, account.secrets, pluginSecretValues]),
+      createCredentials: credentialFactory({
+        ...credentialBase,
+        mode: "control-plane",
+        pluginSecretValues,
+      }),
+    };
+  }
   return {
+    credentialMode: "runtime",
     adapter,
     account,
     accountOptions,
     accountOptionsIdentity,
     accountSummary,
-    createCredentials: () =>
-      createCredentialPort({
-        providerId: config.id,
-        schema: adapter.credentials,
-        repository,
-        diagnostics: options.diagnostics,
-        logger: options.logger,
-        ...(options.credentialMode === undefined ? {} : { mode: options.credentialMode }),
-        onDiagnosticChanged: options.onDiagnosticChanged,
-        onCredentialChanged: options.onDiagnosticChanged,
-        pluginSecrets: options.pluginSecrets,
-      }) as CredentialPort<unknown>,
+    createCredentials: credentialFactory({
+      ...credentialBase,
+      mode: "runtime",
+      ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
+    }),
   };
 }
