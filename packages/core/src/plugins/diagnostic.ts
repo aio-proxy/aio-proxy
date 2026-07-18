@@ -65,7 +65,12 @@ export function createPluginDiagnosticFactory(now: () => number = Date.now): Dia
   });
 }
 
-export type PluginLogCode = DiagnosticCode | "ACCOUNT_RECOVERY_FAILED" | "PLUGIN_ICON_INVALID";
+export type PluginLogCode =
+  | DiagnosticCode
+  | "ACCOUNT_RECOVERY_FAILED"
+  | "PLUGIN_ICON_INVALID"
+  | "QUOTA_READ_FAILED"
+  | "QUOTA_RESET_FAILED";
 
 export type PluginLogSink = (entry: {
   readonly event: string;

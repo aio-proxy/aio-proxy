@@ -5,6 +5,7 @@ export * from "./config-file";
 export * from "./config-spec";
 export * from "./credential-port";
 export {
+  collectSecretStrings,
   createPluginDiagnosticFactory,
   type DiagnosticContext,
   type DiagnosticFactory,
