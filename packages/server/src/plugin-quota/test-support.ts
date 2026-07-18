@@ -21,6 +21,7 @@ export type QuotaFixtureOptions = {
   readonly account?: QuotaAccountFixtureState;
   readonly quota?: boolean;
   readonly pluginSecretFailure?: boolean;
+  readonly loggerFailure?: boolean;
   readonly read?: (context: AccountContext<unknown, unknown>) => Promise<OAuthQuotaSnapshot>;
   readonly itemId?: string;
   readonly region?: string;
@@ -188,7 +189,10 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     acquireSnapshot: manager.acquire,
     repository: dependencyRepository,
     diagnostics,
-    logger: (entry) => logs.push(entry),
+    logger: (entry) => {
+      if (options.loggerFailure) throw new Error("quota logger failed");
+      logs.push(entry);
+    },
     onDiagnosticChanged: () => {
       changed++;
     },

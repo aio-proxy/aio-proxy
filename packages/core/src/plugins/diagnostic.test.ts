@@ -5,8 +5,8 @@ import {
   createPluginDiagnosticFactory,
   type DiagnosticFactory,
   redactPluginError,
-} from "../../src/plugins/diagnostic";
-import { loadPluginRegistry } from "../../src/plugins/loader/index";
+} from "./diagnostic";
+import { loadPluginRegistry } from "./loader/index";
 
 describe("redactPluginError", () => {
   test("collects unique non-empty strings without following cycles or failing on hostile properties", () => {
@@ -71,6 +71,13 @@ describe("redactPluginError", () => {
     expect(redacted.message).toContain("[REDACTED]");
     expect(redacted.stack).toContain("[REDACTED]");
     expect(redacted).not.toHaveProperty("cause");
+  });
+
+  test("redacts arbitrary secret values from error names", () => {
+    const error = new Error("safe message");
+    error.name = "PluginFailure: name-secret";
+
+    expect(redactPluginError(error, { secretValues: ["name-secret"] }).name).toBe("PluginFailure: [REDACTED]");
   });
 
   test("redacts OAuth values from JSON quoted keys", () => {
@@ -173,7 +180,7 @@ describe("redactPluginError", () => {
     };
     const error = new Error(`Bearer ${secret}`, { cause: new Error("private cause") });
     error.stack = `Error: Bearer ${secret}\n at plugin (plugin.ts:1:1)`;
-    const descriptor = definePlugin(() => {
+    const descriptor = definePlugin<unknown>(() => {
       throw error;
     });
 

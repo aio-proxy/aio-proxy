@@ -212,7 +212,7 @@ export function redactPluginError(error: unknown, redaction: PluginErrorRedactio
       const message = typeof error.message === "string" ? error.message : SAFE_ERROR_MESSAGE;
       const stack = typeof error.stack === "string" ? error.stack : undefined;
       return {
-        name,
+        name: redactText(name, secretValues),
         message: redactText(message, secretValues),
         ...(stack === undefined ? {} : { stack: redactText(stack, secretValues) }),
       };
