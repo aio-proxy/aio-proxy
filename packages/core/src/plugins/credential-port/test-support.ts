@@ -76,6 +76,7 @@ function port(
     readonly schema?: Parameters<typeof createCredentialPort>[0]["schema"];
     readonly diagnostics?: DiagnosticFactory;
     readonly logger?: PluginLogSink;
+    readonly mode?: Parameters<typeof createCredentialPort>[0]["mode"];
     readonly onDiagnosticChanged?: () => void;
     readonly onCredentialChanged?: () => void;
     readonly pluginSecrets?: unknown;
@@ -87,6 +88,7 @@ function port(
     repository,
     diagnostics: overrides.diagnostics ?? diagnosticFactory(),
     logger: overrides.logger ?? (() => {}),
+    ...(overrides.mode === undefined ? {} : { mode: overrides.mode }),
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
     onCredentialChanged: overrides.onCredentialChanged ?? (() => {}),
     pluginSecrets: overrides.pluginSecrets,

@@ -9,35 +9,61 @@ import {
 import { loadPluginRegistry } from "./loader/index";
 
 describe("redactPluginError", () => {
-  test("collects unique non-empty strings without following cycles or failing on hostile properties", () => {
+  test("skips proxies and accessors without invoking them", () => {
     const shared = { value: "shared-secret" };
+    let proxyTraps = 0;
     const hostile = new Proxy(
       { blocked: "unread", values: ["array-secret", "", shared] },
       {
-        get(target, key, receiver) {
-          if (key === "blocked") throw new Error("blocked getter");
-          return Reflect.get(target, key, receiver);
-        },
-      },
-    );
-    const uninspectable = new Proxy(
-      {},
-      {
         ownKeys() {
+          proxyTraps++;
           throw new Error("blocked proxy keys");
         },
       },
     );
+    let getterReads = 0;
+    const accessor = Object.defineProperty({}, "secret", {
+      get() {
+        getterReads++;
+        return "accessor-secret";
+      },
+    });
     const input: Record<string, unknown> = {
       first: "root-secret",
       shared,
       duplicate: shared,
       hostile,
-      uninspectable,
+      accessor,
     };
     Object.assign(input, { cycle: input });
 
-    expect(collectSecretStrings(input)).toEqual(["root-secret", "shared-secret", "array-secret"]);
+    expect(collectSecretStrings(input)).toEqual(["root-secret", "shared-secret"]);
+    expect(proxyTraps).toBe(0);
+    expect(getterReads).toBe(0);
+  });
+
+  test("collects Map, Set, symbol, non-enumerable, array, and class data fields through cycles", () => {
+    const symbol = Symbol("secret");
+    class CredentialBox {
+      public visible = "class-secret";
+    }
+    const described = Object.defineProperties(new CredentialBox(), {
+      hidden: { value: "hidden-secret", enumerable: false },
+      [symbol]: { value: "symbol-secret", enumerable: false },
+    });
+    const map = new Map<unknown, unknown>([["map-key-secret", described]]);
+    const set = new Set<unknown>(["set-secret", map]);
+    map.set("cycle", set);
+
+    expect(collectSecretStrings([map, set, "array-secret"])).toEqual([
+      "map-key-secret",
+      "class-secret",
+      "hidden-secret",
+      "symbol-secret",
+      "cycle",
+      "set-secret",
+      "array-secret",
+    ]);
   });
 
   test("removes OAuth material, URLs, causes, stacks, and arbitrary third-party secrets", () => {

@@ -156,6 +156,16 @@ test("maps invalid account options to login guidance with account summary", asyn
   });
 });
 
+test("rejects class instances as non-plain public account options", async () => {
+  class PublicOptions {}
+  const { input } = options();
+  const error = await expectPreparationError({
+    ...input,
+    config: { ...config, options: new PublicOptions() } as never,
+  });
+  expect(error).toMatchObject({ code: "ACCOUNT_OPTIONS_INVALID", suggestLogin: true });
+});
+
 test("maps invalid credentials to login guidance with account summary", async () => {
   const { fixture, input } = options();
   replaceAccount(fixture.repository, { label: "Primary", expiresAt: 42 });

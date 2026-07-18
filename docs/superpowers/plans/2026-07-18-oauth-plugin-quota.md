@@ -297,6 +297,8 @@ function withDenseArray<T>(
 
 - requires `Array.isArray(value)` and prototype `Array.prototype`;
 - rejects symbols, accessors, extra string properties, and missing numeric indices;
+- validates own canonical array-index keys and proves their count is dense before any length-sized
+  iteration or allocation, so a maximally large sparse array rejects promptly;
 - rejects active cycles;
 - pass values to `validate()` in index order and remove the array from `ancestors` in `finally`.
 
@@ -416,6 +418,7 @@ Create `packages/server/src/plugin-account.ts` with these public internal types:
 
 ```ts
 import type {
+  CredentialPortMode,
   DiagnosticFactory,
   PluginLogSink,
   PluginRegistrySnapshot,
@@ -460,6 +463,7 @@ export async function prepareOAuthPluginAccount(options: {
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly credentialMode?: CredentialPortMode;
   readonly onDiagnosticChanged: () => void;
   readonly pluginSecrets?: unknown;
 }): Promise<PreparedOAuthPluginAccount>;
@@ -473,7 +477,12 @@ Move the existing logic from `materializePluginProvider()` in this exact order:
 4. account summary creation;
 5. config-spec secret-key enforcement and merged account-options parse;
 6. credential schema parse and `PluginSchemaContractError` mapping;
-7. `createCredentialPort()` closure with the existing diagnostics, logger, callbacks, and plugin secrets.
+7. `createCredentialPort()` closure with the existing diagnostics, logger, callbacks, plugin secrets,
+   and optional credential mode. Omitted mode preserves the existing runtime behavior.
+
+Use `isPlainObject` from `es-toolkit/predicate` for public and stored secret option containers instead
+of a handwritten generic record check. This keeps literal/null-prototype JSON option objects valid
+while rejecting arrays and class instances.
 
 Throw `OAuthPluginAccountPreparationError` only for the existing mapped failure cases. Preserve unexpected non-contract exceptions rather than silently changing their behavior.
 
@@ -626,7 +635,7 @@ import type {
 import type { AccountContext, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
 import type { ProviderSnapshotLease } from "../runtime";
-import { prepareOAuthPluginAccount, type PreparedOAuthPluginAccount } from "../plugin-account";
+import { prepareOAuthPluginAccount } from "../plugin-account";
 import { OAuthQuotaCapabilityUnavailableError } from "./errors";
 
 export type OAuthQuotaServiceDependencies = {
@@ -639,12 +648,11 @@ export type OAuthQuotaServiceDependencies = {
 
 export type PreparedOAuthQuotaContext = {
   readonly adapter: OAuthAdapter & { readonly quota: NonNullable<OAuthAdapter["quota"]> };
-  readonly account: PreparedOAuthPluginAccount["account"];
   readonly accountContext: AccountContext<unknown, unknown>;
   readonly plugin: string;
   readonly capability: string;
   readonly providerId: string;
-  readonly pluginSecrets?: unknown;
+  readonly secretValues: Set<string>;
 };
 ```
 
@@ -659,18 +667,16 @@ export async function withOAuthQuotaContext<T>(
 ): Promise<T>;
 ```
 
-The function must acquire a lease first and release it in `finally`. From `lease.snapshot.config`, find the exact Provider ID and require `ProviderKind.OAuth`. Read the current plugin secret for redaction/credential refresh support, call `prepareOAuthPluginAccount()`, require `adapter.quota`, create one credential port, and construct `AccountContext`. Map provider/capability/account preparation failures to a new `OAuthQuotaCapabilityUnavailableError`; do not call the plugin on those paths. Do not inspect `RuntimeProviderInstance.raw/model`.
+The function must acquire a lease first and release it in `finally`. From `lease.snapshot.config`, find the exact Provider ID and require `ProviderKind.OAuth`. Read the current plugin secret for redaction/credential refresh support, seed `secretValues` from stored credential/account/plugin secret data, and call `prepareOAuthPluginAccount()` with `credentialMode: "control-plane"`. Require `adapter.quota`, create one tracking credential port, and construct `AccountContext`. The tracking wrapper adds strings from parsed/transformed reads, exchange inputs/results, and refresh results to `secretValues`. Do not retain the complete stored account or raw plugin secret after seeding. Map provider/capability/account preparation failures to a new `OAuthQuotaCapabilityUnavailableError`; do not call the plugin on those paths. Do not inspect `RuntimeProviderInstance.raw/model`.
+
+The control-plane credential mode preserves read/lease/single-flight/exchange/schema/CAS/metadata/result semantics and credential-failure logging. It suppresses persistent `CREDENTIAL_REFRESH_FAILED` diagnostic write/clear and both diagnostic/credential callbacks, so quota refresh cannot rebuild routing state.
 
 - [ ] **Step 5: Implement direct validated read and safe logging**
 
 Create `packages/server/src/plugin-quota/read.ts` with:
 
 ```ts
-import {
-  collectSecretStrings,
-  redactPluginError,
-  validateOAuthQuotaSnapshot,
-} from "@aio-proxy/core";
+import { redactPluginError, validateOAuthQuotaSnapshot } from "@aio-proxy/core";
 import type { OAuthQuotaSnapshot } from "@aio-proxy/plugin-sdk";
 import { OAuthQuotaReadError } from "./errors";
 import {
@@ -695,16 +701,12 @@ dependencies.logger({
     capability: prepared.capability,
     providerId: prepared.providerId,
   },
-  error: redactPluginError(error, {
-    secretValues: collectSecretStrings([
-      prepared.account.credential,
-      prepared.account.secrets,
-      prepared.pluginSecrets,
-    ]),
-  }),
+  error: redactPluginError(error, { secretValues: [...prepared.secretValues] }),
 });
 throw new OAuthQuotaReadError();
 ```
+
+The quota log sink is best-effort; a throwing sink must not replace the stable operation error.
 
 Export `createOAuthQuotaReader(dependencies)` whose `read()` calls `withOAuthQuotaContext()` and `readValidatedQuota(..., "plugin.quota.read.failed")`. Do not retain a promise map or snapshot cache.
 

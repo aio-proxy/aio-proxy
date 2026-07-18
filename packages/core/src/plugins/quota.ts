@@ -79,11 +79,10 @@ function withDenseArray<T>(
   }
   if (prototype !== Array.prototype) invalid(path);
 
-  const allowedKeys = new Set<string>(["length"]);
-  for (let index = 0; index < value.length; index++) allowedKeys.add(String(index));
+  let length: number | undefined;
+  const indexedValues: { readonly index: number; readonly value: unknown }[] = [];
   for (const key of keys) {
     if (typeof key !== "string") invalid(path);
-    if (!allowedKeys.has(key)) invalid([...path, key]);
     let descriptor: PropertyDescriptor | undefined;
     try {
       descriptor = Reflect.getOwnPropertyDescriptor(value, key);
@@ -93,14 +92,29 @@ function withDenseArray<T>(
     if (descriptor === undefined || !("value" in descriptor)) {
       invalid(key === "length" ? path : [...path, key]);
     }
+    if (key === "length") {
+      if (typeof descriptor.value !== "number" || !Number.isSafeInteger(descriptor.value)) invalid(path);
+      length = descriptor.value;
+      continue;
+    }
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= 0xffffffff || String(index) !== key) {
+      invalid([...path, key]);
+    }
+    indexedValues.push({ index, value: descriptor.value });
   }
 
-  const items: unknown[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const descriptor = Reflect.getOwnPropertyDescriptor(value, String(index));
-    if (descriptor === undefined || !("value" in descriptor)) invalid([...path, index]);
-    items.push(descriptor.value);
+  if (length === undefined) invalid(path);
+  indexedValues.sort((left, right) => left.index - right.index);
+  if (indexedValues.length !== length) {
+    let expectedIndex = 0;
+    for (const { index } of indexedValues) {
+      if (index !== expectedIndex) invalid([...path, expectedIndex]);
+      expectedIndex++;
+    }
+    invalid([...path, expectedIndex]);
   }
+  const items = indexedValues.map(({ value: item }) => item);
 
   ancestors.add(value);
   try {

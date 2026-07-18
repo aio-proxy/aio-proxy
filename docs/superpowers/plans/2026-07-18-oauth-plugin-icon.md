@@ -42,7 +42,7 @@
 - Modify: `package.json`
 - Modify: `turbo.json`
 - Modify: `bun.lock`
-- Create: `packages/plugin-sdk/_test/build-artifact.test.ts`
+- Create: `packages/plugin-sdk/build/build-artifact.test.ts`
 
 **Interfaces:**
 - Produces: `LobeIconKey`, `OAuthIcon`, `LOBE_ICON_KEY_HELPER`, `resolveLobeIconPackage(fromUrl)`, `iconKeysFromFileNames(fileNames)`, `readLobeIconKeys(iconsDirectory)`, `renderLobeIconKeyDeclaration(keys)`, `lobeIconTypePath(cachePath, version)`, `prepareLobeIconTypeBuild(options)`, and `createLobeIconTypePlugin(options)`.
@@ -82,7 +82,8 @@ describe("Lobe icon key generation", () => {
 });
 ```
 
-Create `packages/plugin-sdk/_test/build-artifact.test.ts`. It must:
+Create `packages/plugin-sdk/build/build-artifact.test.ts`. It must remain outside the explicit
+`test:unit` file list and run only through `test:artifact` after a real SDK build. It must:
 
 1. read `dist/index.d.ts` and `dist/index.js`;
 2. assert the declaration contains `export declare type LobeIconKey` plus both `"openai"` and `"githubcopilot"`;
@@ -115,7 +116,7 @@ Run:
 
 ```bash
 rtk bun test packages/plugin-sdk/build/lobe-icon-keys.test.ts
-rtk bun test packages/plugin-sdk/_test/build-artifact.test.ts
+rtk bun test packages/plugin-sdk/build/build-artifact.test.ts
 ```
 
 Expected: the unit test fails because the build module does not exist; the artifact test fails because the current SDK declaration has no icon types or exact union.
@@ -290,11 +291,18 @@ export default defineLibraryConfig({
 });
 ```
 
-Add the icon source as a `plugin-sdk` build dependency and root-hoist API Extractor for Rslib's Bun-isolated optional-peer lookup:
+Add the icon source at exactly `1.93.0` to the root workspace catalog because both `plugin-sdk` and
+Dashboard consume it. Declare `"catalog:"` from both packages, and root-hoist API Extractor for
+Rslib's Bun-isolated optional-peer lookup:
 
 ```json
-// packages/plugin-sdk/package.json
+// package.json workspaces.catalog
 { "@lobehub/icons-static-svg": "1.93.0" }
+```
+
+```json
+// packages/plugin-sdk/package.json and packages/dashboard/package.json
+{ "@lobehub/icons-static-svg": "catalog:" }
 ```
 
 ```json
@@ -302,7 +310,10 @@ Add the icon source as a `plugin-sdk` build dependency and root-hoist API Extrac
 { "@microsoft/api-extractor": "7.58.11" }
 ```
 
-Add `"test:artifact": "bun test ./_test/build-artifact.test.ts"` to the SDK scripts. Add `"build/**"` to the root `turbo.json` `build.inputs` array so edits to the Rslib build module invalidate Turbo's build cache. Run `rtk bun install` to update `bun.lock`.
+Add `"test:artifact": "bun test ./build/build-artifact.test.ts"` to the SDK scripts. Keep `test:unit`
+as an explicit list that includes the generator test but excludes the artifact test. Add `"build/**"`
+to the root `turbo.json` `build.inputs` array so edits to the Rslib build module invalidate Turbo's
+build cache. Run `rtk bun install` to update `bun.lock`.
 
 - [ ] **Step 5: Verify GREEN through the real build artifact**
 
@@ -476,6 +487,9 @@ logger({
   error: { name: "OAuthIconValidationError", message: "OAuth adapter icon was ignored" },
 });
 ```
+
+Warning emission is best-effort: wrap the sink call so a throwing logger still strips the invalid
+icon and allows the staged capability to commit.
 
 Reconstruct the adapter with `icon` only when validation succeeded. Never include the raw icon in the error, context, or message. Change `loadPluginRegistry()` to call `createPluginRegistryHost(options.logger)` so built-in and third-party staging warnings reach the configured sink.
 

@@ -1,4 +1,5 @@
 import {
+  type CredentialPortMode,
   createCredentialPort,
   type DiagnosticFactory,
   type PluginLogSink,
@@ -11,6 +12,7 @@ import {
 } from "@aio-proxy/core";
 import type { CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import type { DiagnosticCode, OAuthProvider } from "@aio-proxy/types";
+import { isPlainObject } from "es-toolkit/predicate";
 
 export type OAuthAccountSummary = {
   readonly accountLabel?: string;
@@ -43,13 +45,10 @@ type PrepareOAuthPluginAccountOptions = {
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly credentialMode?: CredentialPortMode;
   readonly onDiagnosticChanged: () => void;
   readonly pluginSecrets?: unknown;
 };
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function unavailable(
   code: DiagnosticCode,
@@ -91,7 +90,7 @@ export async function prepareOAuthPluginAccount(
   let accountOptionsIdentity: PreparedOAuthPluginAccount["accountOptionsIdentity"];
   try {
     const { secretKeys } = validateConfigSpec(adapter.account.options);
-    if (!isRecord(publicOptions) || !isRecord(account.secrets)) throw new Error("Invalid account options");
+    if (!isPlainObject(publicOptions) || !isPlainObject(account.secrets)) throw new Error("Invalid account options");
     for (const key of secretKeys) if (Object.hasOwn(publicOptions, key)) throw new Error("Secret option in config");
     accountOptionsIdentity = structuredClone({ public: publicOptions, secret: account.secrets });
     const parsed = await parsePluginSchema(adapter.account.options.schema, { ...publicOptions, ...account.secrets });
@@ -123,6 +122,7 @@ export async function prepareOAuthPluginAccount(
         repository,
         diagnostics: options.diagnostics,
         logger: options.logger,
+        ...(options.credentialMode === undefined ? {} : { mode: options.credentialMode }),
         onDiagnosticChanged: options.onDiagnosticChanged,
         onCredentialChanged: options.onDiagnosticChanged,
         pluginSecrets: options.pluginSecrets,

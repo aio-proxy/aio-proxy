@@ -14,12 +14,15 @@ const REFRESH_POLL_JITTER_MS = 25;
 
 type RefreshResult<Credential> = Awaited<ReturnType<CredentialPort<Credential>["refresh"]>>;
 
+export type CredentialPortMode = "runtime" | "control-plane";
+
 export type CreateCredentialPortOptions<Credential> = {
   readonly providerId: string;
   readonly schema: ZodType<Credential>;
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly mode?: CredentialPortMode;
   readonly onDiagnosticChanged: () => void;
   readonly onCredentialChanged: () => void;
   readonly pluginSecrets?: unknown;
@@ -183,6 +186,7 @@ function recordRefreshFailure<Credential>(
     context: { providerId: options.providerId },
     error: redactPluginError(error, { secretValues }),
   });
+  if (options.mode === "control-plane") return;
   const diagnostic = options.diagnostics("CREDENTIAL_REFRESH_FAILED", {
     providerId: options.providerId,
     retryable: false,
@@ -236,15 +240,17 @@ export function createCredentialPort<Credential>(
               if (latest.snapshot.revision === expectedRevision) throw new CredentialRefreshLeaseLostError();
               return { status: "superseded", snapshot: latest.snapshot };
             }
-            if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {
-              options.onDiagnosticChanged();
-            }
-            if (
-              (exchanged.metadata?.label !== undefined && exchanged.metadata.label !== current.account.label) ||
-              (exchanged.metadata?.expiresAt !== undefined &&
-                exchanged.metadata.expiresAt !== current.account.expiresAt)
-            ) {
-              options.onCredentialChanged();
+            if (options.mode !== "control-plane") {
+              if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {
+                options.onDiagnosticChanged();
+              }
+              if (
+                (exchanged.metadata?.label !== undefined && exchanged.metadata.label !== current.account.label) ||
+                (exchanged.metadata?.expiresAt !== undefined &&
+                  exchanged.metadata.expiresAt !== current.account.expiresAt)
+              ) {
+                options.onCredentialChanged();
+              }
             }
             return { status: "updated", snapshot: { value: validated.value, revision: updated.revision } };
           } finally {

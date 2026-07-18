@@ -193,6 +193,28 @@ describe("validateOAuthQuotaSnapshot", () => {
     expectInvalid({ items: extra }, ["items", "note"]);
   });
 
+  test("rejects a maximally large sparse array before constructing a length-sized index set", () => {
+    const originalAdd = Set.prototype.add;
+    const sentinel = new Error("length-proportional Set allocation");
+    let numericIndexAdds = 0;
+    let caught: unknown;
+    Set.prototype.add = function add(value) {
+      if (typeof value === "string" && /^\d+$/u.test(value) && ++numericIndexAdds > 8) throw sentinel;
+      return originalAdd.call(this, value);
+    };
+    try {
+      validateOAuthQuotaSnapshot({ items: new Array(0xffffffff) });
+    } catch (error) {
+      caught = error;
+    } finally {
+      Set.prototype.add = originalAdd;
+    }
+
+    expect(caught).toBeInstanceOf(OAuthQuotaValidationError);
+    expect((caught as OAuthQuotaValidationError).path).toEqual(["items", 0]);
+    expect(numericIndexAdds).toBe(0);
+  });
+
   test("rejects custom prototypes", () => {
     const input = Object.assign(Object.create({ inherited: true }), { items: [] });
     expectInvalid(input, []);

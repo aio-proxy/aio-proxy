@@ -6,7 +6,7 @@ import {
 } from "@aio-proxy/core";
 import type { AccountContext, CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
-import { type PreparedOAuthPluginAccount, prepareOAuthPluginAccount } from "../plugin-account";
+import { prepareOAuthPluginAccount } from "../plugin-account";
 import type { ProviderSnapshotLease } from "../runtime";
 import { OAuthQuotaCapabilityUnavailableError } from "./errors";
 
@@ -22,12 +22,10 @@ export type PreparedOAuthQuotaContext = {
   readonly adapter: OAuthAdapter & {
     readonly quota: NonNullable<OAuthAdapter["quota"]>;
   };
-  readonly account: PreparedOAuthPluginAccount["account"];
   readonly accountContext: AccountContext<unknown, unknown>;
   readonly plugin: string;
   readonly capability: string;
   readonly providerId: string;
-  readonly pluginSecrets?: unknown;
   readonly secretValues: Set<string>;
 };
 
@@ -76,6 +74,7 @@ async function prepareContext(
       repository: dependencies.repository,
       diagnostics: dependencies.diagnostics,
       logger: dependencies.logger,
+      credentialMode: "control-plane",
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
       ...(pluginSecrets === undefined ? {} : { pluginSecrets }),
     });
@@ -87,7 +86,6 @@ async function prepareContext(
     );
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext["adapter"],
-      account: prepared.account,
       accountContext: {
         credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
         options: prepared.accountOptions,
@@ -97,7 +95,6 @@ async function prepareContext(
       capability: provider.capability,
       providerId,
       secretValues,
-      ...(pluginSecrets === undefined ? {} : { pluginSecrets }),
     };
   } catch {
     throw new OAuthQuotaCapabilityUnavailableError();

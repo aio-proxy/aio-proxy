@@ -1,3 +1,4 @@
+import { isProxy } from "node:util/types";
 import { m } from "@aio-proxy/i18n";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 import { escapeRegExp } from "es-toolkit/string";
@@ -185,8 +186,22 @@ export function collectSecretStrings(value: unknown): readonly string[] {
       if (current !== "") secrets.add(current);
       return;
     }
-    if (typeof current !== "object" || current === null || seen.has(current)) return;
+    if (typeof current !== "object" || current === null || seen.has(current) || isProxy(current)) return;
     seen.add(current);
+
+    if (current instanceof Map) {
+      try {
+        Map.prototype.forEach.call(current, (mapValue: unknown, mapKey: unknown) => {
+          visit(mapKey);
+          visit(mapValue);
+        });
+      } catch {}
+    } else if (current instanceof Set) {
+      try {
+        Set.prototype.forEach.call(current, (setValue: unknown) => visit(setValue));
+      } catch {}
+    }
+
     let keys: readonly PropertyKey[];
     try {
       keys = Reflect.ownKeys(current);
@@ -195,8 +210,8 @@ export function collectSecretStrings(value: unknown): readonly string[] {
     }
     for (const key of keys) {
       try {
-        if (!Reflect.getOwnPropertyDescriptor(current, key)?.enumerable) continue;
-        visit(Reflect.get(current, key));
+        const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
+        if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value);
       } catch {}
     }
   };

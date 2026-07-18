@@ -45,12 +45,14 @@ function validateAdapter(
   const id = CapabilityIdSchema.parse(rawId);
   const validatedIcon = icon === undefined ? undefined : validateOAuthIcon(icon);
   if (validatedIcon !== undefined && !validatedIcon.ok) {
-    logger({
-      event: "plugin.oauth.icon.invalid",
-      code: "PLUGIN_ICON_INVALID",
-      context: { plugin, capability: id },
-      error: { name: "OAuthIconValidationError", message: "OAuth adapter icon was ignored" },
-    });
+    try {
+      logger({
+        event: "plugin.oauth.icon.invalid",
+        code: "PLUGIN_ICON_INVALID",
+        context: { plugin, capability: id },
+        error: { name: "OAuthIconValidationError", message: "OAuth adapter icon was ignored" },
+      });
+    } catch {}
   }
   const validatedLabel = LocalizedTextSchema.safeParse(label);
   const validatedDescription = LocalizedTextSchema.safeParse(description);
