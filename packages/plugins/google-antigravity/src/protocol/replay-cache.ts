@@ -48,6 +48,8 @@ export class ReasoningReplayCache {
   #generation = 0;
   readonly #maxEntries: number;
   readonly #maxRequestMappings: number;
+  #nextEntryExpiry = Number.POSITIVE_INFINITY;
+  #nextRequestMappingExpiry = Number.POSITIVE_INFINITY;
   readonly #now: () => number;
   readonly #requests = new RequestMappingIndex<RequestGenerationEntry>();
   readonly #requestTtlMs: number;
@@ -86,6 +88,7 @@ export class ReasoningReplayCache {
         replayKey: key,
       };
       this.#requests.set(requestKey, request);
+      this.#nextRequestMappingExpiry = Math.min(this.#nextRequestMappingExpiry, request.expiresAt);
       if (created) entry.committedGeneration = request.generation;
     } else {
       this.#touchRequestMapping(request, now);
@@ -134,23 +137,33 @@ export class ReasoningReplayCache {
   #touch(entry: ReplayEntry, now: number): void {
     entry.lastAccessAt = now;
     entry.expiresAt = now + this.#ttlMs;
+    this.#nextEntryExpiry = Math.min(this.#nextEntryExpiry, entry.expiresAt);
   }
 
   #touchRequestMapping(request: RequestGenerationEntry, now: number): void {
     request.lastAccessAt = now;
     request.expiresAt = now + this.#requestTtlMs;
+    this.#nextRequestMappingExpiry = Math.min(this.#nextRequestMappingExpiry, request.expiresAt);
   }
 
   #removeExpiredEntries(now: number): void {
+    if (now < this.#nextEntryExpiry) return;
+    let nextExpiry = Number.POSITIVE_INFINITY;
     for (const [key, entry] of this.#entries) {
       if (entry.expiresAt <= now) this.#removeEntry(key);
+      else nextExpiry = Math.min(nextExpiry, entry.expiresAt);
     }
+    this.#nextEntryExpiry = nextExpiry;
   }
 
   #removeExpiredRequestMappings(now: number): void {
+    if (now < this.#nextRequestMappingExpiry) return;
+    let nextExpiry = Number.POSITIVE_INFINITY;
     for (const [key, request] of this.#requests) {
       if (request.expiresAt <= now) this.#requests.delete(key);
+      else nextExpiry = Math.min(nextExpiry, request.expiresAt);
     }
+    this.#nextRequestMappingExpiry = nextExpiry;
   }
 
   #evictEntryOverflow(): void {

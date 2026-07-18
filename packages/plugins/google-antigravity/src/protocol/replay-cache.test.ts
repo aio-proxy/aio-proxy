@@ -104,6 +104,17 @@ test("logical-request generation reuse has an independent sliding one-hour expir
   expect(cache.read(first.key)).toBeDefined();
 });
 
+test("expires a logical-request mapping at its exact boundary", () => {
+  const clock = fakeClock();
+  const cache = new ReasoningReplayCache({ now: clock.now, requestTtlMs: HOUR, ttlMs: HOUR * 2 });
+  const first = cache.begin("model", "sha256:session", "logical-request");
+
+  clock.advance(HOUR);
+  const afterMappingExpiry = cache.begin("model", "sha256:session", "logical-request");
+
+  expect(afterMappingExpiry.generation).toBeGreaterThan(first.generation);
+});
+
 test("bounds logical-request generation mappings by oldest access across an active replay key", () => {
   const clock = fakeClock();
   const cache = new ReasoningReplayCache({ now: clock.now, ttlMs: HOUR, maxEntries: 10_240 });
