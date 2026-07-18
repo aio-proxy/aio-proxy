@@ -54,11 +54,17 @@ export function refreshCredential(repository: PluginRepository, expectedRevision
 }
 
 export function materializePluginProvider(
-  options: Omit<MaterializePluginProviderOptions, "pluginOptionsDigest"> & {
+  options: Omit<MaterializePluginProviderOptions, "pluginOptionsDigest" | "previous"> & {
     readonly pluginOptionsDigest?: MaterializePluginProviderOptions["pluginOptionsDigest"];
+    readonly previous?: MaterializePluginProviderOptions["previous"] | undefined;
   },
 ) {
-  return materializePluginProviderWithDigest({ pluginOptionsDigest: emptyPluginOptionsDigest, ...options });
+  const { pluginOptionsDigest = emptyPluginOptionsDigest, previous, ...rest } = options;
+  return materializePluginProviderWithDigest({
+    ...rest,
+    pluginOptionsDigest,
+    ...(previous === undefined ? {} : { previous }),
+  });
 }
 
 export function runtimeFixture(

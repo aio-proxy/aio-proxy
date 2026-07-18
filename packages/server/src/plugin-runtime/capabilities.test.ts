@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import type { RawResolver } from "@aio-proxy/plugin-sdk";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from "./index";
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
@@ -72,6 +73,7 @@ test("rejects an array raw transport carrying an invoke property", async () => {
 });
 
 test("plugin raw capability receives catalog metadata and rejects malformed transports", async () => {
+  const modelId = "model";
   const observed: unknown[] = [];
   const fixture = runtimeFixture(
     { kind: "static" },
@@ -80,7 +82,7 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
       createRuntime: async () =>
         ({
           provider: providerV4(),
-          raw(input) {
+          raw(input: Parameters<RawResolver>[0]) {
             observed.push(input);
             if (input.modelId === "bad-resolver") return { invoke: "invalid" } as never;
             if (input.modelId === "bad-response") return { invoke: async () => ({}) } as never;
@@ -120,7 +122,7 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
   const transport = result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "model" });
   expect(await transport?.invoke(new Request("https://example.test"))).toBeInstanceOf(Response);
   expect(observed[0]).toEqual({ protocol: "openai-compatible", modelId: "model", metadata: { region: "us" } });
-  expect(result.provider?.modelMetadata?.model).toEqual({ displayName: "Model" });
+  expect(result.provider?.modelMetadata?.[modelId]).toEqual({ displayName: "Model" });
   expect(result.summary.clientModels).toEqual(["client", "bad-resolver", "bad-response"]);
   expect(() =>
     result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "bad-resolver" }),
