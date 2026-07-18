@@ -31,12 +31,12 @@ export type CreateCredentialPortOptions<Credential> = CredentialPortBaseOptions<
     | {
         readonly mode?: "runtime";
         readonly pluginSecrets?: unknown;
-        readonly pluginSecretValues?: never;
+        readonly additionalSecretValues?: never;
       }
     | {
         readonly mode: "control-plane";
         readonly pluginSecrets?: never;
-        readonly pluginSecretValues?: readonly string[];
+        readonly additionalSecretValues?: readonly string[];
       }
   );
 
@@ -243,7 +243,7 @@ export function createCredentialPort<Credential>(
               ...collectSecretStrings(current.snapshot.value),
               ...collectSecretStrings(current.account.secrets),
               ...(options.mode === "control-plane"
-                ? (options.pluginSecretValues ?? [])
+                ? (options.additionalSecretValues ?? [])
                 : collectSecretStrings(options.pluginSecrets)),
             ];
             if (current.snapshot.revision !== expectedRevision) {

@@ -163,16 +163,17 @@ export async function prepareOAuthPluginAccount(
   };
   if (options.credentialMode === "control-plane") {
     const pluginSecretValues = [...(options.pluginSecretValues ?? [])];
+    const additionalSecretValues = collectSecretStrings([accountOptions, pluginSecretValues]);
     return {
       credentialMode: "control-plane",
       adapter,
       accountOptions,
       accountSummary,
-      secretValues: collectSecretStrings([account.credential, account.secrets, accountOptions, pluginSecretValues]),
+      secretValues: collectSecretStrings([account.credential, account.secrets, additionalSecretValues]),
       createCredentials: credentialFactory({
         ...credentialBase,
         mode: "control-plane",
-        pluginSecretValues,
+        additionalSecretValues,
       }),
     };
   }

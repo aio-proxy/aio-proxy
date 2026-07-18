@@ -16,7 +16,7 @@ test("control-plane refresh logs failures without persisting routing diagnostics
     mode: "control-plane",
     onDiagnosticChanged: () => diagnosticChanges++,
     onCredentialChanged: () => credentialChanges++,
-    pluginSecretValues: ["plugin-secret"],
+    additionalSecretValues: ["plugin-secret"],
   });
   const before = repository.readDiagnostics("provider-1");
   const current = await credentials.read();

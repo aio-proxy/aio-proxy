@@ -80,7 +80,7 @@ function port(
     readonly onDiagnosticChanged?: () => void;
     readonly onCredentialChanged?: () => void;
     readonly pluginSecrets?: unknown;
-    readonly pluginSecretValues?: readonly string[];
+    readonly additionalSecretValues?: readonly string[];
   } = {},
 ) {
   const base = {
@@ -96,7 +96,9 @@ function port(
     return createCredentialPort({
       ...base,
       mode: "control-plane",
-      ...(overrides.pluginSecretValues === undefined ? {} : { pluginSecretValues: overrides.pluginSecretValues }),
+      ...(overrides.additionalSecretValues === undefined
+        ? {}
+        : { additionalSecretValues: overrides.additionalSecretValues }),
     });
   }
   return createCredentialPort({
