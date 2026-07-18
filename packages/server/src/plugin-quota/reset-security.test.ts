@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
+import { zod } from "@aio-proxy/plugin-sdk";
 import {
   OAuthQuotaReadError,
   OAuthQuotaResetError,
@@ -62,6 +64,27 @@ test("retains a refreshed credential discovered in preflight for later mutation 
   expect(fixture.logs).toHaveLength(1);
   expect(JSON.stringify(fixture.logs)).not.toContain(refreshedSecret);
   expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: refreshedSecret });
+});
+
+test("redacts a secret derived by account option parsing from reset failures", async () => {
+  const derivedSecret = Buffer.from("account-secret").toString("base64");
+  const fixture = createQuotaFixture({
+    accountOptions: {
+      schema: zod
+        .object({ region: zod.string(), clientSecret: zod.string() })
+        .transform(({ clientSecret }) => ({ authorization: Buffer.from(clientSecret).toString("base64") })),
+      form: [{ type: "secret", key: "clientSecret", label: "Client secret" }],
+    },
+    read: async () => availableQuotaSnapshot,
+    reset: async ({ options }) => {
+      expect(options).toEqual({ authorization: derivedSecret });
+      throw new Error(`quota reset rejected ${derivedSecret}`);
+    },
+  });
+
+  await capturedQuotaError(createOAuthQuotaResetter(fixture.dependencies).reset(PROVIDER_ID, quotaSignal()));
+
+  expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
 });
 
 test("preserves the stable reset error when the mutation failure logger throws", async () => {

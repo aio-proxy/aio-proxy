@@ -168,7 +168,7 @@ export async function prepareOAuthPluginAccount(
       adapter,
       accountOptions,
       accountSummary,
-      secretValues: collectSecretStrings([account.credential, account.secrets, pluginSecretValues]),
+      secretValues: collectSecretStrings([account.credential, account.secrets, accountOptions, pluginSecretValues]),
       createCredentials: credentialFactory({
         ...credentialBase,
         mode: "control-plane",

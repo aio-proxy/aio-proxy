@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { zod } from "@aio-proxy/plugin-sdk";
 import { OAuthQuotaReadError } from "./errors";
 import { createOAuthQuotaReader } from "./read";
@@ -62,6 +63,26 @@ test("redacts initial credential, account, and plugin secrets from error names",
 
   expect(error).toBeInstanceOf(OAuthQuotaReadError);
   expect(JSON.stringify(fixture.logs)).not.toMatch(/credential-secret|account-secret|plugin-secret/u);
+});
+
+test("redacts a secret derived by account option parsing from read failures", async () => {
+  const derivedSecret = Buffer.from("account-secret").toString("base64");
+  const fixture = createQuotaFixture({
+    accountOptions: {
+      schema: zod
+        .object({ region: zod.string(), clientSecret: zod.string() })
+        .transform(({ clientSecret }) => ({ authorization: Buffer.from(clientSecret).toString("base64") })),
+      form: [{ type: "secret", key: "clientSecret", label: "Client secret" }],
+    },
+    read: async ({ options }) => {
+      expect(options).toEqual({ authorization: derivedSecret });
+      throw new Error(`quota read rejected ${derivedSecret}`);
+    },
+  });
+
+  await capturedError(createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal));
+
+  expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
 });
 
 test.each([

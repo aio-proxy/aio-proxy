@@ -21,6 +21,7 @@ export type QuotaFixtureOptions = {
   readonly capability?: "ready" | "missing" | "throw";
   readonly account?: QuotaAccountFixtureState;
   readonly quota?: boolean;
+  readonly accountOptions?: OAuthAdapter["account"]["options"];
   readonly credentials?: OAuthAdapter["credentials"];
   readonly pluginSecretFailure?: boolean;
   readonly loggerFailure?: boolean;
@@ -133,7 +134,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     id: CAPABILITY,
     label: "Example",
     account: {
-      options: {
+      options: options.accountOptions ?? {
         schema: zod.object({ region: zod.string(), clientSecret: zod.string() }),
         form: [{ type: "secret", key: "clientSecret", label: "Client secret" }],
       },
