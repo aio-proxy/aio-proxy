@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { devDashboardStaticDir, embeddedDashboardAssets } from "../src/dashboard-assets";
+import { devDashboardStaticDir, embeddedDashboardAssets } from "./dashboard-assets";
 
 describe("devDashboardStaticDir", () => {
   test("Given built dashboard When resolving Then returns dir containing index.html", async () => {
