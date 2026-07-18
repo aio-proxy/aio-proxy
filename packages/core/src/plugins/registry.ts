@@ -33,8 +33,13 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
   if (!isPluginZodSchema(credentials)) throw new Error("Invalid OAuth adapter");
   if (typeof login !== "function" || typeof createRuntime !== "function") throw new Error("Invalid OAuth adapter");
   if (!isRecord(catalog)) throw new Error("Invalid OAuth adapter");
-  const { discover, policy } = catalog;
-  if (typeof discover !== "function" || !isRecord(policy)) {
+  const { discover, policy, initialFallback, defaultAliases } = catalog;
+  if (
+    typeof discover !== "function" ||
+    !isRecord(policy) ||
+    (initialFallback !== undefined && typeof initialFallback !== "function") ||
+    (defaultAliases !== undefined && typeof defaultAliases !== "function")
+  ) {
     throw new Error("Invalid OAuth adapter");
   }
   const { kind, ttlMs } = policy;
@@ -61,6 +66,14 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       catalog: {
         policy: policy as OAuthAdapter["catalog"]["policy"],
         discover: discover.bind(catalog) as OAuthAdapter["catalog"]["discover"],
+        ...(initialFallback === undefined
+          ? {}
+          : {
+              initialFallback: initialFallback.bind(catalog) as NonNullable<OAuthAdapter["catalog"]["initialFallback"]>,
+            }),
+        ...(defaultAliases === undefined
+          ? {}
+          : { defaultAliases: defaultAliases.bind(catalog) as NonNullable<OAuthAdapter["catalog"]["defaultAliases"]> }),
       },
       createRuntime: createRuntime.bind(value) as OAuthAdapter["createRuntime"],
     },

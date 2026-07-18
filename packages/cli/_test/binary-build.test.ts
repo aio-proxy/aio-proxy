@@ -14,7 +14,7 @@ const hostSuffix = (): string => {
   return `${platform}-${architecture}`;
 };
 
-test("compiled binary lists both embedded OAuth plugins outside the workspace", () => {
+test("compiled binary lists all embedded OAuth plugins outside the workspace", () => {
   const suffix = hostSuffix();
   const build = Bun.spawnSync([process.execPath, "packages/cli/scripts/build-binary.ts", suffix], {
     cwd: repoRoot,
@@ -46,6 +46,7 @@ test("compiled binary lists both embedded OAuth plugins outside the workspace", 
     expect(result.exitCode).toBe(0);
     expect(stdout).toContain("@aio-proxy/plugin-github-copilot");
     expect(stdout).toContain("@aio-proxy/plugin-openai-chatgpt");
+    expect(stdout).toContain("@aio-proxy/plugin-google-antigravity");
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });

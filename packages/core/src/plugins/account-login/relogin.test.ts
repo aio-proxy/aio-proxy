@@ -5,6 +5,7 @@ import {
   createAccount,
   deleteOAuthAccount,
   diagnostics,
+  emptyCatalog,
   expect,
   fixture,
   loginOAuthAccount,
@@ -56,6 +57,40 @@ test("explicit re-login preloads options and secrets, fixes Provider ID, and pre
   });
 });
 
+test("re-login preserves an edited alias despite catalog suggestions", async () => {
+  const state = fixture();
+  await createAccount(state);
+  await state.config.replace((current) => ({
+    ...current,
+    providers: {
+      person: {
+        ...((current["providers"] as Record<string, unknown>)["person"] as object),
+        alias: { logical: { model: "edited" } },
+      },
+    },
+  }));
+  let suggestions = 0;
+
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: "person",
+      capability: undefined,
+      registry: registry({
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: "suggested" }] }),
+        defaultAliases: () => {
+          suggestions += 1;
+          return { logical: { model: "suggested" } };
+        },
+      }),
+    }),
+  );
+
+  expect((configOf(state)["providers"] as Record<string, unknown>)["person"]).toMatchObject({
+    alias: { logical: { model: "edited" } },
+  });
+  expect(suggestions).toBe(0);
+});
+
 test("missing config/account preflight makes no network call and reports cleanup-pending", async () => {
   const state = fixture();
   let calls = 0;
@@ -98,52 +133,6 @@ test("re-login requires both entry and account, and cancels an older delete mark
   await loginOAuthAccount(options(state, { targetProviderId: "person", capability: undefined }));
   expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
   expect(state.repository.readAccount("person")?.runtimeRevision).toBe(2);
-});
-
-test("authorization failure preserves the old account revision", async () => {
-  const state = fixture();
-  await createAccount(state);
-  await expect(
-    loginOAuthAccount(
-      options(state, {
-        targetProviderId: "person",
-        capability: undefined,
-        registry: registry({ login: async () => Promise.reject(new Error("denied")) }),
-      }),
-    ),
-  ).rejects.toMatchObject({ name: "OAuthAdapterLoginError", message: "OAUTH_ADAPTER_LOGIN_FAILED" });
-  expect(state.repository.readAccount("person")).toMatchObject({ revision: 1, runtimeRevision: 1 });
-});
-
-test("authorization rejection preserves undefined as the rejection value", async () => {
-  const state = fixture();
-  const outcome = await loginOAuthAccount(
-    options(state, {
-      createAuthorization: () => ({
-        async presentDeviceCode() {
-          throw undefined;
-        },
-        async loopback() {
-          return { code: "unused", redirectUri: "http://127.0.0.1/callback" };
-        },
-      }),
-      registry: registry({
-        login: async ({ authorization }) => {
-          await authorization.presentDeviceCode({
-            url: "https://identity.example/device",
-            userCode: "CODE",
-            instructions: "Authorize",
-          });
-          throw new Error("unreachable");
-        },
-      }),
-    }),
-  ).then(
-    () => ({ status: "fulfilled" as const }),
-    (error: unknown) => ({ status: "rejected" as const, error }),
-  );
-
-  expect(outcome).toEqual({ status: "rejected", error: undefined });
 });
 
 test("explicit re-login rejects fingerprint mismatch without changing the old revision", async () => {

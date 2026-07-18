@@ -167,6 +167,43 @@ describe("POST /v1/messages", () => {
     expect(invoked).toBe(false);
   });
 
+  test.each([
+    { thinking: { type: "enabled", budget_tokens: 1023 }, max_tokens: 8192 },
+    { thinking: { type: "enabled", budget_tokens: 8192 }, max_tokens: 8192 },
+    { thinking: { type: "adaptive" }, max_tokens: 8192 },
+    { thinking: { type: "disabled" }, output_config: { effort: "high" }, max_tokens: 8192 },
+  ])("Given invalid thinking %# When message is posted Then it fails before a provider attempt", async (invalid) => {
+    let invoked = false;
+    const provider = {
+      id: "mock-ai",
+      kind: "ai-sdk",
+      models: ["claude-sonnet-4-5"],
+      alias: { "claude-sonnet-4-5": { model: "claude-sonnet-4-5", preserve: false } },
+      invoke() {
+        invoked = true;
+        return textStream([]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = await createServer({
+      config: { providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [provider],
+    });
+
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({ ...messagesRequest, ...invalid }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      type: "error",
+      error: { type: "invalid_request_error", message: "Invalid Anthropic Messages request" },
+    });
+    expect(invoked).toBe(false);
+  });
+
   test("Given ai-sdk provider package is missing When stream message is posted Then Anthropic error is actionable 503 before SSE", async () => {
     // Given
     const provider = createAiSdkProvider(

@@ -1,8 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
-import { createEmbeddedBuiltIns } from "../../src/plugins/builtins";
-import { loadPluginRegistry } from "../../src/plugins/loader/index";
+import { BUILT_IN_PLUGIN_PACKAGE_NAMES, createEmbeddedBuiltIns } from "./builtins";
+import { loadPluginRegistry } from "./loader/index";
+
+const expectedBuiltIns = [
+  "@aio-proxy/plugin-github-copilot",
+  "@aio-proxy/plugin-openai-chatgpt",
+  "@aio-proxy/plugin-google-antigravity",
+] as const;
 
 const diagnostics = (code: string) => ({
   code,
@@ -19,9 +25,7 @@ afterEach(async () => {
 test("reserved identities always load embedded descriptors without package lookup", async () => {
   const imported: string[] = [];
   const snapshot = await loadPluginRegistry({
-    enablements: ["@aio-proxy/plugin-github-copilot", "@aio-proxy/plugin-openai-chatgpt"].map((packageName) => ({
-      packageName,
-    })),
+    enablements: expectedBuiltIns.map((packageName) => ({ packageName })),
     builtIns: createEmbeddedBuiltIns(),
     diagnostics: diagnostics as never,
     importPackage: async ({ packageName }) => {
@@ -32,9 +36,11 @@ test("reserved identities always load embedded descriptors without package looku
     secrets: { readPluginSecret: () => undefined },
   });
 
+  expect(BUILT_IN_PLUGIN_PACKAGE_NAMES).toEqual(expectedBuiltIns);
   expect(imported).toEqual([]);
-  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true]);
-  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(["0.0.0", "0.0.0"]);
+  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true]);
+  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(["0.0.0", "0.0.0", "0.0.0"]);
+  expect(snapshot.registry.resolveOAuth("@aio-proxy/plugin-google-antigravity", "default")).toBeDefined();
 });
 
 test("embedded adapters retain English and Chinese copy independent of creation locale", async () => {
@@ -58,4 +64,18 @@ test("embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(adapter?.label ?? "", "en")).toBe("Login with GitHub Copilot");
   expect(resolveLocalizedText(adapter?.label ?? "", "zh-Hans")).toBe("使用 GitHub Copilot 登录");
   expect(resolveLocalizedText(adapter?.account.options.form[0]?.label ?? "", "zh-Hans")).toBe("选择 GitHub 部署类型");
+
+  const antigravity = snapshot.registry.resolveOAuth("@aio-proxy/plugin-google-antigravity", "default");
+  const antigravityPlugin = snapshot.plugins.get("@aio-proxy/plugin-google-antigravity");
+  expect(resolveLocalizedText(antigravityPlugin?.label ?? "", "zh-Hans")).toBe("Google Antigravity");
+  expect(resolveLocalizedText(antigravityPlugin?.description ?? "", "zh-Hans")).toBe(
+    "使用 Google Antigravity 账号访问 Cloud Code Assist 模型",
+  );
+  expect(resolveLocalizedText(antigravity?.label ?? "", "zh-Hans")).toBe("使用 Google Antigravity 登录");
+  expect(resolveLocalizedText(antigravity?.account.options.form[0]?.label ?? "", "zh-Hans")).toBe(
+    "自定义 Antigravity Base URL",
+  );
+  expect(resolveLocalizedText(antigravity?.account.options.form[0]?.placeholder ?? "", "en")).toBe(
+    "https://daily-cloudcode-pa.googleapis.com",
+  );
 });

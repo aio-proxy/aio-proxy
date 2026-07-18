@@ -5,7 +5,7 @@ import type {
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
   OpenAIResponsesTool,
-} from "../ingress/openai-responses";
+} from "../ingress/openai-responses/index";
 import type {
   OpenAIResponsesModelMessages,
   OpenAIResponsesTransformSettings,

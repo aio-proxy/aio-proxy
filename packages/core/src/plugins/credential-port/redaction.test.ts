@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { zod } from "@aio-proxy/plugin-sdk";
+import { CredentialRefreshError, zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import type { PluginLogSink } from "../diagnostic";
 import { CredentialValidationError } from "../index";
@@ -105,6 +105,34 @@ test("redacts credential, account, and plugin secrets and records terminal re-lo
     const serializedLog = JSON.stringify(logs);
     expect(serializedLog).not.toMatch(/initial-secret|account-secret|plugin-secret/u);
     expect(serializedLog.match(/\[REDACTED\]/gu)?.length).toBeGreaterThanOrEqual(3);
+    expect(repository.readDiagnostics("provider-1")).toEqual([
+      expect.objectContaining({
+        code: "CREDENTIAL_REFRESH_FAILED",
+        retryable: false,
+        suggestedCommand: providerLoginCommand("provider-1"),
+      }),
+    ]);
+  } finally {
+    handle.close();
+  }
+});
+
+test("confirmed invalid_grant preserves the old credential and records permanent re-login guidance", async () => {
+  const { handle, repository } = fixtures.open();
+  try {
+    const credentials = port(repository);
+    const current = await credentials.read();
+    await expect(
+      credentials.refresh(current.revision, async () => {
+        throw new CredentialRefreshError("Google token refresh failed", {
+          retryable: false,
+          reason: "invalid_grant",
+          status: 400,
+        });
+      }),
+    ).rejects.toThrow("Google token refresh failed");
+
+    expect(await credentials.read()).toEqual(current);
     expect(repository.readDiagnostics("provider-1")).toEqual([
       expect.objectContaining({
         code: "CREDENTIAL_REFRESH_FAILED",

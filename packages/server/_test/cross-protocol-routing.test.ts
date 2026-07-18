@@ -45,6 +45,16 @@ afterEach(() => {
 });
 
 describe("cross-protocol HTTP routing", () => {
+  test.each([
+    [ProviderProtocol.Gemini, "same protocol", "raw"],
+    [ProviderProtocol.OpenAIResponse, "cross protocol", "model"],
+    [ProviderProtocol.OpenAICompatible, "cross protocol", "model"],
+    [ProviderProtocol.Anthropic, "cross protocol", "model"],
+    [ProviderProtocol.Gemini, "raw unavailable", "model"],
+  ] as const)("routes Antigravity %s %s through %s", async (protocol, condition, expectedCapability) => {
+    expect(await runAntigravityMatrixCase(protocol, condition)).toBe(expectedCapability);
+  });
+
   for (const inbound of inboundCases) {
     for (const providerProtocol of protocols) {
       test(`${inbound.protocol} inbound uses ${providerProtocol} raw only when protocols match`, async () => {
@@ -85,6 +95,58 @@ describe("cross-protocol HTTP routing", () => {
 
 type InboundCase = (typeof inboundCases)[number];
 type Calls = { model: number; raw: number };
+
+async function runAntigravityMatrixCase(
+  protocol: ProviderProtocol,
+  condition: "same protocol" | "cross protocol" | "raw unavailable",
+): Promise<"model" | "raw"> {
+  const inbound = inboundCases.find((candidate) => candidate.protocol === protocol);
+  if (inbound === undefined) throw new Error(`Missing inbound fixture for ${protocol}`);
+  const fixture = antigravityProvider(condition !== "raw unavailable");
+  const response = await request(inbound, [fixture.value]);
+
+  expect(response.status).toBe(200);
+  if (fixture.calls.raw === 1) {
+    expect(await response.text()).toBe("raw:antigravity");
+    return "raw";
+  }
+  expectModelResponse(protocol, await response.json(), "model:antigravity");
+  return "model";
+}
+
+function antigravityProvider(rawAvailable: boolean): {
+  readonly calls: Calls;
+  readonly value: RuntimeProviderInstance;
+} {
+  const calls: Calls = { model: 0, raw: 0 };
+  const value = {
+    alias: { m: { model: "m", preserve: false } },
+    capability: "default",
+    enabled: true,
+    id: "antigravity",
+    kind: ProviderKind.OAuth,
+    model: {
+      invoke() {
+        calls.model += 1;
+        return modelStream("model:antigravity");
+      },
+    },
+    models: ["m"],
+    plugin: "@aio-proxy/plugin-google-antigravity",
+    raw: {
+      resolve: ({ protocol }: { readonly protocol: ProviderProtocol }) =>
+        rawAvailable && protocol === ProviderProtocol.Gemini
+          ? {
+              invoke: async () => {
+                calls.raw += 1;
+                return new Response("raw:antigravity");
+              },
+            }
+          : undefined,
+    },
+  } satisfies RuntimeProviderInstance;
+  return { calls, value };
+}
 
 function provider(
   protocol: ProviderProtocol,

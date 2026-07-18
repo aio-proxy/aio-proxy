@@ -3,7 +3,7 @@ import type { RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 import { attemptCandidates } from "./attempt";
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from "./logging";
-import { hasInvalidOrOversizedContentLength } from "./request";
+import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from "./request";
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -20,17 +20,19 @@ export async function handleProtocolRequest<TRequest, TContext>({
 }: HandleProtocolRequestOptions<TRequest, TContext>): Promise<Response> {
   const session = source.requestRecorder.begin({ inboundProtocol: adapter.protocol });
   let requestedModelId: string | undefined;
+  let releaseRetainedBody = false;
   try {
     if (hasInvalidOrOversizedContentLength(rawRequest)) {
-      const response = adapter.errors.tooLarge();
+      const error = new RequestBodyTooLargeError("Request body too large");
+      await cancelRetainedRequestBody(rawRequest, error);
       return rejectRequest({
         source,
         session,
         rawRequest,
         inboundProtocol: adapter.protocol,
-        response,
+        response: adapter.errors.tooLarge(),
         errorCode: "request_too_large",
-        error: new RequestBodyTooLargeError("Request body too large"),
+        error,
       });
     }
 
@@ -38,14 +40,14 @@ export async function handleProtocolRequest<TRequest, TContext>({
     try {
       request = await adapter.parse(rawRequest, context);
     } catch (error) {
+      await cancelRetainedRequestBody(rawRequest, error);
       if (error instanceof RequestBodyTooLargeError) {
-        const response = adapter.errors.tooLarge();
         return rejectRequest({
           source,
           session,
           rawRequest,
           inboundProtocol: adapter.protocol,
-          response,
+          response: adapter.errors.tooLarge(),
           errorCode: "request_too_large",
           error,
         });
@@ -65,7 +67,12 @@ export async function handleProtocolRequest<TRequest, TContext>({
       }
       throw error;
     }
+    releaseRetainedBody = true;
 
+    const logicalRequest = source.logicalSessionStore.begin({
+      hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+      headers: rawRequest.headers,
+    });
     const requestedModel = adapter.model(request, context);
     requestedModelId = requestedModel;
     session.identify({ requestedModelId: requestedModel });
@@ -77,6 +84,7 @@ export async function handleProtocolRequest<TRequest, TContext>({
       requestedModelId: requestedModel,
       diagnostics: adapter.requestDiagnostics(request, context),
     });
+
     const lease = source.acquireProviderSnapshot();
     let deferred = false;
     const deferRelease = () => {
@@ -89,6 +97,7 @@ export async function handleProtocolRequest<TRequest, TContext>({
         candidates,
         context,
         deferRelease,
+        logicalRequest,
         rawRequest,
         release: lease.release,
         request,
@@ -126,6 +135,10 @@ export async function handleProtocolRequest<TRequest, TContext>({
       });
     }
     throw error;
+  } finally {
+    if (releaseRetainedBody) {
+      void cancelRetainedRequestBody(rawRequest, "request body no longer needed");
+    }
   }
 }
 

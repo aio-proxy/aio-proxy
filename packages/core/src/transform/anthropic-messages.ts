@@ -1,114 +1,31 @@
 import { AnthropicMessagesTransformError } from "../error";
 import type {
   AnthropicAssistantContentBlock,
-  AnthropicCacheControl,
   AnthropicMessagesRequest,
   AnthropicTextBlock,
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
 } from "../ingress/anthropic-messages";
+import { convertAnthropicMessagesToModelMessages } from "./anthropic-messages/to-model";
+import type {
+  AnthropicAssistantMessage,
+  AnthropicMessagesFromModelMessages,
+  AnthropicMessagesModelMessages,
+  AnthropicUserMessage,
+  ReasoningPart,
+  TextPart,
+  ToolCallPart,
+  ToolResultPart,
+} from "./anthropic-messages/types";
 
-type AnthropicProviderOptions = {
-  readonly anthropic: {
-    readonly cache_control?: AnthropicCacheControl;
-    readonly signature?: string;
-    readonly system?: AnthropicTextBlock[];
-  };
-};
-
-type TextPart = {
-  readonly type: "text";
-  readonly text: string;
-  readonly providerOptions?: AnthropicProviderOptions;
-};
-
-type ToolCallPart = {
-  readonly type: "tool-call";
-  readonly toolCallId: string;
-  readonly toolName: string;
-  readonly input: unknown;
-  readonly providerOptions?: AnthropicProviderOptions;
-};
-
-type ToolResultPart = {
-  readonly type: "tool-result";
-  readonly toolCallId: string;
-  readonly toolName: string;
-  readonly output:
-    | { readonly type: "text"; readonly value: string }
-    | {
-        readonly type: "content";
-        readonly value: readonly {
-          readonly type: "text";
-          readonly text: string;
-        }[];
-      };
-  readonly providerOptions?: AnthropicProviderOptions;
-};
-
-type ReasoningPart = {
-  readonly type: "reasoning";
-  readonly text: string;
-  readonly providerOptions?: AnthropicProviderOptions;
-};
-
-type AnthropicSystemMessage = {
-  readonly role: "system";
-  readonly content: string;
-  readonly providerOptions?: AnthropicProviderOptions;
-};
-
-type AnthropicUserMessage = {
-  readonly role: "user";
-  readonly content: string | readonly (TextPart | ToolResultPart)[];
-};
-
-type AnthropicAssistantMessage = {
-  readonly role: "assistant";
-  readonly content: string | readonly (TextPart | ToolCallPart | ToolResultPart | ReasoningPart)[];
-};
-
-type AnthropicToolMessage = {
-  readonly role: "tool";
-  readonly content: readonly ToolResultPart[];
-};
-
-export type AnthropicModelMessage =
-  | AnthropicSystemMessage
-  | AnthropicUserMessage
-  | AnthropicAssistantMessage
-  | AnthropicToolMessage;
-
-export type AnthropicMessagesSettings = {
-  readonly stream?: boolean;
-  readonly temperature?: number;
-  readonly maxTokens?: number;
-};
-
-export type AnthropicMessagesModelMessages = {
-  readonly messages: readonly AnthropicModelMessage[];
-  readonly settings: AnthropicMessagesSettings;
-};
-
-export type AnthropicMessagesFromModelMessages = AnthropicMessagesModelMessages & {
-  readonly model: string;
-};
+export type {
+  AnthropicMessagesFromModelMessages,
+  AnthropicMessagesModelMessages,
+  AnthropicModelMessage,
+} from "./anthropic-messages/types";
 
 export function anthropicMessagesToModelMessages(req: AnthropicMessagesRequest): AnthropicMessagesModelMessages {
-  const toolNames = new Map<string, string>();
-  const messages: AnthropicModelMessage[] = [];
-  for (const message of req.messages) {
-    messages.push(messageToModelMessage(message, toolNames));
-  }
-
-  return {
-    messages: [...(req.system === undefined ? [] : [systemToModelMessage(req.system)]), ...messages],
-    settings: {
-      ...(req.stream !== undefined ? { stream: req.stream } : {}),
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
-    },
-  };
+  return convertAnthropicMessagesToModelMessages(req);
 }
 
 export function modelMessagesToAnthropicMessages({
@@ -160,82 +77,6 @@ export function modelMessagesToAnthropicMessages({
   };
 }
 
-function messageToModelMessage(
-  message: AnthropicMessagesRequest["messages"][number],
-  toolNames: Map<string, string>,
-): AnthropicUserMessage | AnthropicAssistantMessage {
-  switch (message.role) {
-    case "user":
-      return {
-        role: "user",
-        content: userContentToModelParts(message.content, toolNames),
-      } satisfies AnthropicUserMessage;
-    case "assistant":
-      return {
-        role: "assistant",
-        content: assistantContentToModelParts(message.content, toolNames),
-      } satisfies AnthropicAssistantMessage;
-    default:
-      return assertNever(message);
-  }
-}
-
-function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest["system"]>): AnthropicSystemMessage {
-  if (typeof system === "string") {
-    return { role: "system", content: system };
-  }
-
-  return {
-    role: "system",
-    content: system.map((part) => part.text).join(""),
-    providerOptions: { anthropic: { system } },
-  };
-}
-
-function userContentToModelParts(
-  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
-  toolNames: ReadonlyMap<string, string>,
-): string | readonly (TextPart | ToolResultPart)[] {
-  return typeof content === "string"
-    ? content
-    : content.map((part) => {
-        switch (part.type) {
-          case "text":
-            return textPart(part);
-          case "tool_result":
-            return toolResultPart(part, toolNames);
-          default:
-            return assertNever(part);
-        }
-      });
-}
-
-function assistantContentToModelParts(
-  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"],
-  toolNames: Map<string, string>,
-): string | readonly (TextPart | ToolCallPart | ReasoningPart)[] {
-  return typeof content === "string"
-    ? content
-    : content.map((part) => {
-        switch (part.type) {
-          case "text":
-            return textPart(part);
-          case "tool_use": {
-            toolNames.set(part.id, part.name);
-            return toolCallPart(part);
-          }
-          case "thinking":
-            return {
-              type: "reasoning",
-              text: part.thinking,
-              providerOptions: { anthropic: { signature: part.signature } },
-            };
-          default:
-            return assertNever(part);
-        }
-      });
-}
-
 function userContentFromModelParts(
   content: AnthropicUserMessage["content"],
   path: string,
@@ -274,43 +115,6 @@ function assistantContentFromModelParts(
             return assertNever(part);
         }
       });
-}
-
-function textPart(part: AnthropicTextBlock): TextPart {
-  return {
-    type: "text",
-    text: part.text,
-    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
-  };
-}
-
-function toolCallPart(part: AnthropicToolUseBlock): ToolCallPart {
-  return {
-    type: "tool-call",
-    toolCallId: part.id,
-    toolName: part.name,
-    input: part.input,
-    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
-  };
-}
-
-function toolResultPart(part: AnthropicToolResultBlock, toolNames: ReadonlyMap<string, string>): ToolResultPart {
-  return {
-    type: "tool-result",
-    toolCallId: part.tool_use_id,
-    toolName: toolNames.get(part.tool_use_id) ?? "",
-    output:
-      typeof part.content === "string"
-        ? { type: "text", value: part.content }
-        : {
-            type: "content",
-            value: part.content.map((contentPart) => ({
-              type: "text",
-              text: contentPart.text,
-            })),
-          },
-    ...(part.cache_control !== undefined ? { providerOptions: cacheProviderOptions(part.cache_control) } : {}),
-  };
 }
 
 function textBlock(part: TextPart): AnthropicTextBlock {
@@ -359,10 +163,6 @@ function thinkingBlock(part: ReasoningPart, path: string): AnthropicAssistantCon
   }
 
   return { type: "thinking", thinking: part.text, signature };
-}
-
-function cacheProviderOptions(cacheControl: AnthropicCacheControl): AnthropicProviderOptions {
-  return { anthropic: { cache_control: cacheControl } };
 }
 
 function assertNever(value: never): never {

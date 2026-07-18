@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ChatGPTTokenExchangeError, exchangeCodeForTokens, refreshAccessToken } from "../src/oauth-flow";
-import { base64url } from "../src/pkce";
+import { CHATGPT_CLIENT_ID, ChatGPTTokenExchangeError, exchangeCodeForTokens, refreshAccessToken } from "./oauth-flow";
+import { base64url } from "./pkce";
 
 type TokenFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -16,7 +16,7 @@ describe("OpenAI ChatGPT OAuth flow", () => {
           refresh_token: "refresh-123",
         },
         new URLSearchParams({
-          client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
+          client_id: CHATGPT_CLIENT_ID,
           code: "code-123",
           code_verifier: "verifier-123",
           grant_type: "authorization_code",
@@ -126,7 +126,7 @@ describe("OpenAI ChatGPT OAuth flow", () => {
 
 function refreshBody(refreshToken: string): URLSearchParams {
   return new URLSearchParams({
-    client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
+    client_id: CHATGPT_CLIENT_ID,
     grant_type: "refresh_token",
     refresh_token: refreshToken,
     scope: "openid profile email",

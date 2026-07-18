@@ -86,7 +86,7 @@ export {
   type OpenAIResponsesTool,
   parseOpenAIResponses,
   safeParseOpenAIResponses,
-} from "./ingress/openai-responses";
+} from "./ingress/openai-responses/index";
 export {
   createModelsDevCatalog,
   createOpenRouterPriceCatalog,

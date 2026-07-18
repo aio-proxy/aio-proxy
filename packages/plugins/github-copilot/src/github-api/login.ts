@@ -5,7 +5,9 @@ import { authHeaders, fetchJson } from "./http";
 import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from "./types";
 import { getGitHubCopilotBaseURL, githubApiBase } from "./urls";
 
-const CLIENT_ID = "Iv1.b507a08c87ecfe98";
+declare const __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__: string;
+
+const CLIENT_ID = __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__;
 
 export async function loginToGitHubCopilot(
   context: OAuthLoginContext,

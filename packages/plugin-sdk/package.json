@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "catalog:",
+    "ai": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

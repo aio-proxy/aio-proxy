@@ -15,25 +15,24 @@ import {
 import {
   AccountCleanupPendingError,
   type OAuthCapabilityReference,
-  OAuthCapabilityRequiredError,
   OAuthCapabilityUnavailableError,
   ProviderAccountChangedError,
-  ProviderCapabilityTargetMismatchError,
   ProviderFingerprintMismatchError,
 } from "./errors";
+import { preflight } from "./login/preflight";
 import { safeSupersededDiagnostic } from "./recovery";
 import {
   accountMatches,
   capabilityOf,
   duplicateOrCleanup,
   inMemoryCredentialPort,
-  isRecord,
   type PlainRecord,
   providerEntry,
   providerRecord,
   sameCapability,
   structuredEntry,
   validatedAccountOptions,
+  validatedDefaultAliases,
   validatedLoginResult,
   validateStagedOAuthWrite,
 } from "./validation";
@@ -62,52 +61,6 @@ export type LoginOAuthAccountOptions = {
   readonly now?: () => number;
 };
 export type LoginOAuthAccountResult = { readonly providerId: string };
-type Preflight = {
-  readonly capability: OAuthCapabilityReference;
-  readonly account?: StoredAccount;
-  readonly runtimeRevision?: number;
-  readonly fingerprint?: string;
-  readonly publicOptions: Readonly<Record<string, unknown>>;
-  readonly secrets: Readonly<Record<string, unknown>>;
-};
-async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
-  signal.throwIfAborted();
-  const providerId = options.targetProviderId;
-  if (providerId === undefined) {
-    if (options.capability === undefined) throw new OAuthCapabilityRequiredError();
-    return { capability: options.capability, publicOptions: {}, secrets: {} };
-  }
-  return options.config.transaction(
-    async (current) => {
-      signal.throwIfAborted();
-      const entry = structuredEntry(providerRecord(current)[providerId]);
-      const account = options.repository.readAccount(providerId);
-      if (entry === null || account === null) throw new AccountCleanupPendingError(providerId);
-      const capability = capabilityOf(entry);
-      if (!accountMatches(account, capability)) throw new AccountCleanupPendingError(providerId);
-      if (options.capability !== undefined && !sameCapability(options.capability, capability)) {
-        throw new ProviderCapabilityTargetMismatchError(options.capability, capability);
-      }
-      const pendingDelete = options.repository
-        .listPendingAccountOperations()
-        .find((operation) => operation.providerId === providerId && operation.kind === "delete");
-      signal.throwIfAborted();
-      if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
-      return {
-        next: current,
-        result: {
-          capability,
-          account,
-          runtimeRevision: account.runtimeRevision,
-          fingerprint: account.fingerprint,
-          publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
-          secrets: isRecord(account.secrets) ? account.secrets : {},
-        },
-      };
-    },
-    { signal },
-  );
-}
 export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Promise<LoginOAuthAccountResult> {
   const deadline = deadlineController(options.signal);
   try {
@@ -159,7 +112,11 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       };
     } catch (error) {
       if (deadline.signal.aborted) throw error;
-      discovered = { kind: "failure", error };
+      const fallback = initial.account === undefined ? adapter.catalog.initialFallback?.(error) : undefined;
+      discovered =
+        fallback === undefined
+          ? { kind: "failure", error }
+          : { kind: "success", catalog: validateModelCatalog(fallback) };
       options.logger({
         event: "plugin.catalog.discovery.failed",
         code: "CATALOG_UNAVAILABLE",
@@ -234,11 +191,16 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
             if (validated.fingerprint !== currentAccount.fingerprint)
               throw new ProviderFingerprintMismatchError(providerId);
           }
+          const defaults =
+            currentAccount === null && discovered.kind === "success"
+              ? validatedDefaultAliases(adapter, discovered.catalog)
+              : undefined;
           const entry = providerEntry(
             initial.capability.plugin,
             initial.capability.capability,
             rendered.publicValues,
             existingEntry,
+            defaults,
           );
           const targetDigest = digestProviderEntry(entry);
           const catalogDiagnostic = options.diagnostics("CATALOG_UNAVAILABLE", {

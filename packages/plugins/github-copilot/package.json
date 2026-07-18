@@ -16,7 +16,8 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test"
+    "test:unit": "bun test --preload=./test/setup.ts",
+    "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {
     "@aio-proxy/plugin-sdk": "workspace:*",

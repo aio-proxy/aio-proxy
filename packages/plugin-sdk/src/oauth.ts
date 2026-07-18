@@ -3,6 +3,34 @@ import type { ConfigSpec } from "./config";
 import type { LocalizedText } from "./localized-text";
 import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";
 
+export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
+
+export type DefaultAliasTarget = {
+  readonly model: string;
+  readonly preserve?: boolean;
+};
+
+export type DefaultAliasSuggestion = DefaultAliasTarget & {
+  readonly variants?: Readonly<Record<string, DefaultAliasTarget>>;
+};
+
+export type DefaultAliasSuggestions = Readonly<Record<string, DefaultAliasSuggestion>>;
+
+export class CredentialRefreshError extends Error {
+  override readonly name = "CredentialRefreshError";
+
+  constructor(
+    message: string,
+    readonly options: { readonly retryable: boolean; readonly reason: string; readonly status?: number },
+  ) {
+    super(message);
+  }
+
+  get retryable(): boolean {
+    return this.options.retryable;
+  }
+}
+
 export type DeviceCodePresentation = {
   readonly url: string;
   readonly userCode: string;
@@ -83,6 +111,8 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly catalog: {
     readonly policy: { readonly kind: "static" } | { readonly kind: "ttl"; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;
+    readonly initialFallback?: (error: unknown) => ModelCatalog | undefined;
+    readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
   };
   readonly createRuntime: (context: RuntimeContext<Credential, AccountOptions>) => Promise<OAuthRuntimeResult>;
 };

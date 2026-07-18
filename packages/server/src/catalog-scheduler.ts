@@ -1,7 +1,8 @@
 import { type DiagnosticFactory, type PluginRepository, validateModelCatalog } from "@aio-proxy/core";
+import { CATALOG_DISCOVERY_TIMEOUT_MS } from "@aio-proxy/plugin-sdk";
 import type { CatalogJobDescriptor } from "./plugin-runtime";
 
-export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
+export { CATALOG_DISCOVERY_TIMEOUT_MS };
 export const CATALOG_RETRY_MS = 5 * 60_000;
 
 type ActiveJob = {

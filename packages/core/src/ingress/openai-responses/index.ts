@@ -1,19 +1,34 @@
 import { z } from "zod";
-import { OpenAIResponsesUnsupportedFeatureError } from "../../error";
+import type { OpenAIResponsesUnsupportedFeatureError } from "../../error";
 import { openAIResponsesInputItemSchema, unsupportedInputItemFeature } from "./input-items";
 import { openAIResponsesToolSchema, supportedTools, unsupportedToolFeature } from "./tools";
 
 const idSchema = z.string().min(1);
 const looseObjectSchema = z.object({}).catchall(z.unknown());
-const unsupportedProbeSchema = z
+const sessionMetadataSchema = z
   .object({
-    previous_response_id: z.unknown().optional(),
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
   })
-  .passthrough();
+  .catchall(z.unknown());
+const conversationSchema = z.union([
+  idSchema,
+  z
+    .object({
+      id: idSchema,
+    })
+    .catchall(z.unknown()),
+]);
 
 export const OpenAIResponsesRequestSchema = z.object({
   model: idSchema,
   input: z.union([z.string(), z.array(openAIResponsesInputItemSchema).min(1)]),
+  conversation: conversationSchema.optional(),
+  prompt_cache_key: z.string().optional(),
+  previous_response_id: z.string().optional(),
+  metadata: sessionMetadataSchema.optional(),
+  session_id: z.string().optional(),
+  conversation_id: z.string().optional(),
   tools: z.array(openAIResponsesToolSchema).optional(),
   reasoning: z
     .object({
@@ -60,13 +75,6 @@ export function parseOpenAIResponses(input: unknown): OpenAIResponsesRequest {
 }
 
 function unsupportedFeature(input: unknown): OpenAIResponsesUnsupportedFeatureError | undefined {
-  const parsed = unsupportedProbeSchema.safeParse(input);
-  if (parsed.success) {
-    if (parsed.data.previous_response_id !== undefined) {
-      return new OpenAIResponsesUnsupportedFeatureError("previous_response_id", "previous_response_id");
-    }
-  }
-
   return unsupportedInputItemFeature(input) ?? unsupportedToolFeature(input);
 }
 

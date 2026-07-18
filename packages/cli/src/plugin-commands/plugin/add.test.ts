@@ -22,6 +22,7 @@ describe("plugin add", () => {
     try {
       expect(deps.builtIns?.map(({ packageName }) => packageName).sort()).toEqual([
         "@aio-proxy/plugin-github-copilot",
+        "@aio-proxy/plugin-google-antigravity",
         "@aio-proxy/plugin-openai-chatgpt",
       ]);
     } finally {
