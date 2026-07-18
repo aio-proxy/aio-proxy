@@ -50,7 +50,8 @@
     "i18n:compile": "bun run --filter @aio-proxy/i18n build",
     "build": "turbo run build",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
-    "dev": "turbo run dev --filter=!@aio-proxy/infra",
+    "dev:prepare": "turbo run build --filter=@aio-proxy/core",
+    "dev": "bun run dev:prepare && turbo run dev serve:dev --filter=!@aio-proxy/infra",
     "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types && bun run test:artifact",
     "changeset": "changeset"
   },
