@@ -67,7 +67,7 @@ test.each([
   });
   await response.text();
 
-  expect(previous(source, responseId).session.source).toBe("transcript");
+  expect(previous(source, responseId).session.source).toBe("generated");
 });
 
 test("does not commit a completed raw response event when the client cancels before EOF", async () => {
@@ -102,7 +102,7 @@ test("does not commit a completed raw response event when the client cancels bef
   await reader?.read();
   await reader?.cancel("client stopped");
 
-  expect(previous(source, "resp_cancelled").session.source).toBe("transcript");
+  expect(previous(source, "resp_cancelled").session.source).toBe("generated");
 });
 
 function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {
