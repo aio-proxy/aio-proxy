@@ -29,6 +29,9 @@ type StreamReaderOwner = {
 };
 
 const encoder = new TextEncoder();
+const MAX_PREFLIGHT_REPLAY_BYTES = 1024 * 1024;
+const MAX_PARSER_BUFFER_CHARS = 1024 * 1024;
+const MAX_QUEUED_FRAME_BYTES = 1024 * 1024;
 
 export function unwrapCcaSse(
   stream: ReadableStream<Uint8Array>,
@@ -37,28 +40,49 @@ export function unwrapCcaSse(
   const owner = createReaderOwner(stream.getReader());
   const decoder = new TextDecoder();
   const queued: Uint8Array[] = [];
+  let queuedBytes = 0;
   let ended = false;
   let failure: Error | undefined;
+  const invalidate = () => {
+    if (failure !== undefined) return;
+    queued.length = 0;
+    queuedBytes = 0;
+    failure = invalidStream();
+  };
+  const enqueue = (payload: unknown) => {
+    const output = frame(payload);
+    if (queuedBytes + output.byteLength > MAX_QUEUED_FRAME_BYTES) {
+      invalidate();
+      return;
+    }
+    queued.push(output);
+    queuedBytes += output.byteLength;
+  };
   const parser = createParser({
+    maxBufferSize: MAX_PARSER_BUFFER_CHARS,
     onEvent(event) {
       if (failure !== undefined) return;
+      if (event.data.length > MAX_PARSER_BUFFER_CHARS) {
+        invalidate();
+        return;
+      }
       const payload = parseEvent(event.data);
       if (payload === undefined) {
-        failure = invalidStream();
+        invalidate();
         return;
       }
       if (payload.response !== undefined && payload.response !== null) {
-        queued.push(frame(payload.response));
+        enqueue(payload.response);
       } else if ("error" in payload) {
         if (options.terminateOnError === true) {
           failure = new Error("Google Antigravity stream failed");
         } else {
-          queued.push(frame(payload));
+          enqueue(payload);
         }
       }
     },
     onError() {
-      failure = invalidStream();
+      invalidate();
     },
   });
 
@@ -78,6 +102,7 @@ export function unwrapCcaSse(
         }
         const next = queued.shift();
         if (next !== undefined) {
+          queuedBytes -= next.byteLength;
           controller.enqueue(next);
         } else if (failure !== undefined) {
           const reason = failureReason(failure, options.signal);
@@ -102,34 +127,43 @@ export async function preflightCcaSse(response: Response): Promise<CcaSsePreflig
   const owner = createReaderOwner(response.body.getReader());
   const decoder = new TextDecoder();
   const buffered: Uint8Array[] = [];
+  let bufferedBytes = 0;
   let event: PreflightEvent | undefined;
   let done = false;
-  let parseFailed = false;
+  let failure: Error | undefined;
   const parser = createParser({
+    maxBufferSize: MAX_PARSER_BUFFER_CHARS,
     onEvent(message) {
-      if (event !== undefined) return;
+      if (event !== undefined || failure !== undefined) return;
+      if (message.data.length > MAX_PARSER_BUFFER_CHARS) {
+        failure = invalidStream();
+        return;
+      }
       const payload = parseEvent(message.data);
       if (payload === undefined) {
-        parseFailed = true;
+        failure = invalidStream();
         return;
       }
       event = classifyEvent(payload);
     },
     onError() {
-      parseFailed = true;
+      failure ??= invalidStream();
     },
   });
 
   try {
-    while (event === undefined && !done && !parseFailed) {
+    while (event === undefined && !done && failure === undefined) {
       const chunk = await owner.read();
       done = chunk.done;
       if (chunk.value !== undefined) {
+        if (bufferedBytes + chunk.value.byteLength > MAX_PREFLIGHT_REPLAY_BYTES) throw invalidStream();
         buffered.push(chunk.value);
+        bufferedBytes += chunk.value.byteLength;
         parser.feed(decoder.decode(chunk.value, { stream: true }));
       }
     }
 
+    if (failure !== undefined) throw failure;
     if (done) owner.release();
     const replay = replayStream(owner, buffered, done);
     return {
@@ -234,8 +268,8 @@ function frame(payload: unknown): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function invalidStream(): Error {
-  return new Error("Google Antigravity returned an invalid event stream");
+function invalidStream(): TypeError {
+  return new TypeError("Google Antigravity returned an invalid event stream");
 }
 
 function failureReason(failure: unknown, signal: AbortSignal | undefined): unknown {

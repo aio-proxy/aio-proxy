@@ -1,6 +1,7 @@
 const GROUNDING_REDIRECT_ORIGIN = "https://vertexaisearch.cloud.google.com";
 const GROUNDING_REDIRECT_PREFIX = "/grounding-api-redirect/";
 const REPAIR_TIMEOUT_MS = 1_500;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export type GroundingRepairDependencies = {
   readonly fetch?: typeof globalThis.fetch;
@@ -147,13 +148,16 @@ async function resolveGroundingUrl(
   fetch: typeof globalThis.fetch,
 ): Promise<string | undefined> {
   try {
-    const response = await fetch(url, { method: "HEAD", redirect: "follow", signal });
-    if (!response.ok) {
+    const response = await fetch(url, { method: "HEAD", redirect: "manual", signal });
+    try {
+      if (!REDIRECT_STATUSES.has(response.status)) return undefined;
+      const location = response.headers.get("location");
+      if (location === null) return undefined;
+      const destination = new URL(location, url);
+      return destination.protocol === "http:" || destination.protocol === "https:" ? destination.href : undefined;
+    } finally {
       await response.body?.cancel().catch(() => undefined);
-      return undefined;
     }
-    const finalUrl = new URL(response.url);
-    return finalUrl.protocol === "http:" || finalUrl.protocol === "https:" ? finalUrl.href : undefined;
   } catch {
     return undefined;
   }

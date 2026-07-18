@@ -138,6 +138,24 @@ test("keeps a non-ending 503 body terminal within the inspection bound", async (
   expect(requests).toBe(1);
 });
 
+test("switches endpoint when SSE preflight exceeds its replay bound before commit", async () => {
+  const origins: string[] = [];
+  const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';
+  const unclassifiedEvent = `data: ${JSON.stringify({ metadata: "x".repeat(64 * 1024) })}\n\n`;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input) => {
+      origins.push(new URL(String(input)).origin);
+      return sseResponse(origins.length === 1 ? unclassifiedEvent.repeat(17) : modelEvent);
+    },
+  });
+
+  const response = await transport.execute(executeInput({ stream: true }));
+
+  expect(await response.text()).toBe(modelEvent);
+  expect(origins).toEqual(["https://daily-cloudcode-pa.googleapis.com", "https://cloudcode-pa.googleapis.com"]);
+});
+
 test("does not switch endpoint after an unknown preflight reader failure", async () => {
   const failure = new Error("stream implementation failure");
   let requests = 0;

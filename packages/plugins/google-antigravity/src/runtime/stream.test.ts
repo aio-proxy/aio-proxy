@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { preflightCcaSse, unwrapCcaSse } from "./stream";
 
 const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';
+const sseBufferLimit = 1024 * 1024;
 
 test.each([
   ["JSON parse failure", "data: not-json\n\n"],
@@ -70,6 +71,57 @@ test("preflight replay cancellation reaches and releases the source reader", asy
   expect(source.releases()).toBe(1);
 });
 
+test("bounds replay across valid unclassified preflight events", async () => {
+  const readBeyondLimit = new Error("read beyond replay limit");
+  const source = instrumentedBody([
+    ...Array.from({ length: 17 }, () => ({ chunk: unclassifiedEvent(64 * 1024) })),
+    { failure: readBeyondLimit },
+  ]);
+  const response = new Response(source.body, { headers: { "Content-Type": "text/event-stream" } });
+
+  const failure = await rejected(preflightCcaSse(response));
+
+  expectInvalidStream(failure);
+  expect(failure).not.toBe(readBeyondLimit);
+  expect(source.cancellations).toEqual([failure]);
+  expect(source.releases()).toBe(1);
+});
+
+test("bounds an unterminated preflight event before another read", async () => {
+  const readBeyondLimit = new Error("read beyond parser limit");
+  const source = instrumentedBody([{ chunk: `data: ${"x".repeat(sseBufferLimit + 1)}` }, { failure: readBeyondLimit }]);
+  const response = new Response(source.body, { headers: { "Content-Type": "text/event-stream" } });
+
+  const failure = await rejected(preflightCcaSse(response));
+
+  expectInvalidStream(failure);
+  expect(failure).not.toBe(readBeyondLimit);
+  expect(source.cancellations).toEqual([failure]);
+  expect(source.releases()).toBe(1);
+});
+
+test("bounds a single oversized unwrap event", async () => {
+  const event = `data: ${JSON.stringify({ response: { text: "x".repeat(sseBufferLimit) } })}\n\n`;
+  const source = instrumentedBody([{ chunk: event }]);
+
+  const failure = await rejected(new Response(unwrapCcaSse(source.body)).text());
+
+  expectInvalidStream(failure);
+  expect(source.cancellations).toEqual([failure]);
+  expect(source.releases()).toBe(1);
+});
+
+test("bounds queued unwrap frames from one upstream chunk", async () => {
+  const event = `data: ${JSON.stringify({ response: { text: "x".repeat(64 * 1024) } })}\n\n`;
+  const source = instrumentedBody([{ chunk: event.repeat(17) }]);
+
+  const failure = await rejected(new Response(unwrapCcaSse(source.body)).text());
+
+  expectInvalidStream(failure);
+  expect(source.cancellations).toEqual([failure]);
+  expect(source.releases()).toBe(1);
+});
+
 type ReaderStep = { readonly chunk: string } | { readonly done: true } | { readonly failure: unknown };
 
 function instrumentedBody(steps: readonly ReaderStep[]) {
@@ -102,4 +154,13 @@ async function rejected(promise: Promise<unknown>): Promise<unknown> {
     return error;
   }
   throw new Error("expected rejection");
+}
+
+function unclassifiedEvent(padding: number): string {
+  return `data: ${JSON.stringify({ metadata: "x".repeat(padding) })}\n\n`;
+}
+
+function expectInvalidStream(error: unknown): void {
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).message).toBe("Google Antigravity returned an invalid event stream");
 }

@@ -6,7 +6,15 @@ export * from "./catalog/discover";
 export * from "./catalog/errors";
 export * from "./catalog/families";
 export * from "./catalog/snapshot";
-export * from "./oauth/constants";
+export {
+  ANTIGRAVITY_DAILY,
+  ANTIGRAVITY_PROD,
+  GOOGLE_ANTIGRAVITY_SCOPES,
+  GOOGLE_AUTH_ENDPOINT,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_TOKEN_ENDPOINT,
+  GOOGLE_USERINFO_ENDPOINT,
+} from "./oauth/constants";
 export * from "./oauth/flow";
 export * from "./oauth/project";
 export * from "./oauth/refresh";

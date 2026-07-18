@@ -2,11 +2,12 @@ import { expect, test } from "bun:test";
 import { googleAntigravityClientId, googleAntigravityClientSecret } from "./rslib.config";
 
 test("build embeds Google OAuth credentials without leaving source plaintext", async () => {
-  const [source, config, setup, artifact] = await Promise.all([
+  const [source, config, setup, artifact, publicApi] = await Promise.all([
     Bun.file("./src/oauth/constants.ts").text(),
     Bun.file("./rslib.config.ts").text(),
     Bun.file("./test/setup.ts").text(),
     Bun.file("./dist/oauth/constants.js").text(),
+    import("./dist/index.js"),
   ]);
 
   const credentials = [
@@ -23,4 +24,6 @@ test("build embeds Google OAuth credentials without leaving source plaintext", a
   }
   expect(artifact.includes("__AIO_PROXY_GOOGLE_ANTIGRAVITY_")).toBe(false);
   expect(/\batob\s*\(/u.test(artifact)).toBe(false);
+  expect(Object.hasOwn(publicApi, "GOOGLE_CLIENT_SECRET")).toBe(false);
+  expect(publicApi.GOOGLE_CLIENT_ID).toBe(googleAntigravityClientId);
 });
