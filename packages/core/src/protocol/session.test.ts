@@ -5,13 +5,7 @@ import {
   openAICompletionsAdapter,
   openAIResponsesAdapter,
 } from "./index";
-import {
-  hashSession,
-  MAX_SESSION_VALUE_LENGTH,
-  normalizeSessionValue,
-  selectSessionCandidate,
-  transcriptFingerprint,
-} from "./session";
+import { hashSession, MAX_SESSION_VALUE_LENGTH, normalizeSessionValue, selectSessionCandidate } from "./session";
 
 describe("protocol sessions", () => {
   test("protocol candidates win over headers and are trimmed", () => {
@@ -30,56 +24,6 @@ describe("protocol sessions", () => {
     );
     expect(hashSession("body-session", "same")).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(hashSession("body-session", "same")).not.toBe(hashSession("body-conversation", "same"));
-  });
-
-  test("transcript fingerprints are deterministic across object key order", () => {
-    expect(transcriptFingerprint({ beta: ["hello", { z: 1, a: true }], alpha: 2 })).toBe(
-      transcriptFingerprint({ alpha: 2, beta: ["hello", { a: true, z: 1 }] }),
-    );
-    expect(transcriptFingerprint(["hello"])).toMatch(/^sha256:[0-9a-f]{64}$/u);
-  });
-
-  test.each([
-    [
-      "OpenAI",
-      [
-        { role: "system", content: "system context" },
-        { role: "developer", content: "developer context" },
-        { role: "user", content: "hello" },
-      ],
-      [
-        { role: "assistant", content: "hi" },
-        { role: "user", content: "next" },
-      ],
-    ],
-    [
-      "Anthropic",
-      [{ role: "user", content: "hello" }],
-      [
-        { role: "assistant", content: "hi" },
-        { role: "user", content: "next" },
-      ],
-    ],
-    [
-      "Gemini",
-      [{ role: "user", parts: [{ text: "hello" }] }],
-      [
-        { role: "model", parts: [{ text: "hi" }] },
-        { role: "user", parts: [{ text: "next" }] },
-      ],
-    ],
-  ])("keeps the %s transcript fingerprint stable across appended turns", (_protocol, initial, appended) => {
-    expect(transcriptFingerprint([...initial, ...appended])).toBe(transcriptFingerprint(initial));
-  });
-
-  test("distinguishes transcripts with different initial user messages", () => {
-    expect(transcriptFingerprint([{ role: "user", content: "hello" }])).not.toBe(
-      transcriptFingerprint([{ role: "user", content: "different" }]),
-    );
-  });
-
-  test("uses a bounded first-item fallback for transcripts without message roles", () => {
-    expect(transcriptFingerprint(["hello", "next"])).toBe(transcriptFingerprint(["hello"]));
   });
 
   test.each([

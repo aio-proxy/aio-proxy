@@ -1,10 +1,4 @@
-import {
-  hashSession,
-  normalizeSessionValue,
-  type ProtocolSessionHints,
-  selectSessionCandidate,
-  transcriptFingerprint,
-} from "@aio-proxy/core";
+import { hashSession, normalizeSessionValue, type ProtocolSessionHints, selectSessionCandidate } from "@aio-proxy/core";
 import type { LogicalRequestContext, LogicalSessionSource } from "@aio-proxy/plugin-sdk";
 
 const DEFAULT_TTL_MS = 3_600_000;
@@ -43,7 +37,6 @@ export class LogicalSessionStore {
       this.#firstCandidate(input.hints.candidates) ??
       this.#headerCandidate(input.headers) ??
       this.#previousResponse(input.hints.previousResponseId) ??
-      this.#transcriptCandidate(input.hints.transcript) ??
       this.#generatedCandidate();
     return { requestId: crypto.randomUUID(), session: selected };
   }
@@ -82,11 +75,6 @@ export class LogicalSessionStore {
     }
     entry.accessedAt = now;
     return { key: entry.sessionKey, source: "previous-response" };
-  }
-
-  #transcriptCandidate(transcript: unknown): SelectedSession | undefined {
-    const key = transcriptFingerprint(transcript);
-    return key === undefined ? undefined : { key, source: "transcript" };
   }
 
   #generatedCandidate(): SelectedSession {

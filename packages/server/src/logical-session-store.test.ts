@@ -11,7 +11,7 @@ describe("LogicalSessionStore", () => {
         hints: { candidates: [], previousResponseId: "resp_1", transcript: ["next"] },
         headers: new Headers(),
       }).session.source,
-    ).toBe("transcript");
+    ).toBe("generated");
     store.commitResponse("resp_1", first.session.key);
     expect(
       store.begin({
@@ -21,7 +21,7 @@ describe("LogicalSessionStore", () => {
     ).toEqual({ key: first.session.key, source: "previous-response" });
   });
 
-  test("uses internal, protocol, header, previous-response, transcript, then generated priority", () => {
+  test("uses internal, protocol, header, then generated priority", () => {
     const store = new LogicalSessionStore();
     const protocol = [{ source: "body-session", value: "body" }] as const;
     const input = {
@@ -36,25 +36,47 @@ describe("LogicalSessionStore", () => {
     );
     expect(
       store.begin({ hints: { candidates: [], transcript: ["hello"] }, headers: new Headers() }).session.source,
-    ).toBe("transcript");
+    ).toBe("generated");
     expect(
       store.begin({ hints: { candidates: [], transcript: undefined }, headers: new Headers() }).session.source,
     ).toBe("generated");
   });
 
-  test("keeps stateless transcript sessions stable across appended turns", () => {
+  test("generates independent sessions for identical headerless transcripts", () => {
     const store = new LogicalSessionStore();
-    const initial = [{ role: "user", content: "hello" }];
-    const first = store.begin({ hints: { candidates: [], transcript: initial }, headers: new Headers() });
+    const input = {
+      hints: { candidates: [], transcript: [{ role: "user", content: "hello" }] },
+      headers: new Headers(),
+    };
+    const first = store.begin(input);
+    const second = store.begin(input);
+
+    expect(second.session.key).not.toBe(first.session.key);
+    expect(first.session.source).toBe("generated");
+    expect(second.session.source).toBe("generated");
+  });
+
+  test("keeps explicit session candidates stable across appended transcripts", () => {
+    const store = new LogicalSessionStore();
+    const candidates = [{ source: "body-session", value: "session_1" }] as const;
+    const first = store.begin({
+      hints: { candidates, transcript: [{ role: "user", content: "hello" }] },
+      headers: new Headers(),
+    });
     const next = store.begin({
       hints: {
-        candidates: [],
-        transcript: [...initial, { role: "assistant", content: "hi" }, { role: "user", content: "next" }],
+        candidates,
+        transcript: [
+          { role: "user", content: "hello" },
+          { role: "assistant", content: "hi" },
+          { role: "user", content: "next" },
+        ],
       },
       headers: new Headers(),
     });
 
     expect(next.session).toEqual(first.session);
+    expect(first.session.source).toBe("body-session");
   });
 
   test("refreshes previous-response expiry on reads and deletes expired mappings", () => {
@@ -68,7 +90,7 @@ describe("LogicalSessionStore", () => {
     clock.advance(90);
     expect(previous(store, "resp_1").session.source).toBe("previous-response");
     clock.advance(101);
-    expect(previous(store, "resp_1").session.source).toBe("transcript");
+    expect(previous(store, "resp_1").session.source).toBe("generated");
   });
 
   test("evicts the least recently accessed response mapping over capacity", () => {
@@ -85,7 +107,7 @@ describe("LogicalSessionStore", () => {
     store.commitResponse("resp_3", session(store, "third"));
 
     expect(previous(store, "resp_1").session.source).toBe("previous-response");
-    expect(previous(store, "resp_2").session.source).toBe("transcript");
+    expect(previous(store, "resp_2").session.source).toBe("generated");
     expect(previous(store, "resp_3").session.source).toBe("previous-response");
   });
 });
