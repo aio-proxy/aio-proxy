@@ -73,7 +73,8 @@ export async function loginWithProtectedAuthorization<Options, Credential>(
   } catch (error) {
     if (signal.aborted) throw signal.reason;
     const preserved = preservedAuthorizationError(error);
-    throw authorizationFailed(preserved.found ? "authorization_port" : "oauth_adapter");
+    if (preserved.found) throw preserved.value;
+    throw authorizationFailed("oauth_adapter");
   }
 }
 

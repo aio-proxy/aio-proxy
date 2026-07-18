@@ -114,7 +114,7 @@ describe("provider login safe presentation", () => {
     expect(state.printed).toEqual([]);
   });
 
-  test("contains a host loopback failure at the account-login boundary", async () => {
+  test("preserves a host loopback failure at the account-login boundary", async () => {
     const host = createPluginRegistryHost();
     const staging = host.stage("@host/login");
     staging.api.oauth.register({
@@ -157,13 +157,9 @@ describe("provider login safe presentation", () => {
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toMatchObject({
-      name: "OAuthAuthorizationFailedError",
-      message: "AUTHORIZATION_FAILED",
-      code: "AUTHORIZATION_FAILED",
-      reason: "authorization_port",
-    });
-    expect(formatCliError(thrown, "en").message).toBe("Unexpected internal error.");
+    expect(thrown).toBeInstanceOf(LoopbackPortUnavailableError);
+    expect(thrown).toMatchObject({ port: 1455 });
+    expect(formatCliError(thrown, "en").message).toBe("The local callback listener could not use port 1455.");
   });
 
   test("fingerprint mismatch is localized while the account service owns rollback", async () => {

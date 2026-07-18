@@ -1,11 +1,9 @@
 import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
 import { createAccount, expect, fixture, loginOAuthAccount, options, registry, test } from "./test-support";
 
-test("maps host callback and state failures to safe AUTHORIZATION_FAILED metadata", async () => {
+test("rethrows host authorization failures by identity", async () => {
   const state = fixture();
-  const failure = new Error(
-    "state mismatch expected=state-secret callback=http://localhost/oauth-callback?code=authorization-code-secret",
-  );
+  const failure = new Error("host authorization failed");
   const error = await rejected(
     createAccount(state, {
       createAuthorization: () => ({
@@ -23,14 +21,32 @@ test("maps host callback and state failures to safe AUTHORIZATION_FAILED metadat
     }),
   );
 
+  expect(error).toBe(failure);
+});
+
+test("maps an adapter-thrown host error lookalike to safe AUTHORIZATION_FAILED metadata", async () => {
+  const lookalike = Object.assign(new Error("HOST_AUTHORIZATION_FAILED"), {
+    name: "LoopbackPortUnavailableError",
+    port: 1455,
+  });
+  const error = await rejected(
+    createAccount(fixture(), {
+      registry: registry({
+        login: async () => {
+          throw lookalike;
+        },
+      }),
+    }),
+  );
+
+  expect(error).not.toBe(lookalike);
   expect(error).toMatchObject({
     name: "OAuthAuthorizationFailedError",
     message: "AUTHORIZATION_FAILED",
     code: "AUTHORIZATION_FAILED",
-    reason: "authorization_port",
-    detail: "HOST_AUTHORIZATION_FAILED",
+    reason: "oauth_adapter",
+    detail: "OAUTH_ADAPTER_LOGIN_FAILED",
   });
-  expect(errorSurface(error)).not.toMatch(/state-secret|authorization-code-secret|oauth-callback/u);
 });
 
 test("maps plugin token, userinfo, and project failures to safe AUTHORIZATION_FAILED metadata", async () => {
@@ -82,7 +98,7 @@ test("authorization failure preserves the old account revision", async () => {
   expect(state.repository.readAccount("person")).toMatchObject({ revision: 1, runtimeRevision: 1 });
 });
 
-test("authorization rejection maps undefined to AUTHORIZATION_FAILED", async () => {
+test("authorization rejection preserves undefined by identity", async () => {
   const state = fixture();
   const outcome = await loginOAuthAccount(
     options(state, {
@@ -112,12 +128,7 @@ test("authorization rejection maps undefined to AUTHORIZATION_FAILED", async () 
 
   expect(outcome).toMatchObject({
     status: "rejected",
-    error: {
-      name: "OAuthAuthorizationFailedError",
-      message: "AUTHORIZATION_FAILED",
-      code: "AUTHORIZATION_FAILED",
-      reason: "authorization_port",
-    },
+    error: undefined,
   });
 });
 
