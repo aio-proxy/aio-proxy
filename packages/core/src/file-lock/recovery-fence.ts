@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
-import { mkdir, open, readdir, readFile, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { isPlainObject } from "es-toolkit/predicate";
 import { abortableDelay } from "./delay";
@@ -51,7 +51,6 @@ async function markerActive(path: string, staleMs: number, ownerIsAlive: (pid: n
   const [record, metadata] = await Promise.all([Promise.resolve(parseMarker(text)), stat(path).catch(() => null)]);
   if (metadata === null) return false;
   if (record === null) {
-    if (Date.now() - metadata.mtimeMs <= staleMs) return true;
     return removeIfUnchanged(path, text, metadata);
   }
   const alive = ownerIsAlive(record.pid);
@@ -103,23 +102,32 @@ async function recoveryActive(
 async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promise<RecoveryFence & { path: string }> {
   const owner = randomUUID();
   const path = `${lockPath}.recovery.${owner}`;
-  const handle = await open(path, "wx", 0o600);
+  const pendingPath = `${lockPath}.recovery-pending.${owner}`;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   let identity: Stats;
   try {
     const starttime = await processStarttime(process.pid);
-    await handle.writeFile(
-      JSON.stringify({
-        pid: process.pid,
-        owner,
-        createdAt: Date.now(),
-        ...(starttime === null ? {} : { starttime }),
-      } satisfies RecoveryMarker),
-    );
-    await handle.sync();
+    const pending = await open(pendingPath, "wx", 0o600);
+    try {
+      await pending.writeFile(
+        JSON.stringify({
+          pid: process.pid,
+          owner,
+          createdAt: Date.now(),
+          ...(starttime === null ? {} : { starttime }),
+        } satisfies RecoveryMarker),
+      );
+      await pending.sync();
+    } finally {
+      await pending.close().catch(() => {});
+    }
+    await rename(pendingPath, path);
+    handle = await open(path, "r+");
     identity = await handle.stat();
   } catch (error) {
+    await unlink(pendingPath).catch(() => {});
     await unlink(path).catch(() => {});
-    await handle.close().catch(() => {});
+    await handle?.close().catch(() => {});
     throw error;
   }
   let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
