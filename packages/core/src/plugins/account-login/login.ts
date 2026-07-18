@@ -117,14 +117,16 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
         fallback === undefined
           ? { kind: "failure", error }
           : { kind: "success", catalog: validateModelCatalog(fallback) };
-      options.logger({
-        event: "plugin.catalog.discovery.failed",
-        code: "CATALOG_UNAVAILABLE",
-        context: { plugin: initial.capability.plugin, capability: initial.capability.capability },
-        error: redactPluginError(error, {
-          secretValues: [...collectSecretStrings(rendered.secrets), ...collectSecretStrings(credentials.current())],
-        }),
-      });
+      if (discovered.kind === "failure") {
+        options.logger({
+          event: "plugin.catalog.discovery.failed",
+          code: "CATALOG_UNAVAILABLE",
+          context: { plugin: initial.capability.plugin, capability: initial.capability.capability },
+          error: redactPluginError(error, {
+            secretValues: [...collectSecretStrings(rendered.secrets), ...collectSecretStrings(credentials.current())],
+          }),
+        });
+      }
     } finally {
       discoveryDeadline.close();
     }

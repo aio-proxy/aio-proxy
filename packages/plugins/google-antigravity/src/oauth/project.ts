@@ -31,7 +31,7 @@ export async function initializeAntigravityProject(
     {
       accessToken,
       body: { metadata: { ideType: "ANTIGRAVITY" } },
-      ...(dependencies.signal === undefined ? {} : { signal: dependencies.signal }),
+      signal: combinedTimeoutSignal(dependencies.signal),
       userAgent: antigravityUserAgent(),
       operation: "project load",
     },

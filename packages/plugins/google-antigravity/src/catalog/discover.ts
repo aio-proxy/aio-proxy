@@ -154,7 +154,7 @@ async function discoverEndpoint(
 
 function classifyStatus(status: number): CatalogDiscoveryError {
   if (status === 401 || status === 403) return new CatalogDiscoveryError("authorization", { status });
-  if (status >= 500 && status <= 599) return new CatalogDiscoveryError("retryable", { status });
+  if (status === 429 || (status >= 500 && status <= 599)) return new CatalogDiscoveryError("retryable", { status });
   return new CatalogDiscoveryError("request", { status });
 }
 

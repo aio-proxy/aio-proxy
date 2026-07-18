@@ -19,7 +19,7 @@ test.each([
   [401, "authorization", false],
   [403, "authorization", false],
   [400, "request", false],
-  [429, "request", false],
+  [429, "retryable", true],
   [500, "retryable", true],
   [503, "retryable", true],
   [599, "retryable", true],
@@ -54,6 +54,18 @@ test("tries daily then prod only after a retryable endpoint outcome", async () =
   expect(catalog.language.map(({ id }) => id)).toEqual(["dynamic-only"]);
 });
 
+test("tries prod after daily returns HTTP 429", async () => {
+  const urls: string[] = [];
+  const catalog = await discoverAntigravityCatalog(context(), {
+    fetch: async (input) => {
+      urls.push(String(input));
+      return urls.length === 1 ? new Response(null, { status: 429 }) : Response.json({ models: { prod: {} } });
+    },
+  });
+  expect(urls).toEqual([`${ANTIGRAVITY_DAILY}${discoveryPath}`, `${ANTIGRAVITY_PROD}${discoveryPath}`]);
+  expect(catalog.language.map(({ id }) => id)).toEqual(["prod"]);
+});
+
 test("fits both default endpoint attempts inside the shared host discovery budget", async () => {
   const endpointTimeouts: number[] = [];
   let timeoutCalls = 0;
@@ -82,7 +94,7 @@ test("fits both default endpoint attempts inside the shared host discovery budge
   expect(endpointTimeouts.reduce((total, value) => total + value, 0)).toBeLessThan(CATALOG_DISCOVERY_TIMEOUT_MS);
 });
 
-test.each([401, 403, 400, 429])("does not try prod after terminal HTTP %i", async (status) => {
+test.each([401, 403, 400])("does not try prod after terminal HTTP %i", async (status) => {
   let attempts = 0;
   await captureError(async () => {
     attempts += 1;

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { antigravityEndpoints } from "../runtime/endpoints";
 import { initializeAntigravityProject } from "./project";
 
@@ -40,6 +40,41 @@ test("returns an existing project identity from loadCodeAssist", async () => {
   expect(requests).toHaveLength(1);
   expect(requests[0]?.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
   expect(await requests[0]?.clone().json()).toEqual({ metadata: { ideType: "ANTIGRAVITY" } });
+});
+
+test("combines the caller signal with a 30-second timeout for load and onboarding", async () => {
+  const timeoutMilliseconds: number[] = [];
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+    timeoutMilliseconds.push(milliseconds);
+    return new AbortController().signal;
+  });
+  const callerSignal = new AbortController().signal;
+  let loadSignal: AbortSignal | null | undefined;
+  let onboardingSignal: AbortSignal | null | undefined;
+  try {
+    await initializeAntigravityProject(
+      "access",
+      {},
+      {
+        fetch: async (input, init) => {
+          if (String(input).endsWith(":loadCodeAssist")) {
+            loadSignal = init?.signal;
+            return Response.json({});
+          }
+          onboardingSignal = init?.signal;
+          return Response.json({ done: true, response: { projectId: "project-1" } });
+        },
+        sleep: async () => {},
+        signal: callerSignal,
+      },
+    );
+  } finally {
+    timeout.mockRestore();
+  }
+
+  expect(timeoutMilliseconds).toEqual([30_000, 30_000]);
+  expect(loadSignal).not.toBe(callerSignal);
+  expect(onboardingSignal).not.toBe(callerSignal);
 });
 
 test("onboards with default tier and polls no more than five times", async () => {

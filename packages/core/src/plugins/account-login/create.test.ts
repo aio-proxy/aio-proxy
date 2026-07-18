@@ -91,15 +91,18 @@ test("new account rejects default aliases that reference an undiscovered target"
 
 test("new account uses a validated discovery fallback", async () => {
   const state = fixture();
+  const logs: Parameters<PluginLogSink>[0][] = [];
   await createAccount(state, {
     registry: registry({
       discover: async () => Promise.reject(new Error("offline")),
       initialFallback: () => ({ ...emptyCatalog(), language: [{ id: "fallback" }] }),
     }),
+    logger: (entry) => logs.push(entry),
   });
 
   expect(state.repository.readCatalog("person")?.catalog.language).toEqual([{ id: "fallback" }]);
   expect(state.repository.readDiagnostics("person")).toEqual([]);
+  expect(logs.map(({ event }) => event)).not.toContain("plugin.catalog.discovery.failed");
 });
 
 test("first login reaches prod and applies the snapshot after both endpoint timeouts", async () => {
@@ -196,6 +199,7 @@ test("initial discovery failure commits with CATALOG_UNAVAILABLE while re-login 
   });
   expect(state.repository.readCatalog("person")).toBeNull();
   expect(state.repository.readDiagnostics("person")).toMatchObject([{ code: "CATALOG_UNAVAILABLE" }]);
+  expect(logs.map(({ event }) => event)).toContain("plugin.catalog.discovery.failed");
   expect(JSON.stringify(logs)).not.toContain("token=new");
   expect(JSON.stringify(logs)).not.toContain("secret=hidden");
 
