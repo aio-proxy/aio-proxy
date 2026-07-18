@@ -1,5 +1,10 @@
-import type { DiagnosticFactory, PluginLogSink, PluginRepository } from "@aio-proxy/core";
-import type { AccountContext, OAuthAdapter } from "@aio-proxy/plugin-sdk";
+import {
+  collectSecretStrings,
+  type DiagnosticFactory,
+  type PluginLogSink,
+  type PluginRepository,
+} from "@aio-proxy/core";
+import type { AccountContext, CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
 import { type PreparedOAuthPluginAccount, prepareOAuthPluginAccount } from "../plugin-account";
 import type { ProviderSnapshotLease } from "../runtime";
@@ -23,7 +28,35 @@ export type PreparedOAuthQuotaContext = {
   readonly capability: string;
   readonly providerId: string;
   readonly pluginSecrets?: unknown;
+  readonly secretValues: Set<string>;
 };
+
+function trackSecrets(secrets: Set<string>, value: unknown): void {
+  for (const secret of collectSecretStrings(value)) secrets.add(secret);
+}
+
+function createTrackingCredentialPort(
+  credentials: CredentialPort<unknown>,
+  secrets: Set<string>,
+): CredentialPort<unknown> {
+  return {
+    async read() {
+      const snapshot = await credentials.read();
+      trackSecrets(secrets, snapshot.value);
+      return snapshot;
+    },
+    async refresh(expectedRevision, exchange) {
+      const result = await credentials.refresh(expectedRevision, async (current, signal) => {
+        trackSecrets(secrets, current.value);
+        const exchanged = await exchange(current, signal);
+        trackSecrets(secrets, exchanged.value);
+        return exchanged;
+      });
+      trackSecrets(secrets, result.snapshot.value);
+      return result;
+    },
+  };
+}
 
 async function prepareContext(
   dependencies: OAuthQuotaServiceDependencies,
@@ -49,17 +82,21 @@ async function prepareContext(
     if (prepared.adapter.quota === undefined) {
       throw new OAuthQuotaCapabilityUnavailableError();
     }
+    const secretValues = new Set(
+      collectSecretStrings([prepared.account.credential, prepared.account.secrets, pluginSecrets]),
+    );
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext["adapter"],
       account: prepared.account,
       accountContext: {
-        credentials: prepared.createCredentials(),
+        credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
         options: prepared.accountOptions,
         signal,
       },
       plugin: provider.plugin,
       capability: provider.capability,
       providerId,
+      secretValues,
       ...(pluginSecrets === undefined ? {} : { pluginSecrets }),
     };
   } catch {

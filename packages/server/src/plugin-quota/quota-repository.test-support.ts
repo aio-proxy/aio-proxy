@@ -25,30 +25,35 @@ export function cleanupQuotaRepositories(): void {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 }
 
-export function createQuotaRepository(accountState: QuotaAccountFixtureState = "ready"): PluginRepository {
+export function createQuotaRepository(
+  accountState: QuotaAccountFixtureState = "ready",
+  providerIds: readonly string[] = [PROVIDER_ID],
+): PluginRepository {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-quota-"));
   homes.push(home);
   const handle = openDb({ home });
   handles.push(handle);
   const repository = createPluginRepository(handle.sqlite);
-  const operation = repository.stageAccountOperation({
-    kind: "create",
-    targetDigest: "quota-read",
-    account: {
-      providerId: PROVIDER_ID,
-      plugin: PLUGIN,
-      capability: CAPABILITY,
-      fingerprint: "person@example.com",
-      options: {},
-      secrets: { clientSecret: "account-secret" },
-      credential: { token: "credential-secret" },
-      catalog: {
-        kind: "missing",
-        diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId: PROVIDER_ID, retryable: true }),
+  for (const providerId of providerIds) {
+    const operation = repository.stageAccountOperation({
+      kind: "create",
+      targetDigest: `quota-read:${providerId}`,
+      account: {
+        providerId,
+        plugin: PLUGIN,
+        capability: CAPABILITY,
+        fingerprint: `${providerId}@example.com`,
+        options: {},
+        secrets: { clientSecret: "account-secret" },
+        credential: { token: "credential-secret" },
+        catalog: {
+          kind: "missing",
+          diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId, retryable: true }),
+        },
       },
-    },
-  });
-  repository.completeAccountOperation(operation.operationId);
+    });
+    repository.completeAccountOperation(operation.operationId);
+  }
   repository.writePluginSecret(PLUGIN, null, { apiKey: "plugin-secret" });
   if (accountState === "ready") return repository;
   return {

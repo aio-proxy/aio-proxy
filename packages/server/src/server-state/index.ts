@@ -21,6 +21,7 @@ import { createConfigStore } from "../config-store";
 import { watchConfigFile } from "../config-watcher";
 import { createDashboardEventHub } from "../dashboard-events";
 import { createFifoQueue } from "../fifo-queue";
+import { createOAuthQuotaOperations } from "../plugin-quota";
 import { createSnapshotManager } from "../plugin-snapshot";
 import { providerDiff } from "../provider-runtime";
 import { createRequestRecorder } from "../request-recorder";
@@ -100,6 +101,13 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
   manager = createSnapshotManager(initial);
   managerReady = true;
+  const oauthQuota = createOAuthQuotaOperations({
+    acquireSnapshot: manager.acquire,
+    repository,
+    diagnostics,
+    logger: pluginLogger,
+    onDiagnosticChanged: queueRebuild,
+  });
   let recovery: ReturnType<typeof createRecovery> | undefined;
   const accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
@@ -209,6 +217,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     modelsDevCatalog,
+    oauthQuota,
     reload,
     requestLog,
     requestRecorder,

@@ -11,6 +11,7 @@ import type { RequestLogStore } from "@aio-proxy/core/db";
 import type { Config, DashboardEvent, DashboardPluginSummary, DashboardProviderSummary } from "@aio-proxy/types";
 import type { ConfigStore } from "../config-store";
 import type { DashboardEventHub, DashboardEventLimits } from "../dashboard-events";
+import type { OAuthQuotaOperations } from "../plugin-quota";
 import type { CatalogJobDescriptor } from "../plugin-runtime";
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
 
@@ -62,6 +63,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly modelsDevCatalog: () => Promise<ModelsDevCatalog | undefined>;
+  readonly oauthQuota: OAuthQuotaOperations;
   readonly pluginSummaries: () => readonly DashboardPluginSummary[];
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;

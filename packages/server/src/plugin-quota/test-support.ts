@@ -1,3 +1,4 @@
+import { expect } from "bun:test";
 import { createPluginRegistryHost, type PluginLogSink, Router } from "@aio-proxy/core";
 import { type AccountContext, type OAuthAdapter, type OAuthQuotaSnapshot, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
@@ -23,6 +24,8 @@ export type QuotaFixtureOptions = {
   readonly pluginSecretFailure?: boolean;
   readonly loggerFailure?: boolean;
   readonly read?: (context: AccountContext<unknown, unknown>) => Promise<OAuthQuotaSnapshot>;
+  readonly reset?: (context: AccountContext<unknown, unknown>) => Promise<void>;
+  readonly additionalProviderIds?: readonly string[];
   readonly itemId?: string;
   readonly region?: string;
 };
@@ -31,9 +34,29 @@ export function cleanupQuotaFixtures(): void {
   cleanupQuotaRepositories();
 }
 
+export const availableQuotaSnapshot: OAuthQuotaSnapshot = {
+  items: [],
+  resetCredits: { availableCount: 1 },
+};
+
+export function quotaSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
+export async function capturedQuotaError(promise: Promise<unknown>): Promise<Error & { readonly code?: string }> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    return error as Error & { readonly code?: string };
+  }
+  throw new Error("expected operation to reject");
+}
+
 function providerConfig(
   kind: QuotaFixtureOptions["provider"],
   optionsRegion: string,
+  providerIds: readonly string[],
 ): ReturnType<typeof ConfigSchema.parse> {
   const provider =
     kind === "api"
@@ -49,23 +72,31 @@ function providerConfig(
           options: { region: "us-east" },
         };
   if (kind === "missing") return ConfigSchema.parse({ providers: {} });
-  return ConfigSchema.parse({
-    providers: {
-      decoy: {
-        kind: ProviderKind.OAuth,
-        plugin: PLUGIN,
-        capability: CAPABILITY,
-        weight: 100,
-        options: { region: "decoy" },
-      },
-      [PROVIDER_ID]: kind === "oauth" ? { ...provider, options: { region: optionsRegion } } : provider,
+  const providers = {
+    decoy: {
+      kind: ProviderKind.OAuth,
+      plugin: PLUGIN,
+      capability: CAPABILITY,
+      weight: 100,
+      options: { region: "decoy" },
     },
+    ...Object.fromEntries(
+      providerIds.map((providerId) => [
+        providerId,
+        kind === "oauth"
+          ? { ...provider, options: { region: providerId === PROVIDER_ID ? optionsRegion : `${providerId}-region` } }
+          : provider,
+      ]),
+    ),
+  };
+  return ConfigSchema.parse({
+    providers,
   });
 }
 
-function runtimeProvider(): RuntimeProviderInstance {
+function runtimeProvider(id: string): RuntimeProviderInstance {
   const provider = {
-    id: PROVIDER_ID,
+    id,
     kind: ProviderKind.OAuth,
     enabled: true,
     models: ["model"],
@@ -90,8 +121,11 @@ function runtimeProvider(): RuntimeProviderInstance {
 export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
   const logs: Parameters<PluginLogSink>[0][] = [];
   const contexts: AccountContext<unknown, unknown>[] = [];
+  const resetContexts: AccountContext<unknown, unknown>[] = [];
   let changed = 0;
   let readCalls = 0;
+  let resetCalls = 0;
+  const providerIds = [PROVIDER_ID, ...(options.additionalProviderIds ?? [])];
   const host = createPluginRegistryHost();
   const staging = host.stage(PLUGIN);
   const adapter: OAuthAdapter = {
@@ -129,6 +163,15 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
                 }
               );
             },
+            ...(options.reset === undefined
+              ? {}
+              : {
+                  async reset(context: AccountContext<unknown, unknown>) {
+                    resetCalls++;
+                    resetContexts.push(context);
+                    await options.reset?.(context);
+                  },
+                }),
           },
         }),
   };
@@ -167,7 +210,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
           ],
     ),
   };
-  const repository = createQuotaRepository(options.account);
+  const repository = createQuotaRepository(options.account, providerIds);
   const dependencyRepository = options.pluginSecretFailure
     ? {
         ...repository,
@@ -176,13 +219,13 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
         },
       }
     : repository;
-  const providers = [runtimeProvider()];
+  const providers = providerIds.map(runtimeProvider);
   const snapshot: ProviderRouteSnapshot = {
-    config: providerConfig(options.provider ?? "oauth", options.region ?? "us-east"),
+    config: providerConfig(options.provider ?? "oauth", options.region ?? "us-east", providerIds),
     plugins: plugins as never,
     providers,
     router: new Router(providers),
-    providerStates: new Map([[PROVIDER_ID, { status: "ready" }]]),
+    providerStates: new Map(providerIds.map((providerId) => [providerId, { status: "ready" }] as const)),
   };
   const manager = createSnapshotManager(snapshot);
   const dependencies: OAuthQuotaServiceDependencies = {
@@ -199,6 +242,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
   };
   return {
     contexts,
+    resetContexts,
     dependencies,
     logs,
     manager,
@@ -206,6 +250,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     snapshot,
     changed: () => changed,
     readCalls: () => readCalls,
+    resetCalls: () => resetCalls,
   };
 }
 
