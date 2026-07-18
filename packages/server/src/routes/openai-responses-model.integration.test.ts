@@ -52,7 +52,20 @@ describe("OpenAI Responses model HTTP integration", () => {
 
     expect(response.status).toBe(200);
     expect(messagesSeen).toEqual([
-      { role: "system", content: "Use tools carefully." },
+      {
+        role: "system",
+        content: "Use tools carefully.",
+        providerOptions: {
+          aioProxy: {
+            openaiResponses: {
+              protocol: "openai-responses",
+              inputIndex: 0,
+              itemType: "message",
+              wireRole: "developer",
+            },
+          },
+        },
+      },
       { role: "user", content: "Read both files." },
       {
         role: "assistant",

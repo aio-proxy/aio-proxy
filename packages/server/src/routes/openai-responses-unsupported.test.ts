@@ -34,7 +34,15 @@ describe("OpenAI Responses routes", () => {
   }
 
   test("Given forbidden built-in tool When POST is requested Then unsupported feature is returned", async () => {
-    const app = await createServer({ config: { providers: {} } });
+    let invoked = false;
+    const provider = aiSdkProvider(() => {
+      invoked = true;
+      return textStream([]);
+    });
+    const app = await createServer({
+      config: { providers: {} },
+      providerInstances: [provider],
+    });
 
     const response = await app.request("/v1/responses", {
       body: JSON.stringify({
@@ -47,6 +55,7 @@ describe("OpenAI Responses routes", () => {
 
     expect(response.status).toBe(501);
     expect(await response.json()).toEqual(unsupportedEnvelope("web_search_preview"));
+    expect(invoked).toBe(false);
   });
 
   test("Given stored response id When GET is requested Then retrieval is unsupported", async () => {

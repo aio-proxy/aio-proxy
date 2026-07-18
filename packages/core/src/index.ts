@@ -31,7 +31,7 @@ export {
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
   writeOpenAIResponsesSSE,
-} from "./egress/openai-responses";
+} from "./egress/openai-responses/index";
 export {
   AioProxyError,
   AiSdkProviderError,

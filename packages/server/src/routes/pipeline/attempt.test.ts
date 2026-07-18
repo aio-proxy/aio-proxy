@@ -11,7 +11,7 @@ import {
 } from "../../../_test/pipeline-helpers";
 import { handleProtocolRequest } from ".";
 
-test("drops reasoning and uses the model candidate", async () => {
+test("converts portable reasoning and uses the model candidate", async () => {
   const model = modelProvider({ id: "model", invoke: () => textStream("model response") });
   const raw = rawProvider({ id: "raw", protocol: ProviderProtocol.OpenAIResponse });
   const route = defineProviderRouteSource([model, raw]);
@@ -45,7 +45,7 @@ test("drops reasoning and uses the model candidate", async () => {
   ).toEqual([{ errorCode: undefined, outcome: "success", providerId: "model", statusCode: undefined }]);
 });
 
-test("materializes once after dropping an item reference", async () => {
+test("rejects an item reference before invoking a model", async () => {
   const first = modelProvider({ id: "first", invoke: () => textStream("model response") });
   const second = modelProvider({ id: "second", invoke: () => textStream("unused") });
   const route = defineProviderRouteSource([first, second]);
@@ -68,14 +68,24 @@ test("materializes once after dropping an item reference", async () => {
 
   const response = await handleProtocolRequest({ adapter, context: {}, rawRequest, source: route.source });
 
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(501);
   expect(materializations).toBe(1);
-  expect(first.calls.model).toHaveLength(1);
+  expect(first.calls.model).toHaveLength(0);
   expect(second.calls.model).toHaveLength(0);
   expect(
-    route.recording.attempts.map(({ outcome, providerId, statusCode }) => ({ outcome, providerId, statusCode })),
-  ).toEqual([{ outcome: "success", providerId: "first", statusCode: undefined }]);
-  expect(route.recording.finals[0]).toEqual(expect.objectContaining({ outcome: "success" }));
+    route.recording.attempts.map(({ errorCode, outcome, providerId, statusCode }) => ({
+      errorCode,
+      outcome,
+      providerId,
+      statusCode,
+    })),
+  ).toEqual([
+    { errorCode: "unsupported_feature", outcome: "failure", providerId: "first", statusCode: 501 },
+    { errorCode: "unsupported_feature", outcome: "failure", providerId: "second", statusCode: 501 },
+  ]);
+  expect(route.recording.finals[0]).toEqual(
+    expect.objectContaining({ errorCode: "unsupported_feature", outcome: "failure" }),
+  );
 });
 
 test("fails fast on invalid function arguments without trying raw", async () => {

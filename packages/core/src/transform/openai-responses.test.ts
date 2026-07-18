@@ -7,14 +7,38 @@ import {
 } from "../index";
 
 test("converts a developer message to a system message", () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
   const request = parseOpenAIResponses({
     model: "gpt-5.6-terra",
     input: [{ role: "developer", content: "You are a coding agent." }],
   });
 
-  expect(openAIResponsesToModelMessages(request).messages).toEqual([
-    { role: "system", content: "You are a coding agent." },
-  ]);
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toEqual([
+      {
+        role: "system",
+        content: "You are a coding agent.",
+        providerOptions: {
+          aioProxy: {
+            openaiResponses: {
+              protocol: "openai-responses",
+              inputIndex: 0,
+              itemType: "message",
+              wireRole: "developer",
+            },
+          },
+        },
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      "[aio-proxy] OpenAI Responses model conversion degraded",
+      "message.role.developer",
+      "input.0.role",
+      "converted",
+    );
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test("converts function-call history", () => {
@@ -57,7 +81,7 @@ test("converts function-call history", () => {
   ]);
 });
 
-test("logs and ignores opaque reasoning on the model path", () => {
+test("converts reasoning summary and drops encrypted content on the model path", () => {
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   const reasoning = {
     type: "reasoning" as const,
@@ -71,14 +95,22 @@ test("logs and ignores opaque reasoning on the model path", () => {
   });
 
   try {
-    expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: "user", content: "hello" }]);
-    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "reasoning");
+    expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+      { role: "assistant", content: [{ type: "reasoning", text: "Do not expose this." }] },
+      { role: "user", content: "hello" },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      "[aio-proxy] OpenAI Responses model conversion degraded",
+      "reasoning.encrypted_content",
+      "input.0.encrypted_content",
+      "dropped",
+    );
   } finally {
     warn.mockRestore();
   }
 });
 
-test("logs and ignores an item reference on the model path", () => {
+test("rejects an item reference on the model path", () => {
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   const reference = { type: "item_reference" as const, id: "item_1" };
   const request = parseOpenAIResponses({
@@ -87,8 +119,15 @@ test("logs and ignores an item reference on the model path", () => {
   });
 
   try {
-    expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: "user", content: "hello" }]);
-    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "item_reference");
+    expect(() => openAIResponsesToModelMessages(request)).toThrow(
+      new OpenAIResponsesUnsupportedFeatureError("item_reference", "input.0.type"),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "[aio-proxy] OpenAI Responses model conversion degraded",
+      "item_reference",
+      "input.0.type",
+      "rejected",
+    );
   } finally {
     warn.mockRestore();
   }

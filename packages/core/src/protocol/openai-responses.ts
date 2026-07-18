@@ -1,7 +1,6 @@
 import { ProviderProtocol } from "@aio-proxy/types";
 import { z } from "zod";
-import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses";
-import { OpenAIResponsesUnsupportedFeatureError } from "../error";
+import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses/index";
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses";
 import { openAIResponsesToModelMessages } from "../transform/openai-responses";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
@@ -26,10 +25,6 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   },
   modelInvocation(request) {
     const transformed = openAIResponsesToModelMessages(request);
-    const custom = transformed.tools?.find((tool) => tool.type === "custom");
-    if (custom !== undefined) {
-      throw new OpenAIResponsesUnsupportedFeatureError("custom_tool", "tools");
-    }
     const tools = functionToolSet(transformed.tools);
     return {
       messages: transformed.messages,

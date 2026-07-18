@@ -1,12 +1,19 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
 import { OpenAIResponsesTransformError } from "../error";
 import type {
+  OpenAIResponsesExecutableTool,
+  OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
   OpenAIResponsesTextPart,
-  OpenAIResponsesTool,
 } from "../ingress/openai-responses";
-import type { OpenAIResponsesFromModelMessages, OpenAIResponsesTransformTool } from "./openai-responses-types";
+import { readOpenAIResponsesWireMetadata } from "./openai-responses-tools";
+import type {
+  OpenAIResponsesFromModelMessages,
+  OpenAIResponsesToolChoice,
+  OpenAIResponsesTransformTool,
+  OpenAIResponsesWireMetadata,
+} from "./openai-responses-types";
 
 type UserMessage = Extract<ModelMessage, { role: "user" }>;
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
@@ -24,17 +31,19 @@ export function modelMessagesToOpenAIResponses({
 
   const reasoningEffort = settings.reasoning ?? settings.providerOptions?.openai.reasoningEffort;
   const reasoningSummary = settings.reasoningSummary ?? settings.providerOptions?.openai.reasoningSummary;
+  const toolSources = responsesToolSources(tools);
+  const toolChoice = responsesToolChoice(settings.toolChoice, tools);
 
   return {
     model,
-    input: messages.map((message, messageIndex) => responsesMessage(message, messageIndex)),
-    ...(tools === undefined ? {} : { tools: tools.map(responsesTool) }),
+    input: responsesInput(messages, toolSources.additional),
+    ...(toolSources.request === undefined ? {} : { tools: toolSources.request }),
     ...(settings.stream === undefined ? {} : { stream: settings.stream }),
     ...(settings.temperature === undefined ? {} : { temperature: settings.temperature }),
     ...(settings.topP === undefined ? {} : { top_p: settings.topP }),
     ...(settings.maxOutputTokens === undefined ? {} : { max_output_tokens: settings.maxOutputTokens }),
     ...(settings.parallelToolCalls === undefined ? {} : { parallel_tool_calls: settings.parallelToolCalls }),
-    ...(settings.toolChoice === undefined ? {} : { tool_choice: settings.toolChoice }),
+    ...(toolChoice === undefined ? {} : { tool_choice: toolChoice }),
     ...(reasoningEffort === undefined && reasoningSummary === undefined
       ? {}
       : {
@@ -44,6 +53,23 @@ export function modelMessagesToOpenAIResponses({
           },
         }),
   };
+}
+
+function responsesInput(
+  messages: readonly ModelMessage[],
+  additionalTools: readonly { readonly inputIndex: number; readonly tools: OpenAIResponsesExecutableTool[] }[],
+): OpenAIResponsesInputItem[] {
+  const result: OpenAIResponsesInputItem[] = messages.map((message, messageIndex) =>
+    responsesMessage(message, messageIndex),
+  );
+  for (const additional of additionalTools) {
+    result.splice(Math.min(additional.inputIndex, result.length), 0, {
+      type: "additional_tools",
+      role: "developer",
+      tools: additional.tools,
+    });
+  }
+  return result;
 }
 
 function responsesMessage(message: ModelMessage, messageIndex: number): OpenAIResponsesInputMessage {
@@ -76,21 +102,93 @@ function responsesContent(
   return content.flatMap((part) => (part.type === "text" ? [{ type, text: part.text }] : []));
 }
 
-function responsesTool(tool: OpenAIResponsesTransformTool): OpenAIResponsesTool {
-  switch (tool.type) {
-    case "function":
-      return {
-        type: "function",
-        name: tool.name,
-        ...(tool.description === undefined ? {} : { description: tool.description }),
-        ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),
+function responsesToolSources(tools: readonly OpenAIResponsesTransformTool[] | undefined): {
+  readonly request: OpenAIResponsesExecutableTool[] | undefined;
+  readonly additional: readonly { readonly inputIndex: number; readonly tools: OpenAIResponsesExecutableTool[] }[];
+} {
+  const request: OpenAIResponsesExecutableTool[] = [];
+  const additional = new Map<number, OpenAIResponsesExecutableTool[]>();
+  const namespaces = new Map<
+    OpenAIResponsesExecutableTool[],
+    Map<string, Extract<OpenAIResponsesExecutableTool, { type: "namespace" }>>
+  >();
+  for (const tool of tools ?? []) {
+    const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
+    const target =
+      metadata?.source === "additional_tools" && metadata.inputIndex !== undefined
+        ? mapTools(additional, metadata.inputIndex)
+        : request;
+    if (metadata?.namespace !== undefined) {
+      const sourceNamespaces = mapNamespaces(namespaces, target);
+      const namespace = sourceNamespaces.get(metadata.namespace) ?? {
+        type: "namespace" as const,
+        name: metadata.namespace,
+        ...(metadata.namespaceDescription === undefined ? {} : { description: metadata.namespaceDescription }),
+        tools: [],
       };
-    case "custom":
-      return {
+      namespace.tools.push(functionTool(tool, metadata.wireToolName ?? tool.name));
+      if (!sourceNamespaces.has(metadata.namespace)) {
+        sourceNamespaces.set(metadata.namespace, namespace);
+        target.push(namespace);
+      }
+      continue;
+    }
+    if (metadata?.wireToolType === "custom") {
+      target.push({
         type: "custom",
-        name: tool.name,
+        name: metadata.wireToolName ?? tool.name,
         ...(tool.description === undefined ? {} : { description: tool.description }),
-        ...(tool.format === undefined ? {} : { format: tool.format }),
-      };
+        ...(metadata.format === undefined ? {} : { format: metadata.format }),
+      });
+      continue;
+    }
+    target.push(functionTool(tool, metadata?.wireToolName ?? tool.name));
   }
+  return {
+    request: request.length === 0 ? undefined : request,
+    additional: [...additional.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([inputIndex, sourceTools]) => ({ inputIndex, tools: sourceTools })),
+  };
+}
+
+function mapTools(map: Map<number, OpenAIResponsesExecutableTool[]>, inputIndex: number) {
+  const tools = map.get(inputIndex) ?? [];
+  map.set(inputIndex, tools);
+  return tools;
+}
+
+function mapNamespaces(
+  map: Map<OpenAIResponsesExecutableTool[], Map<string, Extract<OpenAIResponsesExecutableTool, { type: "namespace" }>>>,
+  tools: OpenAIResponsesExecutableTool[],
+) {
+  const namespaces = map.get(tools) ?? new Map();
+  map.set(tools, namespaces);
+  return namespaces;
+}
+
+function responsesToolChoice(
+  choice: OpenAIResponsesToolChoice | undefined,
+  tools: readonly OpenAIResponsesTransformTool[] | undefined,
+): OpenAIResponsesRequest["tool_choice"] {
+  if (choice === undefined || typeof choice === "string") return choice;
+  const tool = tools?.find((candidate) => candidate.name === choice.toolName);
+  const metadata: OpenAIResponsesWireMetadata | undefined = readOpenAIResponsesWireMetadata(tool?.metadata);
+  return {
+    type: metadata?.wireToolType === "custom" ? "custom" : "function",
+    name: metadata?.wireToolName ?? choice.toolName,
+  };
+}
+
+function functionTool(
+  tool: OpenAIResponsesTransformTool,
+  name: string,
+): Extract<OpenAIResponsesExecutableTool, { type: "function" }> {
+  return {
+    type: "function",
+    name,
+    ...(tool.description === undefined ? {} : { description: tool.description }),
+    ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),
+    ...(tool.strict === undefined ? {} : { strict: tool.strict }),
+  };
 }

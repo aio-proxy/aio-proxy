@@ -1,11 +1,6 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { OpenAIResponsesRequest } from "../../index";
-import {
-  OpenAIResponsesRequestSchema,
-  OpenAIResponsesUnsupportedFeatureError,
-  parseOpenAIResponses,
-  safeParseOpenAIResponses,
-} from "../../index";
+import { OpenAIResponsesRequestSchema, parseOpenAIResponses } from "../../index";
 
 const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/openai-responses`;
 
@@ -32,25 +27,13 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(parseOpenAIResponses(input)).toEqual(input);
   });
 
-  test("Given unparseable input items When parsed Then they are logged and ignored", () => {
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
-    const sensitiveMarker = "secret-role-must-not-be-logged";
-    const invalidRole = { role: sensitiveMarker, content: "bad" };
-    const invalidContent = { role: "user", content: [{ type: "input_text" }] };
-
-    try {
-      expect(
-        parseOpenAIResponses({
-          model: "gpt-5-mini",
-          input: [invalidRole, invalidContent],
-        }).input,
-      ).toEqual([]);
-      expect(warn).toHaveBeenNthCalledWith(1, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
-      expect(warn).toHaveBeenNthCalledWith(2, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
-      expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveMarker);
-    } finally {
-      warn.mockRestore();
-    }
+  test("Given a malformed known item When parsed Then validation fails", () => {
+    expect(() =>
+      parseOpenAIResponses({
+        model: "gpt-5-mini",
+        input: [{ type: "custom_tool_call", call_id: "call_1", name: "exec" }],
+      }),
+    ).toThrow();
   });
 
   test.each(["none", "xhigh"])("Given current reasoning effort %s When parsed Then request is accepted", (effort) => {
@@ -63,17 +46,14 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  test("Given previous_response_id When safe parsed Then unsupported feature is returned", () => {
-    const result = safeParseOpenAIResponses({
+  test("Given previous_response_id When parsed Then it is retained for raw routing", () => {
+    const input = {
       model: "gpt-5-mini",
       input: "x",
       previous_response_id: "r1",
-    });
+    };
 
-    expect(result).toEqual({
-      ok: false,
-      error: new OpenAIResponsesUnsupportedFeatureError("previous_response_id", "previous_response_id"),
-    });
+    expect(parseOpenAIResponses(input)).toEqual(input);
   });
 
   test.each([
@@ -83,14 +63,16 @@ describe("OpenAIResponsesRequestSchema", () => {
     "computer_use",
     "computer-use",
     "image_generation",
-  ])("Given forbidden %s tool When parsed Then unsupported feature is thrown", (toolType) => {
-    const parse = () =>
-      parseOpenAIResponses({
-        model: "gpt-5-mini",
-        input: "x",
-        tools: [{ type: toolType }],
-      });
+  ])("Given raw-only %s tool When parsed Then it is retained", (toolType) => {
+    const input = {
+      model: "gpt-5-mini",
+      input: "x",
+      tools: [{ type: toolType }],
+    };
 
-    expect(parse).toThrow(new OpenAIResponsesUnsupportedFeatureError(toolType, "tools.0.type"));
+    expect(parseOpenAIResponses(input)).toEqual({
+      ...input,
+      tools: [{ type: "__aio_proxy_unsupported_tool__", wireType: toolType }],
+    });
   });
 });

@@ -1,308 +1,259 @@
-# OpenAI Responses Unsupported Input Compatibility Implementation Plan
+# OpenAI Responses Semantic Input Compatibility Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Goal:** Accept the captured 318-item OpenAI Responses request without silently deleting known semantics. Portable features are transformed, OpenAI-specific but recoverable features are wrapped with metadata, intentional degradation is logged safely, and features without a sound model representation remain available only to same-protocol raw passthrough.
 
-**Goal:** Accept OpenAI Responses requests containing unsupported input items by logging a safe item type, dropping those items, and continuing cross-protocol model conversion instead of rejecting the whole request.
+**Captured request:** `/Users/baran/.codex/attachments/012218db-ba16-44e3-909d-326391ded145/pasted-text.txt`
 
-**Architecture:** Keep the compatibility behavior at the two existing protocol boundaries. The ingress schema parses each array element independently and compacts failed parses; the model-message transformer skips parsed item kinds it cannot represent. Do not add an intermediate representation, logging abstraction, or new dependency.
+## Constraints
 
-**Tech Stack:** Bun, TypeScript, Zod, `es-toolkit/array` `compact`, Bun test, Turborepo.
-
-## Global Constraints
-
-- Preserve string `input` behavior and all currently supported input item schemas.
-- Log one `console.warn` per dropped item using only its `type`; use `unknown` when no safe type exists.
-- Never print the full input item, message content, tool arguments, or role value.
-- Keep top-level unsupported features such as `previous_response_id`, unsupported tools, and `store` model conversion unchanged.
-- Use the existing `es-toolkit` dependency; add no package.
-- Keep unit tests colocated with source and keep handwritten files under 300 lines.
-- Run `bun run preflight` before review completion.
+- Ingress must remain `318 -> 318` for the captured request.
+- The input array uses `z.unknown().transform(safeParse)` followed by `compact`, but only untyped garbage may become `undefined` and be compacted.
+- A known malformed item is a 400 validation error. An unknown typed semantic item becomes an explicit raw-only sentinel.
+- Same-protocol raw passthrough forwards the original request body. Model conversion decides portability and may reject a candidate before fallback reaches a later raw candidate.
+- Temporary compatibility diagnostics use `console.warn(feature, path, action)` as requested. They must never include request values, text, arguments, outputs, encrypted content, client metadata, or credentials.
+- No repository-wide logging abstraction is introduced in this change.
+- Custom and namespaced tools use AI SDK function tools plus JSON-safe metadata. JSON/SSE egress reads the same metadata to restore OpenAI wire identity.
+- No new dependency is added. Existing `es-toolkit/array` `compact` is used.
+- New handwritten TypeScript files remain below 300 lines. Legacy egress tests move beside source.
 - Do not modify `.idea/dataSources.xml` or `docs/research/cross-protocol-reasoning-custom-tools-reference.md`.
 
----
+## Captured Request Acceptance
 
-### Task 1: Parse Input Arrays Item by Item
+| Wire item | Count | Required result |
+| --- | ---: | --- |
+| `additional_tools` | 1 | Parse and materialize 9 executable definitions |
+| `message` | 37 | Preserve visible text and order |
+| `reasoning` | 97 | Convert summaries; diagnose encrypted content |
+| `custom_tool_call` | 40 | Preserve call IDs and raw string inputs via `{ input: string }` |
+| `custom_tool_call_output` | 40 | Preserve 36 content arrays and 4 strings |
+| `function_call` | 47 | Preserve call IDs, JSON arguments, and 43 namespaces |
+| `function_call_output` | 47 | Preserve paired text outputs |
+| `agent_message` | 9 | Preserve visible text with attribution; diagnose encrypted content |
+| **Total** | **318** | **All parse; no known item is compacted away** |
 
-**Files:**
-- Modify: `packages/core/src/ingress/openai-responses/index.ts`
-- Modify: `packages/core/src/ingress/openai-responses/input-items.ts`
-- Test: `packages/core/src/ingress/openai-responses.test.ts`
-- Test: `packages/core/src/ingress/openai-responses/request.test.ts`
+Acceptance is semantic. A non-message item may contribute tools rather than an AI SDK message.
 
-**Interfaces:**
-- Consumes: `openAIResponsesInputItemSchema.safeParse(input: unknown)`.
-- Produces: `OpenAIResponsesRequestSchema` whose array `input` output is `OpenAIResponsesInputItem[]` with unparseable elements removed.
+## Transformation Matrix
 
-- [ ] **Step 1: Replace rejection tests with failing compatibility tests**
+### 1. Losslessly portable
 
-In `packages/core/src/ingress/openai-responses.test.ts`, assert that known unsupported and extension item types are logged and removed while a supported message remains:
+These have a direct provider-neutral representation and do not warn.
 
-```ts
-test("logs and ignores unsupported input items", () => {
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
-  const additionalTools = { type: "additional_tools", role: "developer", tools: [] };
-  const computerCall = { type: "computer_call", id: "computer_1" };
+| OpenAI Responses feature | Model representation |
+| --- | --- |
+| String `input` | One user model message |
+| Visible text in system/user/assistant messages | Matching model message/text parts |
+| `input_text`, `output_text`, `text` | AI SDK text parts |
+| Valid JSON `function_call.arguments` | Tool-call input object |
+| String or text-only function output | Tool-result text/content |
+| Function name, description, parameters | Function tool definition |
+| `model`, `stream` | Existing routing and stream behavior |
+| `temperature`, `top_p`, `max_output_tokens` | `temperature`, `topP`, `maxOutputTokens` |
+| `parallel_tool_calls` | `parallelToolCalls` |
+| Enum `tool_choice`: `none`, `auto`, `required` | Same AI SDK enum |
+| `reasoning.effort` | Portable reasoning setting |
+| `reasoning.summary` request setting | Portable setting plus OpenAI provider option |
+| `store: false` or absent | No persistence dependency |
+| `background: false` or absent | Synchronous invocation |
 
-  try {
-    expect(
-      parseOpenAIResponses({
-        model: "gpt-5.6-terra",
-        input: [{ role: "user", content: "hello" }, additionalTools, computerCall],
-      }).input,
-    ).toEqual([{ role: "user", content: "hello" }]);
-    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "additional_tools");
-    expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "computer_call");
-  } finally {
-    warn.mockRestore();
-  }
-});
-```
+### 2. Reversibly transformed with metadata
 
-In `packages/core/src/ingress/openai-responses/request.test.ts`, replace strict per-item rejection assertions with a privacy regression:
+These use a different AI SDK shape but retain enough metadata for aio-proxy to restore their OpenAI identity.
 
-```ts
-test("Given unparseable input items When parsed Then they are logged and ignored", () => {
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
-  const sensitiveMarker = "secret-role-must-not-be-logged";
-  const invalidRole = { role: sensitiveMarker, content: "bad" };
-  const invalidContent = { role: "user", content: [{ type: "input_text" }] };
+| OpenAI Responses feature | Forward transform | Reverse behavior |
+| --- | --- | --- |
+| Custom tool definition | Function tool with schema `{ input: string }` | Restore `type: "custom"`, name, description, format |
+| `custom_tool_call.input` | Tool input `{ input: rawString }` | JSON/SSE unwrap exact raw string |
+| Custom output string/content | Tool result plus output-kind metadata | Restore original string or ordered parts |
+| Namespaced function | Flatten to `${namespace}__${name}` | Restore namespace and child name |
+| Namespace definition | Flatten children into ToolSet | Regroup children under namespace |
+| `additional_tools` | Merge executable definitions into normalized tools | Restore item at metadata `inputIndex` |
+| Function `strict` | AI SDK per-tool `strict` | Restore boolean |
+| Item IDs/status/phase/wire role | `providerOptions.aioProxy.openaiResponses` | Restore where reverse history supports it |
+| Function/custom wire type and name | Tool metadata | Select correct JSON/SSE output item kind |
+| Named `{type:"function"|"custom", name}` tool choice | Resolve unique normalized tool and emit `{type:"tool", toolName}` | Restore function/custom choice and original name |
 
-  try {
-    expect(parseOpenAIResponses({ model: "gpt-5-mini", input: [invalidRole, invalidContent] }).input).toEqual([]);
-    expect(warn).toHaveBeenNthCalledWith(1, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
-    expect(warn).toHaveBeenNthCalledWith(2, "[aio-proxy] Unsupported OpenAI Responses input item", "unknown");
-    expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveMarker);
-  } finally {
-    warn.mockRestore();
-  }
-});
-```
+A named tool choice is rejected if the name/type is missing or ambiguous after normalization.
 
-- [ ] **Step 2: Run the ingress tests and verify RED**
+### 3. Lossy but allowed with safe diagnostics
 
-Run:
+These may use a model capability only after logging the stable feature, path, and action.
 
-```bash
-bun test packages/core/src/ingress/openai-responses.test.ts packages/core/src/ingress/openai-responses/request.test.ts
-```
+| Feature | Degradation | Diagnostic action |
+| --- | --- | --- |
+| Reasoning summary text | Convert to assistant reasoning part | `reasoning.summary`, `converted` |
+| `reasoning.encrypted_content` | Drop opaque provider content | `dropped` |
+| `reasoning.context` | Drop provider-specific context | `dropped` |
+| Developer role | Convert to system and retain wire role metadata | `converted` |
+| Agent message | Convert visible text to attributed user text | `converted` |
+| Agent encrypted content | Drop opaque part | `dropped` |
+| Message annotations/logprobs | Keep visible text only | `dropped` |
+| `background: true` | Execute synchronously | `synchronous` |
+| `include` | Ignore provider-specific extras | `dropped` |
+| `prompt_cache_key` | Ignore cross-provider cache affinity | `dropped` |
+| `service_tier` | Use selected provider defaults | `dropped` |
+| `text.verbosity` | Use selected provider defaults | `dropped` |
+| `client_metadata` | Strip before model invocation | `stripped` |
+| Untyped garbage without a valid type/role | Warn and compact the array element | `unknown`, `dropped` |
 
-Expected: the unsupported item case throws `OpenAIResponsesUnsupportedFeatureError`, and the malformed item case throws `ZodError`.
+### 4. Raw-only; reject model conversion
 
-- [ ] **Step 3: Implement per-item safe parsing and compaction**
+Ingress recognizes or retains these so same-protocol raw forwarding can work. Before invoking a model, conversion warns with action `rejected` and throws `OpenAIResponsesUnsupportedFeatureError(feature, path)`.
 
-In `packages/core/src/ingress/openai-responses/index.ts`, use the existing dependency:
+| Feature | Reason |
+| --- | --- |
+| `item_reference` | No local Responses item store resolves it |
+| `previous_response_id` | Depends on upstream response state |
+| `store: true` | Requires provider persistence semantics |
+| Unknown typed input item | Semantic effect is unknown |
+| Unknown top-level request field | Model/response effect is unknown |
+| Built-in call/result families | No provider-neutral side-effect/result adapter |
+| Built-in hosted tool definitions | A ToolSet entry cannot reproduce hosted execution |
+| Function `defer_loading: true` | Tool-search activation timing is not portable |
+| Message image/file content | Text bridge cannot preserve it |
+| Tool output image/file content | Current result bridge is text-only |
+| Structured tool choice other than direct function/custom name | AI SDK cannot preserve `allowed_tools`, MCP, hosted, shell, apply-patch, or programmatic selection semantics |
 
-```ts
-import { compact } from "es-toolkit/array";
-```
+Raw-only input item types include:
 
-Replace the array branch of `input` with:
+- `apply_patch_call`, `apply_patch_call_output`
+- `code_interpreter_call`
+- `computer_call`, `computer_call_output`
+- `file_search_call`, `web_search_call`
+- `shell_call`, `shell_call_output`
+- `local_shell_call`, `local_shell_call_output`
+- `image_generation_call`
+- `tool_search_call`, `tool_search_output`
+- `mcp_list_tools`, `mcp_approval_request`, `mcp_approval_response`, `mcp_call`
 
-```ts
-z
-  .array(
-    z.unknown().transform((item) => {
-      const parsed = openAIResponsesInputItemSchema.safeParse(item);
-      if (!parsed.success) {
-        const type =
-          typeof item === "object" && item !== null && "type" in item && typeof item.type === "string"
-            ? item.type
-            : "unknown";
-        console.warn("[aio-proxy] Unsupported OpenAI Responses input item", type);
-      }
-      return parsed.success ? parsed.data : undefined;
-    }),
-  )
-  .min(1)
-  .transform(compact)
-```
+Raw-only tool types include:
 
-Remove `unsupportedInputItemFeature` from the ingress pre-probe so built-in unsupported input items follow the same log-and-drop path. Delete its now-unused type list and function from `packages/core/src/ingress/openai-responses/input-items.ts`. Keep `unsupportedToolFeature` and `previous_response_id` handling unchanged.
+- `apply_patch`
+- `computer`, `computer_use`, `computer_use_preview`, `computer-use`
+- `file_search`
+- `shell`, `local_shell`
+- `image_generation`
+- `code_interpreter`
+- `mcp`
+- `tool_search`
+- `web_search`, `web_search_2025_08_26`, `web_search_preview`, `web_search_preview_2025_03_11`
 
-- [ ] **Step 4: Run the ingress tests and verify GREEN**
+`computer_screenshot` content is raw-only.
 
-Run:
+### 5. Invalid at ingress
 
-```bash
-bun test packages/core/src/ingress/openai-responses.test.ts packages/core/src/ingress/openai-responses/request.test.ts
-```
+These are request errors rather than compatibility cases:
 
-Expected: all tests pass and mocked warnings contain only safe type strings.
+- A known item type whose required fields are missing or malformed.
+- A known tool type whose shape is invalid.
+- A typed message whose role/content schema is invalid.
+- An input array that becomes empty after compacting only untyped garbage.
 
-- [ ] **Step 5: Commit the ingress boundary change**
+## Schema Boundary
 
-```bash
-git add packages/core/src/ingress/openai-responses/index.ts packages/core/src/ingress/openai-responses/input-items.ts packages/core/src/ingress/openai-responses.test.ts packages/core/src/ingress/openai-responses/request.test.ts
-git commit -m "fix(core): ignore unsupported responses input items"
-```
-
----
-
-### Task 2: Skip Non-Portable Parsed Items During Model Conversion
-
-**Files:**
-- Modify: `packages/core/src/transform/openai-responses.ts`
-- Test: `packages/core/src/transform/openai-responses.test.ts`
-
-**Interfaces:**
-- Consumes: `readonly OpenAIResponsesInputItem[]` from ingress.
-- Produces: `ModelMessage[]` that excludes `reasoning` and `item_reference` items while preserving supported messages and function history.
-
-- [ ] **Step 1: Write failing transform tests**
-
-Change the existing reasoning and item-reference tests to include a supported user message after the unsupported item. Assert the conversion returns that message and emits:
-
-```ts
-expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "reasoning");
-```
-
-and:
+The array element transform follows this policy:
 
 ```ts
-expect(warn).toHaveBeenCalledWith("[aio-proxy] Unsupported OpenAI Responses input item", "item_reference");
+const parsed = openAIResponsesInputItemSchema.safeParse(value);
+if (parsed.success) return parsed.data;
+
+const wireType = safeWireType(value);
+if (wireType !== undefined && !knownInputItemTypes.has(wireType)) {
+  return { type: "__aio_proxy_unsupported__", wireType };
+}
+
+if (wireType !== undefined || hasMessageDiscriminator(value)) {
+  ctx.addIssue({ code: "custom", message: "Invalid OpenAI Responses input item" });
+  return z.NEVER;
+}
+
+console.warn("[aio-proxy] OpenAI Responses input item degraded", "unknown", "input", "dropped");
+return undefined;
 ```
 
-- [ ] **Step 2: Run the transform test and verify RED**
+The containing schema applies `compact` and verifies at least one semantic item remains.
 
-Run:
+## Implementation Map
+
+### Ingress
+
+- `packages/core/src/ingress/openai-responses/index.ts`: request fields, safeParse/compact boundary, named tool-choice schemas, passthrough fields.
+- `packages/core/src/ingress/openai-responses/input-items.ts`: message, reasoning, function/custom call/results, `additional_tools`, `agent_message`, item reference, unknown typed sentinel.
+- `packages/core/src/ingress/openai-responses/tools.ts`: function/custom/namespace definitions and unsupported typed tool sentinel.
+- Colocated ingress tests verify survival, validation, compaction, and privacy.
+
+### Transform and ToolSet
+
+- `packages/core/src/transform/openai-responses.ts`: orchestration, top-level compatibility, settings, named tool-choice rewrite.
+- `packages/core/src/transform/openai-responses-compat.ts`: input history conversion and call/result pairing.
+- `packages/core/src/transform/openai-responses-tools.ts`: flattening, normalization, metadata parsing, safe diagnostics, raw-only rejection.
+- `packages/core/src/transform/openai-responses-types.ts`: normalized tools, metadata, portable settings.
+- `packages/core/src/transform/openai-responses-from-model.ts`: reverse tool identity, namespace grouping, `additional_tools` placement, tool-choice restoration.
+- `packages/core/src/protocol/tools.ts`: propagate tool `strict` and `metadata` into AI SDK ToolSet entries.
+- `packages/core/src/protocol/openai-responses.ts`: invoke normalized tools without custom-tool rejection.
+- Colocated compatibility, round-trip, transform, and protocol tests cover the matrix.
+
+### Egress
+
+- Replace the oversized single module with `packages/core/src/egress/openai-responses/index.ts` and `state.ts`.
+- Restore function versus custom JSON/SSE items from `toolMetadata`.
+- Move legacy tests beside source and add focused custom-tool egress coverage.
+
+### Routing
+
+- `packages/server/src/routes/openai-responses-fallback.integration.test.ts`: model rejection followed by raw fallback.
+- `packages/server/src/routes/pipeline/attempt.test.ts`: candidate lifecycle after conversion rejection.
+
+## Execution Checklist
+
+- [x] Add captured item/tool schemas, unknown typed sentinels, and safe compact behavior.
+- [x] Add function/custom/namespace normalization and metadata.
+- [x] Convert custom calls/results, reasoning, agent messages, and namespaced calls.
+- [x] Classify and reject raw-only fields/items/tools only on the model path.
+- [x] Transform named function/custom tool choices and reject other structured choices.
+- [x] Rebuild top-level tools, namespaces, custom tools, and `additional_tools` during reverse conversion.
+- [x] Split Responses egress and emit custom JSON/SSE event families.
+- [x] Add routing fallback coverage.
+- [x] Replay the captured request and verify all 318 items survive ingress.
+- [x] Format and run focused core/server tests.
+- [x] Run `rtk bun run check` and `rtk bun run preflight`.
+- [x] Run `rtk git diff --check` and file-size checks.
+- [x] Review against `origin/main` and this plan.
+- [ ] Commit only intended files, push the existing PR, then post separate `@codex review` and `@cursor review` comments.
+
+## Verification Commands
 
 ```bash
-bun test packages/core/src/transform/openai-responses.test.ts
+rtk bun test \
+  packages/core/src/ingress/openai-responses.test.ts \
+  packages/core/src/ingress/openai-responses/request.test.ts \
+  packages/core/src/transform/openai-responses.test.ts \
+  packages/core/src/transform/openai-responses-compatibility.test.ts \
+  packages/core/src/transform/openai-responses-roundtrip.test.ts \
+  packages/core/src/protocol/openai-responses-basic.test.ts \
+  packages/core/src/egress/openai-responses.test.ts \
+  packages/core/src/egress/openai-responses-custom.test.ts
+
+rtk bun run --filter @aio-proxy/server test:unit -- \
+  src/routes/openai-responses-fallback.integration.test.ts \
+  src/routes/pipeline/attempt.test.ts
+
+rtk bun run check
+rtk bun run preflight
+rtk git diff --check
 ```
 
-Expected: both tests throw `OpenAIResponsesUnsupportedFeatureError` before reaching the supported user message.
+## Reference Facts
 
-- [ ] **Step 3: Implement log-and-skip conversion**
+- OpenAI Responses direct named choices use `{ type: "function" | "custom", name }`; other structured choices include hosted, MCP, `allowed_tools`, shell, apply-patch, and programmatic forms.
+- AI SDK 7 named selection uses `{ type: "tool", toolName }`.
+- AI SDK tool definitions carry `strict` and `metadata`; generated calls expose definition metadata as `toolMetadata`.
+- OpenAI custom tool streaming uses `response.custom_tool_call_input.delta` and `response.custom_tool_call_input.done`.
 
-In `inputMessages`, replace the two throws with one switch branch:
+References:
 
-```ts
-case "reasoning":
-case "item_reference":
-  console.warn("[aio-proxy] Unsupported OpenAI Responses input item", item.type);
-  previousType = undefined;
-  break;
-```
-
-Reset `previousType` so tool-call aggregation never spans an ignored semantic boundary. Leave invalid function arguments, image outputs, and `store: true` as errors.
-
-- [ ] **Step 4: Run the transform test and verify GREEN**
-
-Run:
-
-```bash
-bun test packages/core/src/transform/openai-responses.test.ts
-```
-
-Expected: all transform tests pass.
-
-- [ ] **Step 5: Commit the model conversion change**
-
-```bash
-git add packages/core/src/transform/openai-responses.ts packages/core/src/transform/openai-responses.test.ts
-git commit -m "fix(core): skip non-portable responses history"
-```
-
----
-
-### Task 3: Update Routing Contracts
-
-**Files:**
-- Modify: `packages/server/src/routes/openai-responses-fallback.integration.test.ts`
-- Modify: `packages/server/src/routes/openai-responses-observability.test.ts`
-- Modify: `packages/server/src/routes/pipeline/attempt.test.ts`
-- Modify: `packages/server/src/routes/pipeline/rejection-lifecycle.test.ts`
-
-**Interfaces:**
-- Consumes: the OpenAI Responses adapter's new log-and-drop model invocation behavior.
-- Produces: routing tests that expect the first model candidate to handle reasoning/item-reference history after those items are dropped.
-
-- [ ] **Step 1: Remove obsolete early-rejection cases**
-
-Delete the `unsupported built-in item` case from `openai-responses-observability.test.ts`. Delete the two rejection-lifecycle tests that expect `computer_call` or an invalid item role to produce a parse-time 400/501. The privacy guarantee is now covered by the mocked-console ingress test.
-
-In `openai-responses-fallback.integration.test.ts`, keep only `store: true` in `rawOnlyFeatures`; reasoning and item references are no longer raw-only.
-
-- [ ] **Step 2: Update model-candidate expectations**
-
-In `pipeline/attempt.test.ts`, change the reasoning case to assert:
-
-```ts
-expect(await response.json()).toMatchObject({ output_text: "model response", status: "completed" });
-expect(model.calls.model).toHaveLength(1);
-expect(raw.calls.raw).toHaveLength(0);
-```
-
-Change the item-reference case to assert the first model provider succeeds, the second provider is not invoked, and `modelInvocation` is materialized once:
-
-```ts
-expect(response.status).toBe(200);
-expect(materializations).toBe(1);
-expect(first.calls.model).toHaveLength(1);
-expect(second.calls.model).toHaveLength(0);
-```
-
-- [ ] **Step 3: Run affected server tests**
-
-Run with the server preload:
-
-```bash
-bun run --filter @aio-proxy/server test:unit -- src/routes/openai-responses-observability.test.ts src/routes/openai-responses-fallback.integration.test.ts src/routes/pipeline/rejection-lifecycle.test.ts src/routes/pipeline/attempt.test.ts
-```
-
-Expected: 11 tests pass, 0 fail.
-
-- [ ] **Step 4: Commit routing contract changes**
-
-```bash
-git add packages/server/src/routes/openai-responses-fallback.integration.test.ts packages/server/src/routes/openai-responses-observability.test.ts packages/server/src/routes/pipeline/attempt.test.ts packages/server/src/routes/pipeline/rejection-lifecycle.test.ts
-git commit -m "test(server): accept dropped responses history"
-```
-
----
-
-### Task 4: Replay the Regression and Verify the Workspace
-
-**Files:**
-- Verify only; no production files.
-
-**Interfaces:**
-- Consumes: the captured 318-item request at `/Users/baran/.codex/attachments/012218db-ba16-44e3-909d-326391ded145/pasted-text.txt`.
-- Produces: proof that ingress and model conversion complete without the original 400 or a later 501.
-
-- [ ] **Step 1: Replay the captured request**
-
-Run:
-
-```bash
-bun -e 'import { openAIResponsesToModelMessages, parseOpenAIResponses } from "./packages/core/src/index.ts"; const body = await Bun.file("/Users/baran/.codex/attachments/012218db-ba16-44e3-909d-326391ded145/pasted-text.txt").json(); const warnings = new Map(); console.warn = (_message, type) => warnings.set(type, (warnings.get(type) ?? 0) + 1); const parsed = parseOpenAIResponses(body); const converted = openAIResponsesToModelMessages(parsed); console.log(JSON.stringify({ rawInputItems: body.input.length, parsedInputItems: parsed.input.length, modelMessages: converted.messages.length, warnings: Object.fromEntries(warnings) }));'
-```
-
-Expected:
-
-```json
-{"rawInputItems":318,"parsedInputItems":228,"modelMessages":131,"warnings":{"additional_tools":1,"custom_tool_call":40,"custom_tool_call_output":40,"agent_message":9,"reasoning":97}}
-```
-
-- [ ] **Step 2: Run the complete repository verification**
-
-Run:
-
-```bash
-bun run preflight
-```
-
-Expected: all workspace unit tests, type tests, artifact tests, and `dev-task-graph.test.ts` pass. Existing non-failing Biome warnings may still be printed.
-
-- [ ] **Step 3: Check the final diff before review**
-
-```bash
-git diff --check
-git status --short
-```
-
-Expected: no whitespace errors; only the ten planned tracked files plus the plan are modified. `.idea/dataSources.xml` and the research document remain untracked and untouched.
-
-- [ ] **Step 4: Review before committing the recovered implementation**
-
-Use `code-review` with fixed point `HEAD` and this plan as the spec source. Do not commit until the Standards and Spec findings are resolved or explicitly accepted.
+- `https://developers.openai.com/api/docs/guides/tools`
+- `https://developers.openai.com/api/reference/resources/responses/streaming-events#response.custom_tool_call_input.delta`
+- `https://developers.openai.com/api/reference/resources/responses/streaming-events#response.custom_tool_call_input.done`
+- `https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling`
+- Installed OpenAI and AI SDK type sources under `packages/core/node_modules/`

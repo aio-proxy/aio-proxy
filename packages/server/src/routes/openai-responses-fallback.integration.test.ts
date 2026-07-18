@@ -12,6 +12,22 @@ const rawOnlyFeatures = [
     name: "stored response",
     body: { model: "gpt-5.6-terra", input: "hello", store: true },
   },
+  {
+    name: "previous response reference",
+    body: { model: "gpt-5.6-terra", input: "hello", previous_response_id: "resp_1" },
+  },
+  {
+    name: "item reference",
+    body: { model: "gpt-5.6-terra", input: [{ type: "item_reference", id: "item_1" }] },
+  },
+  {
+    name: "unknown semantic item",
+    body: { model: "gpt-5.6-terra", input: [{ type: "future_semantic_item", id: "item_1" }] },
+  },
+  {
+    name: "unknown top-level field",
+    body: { model: "gpt-5.6-terra", input: "hello", future_semantics: true },
+  },
 ] as const;
 
 describe("OpenAI Responses fallback HTTP integration", () => {
