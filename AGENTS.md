@@ -59,17 +59,17 @@ Few-shot:
 Bad:
 
 ```text
-components/tags-input.tsx
-components/tags-input.test.tsx
+foo.ts
+foo.test.ts
 ```
 
 Good:
 
 ```text
-components/tags-input/
+foo/
 ├── index.ts
-├── tags-input.tsx
-└── tags-input.test.tsx
+├── foo.ts
+└── foo.test.ts
 ```
 
 ### Dependencies
