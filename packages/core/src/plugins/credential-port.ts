@@ -1,4 +1,9 @@
-import type { CredentialPort, CredentialSnapshot, ZodType } from "@aio-proxy/plugin-sdk";
+import {
+  type CredentialPort,
+  CredentialRefreshError,
+  type CredentialSnapshot,
+  type ZodType,
+} from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import { delay } from "es-toolkit/promise";
 import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
@@ -209,6 +214,7 @@ function recordRefreshFailure<Credential>(
     error: redactPluginError(error, { secretValues }),
   });
   if (mode === "control-plane") return;
+  if (error instanceof CredentialRefreshError && error.retryable) return;
   const diagnostic = options.diagnostics("CREDENTIAL_REFRESH_FAILED", {
     providerId: options.providerId,
     retryable: false,

@@ -4,15 +4,24 @@ import { createParser } from "eventsource-parser";
 type ExtractedUsage = Omit<UsageRow, "providerId" | "modelId">;
 const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
 
+export type PassthroughObservation = {
+  readonly responseId?: string;
+  readonly usage?: ExtractedUsage;
+};
+
 export type PassthroughSseUsageObserver = {
   readonly feed: (chunk: string) => void;
-  readonly finish: () => ExtractedUsage | undefined;
+  readonly finish: () => PassthroughObservation;
 };
 
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
+  return extractPassthroughObservation(protocol, bodyText).usage;
+}
+
+export function extractPassthroughObservation(protocol: ProviderProtocol, bodyText: string): PassthroughObservation {
   const parsed = parseJson(bodyText);
   if (parsed !== undefined) {
-    return usageFromJson(protocol, parsed);
+    return observationFromJson(protocol, parsed);
   }
 
   const observer = createPassthroughSseUsageObserver(protocol);
@@ -23,6 +32,7 @@ export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: st
 export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): PassthroughSseUsageObserver {
   let active = true;
   let observed: ExtractedUsage | undefined;
+  let responseId: string | undefined;
   const parser = createParser({
     maxBufferSize: MAX_SSE_BUFFER_CHARS,
     onError(error) {
@@ -39,10 +49,11 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       if (parsed === undefined) {
         return;
       }
-      const next = usageFromJson(protocol, parsed);
-      if (next !== undefined) {
-        observed = mergeObservedUsage(protocol, observed, next);
+      const next = observationFromJson(protocol, parsed);
+      if (next.usage !== undefined) {
+        observed = mergeObservedUsage(protocol, observed, next.usage);
       }
+      responseId = next.responseId ?? responseId;
     },
   });
 
@@ -66,9 +77,27 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
           active = false;
         }
       }
-      return active ? observed : undefined;
+      return active ? observation(observed, responseId) : {};
     },
   };
+}
+
+function observationFromJson(protocol: ProviderProtocol, value: unknown): PassthroughObservation {
+  return observation(usageFromJson(protocol, value), completedResponseId(protocol, value));
+}
+
+function observation(usage: ExtractedUsage | undefined, responseId: string | undefined): PassthroughObservation {
+  return {
+    ...(responseId === undefined ? {} : { responseId }),
+    ...(usage === undefined ? {} : { usage }),
+  };
+}
+
+function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
+  if (protocol !== ProviderProtocol.OpenAIResponse || !isRecord(value)) return undefined;
+  const response = isRecord(value.response) ? value.response : value;
+  const completed = value.type === "response.completed" || response.status === "completed";
+  return completed && typeof response.id === "string" ? response.id : undefined;
 }
 
 function mergeObservedUsage(

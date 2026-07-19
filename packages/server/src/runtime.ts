@@ -1,6 +1,9 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from "@aio-proxy/core";
+import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from "@aio-proxy/plugin-sdk";
 import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from "@aio-proxy/types";
+import type { LogicalSessionStore } from "./logical-session-store";
 import type { RequestRecorder } from "./request-recorder";
+import type { ServerLogSink } from "./server-log";
 import type { UsageCapture } from "./usage-capture";
 
 export type RuntimeModelMetadata = {
@@ -8,7 +11,7 @@ export type RuntimeModelMetadata = {
 };
 
 export type RawTransport = {
-  readonly invoke: ApiProviderInstance["passthrough"];
+  readonly invoke: (request: Request, context?: LogicalRequestContext) => Promise<Response>;
 };
 
 export type RuntimeRawCapability = {
@@ -21,6 +24,7 @@ export type RuntimeRawCapability = {
 export type ModelTransport = {
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: AiSdkProviderInstance["invoke"];
+  readonly supportsProviderTool?: (type: ProviderExecutedTool["type"]) => boolean;
 };
 
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
@@ -34,6 +38,7 @@ type RuntimeProviderBase = {
   readonly plugin?: string;
   readonly capability?: string;
   readonly hasApiKey?: boolean;
+  readonly tokenCount?: TokenCountCapability;
 };
 export type RuntimeProviderInstance = RuntimeProviderBase &
   (
@@ -64,6 +69,8 @@ export type RetiredProviderSnapshot = {
 export type ProviderRouteSource = {
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
+  readonly logger: ServerLogSink;
+  readonly logicalSessionStore: LogicalSessionStore;
   readonly requestRecorder: RequestRecorder;
   readonly usageCapture: UsageCapture;
 };

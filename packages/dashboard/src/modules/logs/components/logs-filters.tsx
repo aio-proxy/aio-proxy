@@ -1,9 +1,10 @@
 import { m } from "@aio-proxy/i18n";
-import type { RequestOutcome } from "@aio-proxy/types";
+import { ProviderProtocol, type RequestOutcome } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
 import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 import { z } from "zod";
+import { ProtocolLabel } from "@/components/protocol-label";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -32,8 +33,6 @@ const schema = z.object({
   dateRange: z.object({ from: z.date().optional(), to: z.date().optional() }),
   autoRefresh: z.boolean(),
 });
-const protocols = ["openai-compatible", "openai-response", "anthropic", "gemini"];
-
 export const LogsFilters: React.FC<Props> = ({
   search,
   autoRefresh,
@@ -139,9 +138,9 @@ export const LogsFilters: React.FC<Props> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">{m["dashboard.logs.all"]()}</SelectItem>
-                  {protocols.map((protocol) => (
+                  {Object.values(ProviderProtocol).map((protocol) => (
                     <SelectItem key={protocol} value={protocol}>
-                      {protocol}
+                      <ProtocolLabel protocol={protocol} />
                     </SelectItem>
                   ))}
                 </SelectContent>

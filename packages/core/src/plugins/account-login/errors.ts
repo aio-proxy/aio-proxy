@@ -55,12 +55,6 @@ export class OAuthLoginTimeoutError extends Error {
     super("OAUTH_LOGIN_TIMEOUT");
   }
 }
-export class OAuthAdapterLoginError extends Error {
-  override readonly name = "OAuthAdapterLoginError";
-  constructor() {
-    super("OAUTH_ADAPTER_LOGIN_FAILED");
-  }
-}
 export class OAuthCatalogDiscoveryTimeoutError extends Error {
   override readonly name = "OAuthCatalogDiscoveryTimeoutError";
   constructor() {

@@ -13,6 +13,7 @@ import {
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { useState } from "react";
 import { DataTablePagination } from "@/components/data-table-pagination";
+import { ProtocolLabel } from "@/components/protocol-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,7 +61,13 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
       <Badge variant="outline">{outcomeLabel(row.original.outcome)}</Badge>
     ),
   },
-  { accessorKey: "inboundProtocol", header: () => m["dashboard.logs.protocol"]() },
+  {
+    accessorKey: "inboundProtocol",
+    header: () => m["dashboard.logs.protocol"](),
+    cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => (
+      <ProtocolLabel protocol={row.original.inboundProtocol} />
+    ),
+  },
   { accessorKey: "requestedModelId", header: () => m["dashboard.logs.requested_model"]() },
   {
     accessorKey: "finalProviderId",

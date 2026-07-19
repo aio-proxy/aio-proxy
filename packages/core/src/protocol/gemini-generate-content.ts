@@ -10,6 +10,7 @@ import {
 import { defineProtocolAdapter } from "./adapter";
 import { geminiGenerateContentErrors } from "./errors";
 import { readJsonRequest } from "./request";
+import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 type GeminiAiSdkSettings = CallSettings & {
@@ -48,6 +49,13 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
   },
   model: (_request, context) => context.model,
   variant: (request) => request.generationConfig?.thinkingConfig?.thinkingLevel,
+  session: (request) => ({
+    candidates: [
+      candidate("body-session", request.session_id),
+      candidate("body-conversation", request.conversation_id),
+    ].filter(isCandidate),
+    transcript: request.contents,
+  }),
   wantsStream: (_request, context) => context.stream,
   async rawRequest(raw, _request, resolvedModel, context) {
     if (context.model === resolvedModel) return raw.clone();
@@ -70,6 +78,14 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
   modelSse: writeGeminiGenerateContentSSE,
   errors: geminiGenerateContentErrors,
 });
+
+function candidate(source: SessionCandidate["source"], value: string | undefined): SessionCandidate | undefined {
+  return value === undefined ? undefined : { source, value };
+}
+
+function isCandidate(value: SessionCandidate | undefined): value is SessionCandidate {
+  return value !== undefined;
+}
 
 function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSettings {
   const reasoning = geminiReasoning(settings);

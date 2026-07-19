@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
+    "@aio-proxy/plugin-google-antigravity": "workspace:*",
     "@anthropic-ai/sdk": "catalog:",
     "@types/bun": "catalog:",
     "ai": "catalog:",

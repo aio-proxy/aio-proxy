@@ -5,6 +5,7 @@ import { openAICompletionsToModelMessages } from "../transform/openai-completion
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAICompletionsErrors } from "./errors";
 import { readJsonRequest, rewriteJsonRequestModel } from "./request";
+import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsRequest, EmptyProtocolContext>({
@@ -14,6 +15,16 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
   },
   model: (request) => request.model,
   variant: (request) => request.reasoning_effort,
+  session: (request) => ({
+    candidates: [
+      candidate("openai-prompt-cache", request.prompt_cache_key),
+      candidate("body-session", request.metadata?.session_id),
+      candidate("body-conversation", request.metadata?.conversation_id),
+      candidate("body-session", request.session_id),
+      candidate("body-conversation", request.conversation_id),
+    ].filter(isCandidate),
+    transcript: request.messages,
+  }),
   wantsStream: (request) => request.stream === true,
   rawRequest(raw, request, resolvedModel) {
     return request.model === resolvedModel ? Promise.resolve(raw.clone()) : rewriteJsonRequestModel(raw, resolvedModel);
@@ -31,3 +42,11 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
   modelSse: writeOpenAICompletionsSSE,
   errors: openAICompletionsErrors,
 });
+
+function candidate(source: SessionCandidate["source"], value: string | undefined): SessionCandidate | undefined {
+  return value === undefined ? undefined : { source, value };
+}
+
+function isCandidate(value: SessionCandidate | undefined): value is SessionCandidate {
+  return value !== undefined;
+}

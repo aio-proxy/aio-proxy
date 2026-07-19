@@ -275,4 +275,19 @@ describe("anthropicMessagesAdapter", () => {
 
     expect(anthropicMessagesAdapter.modelInvocation(parsed, {}).messages).toEqual([{ role: "user", content: [] }]);
   });
+
+  test("routes adaptive effort as the alias variant", async () => {
+    const parsed = await anthropicMessagesAdapter.parse(
+      request({
+        model: "claude-opus-4-6",
+        messages: [{ role: "user", content: "hello" }],
+        max_tokens: 32768,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "medium" },
+      }),
+      {},
+    );
+
+    expect(anthropicMessagesAdapter.variant(parsed, {})).toBe("medium");
+  });
 });

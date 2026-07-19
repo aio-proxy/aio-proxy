@@ -29,6 +29,7 @@ export type FakeProvider = {
 
 export type Recording = {
   readonly begins: Parameters<RequestRecorder["begin"]>[0][];
+  readonly identities: { readonly requestedModelId: string }[];
   readonly attempts: RequestAttemptInput[];
   readonly finals: RequestFinishInput[];
 };

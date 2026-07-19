@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { output, runCli, runCliAsync } from "./cli-test-helpers";
+import { output, runCli, runCliAsync, runCliUntilOutput } from "./cli-test-helpers";
 
 const jsonHeaders = { "content-type": "application/json" } as const;
 
@@ -72,6 +72,24 @@ describe("provider commands", () => {
     const stdout = result.stdout.toString();
     expect(stdout).toContain("[capability]");
     expect(stdout).toContain("--provider <id>");
+  });
+
+  test("exact built-in package login command enters the account flow", async () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-cli-login-"));
+    try {
+      const result = await runCliUntilOutput(
+        ["provider", "login", "@aio-proxy/plugin-google-antigravity"],
+        ["Custom Antigravity base URL", "OAuth capability @aio-proxy/plugin-google-antigravity was not found."],
+        { AIO_PROXY_HOME: home },
+      );
+      const text = `${result.stdout}${result.stderr}`;
+
+      expect(result.exitCode).not.toBe(0);
+      expect(text).toContain("Custom Antigravity base URL");
+      expect(text).not.toContain("OAuth capability @aio-proxy/plugin-google-antigravity was not found.");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("provider list prints packages installed in the runtime cache", () => {

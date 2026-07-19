@@ -1,6 +1,8 @@
 import { m } from "@aio-proxy/i18n";
 import type { DashboardRequestLog, RequestOutcome } from "@aio-proxy/types";
 import { Clipboard } from "lucide-react";
+import type { ReactNode } from "react";
+import { ProtocolLabel } from "@/components/protocol-label";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -19,10 +21,10 @@ type Props = { readonly log: DashboardRequestLog | undefined; readonly onClose: 
 export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
   const missing = m["dashboard.logs.not_available"]();
   const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
-  const rows: readonly (readonly [string, unknown])[] = log
+  const rows: readonly (readonly [string, ReactNode])[] = log
     ? [
         [m["dashboard.logs.outcome"](), outcomeLabel(log.outcome)],
-        [m["dashboard.logs.protocol"](), log.inboundProtocol],
+        [m["dashboard.logs.protocol"](), <ProtocolLabel key="inbound-protocol" protocol={log.inboundProtocol} />],
         [m["dashboard.logs.requested_model"](), log.requestedModelId],
         [m["dashboard.logs.final_provider"](), log.finalProviderId],
         [m["dashboard.logs.final_model"](), log.finalModelId],
@@ -33,7 +35,7 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
         [m["dashboard.logs.duration"](), formatDuration(log.durationMs)],
       ]
     : [];
-  const usageRows: readonly (readonly [string, unknown])[] = log
+  const usageRows: readonly (readonly [string, ReactNode])[] = log
     ? [
         [m["dashboard.logs.usage_provider"](), log.usage?.providerId],
         [m["dashboard.logs.usage_model"](), log.usage?.modelId],
@@ -76,8 +78,8 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
                     {(items as typeof rows).map(([label, value]) => (
                       <div className="contents" key={label}>
                         <dt className="text-muted-foreground">{label}</dt>
-                        <dd className="min-w-0 break-words text-right">
-                          {value === undefined ? missing : String(value)}
+                        <dd className="wrap-break-word min-w-0 text-right">
+                          {value === undefined || value === null ? missing : value}
                         </dd>
                       </div>
                     ))}
@@ -92,10 +94,22 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
                       <div className="font-medium">
                         #{attempt.index + 1} · {attempt.providerId} / {attempt.modelId}
                       </div>
-                      <div className="mt-1 text-muted-foreground">
-                        {attempt.providerKind} · {attempt.protocol ?? missing} · {outcomeLabel(attempt.outcome)} ·{" "}
-                        {attempt.statusCode ?? missing} · {formatDuration(attempt.durationMs)}
-                        {attempt.errorCode ? ` · ${attempt.errorCode}` : ""}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-1 text-muted-foreground">
+                        <span>{attempt.providerKind}</span>
+                        <span>·</span>
+                        {attempt.protocol === undefined ? missing : <ProtocolLabel protocol={attempt.protocol} />}
+                        <span>·</span>
+                        <span>{outcomeLabel(attempt.outcome)}</span>
+                        <span>·</span>
+                        <span>{attempt.statusCode ?? missing}</span>
+                        <span>·</span>
+                        <span>{formatDuration(attempt.durationMs)}</span>
+                        {attempt.errorCode ? (
+                          <>
+                            <span>·</span>
+                            <span>{attempt.errorCode}</span>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   ))}

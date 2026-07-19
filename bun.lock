@@ -79,6 +79,7 @@
         "@ai-sdk/xai": "catalog:",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-github-copilot": "workspace:*",
+        "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -183,6 +184,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
+        "ai": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -200,6 +202,24 @@
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/plugins/google-antigravity": {
+      "name": "@aio-proxy/plugin-google-antigravity",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/google": "catalog:",
+        "@ai-sdk/provider": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "ai": "catalog:",
+        "es-toolkit": "catalog:",
+        "eventsource-parser": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -240,6 +260,7 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
+        "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@types/bun": "catalog:",
         "ai": "catalog:",
@@ -332,6 +353,8 @@
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
+
+    "@aio-proxy/plugin-google-antigravity": ["@aio-proxy/plugin-google-antigravity@workspace:packages/plugins/google-antigravity"],
 
     "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
 

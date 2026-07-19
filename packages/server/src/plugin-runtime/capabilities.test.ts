@@ -135,3 +135,26 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
     PluginRawTransportError,
   );
 });
+
+test("materializes an optional plugin token-count capability", async () => {
+  const fixture = runtimeFixture(
+    { kind: "static" },
+    {
+      createRuntime: async () => ({
+        provider: providerV4(),
+        tokenCount: { countTokens: async () => ({ inputTokens: 13 }) },
+      }),
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const input = {
+    protocol: "anthropic" as const,
+    modelId: "model",
+    request: new Request("https://proxy.test/v1/messages/count_tokens"),
+    context: { requestId: "request", session: { key: "sha256:test" as const, source: "transcript" as const } },
+    invocation: { messages: [{ role: "user" as const, content: "hello" }] },
+  };
+
+  expect(await result.provider?.tokenCount?.countTokens(input)).toEqual({ inputTokens: 13 });
+});

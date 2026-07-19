@@ -5,6 +5,7 @@ import { type DashboardAssets, directoryDashboardAssets } from "@aio-proxy/serve
 
 export type CliDeps = {
   readonly dashboardAssets: () => DashboardAssets;
+  readonly dashboardUrl?: (apiUrl: string) => string;
 };
 
 export const devDashboardStaticDir = (): string => {

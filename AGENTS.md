@@ -48,6 +48,8 @@ Use these terms in code, docs, and discussion; avoid the listed synonyms.
 
 ### Testing
 
+- Every unit test must protect meaningful product behavior, a public contract, or a concrete regression. Completing a TDD cycle is not sufficient justification for adding a test.
+- Do not write tests that merely restate static configuration or implementation literals. Prefer a behavior-level check that would fail when the user-visible outcome breaks; if no such automated check is practical, do not add a low-value unit test just to claim coverage.
 - Keep unit tests next to their source files, for example `foo.ts` and `foo.test.ts`.
 - Existing `_test/` directories are legacy layout: do not add new test files there, and when materially modifying a module whose tests live in `_test/`, move those tests next to the source as part of the change.
 - When adding a colocated test in a package whose `test:unit` script still only scans `_test/`, update that script in the same change so the new test actually runs.
@@ -107,7 +109,7 @@ Example for an inbound OpenAI Responses request matching three providers:
 ## Protocol Routing Architecture
 
 - `packages/core/src/protocol/` owns one stateless adapter per inbound protocol.
-- Adapters are created with `defineProtocolAdapter()` and contain only parse, model/variant extraction, raw request rewriting, model invocation conversion, egress, and protocol-shaped errors.
+- Adapters are created with `defineProtocolAdapter()` and contain only parse, model/variant extraction, raw request rewriting, model invocation conversion, egress, protocol-shaped errors, and allowlisted request diagnostics.
 - `packages/server/src/routes/pipeline.ts` is the only candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight.
 - Runtime providers expose `raw` and/or `model` capabilities. Dispatch uses capabilities, not provider kind.
 - Same-protocol raw capability wins. All other supported calls use the materialized model capability.

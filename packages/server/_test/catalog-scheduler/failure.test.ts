@@ -51,6 +51,15 @@ test("host deadline settles discovery even when the plugin ignores abort", async
 test("a catalog that resolves after the host deadline is discarded", async () => {
   let catalogWrites = 0;
   let diagnosticWrites = 0;
+  let resolveDiagnostic = () => {};
+  let resolveDiscovery = () => {};
+  const diagnosticWritten = new Promise<void>((resolve) => {
+    resolveDiagnostic = resolve;
+  });
+  const discoveryResolved = new Promise<void>((resolve) => {
+    resolveDiscovery = resolve;
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
@@ -59,6 +68,7 @@ test("a catalog that resolves after the host deadline is discarded", async () =>
       },
       writeDiagnostic() {
         diagnosticWrites++;
+        resolveDiagnostic();
         return true;
       },
     } as never,
@@ -71,22 +81,34 @@ test("a catalog that resolves after the host deadline is discarded", async () =>
     rebuild: async () => {},
     discoveryTimeoutMs: 5,
   });
-  scheduler.replaceJobs([
-    {
-      providerId: "person",
-      policy: { kind: "static" },
-      stored: null,
-      discover: async () => {
-        await Bun.sleep(20);
-        return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+  try {
+    scheduler.replaceJobs([
+      {
+        providerId: "person",
+        policy: { kind: "static" },
+        stored: null,
+        discover: async () => {
+          await Bun.sleep(20);
+          resolveDiscovery();
+          return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+        },
       },
-    },
-  ]);
+    ]);
 
-  await Bun.sleep(35);
-  expect(diagnosticWrites).toBe(1);
-  expect(catalogWrites).toBe(0);
-  scheduler.close();
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("timed out waiting for the deadline diagnostic and late discovery")),
+        1_000,
+      );
+    });
+    await Promise.race([Promise.all([diagnosticWritten, discoveryResolved]), deadline]);
+    await Bun.sleep(0);
+    expect(diagnosticWrites).toBe(1);
+    expect(catalogWrites).toBe(0);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    scheduler.close();
+  }
 });
 
 test("a malformed discovered catalog is diagnosed without overwriting stored catalog data", async () => {

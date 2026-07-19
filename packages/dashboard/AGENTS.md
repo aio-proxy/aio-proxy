@@ -67,7 +67,8 @@ This file is the frontend authority for `packages/dashboard`.
 - `templates`: page-level assembly such as `ProvidersPage`.
 - `routes/*.tsx` should declare TanStack Router routes and render module templates for non-trivial pages.
 - Each `.tsx` file may declare exactly one React component. Split helper components into their own files instead of colocating multiple components in one file.
-- Declare React components with arrow functions typed as `React.FC<Props>`; do not use function declarations for components.
+- Declare React components with arrow functions typed as `React.FC<ComponentNameProps>`; do not use function declarations for components.
+- Component props must use an `interface` named `<ComponentName>Props`, for example `Foo` uses `interface FooProps`. Do not use a generic `type Props` or `interface Props`.
 - Component filenames should match their single exported component in kebab-case, for example `PageContainer` lives in `page-container.tsx`.
 
 ## Few-Shots
