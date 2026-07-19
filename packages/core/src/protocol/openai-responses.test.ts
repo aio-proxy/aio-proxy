@@ -14,16 +14,21 @@ test("drops background before raw forwarding while preserving unknown fields", a
   );
   const raw = new Request("https://proxy.test/v1/responses", {
     method: "POST",
-    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+    headers: {
+      "content-encoding": "gzip",
+      "content-length": String(body.byteLength),
+      "content-type": "application/json",
+    },
     body,
   });
   const parsed = await openAIResponsesAdapter.parse(raw, {});
 
-  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, "gpt-5.6-terra", {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, "upstream-model", {});
 
   expect(forwarded.headers.get("content-encoding")).toBeNull();
+  expect(forwarded.headers.get("content-length")).toBeNull();
   expect(await forwarded.json()).toEqual({
-    model: "gpt-5.6-terra",
+    model: "upstream-model",
     input: "hello",
     beta_field: { retain: true },
   });

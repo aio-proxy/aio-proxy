@@ -7,11 +7,12 @@ export class RequestBodyTooLargeError extends Error {}
 export async function readJsonRequest(raw: Request, maxBytes = 8 * 1024 * 1024): Promise<unknown> {
   const branch = raw.clone();
   try {
-    const body =
+    const encoded = await readRequestBytes(branch.body, maxBytes);
+    const bytes =
       branch.headers.get("content-encoding")?.toLowerCase() === "gzip"
-        ? branch.body?.pipeThrough(new DecompressionStream("gzip"))
-        : branch.body;
-    return JSON.parse(new TextDecoder().decode(await readRequestBytes(body, maxBytes)));
+        ? await readRequestBytes(new Blob([encoded]).stream().pipeThrough(new DecompressionStream("gzip")), maxBytes)
+        : encoded;
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
     await Promise.all([cancelRequestBody(branch, error), cancelRequestBody(raw, error)]);
     throw error;
@@ -21,7 +22,7 @@ export async function readJsonRequest(raw: Request, maxBytes = 8 * 1024 * 1024):
 async function readRequestBytes(
   body: ReadableStream<Uint8Array> | null | undefined,
   maxBytes: number,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const reader = body?.getReader();
   if (reader === undefined) return new Uint8Array();
   const chunks: Uint8Array[] = [];

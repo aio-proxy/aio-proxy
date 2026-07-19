@@ -37,6 +37,31 @@ test("readJsonRequest decodes gzip request bodies", async () => {
   expect(await readJsonRequest(request)).toEqual({ ok: true });
 });
 
+test("readJsonRequest limits decompressed gzip bytes", async () => {
+  const body = Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ padding: "x".repeat(64) })));
+  const request = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+    body,
+  });
+
+  await expect(readJsonRequest(request, 32)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test("readJsonRequest limits encoded gzip bytes before decompression", async () => {
+  const emptyMember = Bun.gzipSync(new Uint8Array());
+  const body = new Uint8Array(emptyMember.byteLength * 2);
+  body.set(emptyMember);
+  body.set(emptyMember, emptyMember.byteLength);
+  const request = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+    body,
+  });
+
+  await expect(readJsonRequest(request, emptyMember.byteLength)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
 test("readJsonRequest rejects a chunked body before retaining bytes beyond the limit", async () => {
   const request = new Request("https://proxy.test/v1/responses", {
     method: "POST",
