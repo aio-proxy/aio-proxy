@@ -159,9 +159,9 @@ async function requestDeviceAuthorization(
   signal: AbortSignal,
 ): Promise<DeviceAuthorization> {
   const value = await postForm(fetcher, `${AUTH_BASE_URL}/device_authorization`, deviceId, signal, {});
-  const deviceCode = requiredString(value, "device_code");
-  const userCode = requiredString(value, "user_code");
-  const verificationUri = requiredString(value, "verification_uri");
+  const deviceCode = optionalString(value, "device_code");
+  const userCode = optionalString(value, "user_code");
+  const verificationUri = optionalString(value, "verification_uri");
   const verificationUriComplete = optionalString(value, "verification_uri_complete");
   const expiresIn = optionalPositiveNumber(value, "expires_in") ?? 900;
   const interval = optionalPositiveNumber(value, "interval") ?? 5;
@@ -184,7 +184,7 @@ async function requestToken(
   signal: AbortSignal,
   form: Readonly<Record<string, string>>,
 ): Promise<TokenResponse> {
-  const value = await postForm(fetcher, `${AUTH_BASE_URL}/token`, deviceId, signal, form);
+  const value = await postForm(fetcher, `${AUTH_BASE_URL}/token`, deviceId, signal, form, true);
   return {
     accessToken: optionalString(value, "access_token"),
     refreshToken: optionalString(value, "refresh_token"),
@@ -200,6 +200,7 @@ async function postForm(
   deviceId: string,
   signal: AbortSignal,
   form: Readonly<Record<string, string>>,
+  acceptBadRequest = false,
 ): Promise<Record<string, unknown>> {
   let response: Response;
   try {
@@ -213,7 +214,7 @@ async function postForm(
     signal.throwIfAborted();
     throw new Error("Kimi OAuth request failed");
   }
-  if (!response.ok) throw new Error("Kimi OAuth request failed");
+  if (!response.ok && (!acceptBadRequest || response.status !== 400)) throw new Error("Kimi OAuth request failed");
   return parseObject(response, "Kimi OAuth response is invalid");
 }
 
@@ -255,10 +256,6 @@ async function parseSuccessfulToken(
     throw new CredentialRefreshError("Kimi credential refresh failed", { retryable: false, reason: "invalid" });
   }
   return { accessToken, ...(refreshToken === undefined ? {} : { refreshToken }), expiresIn };
-}
-
-function requiredString(value: Record<string, unknown>, key: string): string | undefined {
-  return optionalString(value, key);
 }
 
 function optionalString(value: Record<string, unknown>, key: string): string | undefined {
