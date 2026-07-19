@@ -1,13 +1,22 @@
 import { getLocale, m } from "@aio-proxy/i18n";
 import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from "lucide-react";
+import type { ReactNode } from "react";
+import { formatCompactTokenCount, TokenCount } from "@/components/token-count";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { UsageOverviewSummary } from "../services/usage-service";
 
-type Props = {
+interface UsageSummaryGridProps {
   readonly summary: UsageOverviewSummary;
-};
+}
 
-export const UsageSummaryGrid: React.FC<Props> = ({ summary }) => {
+interface UsageSummaryCard {
+  readonly icon: typeof CircleDollarSign;
+  readonly label: string;
+  readonly value: ReactNode;
+  readonly detail: ReactNode;
+}
+
+export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) => {
   const numberFormatter = new Intl.NumberFormat(getLocale());
   const decimalFormatter = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
   const costFormatter = new Intl.NumberFormat(getLocale(), {
@@ -20,7 +29,7 @@ export const UsageSummaryGrid: React.FC<Props> = ({ summary }) => {
     style: "percent",
   });
   const notAvailable = m["dashboard.usage.not_available"]();
-  const cards = [
+  const cards: readonly UsageSummaryCard[] = [
     {
       icon: CircleDollarSign,
       label: m["dashboard.usage.summary_cost"](),
@@ -43,10 +52,10 @@ export const UsageSummaryGrid: React.FC<Props> = ({ summary }) => {
     {
       icon: Cpu,
       label: m["dashboard.usage.summary_tokens"](),
-      value: numberFormatter.format(summary.totalTokens),
+      value: <TokenCount value={summary.totalTokens} />,
       detail: m["dashboard.usage.tokens_description"]({
-        input: numberFormatter.format(summary.inputTokens),
-        output: numberFormatter.format(summary.outputTokens),
+        input: formatCompactTokenCount(summary.inputTokens),
+        output: formatCompactTokenCount(summary.outputTokens),
       }),
     },
     {
@@ -67,7 +76,7 @@ export const UsageSummaryGrid: React.FC<Props> = ({ summary }) => {
       value: summary.successRate === null ? notAvailable : percentFormatter.format(summary.successRate),
       detail: m["dashboard.usage.success_rate_description"](),
     },
-  ] as const;
+  ];
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

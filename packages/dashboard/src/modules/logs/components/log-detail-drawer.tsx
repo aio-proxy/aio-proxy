@@ -3,6 +3,7 @@ import type { DashboardRequestLog, RequestOutcome } from "@aio-proxy/types";
 import { Clipboard } from "lucide-react";
 import type { ReactNode } from "react";
 import { ProtocolLabel } from "@/components/protocol-label";
+import { TokenCount } from "@/components/token-count";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -17,6 +18,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
 
 type Props = { readonly log: DashboardRequestLog | undefined; readonly onClose: () => void };
+
+const renderTokenCount = (value: number | undefined) =>
+  value === undefined ? undefined : <TokenCount value={value} />;
 
 export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
   const missing = m["dashboard.logs.not_available"]();
@@ -39,12 +43,12 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
     ? [
         [m["dashboard.logs.usage_provider"](), log.usage?.providerId],
         [m["dashboard.logs.usage_model"](), log.usage?.modelId],
-        [m["dashboard.logs.input_tokens"](), log.usage?.inputTokens],
-        [m["dashboard.logs.output_tokens"](), log.usage?.outputTokens],
-        [m["dashboard.logs.tokens"](), displayTotalTokens(log.usage)],
-        [m["dashboard.logs.cache_read_tokens"](), log.usage?.cacheReadTokens],
-        [m["dashboard.logs.cache_write_tokens"](), log.usage?.cacheWriteTokens],
-        [m["dashboard.logs.reasoning_tokens"](), log.usage?.reasoningTokens],
+        [m["dashboard.logs.input_tokens"](), renderTokenCount(log.usage?.inputTokens)],
+        [m["dashboard.logs.output_tokens"](), renderTokenCount(log.usage?.outputTokens)],
+        [m["dashboard.logs.tokens"](), renderTokenCount(displayTotalTokens(log.usage))],
+        [m["dashboard.logs.cache_read_tokens"](), renderTokenCount(log.usage?.cacheReadTokens)],
+        [m["dashboard.logs.cache_write_tokens"](), renderTokenCount(log.usage?.cacheWriteTokens)],
+        [m["dashboard.logs.reasoning_tokens"](), renderTokenCount(log.usage?.reasoningTokens)],
         [m["dashboard.logs.cost"](), formatLogCost(log.usage?.estimatedCostUsd)],
       ]
     : [];
