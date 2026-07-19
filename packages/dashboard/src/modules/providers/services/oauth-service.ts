@@ -3,7 +3,9 @@ import type {
   DashboardOAuthSession,
   DashboardOAuthSessionStart,
 } from "@aio-proxy/types";
+
 import { queryOptions } from "@tanstack/react-query";
+
 import { createDashboardClient } from "@/lib/dashboard-client";
 
 const dashboardClient = createDashboardClient();
@@ -28,6 +30,7 @@ export const oauthSessionQueryOptions = (id: string) =>
     },
     enabled: id !== "",
     refetchInterval: (query) => {
+      if (query.state.status === "error") return false;
       const status = query.state.data?.session.status;
       return status === undefined ||
         status === "preparing" ||

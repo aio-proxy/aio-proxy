@@ -1,8 +1,10 @@
 import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
+
 import { AliasConfigSchema, ConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from "@aio-proxy/types";
 import { z } from "zod";
 
 import type { StoredAccount } from "../repository/index";
+import type { OAuthProviderPatch } from "./login";
 
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
@@ -14,7 +16,6 @@ import {
   ProviderAccountAlreadyExistsError,
   ProviderConfigInvalidError,
 } from "./errors";
-import type { OAuthProviderPatch } from "./login";
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;

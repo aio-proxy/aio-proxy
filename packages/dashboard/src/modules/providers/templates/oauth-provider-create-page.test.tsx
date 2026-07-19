@@ -1,6 +1,8 @@
 import type { DashboardOAuthCapability } from "@aio-proxy/types";
+
 import { afterEach, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
+
 import { OAuthProviderCreatePage } from "./oauth-provider-create-page";
 
 const capability: DashboardOAuthCapability = {
@@ -15,13 +17,20 @@ const capability: DashboardOAuthCapability = {
   ],
 };
 
-const mocks = rs.hoisted(() => ({ start: rs.fn(), navigate: rs.fn() }));
+const mocks = rs.hoisted(() => ({
+  start: rs.fn(),
+  navigate: rs.fn(),
+  refetch: rs.fn(),
+  sessionError: false,
+}));
 
 rs.mock("@tanstack/react-query", () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: (options: { queryKey: readonly string[] }) => ({
     data: options.queryKey[0] === "oauth-capabilities" ? { capabilities: [capability] } : undefined,
+    isError: options.queryKey[0] === "oauth-session" && mocks.sessionError,
     isLoading: false,
+    refetch: mocks.refetch,
   }),
   useMutation: () => ({ mutate: mocks.start, isPending: false }),
 }));
@@ -31,7 +40,10 @@ rs.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-afterEach(() => rs.restoreAllMocks());
+afterEach(() => {
+  rs.restoreAllMocks();
+  mocks.sessionError = false;
+});
 
 test("OAuth create page selects a capability and renders its account fields before authorization", async () => {
   render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
@@ -50,4 +62,16 @@ test("OAuth create page hides the setup form while an existing session loads", (
   render(<OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />);
 
   expect(screen.queryByRole("button", { name: /Continue authorization|继续授权/u })).toBeNull();
+});
+
+test("OAuth create page offers a restart when an existing session cannot be loaded", () => {
+  mocks.sessionError = true;
+  const changeSession = rs.fn();
+  render(
+    <OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={changeSession} />,
+  );
+
+  expect(screen.getByText(/session is unavailable|授权会话不可用/u)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Start over|重新开始/u }));
+  expect(changeSession).toHaveBeenCalledWith(undefined);
 });

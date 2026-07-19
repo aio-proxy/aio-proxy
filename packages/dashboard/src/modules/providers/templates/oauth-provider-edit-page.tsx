@@ -1,10 +1,13 @@
+import type { DashboardOAuthProviderEdit, DashboardOAuthSession, OAuthProvider } from "@aio-proxy/types";
+
 import { m } from "@aio-proxy/i18n";
-import type { DashboardOAuthProviderEdit, OAuthProvider } from "@aio-proxy/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+
 import { aliasEditorIssues, aliasIssueControlId } from "../alias-editor";
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
 import { OAuthAuthorizationPanel } from "../components/oauth-authorization-panel";
@@ -93,7 +96,11 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
       startMutation.mutate(action.input);
     },
   );
-  const session = sessionQuery.data?.session;
+  const session: DashboardOAuthSession | undefined =
+    sessionQuery.data?.session ??
+    (sessionId !== undefined && sessionQuery.isError
+      ? { id: sessionId, status: "failed", code: "OAUTH_SESSION_UNAVAILABLE" }
+      : undefined);
 
   useEffect(() => {
     if (session?.status === "loopback" && popup.current !== null) {
@@ -162,7 +169,13 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
             onSubmitCallback={(callbackUrl) =>
               callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
             }
-            onCancel={() => cancelMutation.mutate(session.id)}
+            onCancel={() => {
+              if (session.status === "failed" || session.status === "cancelled") {
+                onSessionIdChange(undefined);
+                return;
+              }
+              cancelMutation.mutate(session.id);
+            }}
           />
         )}
       </div>

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { OAuthCallbackError, parseOAuthCallback } from "./callback";
 
 test("manual OAuth callback validates redirect and state without exposing the raw callback", () => {

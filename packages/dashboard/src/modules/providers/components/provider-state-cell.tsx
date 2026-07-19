@@ -1,3 +1,5 @@
+import type React from "react";
+
 import { m } from "@aio-proxy/i18n";
 import {
   type DashboardProviderSummary,
@@ -5,8 +7,9 @@ import {
   dashboardProviderSuggestedCommand,
 } from "@aio-proxy/types";
 import { Link } from "@tanstack/react-router";
-import type React from "react";
+
 import { buttonVariants } from "@/components/ui/button";
+
 import { DiagnosticDetails } from "./diagnostic-details";
 
 const availabilityLabel = (provider: DashboardProviderSummary): string => {

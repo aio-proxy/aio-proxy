@@ -1,4 +1,5 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
+
 import { ProvidersPage } from "@/modules/providers/templates/providers-page";
 
 const ProvidersRoute: React.FC = () => {

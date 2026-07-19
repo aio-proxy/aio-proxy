@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { AliasConfigSchema, IdSchema } from "./common";
 import { DashboardLocalizedTextSchema } from "./dashboard-localized-text";
 

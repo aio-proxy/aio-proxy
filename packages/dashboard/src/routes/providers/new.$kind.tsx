@@ -1,5 +1,7 @@
-import { createFileRoute, notFound, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type React from "react";
+
+import { createFileRoute, notFound, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+
 import { ProviderFormMode } from "@/modules/providers/constants";
 import { OAuthProviderCreatePage } from "@/modules/providers/templates/oauth-provider-create-page";
 import { ProviderFormPage } from "@/modules/providers/templates/provider-form-page";

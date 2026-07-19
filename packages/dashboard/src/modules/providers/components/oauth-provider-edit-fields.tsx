@@ -1,12 +1,16 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardOAuthProviderEdit, OAuthProvider } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
+
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+
 import type { useOAuthProviderEditForm } from "../hooks/use-oauth-provider-edit-form";
 import type { useOAuthProviderForm } from "../hooks/use-oauth-provider-form";
+
 import { OAuthAccountFields } from "./oauth-account-fields";
 import { OAuthProviderAliasFields } from "./oauth-provider-alias-fields";
 
@@ -85,7 +89,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
     <section className="space-y-4">
       <h2 className="font-semibold">{m["dashboard.providers.oauth.account_fields_title"]()}</h2>
       <OAuthAccountFields fields={oauth.form} form={accountForm} />
-      <p className="text-muted-foreground text-sm">{m["dashboard.providers.oauth.reauthorize_helper"]()}</p>
+      <p className="text-sm text-muted-foreground">{m["dashboard.providers.oauth.reauthorize_helper"]()}</p>
     </section>
 
     <section className="space-y-3">
@@ -97,7 +101,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
           </Badge>
         ))}
       </div>
-      <p className="text-muted-foreground text-sm">{m["dashboard.providers.oauth.models_readonly"]()}</p>
+      <p className="text-sm text-muted-foreground">{m["dashboard.providers.oauth.models_readonly"]()}</p>
     </section>
 
     <OAuthProviderAliasFields form={form} open={aliasOpen} onOpenChange={onAliasOpenChange} />

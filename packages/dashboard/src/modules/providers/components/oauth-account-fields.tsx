@@ -1,6 +1,8 @@
+import type { DashboardOAuthFormField } from "@aio-proxy/types";
+
 import { getLocale, m } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
-import type { DashboardOAuthFormField } from "@aio-proxy/types";
+
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -8,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+
 import type { useOAuthProviderForm } from "../hooks/use-oauth-provider-form";
 
 interface OAuthAccountFieldsProps {
@@ -60,7 +63,7 @@ export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, 
                           />
                           {field.configured ? (
                             <>
-                              <p className="text-muted-foreground text-sm">
+                              <p className="text-sm text-muted-foreground">
                                 {m["dashboard.providers.oauth.secret_configured"]()}
                               </p>
                               <form.Field name="clearSecrets">
@@ -137,7 +140,7 @@ export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, 
                             }}
                           />
                           {invalid ? (
-                            <p className="text-destructive text-sm">
+                            <p className="text-sm text-destructive">
                               {m["dashboard.providers.form.options_json_error"]()}
                             </p>
                           ) : null}
@@ -167,7 +170,7 @@ export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, 
                           }
                         />
                         {description === undefined ? null : (
-                          <p className="text-muted-foreground text-sm">{description}</p>
+                          <p className="text-sm text-muted-foreground">{description}</p>
                         )}
                       </Field>
                     );

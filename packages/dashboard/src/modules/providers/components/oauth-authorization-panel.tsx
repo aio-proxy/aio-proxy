@@ -1,6 +1,8 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardOAuthSession } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { useForm } from "@tanstack/react-form";
+
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -80,11 +82,14 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
       ) : null}
       {session.status === "failed" ? (
         <p className="text-destructive">
-          {session.code === "PROVIDER_FINGERPRINT_MISMATCH"
-            ? m["dashboard.providers.oauth.fingerprint_mismatch"]()
-            : m["dashboard.providers.oauth.failed"]({ code: session.code })}
+          {session.code === "OAUTH_SESSION_UNAVAILABLE"
+            ? m["dashboard.providers.oauth.session_unavailable"]()
+            : session.code === "PROVIDER_FINGERPRINT_MISMATCH"
+              ? m["dashboard.providers.oauth.fingerprint_mismatch"]()
+              : m["dashboard.providers.oauth.failed"]({ code: session.code })}
         </p>
       ) : null}
+      {session.status === "cancelled" ? <p>{m["dashboard.providers.oauth.authorization_cancelled"]()}</p> : null}
       {session.status === "succeeded" && session.duplicate ? <p>{m["dashboard.providers.oauth.duplicate"]()}</p> : null}
       {session.status === "succeeded" && session.warning === "catalog_unavailable" ? (
         <p>{m["dashboard.providers.oauth.catalog_warning"]()}</p>
@@ -95,6 +100,11 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
       session.status === "discovering" ? (
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
           {m["dashboard.providers.oauth.cancel"]()}
+        </Button>
+      ) : null}
+      {session.status === "failed" || session.status === "cancelled" ? (
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+          {m["dashboard.providers.oauth.start_over"]()}
         </Button>
       ) : null}
     </div>

@@ -1,5 +1,6 @@
 import type { PluginRegistry } from "@aio-proxy/core";
 import type { FormField, JsonValue } from "@aio-proxy/plugin-sdk";
+
 import { type DashboardOAuthCapability, DashboardOAuthCapabilitySchema } from "@aio-proxy/types";
 
 const fieldDefault = (field: FormField): JsonValue | undefined => {

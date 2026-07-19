@@ -1,7 +1,9 @@
 import { DashboardOAuthCallbackSubmissionSchema, DashboardOAuthSessionStartSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
-import { OAuthCallbackError } from "../oauth-login-session/callback";
+
 import type { ServerState } from "../server-state";
+
+import { OAuthCallbackError } from "../oauth-login-session/callback";
 
 export const createDashboardOAuthLoginRoutes = (state: ServerState) =>
   new Hono()

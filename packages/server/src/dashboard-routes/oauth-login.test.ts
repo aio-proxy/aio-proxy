@@ -1,10 +1,11 @@
+import { m } from "@aio-proxy/i18n";
+import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
+import { ConfigSchema } from "@aio-proxy/types";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { m } from "@aio-proxy/i18n";
-import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
-import { ConfigSchema } from "@aio-proxy/types";
+
 import { createServerState } from "../server-state";
 import { createDashboardRoutes } from "./config";
 

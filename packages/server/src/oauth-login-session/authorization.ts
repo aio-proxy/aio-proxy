@@ -1,6 +1,8 @@
-import { m } from "@aio-proxy/i18n";
 import type { AuthorizationPort, LoopbackRequest } from "@aio-proxy/plugin-sdk";
 import type { DashboardOAuthSession } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
+
 import { loopbackRedirectUri, OAuthCallbackError, parseOAuthCallback, requireHttpUrl } from "./callback";
 
 type LoopbackResult = { readonly code: string; readonly redirectUri: string };

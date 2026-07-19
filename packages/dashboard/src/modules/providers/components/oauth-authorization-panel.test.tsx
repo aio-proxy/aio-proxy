@@ -1,5 +1,6 @@
 import { expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
 import { OAuthAuthorizationPanel } from "./oauth-authorization-panel";
 
 test("shows specific fingerprint mismatch guidance", () => {
@@ -43,4 +44,20 @@ test("clears a manually submitted callback URL", async () => {
     expect(submit).toHaveBeenCalledWith("http://127.0.0.1/callback?code=secret");
     expect(input).toHaveValue("");
   });
+});
+
+test("shows a restart action for a cancelled session", () => {
+  const restart = rs.fn();
+  render(
+    <OAuthAuthorizationPanel
+      session={{ id: "550e8400-e29b-41d4-a716-446655440000", status: "cancelled" }}
+      onSubmitCallback={rs.fn()}
+      onCancel={restart}
+      isPending={false}
+    />,
+  );
+
+  expect(screen.getByText(/authorization was cancelled|授权已取消/u)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Start over|重新开始/u }));
+  expect(restart).toHaveBeenCalledTimes(1);
 });

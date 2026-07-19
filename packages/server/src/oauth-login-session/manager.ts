@@ -1,3 +1,5 @@
+import type { DashboardOAuthSession, DashboardOAuthSessionStart } from "@aio-proxy/types";
+
 import {
   type AtomicConfigFile,
   type DiagnosticFactory,
@@ -8,7 +10,7 @@ import {
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
 } from "@aio-proxy/core";
-import type { DashboardOAuthSession, DashboardOAuthSessionStart } from "@aio-proxy/types";
+
 import { createDashboardAuthorization, type DashboardAuthorization } from "./authorization";
 import { OAuthCallbackError } from "./callback";
 

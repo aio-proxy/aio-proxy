@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
 import type { ZodType } from "zod";
+
+import { expect, test } from "bun:test";
+
 import * as provider from "./provider";
 
 test("OAuth provider mutation accepts routing fields but rejects identity and account options", () => {

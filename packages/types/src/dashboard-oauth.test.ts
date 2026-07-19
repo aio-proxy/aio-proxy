@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
 import type { ZodType } from "zod";
+
+import { expect, test } from "bun:test";
+
 import * as dashboard from "./dashboard-oauth";
 
 test("dashboard OAuth capability schema accepts safe form metadata and rejects secret values", () => {

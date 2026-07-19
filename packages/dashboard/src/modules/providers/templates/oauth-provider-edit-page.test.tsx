@@ -1,6 +1,8 @@
 import type { DashboardOAuthProviderEdit, OAuthProvider } from "@aio-proxy/types";
-import { expect, rs, test } from "@rstest/core";
+
+import { afterEach, expect, rs, test } from "@rstest/core";
 import { render, screen } from "@testing-library/react";
+
 import { OAuthProviderEditPage } from "./oauth-provider-edit-page";
 
 const provider: OAuthProvider = {
@@ -25,10 +27,12 @@ const oauth: DashboardOAuthProviderEdit = {
   models: ["model-1", "model-2"],
 };
 
+const mocks = rs.hoisted(() => ({ sessionError: false }));
+
 rs.mock("@tanstack/react-query", () => ({
   queryOptions: <T,>(options: T) => options,
   useMutation: () => ({ mutate: rs.fn(), isPending: false }),
-  useQuery: () => ({ data: undefined, refetch: rs.fn() }),
+  useQuery: () => ({ data: undefined, isError: mocks.sessionError, refetch: rs.fn() }),
   useQueryClient: () => ({ invalidateQueries: rs.fn() }),
 }));
 
@@ -36,6 +40,10 @@ rs.mock("@tanstack/react-router", () => ({
   Link: ({ children }: React.PropsWithChildren) => <button type="button">{children}</button>,
   useNavigate: () => rs.fn(),
 }));
+
+afterEach(() => {
+  mocks.sessionError = false;
+});
 
 test("OAuth edit page keeps identity immutable and exposes account fields, models, aliases, and reauthorization", () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
@@ -62,4 +70,21 @@ test("OAuth edit page hides edit actions while an existing session loads", () =>
   );
 
   expect(screen.queryByRole("button", { name: /Reauthorize|重新授权/u })).toBeNull();
+});
+
+test("OAuth edit page offers a restart when an existing session cannot be loaded", () => {
+  mocks.sessionError = true;
+  const changeSession = rs.fn();
+  render(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={changeSession}
+    />,
+  );
+
+  expect(screen.getByText(/session is unavailable|授权会话不可用/u)).toBeTruthy();
+  screen.getByRole("button", { name: /Start over|重新开始/u }).click();
+  expect(changeSession).toHaveBeenCalledWith(undefined);
 });

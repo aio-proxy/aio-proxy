@@ -1,10 +1,13 @@
+import type { DashboardOAuthCapability, DashboardOAuthSession } from "@aio-proxy/types";
+
 import { m } from "@aio-proxy/i18n";
-import type { DashboardOAuthCapability } from "@aio-proxy/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+
 import { OAuthAccountFields } from "../components/oauth-account-fields";
 import { OAuthAuthorizationPanel } from "../components/oauth-authorization-panel";
 import { OAuthCapabilityCombobox } from "../components/oauth-capability-combobox";
@@ -50,7 +53,11 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
       ...account,
     });
   });
-  const session = sessionQuery.data?.session;
+  const session: DashboardOAuthSession | undefined =
+    sessionQuery.data?.session ??
+    (sessionId !== undefined && sessionQuery.isError
+      ? { id: sessionId, status: "failed", code: "OAUTH_SESSION_UNAVAILABLE" }
+      : undefined);
 
   useEffect(() => {
     if (session?.status === "loopback" && popup.current !== null) {
@@ -115,7 +122,13 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
             onSubmitCallback={(callbackUrl) =>
               callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
             }
-            onCancel={() => cancelMutation.mutate(session.id)}
+            onCancel={() => {
+              if (session.status === "failed" || session.status === "cancelled") {
+                onSessionIdChange(undefined);
+                return;
+              }
+              cancelMutation.mutate(session.id);
+            }}
           />
         )}
       </div>

@@ -1,10 +1,11 @@
+import { AtomicConfigFile, createPluginRegistryHost, createPluginRepository } from "@aio-proxy/core";
+import { openDb } from "@aio-proxy/core/db";
+import { zod } from "@aio-proxy/plugin-sdk";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtomicConfigFile, createPluginRegistryHost, createPluginRepository } from "@aio-proxy/core";
-import { openDb } from "@aio-proxy/core/db";
-import { zod } from "@aio-proxy/plugin-sdk";
+
 import { createOAuthLoginSessionManager } from "./manager";
 
 test("a cancelled OAuth session stays cancelled when a committed login finishes reloading", async () => {

@@ -1,5 +1,7 @@
 import type { DashboardOAuthFormField } from "@aio-proxy/types";
+
 import { expect, test } from "@rstest/core";
+
 import { oauthAccountSubmission } from "./oauth-account-submission";
 
 const fields: readonly DashboardOAuthFormField[] = [
