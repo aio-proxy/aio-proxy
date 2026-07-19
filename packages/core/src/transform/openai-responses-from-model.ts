@@ -57,19 +57,16 @@ export function modelMessagesToOpenAIResponses({
 
 function responsesInput(
   messages: readonly ModelMessage[],
-  additionalTools: readonly { readonly inputIndex: number; readonly tools: OpenAIResponsesExecutableTool[] }[],
+  additionalTools: readonly { readonly tools: OpenAIResponsesExecutableTool[] }[],
 ): OpenAIResponsesInputItem[] {
-  const result: OpenAIResponsesInputItem[] = messages.map((message, messageIndex) =>
-    responsesMessage(message, messageIndex),
-  );
-  for (const additional of additionalTools) {
-    result.splice(Math.min(additional.inputIndex, result.length), 0, {
+  return [
+    ...additionalTools.map<OpenAIResponsesInputItem>((additional) => ({
       type: "additional_tools",
       role: "developer",
       tools: additional.tools,
-    });
-  }
-  return result;
+    })),
+    ...messages.map((message, messageIndex) => responsesMessage(message, messageIndex)),
+  ];
 }
 
 function responsesMessage(message: ModelMessage, messageIndex: number): OpenAIResponsesInputMessage {

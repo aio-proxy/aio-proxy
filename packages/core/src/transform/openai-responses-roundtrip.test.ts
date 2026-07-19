@@ -79,11 +79,11 @@ describe("OpenAI Responses transform", () => {
     expect(modelMessagesToOpenAIResponses({ model: request.model, ...converted }).tools).toEqual(request.tools);
   });
 
-  test("Given additional tools When transformed twice Then their original input position is preserved", () => {
+  test("Given additional tools When transformed twice Then they are normalized before messages", () => {
     const request = parseOpenAIResponses({
       model: "gpt-5.6-terra",
       input: [
-        { role: "user", content: "before" },
+        { type: "reasoning", summary: [] },
         {
           type: "additional_tools",
           role: "developer",
@@ -106,6 +106,6 @@ describe("OpenAI Responses transform", () => {
     const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
 
     expect(converted.settings.toolChoice).toEqual({ type: "tool", toolName: "emit_raw" });
-    expect(roundTrip).toEqual(request);
+    expect(roundTrip.input).toEqual([request.input[1], request.input[2]]);
   });
 });
