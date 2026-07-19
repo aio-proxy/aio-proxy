@@ -614,7 +614,7 @@ rtk git commit -m "feat(xai-grok): add oauth credential lifecycle" -m "Co-author
 - Consumes: `currentXAIGrokCredential()` and `XAIGrokCredential` from Task 1.
 - Produces: `discoverXAIGrokModels()`, `initialXAIGrokCatalogFallback()`, `createXAIGrokRuntime()`, and `createXAIGrokDynamicFetch()`.
 
-- [ ] **Step 1: Write failing catalog tests**
+- [x] **Step 1: Write failing catalog tests**
 
 Create `packages/plugins/xai-grok/src/catalog.test.ts`:
 
@@ -679,13 +679,13 @@ function staticPort(): CredentialPort<XAIGrokCredential> {
 }
 ```
 
-- [ ] **Step 2: Run catalog tests and verify RED**
+- [x] **Step 2: Run catalog tests and verify RED**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/catalog.test.ts`
 
 Expected: FAIL because `./catalog` does not exist.
 
-- [ ] **Step 3: Implement catalog discovery and curated fallback**
+- [x] **Step 3: Implement catalog discovery and curated fallback**
 
 Create `packages/plugins/xai-grok/src/catalog.ts`:
 
@@ -758,13 +758,13 @@ function emptyCatalog(language: ModelCatalog["language"]): ModelCatalog {
 }
 ```
 
-- [ ] **Step 4: Run catalog tests and verify GREEN**
+- [x] **Step 4: Run catalog tests and verify GREEN**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/catalog.test.ts`
 
 Expected: 3 tests pass.
 
-- [ ] **Step 5: Write failing CLI proxy runtime tests**
+- [x] **Step 5: Write failing CLI proxy runtime tests**
 
 Create `packages/plugins/xai-grok/src/runtime.test.ts`:
 
@@ -823,13 +823,13 @@ function emptyCatalog() {
 }
 ```
 
-- [ ] **Step 6: Run runtime tests and verify RED**
+- [x] **Step 6: Run runtime tests and verify RED**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/runtime.test.ts`
 
 Expected: FAIL because `./runtime` does not exist.
 
-- [ ] **Step 7: Implement the minimal Responses runtime**
+- [x] **Step 7: Implement the minimal Responses runtime**
 
 Create `packages/plugins/xai-grok/src/runtime.ts`:
 
@@ -901,7 +901,7 @@ function patchResponsesBody(url: string, body: string): string {
 }
 ```
 
-- [ ] **Step 8: Run catalog and runtime tests and verify GREEN**
+- [x] **Step 8: Run catalog and runtime tests and verify GREEN**
 
 Run:
 
@@ -911,7 +911,7 @@ rtk bun test packages/plugins/xai-grok/src/catalog.test.ts packages/plugins/xai-
 
 Expected: 5 tests pass.
 
-- [ ] **Step 9: Commit catalog and runtime**
+- [x] **Step 9: Commit catalog and runtime**
 
 ```bash
 rtk git add packages/plugins/xai-grok/src/catalog.ts packages/plugins/xai-grok/src/catalog.test.ts packages/plugins/xai-grok/src/runtime.ts packages/plugins/xai-grok/src/runtime.test.ts

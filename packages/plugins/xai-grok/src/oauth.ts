@@ -40,8 +40,10 @@ const tokenSchema = zod
   })
   .loose();
 
+export type XAIGrokFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export type XAIGrokOAuthOptions = {
-  readonly fetch?: typeof fetch;
+  readonly fetch?: XAIGrokFetch;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly deviceInstructions?: LocalizedText;
@@ -159,7 +161,7 @@ export async function currentXAIGrokCredential(
   return (await waitForCaller(refreshed, options.signal)).snapshot.value;
 }
 
-async function discover(fetcher: typeof fetch, signal: AbortSignal) {
+async function discover(fetcher: XAIGrokFetch, signal: AbortSignal) {
   const response = await request(fetcher, DISCOVERY_URL, { headers: { accept: "application/json" }, signal });
   if (!response.ok) {
     throw new XAIOAuthHttpError("xAI discovery failed", isRetryableStatus(response.status), response.status);

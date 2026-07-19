@@ -1,3 +1,5 @@
+import type { XAIGrokFetch } from "../oauth";
+
 export class XAIOAuthHttpError extends Error {
   constructor(
     message: string,
@@ -9,7 +11,7 @@ export class XAIOAuthHttpError extends Error {
 }
 
 export async function postForm(
-  fetcher: typeof fetch,
+  fetcher: XAIGrokFetch,
   url: string,
   body: Record<string, string>,
   signal: AbortSignal,
@@ -22,7 +24,7 @@ export async function postForm(
 }
 
 export async function postFormResponse(
-  fetcher: typeof fetch,
+  fetcher: XAIGrokFetch,
   url: string,
   body: Record<string, string>,
   signal: AbortSignal,
@@ -35,7 +37,7 @@ export async function postFormResponse(
   });
 }
 
-export async function request(fetcher: typeof fetch, input: string, init: RequestInit): Promise<Response> {
+export async function request(fetcher: XAIGrokFetch, input: string, init: RequestInit): Promise<Response> {
   try {
     return await fetcher(input, init);
   } catch {
