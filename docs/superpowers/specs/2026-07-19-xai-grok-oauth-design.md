@@ -1,13 +1,13 @@
 # xAI Grok OAuth Provider 设计
 
 日期：2026-07-19  
-状态：已完成设计确认，待用户规格审阅
+状态：已确认，进入实现
 
 ## 背景
 
 aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh port、TTL model catalog 和 ProviderV4 model capability，但尚未支持使用 SuperGrok 或 X Premium+ 账号访问 Grok。
 
-本设计参考 `.reference/oh-my-pi`（OMP）与 `.reference/CLIProxyAPI`（CPA）：OAuth 使用两者一致的 xAI Grok CLI public client、scope 和 RFC 8628 device flow；模型发现沿用 OMP 对官方 xAI `/v1/models` 的调用；模型推理沿用 CPA 对 OAuth 账号默认使用 Grok CLI proxy 的行为。
+本设计参考 `.reference/oh-my-pi`（OMP）、`.reference/CLIProxyAPI`（CPA）与 `.reference/CodexBar`：OAuth 使用 OMP/CPA 一致的 xAI Grok CLI public client、scope 和 RFC 8628 device flow；模型发现沿用 OMP 对官方 xAI `/v1/models` 的调用；模型推理沿用 CPA 对 OAuth 账号默认使用 Grok CLI proxy 的行为；额度读取沿用 CodexBar 已验证的 Grok web billing gRPC-Web 调用。
 
 ## 目标
 
@@ -15,13 +15,15 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 - 支持 xAI OIDC discovery、device authorization、token polling、取消和 refresh token 轮换。
 - 使用账号 access token 动态发现当前可用的 Grok chat models。
 - 使用 Grok CLI proxy 调用 OpenAI Responses-compatible language models。
+- 使用同一 OAuth credential 主动读取当前 credits 剩余比例与周期重置时间。
 - 保持现有 model-first routing、Provider weight 和 candidate fallback 不变。
 
 ## 非目标
 
 - 不支持 xAI API key；本插件只处理 Grok OAuth 账号。
 - 不增加官方 API/CLI proxy 切换选项或自定义 base URL。
-- 不实现 images、video、voice、STT、websocket、`/responses/compact`、quota 或 reset credits。
+- 不实现 images、video、voice、STT、websocket 或 `/responses/compact`。
+- 不实现 quota reset、reset credits inventory 或 dashboard 专用适配。
 - 不提供 raw passthrough；所有入站协议都通过现有 model invocation path。
 - 不抽取通用 device-flow 框架，也不修改 GitHub Copilot 或 OpenAI ChatGPT 插件行为。
 - 不实现账号池、额度感知调度或 provider-specific cooldown。
@@ -40,6 +42,7 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 | 推理 endpoint | `https://cli-chat-proxy.grok.com/v1` |
 | Model codec | 已安装的 `@ai-sdk/openai` Responses provider |
 | Runtime capability | ProviderV4 model only，不提供 raw resolver |
+| Quota capability | 主动读取 Grok web billing，暴露只读 `credits` item，不声明 reset |
 
 ## 插件与宿主边界
 
@@ -50,12 +53,14 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 - credential schema、账号 fingerprint 和展示 label；
 - 动态模型发现、chat model 过滤和 curated fallback；
 - Grok CLI proxy URL、headers 和 Responses request compatibility。
+- Grok web billing gRPC-Web 请求、frame/trailer 校验和最小 protobuf 扫描。
 
 宿主继续负责：
 
 - 在 CLI/Dashboard 展示 device URL、user code 和进度；
 - credential 持久化、refresh single-flight、revision CAS 和 lease；
 - catalog TTL、last-known-good 和 Provider ID 配置；
+- quota context、snapshot validation、API/CLI 展示和通用错误边界；
 - candidate selection、protocol conversion、fallback、请求记录和对外错误。
 
 route、pipeline 和公共 plugin SDK 不增加 Grok 分支或新抽象。
@@ -212,6 +217,49 @@ User-Agent: xai-grok-workspace/0.2.93
 
 上游非成功 response 原样交给 AI SDK 和现有 candidate loop；插件不增加内部 retry 或跨账号调度。
 
+## Quota
+
+adapter 实现现有 `OAuthQuotaCapability.read`，但不实现可选的 `reset`。每次读取先通过 `currentXAIGrokCredential()` 取得或刷新 credential，然后发送 CodexBar 已验证的请求：
+
+```text
+POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
+Authorization: Bearer <access token>
+Origin: https://grok.com
+Referer: https://grok.com/?_s=usage
+Accept: */*
+Content-Type: application/grpc-web+proto
+x-grpc-web: 1
+x-user-agent: connect-es/2.1.1
+
+body: 00 00 00 00 00
+```
+
+五个零字节表示一个合法的空 gRPC-Web data frame。请求沿用 account context 的 abort signal；network error、非 2xx、非零 `grpc-status`、空 payload 或无法识别的 billing payload 均使 quota read 失败，由现有宿主 quota 边界转成稳定错误。插件不把 OAuth token、完整响应 body 或 protobuf 内容放入错误文本。
+
+响应解析不引入 protobuf dependency，只实现此接口所需的有界扫描：
+
+- 解析 gRPC-Web data frame，并忽略 trailer frame；若响应是 CodexBar 已观察到的未分帧 protobuf，则作为单个 payload 处理。
+- 同时读取 HTTP `grpc-status` headers 与 body trailer fields；任一非零 status 都视为 RPC 失败。
+- 递归扫描最多 4 层 length-delimited protobuf message，记录 fixed32 float 与 varint field path。
+- `usedPercent` 选择 path 最后为 field `1`、有限且位于 `0...100` 的 fixed32；优先 path 更短、其次 wire order 更早的值。
+- `resetsAt` 只接受 2023-11 到 2036-07 范围内且晚于当前时间的 Unix seconds；优先精确 path `[1, 5, 1]`，否则取最早的未来 timestamp。
+- 若 percent 被 protobuf 省略，但响应同时包含 reset timestamp 与当前 usage period 标记，则按 `0% used` 处理；只有 reset 而没有 usage 证据时拒绝解析。
+
+quota snapshot 固定为一个 item：
+
+```ts
+{
+  items: [{
+    id: "credits",
+    label: { default: "Credits", "zh-Hans": "额度" },
+    remainingRatio: Math.max(0, Math.min(1, 1 - usedPercent / 100)),
+    ...(resetsAt === undefined ? {} : { resetsAt }),
+  }],
+}
+```
+
+`resetsAt` 使用毫秒 Unix timestamp，以匹配 plugin SDK。snapshot 不返回 `resetCredits`：billing 中的 credits 是可消费额度，不是宿主定义的手动 reset credit inventory。由于 CodexBar 和已知 xAI 接口都没有手动重置能力的证据，adapter 也不声明 `quota.reset`。
+
 ## Built-in 注册
 
 `packages/core/src/plugins/builtins.ts` 注册新 package，并提供中英文展示文本：
@@ -231,7 +279,8 @@ User-Agent: xai-grok-workspace/0.2.93
 2. Refresh：旧 refresh token fallback、rotated refresh token、5xx retryable 与 `invalid_grant` non-retryable。
 3. Catalog：Bearer `/v1/models`、非 chat filter、curated display overlay、retryable fallback，以及 401/空目录不 fallback。
 4. Runtime：ProviderV4 model-only、CLI proxy URL、dynamic authorization/client headers、abort/body preservation 和 `reasoning.summary` removal。
-5. Plugin/built-in：默认 descriptor、空 account options、localized copy、icon、package version 和 embedded registration。
+5. Quota：Bearer gRPC-Web request、header/trailer status、framed/unframed payload、field-path selection、zero usage、remaining ratio、reset timestamp 与 read-only capability。
+6. Plugin/built-in：默认 descriptor、空 account options、localized copy、icon、package version、quota registration 和 embedded registration。
 
 完成前运行新 plugin tests、core built-in tests，并执行 `bun run preflight`。
 
@@ -242,5 +291,5 @@ User-Agent: xai-grok-workspace/0.2.93
 - `/v1/models` 展示该 OAuth 账号从官方 xAI endpoint 动态发现的 Grok chat models。
 - 官方模型发现暂时失败时，新账号可使用 curated fallback；401/403 或合法空目录不伪造可用模型。
 - 任一入站协议通过现有转换路径可调用 Grok model，实际 HTTP Responses 请求发送到 CLI proxy 并带 CPA 身份 headers。
+- 现有 quota read 接口可返回 Grok credits 剩余比例和周期重置时间；不提供 reset 操作或 reset credits。
 - access token 到刷新窗口后通过宿主 credential port 安全更新；并发刷新继续由宿主 single-flight/CAS 保证。
-
