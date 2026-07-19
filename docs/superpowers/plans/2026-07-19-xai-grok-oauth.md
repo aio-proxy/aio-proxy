@@ -930,7 +930,7 @@ rtk git commit -m "feat(xai-grok): add catalog and cli runtime" -m "Co-authored-
 - Consumes: `currentXAIGrokCredential()`, `XAIGrokOAuthOptions`, `XAIGrokCredential`, and the existing `AccountContext`/`OAuthQuotaSnapshot` SDK types.
 - Produces: `parseXAIGrokBilling(data, now)`, `validateXAIGrokGrpcStatus(headers)`, and `readXAIGrokQuota(context, options)`.
 
-- [ ] **Step 1: Write failing gRPC-Web and protobuf parser tests**
+- [x] **Step 1: Write failing gRPC-Web and protobuf parser tests**
 
 Create `packages/plugins/xai-grok/src/quota-protobuf.test.ts`:
 
@@ -992,13 +992,13 @@ function varint(value: number): number[] {
 }
 ```
 
-- [ ] **Step 2: Run parser tests and verify RED**
+- [x] **Step 2: Run parser tests and verify RED**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/quota-protobuf.test.ts`
 
 Expected: FAIL because `./quota-protobuf` does not exist.
 
-- [ ] **Step 3: Implement the bounded gRPC-Web/protobuf parser**
+- [x] **Step 3: Implement the bounded gRPC-Web/protobuf parser**
 
 Create `packages/plugins/xai-grok/src/quota-protobuf.ts` with these exact contracts:
 
@@ -1034,13 +1034,13 @@ const MAX_DEPTH = 4;
 
 Do not add a protobuf dependency and do not include payload or trailer text in thrown errors.
 
-- [ ] **Step 4: Run parser tests and verify GREEN**
+- [x] **Step 4: Run parser tests and verify GREEN**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/quota-protobuf.test.ts`
 
 Expected: 3 tests pass.
 
-- [ ] **Step 5: Write the failing authenticated quota-read test**
+- [x] **Step 5: Write the failing authenticated quota-read test**
 
 Create `packages/plugins/xai-grok/src/quota.test.ts`:
 
@@ -1119,13 +1119,13 @@ function varint(value: number): number[] {
 }
 ```
 
-- [ ] **Step 6: Run quota test and verify RED**
+- [x] **Step 6: Run quota test and verify RED**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/quota.test.ts`
 
 Expected: FAIL because `./quota` does not exist.
 
-- [ ] **Step 7: Implement the authenticated read-only quota capability**
+- [x] **Step 7: Implement the authenticated read-only quota capability**
 
 Create `packages/plugins/xai-grok/src/quota.ts`:
 
@@ -1177,7 +1177,7 @@ export async function readXAIGrokQuota(
 }
 ```
 
-- [ ] **Step 8: Run quota tests and verify GREEN**
+- [x] **Step 8: Run quota tests and verify GREEN**
 
 Run:
 
@@ -1185,9 +1185,9 @@ Run:
 rtk bun test packages/plugins/xai-grok/src/quota-protobuf.test.ts packages/plugins/xai-grok/src/quota.test.ts
 ```
 
-Expected: 4 tests pass.
+Expected: 5 tests pass.
 
-- [ ] **Step 9: Commit the quota reader**
+- [x] **Step 9: Commit the quota reader**
 
 ```bash
 rtk git add packages/plugins/xai-grok/src/quota-protobuf.ts packages/plugins/xai-grok/src/quota-protobuf.test.ts packages/plugins/xai-grok/src/quota.ts packages/plugins/xai-grok/src/quota.test.ts

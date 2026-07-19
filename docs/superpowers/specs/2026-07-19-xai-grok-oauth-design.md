@@ -230,6 +230,7 @@ Accept: */*
 Content-Type: application/grpc-web+proto
 x-grpc-web: 1
 x-user-agent: connect-es/2.1.1
+User-Agent: aio-proxy
 
 body: 00 00 00 00 00
 ```
