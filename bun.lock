@@ -80,6 +80,7 @@
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-github-copilot": "workspace:*",
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
+        "@aio-proxy/plugin-kimi-code": "workspace:*",
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/plugin-xai-grok": "workspace:*",
@@ -229,6 +230,21 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/kimi-code": {
+      "name": "@aio-proxy/plugin-kimi-code",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/anthropic": "catalog:",
+        "@ai-sdk/openai-compatible": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugins/openai-chatgpt": {
       "name": "@aio-proxy/plugin-openai-chatgpt",
       "version": "0.0.0",
@@ -370,6 +386,8 @@
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 
     "@aio-proxy/plugin-google-antigravity": ["@aio-proxy/plugin-google-antigravity@workspace:packages/plugins/google-antigravity"],
+
+    "@aio-proxy/plugin-kimi-code": ["@aio-proxy/plugin-kimi-code@workspace:packages/plugins/kimi-code"],
 
     "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
 

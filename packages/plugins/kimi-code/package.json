@@ -1,0 +1,32 @@
+{
+  "name": "@aio-proxy/plugin-kimi-code",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test --preload=./test/setup.ts",
+    "test:artifact": "bun test ./oauth.smoke.ts"
+  },
+  "dependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/openai-compatible": "catalog:"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

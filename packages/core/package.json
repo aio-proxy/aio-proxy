@@ -33,6 +33,7 @@
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/plugin-github-copilot": "workspace:*",
     "@aio-proxy/plugin-google-antigravity": "workspace:*",
+    "@aio-proxy/plugin-kimi-code": "workspace:*",
     "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/plugin-xai-grok": "workspace:*",

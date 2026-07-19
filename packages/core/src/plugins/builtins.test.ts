@@ -8,6 +8,7 @@ const expectedBuiltIns = [
   "@aio-proxy/plugin-github-copilot",
   "@aio-proxy/plugin-openai-chatgpt",
   "@aio-proxy/plugin-google-antigravity",
+  "@aio-proxy/plugin-kimi-code",
   "@aio-proxy/plugin-xai-grok",
 ] as const;
 
@@ -39,9 +40,16 @@ test("reserved identities always load embedded descriptors without package looku
 
   expect(BUILT_IN_PLUGIN_PACKAGE_NAMES).toEqual(expectedBuiltIns);
   expect(imported).toEqual([]);
-  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true]);
-  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(["0.0.0", "0.0.0", "0.0.0", "0.0.0"]);
+  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true, true]);
+  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual([
+    "0.0.0",
+    "0.0.0",
+    "0.0.0",
+    "0.0.0",
+    "0.0.0",
+  ]);
   expect(snapshot.registry.resolveOAuth("@aio-proxy/plugin-google-antigravity", "default")).toBeDefined();
+  expect(snapshot.registry.resolveOAuth("@aio-proxy/plugin-kimi-code", "default")).toBeDefined();
   expect(snapshot.registry.resolveOAuth("@aio-proxy/plugin-xai-grok", "default")).toBeDefined();
 });
 
@@ -80,6 +88,12 @@ test("embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(antigravity?.account.options.form[0]?.placeholder ?? "", "en")).toBe(
     "https://daily-cloudcode-pa.googleapis.com",
   );
+
+  const kimi = snapshot.registry.resolveOAuth("@aio-proxy/plugin-kimi-code", "default");
+  const kimiPlugin = snapshot.plugins.get("@aio-proxy/plugin-kimi-code");
+  expect(resolveLocalizedText(kimiPlugin?.label ?? "", "zh-Hans")).toBe("Kimi Code");
+  expect(resolveLocalizedText(kimiPlugin?.description ?? "", "zh-Hans")).toBe("使用 Kimi Code 账号访问模型");
+  expect(resolveLocalizedText(kimi?.label ?? "", "zh-Hans")).toBe("使用 Kimi Code 登录");
 
   const grok = snapshot.registry.resolveOAuth("@aio-proxy/plugin-xai-grok", "default");
   const grokPlugin = snapshot.plugins.get("@aio-proxy/plugin-xai-grok");

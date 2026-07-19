@@ -1,5 +1,6 @@
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from "@aio-proxy/plugin-github-copilot";
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from "@aio-proxy/plugin-google-antigravity";
+import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from "@aio-proxy/plugin-kimi-code";
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "@aio-proxy/plugin-openai-chatgpt";
 import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from "@aio-proxy/plugin-xai-grok";
@@ -9,6 +10,7 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   "@aio-proxy/plugin-github-copilot",
   "@aio-proxy/plugin-openai-chatgpt",
   "@aio-proxy/plugin-google-antigravity",
+  "@aio-proxy/plugin-kimi-code",
   "@aio-proxy/plugin-xai-grok",
 ] as const;
 
@@ -66,6 +68,17 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         adapterLabel: localized("Login with Google Antigravity", "使用 Google Antigravity 登录"),
         baseURLLabel: localized("Custom Antigravity base URL", "自定义 Antigravity Base URL"),
         baseURLPlaceholder: "https://daily-cloudcode-pa.googleapis.com",
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: "@aio-proxy/plugin-kimi-code",
+      version: KIMI_CODE_PLUGIN_VERSION,
+      descriptor: createKimiCodePlugin({
+        pluginLabel: localized("Kimi Code", "Kimi Code"),
+        pluginDescription: localized("Use a Kimi Code account to access models", "使用 Kimi Code 账号访问模型"),
+        adapterLabel: localized("Login with Kimi Code", "使用 Kimi Code 登录"),
+        deviceInstructions: localized("Enter code", "输入代码"),
+        waitingForAuthorization: localized("Waiting for Kimi authorization", "正在等待 Kimi 授权"),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

@@ -47,6 +47,7 @@ test("compiled binary lists all embedded OAuth plugins outside the workspace", (
     expect(stdout).toContain("@aio-proxy/plugin-github-copilot");
     expect(stdout).toContain("@aio-proxy/plugin-openai-chatgpt");
     expect(stdout).toContain("@aio-proxy/plugin-google-antigravity");
+    expect(stdout).toContain("@aio-proxy/plugin-kimi-code");
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
