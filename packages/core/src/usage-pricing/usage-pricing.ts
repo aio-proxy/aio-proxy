@@ -58,54 +58,15 @@ function toBillableUsage(
   accounting: UsageAccounting,
 ): UsagePricingInput {
   if (accounting.source === "ai-sdk") {
-    const afterCache = peelSubsets(usage.inputTokens, [
-      { count: usage.cacheReadTokens, unitPrice: price.cacheRead },
-      { count: usage.cacheWriteTokens, unitPrice: price.cacheWrite },
-    ]);
-    const afterReasoning = peelSubsets(usage.outputTokens, [
-      { count: usage.reasoningTokens, unitPrice: price.reasoning },
-    ]);
-    return {
-      ...(afterCache.parent === undefined ? {} : { inputTokens: afterCache.parent }),
-      ...(afterReasoning.parent === undefined ? {} : { outputTokens: afterReasoning.parent }),
-      ...(pricedSubset(usage.cacheReadTokens, price.cacheRead) === undefined
-        ? {}
-        : { cacheReadTokens: usage.cacheReadTokens }),
-      ...(pricedSubset(usage.cacheWriteTokens, price.cacheWrite) === undefined
-        ? {}
-        : { cacheWriteTokens: usage.cacheWriteTokens }),
-      ...(pricedSubset(usage.reasoningTokens, price.reasoning) === undefined
-        ? {}
-        : { reasoningTokens: usage.reasoningTokens }),
-    };
+    return inclusiveBillableUsage(usage, price);
   }
 
   switch (accounting.protocol) {
     case ProviderProtocol.Anthropic:
       return usage;
     case ProviderProtocol.OpenAICompatible:
-    case ProviderProtocol.OpenAIResponse: {
-      const afterCache = peelSubsets(usage.inputTokens, [
-        { count: usage.cacheReadTokens, unitPrice: price.cacheRead },
-        { count: usage.cacheWriteTokens, unitPrice: price.cacheWrite },
-      ]);
-      const afterReasoning = peelSubsets(usage.outputTokens, [
-        { count: usage.reasoningTokens, unitPrice: price.reasoning },
-      ]);
-      return {
-        ...(afterCache.parent === undefined ? {} : { inputTokens: afterCache.parent }),
-        ...(afterReasoning.parent === undefined ? {} : { outputTokens: afterReasoning.parent }),
-        ...(pricedSubset(usage.cacheReadTokens, price.cacheRead) === undefined
-          ? {}
-          : { cacheReadTokens: usage.cacheReadTokens }),
-        ...(pricedSubset(usage.cacheWriteTokens, price.cacheWrite) === undefined
-          ? {}
-          : { cacheWriteTokens: usage.cacheWriteTokens }),
-        ...(pricedSubset(usage.reasoningTokens, price.reasoning) === undefined
-          ? {}
-          : { reasoningTokens: usage.reasoningTokens }),
-      };
-    }
+    case ProviderProtocol.OpenAIResponse:
+      return inclusiveBillableUsage(usage, price);
     case ProviderProtocol.Gemini: {
       const afterCache = peelSubsets(usage.inputTokens, [{ count: usage.cacheReadTokens, unitPrice: price.cacheRead }]);
       const thoughts = usage.reasoningTokens;
@@ -130,6 +91,29 @@ function toBillableUsage(
       return _exhaustive;
     }
   }
+}
+
+function inclusiveBillableUsage(usage: UsagePricingInput, price: OpenRouterModelPrice): UsagePricingInput {
+  const afterCache = peelSubsets(usage.inputTokens, [
+    { count: usage.cacheReadTokens, unitPrice: price.cacheRead },
+    { count: usage.cacheWriteTokens, unitPrice: price.cacheWrite },
+  ]);
+  const afterReasoning = peelSubsets(usage.outputTokens, [
+    { count: usage.reasoningTokens, unitPrice: price.reasoning },
+  ]);
+  return {
+    ...(afterCache.parent === undefined ? {} : { inputTokens: afterCache.parent }),
+    ...(afterReasoning.parent === undefined ? {} : { outputTokens: afterReasoning.parent }),
+    ...(pricedSubset(usage.cacheReadTokens, price.cacheRead) === undefined
+      ? {}
+      : { cacheReadTokens: usage.cacheReadTokens }),
+    ...(pricedSubset(usage.cacheWriteTokens, price.cacheWrite) === undefined
+      ? {}
+      : { cacheWriteTokens: usage.cacheWriteTokens }),
+    ...(pricedSubset(usage.reasoningTokens, price.reasoning) === undefined
+      ? {}
+      : { reasoningTokens: usage.reasoningTokens }),
+  };
 }
 
 function peelSubsets(
