@@ -1,4 +1,11 @@
 import type { OpenAIResponsesRequest } from "../ingress/openai-responses";
+import type {
+  OpenAIResponsesModelMessages,
+  OpenAIResponsesToolChoice,
+  OpenAIResponsesTransformSettings,
+  OpenAIResponsesTransformTool,
+} from "./openai-responses-types";
+
 import { openAIResponsesInputMessages } from "./openai-responses-compat";
 import {
   normalizeOpenAIResponsesTools,
@@ -6,12 +13,6 @@ import {
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
 } from "./openai-responses-tools";
-import type {
-  OpenAIResponsesModelMessages,
-  OpenAIResponsesToolChoice,
-  OpenAIResponsesTransformSettings,
-  OpenAIResponsesTransformTool,
-} from "./openai-responses-types";
 
 const supportedRequestKeys = new Set([
   "model",

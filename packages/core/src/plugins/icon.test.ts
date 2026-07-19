@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { MAX_OAUTH_ICON_BYTES, validateOAuthIcon } from "./icon";
 
 describe("validateOAuthIcon", () => {

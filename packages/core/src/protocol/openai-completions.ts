@@ -1,11 +1,13 @@
 import { ProviderProtocol } from "@aio-proxy/types";
+
+import type { SessionCandidate } from "./session";
+
 import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from "../egress/openai-completions";
 import { type OpenAICompletionsRequest, parseOpenAICompletions } from "../ingress/openai-completions";
 import { openAICompletionsToModelMessages } from "../transform/openai-completions";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAICompletionsErrors } from "./errors";
 import { readJsonRequest, rewriteJsonRequestModel } from "./request";
-import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsRequest, EmptyProtocolContext>({

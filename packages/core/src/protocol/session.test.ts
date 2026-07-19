@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import {
   anthropicMessagesAdapter,
   geminiGenerateContentAdapter,
@@ -156,23 +157,22 @@ describe("protocol sessions", () => {
     });
   });
 
-  test.each([
-    "ordinary-user",
-    '{"session_id":1}',
-    "user_account__session_",
-  ])("rejects unverified Claude metadata: %s", async (userId) => {
-    const parsed = await anthropicMessagesAdapter.parse(
-      jsonRequest({
-        model: "claude",
-        messages: [{ role: "user", content: "hello" }],
-        metadata: { user_id: userId, session_id: "fallback" },
-      }),
-      {},
-    );
-    expect(anthropicMessagesAdapter.session?.(parsed, {})?.candidates).toEqual([
-      { source: "body-session", value: "fallback" },
-    ]);
-  });
+  test.each(["ordinary-user", '{"session_id":1}', "user_account__session_"])(
+    "rejects unverified Claude metadata: %s",
+    async (userId) => {
+      const parsed = await anthropicMessagesAdapter.parse(
+        jsonRequest({
+          model: "claude",
+          messages: [{ role: "user", content: "hello" }],
+          metadata: { user_id: userId, session_id: "fallback" },
+        }),
+        {},
+      );
+      expect(anthropicMessagesAdapter.session?.(parsed, {})?.candidates).toEqual([
+        { source: "body-session", value: "fallback" },
+      ]);
+    },
+  );
 });
 
 function jsonRequest(body: unknown): Request {

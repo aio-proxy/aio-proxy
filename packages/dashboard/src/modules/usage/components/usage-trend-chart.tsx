@@ -4,6 +4,7 @@ import { enUS, zhCN } from "date-fns/locale";
 import { useAtomValue } from "jotai";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import { formatExactTokenCount } from "@/components/token-count";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -14,7 +15,9 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+
 import type { UsageOverviewData, UsageOverviewSeries } from "../services/usage-service";
+
 import { createUsageValueFormatter } from "../services/usage-value-formatter";
 import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 import { UsageTrendTabs } from "./usage-trend-tabs";
@@ -92,7 +95,7 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
                     formatter={(value, name) => (
                       <div className="flex w-full items-center justify-between gap-4">
                         <span className="text-muted-foreground">{String(name)}</span>
-                        <span className="font-medium font-mono tabular-nums">{formatTooltipValue(Number(value))}</span>
+                        <span className="font-mono font-medium tabular-nums">{formatTooltipValue(Number(value))}</span>
                       </div>
                     )}
                   />

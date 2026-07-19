@@ -1,14 +1,13 @@
+import type { AuthorizationPort, ModelCatalog, OAuthAdapter } from "@aio-proxy/plugin-sdk";
+
+import { zod } from "@aio-proxy/plugin-sdk";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuthorizationPort, ModelCatalog, OAuthAdapter } from "@aio-proxy/plugin-sdk";
-import { zod } from "@aio-proxy/plugin-sdk";
-import { type OpenDbHandle, openDb } from "../../db";
-import { AtomicConfigCommitUncertainError, AtomicConfigFile, digestProviderEntry } from "../config-file";
+
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
-import { createPluginRegistryHost, type PluginRegistry } from "../registry";
-import { createPluginRepository, type PluginRepository } from "../repository/index";
+
 import {
   ABSENT_PROVIDER_DIGEST,
   AccountCleanupPendingError,
@@ -25,6 +24,10 @@ import {
   RECOVERY_DRAIN_RETRY_MS,
   recoverPendingAccountOperations,
 } from ".";
+import { type OpenDbHandle, openDb } from "../../db";
+import { AtomicConfigCommitUncertainError, AtomicConfigFile, digestProviderEntry } from "../config-file";
+import { createPluginRegistryHost, type PluginRegistry } from "../registry";
+import { createPluginRepository, type PluginRepository } from "../repository/index";
 
 const roots: string[] = [];
 const handles: OpenDbHandle[] = [];

@@ -5,8 +5,10 @@ import type {
   ThinkingBlock,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages/messages";
+
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../../ai-sdk-bridge";
 import type { ModelEgressContext } from "../../protocol/adapter";
+
 import {
   anthropicStopReason,
   anthropicUsage,

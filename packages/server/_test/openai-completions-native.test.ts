@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AiSdkProviderError, type ApiProviderInstance } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   AbortStreamError,

@@ -1,5 +1,6 @@
 import { compact } from "es-toolkit/array";
 import { z } from "zod";
+
 import {
   knownOpenAIResponsesInputItemTypes,
   type OpenAIResponsesInputItem,

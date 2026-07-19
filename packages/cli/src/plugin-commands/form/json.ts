@@ -1,4 +1,5 @@
 import type { FormField } from "@aio-proxy/plugin-sdk";
+
 import { FormSchemaValidationError } from "./errors";
 
 function jsonSafe(value: unknown, seen = new Set<object>()): boolean {
@@ -90,6 +91,7 @@ function cloneInertJsonValue(value: unknown, seen: Set<object>): unknown {
       ) {
         return inertJsonError();
       }
+      // oxlint-disable-next-line unicorn/no-new-array -- must preserve holes for skipped indices; Array.from would fill them with `undefined`
       const clone: unknown[] = new Array(lengthDescriptor.value);
       for (const key of Reflect.ownKeys(value)) {
         if (key === "length") continue;

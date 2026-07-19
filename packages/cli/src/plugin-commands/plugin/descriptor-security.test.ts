@@ -1,6 +1,7 @@
+import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { definePlugin } from "@aio-proxy/plugin-sdk";
+
 import { FormSchemaValidationError } from "../form";
 import { createCliPluginDiagnosticFactory, PluginSetupValidationError, pluginAdd, pluginConfig } from "./index";
 import {
@@ -34,70 +35,75 @@ describe("plugin descriptor security", () => {
     expect(state.values.size).toBe(0);
   });
 
-  test.each([
-    "add",
-    "config",
-  ] as const)("%s isolates staged setup options from committed public and secret values", async (command) => {
-    const sentinel = `${command}-setup-secret-sentinel`;
-    const setupMutation = `${command}-setup-mutated-secret`;
-    let setupCompleted = false;
-    const descriptor = definePlugin(
-      (_api, value) => {
-        const options = value as { settings: { nested: { value: string } }; token: { value: string } };
-        const capturedSecret = options.token.value;
-        options.settings.nested.value = capturedSecret;
-        Object.defineProperty(options.settings, "toJSON", { value: () => capturedSecret });
-        options.token.value = setupMutation;
-        setupCompleted = true;
-      },
-      {
-        options: {
-          schema: {
-            safeParse() {},
-            async safeParseAsync(value: unknown) {
-              const options = value as { settings: { nested: { value: string } }; token: string | { value: string } };
-              return {
-                success: true,
-                data: {
-                  settings: options.settings,
-                  token: typeof options.token === "string" ? { value: options.token } : options.token,
-                },
-              };
-            },
-          } as never,
-          form: [
-            { type: "json", key: "settings", label: "Settings" },
-            { type: "secret", key: "token", label: "Token" },
-          ],
+  test.each(["add", "config"] as const)(
+    "%s isolates staged setup options from committed public and secret values",
+    async (command) => {
+      const sentinel = `${command}-setup-secret-sentinel`;
+      const setupMutation = `${command}-setup-mutated-secret`;
+      let setupCompleted = false;
+      const descriptor = definePlugin(
+        (_api, value) => {
+          const options = value as { settings: { nested: { value: string } }; token: { value: string } };
+          const capturedSecret = options.token.value;
+          options.settings.nested.value = capturedSecret;
+          Object.defineProperty(options.settings, "toJSON", { value: () => capturedSecret });
+          options.token.value = setupMutation;
+          setupCompleted = true;
         },
-      },
-    );
-    const packageName = `${command}-setup-isolation-plugin`;
-    const state =
-      command === "add"
-        ? scope.harness()
-        : scope.harness({ providers: {}, plugins: [[packageName, { settings: { nested: { value: "old-public" } } }]] });
-    if (command === "config") {
-      state.values.set(packageName, { revision: 1, value: { token: { value: "old-secret" } } });
-    }
-    const deps = {
-      ...state.deps,
-      importPackage: async () => ({ default: descriptor }),
-      prompts: {
-        ...state.deps.prompts,
-        input: async () => '{"nested":{"value":"safe-public"}}',
-        password: async () => sentinel,
-      },
-    };
-    if (command === "add") await pluginAdd(packageName, { yes: true }, deps);
-    else await pluginConfig(packageName, {}, deps);
-    expect(setupCompleted).toBe(true);
-    const configText = readFileSync(state.path, "utf8");
-    expect(configText).not.toContain(sentinel);
-    expect(configText).not.toContain(setupMutation);
-    expect(JSON.parse(configText).plugins).toEqual([[packageName, { settings: { nested: { value: "safe-public" } } }]]);
-    expect(state.values.get(packageName)?.value).toEqual({ token: { value: sentinel } });
-  });
+        {
+          options: {
+            schema: {
+              safeParse() {},
+              async safeParseAsync(value: unknown) {
+                const options = value as { settings: { nested: { value: string } }; token: string | { value: string } };
+                return {
+                  success: true,
+                  data: {
+                    settings: options.settings,
+                    token: typeof options.token === "string" ? { value: options.token } : options.token,
+                  },
+                };
+              },
+            } as never,
+            form: [
+              { type: "json", key: "settings", label: "Settings" },
+              { type: "secret", key: "token", label: "Token" },
+            ],
+          },
+        },
+      );
+      const packageName = `${command}-setup-isolation-plugin`;
+      const state =
+        command === "add"
+          ? scope.harness()
+          : scope.harness({
+              providers: {},
+              plugins: [[packageName, { settings: { nested: { value: "old-public" } } }]],
+            });
+      if (command === "config") {
+        state.values.set(packageName, { revision: 1, value: { token: { value: "old-secret" } } });
+      }
+      const deps = {
+        ...state.deps,
+        importPackage: async () => ({ default: descriptor }),
+        prompts: {
+          ...state.deps.prompts,
+          input: async () => '{"nested":{"value":"safe-public"}}',
+          password: async () => sentinel,
+        },
+      };
+      if (command === "add") await pluginAdd(packageName, { yes: true }, deps);
+      else await pluginConfig(packageName, {}, deps);
+      expect(setupCompleted).toBe(true);
+      const configText = readFileSync(state.path, "utf8");
+      expect(configText).not.toContain(sentinel);
+      expect(configText).not.toContain(setupMutation);
+      expect(JSON.parse(configText).plugins).toEqual([
+        [packageName, { settings: { nested: { value: "safe-public" } } }],
+      ]);
+      expect(state.values.get(packageName)?.value).toEqual({ token: { value: sentinel } });
+    },
+  );
 
   test("config never publishes plaintext from secret fields removed by a new descriptor", async () => {
     const sentinel = "retired-secret-sentinel";

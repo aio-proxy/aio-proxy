@@ -1,8 +1,11 @@
-import { expect, test } from "bun:test";
 import type { RequestLogStore } from "@aio-proxy/core/db";
+
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { createRequestRecorder, type RequestRecorder, type RequestSession } from "../request-recorder";
+import { expect, test } from "bun:test";
+
 import type { UsageCompletion } from "../usage-capture";
+
+import { createRequestRecorder, type RequestRecorder, type RequestSession } from "../request-recorder";
 
 type FinalRow = Parameters<RequestLogStore["insertFinal"]>[0];
 

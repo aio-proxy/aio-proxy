@@ -1,13 +1,17 @@
-import { m } from "@aio-proxy/i18n";
 import type React from "react";
+
+import { m } from "@aio-proxy/i18n";
 import { useEffect, useRef } from "react";
+
 import { TagsInput } from "@/components/tags-input";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+
 import type { ProviderFormMode } from "../constants";
 import type { useProviderForm } from "../hooks/use-provider-form";
+
 import { useProviderOptionsSchema } from "../hooks/use-provider-options-schema";
 import { ProviderAliasFields } from "./provider-alias";
 import { ProviderCommonFields } from "./provider-common-fields";
@@ -123,7 +127,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
                 placeholder={m["dashboard.providers.form.placeholder_models"]()}
                 removeLabel={(model) => m["dashboard.providers.form.remove_model"]({ model })}
               />
-              <p className="text-muted-foreground text-sm">{m["dashboard.providers.form.models_helper"]()}</p>
+              <p className="text-sm text-muted-foreground">{m["dashboard.providers.form.models_helper"]()}</p>
             </Field>
           )}
         </form.Field>

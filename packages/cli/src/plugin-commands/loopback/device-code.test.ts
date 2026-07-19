@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { createCliAuthorizationPort } from "../authorization";
 import { AuthorizationUrlInvalidError } from "./index";
 import { createDeps } from "./test-support";

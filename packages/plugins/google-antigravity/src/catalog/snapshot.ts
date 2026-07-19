@@ -1,4 +1,5 @@
 import type { ModelCatalog, ModelDescriptor } from "@aio-proxy/plugin-sdk";
+
 import { modelCapabilities } from "./families";
 
 type SnapshotModel = Readonly<{

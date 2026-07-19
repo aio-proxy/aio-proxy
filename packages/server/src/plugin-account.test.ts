@@ -1,7 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
 import type { PluginLogSink, PluginRepository, StoredAccount } from "@aio-proxy/core";
+
 import { zod } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import {
   OAuthPluginAccountPreparationError,
   type PreparedOAuthPluginAccount,

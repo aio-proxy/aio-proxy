@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { getPaginationItems } from "./pagination-items";
 
 describe("data table pagination", () => {

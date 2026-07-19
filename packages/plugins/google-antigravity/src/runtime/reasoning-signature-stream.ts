@@ -1,4 +1,5 @@
 import type { LanguageModelV4StreamPart, SharedV4ProviderMetadata } from "@ai-sdk/provider";
+
 import { validThoughtSignature } from "../protocol/signatures";
 
 type ActiveReasoning = {

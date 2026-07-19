@@ -1,15 +1,18 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardProviderSummary } from "@aio-proxy/types";
+import type React from "react";
+
+import { m } from "@aio-proxy/i18n";
 import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
-import type React from "react";
 import { useMemo, useRef } from "react";
+
 import { DataTableHeaderCell } from "@/components/data-table-header-cell";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { DataTableToolbar } from "@/components/data-table-toolbar";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { useDataTable } from "@/hooks/use-data-table";
+
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "./delete-provider-dialog";
 import { ProviderActionsMenu } from "./provider-actions-menu";
 import { ProviderModelsCell } from "./provider-models-cell";
@@ -86,7 +89,7 @@ export const ProvidersTable: React.FC<{ readonly providers: readonly DashboardPr
           <div>
             <div>{row.original.accountLabel ?? m["dashboard.providers.diagnostics.not_available"]()}</div>
             {row.original.expiresAt === undefined ? null : (
-              <div className="text-muted-foreground text-xs">
+              <div className="text-xs text-muted-foreground">
                 {m["dashboard.providers.account.expires_at"]({
                   value: new Date(row.original.expiresAt).toLocaleString(),
                 })}
@@ -109,7 +112,7 @@ export const ProvidersTable: React.FC<{ readonly providers: readonly DashboardPr
                 : m["dashboard.providers.diagnostics.not_available"]()}
             </div>
             {row.original.catalogLastSuccessAt === undefined ? null : (
-              <div className="text-muted-foreground text-xs">
+              <div className="text-xs text-muted-foreground">
                 {m["dashboard.providers.catalog.last_success_at"]({
                   value: new Date(row.original.catalogLastSuccessAt).toLocaleString(),
                 })}

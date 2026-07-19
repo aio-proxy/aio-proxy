@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import { extractPassthroughUsage } from "../src/passthrough-usage";
 
 describe("passthrough usage extraction", () => {

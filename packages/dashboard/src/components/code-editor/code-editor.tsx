@@ -2,11 +2,14 @@ import { Editor, type OnMount } from "@monaco-editor/react";
 import { merge } from "es-toolkit/object";
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
+
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import styles from "./code-editor.module.css";
+
 import { setCodeEditorAriaInvalid } from "./code-editor-accessibility";
 import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from "./themes";
+
+import styles from "./code-editor.module.css";
 
 type MonacoEditorProps = React.ComponentProps<typeof Editor>;
 

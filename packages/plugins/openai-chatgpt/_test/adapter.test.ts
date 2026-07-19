@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import {
   type OAuthAdapter,
   type OAuthLoginContext,
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import packageJson from "../package.json" with { type: "json" };
 import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "../src";
 import { base64url } from "../src/pkce";

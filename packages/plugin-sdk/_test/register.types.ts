@@ -1,4 +1,5 @@
 import type { PluginApi } from "../src";
+
 import {
   CredentialRefreshError,
   type DefaultAliasSuggestions,

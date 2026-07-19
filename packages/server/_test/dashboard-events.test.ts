@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { createServer } from "@aio-proxy/server";
+import { describe, expect, test } from "bun:test";
+
 import { createDashboardEventHub } from "../src/dashboard-events";
 
 const decoder = new TextDecoder();

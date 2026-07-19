@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
 import { ABSENT_PROVIDER_DIGEST, AccountCleanupPendingError } from "@aio-proxy/core";
+import { expect, test } from "bun:test";
+
 import { createAccountRemovalCoordinator } from "../../src/account-removal";
 
 test("compensates earlier delete markers when staging a later removal fails", () => {

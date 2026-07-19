@@ -1,11 +1,13 @@
+import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
+import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
+
 import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
-import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
-import { type OpenDbHandle, openDb } from "../../db";
+
 import { type AccountWrite, createPluginRepository, type PluginRepository } from ".";
+import { type OpenDbHandle, openDb } from "../../db";
 
 const homes: string[] = [];
 

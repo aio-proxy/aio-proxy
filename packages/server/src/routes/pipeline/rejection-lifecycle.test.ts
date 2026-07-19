@@ -1,6 +1,7 @@
-import { describe, expect, spyOn, test } from "bun:test";
 import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, spyOn, test } from "bun:test";
+
 import { defineProviderRouteSource, jsonRequest, REQUESTED_MODEL, rawProvider } from "../../../_test/pipeline-helpers";
 import { handleProtocolRequest } from "./index";
 import { MAX_BODY_BYTES, pipeline } from "./test-support";

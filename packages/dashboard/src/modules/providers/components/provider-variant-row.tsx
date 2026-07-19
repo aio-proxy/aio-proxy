@@ -1,14 +1,17 @@
-import { m } from "@aio-proxy/i18n";
 import type { AliasTarget } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { useForm } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
 import { type FC, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+
 import {
   type AliasDraft,
   type AliasEditorIssue,

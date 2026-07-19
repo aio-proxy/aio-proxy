@@ -1,9 +1,11 @@
 import type { RawResolver } from "@aio-proxy/plugin-sdk";
+
+import type { CcaTransport } from "./transport";
+
 import { AntigravityThinkingError, geminiThinkingConfig } from "../protocol/thinking";
 import { AntigravityToolSchemaValidationError } from "../protocol/tool-schema";
 import { AntigravityUpstreamError } from "./errors";
 import { unwrapCcaSse } from "./stream";
-import type { CcaTransport } from "./transport";
 
 export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
   return ({ protocol, modelId }) => {

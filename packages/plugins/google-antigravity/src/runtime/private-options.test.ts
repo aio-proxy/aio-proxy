@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import { takeAioProxyOptions } from "./private-options";
 
 describe("takeAioProxyOptions", () => {

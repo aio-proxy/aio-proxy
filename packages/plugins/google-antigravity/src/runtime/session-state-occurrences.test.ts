@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+
 import type { ReplayPart } from "../protocol/replay-cache";
+
 import { prepareReasoningReplay } from "./session-state";
 import { orderedReplayParts } from "./session-state/prepare/replay-parts";
 

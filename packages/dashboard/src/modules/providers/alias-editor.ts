@@ -1,4 +1,5 @@
 import type { AliasConfig } from "@aio-proxy/types";
+
 import { normalizeAliasName, normalizeVariantKey } from "@aio-proxy/types";
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;

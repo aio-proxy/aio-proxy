@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { AccountContext, OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import { createGoogleAntigravityPlugin } from "../plugin";
+
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
+
+import { createGoogleAntigravityPlugin } from "../plugin";
 import { discoverAntigravityCatalog } from "./discover";
 
 test("propagates a caller abort before daily without attempting either endpoint", async () => {

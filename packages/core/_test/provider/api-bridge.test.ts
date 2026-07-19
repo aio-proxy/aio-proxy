@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import type {
   AiSdkProviderLoadOptions,
   LanguageModelV2,
@@ -8,6 +9,7 @@ import type {
   TextStreamPart,
   ToolSet,
 } from "../../src/index";
+
 import { bridgeApiProviderToAiSdk, createApiProvider } from "../../src/index";
 
 declare const process: {

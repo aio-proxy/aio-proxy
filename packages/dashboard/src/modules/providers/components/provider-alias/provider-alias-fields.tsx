@@ -1,7 +1,12 @@
-import { m } from "@aio-proxy/i18n";
 import type { FC } from "react";
+
+import { m } from "@aio-proxy/i18n";
+
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+
+import type { useProviderForm } from "../../hooks/use-provider-form";
+
 import {
   aliasEditorIssues,
   aliasSummary,
@@ -11,7 +16,6 @@ import {
 } from "../../alias-editor";
 import { aliasSummaryMessage } from "../../alias-editor-copy";
 import { ProviderFormMode } from "../../constants";
-import type { useProviderForm } from "../../hooks/use-provider-form";
 import { ProviderAliasDrawer } from "./provider-alias-drawer";
 
 type Props = {

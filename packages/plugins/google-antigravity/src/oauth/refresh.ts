@@ -4,9 +4,11 @@ import {
   type CredentialSnapshot,
   type RuntimeContext,
 } from "@aio-proxy/plugin-sdk";
+
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_ENDPOINT } from "./constants";
 import type { OAuthHttpOptions } from "./flow";
+
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_ENDPOINT } from "./constants";
 
 const REFRESH_WINDOW_MS = 300_000;
 

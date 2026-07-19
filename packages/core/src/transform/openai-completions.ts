@@ -1,6 +1,7 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
-import { OpenAICompletionsTransformError } from "../error";
 import type { OpenAICompletionsRequest } from "../ingress/openai-completions";
+
+import { OpenAICompletionsTransformError } from "../error";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];

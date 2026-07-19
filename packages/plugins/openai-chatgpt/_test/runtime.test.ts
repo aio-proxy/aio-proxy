@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
-import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from "../src/runtime";
+
+import { describe, expect, test } from "bun:test";
+
 import type { ChatGPTCredential } from "../src/schema";
+
+import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from "../src/runtime";
 
 type FetchCall = {
   readonly body: string;

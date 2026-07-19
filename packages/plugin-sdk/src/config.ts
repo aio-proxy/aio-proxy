@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+
 import type { JsonValue } from "./json";
 import type { LocalizedText } from "./localized-text";
 

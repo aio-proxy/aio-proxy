@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
 import { type AccountContext, type CredentialPort, CredentialRefreshError } from "@aio-proxy/plugin-sdk";
+import { expect, test } from "bun:test";
+
 import { discoverKimiCatalog } from "./catalog";
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies, refreshKimiCredential } from "./oauth";
 import { readKimiQuota } from "./quota";
@@ -68,37 +69,36 @@ test("caller cancellation stops waiting for a shared credential refresh", async 
   expect(outcome).toBe(reason);
 });
 
-test.each([
-  "catalog",
-  "quota",
-  "runtime",
-] as const)("%s skips credential reads after caller cancellation", async (kind) => {
-  const controller = new AbortController();
-  const reason = new Error(`${kind} stopped`);
-  controller.abort(reason);
-  let reads = 0;
-  const port = {
-    read: async () => {
-      reads += 1;
-      return { value: { ...credential, expiresAt: 1_000_000 }, revision: 1 };
-    },
-  } as CredentialPort<KimiCredential>;
-  const context = { credentials: port, options: {}, signal: controller.signal } as AccountContext<
-    KimiCredential,
-    Record<string, never>
-  >;
-  const neverFetch = (async () => {
-    throw new Error("fetch should not run");
-  }) as typeof fetch;
-  const operation =
-    kind === "catalog"
-      ? discoverKimiCatalog(context, { fetch: neverFetch })
-      : kind === "quota"
-        ? readKimiQuota(context, { fetch: neverFetch })
-        : createKimiDynamicFetch(port, { fetch: neverFetch })(
-            new Request("https://proxy.test/v1/messages", { signal: controller.signal }),
-          );
+test.each(["catalog", "quota", "runtime"] as const)(
+  "%s skips credential reads after caller cancellation",
+  async (kind) => {
+    const controller = new AbortController();
+    const reason = new Error(`${kind} stopped`);
+    controller.abort(reason);
+    let reads = 0;
+    const port = {
+      read: async () => {
+        reads += 1;
+        return { value: { ...credential, expiresAt: 1_000_000 }, revision: 1 };
+      },
+    } as CredentialPort<KimiCredential>;
+    const context = { credentials: port, options: {}, signal: controller.signal } as AccountContext<
+      KimiCredential,
+      Record<string, never>
+    >;
+    const neverFetch = (async () => {
+      throw new Error("fetch should not run");
+    }) as typeof fetch;
+    const operation =
+      kind === "catalog"
+        ? discoverKimiCatalog(context, { fetch: neverFetch })
+        : kind === "quota"
+          ? readKimiQuota(context, { fetch: neverFetch })
+          : createKimiDynamicFetch(port, { fetch: neverFetch })(
+              new Request("https://proxy.test/v1/messages", { signal: controller.signal }),
+            );
 
-  await expect(operation).rejects.toBe(reason);
-  expect(reads).toBe(0);
-});
+    await expect(operation).rejects.toBe(reason);
+    expect(reads).toBe(0);
+  },
+);

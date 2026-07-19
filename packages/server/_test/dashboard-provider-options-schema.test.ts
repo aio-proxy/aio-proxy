@@ -1,9 +1,9 @@
+import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from "@aio-proxy/core";
+import { createServer as createBaseServer } from "@aio-proxy/server";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from "@aio-proxy/core";
-import { createServer as createBaseServer } from "@aio-proxy/server";
 
 const installRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify(body),

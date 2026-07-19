@@ -1,7 +1,8 @@
+import { CredentialRefreshError } from "@aio-proxy/plugin-sdk";
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { CredentialRefreshError } from "@aio-proxy/plugin-sdk";
+
 import { createFixtureScope, deferred, port } from "./test-support";
 
 const childPath = fileURLToPath(new URL("../../../_test/plugins/refresh-lease-child.ts", import.meta.url));
@@ -52,32 +53,35 @@ test("fixture scopes clean only their own temporary directories", () => {
 test.each([
   ["default and explicit runtime", undefined, "runtime"],
   ["control-plane", "control-plane", "control-plane"],
-] as const)("deduplicates concurrent %s refresh calls for one provider in one process", async (_name, leftMode, rightMode) => {
-  const { handle, repository } = fixtures.open();
-  try {
-    const credentials = port(repository, "provider-1", { ...(leftMode === undefined ? {} : { mode: leftMode }) });
-    const first = await credentials.read();
-    const gate = deferred();
-    let exchanges = 0;
-    const exchange = async () => {
-      exchanges += 1;
-      await gate.promise;
-      return { value: { token: "next-secret" } };
-    };
+] as const)(
+  "deduplicates concurrent %s refresh calls for one provider in one process",
+  async (_name, leftMode, rightMode) => {
+    const { handle, repository } = fixtures.open();
+    try {
+      const credentials = port(repository, "provider-1", leftMode === undefined ? {} : { mode: leftMode });
+      const first = await credentials.read();
+      const gate = deferred();
+      let exchanges = 0;
+      const exchange = async () => {
+        exchanges += 1;
+        await gate.promise;
+        return { value: { token: "next-secret" } };
+      };
 
-    const leftPromise = credentials.refresh(first.revision, exchange);
-    const rightPromise = port(repository, "provider-1", { mode: rightMode }).refresh(first.revision, exchange);
-    await Promise.resolve();
-    gate.resolve();
-    const [left, right] = await Promise.all([leftPromise, rightPromise]);
+      const leftPromise = credentials.refresh(first.revision, exchange);
+      const rightPromise = port(repository, "provider-1", { mode: rightMode }).refresh(first.revision, exchange);
+      await Promise.resolve();
+      gate.resolve();
+      const [left, right] = await Promise.all([leftPromise, rightPromise]);
 
-    expect(exchanges).toBe(1);
-    expect(left).toEqual(right);
-    expect(left.status).toBe("updated");
-  } finally {
-    handle.close();
-  }
-});
+      expect(exchanges).toBe(1);
+      expect(left).toEqual(right);
+      expect(left.status).toBe("updated");
+    } finally {
+      handle.close();
+    }
+  },
+);
 
 test("does not share a refresh flight across repositories with the same provider id", async () => {
   const firstFixture = fixtures.open();
@@ -250,24 +254,27 @@ test.each([
   ["request_timeout", 408],
   ["rate_limited", 429],
   ["upstream_5xx", 503],
-] as const)("transient %s refresh failure keeps the old credential without a permanent diagnostic", async (reason, status) => {
-  const { handle, repository } = fixtures.open();
-  try {
-    const originalCredential = (await port(repository).read()).value;
-    const credentials = port(repository);
-    await expect(
-      credentials.refresh(1, async () => {
-        throw new CredentialRefreshError("Google token refresh failed", {
-          retryable: true,
-          reason,
-          ...(status === undefined ? {} : { status }),
-        });
-      }),
-    ).rejects.toThrow("Google token refresh failed");
+] as const)(
+  "transient %s refresh failure keeps the old credential without a permanent diagnostic",
+  async (reason, status) => {
+    const { handle, repository } = fixtures.open();
+    try {
+      const originalCredential = (await port(repository).read()).value;
+      const credentials = port(repository);
+      await expect(
+        credentials.refresh(1, async () => {
+          throw new CredentialRefreshError("Google token refresh failed", {
+            retryable: true,
+            reason,
+            ...(status === undefined ? {} : { status }),
+          });
+        }),
+      ).rejects.toThrow("Google token refresh failed");
 
-    expect(repository.readDiagnostics("provider-1")).toEqual([]);
-    expect((await credentials.read()).value).toEqual(originalCredential);
-  } finally {
-    handle.close();
-  }
-});
+      expect(repository.readDiagnostics("provider-1")).toEqual([]);
+      expect((await credentials.read()).value).toEqual(originalCredential);
+    } finally {
+      handle.close();
+    }
+  },
+);

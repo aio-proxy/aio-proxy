@@ -1,8 +1,11 @@
-import { describe, expect, rs, test } from "@rstest/core";
 import type { ColumnDef } from "@tanstack/react-table";
-import { act, fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
+
+import { describe, expect, rs, test } from "@rstest/core";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+
 import { useDataTable } from "@/hooks/use-data-table";
+
 import { DataTableToolbar } from "./data-table-toolbar";
 
 type Row = { readonly name: string };

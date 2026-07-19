@@ -1,7 +1,9 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardRequestLog, RequestOutcome } from "@aio-proxy/types";
-import { Clipboard } from "lucide-react";
 import type { ReactNode } from "react";
+
+import { m } from "@aio-proxy/i18n";
+import { Clipboard } from "lucide-react";
+
 import { ProtocolLabel } from "@/components/protocol-label";
 import { TokenCount } from "@/components/token-count";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
 
 type Props = { readonly log: DashboardRequestLog | undefined; readonly onClose: () => void };
@@ -82,7 +85,7 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
                     {(items as typeof rows).map(([label, value]) => (
                       <div className="contents" key={label}>
                         <dt className="text-muted-foreground">{label}</dt>
-                        <dd className="wrap-break-word min-w-0 text-right">
+                        <dd className="min-w-0 text-right wrap-break-word">
                           {value === undefined || value === null ? missing : value}
                         </dd>
                       </div>

@@ -1,7 +1,10 @@
-import { m } from "@aio-proxy/i18n";
 import type { UsageOverviewRange } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { useAtomValue, useSetAtom } from "jotai";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 
 const ranges: readonly UsageOverviewRange[] = ["24h", "7d", "14d", "30d"];

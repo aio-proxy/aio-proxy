@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+
 import { LoopbackPortUnavailableError, runLoopbackAuthorization } from "./index";
 import { createDeps, request, resetInteractive, setInteractive } from "./test-support";
 

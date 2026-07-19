@@ -1,5 +1,7 @@
 import type { Response, ResponseStreamEvent } from "openai/resources/responses/responses";
+
 import type { ModelEgressContext } from "../../protocol/adapter";
+
 import { createCancellableEgressStream } from "../cancellable-stream";
 import {
   customInput,

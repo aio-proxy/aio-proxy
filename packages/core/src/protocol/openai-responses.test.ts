@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { openAIResponsesAdapter } from "../index";
 
 test("drops background before raw forwarding while preserving unknown fields", async () => {

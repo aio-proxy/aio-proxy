@@ -1,3 +1,6 @@
+import type { CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
+import type { DiagnosticCode, OAuthProvider } from "@aio-proxy/types";
+
 import {
   type CreateCredentialPortOptions,
   collectSecretStrings,
@@ -11,8 +14,6 @@ import {
   type StoredAccount,
   validateConfigSpec,
 } from "@aio-proxy/core";
-import type { CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
-import type { DiagnosticCode, OAuthProvider } from "@aio-proxy/types";
 import { isPlainObject } from "es-toolkit/predicate";
 
 export type OAuthAccountSummary = {

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { prepareReasoningReplay } from "./session-state";
 
 const MODEL = "claude-opus-4-6-thinking";

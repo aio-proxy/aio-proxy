@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+
 import type { PluginLogSink } from "../diagnostic";
+
 import { createFixtureScope, deferred, port } from "./test-support";
 
 const scope = createFixtureScope();

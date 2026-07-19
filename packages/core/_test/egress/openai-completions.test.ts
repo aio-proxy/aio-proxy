@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import type { TextStreamPart, ToolSet } from "ai";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   writeOpenAICompletionsResponse as writeOpenAICompletionsResponseRaw,
   writeOpenAICompletionsSSE as writeOpenAICompletionsSSERaw,

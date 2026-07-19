@@ -1,6 +1,8 @@
 import type { UsageOverviewGroupBy, UsageOverviewMetric, UsageOverviewRange } from "@aio-proxy/types";
-import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
+
+import { queryOptions } from "@tanstack/react-query";
+
 import { dashboardClient } from "@/lib/dashboard-client";
 
 type DashboardUsageResponse = InferResponseType<typeof dashboardClient.dashboard.api.usage.$get, 200>;

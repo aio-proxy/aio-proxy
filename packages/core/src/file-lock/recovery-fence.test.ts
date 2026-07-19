@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { runWithRecoveryFence } from "./recovery-fence";
 
 test.serial("reclaims a fresh malformed marker left by an interrupted publisher", async () => {

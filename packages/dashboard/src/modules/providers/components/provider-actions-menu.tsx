@@ -1,7 +1,9 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardProviderSummary } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { Link } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
+
 import {
   DropdownMenu,
   DropdownMenuContent,

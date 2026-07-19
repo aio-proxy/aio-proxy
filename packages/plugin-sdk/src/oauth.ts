@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+
 import type { ConfigSpec } from "./config";
 import type { LocalizedText } from "./localized-text";
 import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";

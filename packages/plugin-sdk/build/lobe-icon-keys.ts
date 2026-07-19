@@ -1,8 +1,9 @@
+import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
+
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
 
 export const LOBE_ICON_KEY_HELPER = "AioProxyLobeIconKey";
 const LOBE_ICON_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;

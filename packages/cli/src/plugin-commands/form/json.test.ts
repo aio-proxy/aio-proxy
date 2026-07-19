@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import { FormSchemaValidationError, renderConfigSpec } from "./index";
 import { prompts } from "./test-support";
 
@@ -48,6 +49,7 @@ describe("renderConfigSpec JSON boundaries", () => {
     let schemaOwned: unknown[] | undefined;
     const sparseOutput = {
       schema: zod.object({ items: zod.array(zod.unknown()) }).transform(() => {
+        // oxlint-disable-next-line unicorn/no-new-array -- intentional sparse array; Array.from would fill holes with `undefined`
         schemaOwned = new Array(2);
         schemaOwned[1] = { value: "kept" };
         return { items: schemaOwned };

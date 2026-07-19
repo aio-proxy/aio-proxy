@@ -1,6 +1,8 @@
 import type { LanguageModelV4, ProviderV4 } from "@ai-sdk/provider";
 import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
+
 import { createAntigravityCredentialSource } from "./credential";
 import { type AntigravityLanguageModelRuntime, createAntigravityLanguageModel } from "./google-model";
 import { takeAioProxyOptions } from "./private-options";

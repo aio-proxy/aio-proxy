@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import type { GitHubAccountOptions, GitHubCopilotCredential } from "../src";
+
 import { createGitHubCopilotRuntime } from "../src/runtime";
 import { credentialPort, withFetchMock } from "./test-support";
 

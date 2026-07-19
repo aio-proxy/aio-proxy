@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
@@ -24,7 +25,7 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
               <ArrowLeftIcon />
             </Button>
           )}
-          <h1 className="inline font-semibold font-heading text-xl">{title}</h1>
+          <h1 className="inline font-heading text-xl font-semibold">{title}</h1>
         </div>
         {extra && <div className="ml-2">{extra}</div>}
       </header>

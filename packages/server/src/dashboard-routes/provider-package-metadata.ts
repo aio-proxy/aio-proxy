@@ -1,6 +1,7 @@
 import { BUNDLED_PROVIDER_PACKAGES, BUNDLED_PROVIDER_VERSIONS, findInstalledNpmPackage } from "@aio-proxy/core";
 import { validator } from "hono/validator";
 import { z } from "zod";
+
 import { isTrustedProviderPackage } from "../provider-package-trust";
 
 const npmPackageName = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/iu;

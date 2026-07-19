@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+
 import { findInstalledNpmPackage, type NpmPackageInfo } from "./npm";
 import { packagesDir } from "./paths";
 

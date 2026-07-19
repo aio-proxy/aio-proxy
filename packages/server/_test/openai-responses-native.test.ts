@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import type { TextStreamPart, ToolSet } from "ai";
+
 import { AiSdkProviderError, type ApiProviderInstance } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
-import type { TextStreamPart, ToolSet } from "ai";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   AbortStreamError,
@@ -141,47 +142,47 @@ describe("OpenAI Responses routes", () => {
     });
   });
 
-  test.each([
-    false,
-    true,
-  ])("Given an aborted inbound signal and wrapped AbortError When Responses stream is %s Then request is cancelled", async (stream) => {
-    const dbHome = tempHome();
-    const provider = aiSdkProvider(() => {
-      let sent = false;
-      return new ReadableStream<TextStreamPart<ToolSet>>({
-        pull(controller) {
-          if (!sent) {
-            sent = true;
-            controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
-          } else {
-            controller.error(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")));
-          }
-        },
+  test.each([false, true])(
+    "Given an aborted inbound signal and wrapped AbortError When Responses stream is %s Then request is cancelled",
+    async (stream) => {
+      const dbHome = tempHome();
+      const provider = aiSdkProvider(() => {
+        let sent = false;
+        return new ReadableStream<TextStreamPart<ToolSet>>({
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              controller.enqueue({ type: "text-delta", id: "text-1", text: "partial" });
+            } else {
+              controller.error(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")));
+            }
+          },
+        });
       });
-    });
-    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
-    const abort = new AbortController();
-    abort.abort();
+      const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+      const abort = new AbortController();
+      abort.abort();
 
-    const response = await app.request("/v1/responses", {
-      body: JSON.stringify({ ...responsesRequest, stream }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-      signal: abort.signal,
-    });
-    await response.text().catch(() => undefined);
+      const response = await app.request("/v1/responses", {
+        body: JSON.stringify({ ...responsesRequest, stream }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: abort.signal,
+      });
+      await response.text().catch(() => undefined);
 
-    expect(response.status).toBe(stream ? 200 : 499);
-    expect(await recorded(dbHome)).toEqual({
-      requests: [
-        expect.objectContaining({
-          outcome: "cancelled",
-          attempts: [expect.objectContaining({ outcome: "cancelled" })],
-        }),
-      ],
-      usages: [],
-    });
-  });
+      expect(response.status).toBe(stream ? 200 : 499);
+      expect(await recorded(dbHome)).toEqual({
+        requests: [
+          expect.objectContaining({
+            outcome: "cancelled",
+            attempts: [expect.objectContaining({ outcome: "cancelled" })],
+          }),
+        ],
+        usages: [],
+      });
+    },
+  );
 
   test("Given an alias variant and native provider When POST is valid Then passthrough receives the variant model", async () => {
     // Given

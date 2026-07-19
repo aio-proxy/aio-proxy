@@ -1,11 +1,12 @@
+import type { AppType } from "@aio-proxy/server";
+
+import serverEntrypoint, { createServer as createBaseServer, serverDefaults } from "@aio-proxy/server";
+import { ConfigSchema } from "@aio-proxy/types";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { hc } from "hono/client";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AppType } from "@aio-proxy/server";
-import serverEntrypoint, { createServer as createBaseServer, serverDefaults } from "@aio-proxy/server";
-import { ConfigSchema } from "@aio-proxy/types";
-import { hc } from "hono/client";
 
 import { config } from "./server.test-support";
 

@@ -1,6 +1,7 @@
 import { loadPluginRegistry } from "@aio-proxy/core";
 import { getLocale, m } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+
 import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from "./config-entry";
 import {
   createCliPluginDiagnosticFactory,

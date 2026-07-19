@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { createDefaultLogsSearch } from "../logs-search";
 import { logsQueryOptions } from "./logs-service";
 

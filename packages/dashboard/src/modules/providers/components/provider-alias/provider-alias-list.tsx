@@ -1,9 +1,13 @@
+import type { FC } from "react";
+
 import { m } from "@aio-proxy/i18n";
 import { PlusIcon, WaypointsIcon } from "lucide-react";
-import type { FC } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+
 import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from "../../alias-editor";
+
 import { ProviderAliasCard } from "./provider-alias-card";
 import { ProviderAliasDraft } from "./provider-alias-draft";
 

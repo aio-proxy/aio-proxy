@@ -1,6 +1,10 @@
 import type { ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
+
 import { ProviderProtocol } from "@aio-proxy/types";
+
 import type { ModelMessage } from "../ai-sdk-bridge";
+import type { SessionCandidate } from "./session";
+
 import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "../egress/anthropic-messages";
 import {
   type AnthropicFunctionTool,
@@ -13,7 +17,6 @@ import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { anthropicThinkingOption } from "./anthropic-thinking";
 import { anthropicMessagesErrors } from "./errors";
 import { readJsonRequest, rewriteJsonRequestModel } from "./request";
-import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: "assistant" }>["content"], string>[number];

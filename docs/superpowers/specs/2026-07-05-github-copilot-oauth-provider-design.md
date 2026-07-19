@@ -13,19 +13,19 @@
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| Public kind | `kind: "oauth"` |
-| 公共抽象 | `BaseOAuthProvider` 抽象类 |
-| 登录入口 | 第一版只做 `aio-proxy provider login copilot`，核心登录逻辑用 callbacks 暴露，后续 dashboard 复用 |
-| Provider id | base class 用 `prefix-userId` 生成；Copilot prefix 为 `copilot` |
-| Token 来源 | 只支持 device login，不做 env fallback 或 token import |
-| OAuth client id | 使用 OpenClaw 参考实现里的 `Iv1.b507a08c87ecfe98` |
-| 模型来源 | 远端 `/models` 为准，本地 auth payload 缓存兜底 |
-| 同步策略 | 登录后强制同步；server 启动后台同步；运行中 TTL 1 小时 |
-| 隐藏模型 | `model_picker_enabled=false` 不路由、不展示 |
-| Transport | 按远端 `supported_endpoints` 映射到已有 bundled AI SDK providers |
-| Fallback 路由 | 本轮一起实现多 provider 候选和失败重试 |
+| 决策点          | 结论                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| Public kind     | `kind: "oauth"`                                                                                   |
+| 公共抽象        | `BaseOAuthProvider` 抽象类                                                                        |
+| 登录入口        | 第一版只做 `aio-proxy provider login copilot`，核心登录逻辑用 callbacks 暴露，后续 dashboard 复用 |
+| Provider id     | base class 用 `prefix-userId` 生成；Copilot prefix 为 `copilot`                                   |
+| Token 来源      | 只支持 device login，不做 env fallback 或 token import                                            |
+| OAuth client id | 使用 OpenClaw 参考实现里的 `Iv1.b507a08c87ecfe98`                                                 |
+| 模型来源        | 远端 `/models` 为准，本地 auth payload 缓存兜底                                                   |
+| 同步策略        | 登录后强制同步；server 启动后台同步；运行中 TTL 1 小时                                            |
+| 隐藏模型        | `model_picker_enabled=false` 不路由、不展示                                                       |
+| Transport       | 按远端 `supported_endpoints` 映射到已有 bundled AI SDK providers                                  |
+| Fallback 路由   | 本轮一起实现多 provider 候选和失败重试                                                            |
 
 ## 1. OAuth Provider 抽象
 

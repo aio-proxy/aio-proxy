@@ -1,4 +1,5 @@
 import type { Monaco } from "@monaco-editor/react";
+
 import type { JsonSchema } from "./json-editor-state";
 
 export type JsonSchemaRegistration = {

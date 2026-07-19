@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import type { ModelMessage, ToolSet } from "ai";
+
+import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import { asSchema } from "ai";
+import { describe, expect, test } from "bun:test";
 
 import {
   aiSdkProvider,

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { ReasoningReplayCache } from "../protocol/replay-cache";
 import { captureReasoningReplay } from "./session-state";
 
@@ -34,21 +35,21 @@ test("does not commit signed SSE replay without terminal completion", async () =
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test.each([
-  "data: not-json\n\n",
-  "invalid-field: value\n\n",
-])("does not commit signed SSE replay after parser failure", async (invalidFrame) => {
-  const fixture = replayFixture(`invalid-${invalidFrame.length}`);
-  const captured = await captureReasoningReplay(
-    sseResponse([responseFrame({ content: signedContent("call-1") }), invalidFrame]),
-    MODEL,
-    fixture.scope,
-    fixture.cache,
-  );
+test.each(["data: not-json\n\n", "invalid-field: value\n\n"])(
+  "does not commit signed SSE replay after parser failure",
+  async (invalidFrame) => {
+    const fixture = replayFixture(`invalid-${invalidFrame.length}`);
+    const captured = await captureReasoningReplay(
+      sseResponse([responseFrame({ content: signedContent("call-1") }), invalidFrame]),
+      MODEL,
+      fixture.scope,
+      fixture.cache,
+    );
 
-  await captured.text();
-  expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
-});
+    await captured.text();
+    expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
+  },
+);
 
 test("commits accumulated SSE replay only after a successful terminal response", async () => {
   const fixture = replayFixture("complete");

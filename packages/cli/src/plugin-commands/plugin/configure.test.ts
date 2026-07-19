@@ -1,8 +1,9 @@
+import { AtomicConfigCommitUncertainError, type AtomicConfigLockReleaseError } from "@aio-proxy/core";
+import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { AtomicConfigCommitUncertainError, type AtomicConfigLockReleaseError } from "@aio-proxy/core";
-import { definePlugin } from "@aio-proxy/plugin-sdk";
+
 import {
   PluginConfigChangedError,
   PluginDescriptorInvalidError,

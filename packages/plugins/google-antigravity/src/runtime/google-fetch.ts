@@ -1,12 +1,14 @@
 import type { GoogleProviderSettings } from "@ai-sdk/google";
 import type { JsonValue, LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
+
+import type { CcaTransport } from "./transport";
+
 import { repairGroundingSse, repairGroundingUrls } from "../protocol/grounding-urls";
 import { type AntigravityThinkingOption, applyAntigravityThinking } from "../protocol/thinking";
 import { AntigravityToolSchemaValidationError } from "../protocol/tool-schema";
 import { ccaGoogleSearch, ccaWebSearchInstruction } from "../protocol/web-search";
 import { createGeminiErrorResponse, unwrapCcaJson } from "./raw";
 import { unwrapCcaSse } from "./stream";
-import type { CcaTransport } from "./transport";
 
 export type AntigravityGoogleFetchContext = {
   readonly context: LogicalRequestContext;

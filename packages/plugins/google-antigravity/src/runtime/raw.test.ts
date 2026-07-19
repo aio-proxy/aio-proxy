@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { LogicalRequestContext, RawResolver } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import { createGeminiRawResolver } from "./raw";
 import { AntigravityTransport } from "./transport";
 

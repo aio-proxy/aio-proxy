@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { normalizeAliasName, normalizeVariantKey, resolveAliasTarget } from "../src/index";
 
 describe("alias helpers", () => {

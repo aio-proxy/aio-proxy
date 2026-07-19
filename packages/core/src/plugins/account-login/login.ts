@@ -1,10 +1,12 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from "@aio-proxy/plugin-sdk";
+
+import type { PluginRegistry } from "../registry";
+import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository/index";
+
 import { validateModelCatalog } from "../catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
 import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
 import { resolveProviderId } from "../provider-id";
-import type { PluginRegistry } from "../registry";
-import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository/index";
 import {
   CATALOG_DISCOVERY_TIMEOUT_MS,
   childDeadline,

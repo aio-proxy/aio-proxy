@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { openAICompletionsAdapter, writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from "../../src/index";
 
 describe("openAICompletionsAdapter", () => {

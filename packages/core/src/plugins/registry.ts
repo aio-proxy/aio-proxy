@@ -1,7 +1,9 @@
 import { type LocalizedText, LocalizedTextSchema, type OAuthAdapter, type PluginApi } from "@aio-proxy/plugin-sdk";
 import { CapabilityIdSchema } from "@aio-proxy/types";
-import { validateConfigSpec } from "./config-spec";
+
 import type { PluginLogSink } from "./diagnostic";
+
+import { validateConfigSpec } from "./config-spec";
 import { validateOAuthIcon } from "./icon";
 import { isPluginZodSchema } from "./schema";
 

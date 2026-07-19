@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { AccountContext } from "@aio-proxy/plugin-sdk";
-import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
+
+import { expect, test } from "bun:test";
+
 import type { KimiCredential } from "./oauth";
+
+import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
 
 const credential: KimiCredential = {
   accessToken: "catalog-access-token",

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { createOpenBrowser } from "../src/open-browser";
 
 describe("open browser", () => {
@@ -32,7 +33,9 @@ describe("open browser", () => {
         },
       ],
     ]);
-    expect((calls[0]?.[1] as string[]).filter((argument) => argument.includes("state="))).toEqual([`"${url}"`]);
+    expect((calls[0]?.[1] as string[] | undefined)?.filter((argument) => argument.includes("state="))).toEqual([
+      `"${url}"`,
+    ]);
     expect(unrefs).toBe(1);
   });
 });

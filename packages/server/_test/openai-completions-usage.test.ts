@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AiSdkProviderInstance } from "@aio-proxy/core";
+
 import { createServer } from "@aio-proxy/server";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   chatRequest,

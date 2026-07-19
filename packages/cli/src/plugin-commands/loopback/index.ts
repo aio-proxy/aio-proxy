@@ -1,5 +1,7 @@
 import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
+
 import type { CliAuthorizationDeps } from "../authorization";
+
 import { isSafeCallbackError, parseCallback, redirectUri, requireHttpUrl, requireValidRequest } from "./callback";
 import {
   AuthorizationUrlInvalidError,

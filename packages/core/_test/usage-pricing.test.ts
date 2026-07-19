@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { calculateEstimatedCost } from "../src/usage-pricing";
 
 describe("OpenRouter usage pricing", () => {

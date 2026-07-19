@@ -1,17 +1,14 @@
 import { loginOAuthAccount, recoverPendingAccountOperations } from "@aio-proxy/core";
 import { getLocale } from "@aio-proxy/i18n";
 import { LocalizedTextSchema, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+
 import { canonical, chooseCapability, targetCapability } from "./capability";
 import { createProviderLoginDefaultDeps, type ProviderLoginDeps } from "./deps";
 import { ProviderCapabilityMismatchError, ProviderCapabilityNotFoundError } from "./errors";
 import { presentProviderLoginUserError } from "./presentation";
 
 export { createCapabilitySelector, createManualOnlyConfirmation } from "./capability";
-export {
-  createProviderLoginDefaultDeps,
-  type ProviderLoginDefaultDepsOptions,
-  type ProviderLoginDeps,
-} from "./deps";
+export { createProviderLoginDefaultDeps, type ProviderLoginDefaultDepsOptions, type ProviderLoginDeps } from "./deps";
 export * from "./errors";
 export { isProviderLoginUserError } from "./presentation";
 

@@ -35,23 +35,23 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| Plugin package | `@aio-proxy/plugin-kimi-code` |
-| Capability ID | `default` |
-| 登录方式 | RFC 8628 device-code flow |
-| OAuth host | `https://auth.kimi.com` |
-| Device authorization | `POST /api/oauth/device_authorization` |
-| Token / refresh | `POST /api/oauth/token` |
-| API base | `https://api.kimi.com/coding` |
-| 模型目录 | Authenticated `GET /coding/v1/models`，失败时以 `kimi-for-coding` 静态条目作首次兜底 |
-| Quota | Authenticated `GET /coding/v1/usages`，映射顶层周配额与全部短周期 limits |
-| OpenAI runtime | `@ai-sdk/openai-compatible`，base URL `/coding/v1` |
-| Anthropic runtime | `@ai-sdk/anthropic`，base URL `/coding` |
-| Raw protocols | 每个 language model 同时支持 `openai-compatible` 与 `anthropic` raw；目录 protocol 只决定转换路径的首选 provider |
-| Token count | 仅 Anthropic 入站转发 `/coding/v1/messages/count_tokens?beta=true`；其他协议保留宿主估算 |
-| Provider ID 建议 | `kimi-<refresh-token-sha256-prefix>`；不持久化或展示 token 原文 |
-| Refresh threshold | access token 距过期不足 5 分钟时刷新 |
+| 决策点               | 结论                                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Plugin package       | `@aio-proxy/plugin-kimi-code`                                                                                    |
+| Capability ID        | `default`                                                                                                        |
+| 登录方式             | RFC 8628 device-code flow                                                                                        |
+| OAuth host           | `https://auth.kimi.com`                                                                                          |
+| Device authorization | `POST /api/oauth/device_authorization`                                                                           |
+| Token / refresh      | `POST /api/oauth/token`                                                                                          |
+| API base             | `https://api.kimi.com/coding`                                                                                    |
+| 模型目录             | Authenticated `GET /coding/v1/models`，失败时以 `kimi-for-coding` 静态条目作首次兜底                             |
+| Quota                | Authenticated `GET /coding/v1/usages`，映射顶层周配额与全部短周期 limits                                         |
+| OpenAI runtime       | `@ai-sdk/openai-compatible`，base URL `/coding/v1`                                                               |
+| Anthropic runtime    | `@ai-sdk/anthropic`，base URL `/coding`                                                                          |
+| Raw protocols        | 每个 language model 同时支持 `openai-compatible` 与 `anthropic` raw；目录 protocol 只决定转换路径的首选 provider |
+| Token count          | 仅 Anthropic 入站转发 `/coding/v1/messages/count_tokens?beta=true`；其他协议保留宿主估算                         |
+| Provider ID 建议     | `kimi-<refresh-token-sha256-prefix>`；不持久化或展示 token 原文                                                  |
+| Refresh threshold    | access token 距过期不足 5 分钟时刷新                                                                             |
 
 ## 1. Package 与注册
 
@@ -146,7 +146,7 @@ Authorization: Bearer <current-access-token>
 
 ```ts
 {
-  protocol: entry.protocol === "anthropic" ? "anthropic" : "openai-compatible"
+  protocol: entry.protocol === "anthropic" ? "anthropic" : "openai-compatible";
 }
 ```
 

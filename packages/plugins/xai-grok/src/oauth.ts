@@ -1,4 +1,3 @@
-import { setTimeout as delay } from "node:timers/promises";
 import {
   type CredentialPort,
   CredentialRefreshError,
@@ -6,8 +5,11 @@ import {
   type OAuthLoginContext,
   zod,
 } from "@aio-proxy/plugin-sdk";
-import { isRetryableStatus, postForm, postFormResponse, request, XAIOAuthHttpError } from "./oauth/http";
+import { setTimeout as delay } from "node:timers/promises";
+
 import type { XAIGrokCredential } from "./schema";
+
+import { isRetryableStatus, postForm, postFormResponse, request, XAIOAuthHttpError } from "./oauth/http";
 
 const DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
 const CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";

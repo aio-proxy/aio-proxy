@@ -1,7 +1,9 @@
-import { getLocale, setLocale } from "@aio-proxy/i18n";
 import type { DashboardPluginSummary } from "@aio-proxy/types";
+
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { describe, expect, test } from "@rstest/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+
 import { PluginsTable } from "./plugins-table";
 
 const plugins: readonly DashboardPluginSummary[] = [

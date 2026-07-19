@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
+
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "./openai-responses";
 
 describe("OpenAI Responses response-chain callbacks", () => {

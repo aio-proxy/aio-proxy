@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { type DashboardProviderSummary, dashboardProviderSuggestedCommand } from "../src/dashboard";
 
 const unavailableProvider = (suggestedCommand?: string): DashboardProviderSummary => ({

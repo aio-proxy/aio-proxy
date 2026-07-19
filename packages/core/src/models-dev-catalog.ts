@@ -1,5 +1,7 @@
 import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
+
 import { type Model, Models, type ProviderMap, type RequestOptions } from "@opencode-ai/models";
+
 import type { OpenRouterModelPrice } from "./usage-pricing";
 
 export type OpenRouterPriceCatalog = {

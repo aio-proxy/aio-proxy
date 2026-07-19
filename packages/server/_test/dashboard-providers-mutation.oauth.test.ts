@@ -1,13 +1,13 @@
+import { createPluginRepository } from "@aio-proxy/core";
+import { openDb } from "@aio-proxy/core/db";
+import { ConfigSchema } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPluginRepository } from "@aio-proxy/core";
-import { openDb } from "@aio-proxy/core/db";
-import { ConfigSchema } from "@aio-proxy/types";
+
 import { createDashboardRoutes } from "../src/dashboard-routes/config";
 import { createServerState } from "../src/server-state";
-
 import { seedOAuthAccount, waitUntil } from "./dashboard-providers-mutation.oauth.test-support";
 
 describe("dashboard OAuth provider deletion", () => {
@@ -19,39 +19,42 @@ describe("dashboard OAuth provider deletion", () => {
       { kind: "oauth", vendor: "legacy-provider", plugin: "@example/oauth", capability: "default" },
       { plugin: "@example/other", capability: "alternate" },
     ],
-  ])("Dashboard DELETE of an %s OAuth row cascades account state through its CAS marker", async (_label, provider, account) => {
-    const dir = mkdtempSync(join(tmpdir(), "aio-dashboard-oauth-delete-"));
-    const isolatedConfigPath = join(dir, "config.json");
-    const input = { providers: { person: provider } };
-    writeFileSync(isolatedConfigPath, JSON.stringify(input));
-    const handle = openDb({ home: dir });
-    const repository = createPluginRepository(handle.sqlite);
-    seedOAuthAccount(repository, account?.plugin, account?.capability);
-    const state = await createServerState({
-      config: ConfigSchema.parse(input),
-      configPath: isolatedConfigPath,
-      pluginRepository: repository,
-      watchConfig: false,
-    });
-    const routes = createDashboardRoutes(state);
+  ])(
+    "Dashboard DELETE of an %s OAuth row cascades account state through its CAS marker",
+    async (_label, provider, account) => {
+      const dir = mkdtempSync(join(tmpdir(), "aio-dashboard-oauth-delete-"));
+      const isolatedConfigPath = join(dir, "config.json");
+      const input = { providers: { person: provider } };
+      writeFileSync(isolatedConfigPath, JSON.stringify(input));
+      const handle = openDb({ home: dir });
+      const repository = createPluginRepository(handle.sqlite);
+      seedOAuthAccount(repository, account?.plugin, account?.capability);
+      const state = await createServerState({
+        config: ConfigSchema.parse(input),
+        configPath: isolatedConfigPath,
+        pluginRepository: repository,
+        watchConfig: false,
+      });
+      const routes = createDashboardRoutes(state);
 
-    try {
-      const response = await routes.request("/providers/person", { method: "DELETE" });
-      expect(response.status).toBe(200);
-      await waitUntil(() => repository.readAccount("person") === null);
-      expect(repository.readAccount("person")).toBeNull();
-      expect(repository.readCatalog("person")).toBeNull();
-      expect(repository.readDiagnostics("person")).toEqual([]);
-      expect(repository.listPendingAccountOperations()).toEqual([]);
-      expect(
-        (JSON.parse(readFileSync(isolatedConfigPath, "utf8")) as { providers: Record<string, unknown> }).providers,
-      ).toEqual({});
-    } finally {
-      state.close();
-      handle.close();
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+      try {
+        const response = await routes.request("/providers/person", { method: "DELETE" });
+        expect(response.status).toBe(200);
+        await waitUntil(() => repository.readAccount("person") === null);
+        expect(repository.readAccount("person")).toBeNull();
+        expect(repository.readCatalog("person")).toBeNull();
+        expect(repository.readDiagnostics("person")).toEqual([]);
+        expect(repository.listPendingAccountOperations()).toEqual([]);
+        expect(
+          (JSON.parse(readFileSync(isolatedConfigPath, "utf8")) as { providers: Record<string, unknown> }).providers,
+        ).toEqual({});
+      } finally {
+        state.close();
+        handle.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("Dashboard DELETE removes a valid OAuth row whose account is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aio-dashboard-oauth-config-only-"));

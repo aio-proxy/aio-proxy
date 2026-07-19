@@ -36,31 +36,31 @@ aio-proxy 当前把 GitHub Copilot 与 OpenAI ChatGPT OAuth 集中在 `packages/
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 插件配置 | `plugins: Array<string | [string, unknown]>` |
-| Built-in | 隐式预注册，但使用与第三方相同的 plugin descriptor 和 capability interface |
-| 第三方执行 | 信任确认后进程内执行；宿主不自动安装 |
-| 模块形状 | `export default definePlugin(setup, metadata?)` |
-| 公共 SDK | 独立发布 `@aio-proxy/plugin-sdk`，不暴露 core internals |
-| SDK 兼容性 | descriptor 使用整数 `apiVersion: 1` 并精确匹配；ProviderV4 在运行时校验 |
-| Built-in 目录 | `packages/plugins/<vendor>/`，package identity 不绑定单一 capability |
-| 注册接口 | `api.oauth.register(adapter)`，不拆成多个浅 registration call |
-| setup 生命周期 | 只注册 capability；注册先 staging，成功后一次提交；v1 无 start/stop |
-| 配置表单 | SDK 导出的 Zod + 宿主控件组成的声明式 form |
-| 表单入口 | v1 仅 CLI 渲染；Dashboard 保持只读 |
-| 敏感字段 | 普通值写 config，secret 写宿主 vault |
-| 授权方式 | SDK 同时支持 device-code 与 localhost loopback；插件按供应商能力选择 |
-| Loopback 所有权 | 宿主负责监听、回调校验、取消、超时和清理 |
-| 远程环境 | 自动 callback 优先，允许粘贴完整 callback URL 作为 fallback |
-| 账号身份 | 插件返回 fingerprint 与 suggestedKey；宿主查重并生成最终 Provider ID；re-login 用显式 `--provider <id>` 绑定旧账号 |
-| 凭据 | 插件使用 SDK 导出的 Zod 定义 schema；宿主 opaque 持久化，并以 lease + CAS 的高层 port 协调 refresh |
-| 模型目录 | 插件发现，宿主缓存 last-known-good；插件声明 static 或 TTL |
-| Runtime seam | `createRuntime(ctx) -> { provider: ProviderV4; raw?: RawResolver }` |
-| Server 生命周期 | 每次候选配置构建全新 staging snapshot，成功后原子切换，旧请求继续使用旧 snapshot |
-| Refresh 并发 | 进程内 single-flight + account-scoped SQLite lease + revision CAS |
-| 故障策略 | 坏插件被跳过；引用它的 provider 保留并显示 unavailable 诊断 |
-| 删除账号 | 显式删除 provider 时同时删除 config、账号 vault 与 catalog |
+| 决策点          | 结论                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 插件配置        | `plugins: Array<string                                                                                             | [string, unknown]>` |
+| Built-in        | 隐式预注册，但使用与第三方相同的 plugin descriptor 和 capability interface                                         |
+| 第三方执行      | 信任确认后进程内执行；宿主不自动安装                                                                               |
+| 模块形状        | `export default definePlugin(setup, metadata?)`                                                                    |
+| 公共 SDK        | 独立发布 `@aio-proxy/plugin-sdk`，不暴露 core internals                                                            |
+| SDK 兼容性      | descriptor 使用整数 `apiVersion: 1` 并精确匹配；ProviderV4 在运行时校验                                            |
+| Built-in 目录   | `packages/plugins/<vendor>/`，package identity 不绑定单一 capability                                               |
+| 注册接口        | `api.oauth.register(adapter)`，不拆成多个浅 registration call                                                      |
+| setup 生命周期  | 只注册 capability；注册先 staging，成功后一次提交；v1 无 start/stop                                                |
+| 配置表单        | SDK 导出的 Zod + 宿主控件组成的声明式 form                                                                         |
+| 表单入口        | v1 仅 CLI 渲染；Dashboard 保持只读                                                                                 |
+| 敏感字段        | 普通值写 config，secret 写宿主 vault                                                                               |
+| 授权方式        | SDK 同时支持 device-code 与 localhost loopback；插件按供应商能力选择                                               |
+| Loopback 所有权 | 宿主负责监听、回调校验、取消、超时和清理                                                                           |
+| 远程环境        | 自动 callback 优先，允许粘贴完整 callback URL 作为 fallback                                                        |
+| 账号身份        | 插件返回 fingerprint 与 suggestedKey；宿主查重并生成最终 Provider ID；re-login 用显式 `--provider <id>` 绑定旧账号 |
+| 凭据            | 插件使用 SDK 导出的 Zod 定义 schema；宿主 opaque 持久化，并以 lease + CAS 的高层 port 协调 refresh                 |
+| 模型目录        | 插件发现，宿主缓存 last-known-good；插件声明 static 或 TTL                                                         |
+| Runtime seam    | `createRuntime(ctx) -> { provider: ProviderV4; raw?: RawResolver }`                                                |
+| Server 生命周期 | 每次候选配置构建全新 staging snapshot，成功后原子切换，旧请求继续使用旧 snapshot                                   |
+| Refresh 并发    | 进程内 single-flight + account-scoped SQLite lease + revision CAS                                                  |
+| 故障策略        | 坏插件被跳过；引用它的 provider 保留并显示 unavailable 诊断                                                        |
+| 删除账号        | 显式删除 provider 时同时删除 config、账号 vault 与 catalog                                                         |
 
 ## 领域对象与不变量
 

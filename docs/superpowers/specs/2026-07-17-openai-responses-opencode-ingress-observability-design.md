@@ -38,22 +38,22 @@ opencode 1.18.3 通过 aio-proxy 的 OpenAI Responses 端点调用 `gpt-5.6-terr
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 兼容层 | 扩展正式 OpenAI Responses adapter，不识别 opencode 客户端 |
-| 同协议请求 | 保持原始 Request；schema 只负责路由与能力判定 |
-| 跨协议请求 | 只转换 model-safe 的文本消息、function call 和 function output |
-| raw-safe / model-unsupported Item | model candidate 记录 unsupported attempt 后跳过，继续寻找后续同协议 raw candidate；无 raw 才返回 501 |
-| reasoning Item | raw 路径原样保留；model 路径不转发不透明 reasoning state，并按上述 fallback 规则处理 |
-| `store: true` | 仅同协议 raw candidate 可兑现；model candidate 跳过 |
-| `previous_response_id` | 在 Response ID→Provider/account affinity 和 retrieve 闭环完成前继续全局 501 |
-| `background: true` | 入站接受但转发前删除，按同步请求执行；不创建可 retrieve/cancel 的后台任务 |
-| parse-time unsupported feature | 已知但本轮不支持的内建 Item 在 parse 阶段返回明确 501 |
-| Request session | 在 size guard 前开始，parse 成功后补充 requested model ID |
-| 未解析模型显示 | 使用稳定占位符 `<unparsed>`，不修改数据库 nullable 约束 |
-| terminal ownership | 同步 pipeline 或 `finishFrom()` 异步完成器二选一取得终态所有权；未映射异常只兜底未被认领的 session |
-| recorder invariant | `identify()` first-value-wins；冲突写结构化 invariant 日志，不把记录层错误升级成用户 500 |
-| 控制台日志 | 本地拒绝输出 `request.rejected`；未映射异常输出 `request.failed`；background 降级输出 `request.feature_downgraded` |
+| 决策点                            | 结论                                                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 兼容层                            | 扩展正式 OpenAI Responses adapter，不识别 opencode 客户端                                                          |
+| 同协议请求                        | 保持原始 Request；schema 只负责路由与能力判定                                                                      |
+| 跨协议请求                        | 只转换 model-safe 的文本消息、function call 和 function output                                                     |
+| raw-safe / model-unsupported Item | model candidate 记录 unsupported attempt 后跳过，继续寻找后续同协议 raw candidate；无 raw 才返回 501               |
+| reasoning Item                    | raw 路径原样保留；model 路径不转发不透明 reasoning state，并按上述 fallback 规则处理                               |
+| `store: true`                     | 仅同协议 raw candidate 可兑现；model candidate 跳过                                                                |
+| `previous_response_id`            | 在 Response ID→Provider/account affinity 和 retrieve 闭环完成前继续全局 501                                        |
+| `background: true`                | 入站接受但转发前删除，按同步请求执行；不创建可 retrieve/cancel 的后台任务                                          |
+| parse-time unsupported feature    | 已知但本轮不支持的内建 Item 在 parse 阶段返回明确 501                                                              |
+| Request session                   | 在 size guard 前开始，parse 成功后补充 requested model ID                                                          |
+| 未解析模型显示                    | 使用稳定占位符 `<unparsed>`，不修改数据库 nullable 约束                                                            |
+| terminal ownership                | 同步 pipeline 或 `finishFrom()` 异步完成器二选一取得终态所有权；未映射异常只兜底未被认领的 session                 |
+| recorder invariant                | `identify()` first-value-wins；冲突写结构化 invariant 日志，不把记录层错误升级成用户 500                           |
+| 控制台日志                        | 本地拒绝输出 `request.rejected`；未映射异常输出 `request.failed`；background 降级输出 `request.feature_downgraded` |
 
 ## OpenAI Responses 入站模型
 
@@ -164,13 +164,13 @@ packages/core/src/ingress/openai-responses/
 
 转换规则为：
 
-| Responses Item | 内部 ModelMessage |
-| --- | --- |
-| `system` | `role: "system"` |
-| `developer` | `role: "system"` |
-| `user` | `role: "user"` |
+| Responses Item   | 内部 ModelMessage   |
+| ---------------- | ------------------- |
+| `system`         | `role: "system"`    |
+| `developer`      | `role: "system"`    |
+| `user`           | `role: "user"`      |
 | `assistant` 文本 | `role: "assistant"` |
-| `reasoning` | 不产生消息 |
+| `reasoning`      | 不产生消息          |
 
 `developer` 合并到内部 system 语义，是因为 AI SDK 的统一 `ModelMessage` 没有 developer role；目标 Provider 的 adapter 再按其协议决定 system 表示。
 
@@ -317,19 +317,19 @@ Request recorder 的存储失败 logger 也接入同一 server logger，避免 S
 
 ## 错误分类
 
-| 情况 | 客户端响应 | Request log | 控制台事件 |
-| --- | --- | --- | --- |
-| JSON/schema invalid | 协议形状 400 | failure，无 attempts | `request.rejected` |
-| body too large | 协议形状 413 | failure，无 attempts | `request.rejected` |
-| model not found | 协议形状 404 | failure，无 attempts | `request.rejected` |
-| parse-time unsupported Responses feature | 协议形状 501 | failure，无 attempts，`unsupported_feature` | `request.rejected` |
-| `background: true` 被删除 | 按同步请求继续 | 最终正常 outcome，不增加 warning 字段 | `request.feature_downgraded` |
-| model conversion 发现无效请求 | 协议形状 400 | failure，包含当前 model attempt，`invalid_request` | `request.rejected` |
-| model-unsupported feature，后续 raw 成功 | raw upstream response | success，保留 `unsupported_feature` model attempts | 不新增 ingress 事件 |
-| model-unsupported feature，候选耗尽 | 协议形状 501 | failure，包含所有 `unsupported_feature` model attempts | 不新增 ingress 事件 |
-| raw upstream 4xx | 原始 upstream response | failure，包含 attempt | 不新增 ingress 事件 |
-| Provider/AI SDK failure | 现有映射响应 | failure/cancelled，包含 attempts | 保持现有行为 |
-| 未映射内部异常 | 现有通用 500 | failure，保留已发生 attempts，`internal_error` | `request.failed` |
+| 情况                                     | 客户端响应             | Request log                                            | 控制台事件                   |
+| ---------------------------------------- | ---------------------- | ------------------------------------------------------ | ---------------------------- |
+| JSON/schema invalid                      | 协议形状 400           | failure，无 attempts                                   | `request.rejected`           |
+| body too large                           | 协议形状 413           | failure，无 attempts                                   | `request.rejected`           |
+| model not found                          | 协议形状 404           | failure，无 attempts                                   | `request.rejected`           |
+| parse-time unsupported Responses feature | 协议形状 501           | failure，无 attempts，`unsupported_feature`            | `request.rejected`           |
+| `background: true` 被删除                | 按同步请求继续         | 最终正常 outcome，不增加 warning 字段                  | `request.feature_downgraded` |
+| model conversion 发现无效请求            | 协议形状 400           | failure，包含当前 model attempt，`invalid_request`     | `request.rejected`           |
+| model-unsupported feature，后续 raw 成功 | raw upstream response  | success，保留 `unsupported_feature` model attempts     | 不新增 ingress 事件          |
+| model-unsupported feature，候选耗尽      | 协议形状 501           | failure，包含所有 `unsupported_feature` model attempts | 不新增 ingress 事件          |
+| raw upstream 4xx                         | 原始 upstream response | failure，包含 attempt                                  | 不新增 ingress 事件          |
+| Provider/AI SDK failure                  | 现有映射响应           | failure/cancelled，包含 attempts                       | 保持现有行为                 |
+| 未映射内部异常                           | 现有通用 500           | failure，保留已发生 attempts，`internal_error`         | `request.failed`             |
 
 本轮不把详细 Zod path 返回客户端。客户端继续得到稳定、协议兼容的通用消息；详细诊断仅进入本地脱敏日志。
 

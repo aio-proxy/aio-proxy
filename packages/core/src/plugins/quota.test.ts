@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { OAuthQuotaValidationError, validateOAuthQuotaSnapshot } from "./quota";
 
 const validSnapshot = () => ({
@@ -112,15 +113,12 @@ describe("validateOAuthQuotaSnapshot", () => {
     expectInvalid(value, path);
   });
 
-  test.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    -0.01,
-    1.01,
-  ])("rejects invalid ratio %p", (remainingRatio) => {
-    expectInvalid({ items: [{ id: "ratio", label: "Ratio", remainingRatio }] }, ["items", 0, "remainingRatio"]);
-  });
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -0.01, 1.01])(
+    "rejects invalid ratio %p",
+    (remainingRatio) => {
+      expectInvalid({ items: [{ id: "ratio", label: "Ratio", remainingRatio }] }, ["items", 0, "remainingRatio"]);
+    },
+  );
 
   test.each([
     [new Date(), ["items", 0, "resetsAt"]],
@@ -185,6 +183,7 @@ describe("validateOAuthQuotaSnapshot", () => {
   });
 
   test("rejects sparse arrays and extra array properties", () => {
+    // oxlint-disable-next-line unicorn/no-new-array -- intentional sparse array; Array.from would fill holes with `undefined`
     const sparse = new Array(1);
     expectInvalid({ items: sparse }, ["items", 0]);
 
@@ -203,6 +202,7 @@ describe("validateOAuthQuotaSnapshot", () => {
       return originalAdd.call(this, value);
     };
     try {
+      // oxlint-disable-next-line unicorn/no-new-array -- intentional maximally sparse array; Array.from would allocate a dense array
       validateOAuthQuotaSnapshot({ items: new Array(0xffffffff) });
     } catch (error) {
       caught = error;

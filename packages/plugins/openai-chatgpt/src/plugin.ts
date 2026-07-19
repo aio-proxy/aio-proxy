@@ -6,11 +6,13 @@ import {
   type PluginDescriptor,
   zod,
 } from "@aio-proxy/plugin-sdk";
+
+import type { ChatGPTCredential } from "./schema";
+
 import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from "./catalog";
 import { CHATGPT_CLIENT_ID, exchangeCodeForTokens } from "./oauth-flow";
 import { generatePKCE, generateState } from "./pkce";
 import { createOpenAIChatGPTRuntime } from "./runtime";
-import type { ChatGPTCredential } from "./schema";
 
 const CHATGPT_AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/authorize" as const;
 const CHATGPT_SCOPE = "openid profile email offline_access" as const;

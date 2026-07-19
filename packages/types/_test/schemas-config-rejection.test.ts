@@ -1,4 +1,5 @@
 import { describe, test } from "bun:test";
+
 import { ProviderKind, ProviderProtocol } from "../src/index";
 import { apiProvider, expectIssuePath } from "./schemas.test-support";
 

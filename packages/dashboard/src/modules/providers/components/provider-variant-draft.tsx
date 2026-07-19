@@ -2,13 +2,16 @@ import { m } from "@aio-proxy/i18n";
 import { useForm } from "@tanstack/react-form";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { type FC, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+
 import type { AliasDraft, AliasEditResult } from "../alias-editor";
+
 import { aliasEditErrorMessage, type VisibleEditError } from "../alias-editor-copy";
 
 type Props = {

@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
+
 import { antigravityEndpoints } from "../runtime/endpoints";
 import { initializeAntigravityProject } from "./project";
 
@@ -14,12 +15,12 @@ test("routes load to prod, onboarding to daily, and runtime operations through b
   ]);
 });
 
-test.each([
-  "https://proxy.example.test/root?tenant=secret",
-  "https://proxy.example.test/root#fragment",
-])("does not construct fixed endpoints from a base URL containing query or fragment", (baseURL) => {
-  expect(() => antigravityEndpoints({ baseURL }, "discovery")).toThrow("query or fragment");
-});
+test.each(["https://proxy.example.test/root?tenant=secret", "https://proxy.example.test/root#fragment"])(
+  "does not construct fixed endpoints from a base URL containing query or fragment",
+  (baseURL) => {
+    expect(() => antigravityEndpoints({ baseURL }, "discovery")).toThrow("query or fragment");
+  },
+);
 
 test("returns an existing project identity from loadCodeAssist", async () => {
   const requests: Request[] = [];

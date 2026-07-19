@@ -3,6 +3,7 @@ import { normalizeAliasName } from "@aio-proxy/types";
 import { omit } from "es-toolkit/object";
 import { PlusIcon } from "lucide-react";
 import { type FC, useRef, useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/drawer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
+
 import {
   type AliasDraft,
   type AliasEditorIssue,

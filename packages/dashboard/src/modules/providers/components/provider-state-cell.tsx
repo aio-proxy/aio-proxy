@@ -1,6 +1,8 @@
+import type React from "react";
+
 import { m } from "@aio-proxy/i18n";
 import { type DashboardProviderSummary, dashboardProviderSuggestedCommand } from "@aio-proxy/types";
-import type React from "react";
+
 import { DiagnosticDetails } from "./diagnostic-details";
 
 const availabilityLabel = (provider: DashboardProviderSummary): string => {
@@ -21,7 +23,7 @@ export const ProviderStateCell: React.FC<{
     >
       <div>{availabilityLabel(provider)}</div>
       {provider.state.status === "ready" && provider.state.catalog !== undefined ? (
-        <div className="text-muted-foreground text-xs">
+        <div className="text-xs text-muted-foreground">
           {provider.state.catalog === "fresh"
             ? m["dashboard.providers.state.catalog_fresh"]()
             : m["dashboard.providers.state.catalog_stale"]()}

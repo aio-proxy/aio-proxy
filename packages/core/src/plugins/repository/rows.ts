@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@aio-proxy/types";
+
 import type { PendingAccountOperation, StoredAccount, StoredAccountSummary, StoredCatalog } from "./types";
 
 export type AccountRow = {

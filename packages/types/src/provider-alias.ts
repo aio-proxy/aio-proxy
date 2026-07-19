@@ -1,5 +1,7 @@
 import type { z } from "zod";
+
 import type { AliasConfig } from "./common";
+
 import { normalizeAliasName, normalizeVariantKey } from "./common";
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;

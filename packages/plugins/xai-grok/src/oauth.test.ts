@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import { currentXAIGrokCredential, loginXAIGrok, refreshXAIGrokCredential, validateXAIEndpoint } from "./oauth";
 
 const DISCOVERY = "https://auth.x.ai/.well-known/openid-configuration";

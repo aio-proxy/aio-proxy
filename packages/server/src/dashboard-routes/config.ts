@@ -1,3 +1,5 @@
+import type { RequestLogsQuery } from "@aio-proxy/core/db";
+
 import {
   AccountCleanupPendingError,
   NpmInstallError,
@@ -8,7 +10,6 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from "@aio-proxy/core";
-import type { RequestLogsQuery } from "@aio-proxy/core/db";
 import {
   DashboardRequestLogsPageSizeSchema,
   type ProviderMutationBody,
@@ -21,9 +22,11 @@ import {
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
+
+import type { ServerState } from "../server-state";
+
 import { ConfigReloadRejectedError } from "../config-store";
 import { isTrustedProviderPackage } from "../provider-package-trust";
-import type { ServerState } from "../server-state";
 import {
   insertProvider,
   ProviderAlreadyExistsError,
@@ -61,9 +64,9 @@ const providerMutationValidator = validator("json", (raw, context): ProviderMuta
 
 const probeKey = "probe";
 
-const providerProbeValidator = validator("query", (raw): { readonly probe?: string } => ({
-  ...(typeof raw[probeKey] === "string" ? { probe: raw[probeKey] } : {}),
-}));
+const providerProbeValidator = validator("query", (raw): { readonly probe?: string } =>
+  typeof raw[probeKey] === "string" ? { probe: raw[probeKey] } : {},
+);
 
 const UsageOverviewQuerySchema = z.object({
   range: UsageOverviewRangeSchema.default("24h"),

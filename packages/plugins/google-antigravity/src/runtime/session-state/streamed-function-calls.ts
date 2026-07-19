@@ -1,4 +1,5 @@
 import type { ReplayPart } from "../../protocol/replay-cache";
+
 import { validThoughtSignature } from "../../protocol/signatures";
 import { canonicalFunctionCallArgs } from "./function-call-args";
 import { type PartialArg, PartialArgsAccumulator } from "./partial-args-accumulator";

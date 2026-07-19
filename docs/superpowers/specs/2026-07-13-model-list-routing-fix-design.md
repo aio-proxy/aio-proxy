@@ -32,13 +32,13 @@ When the same id exists in both `models` and `alias`, the alias route wins.
 
 This produces the following behavior:
 
-| Configuration | Client-facing model ids |
-| --- | --- |
-| `models: ["a", "b"]`, no alias | `a`, `b` |
-| alias `x -> a`, `preserve: false` | `x`, `b` |
-| alias `x -> a`, `preserve: true` | `x`, `a`, `b` |
-| `models: ["old", "new"]`, alias `old -> new` | `old`, `new`; both route to `new` |
-| alias `x -> a`, variant `high -> b`, both not preserved | `x` |
+| Configuration                                           | Client-facing model ids           |
+| ------------------------------------------------------- | --------------------------------- |
+| `models: ["a", "b"]`, no alias                          | `a`, `b`                          |
+| alias `x -> a`, `preserve: false`                       | `x`, `b`                          |
+| alias `x -> a`, `preserve: true`                        | `x`, `a`, `b`                     |
+| `models: ["old", "new"]`, alias `old -> new`            | `old`, `new`; both route to `new` |
+| alias `x -> a`, variant `high -> b`, both not preserved | `x`                               |
 
 OAuth providers keep their existing derived-alias behavior; this change does not expose OAuth runtime model metadata independently of those aliases.
 

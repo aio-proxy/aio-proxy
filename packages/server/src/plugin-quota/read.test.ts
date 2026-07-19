@@ -1,5 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
 import type { OAuthQuotaSnapshot } from "@aio-proxy/plugin-sdk";
+
+import { afterEach, expect, test } from "bun:test";
+
 import { OAuthQuotaCapabilityUnavailableError, OAuthQuotaReadError } from "./errors";
 import { createOAuthQuotaReader } from "./read";
 import {
@@ -150,25 +152,26 @@ const unavailableCases: readonly [string, QuotaFixtureOptions][] = [
   ["absent quota capability", { quota: false }],
 ];
 
-test.each(
-  unavailableCases,
-)("rejects %s as a stable capability-unavailable error without plugin invocation", async (_name, options) => {
-  const fixture = createQuotaFixture(options);
+test.each(unavailableCases)(
+  "rejects %s as a stable capability-unavailable error without plugin invocation",
+  async (_name, options) => {
+    const fixture = createQuotaFixture(options);
 
-  const error = await capturedError(
-    createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal),
-  );
+    const error = await capturedError(
+      createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal),
+    );
 
-  expect(error).toBeInstanceOf(OAuthQuotaCapabilityUnavailableError);
-  expect(error).toMatchObject({
-    name: "OAuthQuotaCapabilityUnavailableError",
-    message: "OAuth quota capability is unavailable",
-    code: "OAUTH_QUOTA_CAPABILITY_UNAVAILABLE",
-  });
-  expect(error).not.toHaveProperty("cause");
-  expect(fixture.readCalls()).toBe(0);
-  expect(fixture.logs).toHaveLength(0);
-});
+    expect(error).toBeInstanceOf(OAuthQuotaCapabilityUnavailableError);
+    expect(error).toMatchObject({
+      name: "OAuthQuotaCapabilityUnavailableError",
+      message: "OAuth quota capability is unavailable",
+      code: "OAUTH_QUOTA_CAPABILITY_UNAVAILABLE",
+    });
+    expect(error).not.toHaveProperty("cause");
+    expect(fixture.readCalls()).toBe(0);
+    expect(fixture.logs).toHaveLength(0);
+  },
+);
 
 test("holds the old snapshot lease through plugin settlement and ignores a concurrent swap", async () => {
   const started = Promise.withResolvers<void>();

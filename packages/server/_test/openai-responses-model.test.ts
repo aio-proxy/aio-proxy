@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import type { AiSdkProviderInstance } from "@aio-proxy/core";
-import { createServer } from "@aio-proxy/server";
 import type { CallSettings, ModelMessage, ToolSet } from "ai";
+
+import { createServer } from "@aio-proxy/server";
+import { describe, expect, test } from "bun:test";
 
 import { aiSdkProvider, responsesRequest, textStream } from "./openai-responses.test-support";
 

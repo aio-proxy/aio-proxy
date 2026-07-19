@@ -1,6 +1,8 @@
-import { expect, test } from "bun:test";
 import { type CredentialPort, CredentialRefreshError, type CredentialSnapshot } from "@aio-proxy/plugin-sdk";
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { currentGoogleCredential, forceRefreshGoogleCredential, refreshGoogleCredential } from "./refresh";
 
 test("refresh keeps the prior refresh token and project identity", async () => {

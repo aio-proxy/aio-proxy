@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { MIGRATIONS } from "../src/db/migrations.manifest";
 
 test("runtime migrations match the committed Drizzle journal", () => {

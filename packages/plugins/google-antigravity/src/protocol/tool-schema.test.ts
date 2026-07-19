@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyValidatedToolMode, normalizeAntigravityToolSchema, normalizeFunctionDeclarations } from "./tool-schema";
 
-const THEN_KEY = "then";
+import { applyValidatedToolMode, normalizeAntigravityToolSchema, normalizeFunctionDeclarations } from "./tool-schema";
 
 describe("normalizeAntigravityToolSchema", () => {
   test.each([
@@ -109,7 +108,8 @@ describe("normalizeAntigravityToolSchema", () => {
         unevaluatedProperties: false,
         dependentSchemas: {},
         if: {},
-        [THEN_KEY]: {},
+        // oxlint-disable-next-line unicorn/no-thenable -- JSON Schema conditional keyword, not a real thenable
+        then: {},
         else: {},
         not: {},
         "x-private": true,
@@ -200,15 +200,14 @@ describe("request tool normalization", () => {
     expect(normalized[1]?.parameters).toMatchObject({ properties: { value: { type: "string", enum: ["true"] } } });
   });
 
-  test.each([
-    { parameters: null },
-    { parameters: [] },
-    { parameters: "schema" },
-  ])("rejects invalid declaration parameter schema $parameters", ({ parameters }) => {
-    expect(() => normalizeFunctionDeclarations([{ name: "invalid", parametersJsonSchema: parameters }])).toThrow(
-      TypeError,
-    );
-  });
+  test.each([{ parameters: null }, { parameters: [] }, { parameters: "schema" }])(
+    "rejects invalid declaration parameter schema $parameters",
+    ({ parameters }) => {
+      expect(() => normalizeFunctionDeclarations([{ name: "invalid", parametersJsonSchema: parameters }])).toThrow(
+        TypeError,
+      );
+    },
+  );
 
   test("sets VALIDATED only for Claude-backed wire models", () => {
     const request = { toolConfig: { functionCallingConfig: { mode: "AUTO", allowedFunctionNames: ["weather"] } } };

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { ANTIGRAVITY_FAMILIES, modelCapabilities } from "./families";
 
 test("defines the complete authoritative Antigravity family table", () => {
@@ -46,12 +47,12 @@ test.each([
   expect(modelCapabilities(modelId)).toEqual({ modelEnum, maxOutputTokens });
 });
 
-test.each([
-  "claude-sonnet-4-6",
-  "claude-opus-4-6-thinking",
-])("caps the verified Claude wire profile %s at 64k", (modelId) => {
-  expect(modelCapabilities(modelId)).toEqual({ maxOutputTokens: 64_000 });
-});
+test.each(["claude-sonnet-4-6", "claude-opus-4-6-thinking"])(
+  "caps the verified Claude wire profile %s at 64k",
+  (modelId) => {
+    expect(modelCapabilities(modelId)).toEqual({ maxOutputTokens: 64_000 });
+  },
+);
 
 test("returns no wire profile for a dynamically discovered unknown model", () => {
   expect(modelCapabilities("future-model")).toBeUndefined();

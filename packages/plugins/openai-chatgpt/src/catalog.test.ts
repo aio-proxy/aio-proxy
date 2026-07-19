@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+
 import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from "./catalog";
 
 const originalFetch = globalThis.fetch;

@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
+import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
+
 import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from "../error";
 import { dbPath } from "../paths";
 import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from "./migrations.manifest";

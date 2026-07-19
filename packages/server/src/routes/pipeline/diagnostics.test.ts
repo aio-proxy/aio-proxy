@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { openAIResponsesAdapter } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import {
   defineProviderRouteSource,
   jsonRequest,

@@ -29,23 +29,23 @@ aio-proxy 已有通用 OAuth plugin host、账号级 credential port、TTL model
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 插件包 | built-in `@aio-proxy/plugin-google-antigravity`，capability 为 `default` |
-| OAuth client | 使用参考实现的 Google client ID/secret 源码常量 |
-| OAuth redirect | 固定 `http://localhost:51121/oauth-callback`，允许粘贴完整 callback URL |
-| OAuth 安全 | 严格校验 state；不使用 PKCE |
-| OAuth scopes | 对齐参考实现的 5 个 scopes |
-| 账号身份 | Google 邮箱作为 fingerprint/label；登录必须取得 Antigravity `projectId` |
-| 项目初始化 | prod `loadCodeAssist`；缺 project 时 daily `onboardUser`，使用新版 metadata、tier、polling 和 headers |
-| Endpoint | 默认 daily → prod；sandbox 不参与；配置 `baseURL` 后只请求该地址 |
-| Catalog | 动态非空有效结果权威；TTL 6 小时；静态快照只处理可重试发现失败 |
-| Runtime | Gemini raw + ProviderV4 model；model codec 对齐 `@ai-sdk/google` |
-| Session | 协议语义优先规范化；确定性 wire session；不做 Provider affinity |
-| Envelope | 每 logical request 一个 request ID；不维护 Hub trajectory/step/last-execution 链 |
-| Replay | `model + normalized session` 跨 Antigravity Provider 共享，滑动 TTL 1 小时，最多 10,240 条 |
-| Endpoint retry | 网络、429、明确 no-capacity 503 可换 endpoint；短 Retry-After 最多同账号重试一次 |
-| 诊断 | 复用现有通用 DiagnosticCode，不增加 Antigravity 专用全局状态码 |
+| 决策点         | 结论                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| 插件包         | built-in `@aio-proxy/plugin-google-antigravity`，capability 为 `default`                              |
+| OAuth client   | 使用参考实现的 Google client ID/secret 源码常量                                                       |
+| OAuth redirect | 固定 `http://localhost:51121/oauth-callback`，允许粘贴完整 callback URL                               |
+| OAuth 安全     | 严格校验 state；不使用 PKCE                                                                           |
+| OAuth scopes   | 对齐参考实现的 5 个 scopes                                                                            |
+| 账号身份       | Google 邮箱作为 fingerprint/label；登录必须取得 Antigravity `projectId`                               |
+| 项目初始化     | prod `loadCodeAssist`；缺 project 时 daily `onboardUser`，使用新版 metadata、tier、polling 和 headers |
+| Endpoint       | 默认 daily → prod；sandbox 不参与；配置 `baseURL` 后只请求该地址                                      |
+| Catalog        | 动态非空有效结果权威；TTL 6 小时；静态快照只处理可重试发现失败                                        |
+| Runtime        | Gemini raw + ProviderV4 model；model codec 对齐 `@ai-sdk/google`                                      |
+| Session        | 协议语义优先规范化；确定性 wire session；不做 Provider affinity                                       |
+| Envelope       | 每 logical request 一个 request ID；不维护 Hub trajectory/step/last-execution 链                      |
+| Replay         | `model + normalized session` 跨 Antigravity Provider 共享，滑动 TTL 1 小时，最多 10,240 条            |
+| Endpoint retry | 网络、429、明确 no-capacity 503 可换 endpoint；短 Retry-After 最多同账号重试一次                      |
+| 诊断           | 复用现有通用 DiagnosticCode，不增加 Antigravity 专用全局状态码                                        |
 
 ## 总体架构
 
@@ -320,11 +320,11 @@ Anthropic → Antigravity 支持：
 Claude 4.6 adaptive 映射：
 
 | effort | budget |
-| --- | ---: |
-| low | 4096 |
-| medium | 8192 |
-| high | 16384 |
-| max | 32768 |
+| ------ | -----: |
+| low    |   4096 |
+| medium |   8192 |
+| high   |  16384 |
+| max    |  32768 |
 
 固定预算必须 `>= 1024` 且 `< max_tokens`。无效 mode、缺 budget、budget 越界或与 max_tokens 冲突时，在调用上游前返回 Anthropic 风格 400。
 

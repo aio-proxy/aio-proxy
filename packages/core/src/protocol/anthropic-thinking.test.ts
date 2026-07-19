@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { parseAnthropicMessages } from "../ingress/anthropic-messages";
 import { anthropicMessagesToModelMessages } from "../transform/anthropic-messages";
 import { anthropicThinkingOption } from "./anthropic-thinking";
@@ -39,19 +40,19 @@ test.each([
   ).toThrow();
 });
 
-test.each([
-  "unknown",
-  { type: "enabled", budget_tokens: 2048.5 },
-])("rejects unknown or malformed thinking input %# through ingress", (thinking) => {
-  expect(() =>
-    parseAnthropicMessages({
-      model: "claude-opus-4-6",
-      messages: [{ role: "user", content: "hello" }],
-      max_tokens: 8192,
-      thinking,
-    }),
-  ).toThrow();
-});
+test.each(["unknown", { type: "enabled", budget_tokens: 2048.5 }])(
+  "rejects unknown or malformed thinking input %# through ingress",
+  (thinking) => {
+    expect(() =>
+      parseAnthropicMessages({
+        model: "claude-opus-4-6",
+        messages: [{ role: "user", content: "hello" }],
+        max_tokens: 8192,
+        thinking,
+      }),
+    ).toThrow();
+  },
+);
 
 test("merges thinking into aioProxy provider options", () => {
   const request = parseAnthropicMessages({

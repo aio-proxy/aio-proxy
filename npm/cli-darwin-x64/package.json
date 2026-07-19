@@ -3,9 +3,15 @@
   "version": "0.0.0",
   "description": "aio-proxy binary for darwin-x64",
   "repository": "github:baranwang/aio-proxy",
-  "os": ["darwin"],
-  "cpu": ["x64"],
-  "files": ["bin"],
+  "files": [
+    "bin"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "publishConfig": {
     "access": "public"
   }

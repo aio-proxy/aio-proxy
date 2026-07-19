@@ -1,11 +1,14 @@
+import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
+
+import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
-import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { materializeProviders, materializeRuntimeProvider } from "../src/provider-runtime";
+
 import type { RuntimeProviderInstance } from "../src/runtime";
+
+import { materializeProviders, materializeRuntimeProvider } from "../src/provider-runtime";
 import { createServerState } from "../src/server-state";
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {

@@ -1,4 +1,3 @@
-import { expect, spyOn, test } from "bun:test";
 import {
   type AccountContext,
   CATALOG_DISCOVERY_TIMEOUT_MS,
@@ -6,9 +5,12 @@ import {
   type OAuthAdapter,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
+import { expect, spyOn, test } from "bun:test";
+
+import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
+
 import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from "../oauth/constants";
 import { createGoogleAntigravityPlugin } from "../plugin";
-import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
 import { discoverAntigravityCatalog, normalizeDiscoveredModels } from "./discover";
 import { CatalogDiscoveryError } from "./errors";
 import { staticAntigravityCatalog } from "./snapshot";

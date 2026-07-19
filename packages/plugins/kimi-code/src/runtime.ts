@@ -1,6 +1,8 @@
+import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from "@aio-proxy/plugin-sdk";
+
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from "@aio-proxy/plugin-sdk";
+
 import { kimiIdentityHeaders } from "./headers";
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from "./oauth";
 

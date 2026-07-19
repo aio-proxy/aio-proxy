@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
+
 import { AnthropicMessagesRequestSchema, parseAnthropicMessages } from "../../src/index";
 
 const fixtureRoot = `${import.meta.dir}/../fixtures/anthropic-messages`;

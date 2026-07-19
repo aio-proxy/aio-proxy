@@ -3,6 +3,7 @@ import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg?react";
 import Codex from "@lobehub/icons-static-svg/icons/codex-color.svg?react";
 import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?react";
 import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg?react";
+
 import { cn } from "@/lib/utils";
 
 interface ProtocolLabelProps {

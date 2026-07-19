@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { basename } from "node:path";
+
 import { AtomicConfigFile } from ".";
 import { child, fixture } from "./test-support";
 

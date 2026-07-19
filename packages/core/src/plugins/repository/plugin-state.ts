@@ -1,8 +1,10 @@
-import type { Database } from "bun:sqlite";
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
 import type { Diagnostic } from "@aio-proxy/types";
-import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from "./rows";
+import type { Database } from "bun:sqlite";
+
 import type { AccountWrite, PluginRepository, StoredCatalog } from "./types";
+
+import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from "./rows";
 
 export function createPluginStateRows(sqlite: Database) {
   const selectCatalog = sqlite.query<CatalogRow, [string]>(

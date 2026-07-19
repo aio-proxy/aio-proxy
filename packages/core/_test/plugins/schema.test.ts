@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import { PluginSchemaContractError, parsePluginSchema } from "../../src/plugins/schema";
 
 describe("parsePluginSchema", () => {

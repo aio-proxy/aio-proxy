@@ -93,14 +93,14 @@ Bad:
 
 ```tsx
 useEffect(() => {
-  void createDashboardClient("").dashboard.api.providers.$get().then(setProviders)
-}, [])
+  void createDashboardClient("").dashboard.api.providers.$get().then(setProviders);
+}, []);
 ```
 
 Good:
 
 ```tsx
-const providers = useQuery(providersQueryOptions())
+const providers = useQuery(providersQueryOptions());
 ```
 
 ### Form
@@ -124,14 +124,24 @@ Good:
 Bad:
 
 ```tsx
-<table>{rows.map((row) => <tr key={row.id}>{row.name}</tr>)}</table>
+<table>
+  {rows.map((row) => (
+    <tr key={row.id}>{row.name}</tr>
+  ))}
+</table>
 ```
 
 Good:
 
 ```tsx
-const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() })
-return <Table>{table.getRowModel().rows.map((row) => <TableRow key={row.id} />)}</Table>
+const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
+return (
+  <Table>
+    {table.getRowModel().rows.map((row) => (
+      <TableRow key={row.id} />
+    ))}
+  </Table>
+);
 ```
 
 ### Services
@@ -139,7 +149,7 @@ return <Table>{table.getRowModel().rows.map((row) => <TableRow key={row.id} />)}
 Bad:
 
 ```tsx
-const response = await fetch("/dashboard/api/providers")
+const response = await fetch("/dashboard/api/providers");
 ```
 
 Good:
@@ -149,10 +159,10 @@ export const providersQueryOptions = () =>
   queryOptions({
     queryKey: ["providers"],
     queryFn: async () => {
-      const response = await dashboardClient.dashboard.api.providers.$get()
-      return response.json()
+      const response = await dashboardClient.dashboard.api.providers.$get();
+      return response.json();
     },
-  })
+  });
 ```
 
 ### es-toolkit
@@ -161,17 +171,17 @@ Bad:
 
 ```ts
 const byProvider = items.reduce<Record<string, Model[]>>((acc, item) => {
-  acc[item.providerId] = [...(acc[item.providerId] ?? []), item]
-  return acc
-}, {})
+  acc[item.providerId] = [...(acc[item.providerId] ?? []), item];
+  return acc;
+}, {});
 ```
 
 Good:
 
 ```ts
-import { groupBy } from "es-toolkit/array"
+import { groupBy } from "es-toolkit/array";
 
-const byProvider = groupBy(items, (item) => item.providerId)
+const byProvider = groupBy(items, (item) => item.providerId);
 ```
 
 ### i18n
@@ -185,7 +195,7 @@ Bad:
 Good:
 
 ```tsx
-import { m } from "@aio-proxy/i18n"
+import { m } from "@aio-proxy/i18n";
 
-<Button>{m.dashboard_providers_save()}</Button>
+<Button>{m.dashboard_providers_save()}</Button>;
 ```

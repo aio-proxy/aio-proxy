@@ -12,7 +12,7 @@ type MyOptions = {
 
 const typedDescriptor = definePlugin<MyOptions>(
   (_api, options) => {
-    options.baseURL;
+    void options.baseURL;
   },
   {
     label: { default: "Example plugin", "zh-Hans": "示例插件" },

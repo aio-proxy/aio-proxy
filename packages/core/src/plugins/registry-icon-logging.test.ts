@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
 import { type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
+import { expect, test } from "bun:test";
+
 import { createPluginRegistryHost } from "./registry";
 
 test("a throwing icon warning sink still strips the icon and commits the capability", () => {

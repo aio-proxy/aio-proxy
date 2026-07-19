@@ -1,10 +1,13 @@
-import { m } from "@aio-proxy/i18n";
 import type { UsageOverviewGroupBy, UsageOverviewMetric } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useReducer } from "react";
 import { createPortal } from "react-dom";
+
 import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
 
 const metrics: readonly UsageOverviewMetric[] = ["cost", "tokens", "requests"];
@@ -45,10 +48,10 @@ export const UsageTrendTabs: React.FC<Props> = ({ description, titleId, descript
           <CardTitle id={titleId} className="sr-only">
             {groupingLabels[filters.groupBy]}
           </CardTitle>
-          <div ref={setGroupingTabsContainer} className="min-w-0 max-w-full overflow-x-auto pb-1" />
+          <div ref={setGroupingTabsContainer} className="max-w-full min-w-0 overflow-x-auto pb-1" />
           <CardDescription id={descriptionId}>{description}</CardDescription>
         </div>
-        <div className="min-w-0 max-w-full overflow-x-auto pb-1 sm:shrink-0">
+        <div className="max-w-full min-w-0 overflow-x-auto pb-1 sm:shrink-0">
           <TabsList className="shrink-0" aria-label={m["dashboard.usage.metric_label"]()}>
             {metrics.map((metric) => (
               <TabsTrigger key={metric} value={metric}>

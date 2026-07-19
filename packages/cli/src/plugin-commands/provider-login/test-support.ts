@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { AtomicConfigFile, createPluginRegistryHost } from "@aio-proxy/core";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { ProviderLoginDeps } from "./index";
 
 export function adapter(id: string): OAuthAdapter {

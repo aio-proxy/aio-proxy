@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
+import { describe, expect, test } from "bun:test";
+
 import { messagesRequest, textStream } from "../../_test/anthropic-messages.test-support";
 import { createServer } from "../server";
 

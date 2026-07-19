@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { ConfigReloadRejectedError, createConfigStore } from "../src/config-store";
 
 describe("createConfigStore mutex", () => {

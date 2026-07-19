@@ -1,7 +1,9 @@
+import type React from "react";
+
 import { m } from "@aio-proxy/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type React from "react";
+
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { PluginsTable } from "../components/plugins-table";
 import { ProvidersTable } from "../components/providers-table";
 import { pluginsQueryOptions } from "../services/plugins-service";
@@ -45,21 +48,20 @@ export const ProvidersPage: React.FC = () => {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton array
             <Skeleton key={index} className="h-12 w-full" />
           ))}
         </div>
       ) : (
         <div className="flex flex-col gap-8">
           <section className="space-y-3" aria-labelledby="plugins-heading">
-            <h2 id="plugins-heading" className="font-semibold text-sm">
+            <h2 id="plugins-heading" className="text-sm font-semibold">
               {m["dashboard.providers.plugins.title"]()}
             </h2>
             <PluginsTable plugins={plugins} />
           </section>
 
           <section className="space-y-3" aria-labelledby="providers-heading">
-            <h2 id="providers-heading" className="font-semibold text-sm">
+            <h2 id="providers-heading" className="text-sm font-semibold">
               {m["dashboard.providers.providers_title"]()}
             </h2>
             <ProvidersTable providers={providers} />

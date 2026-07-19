@@ -19,14 +19,8 @@ export {
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from "./egress/anthropic-messages";
-export {
-  writeGeminiGenerateContentResponse,
-  writeGeminiGenerateContentSSE,
-} from "./egress/gemini-generate-content";
-export {
-  writeOpenAICompletionsResponse,
-  writeOpenAICompletionsSSE,
-} from "./egress/openai-completions";
+export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from "./egress/gemini-generate-content";
+export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from "./egress/openai-completions";
 export {
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
@@ -112,18 +106,11 @@ export {
   withInstalledNpmPackage,
   withNpmPackageLifecycle,
 } from "./npm";
-export {
-  type InstalledNpmPackage,
-  listInstalledNpmPackages,
-} from "./npm-list";
+export { type InstalledNpmPackage, listInstalledNpmPackages } from "./npm-list";
 export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths";
 export * from "./plugins";
 export * from "./protocol";
-export {
-  type AiSdkProviderFactoryOptions,
-  type AiSdkProviderInstance,
-  createAiSdkProvider,
-} from "./provider/ai-sdk";
+export { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./provider/ai-sdk";
 export {
   type AiSdkProviderLoadOptions,
   BUNDLED_PROVIDER_PACKAGES,

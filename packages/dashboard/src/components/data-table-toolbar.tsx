@@ -1,5 +1,9 @@
-import { useForm } from "@tanstack/react-form";
 import type React from "react";
+
+import { useForm } from "@tanstack/react-form";
+
+import type { ColumnVisibilityForm } from "@/hooks/use-data-table";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,7 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import type { ColumnVisibilityForm } from "@/hooks/use-data-table";
 
 type VisibilityColumn = {
   readonly id: string;

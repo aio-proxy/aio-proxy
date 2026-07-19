@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { displayTotalTokens, formatLogCost } from "./log-formatters";
 
 describe("log formatters", () => {

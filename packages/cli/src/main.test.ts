@@ -1,10 +1,11 @@
+import { ProviderAccountAlreadyExistsError } from "@aio-proxy/core";
+import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProviderAccountAlreadyExistsError } from "@aio-proxy/core";
-import { getLocale, setLocale } from "@aio-proxy/i18n";
+
 import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from "../_test/cli-test-helpers";
 import packageJson from "../package.json" with { type: "json" };
 import { formatCliError } from "./main";

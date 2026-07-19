@@ -1,8 +1,9 @@
+import { ConfigSchema } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigSchema } from "@aio-proxy/types";
+
 import { createServerState } from "../src/server-state";
 
 const decoder = new TextDecoder();

@@ -1,6 +1,9 @@
-import { expect, test } from "bun:test";
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { createAntigravityCredentialSource } from "./credential";
 
 test("adapts current and forced credential reads through the host credential port", async () => {

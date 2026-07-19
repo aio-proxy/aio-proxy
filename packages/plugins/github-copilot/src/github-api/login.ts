@@ -1,8 +1,10 @@
 import type { LocalizedText, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+
+import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from "./types";
+
 import { deviceCodeResponseSchema, githubTokenResponseSchema, githubUserResponseSchema } from "../schema";
 import { fetchCopilotToken } from "./credential";
 import { authHeaders, fetchJson } from "./http";
-import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from "./types";
 import { getGitHubCopilotBaseURL, githubApiBase } from "./urls";
 
 declare const __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__: string;

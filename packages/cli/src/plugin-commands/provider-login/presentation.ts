@@ -15,6 +15,7 @@ import {
 } from "@aio-proxy/core";
 import { m } from "@aio-proxy/i18n";
 import { providerLoginCommand } from "@aio-proxy/types";
+
 import { isLoopbackUserError } from "../loopback";
 import { canonical } from "./capability";
 import {

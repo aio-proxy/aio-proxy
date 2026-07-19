@@ -1,17 +1,18 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
-import { OpenAIResponsesTransformError } from "../error";
 import type {
   OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,
   OpenAIResponsesToolOutputPart,
 } from "../ingress/openai-responses";
+import type { OpenAIResponsesWireMetadata } from "./openai-responses-types";
+
+import { OpenAIResponsesTransformError } from "../error";
 import {
   flattenOpenAIResponsesToolName,
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
   wireProviderOptions,
 } from "./openai-responses-tools";
-import type { OpenAIResponsesWireMetadata } from "./openai-responses-types";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];

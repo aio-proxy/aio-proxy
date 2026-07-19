@@ -2,8 +2,9 @@ import { afterEach, describe, expect, jest, test } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deviceFlowFetch, loginContext, withFetchMock } from "../../_test/test-support";
+
 import { loginToGitHubCopilot } from ".";
+import { deviceFlowFetch, loginContext, withFetchMock } from "../../_test/test-support";
 
 afterEach(() => {
   jest.useRealTimers();

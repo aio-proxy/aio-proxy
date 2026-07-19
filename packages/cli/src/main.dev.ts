@@ -1,4 +1,5 @@
 import type { CliDeps } from "./dashboard-assets";
+
 import { main } from "./main";
 
 export const developmentCliDeps: CliDeps = {

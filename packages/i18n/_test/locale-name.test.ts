@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { getLocaleName } from "../src/locale-name";
 
 describe("locale names", () => {

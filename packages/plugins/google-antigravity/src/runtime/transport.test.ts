@@ -1,6 +1,9 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { AntigravityTransport, type AntigravityTransportDependencies } from "./transport";
 
 test("reuses identity across short retry, endpoint fallback, and one forced refresh", async () => {

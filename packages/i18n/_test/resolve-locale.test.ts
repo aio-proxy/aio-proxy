@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { resolveLocale, resolveLocaleFromArgv } from "../src/resolve";
 
 describe("resolveLocale", () => {

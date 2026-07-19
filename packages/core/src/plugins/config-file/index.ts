@@ -1,5 +1,6 @@
-import { chmod, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { isPlainObject } from "es-toolkit/predicate";
+import { chmod, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+
 import { isNodeError } from "../../file-lock/fs";
 import { acquireConfigLock } from "./lock";
 import { type ConfigRecord, digestProviderEntry, encodeCandidate, parseConfig } from "./serialization";

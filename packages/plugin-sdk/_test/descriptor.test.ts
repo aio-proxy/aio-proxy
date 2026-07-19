@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from "../src";
 
 describe("definePlugin", () => {

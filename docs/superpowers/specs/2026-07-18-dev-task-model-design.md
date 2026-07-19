@@ -39,13 +39,13 @@ server provides the live frontend.
 Packages that use Rslib as their artifact interface expose their root entry
 from `dist` and provide both one-shot and watch scripts:
 
-| Package | Root interface | Development producer |
-| --- | --- | --- |
-| `@aio-proxy/types` | `dist/index.js` and `dist/index.d.ts` | Rslib watch |
-| `@aio-proxy/plugin-sdk` | `dist/index.js` and `dist/index.d.ts` | Rslib watch |
-| `@aio-proxy/plugin-github-copilot` | `dist/index.js` and `dist/index.d.ts` | Rslib watch |
-| `@aio-proxy/plugin-openai-chatgpt` | `dist/index.js` and `dist/index.d.ts` | Rslib watch |
-| `@aio-proxy/core` | `dist/index.js` and `dist/index.d.ts` | Rslib watch |
+| Package                            | Root interface                        | Development producer |
+| ---------------------------------- | ------------------------------------- | -------------------- |
+| `@aio-proxy/types`                 | `dist/index.js` and `dist/index.d.ts` | Rslib watch          |
+| `@aio-proxy/plugin-sdk`            | `dist/index.js` and `dist/index.d.ts` | Rslib watch          |
+| `@aio-proxy/plugin-github-copilot` | `dist/index.js` and `dist/index.d.ts` | Rslib watch          |
+| `@aio-proxy/plugin-openai-chatgpt` | `dist/index.js` and `dist/index.d.ts` | Rslib watch          |
+| `@aio-proxy/core`                  | `dist/index.js` and `dist/index.d.ts` | Rslib watch          |
 
 `@aio-proxy/types` also emits `dist/config.schema.json` from its Rslib plugin.
 Its root export moves from `src/index.ts` to `dist` so the JavaScript,

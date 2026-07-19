@@ -1,7 +1,9 @@
 import { type ModelEventStream, Router } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { LogicalSessionStore } from "../../src/logical-session-store";
+
 import type { ModelTransport, ProviderRouteSource, RawTransport, RuntimeProviderInstance } from "../../src/runtime";
+
+import { LogicalSessionStore } from "../../src/logical-session-store";
 import {
   createUsageCapture,
   type PassthroughUsageOptions,

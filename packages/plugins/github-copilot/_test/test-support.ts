@@ -1,4 +1,5 @@
 import type { CredentialPort, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+
 import type { GitHubCopilotCredential } from "../src";
 
 export function loginContext(

@@ -1,5 +1,7 @@
 import type { Stats } from "node:fs";
+
 import { readFile, stat, unlink } from "node:fs/promises";
+
 import { isNodeError, sameFileSnapshot } from "../../file-lock/fs";
 
 type AbandonedLockOwner = {

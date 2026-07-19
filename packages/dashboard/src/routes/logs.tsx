@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+
 import { parseLogsSearch } from "@/modules/logs/logs-search";
 import { LogsPage } from "@/modules/logs/templates/logs-page";
 

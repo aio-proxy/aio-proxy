@@ -1,5 +1,6 @@
-import type { Database } from "bun:sqlite";
 import type { Diagnostic } from "@aio-proxy/types";
+import type { Database } from "bun:sqlite";
+
 import { createAccountRows } from "./accounts";
 import { createPluginStateRows } from "./plugin-state";
 import {

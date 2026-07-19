@@ -1,4 +1,5 @@
 import type { PluginLogSink } from "../diagnostic";
+
 import {
   adapter,
   definePlugin,

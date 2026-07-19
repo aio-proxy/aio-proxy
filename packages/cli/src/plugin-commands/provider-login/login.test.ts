@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import { AccountCleanupPendingError, type AtomicConfigFile } from "@aio-proxy/core";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { createProviderLoginDefaultDeps, providerLogin } from "./index";
 import { createProviderLoginTestScope } from "./test-support";
 

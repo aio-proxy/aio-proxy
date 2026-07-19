@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import {
   geminiGenerateContentAdapter,
   geminiGenerateContentErrors,

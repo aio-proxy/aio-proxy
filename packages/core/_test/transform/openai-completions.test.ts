@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import type { OpenAICompletionsRequest } from "../../src/index";
+
 import {
   modelMessagesToOpenAICompletions,
   openAICompletionsToModelMessages,

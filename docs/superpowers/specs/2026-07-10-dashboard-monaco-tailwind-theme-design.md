@@ -15,16 +15,16 @@ Make Monaco feel native to the Dashboard while retaining familiar syntax hierarc
 
 The palette is intentionally limited:
 
-| Semantic role | Light | Dark |
-| --- | --- | --- |
-| Default text | neutral-700 | taupe-300 |
-| JSON keys | cyan-400/neutral-500 mix | cyan-700/taupe-400 mix |
-| Strings | red-500/olive-500 mix | red-400/taupe-400 mix |
-| Numbers | sky-700 | sky-600/slate-400 mix |
-| Keywords and booleans | green-800 | teal-600/olive-500 mix |
-| Punctuation and brackets | neutral-500/400 mix | neutral-500/400 mix |
-| Functions and tags | lime/green and olive roles | green-500/olive-400 mix |
-| Invalid tokens | red-800 | red-400 |
+| Semantic role            | Light                      | Dark                    |
+| ------------------------ | -------------------------- | ----------------------- |
+| Default text             | neutral-700                | taupe-300               |
+| JSON keys                | cyan-400/neutral-500 mix   | cyan-700/taupe-400 mix  |
+| Strings                  | red-500/olive-500 mix      | red-400/taupe-400 mix   |
+| Numbers                  | sky-700                    | sky-600/slate-400 mix   |
+| Keywords and booleans    | green-800                  | teal-600/olive-500 mix  |
+| Punctuation and brackets | neutral-500/400 mix        | neutral-500/400 mix     |
+| Functions and tags       | lime/green and olive roles | green-500/olive-400 mix |
+| Invalid tokens           | red-800                    | red-400                 |
 
 This reproduces Prism Vitesse's JSON relationship: blue-gray keys, muted salmon strings, blue numbers, green booleans and neutral punctuation. The Tailwind variables are mixed only where a single scale value is not close enough.
 

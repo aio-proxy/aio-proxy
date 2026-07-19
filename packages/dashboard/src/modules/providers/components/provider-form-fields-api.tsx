@@ -1,13 +1,16 @@
 import { m } from "@aio-proxy/i18n";
 import { ProviderProtocol } from "@aio-proxy/types";
+
 import { ProtocolLabel } from "@/components/protocol-label";
 import { TagsInput } from "@/components/tags-input";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ProviderFormMode } from "../constants";
+
 import type { useProviderForm } from "../hooks/use-provider-form";
+
+import { ProviderFormMode } from "../constants";
 import { ProviderAliasFields } from "./provider-alias";
 import { ProviderCommonFields } from "./provider-common-fields";
 
@@ -52,7 +55,7 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder={m["dashboard.providers.form.placeholder_api_key"]()}
               />
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 {mode === ProviderFormMode.Edit
                   ? m["dashboard.providers.form.api_key_helper_edit"]()
                   : m["dashboard.providers.form.api_key_helper_create"]()}
@@ -96,7 +99,7 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
                 placeholder={m["dashboard.providers.form.placeholder_models"]()}
                 removeLabel={(model) => m["dashboard.providers.form.remove_model"]({ model })}
               />
-              <p className="text-muted-foreground text-sm">{m["dashboard.providers.form.models_helper"]()}</p>
+              <p className="text-sm text-muted-foreground">{m["dashboard.providers.form.models_helper"]()}</p>
             </Field>
           )}
         </form.Field>

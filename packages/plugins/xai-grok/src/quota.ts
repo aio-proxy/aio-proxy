@@ -1,7 +1,9 @@
 import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from "@aio-proxy/plugin-sdk";
+
+import type { XAIGrokCredential } from "./schema";
+
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "./cli-headers";
 import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from "./oauth";
-import type { XAIGrokCredential } from "./schema";
 
 const WEEKLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing?format=credits`;
 const MONTHLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing`;

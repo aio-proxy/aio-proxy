@@ -1,6 +1,8 @@
-import { expect, test } from "bun:test";
 import { openAIResponsesAdapter } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { expect, test } from "bun:test";
+
+import { handleProtocolRequest } from ".";
 import {
   defineProviderRouteSource,
   modelProvider,
@@ -9,7 +11,6 @@ import {
   settleRecording,
   textStream,
 } from "../../../_test/pipeline-helpers";
-import { handleProtocolRequest } from ".";
 
 test("converts portable reasoning and uses the model candidate", async () => {
   const model = modelProvider({ id: "model", invoke: () => textStream("model response") });

@@ -1,5 +1,6 @@
 import type { ProtocolId } from "@aio-proxy/plugin-sdk";
 import type { ProviderProtocol } from "@aio-proxy/types";
+
 import { pluginProtocol } from "./capabilities";
 
 export { pluginOptionsIdentityDigest } from "./identity";

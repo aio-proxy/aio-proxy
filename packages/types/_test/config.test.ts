@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { ConfigAuthoringSchema, ConfigSchema, ProviderKind } from "../src/index";
 
 test.each(["0.0.0.0", "192.168.1.20", "example.test"])("rejects non-loopback host %s", (host) => {

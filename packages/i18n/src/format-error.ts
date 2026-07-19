@@ -1,5 +1,8 @@
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
+
+import type { Locale } from "./resolve";
+
 import {
   AliasCollisionError,
   AppError,
@@ -10,7 +13,6 @@ import {
   StaleProviderGenerationError,
 } from "./errors";
 import { m } from "./paraglide/messages";
-import type { Locale } from "./resolve";
 
 export type FormattedUserError = {
   readonly code: string;

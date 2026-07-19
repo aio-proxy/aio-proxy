@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import { createGeminiRawResolver } from "./raw";
 
 test.each([302, 304])("maps raw upstream status %i to a safe 500 error response", async (status) => {

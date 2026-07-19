@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { createFifoQueue } from "../src/fifo-queue";
 
 test("FIFO queue preserves invocation order and a rejection does not poison later work", async () => {

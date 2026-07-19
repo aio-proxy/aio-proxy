@@ -1,9 +1,11 @@
+import type { FetchModelsDevProviders, TextStreamPart, ToolSet } from "@aio-proxy/core";
+
+import { ConfigSchema } from "@aio-proxy/types";
 import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FetchModelsDevProviders, TextStreamPart, ToolSet } from "@aio-proxy/core";
-import { ConfigSchema } from "@aio-proxy/types";
+
 import { createModelsDevCatalogTask, createServerState } from "../src/server-state";
 
 const homes: string[] = [];

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from "../../src/index";
+
 import {
   GeminiGenerateContentTransformError,
   geminiGenerateContentToModelMessages,

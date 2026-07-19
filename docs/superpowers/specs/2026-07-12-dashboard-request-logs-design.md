@@ -49,19 +49,19 @@ Add a typed `GET /dashboard/api/logs` endpoint. Query validation rejects malform
 
 Supported query fields:
 
-| Field | Semantics |
-| --- | --- |
-| `page` | One-based integer, default `1` |
-| `pageSize` | Integer `10`, `20`, `50`, or `100`; default `50` |
-| `startedAfter` | Inclusive ISO-8601 instant applied to `started_at` |
-| `completedBefore` | Inclusive ISO-8601 instant applied to `completed_at` |
-| `requestId` | Exact request ID match after trimming |
-| `outcome` | Exact `success`, `failure`, or `cancelled` match |
-| `inboundProtocol` | Exact protocol match |
-| `requestedModelId` | Exact requested-model match |
-| `finalProviderId` | Exact final-provider match |
-| `finalModelId` | Exact final-model match |
-| `finalStatusCode` | Exact integer HTTP status match |
+| Field              | Semantics                                            |
+| ------------------ | ---------------------------------------------------- |
+| `page`             | One-based integer, default `1`                       |
+| `pageSize`         | Integer `10`, `20`, `50`, or `100`; default `50`     |
+| `startedAfter`     | Inclusive ISO-8601 instant applied to `started_at`   |
+| `completedBefore`  | Inclusive ISO-8601 instant applied to `completed_at` |
+| `requestId`        | Exact request ID match after trimming                |
+| `outcome`          | Exact `success`, `failure`, or `cancelled` match     |
+| `inboundProtocol`  | Exact protocol match                                 |
+| `requestedModelId` | Exact requested-model match                          |
+| `finalProviderId`  | Exact final-provider match                           |
+| `finalModelId`     | Exact final-model match                              |
+| `finalStatusCode`  | Exact integer HTTP status match                      |
 
 The response contains:
 

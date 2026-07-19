@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { validThoughtSignature } from "./signatures";
 
 test("accepts signatures with at least fifty characters", () => {

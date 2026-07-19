@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import type { LanguageModelV2, LanguageModelV2StreamPart, ProviderV3 } from "@ai-sdk/provider";
 import type { ModelMessage, TextStreamPart, ToolSet } from "ai";
+
+import { describe, expect, test } from "bun:test";
+
 import { createAiSdkProvider } from "../../src/index";
 
 Object.assign(globalThis, { AI_SDK_LOG_WARNINGS: false });

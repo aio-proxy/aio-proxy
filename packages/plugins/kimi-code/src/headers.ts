@@ -1,4 +1,5 @@
 import * as systemOs from "node:os";
+
 import packageJson from "../package.json" with { type: "json" };
 
 type OsPort = Pick<typeof systemOs, "hostname" | "platform" | "release" | "arch" | "version">;

@@ -1,8 +1,11 @@
 import type { AiSdkProvider, ApiProvider } from "@aio-proxy/types";
+
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+
 import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
-import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./ai-sdk";
 import type { AiSdkProviderLoadOptions } from "./ai-sdk-loader";
+
+import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./ai-sdk";
 import { resolveApiKey } from "./api";
 
 type BridgeMapping = {

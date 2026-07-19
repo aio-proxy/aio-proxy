@@ -1,12 +1,14 @@
 import { ProviderProtocol } from "@aio-proxy/types";
 import { z } from "zod";
+
+import type { SessionCandidate } from "./session";
+
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses/index";
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses";
 import { openAIResponsesToModelMessages } from "../transform/openai-responses";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAIResponsesErrors } from "./errors";
 import { readJsonRequest } from "./request";
-import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesRequest, EmptyProtocolContext>({
@@ -58,6 +60,7 @@ async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string
   headers.delete("content-encoding");
   headers.delete("content-length");
   return new Request(raw, {
+    method: raw.method,
     body: JSON.stringify({ ...body, model: resolvedModel }),
     headers,
   });

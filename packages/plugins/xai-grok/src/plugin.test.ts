@@ -1,8 +1,11 @@
-import { expect, test } from "bun:test";
 import type { OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import packageJson from "../package.json" with { type: "json" };
-import xaiGrokPlugin, { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from ".";
+
+import { expect, test } from "bun:test";
+
 import type { XAIGrokCredential } from "./schema";
+
+import xaiGrokPlugin, { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from ".";
+import packageJson from "../package.json" with { type: "json" };
 
 test("exports a versioned xAI Grok OAuth descriptor", async () => {
   const adapter = await adapterFrom(xaiGrokPlugin);

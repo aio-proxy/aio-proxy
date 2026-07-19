@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+
 import type { ProtocolErrorMapper } from "./adapter";
+
 import {
   anthropicMessagesErrors,
   geminiGenerateContentErrors,

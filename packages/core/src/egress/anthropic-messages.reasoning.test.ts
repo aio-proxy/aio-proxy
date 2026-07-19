@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+
 import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
+
 import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "./anthropic-messages";
 
 const SIGNATURE = "anthropic-signature-".repeat(3);

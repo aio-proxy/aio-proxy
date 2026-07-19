@@ -1,13 +1,16 @@
+import type { DashboardPluginSummary } from "@aio-proxy/types";
+import type React from "react";
+
 import { getLocale, m } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
-import type { DashboardPluginSummary } from "@aio-proxy/types";
 import { type ColumnDef, flexRender } from "@tanstack/react-table";
-import type React from "react";
+
 import { DataTableHeaderCell } from "@/components/data-table-header-cell";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { DataTableToolbar } from "@/components/data-table-toolbar";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { useDataTable } from "@/hooks/use-data-table";
+
 import { DiagnosticDetails } from "./diagnostic-details";
 
 const columns: ColumnDef<DashboardPluginSummary>[] = [
@@ -19,7 +22,7 @@ const columns: ColumnDef<DashboardPluginSummary>[] = [
         {row.original.label === undefined ? null : <div>{resolveLocalizedText(row.original.label, getLocale())}</div>}
         <div>{row.original.packageName}</div>
         {row.original.description === undefined ? null : (
-          <div className="text-muted-foreground text-xs">
+          <div className="text-xs text-muted-foreground">
             {resolveLocalizedText(row.original.description, getLocale())}
           </div>
         )}

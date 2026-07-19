@@ -1,4 +1,5 @@
 import { m } from "@aio-proxy/i18n";
+
 import type { AliasEditorIssue, AliasEditResult, AliasSummary } from "./alias-editor";
 
 export type VisibleEditError = Exclude<Extract<AliasEditResult, { readonly ok: false }>["code"], "alias-missing">;

@@ -1,5 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
 import { ProviderKind } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);

@@ -4,8 +4,10 @@ import type {
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat/completions/completions";
 import type { CompletionUsage } from "openai/resources/completions";
+
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+
 import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();

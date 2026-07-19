@@ -1,6 +1,7 @@
 import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from "@aio-proxy/i18n";
 import { Eclipse, Languages } from "lucide-react";
 import { useTheme } from "next-themes";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+
 import { reloadDashboard } from "./reload-dashboard";
 
 const themes = [

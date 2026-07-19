@@ -1,4 +1,5 @@
 import { m } from "@aio-proxy/i18n";
+
 import { renderConfigSpec } from "../form";
 import { requirePluginPackageName } from "./config-entry";
 import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps, requireConfirmation } from "./deps";

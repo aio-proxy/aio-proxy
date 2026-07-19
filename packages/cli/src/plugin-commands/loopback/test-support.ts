@@ -1,4 +1,5 @@
 import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
+
 import type { CliAuthorizationDeps } from "../authorization";
 
 export const copy = {

@@ -1,7 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
 import type { DiagnosticFactory } from "@aio-proxy/core";
+
 import { zod } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);

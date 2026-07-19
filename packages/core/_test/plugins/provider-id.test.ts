@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
 import { normalizeSuggestedKey, ProviderIdCollisionError, resolveProviderId } from "../../src/plugins/provider-id";
 
 const identity = {

@@ -1,10 +1,10 @@
+import { createRequestLogStore, openDb } from "@aio-proxy/core/db";
+import { createServer } from "@aio-proxy/server";
+import { DashboardUsageOverviewResponseSchema } from "@aio-proxy/types";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequestLogStore, openDb } from "@aio-proxy/core/db";
-import { createServer } from "@aio-proxy/server";
-import { DashboardUsageOverviewResponseSchema } from "@aio-proxy/types";
 
 const homes: string[] = [];
 
@@ -74,9 +74,9 @@ async function seededApp() {
 
 describe("GET /dashboard/api/usage", () => {
   test("returns the requested overview with pinned provider series", async () => {
-    const response = await (await seededApp()).request(
-      "/dashboard/api/usage?range=24h&metric=requests&groupBy=provider",
-    );
+    const response = await (
+      await seededApp()
+    ).request("/dashboard/api/usage?range=24h&metric=requests&groupBy=provider");
     const body = await response.json();
 
     expect(response.status).toBe(200);

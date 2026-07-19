@@ -59,26 +59,26 @@
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| Icon 所有权 | 属于 `OAuthAdapter` capability，不属于 plugin package metadata |
-| Icon 写法 | 一个字符串联合：Lobe key、HTTP/HTTPS URL 或受限图片 data URL |
-| Lobe key 类型 | `plugin-sdk` 在 Rslib 配置求值时扫描依赖、写入 build cache，并以 `banner.dts` 注入 bundled declaration 的精确 union |
-| Lobe key 构建入口 | `bun run build`/`bun run preflight` 是唯一权威 declaration 构建；不增加独立 codegen script 或 postinstall |
-| Lobe key 运行时校验 | 不发布完整 key 列表；只校验 slug 语法，精确存在性由 TypeScript union 保证 |
-| 非法 icon | 丢弃 icon 并记录结构化警告；插件和 capability 继续加载 |
-| Quota 所有权 | `OAuthAdapter.quota`，与 `catalog` 并列并复用 `AccountContext` |
-| Quota 结构 | 扁平、有序的 `items[]`，剩余量使用 0–1 的 ratio |
-| 时间表示 | epoch milliseconds，与现有 `expiresAt` 一致 |
-| Reset 作用域 | 账号级，不绑定 quota item 或 reset credit ID |
-| Reset 库存 | snapshot 返回 `availableCount` 与可选 credit 明细 |
-| Reset 返回值 | `Promise<void>`；后续 quota refresh 是独立操作 |
-| Reset 门禁 | provider 锁内实时 `read()`，只有 `availableCount > 0` 才执行 |
-| Reset 并发 | 按 Provider ID 串行化，不自动重试 |
-| Quota 调用面 | 独立的宿主 quota operation service；不扩展模型路由 runtime，也不在本文定义外部 endpoint |
-| Quota 缓存 | SDK 不声明 policy；普通 read 的 single-flight 是宿主 MAY 优化，消费者决定后续缓存 |
-| 故障范围 | 合法注册后的 icon/quota 操作仅使当前操作失败或降级，不改变 provider routing state；registration contract error 仍使 plugin load 失败 |
-| SDK API version | 保持 `PLUGIN_API_VERSION = 1`，新增字段均为可选兼容扩展 |
+| 决策点              | 结论                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Icon 所有权         | 属于 `OAuthAdapter` capability，不属于 plugin package metadata                                                                       |
+| Icon 写法           | 一个字符串联合：Lobe key、HTTP/HTTPS URL 或受限图片 data URL                                                                         |
+| Lobe key 类型       | `plugin-sdk` 在 Rslib 配置求值时扫描依赖、写入 build cache，并以 `banner.dts` 注入 bundled declaration 的精确 union                  |
+| Lobe key 构建入口   | `bun run build`/`bun run preflight` 是唯一权威 declaration 构建；不增加独立 codegen script 或 postinstall                            |
+| Lobe key 运行时校验 | 不发布完整 key 列表；只校验 slug 语法，精确存在性由 TypeScript union 保证                                                            |
+| 非法 icon           | 丢弃 icon 并记录结构化警告；插件和 capability 继续加载                                                                               |
+| Quota 所有权        | `OAuthAdapter.quota`，与 `catalog` 并列并复用 `AccountContext`                                                                       |
+| Quota 结构          | 扁平、有序的 `items[]`，剩余量使用 0–1 的 ratio                                                                                      |
+| 时间表示            | epoch milliseconds，与现有 `expiresAt` 一致                                                                                          |
+| Reset 作用域        | 账号级，不绑定 quota item 或 reset credit ID                                                                                         |
+| Reset 库存          | snapshot 返回 `availableCount` 与可选 credit 明细                                                                                    |
+| Reset 返回值        | `Promise<void>`；后续 quota refresh 是独立操作                                                                                       |
+| Reset 门禁          | provider 锁内实时 `read()`，只有 `availableCount > 0` 才执行                                                                         |
+| Reset 并发          | 按 Provider ID 串行化，不自动重试                                                                                                    |
+| Quota 调用面        | 独立的宿主 quota operation service；不扩展模型路由 runtime，也不在本文定义外部 endpoint                                              |
+| Quota 缓存          | SDK 不声明 policy；普通 read 的 single-flight 是宿主 MAY 优化，消费者决定后续缓存                                                    |
+| 故障范围            | 合法注册后的 icon/quota 操作仅使当前操作失败或降级，不改变 provider routing state；registration contract error 仍使 plugin load 失败 |
+| SDK API version     | 保持 `PLUGIN_API_VERSION = 1`，新增字段均为可选兼容扩展                                                                              |
 
 ## 公共 SDK 契约
 
@@ -87,11 +87,7 @@
 概念类型如下：
 
 ```ts
-export type OAuthIcon =
-  | LobeIconKey
-  | `http://${string}`
-  | `https://${string}`
-  | `data:image/${string}`;
+export type OAuthIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
 ```
 
 `OAuthAdapter` 增加可选字段：
@@ -135,12 +131,8 @@ export type OAuthQuotaSnapshot = {
 };
 
 export type OAuthQuotaCapability<AccountOptions, Credential> = {
-  readonly read: (
-    context: AccountContext<Credential, AccountOptions>,
-  ) => Promise<OAuthQuotaSnapshot>;
-  readonly reset?: (
-    context: AccountContext<Credential, AccountOptions>,
-  ) => Promise<void>;
+  readonly read: (context: AccountContext<Credential, AccountOptions>) => Promise<OAuthQuotaSnapshot>;
+  readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 ```
 
@@ -309,14 +301,8 @@ SDK capability 由独立的宿主 operation service 调用。概念入口为：
 
 ```ts
 type OAuthQuotaOperations = {
-  readonly read: (
-    providerId: string,
-    signal: AbortSignal,
-  ) => Promise<OAuthQuotaSnapshot>;
-  readonly reset: (
-    providerId: string,
-    signal: AbortSignal,
-  ) => Promise<void>;
+  readonly read: (providerId: string, signal: AbortSignal) => Promise<OAuthQuotaSnapshot>;
+  readonly reset: (providerId: string, signal: AbortSignal) => Promise<void>;
 };
 ```
 

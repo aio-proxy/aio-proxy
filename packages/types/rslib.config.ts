@@ -1,5 +1,6 @@
 import { defineLibraryConfig, type RsbuildPlugin } from "@aio-proxy/infra/rslib";
 import { z } from "zod";
+
 import { ConfigAuthoringSchema } from "./src/index.ts";
 
 const configSchemaPlugin = (): RsbuildPlugin => ({

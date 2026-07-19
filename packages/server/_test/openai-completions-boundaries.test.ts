@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type AiSdkProviderInstance, createAiSdkProvider, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { chatRequest, mockModelsDevCatalog, restoreFetch, textStream } from "./openai-completions.test-support";
 

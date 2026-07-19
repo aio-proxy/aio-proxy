@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import { validateConfigSpec } from "../../src/plugins/config-spec";
 
 const schema = zod.object({});

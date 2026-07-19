@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
 import { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "../src/paths";
 
 const original = process.env.AIO_PROXY_HOME;

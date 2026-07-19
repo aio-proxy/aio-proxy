@@ -1,4 +1,3 @@
-import { AnthropicMessagesTransformError } from "../../error";
 import type {
   AnthropicCacheControl,
   AnthropicMessagesRequest,
@@ -6,7 +5,6 @@ import type {
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
 } from "../../ingress/anthropic-messages";
-import { anthropicThinkingOption } from "../../protocol/anthropic-thinking";
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesModelMessages,
@@ -20,6 +18,9 @@ import type {
   ToolCallPart,
   ToolResultPart,
 } from "./types";
+
+import { AnthropicMessagesTransformError } from "../../error";
+import { anthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
 export function convertAnthropicMessagesToModelMessages(
   request: AnthropicMessagesRequest,

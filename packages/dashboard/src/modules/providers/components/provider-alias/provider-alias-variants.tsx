@@ -1,12 +1,15 @@
-import { m } from "@aio-proxy/i18n";
 import type { AliasConfig, AliasTarget } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { omit } from "es-toolkit/object";
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from "lucide-react";
 import { type FC, useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
+
 import {
   type AliasEditorIssue,
   type AliasEditResult,

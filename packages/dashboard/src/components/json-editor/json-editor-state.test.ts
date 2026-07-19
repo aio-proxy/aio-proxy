@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { setCodeEditorAriaInvalid } from "../code-editor/code-editor-accessibility";
 import {
   beginJsonValidation,

@@ -1,4 +1,5 @@
 import type { ProviderKind, ProviderProtocol, RequestOutcome } from "@aio-proxy/types";
+
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export type RequestAttemptLog = {

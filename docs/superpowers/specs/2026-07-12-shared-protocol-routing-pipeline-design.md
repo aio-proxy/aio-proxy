@@ -30,17 +30,17 @@ aio-proxy 的首要产品契约是“协议兼容代理”：客户端使用 Ope
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 产品契约 | 协议兼容代理优先，不承诺所有跨协议特性无损 |
-| 同协议 API provider | 使用 raw transport |
-| 跨协议 API provider | 使用 materialize 时创建的 model transport（AI SDK bridge） |
-| AI SDK / OAuth provider | 使用 model transport |
-| 编排位置 | server 中唯一的 shared routing pipeline |
-| 协议知识位置 | 每个 inbound protocol adapter |
-| Adapter 实现形状 | 通过小型 `defineProtocolAdapter()` 工厂创建无状态对象 |
-| provider 选择 | model-first，保持 Router 返回的候选顺序 |
-| 旧重构分支 | 只参考设计和测试，不直接 merge |
+| 决策点                  | 结论                                                       |
+| ----------------------- | ---------------------------------------------------------- |
+| 产品契约                | 协议兼容代理优先，不承诺所有跨协议特性无损                 |
+| 同协议 API provider     | 使用 raw transport                                         |
+| 跨协议 API provider     | 使用 materialize 时创建的 model transport（AI SDK bridge） |
+| AI SDK / OAuth provider | 使用 model transport                                       |
+| 编排位置                | server 中唯一的 shared routing pipeline                    |
+| 协议知识位置            | 每个 inbound protocol adapter                              |
+| Adapter 实现形状        | 通过小型 `defineProtocolAdapter()` 工厂创建无状态对象      |
+| provider 选择           | model-first，保持 Router 返回的候选顺序                    |
+| 旧重构分支              | 只参考设计和测试，不直接 merge                             |
 
 ## 为什么不全部走 AI SDK
 
@@ -62,12 +62,7 @@ type ProtocolAdapter<TRequest, TContext> = {
   variant(request: TRequest, context: TContext): string | undefined;
   wantsStream(request: TRequest, context: TContext): boolean;
 
-  rawRequest(
-    raw: Request,
-    request: TRequest,
-    resolvedModel: string,
-    context: TContext,
-  ): Promise<Request>;
+  rawRequest(raw: Request, request: TRequest, resolvedModel: string, context: TContext): Promise<Request>;
 
   modelInvocation(request: TRequest, context: TContext): ModelInvocation;
   modelJson(stream: ModelEventStream): Promise<unknown>;
@@ -79,10 +74,7 @@ type ProtocolAdapter<TRequest, TContext> = {
 每个 adapter 是由小型工厂创建的无状态对象，而不是继承 `BaseProtocolAdapter` 的 class：
 
 ```ts
-export const anthropicMessagesAdapter = defineProtocolAdapter<
-  AnthropicMessagesRequest,
-  AnthropicRouteContext
->({
+export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesRequest, AnthropicRouteContext>({
   protocol: ProviderProtocol.Anthropic,
   parse: parseAnthropicRequest,
   model: (request) => request.model,
@@ -99,10 +91,7 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<
 概念形状如下：
 
 ```ts
-type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
-  ProtocolAdapter<TRequest, TContext>,
-  "variant"
-> & {
+type ProtocolAdapterDefinition<TRequest, TContext> = Omit<ProtocolAdapter<TRequest, TContext>, "variant"> & {
   variant?: ProtocolAdapter<TRequest, TContext>["variant"];
 };
 
@@ -159,11 +148,11 @@ type RoutableProvider = {
 
 具体配置的 materialization 结果为：
 
-| Provider 配置 | raw capability | model capability |
-| --- | --- | --- |
-| API | 原协议 HTTP transport | 对应 AI SDK bridge |
-| AI SDK | 无 | 已加载的 AI SDK provider |
-| OAuth | 无，除非 vendor 将来有真实需要 | vendor runtime model transport |
+| Provider 配置 | raw capability                 | model capability               |
+| ------------- | ------------------------------ | ------------------------------ |
+| API           | 原协议 HTTP transport          | 对应 AI SDK bridge             |
+| AI SDK        | 无                             | 已加载的 AI SDK provider       |
+| OAuth         | 无，除非 vendor 将来有真实需要 | vendor runtime model transport |
 
 API provider 的 AI SDK bridge 在 snapshot materialization 时创建一次，并随 config reload 一起替换。请求路径不得重新加载 package 或重新创建 bridge。
 

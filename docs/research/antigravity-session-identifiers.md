@@ -20,17 +20,17 @@ Antigravity runtime 应建立一个独立的、协议无关的 **normalized sess
 
 以下顺序按“语义强度”排序。每个来源先 trim、限制长度，再加来源 namespace，例如 `openai:conversation:...`、`openai:prompt-cache:...`、`claude-code:session:...`、`extension:x-session-id:...`，避免不同协议中相同裸字符串意外合并。
 
-| 优先级 | 来源 | 使用规则 | 理由 |
-| --- | --- | --- | --- |
-| 1 | aio-proxy 内部显式 `sessionId` | 如果 protocol adapter/runtime 已提供可信 normalized session，直接使用 | 最清楚的跨协议契约；避免插件重复猜测 |
-| 2 | OpenAI Responses `conversation`；其他 ingress 明确定义的官方 conversation ID | 读取 string ID 或对象中的 ID | OpenAI 明确规定该 response 属于该 conversation，且请求/响应 items 会自动加入它；这是最强的官方连续对话语义 |
-| 3 | OpenAI `prompt_cache_key` | 作为稳定 continuity/cache identity 使用 | 官方定义为相似请求的 cache bucketing key；虽不是 conversation object，但比非标准 header 更有明确语义 |
-| 4 | Anthropic `metadata.user_id` 中可验证的 Claude Code session 格式 | 只接受 legacy `user_..._account__session_<id>`，或 JSON 字符串中的 `session_id` | Anthropic 官方字段本身是“外部用户 ID”，不是会话 ID；只有已知 Claude Code 编码明确携带 session 时才可提升为会话标识 |
-| 5 | body extension：`metadata.session_id`、`metadata.conversation_id`、顶层 `session_id`/`conversation_id` | 仅作为兼容扩展；按 ingress schema 能力读取 | 比 header 更接近请求语义，但不是 OpenAI/Anthropic 跨协议标准 |
-| 6 | header extension：`session_id`/`session-id`，然后 `x-session-id`；对应的 conversation aliases | 接受但不宣传为标准；不自动向第三方原样透传 | `session_id` 是部分 Codex/ChatGPT OAuth 私有 surface；`x-session-id` 是 informal extension。无官方跨厂商契约 |
-| 7 | OpenAI `previous_response_id` | 只有在维护 `response_id -> normalized session` 映射时使用；映射缺失时不能把它当稳定根 ID | 它是上一条 response 的链指针，每轮都会变化；直接用值会破坏跨轮粘性。官方还规定它不能与 `conversation` 同用 |
-| 8 | 稳定 transcript fingerprint | 对规范化后的最早若干用户/助手 turns 做带 namespace 的 hash | 适合完整历史每轮重发的 stateless API，但压缩、改写开头、相似首轮和并发短任务会导致断链或误合并 |
-| 9 | 新生成 session | 生成进程内 session state | 没有可靠连续性信号时 fail closed，避免把不同用户/对话粘在一起 |
+| 优先级 | 来源                                                                                                   | 使用规则                                                                                 | 理由                                                                                                               |
+| ------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1      | aio-proxy 内部显式 `sessionId`                                                                         | 如果 protocol adapter/runtime 已提供可信 normalized session，直接使用                    | 最清楚的跨协议契约；避免插件重复猜测                                                                               |
+| 2      | OpenAI Responses `conversation`；其他 ingress 明确定义的官方 conversation ID                           | 读取 string ID 或对象中的 ID                                                             | OpenAI 明确规定该 response 属于该 conversation，且请求/响应 items 会自动加入它；这是最强的官方连续对话语义         |
+| 3      | OpenAI `prompt_cache_key`                                                                              | 作为稳定 continuity/cache identity 使用                                                  | 官方定义为相似请求的 cache bucketing key；虽不是 conversation object，但比非标准 header 更有明确语义               |
+| 4      | Anthropic `metadata.user_id` 中可验证的 Claude Code session 格式                                       | 只接受 legacy `user_..._account__session_<id>`，或 JSON 字符串中的 `session_id`          | Anthropic 官方字段本身是“外部用户 ID”，不是会话 ID；只有已知 Claude Code 编码明确携带 session 时才可提升为会话标识 |
+| 5      | body extension：`metadata.session_id`、`metadata.conversation_id`、顶层 `session_id`/`conversation_id` | 仅作为兼容扩展；按 ingress schema 能力读取                                               | 比 header 更接近请求语义，但不是 OpenAI/Anthropic 跨协议标准                                                       |
+| 6      | header extension：`session_id`/`session-id`，然后 `x-session-id`；对应的 conversation aliases          | 接受但不宣传为标准；不自动向第三方原样透传                                               | `session_id` 是部分 Codex/ChatGPT OAuth 私有 surface；`x-session-id` 是 informal extension。无官方跨厂商契约       |
+| 7      | OpenAI `previous_response_id`                                                                          | 只有在维护 `response_id -> normalized session` 映射时使用；映射缺失时不能把它当稳定根 ID | 它是上一条 response 的链指针，每轮都会变化；直接用值会破坏跨轮粘性。官方还规定它不能与 `conversation` 同用         |
+| 8      | 稳定 transcript fingerprint                                                                            | 对规范化后的最早若干用户/助手 turns 做带 namespace 的 hash                               | 适合完整历史每轮重发的 stateless API，但压缩、改写开头、相似首轮和并发短任务会导致断链或误合并                     |
+| 9      | 新生成 session                                                                                         | 生成进程内 session state                                                                 | 没有可靠连续性信号时 fail closed，避免把不同用户/对话粘在一起                                                      |
 
 ### 明确排除的默认来源
 
@@ -96,22 +96,22 @@ CLIProxyAPI 的 session-affinity selector 使用：已知 Claude Code `metadata.
 
 ## 官方规范与字段分类
 
-| 字段 | 分类 | 官方/一手语义 | 对 normalized session 的判断 |
-| --- | --- | --- | --- |
-| `x-session-id` | 非标准代理扩展 | 不在 IANA HTTP Field Name Registry；`X-` 前缀也不产生标准语义，RFC 6648 已弃用以 `X-` 区分非标准参数的惯例 | 只做低优先级入站兼容 |
-| `session_id` / `session-id` header | 厂商/客户端私有扩展 | OpenAI 与 Anthropic 公共 API 文档均未定义为通用 session header；部分 Codex/ChatGPT OAuth surface 使用 | 可在 `x-session-id` 前接受，但不作为 canonical contract |
-| OpenAI Responses `conversation` | OpenAI 官方 body field | 指定 response 所属 conversation；conversation items 自动加入请求上下文，完成后 input/output items 自动加入 conversation | 强 session 来源 |
-| OpenAI `previous_response_id` | OpenAI 官方 body field | 上一条 response 的唯一 ID，用于多轮；不能与 `conversation` 同用 | 需要 chain map，不能直接当稳定 session root |
-| OpenAI `prompt_cache_key` | OpenAI 官方 body field | 用于相似请求 cache bucketing、优化 cache hit，替代旧 `user` 字段 | 中强 continuity fallback，不等于服务端 conversation |
-| OpenAI `metadata` | OpenAI 官方通用 metadata | 最多 16 个 key/value，用于附加和查询对象信息 | 只有 aio-proxy 明确定义的扩展 key 才能读取；不存在通用 `metadata.user_id` session 语义 |
-| `X-Client-Request-Id` | OpenAI 官方 request header | 调用方提供的单次请求 ID，官方明确要求每请求唯一，用于排障 | 禁止默认作为 session |
-| OpenAI `x-request-id` | OpenAI 官方 response header | 服务端生成的单次请求追踪 ID | 禁止作为 session |
-| Anthropic `metadata.user_id` | Anthropic 官方 body field | 与请求关联的外部用户 opaque ID，可用于 abuse detection；不得放姓名/邮箱/电话 | 仅解析已知 Claude Code embedded session；任意值禁止作为 conversation |
-| Anthropic `request-id` | Anthropic 官方 response header/SDK exposure | SDK 从错误响应 header 读取单次 request ID | 禁止作为 session |
-| Anthropic cache control | Anthropic 官方 content/body cache markers | 通过 `cache_control` breakpoint 和 TTL 控制 prompt caching，而不是 `prompt_cache_key` | 不提供通用 conversation ID |
-| `conversation_id` | 协议/产品特定 body field | OpenAI Realtime 等特定 surface 定义；OpenAI Responses create 使用的是 `conversation`，并非统一顶层 `conversation_id` | 只有 ingress 明确识别该协议时才算原生，否则是扩展 |
-| Antigravity `request.sessionId` | Google Antigravity 私有 body field | 参考真实客户端行为维护 signed-decimal conversation identity | 由 runtime 生成，不作为公共 ingress header |
-| Antigravity `requestId` | Google Antigravity 私有 body field | 每次 agent step 的 request identity | 必须每 step 新建，不能替代 session |
+| 字段                               | 分类                                        | 官方/一手语义                                                                                                           | 对 normalized session 的判断                                                           |
+| ---------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `x-session-id`                     | 非标准代理扩展                              | 不在 IANA HTTP Field Name Registry；`X-` 前缀也不产生标准语义，RFC 6648 已弃用以 `X-` 区分非标准参数的惯例              | 只做低优先级入站兼容                                                                   |
+| `session_id` / `session-id` header | 厂商/客户端私有扩展                         | OpenAI 与 Anthropic 公共 API 文档均未定义为通用 session header；部分 Codex/ChatGPT OAuth surface 使用                   | 可在 `x-session-id` 前接受，但不作为 canonical contract                                |
+| OpenAI Responses `conversation`    | OpenAI 官方 body field                      | 指定 response 所属 conversation；conversation items 自动加入请求上下文，完成后 input/output items 自动加入 conversation | 强 session 来源                                                                        |
+| OpenAI `previous_response_id`      | OpenAI 官方 body field                      | 上一条 response 的唯一 ID，用于多轮；不能与 `conversation` 同用                                                         | 需要 chain map，不能直接当稳定 session root                                            |
+| OpenAI `prompt_cache_key`          | OpenAI 官方 body field                      | 用于相似请求 cache bucketing、优化 cache hit，替代旧 `user` 字段                                                        | 中强 continuity fallback，不等于服务端 conversation                                    |
+| OpenAI `metadata`                  | OpenAI 官方通用 metadata                    | 最多 16 个 key/value，用于附加和查询对象信息                                                                            | 只有 aio-proxy 明确定义的扩展 key 才能读取；不存在通用 `metadata.user_id` session 语义 |
+| `X-Client-Request-Id`              | OpenAI 官方 request header                  | 调用方提供的单次请求 ID，官方明确要求每请求唯一，用于排障                                                               | 禁止默认作为 session                                                                   |
+| OpenAI `x-request-id`              | OpenAI 官方 response header                 | 服务端生成的单次请求追踪 ID                                                                                             | 禁止作为 session                                                                       |
+| Anthropic `metadata.user_id`       | Anthropic 官方 body field                   | 与请求关联的外部用户 opaque ID，可用于 abuse detection；不得放姓名/邮箱/电话                                            | 仅解析已知 Claude Code embedded session；任意值禁止作为 conversation                   |
+| Anthropic `request-id`             | Anthropic 官方 response header/SDK exposure | SDK 从错误响应 header 读取单次 request ID                                                                               | 禁止作为 session                                                                       |
+| Anthropic cache control            | Anthropic 官方 content/body cache markers   | 通过 `cache_control` breakpoint 和 TTL 控制 prompt caching，而不是 `prompt_cache_key`                                   | 不提供通用 conversation ID                                                             |
+| `conversation_id`                  | 协议/产品特定 body field                    | OpenAI Realtime 等特定 surface 定义；OpenAI Responses create 使用的是 `conversation`，并非统一顶层 `conversation_id`    | 只有 ingress 明确识别该协议时才算原生，否则是扩展                                      |
+| Antigravity `request.sessionId`    | Google Antigravity 私有 body field          | 参考真实客户端行为维护 signed-decimal conversation identity                                                             | 由 runtime 生成，不作为公共 ingress header                                             |
+| Antigravity `requestId`            | Google Antigravity 私有 body field          | 每次 agent step 的 request identity                                                                                     | 必须每 step 新建，不能替代 session                                                     |
 
 官方来源：
 

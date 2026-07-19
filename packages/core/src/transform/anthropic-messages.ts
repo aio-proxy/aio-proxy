@@ -1,4 +1,3 @@
-import { AnthropicMessagesTransformError } from "../error";
 import type {
   AnthropicAssistantContentBlock,
   AnthropicMessagesRequest,
@@ -6,7 +5,6 @@ import type {
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
 } from "../ingress/anthropic-messages";
-import { convertAnthropicMessagesToModelMessages } from "./anthropic-messages/to-model";
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesFromModelMessages,
@@ -17,6 +15,9 @@ import type {
   ToolCallPart,
   ToolResultPart,
 } from "./anthropic-messages/types";
+
+import { AnthropicMessagesTransformError } from "../error";
+import { convertAnthropicMessagesToModelMessages } from "./anthropic-messages/to-model";
 
 export type {
   AnthropicMessagesFromModelMessages,

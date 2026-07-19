@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
+import type { TextStreamPart, ToolSet } from "ai";
+
 import { createServer } from "@aio-proxy/server";
 import { ProviderProtocol } from "@aio-proxy/types";
-import type { TextStreamPart, ToolSet } from "ai";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   createTempHomes,

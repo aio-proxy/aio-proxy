@@ -1,8 +1,9 @@
+import { AtomicConfigFile, type PluginSecretSnapshot } from "@aio-proxy/core";
+import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtomicConfigFile, type PluginSecretSnapshot } from "@aio-proxy/core";
-import { definePlugin } from "@aio-proxy/plugin-sdk";
+
 import { type PluginLifecycleDeps, pluginConfig } from "./index";
 
 export function descriptorWithForm(

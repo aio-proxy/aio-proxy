@@ -1,4 +1,5 @@
-import { pathToFileURL } from "node:url";
+import type { DiagnosticCode } from "@aio-proxy/types";
+
 import {
   isPluginDescriptor,
   type LocalizedText,
@@ -7,7 +8,8 @@ import {
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
-import type { DiagnosticCode } from "@aio-proxy/types";
+import { pathToFileURL } from "node:url";
+
 import type { NpmPackageInfo } from "../../npm";
 import type { PluginPackageImporter } from "./index";
 

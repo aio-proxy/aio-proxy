@@ -1,6 +1,8 @@
 import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { Hono } from "hono";
+
 import type { ProviderRouteSource } from "../runtime";
+
 import { handleProtocolRequest } from "./pipeline";
 
 export function createOpenAICompletionsRoutes(source: ProviderRouteSource) {

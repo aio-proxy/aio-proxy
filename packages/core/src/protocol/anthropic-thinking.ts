@@ -1,5 +1,6 @@
-import { AnthropicMessagesTransformError } from "../error";
 import type { AnthropicMessagesRequest } from "../ingress/anthropic-messages";
+
+import { AnthropicMessagesTransformError } from "../error";
 
 export type AnthropicThinkingOption =
   | { readonly mode: "disabled" }

@@ -1,6 +1,9 @@
-import { queryOptions } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
+
+import { queryOptions } from "@tanstack/react-query";
+
 import { dashboardClient } from "@/lib/dashboard-client";
+
 import type { LogsSearch } from "../logs-search";
 
 type DashboardLogsResponse = InferResponseType<typeof dashboardClient.dashboard.api.logs.$get, 200>;

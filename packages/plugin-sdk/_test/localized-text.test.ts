@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { LocalizedTextSchema, resolveLocalizedText } from "../src";
 
 describe("LocalizedText", () => {

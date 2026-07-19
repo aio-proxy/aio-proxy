@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { freePort, repoCwd, waitForOk } from "../_test/cli-test-helpers";
 
 test("development entry advertises the Rsbuild Dashboard", async () => {

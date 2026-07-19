@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { createRequestLogStore, now, openDb, rows, seedBase, tempHome } from "./request-log.test-support";
 
 describe("request log store", () => {

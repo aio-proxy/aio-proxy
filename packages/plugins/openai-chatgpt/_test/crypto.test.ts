@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { extractAccountId } from "../src/jwt";
 import { base64url, generatePKCE, generateState } from "../src/pkce";
 import { tokenResponseSchema } from "../src/schema";

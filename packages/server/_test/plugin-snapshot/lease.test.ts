@@ -1,5 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
 import { Router, type TextStreamPart, type ToolSet } from "@aio-proxy/core";
+import { afterEach, expect, test } from "bun:test";
+
 import { createSnapshotManager } from "../../src/plugin-snapshot";
 import { handleProtocolRequest } from "../../src/routes/pipeline";
 import { createUsageCapture } from "../../src/usage-capture";
@@ -83,61 +84,61 @@ test("an in-flight protocol response retains its old provider snapshot until the
   expect(manager.canDeleteAccount("old")).toBe(true);
 });
 
-test.each([
-  "EOF",
-  "cancel",
-] as const)("an in-flight model stream retains its old provider snapshot until response %s", async (completion) => {
-  let modelController: ReadableStreamDefaultController<TextStreamPart<ToolSet>> | undefined;
-  const old = modelProvider({
-    id: "old",
-    modelId: REQUESTED_MODEL,
-    invoke: () =>
-      new ReadableStream<TextStreamPart<ToolSet>>({
-        start(controller) {
-          modelController = controller;
-          controller.enqueue({ type: "text-delta", id: "text-1", text: "old" });
-        },
-      }),
-  });
-  const next = modelProvider({
-    id: "next",
-    modelId: REQUESTED_MODEL,
-    invoke: () => new ReadableStream<TextStreamPart<ToolSet>>({ start: (controller) => controller.close() }),
-  });
-  const manager = createSnapshotManager({
-    plugins: emptyPlugins as never,
-    providers: [old.provider],
-    router: new Router([old.provider]),
-  });
-  const base = defineProviderRouteSource([old]);
-  const source = {
-    ...base.source,
-    acquireProviderSnapshot: manager.acquire,
-    currentProviderSnapshot: manager.current,
-    usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }),
-  };
-  const response = await handleProtocolRequest({
-    adapter: defineProtocolAdapter(),
-    context: createProtocolContext(),
-    rawRequest: jsonRequest({ model: REQUESTED_MODEL, stream: true }),
-    source,
-  });
-  const retired = manager.swap({
-    plugins: emptyPlugins as never,
-    providers: [next.provider],
-    router: new Router([next.provider]),
-  });
+test.each(["EOF", "cancel"] as const)(
+  "an in-flight model stream retains its old provider snapshot until response %s",
+  async (completion) => {
+    let modelController: ReadableStreamDefaultController<TextStreamPart<ToolSet>> | undefined;
+    const old = modelProvider({
+      id: "old",
+      modelId: REQUESTED_MODEL,
+      invoke: () =>
+        new ReadableStream<TextStreamPart<ToolSet>>({
+          start(controller) {
+            modelController = controller;
+            controller.enqueue({ type: "text-delta", id: "text-1", text: "old" });
+          },
+        }),
+    });
+    const next = modelProvider({
+      id: "next",
+      modelId: REQUESTED_MODEL,
+      invoke: () => new ReadableStream<TextStreamPart<ToolSet>>({ start: (controller) => controller.close() }),
+    });
+    const manager = createSnapshotManager({
+      plugins: emptyPlugins as never,
+      providers: [old.provider],
+      router: new Router([old.provider]),
+    });
+    const base = defineProviderRouteSource([old]);
+    const source = {
+      ...base.source,
+      acquireProviderSnapshot: manager.acquire,
+      currentProviderSnapshot: manager.current,
+      usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }),
+    };
+    const response = await handleProtocolRequest({
+      adapter: defineProtocolAdapter(),
+      context: createProtocolContext(),
+      rawRequest: jsonRequest({ model: REQUESTED_MODEL, stream: true }),
+      source,
+    });
+    const retired = manager.swap({
+      plugins: emptyPlugins as never,
+      providers: [next.provider],
+      router: new Router([next.provider]),
+    });
 
-  expect(manager.canDeleteAccount("old")).toBe(false);
-  if (completion === "EOF") {
-    modelController?.close();
-    expect(await response.text()).toContain('data: {"text":"old"}');
-  } else {
-    await response.body?.cancel();
-  }
-  await retired.whenDrained;
-  expect(manager.canDeleteAccount("old")).toBe(true);
-});
+    expect(manager.canDeleteAccount("old")).toBe(false);
+    if (completion === "EOF") {
+      modelController?.close();
+      expect(await response.text()).toContain('data: {"text":"old"}');
+    } else {
+      await response.body?.cancel();
+    }
+    await retired.whenDrained;
+    expect(manager.canDeleteAccount("old")).toBe(true);
+  },
+);
 
 test("a final raw error response retains its old provider snapshot until the body completes", async () => {
   let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;

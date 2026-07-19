@@ -1,7 +1,7 @@
-import { isMap, isProxy, isSet } from "node:util/types";
 import { m } from "@aio-proxy/i18n";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 import { escapeRegExp } from "es-toolkit/string";
+import { isMap, isProxy, isSet } from "node:util/types";
 
 export type DiagnosticContext = {
   readonly plugin?: string;

@@ -1,4 +1,7 @@
 import type { Database } from "bun:sqlite";
+
+import type { AccountWrite, PluginRepository } from "./types";
+
 import {
   ACCOUNT_COLUMNS,
   ACCOUNT_SUMMARY_COLUMNS,
@@ -8,7 +11,6 @@ import {
   storedAccount,
   storedAccountSummary,
 } from "./rows";
-import type { AccountWrite, PluginRepository } from "./types";
 
 type AccountRowWrite = Omit<AccountWrite, "catalog">;
 

@@ -1,8 +1,10 @@
 import type { CredentialPort, ModelDescriptor, ProtocolId } from "@aio-proxy/plugin-sdk";
+
+import type { GitHubCopilotCredential } from "./types";
+
 import { copilotModelSchema, modelsResponseSchema } from "../schema";
 import { currentGitHubCopilotCredential } from "./credential";
 import { copilotHeaders, fetchJson } from "./http";
-import type { GitHubCopilotCredential } from "./types";
 
 export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 

@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
-import { anthropicMessagesAdapter, Router } from "@aio-proxy/core";
 import type { TokenCountCapability } from "@aio-proxy/plugin-sdk";
+
+import { anthropicMessagesAdapter, Router } from "@aio-proxy/core";
 import { ProviderKind } from "@aio-proxy/types";
+import { expect, test } from "bun:test";
+
+import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
+
 import { createRecording } from "../../_test/pipeline-helpers/recording";
 import { LogicalSessionStore } from "../logical-session-store";
-import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 import { handleTokenCount } from "./token-count";
 
 test("releases the retained body when count request validation fails", async () => {
@@ -29,28 +32,29 @@ const abortReasons = [
   ["non-Error", { code: "client_cancelled" }],
 ] as const;
 
-test.each(
-  abortReasons,
-)("preserves an exact %s reason without calling a counter when pre-aborted", async (_type, reason) => {
-  const controller = new AbortController();
-  const request = anthropicRequest(controller.signal);
-  controller.abort(reason);
-  let calls = 0;
-  const fixture = countSource([
-    countProvider(async () => {
-      calls += 1;
-      return { inputTokens: 5 };
-    }),
-  ]);
+test.each(abortReasons)(
+  "preserves an exact %s reason without calling a counter when pre-aborted",
+  async (_type, reason) => {
+    const controller = new AbortController();
+    const request = anthropicRequest(controller.signal);
+    controller.abort(reason);
+    let calls = 0;
+    const fixture = countSource([
+      countProvider(async () => {
+        calls += 1;
+        return { inputTokens: 5 };
+      }),
+    ]);
 
-  const result = await settleWithin(runCount(fixture.source, request), 100);
+    const result = await settleWithin(runCount(fixture.source, request), 100);
 
-  expect(result).toBe(reason);
-  expect(calls).toBe(0);
-  expect(fixture.recording.attempts).toEqual([]);
-  expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: "cancelled" })]);
-  expect(fixture.releases()).toBe(1);
-});
+    expect(result).toBe(reason);
+    expect(calls).toBe(0);
+    expect(fixture.recording.attempts).toEqual([]);
+    expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: "cancelled" })]);
+    expect(fixture.releases()).toBe(1);
+  },
+);
 
 test("does not return success when the request aborts while a counter ignores its signal", async () => {
   const controller = new AbortController();

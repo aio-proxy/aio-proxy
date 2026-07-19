@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { createCcaEnvelope, wireSessionId } from "./envelope";
 
 describe("CCA envelope identity", () => {

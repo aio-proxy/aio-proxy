@@ -1,6 +1,8 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardProviderSummary } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { forwardRef, useImperativeHandle, useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
 import { useProviderDelete } from "../hooks/use-provider-mutations";
 
 type DeleteProviderTarget = Pick<DashboardProviderSummary, "id">;

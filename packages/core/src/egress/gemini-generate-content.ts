@@ -5,8 +5,10 @@ import type {
   GenerateContentResponseUsageMetadata,
   Part,
 } from "@google/genai";
+
 import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
 import type { ModelEgressContext } from "../protocol/adapter";
+
 import { createCancellableEgressStream } from "./cancellable-stream";
 
 const encoder = new TextEncoder();

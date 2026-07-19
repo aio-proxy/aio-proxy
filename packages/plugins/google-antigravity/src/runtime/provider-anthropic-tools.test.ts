@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
+import type { CcaTransport } from "./transport";
+
 import { writeAnthropicMessagesSSE } from "../../../../core/src/egress/anthropic-messages";
 import { createAntigravityProviderV4 } from "./provider";
 import { bridgeLateReasoningSignatures } from "./reasoning-signature-stream";
-import type { CcaTransport } from "./transport";
 
 const MODEL = "claude-opus-4-6-thinking";
 const SIGNATURE = "tool-signature-".repeat(4);

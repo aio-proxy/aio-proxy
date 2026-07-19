@@ -1,7 +1,3 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   ABSENT_PROVIDER_DIGEST,
   AtomicConfigCommitUncertainError,
@@ -12,6 +8,11 @@ import {
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { createAccountRemovalCoordinator } from "../src/account-removal";
 import { createConfigStore } from "../src/config-store";
 import { seedOAuthAccount, waitUntil } from "./config-store.oauth.test-support";

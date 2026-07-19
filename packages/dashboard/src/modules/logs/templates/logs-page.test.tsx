@@ -1,5 +1,6 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
+
 import { createDefaultLogsSearch } from "../logs-search";
 import { LogsPage } from "./logs-page";
 

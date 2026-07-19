@@ -1,6 +1,7 @@
-import { afterEach, expect, jest, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
+import { afterEach, expect, jest, test } from "bun:test";
+
 import { openDb } from "../../db";
 import { CredentialRefreshLeaseLostError, CredentialRefreshTimeoutError } from "../index";
 import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository/index";

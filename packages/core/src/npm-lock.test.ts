@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSyn
 import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { NpmLockError } from ".";
 import { acquireNpmInstallLock } from "./npm-lock";
 

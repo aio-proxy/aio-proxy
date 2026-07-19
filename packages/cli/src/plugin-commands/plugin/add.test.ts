@@ -1,8 +1,9 @@
+import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { definePlugin } from "@aio-proxy/plugin-sdk";
+
 import {
   createDefaultPluginLifecycleDeps,
   createPluginConfirmation,

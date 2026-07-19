@@ -1,4 +1,5 @@
 import type { ReasoningReplay, ReplayPart } from "../../protocol/replay-cache";
+
 import { validThoughtSignature } from "../../protocol/signatures";
 import { asArray, asRecord } from "./payload-shape";
 import {

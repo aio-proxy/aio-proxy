@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import {
   CapabilityIdSchema,
   ConfigSchema,
@@ -101,12 +102,12 @@ describe("plugin and provider diagnostics", () => {
     expect(DiagnosticCodeSchema.parse(code)).toBe(code);
   });
 
-  test.each([
-    { status: "ready" },
-    { status: "failed", diagnostic: diagnostic("PLUGIN_LOAD_FAILED") },
-  ] as const)("accepts plugin state $status", (state) => {
-    expect(PluginStateSchema.parse(state)).toEqual(state);
-  });
+  test.each([{ status: "ready" }, { status: "failed", diagnostic: diagnostic("PLUGIN_LOAD_FAILED") }] as const)(
+    "accepts plugin state $status",
+    (state) => {
+      expect(PluginStateSchema.parse(state)).toEqual(state);
+    },
+  );
 
   test.each([
     ["ready", { status: "ready", catalog: "fresh" }],

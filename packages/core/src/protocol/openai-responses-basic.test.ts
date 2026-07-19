@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../index";
 
 describe("openAIResponsesAdapter", () => {

@@ -1,9 +1,10 @@
+import { ABSENT_PROVIDER_DIGEST, AtomicConfigFile, createPluginRepository } from "@aio-proxy/core";
+import { openDb } from "@aio-proxy/core/db";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ABSENT_PROVIDER_DIGEST, AtomicConfigFile, createPluginRepository } from "@aio-proxy/core";
-import { openDb } from "@aio-proxy/core/db";
+
 import { createAccountRemovalCoordinator } from "../../src/account-removal";
 
 test("coordinates absent digest, snapshot drainage, and final config recheck", async () => {
