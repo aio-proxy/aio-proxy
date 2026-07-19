@@ -5,6 +5,7 @@ import {
   type OpenRouterPriceCatalog,
   type TextStreamPart,
   type ToolSet,
+  type UsageAccounting,
 } from "@aio-proxy/core";
 
 import {
@@ -12,8 +13,8 @@ import {
   extractPassthroughObservation,
   type PassthroughObservation,
   type PassthroughSseUsageObserver,
-} from "./passthrough-usage";
-import { isAbortError } from "./route-observation";
+} from "../passthrough-usage";
+import { isAbortError } from "../route-observation";
 
 type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: "finish" }>;
 const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
@@ -78,7 +79,10 @@ export function createUsageCapture(options: {
                 aborted
                   ? { outcome: "cancelled" }
                   : finished
-                    ? { outcome: "success", ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask)) }
+                    ? {
+                        outcome: "success",
+                        ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask, { source: "ai-sdk" })),
+                      }
                     : { outcome: "failure" },
               );
               return;
@@ -174,6 +178,7 @@ export function createUsageCapture(options: {
             const usage = await priceUsage(
               observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
               options.priceCatalogTask,
+              { source: "passthrough", protocol },
             );
             if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
             terminal.resolve({ outcome: "success", statusCode, ...usageProperty(usage) });
@@ -248,27 +253,31 @@ function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelId: stri
 async function priceUsage(
   usage: UsageRow | undefined,
   priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
+  accounting: UsageAccounting,
 ): Promise<UsageRow | undefined> {
   if (usage === undefined) {
     return undefined;
   }
   try {
     const price = (await priceCatalogTask())?.find(usage.modelId);
-    const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price);
+    const cost =
+      price === undefined
+        ? undefined
+        : calculateEstimatedCost(
+            {
+              ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+              ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+              ...(usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: usage.cacheReadTokens }),
+              ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
+              ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+            },
+            price,
+            accounting,
+          );
     return cost === undefined ? usage : { ...usage, ...cost };
   } catch {
     return usage;
   }
-}
-
-function pricingInput(usage: UsageRow) {
-  return {
-    ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
-    ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
-    ...(usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: usage.cacheReadTokens }),
-    ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
-    ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
-  };
 }
 
 function usageProperty(usage: UsageRow | undefined): { readonly usage?: UsageRow } {
