@@ -16,6 +16,7 @@ describe("provider login capability resolution", () => {
     "@aio-proxy/plugin-github-copilot",
     "@aio-proxy/plugin-openai-chatgpt",
     "@aio-proxy/plugin-google-antigravity",
+    "@aio-proxy/plugin-kimi-code",
   ] as const;
 
   test("uses localized capability prompt copy", async () => {
