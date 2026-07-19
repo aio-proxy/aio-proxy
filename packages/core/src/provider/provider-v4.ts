@@ -23,14 +23,27 @@ export function validateProviderV4(value: unknown): value is ProviderV4 {
 }
 
 export function createProviderV4Invoke(providerId: string, provider: ProviderV4): AiSdkProviderInstance["invoke"] {
-  return (request) =>
-    new ReadableStream({
+  return (request) => {
+    const settings = {
+      ...request.settings,
+      providerOptions: {
+        ...request.settings?.providerOptions,
+        aioProxy: {
+          ...(request.settings?.providerOptions?.aioProxy as Record<string, unknown> | undefined),
+          logicalRequest: request.context,
+          ...(request.providerTools === undefined || request.providerTools.length === 0
+            ? {}
+            : { providerTools: request.providerTools }),
+        },
+      },
+    };
+    return new ReadableStream({
       async start(controller) {
         try {
           const result = streamAiSdkText({
             model: provider.languageModel(request.modelId),
             messages: request.messages,
-            ...(request.settings === undefined ? {} : { settings: request.settings }),
+            settings,
             ...(request.tools === undefined ? {} : { tools: request.tools }),
             ...(request.signal === undefined ? {} : { signal: request.signal }),
           });
@@ -44,4 +57,5 @@ export function createProviderV4Invoke(providerId: string, provider: ProviderV4)
         }
       },
     });
+  };
 }

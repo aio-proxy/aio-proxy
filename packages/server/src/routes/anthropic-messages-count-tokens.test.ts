@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AiSdkProviderInstance } from "@aio-proxy/core";
-import { createServer } from "@aio-proxy/server";
-
-import { messagesRequest, textStream } from "./anthropic-messages.test-support";
+import { messagesRequest, textStream } from "../../_test/anthropic-messages.test-support";
+import { createServer } from "../server";
 
 describe("POST /v1/messages/count_tokens", () => {
   test("Given message request When token count is posted Then returns input token count", async () => {
@@ -33,6 +32,7 @@ describe("POST /v1/messages/count_tokens", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({ input_tokens: 2 });
     expect(typeof body.input_tokens).toBe("number");
+    expect(response.headers.get("x-aio-proxy-token-count-estimated")).toBe("true");
   });
 
   test("Given oversized Content-Length When token count is posted Then rejects before parsing", async () => {

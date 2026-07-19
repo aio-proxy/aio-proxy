@@ -88,6 +88,8 @@ const safetySettingSchema = z
 export const GeminiGenerateContentRequestSchema = z.object({
   model: idSchema,
   contents: z.array(contentSchema).min(1),
+  session_id: z.string().optional(),
+  conversation_id: z.string().optional(),
   systemInstruction: systemInstructionSchema.optional(),
   tools: z.array(toolSchema).optional(),
   generationConfig: generationConfigSchema.optional(),

@@ -27,12 +27,16 @@ export function adapter(id: string): OAuthAdapter {
   };
 }
 
-export function registry() {
+type RegistryEntry = readonly [plugin: string, capabilities: readonly string[]];
+
+const defaultRegistryEntries: readonly RegistryEntry[] = [
+  ["@a/one", ["default", "unique"]],
+  ["@b/two", ["default"]],
+];
+
+export function registry(entries: readonly RegistryEntry[] = defaultRegistryEntries) {
   const host = createPluginRegistryHost();
-  for (const [plugin, ids] of [
-    ["@a/one", ["default", "unique"]],
-    ["@b/two", ["default"]],
-  ] as const) {
+  for (const [plugin, ids] of entries) {
     const staging = host.stage(plugin);
     for (const id of ids) staging.api.oauth.register(adapter(id));
     staging.seal();

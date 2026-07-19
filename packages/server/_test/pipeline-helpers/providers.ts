@@ -1,5 +1,6 @@
 import { type ModelEventStream, Router } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { LogicalSessionStore } from "../../src/logical-session-store";
 import type { ModelTransport, ProviderRouteSource, RawTransport, RuntimeProviderInstance } from "../../src/runtime";
 import {
   createUsageCapture,
@@ -23,9 +24,9 @@ export function rawProvider(options: {
 }): FakeProvider {
   const calls = providerCalls();
   const protocol = options.protocol ?? ProviderProtocol.OpenAICompatible;
-  const rawInvoke: RawTransport["invoke"] = async (request) => {
+  const rawInvoke: RawTransport["invoke"] = async (request, context) => {
     calls.raw.push(request);
-    return options.invoke?.(request) ?? Response.json({ provider: options.id });
+    return options.invoke?.(request, context) ?? Response.json({ provider: options.id });
   };
   const model = options.model === undefined ? undefined : instrumentModel(options.model, calls);
   const provider = {
@@ -100,6 +101,7 @@ export function defineProviderRouteSource(
     }),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
     logger: (entry) => logs.push(entry),
+    logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
     usageCapture,
   } satisfies ProviderRouteSource;

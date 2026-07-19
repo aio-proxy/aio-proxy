@@ -7,7 +7,8 @@ import {
 import type { ProviderProtocol, UsageRow } from "@aio-proxy/types";
 import {
   createPassthroughSseUsageObserver,
-  extractPassthroughUsage,
+  extractPassthroughObservation,
+  type PassthroughObservation,
   type PassthroughSseUsageObserver,
 } from "./passthrough-usage";
 import { isAbortError } from "./route-observation";
@@ -36,6 +37,7 @@ export type PassthroughUsageOptions = {
   readonly protocol: ProviderProtocol;
   readonly providerId: string;
   readonly modelId: string;
+  readonly onResponseId?: (responseId: string) => void;
 };
 
 export type UsageCapture = {
@@ -112,7 +114,7 @@ export function createUsageCapture(options: {
       return { value, completion: terminal.promise };
     },
 
-    passthrough({ response, protocol, providerId, modelId }) {
+    passthrough({ response, protocol, providerId, modelId, onResponseId }) {
       if (response.status < 200 || response.status >= 400) {
         return { value: response, completion: Promise.resolve({ outcome: "failure", statusCode: response.status }) };
       }
@@ -161,16 +163,17 @@ export function createUsageCapture(options: {
 
             done = true;
             controller.close();
-            const extracted =
+            const observation =
               sseObserver !== undefined && decoder !== undefined
                 ? finishSseObservation(sseObserver, decoder)
                 : captureJson
-                  ? extractPassthroughUsage(protocol, decodeChunks(chunks, byteLength))
-                  : undefined;
+                  ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
+                  : {};
             const usage = await priceUsage(
-              extracted === undefined ? undefined : { ...extracted, providerId, modelId },
+              observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
               options.priceCatalogTask,
             );
+            if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
             terminal.resolve({ outcome: "success", statusCode, ...usageProperty(usage) });
           } catch (error) {
             done = true;
@@ -204,7 +207,7 @@ export function createUsageCapture(options: {
   };
 }
 
-function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder) {
+function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
   observer.feed(decoder.decode());
   return observer.finish();
 }

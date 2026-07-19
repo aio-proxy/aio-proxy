@@ -5,7 +5,6 @@ import {
   OpenAIResponsesRequestSchema,
   OpenAIResponsesUnsupportedFeatureError,
   parseOpenAIResponses,
-  safeParseOpenAIResponses,
 } from "../../index";
 
 const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/openai-responses`;
@@ -64,16 +63,25 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  test("Given previous_response_id When safe parsed Then unsupported feature is returned", () => {
-    const result = safeParseOpenAIResponses({
+  test("Given session fields When parsed Then fields are preserved", () => {
+    const result = parseOpenAIResponses({
       model: "gpt-5-mini",
       input: "x",
-      previous_response_id: "r1",
+      conversation: { id: "conversation-1", extra: true },
+      prompt_cache_key: "cache-1",
+      previous_response_id: "response-1",
+      metadata: { session_id: "metadata-session", conversation_id: "metadata-conversation", extra: true },
+      session_id: "session-1",
+      conversation_id: "conversation-2",
     });
 
-    expect(result).toEqual({
-      ok: false,
-      error: new OpenAIResponsesUnsupportedFeatureError("previous_response_id", "previous_response_id"),
+    expect(result).toMatchObject({
+      conversation: { id: "conversation-1", extra: true },
+      prompt_cache_key: "cache-1",
+      previous_response_id: "response-1",
+      metadata: { session_id: "metadata-session", conversation_id: "metadata-conversation", extra: true },
+      session_id: "session-1",
+      conversation_id: "conversation-2",
     });
   });
 

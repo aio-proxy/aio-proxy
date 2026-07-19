@@ -5,7 +5,7 @@ import type {
   OpenAIResponsesRequest,
   OpenAIResponsesTextPart,
   OpenAIResponsesTool,
-} from "../ingress/openai-responses";
+} from "../ingress/openai-responses/index";
 import type { OpenAIResponsesFromModelMessages, OpenAIResponsesTransformTool } from "./openai-responses-types";
 
 type UserMessage = Extract<ModelMessage, { role: "user" }>;

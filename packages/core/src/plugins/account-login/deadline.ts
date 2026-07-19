@@ -1,30 +1,46 @@
-import type { AuthorizationPort, LocalizedText, OAuthAdapter } from "@aio-proxy/plugin-sdk";
-import { OAuthAdapterLoginError, OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from "./errors";
+import {
+  type AuthorizationPort,
+  CATALOG_DISCOVERY_TIMEOUT_MS,
+  type LocalizedText,
+  type OAuthAdapter,
+} from "@aio-proxy/plugin-sdk";
+import { OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from "./errors";
 
 export const LOGIN_TIMEOUT_MS = 20 * 60_000;
-export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
+export { CATALOG_DISCOVERY_TIMEOUT_MS };
 
 const hostAuthorizationErrors = new WeakMap<object, unknown>();
 
+function protectHostAuthorizationError(error: unknown): Error {
+  const carrier = new Error("HOST_AUTHORIZATION_FAILED");
+  hostAuthorizationErrors.set(carrier, error);
+  return carrier;
+}
+
+function authorizationFailed(reason: "authorization_port" | "oauth_adapter"): Error {
+  const error = new Error("AUTHORIZATION_FAILED");
+  error.name = "OAuthAuthorizationFailedError";
+  return Object.assign(error, {
+    code: "AUTHORIZATION_FAILED" as const,
+    reason,
+    detail: reason === "authorization_port" ? "HOST_AUTHORIZATION_FAILED" : "OAUTH_ADAPTER_LOGIN_FAILED",
+  });
+}
+
 export function protectedAuthorization(authorization: AuthorizationPort): AuthorizationPort {
-  const protect = (error: unknown): Error => {
-    const carrier = new Error("HOST_AUTHORIZATION_FAILED");
-    hostAuthorizationErrors.set(carrier, error);
-    return carrier;
-  };
   return {
     async presentDeviceCode(input) {
       try {
         await authorization.presentDeviceCode(input);
       } catch (error) {
-        throw protect(error);
+        throw protectHostAuthorizationError(error);
       }
     },
     async loopback(input) {
       try {
         return await authorization.loopback(input);
       } catch (error) {
-        throw protect(error);
+        throw protectHostAuthorizationError(error);
       }
     },
   };
@@ -45,14 +61,20 @@ export async function loginWithProtectedAuthorization<Options, Credential>(
   options: Options,
 ): Promise<Awaited<ReturnType<OAuthAdapter<Options, Credential>["login"]>>> {
   try {
-    return await withAbort(signal, () =>
-      adapter.login({ authorization: protectedAuthorization(createAuthorization()), progress, signal }, options),
-    );
+    return await withAbort(signal, () => {
+      let authorization: AuthorizationPort;
+      try {
+        authorization = createAuthorization();
+      } catch (error) {
+        throw protectHostAuthorizationError(error);
+      }
+      return adapter.login({ authorization: protectedAuthorization(authorization), progress, signal }, options);
+    });
   } catch (error) {
     if (signal.aborted) throw signal.reason;
     const preserved = preservedAuthorizationError(error);
     if (preserved.found) throw preserved.value;
-    throw new OAuthAdapterLoginError();
+    throw authorizationFailed("oauth_adapter");
   }
 }
 

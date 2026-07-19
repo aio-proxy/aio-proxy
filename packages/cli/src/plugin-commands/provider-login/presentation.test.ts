@@ -104,12 +104,17 @@ describe("provider login safe presentation", () => {
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toMatchObject({ name: "OAuthAdapterLoginError", message: "OAUTH_ADAPTER_LOGIN_FAILED" });
+    expect(thrown).toMatchObject({
+      name: "OAuthAuthorizationFailedError",
+      message: "AUTHORIZATION_FAILED",
+      code: "AUTHORIZATION_FAILED",
+      reason: "oauth_adapter",
+    });
     expect(isProviderLoginUserError(thrown)).toBe(false);
     expect(state.printed).toEqual([]);
   });
 
-  test("preserves a host loopback failure through the adapter boundary and top-level rendering", async () => {
+  test("preserves a host loopback failure at the account-login boundary", async () => {
     const host = createPluginRegistryHost();
     const staging = host.stage("@host/login");
     staging.api.oauth.register({
@@ -152,6 +157,8 @@ describe("provider login safe presentation", () => {
     } catch (error) {
       thrown = error;
     }
+    expect(thrown).toBeInstanceOf(LoopbackPortUnavailableError);
+    expect(thrown).toMatchObject({ port: 1455 });
     expect(formatCliError(thrown, "en").message).toBe("The local callback listener could not use port 1455.");
   });
 

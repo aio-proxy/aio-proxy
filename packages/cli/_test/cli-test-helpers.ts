@@ -38,6 +38,48 @@ export const runCliAsync = async (args: readonly string[], env: CliEnv = {}) => 
   return { exitCode, stderr, stdout };
 };
 
+export const runCliUntilOutput = async (args: readonly string[], expected: readonly string[], env: CliEnv = {}) => {
+  const subprocess = Bun.spawn([...cli, ...args], {
+    cwd: repoRoot,
+    env: cliEnv(env),
+    stdin: "pipe",
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  subprocess.stdin.end();
+  let stdout = "";
+  let stderr = "";
+  const outputReady = Promise.withResolvers<void>();
+  const readOutput = async (stream: ReadableStream<Uint8Array>, append: (chunk: string) => void) => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        append(decoder.decode(value, { stream: true }));
+        if (expected.some((text) => `${stdout}${stderr}`.includes(text))) outputReady.resolve();
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+  const readers = Promise.all([
+    readOutput(subprocess.stdout, (chunk) => (stdout += chunk)),
+    readOutput(subprocess.stderr, (chunk) => (stderr += chunk)),
+  ]);
+  const timeout = setTimeout(() => outputReady.reject(new Error(`CLI output timeout: ${stdout}${stderr}`)), 5_000);
+  try {
+    await Promise.race([outputReady.promise, subprocess.exited.then(() => undefined)]);
+  } finally {
+    clearTimeout(timeout);
+    subprocess.kill();
+  }
+  const exitCode = await subprocess.exited;
+  await readers;
+  return { exitCode, stderr, stdout };
+};
+
 export const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
   `${result.stdout.toString()}${result.stderr.toString()}`;
 
