@@ -25,14 +25,16 @@ export class UnsupportedContentEncodingError extends Error {
 }
 
 export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = REQUEST_BODY_LIMITS): Promise<unknown> {
-  const branch = raw.clone();
+  const branches = [raw];
   try {
+    const encoding = requestContentEncoding(raw.headers.get("content-encoding"));
+    const branch = raw.clone();
+    branches.push(branch);
     const encoded = await readRequestBytes(branch.body, limits.encoded);
-    const encoding = requestContentEncoding(branch.headers.get("content-encoding"));
     const bytes = encoding === undefined ? encoded : await decodeRequestBytes(encoded, encoding, limits.decoded);
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
-    await Promise.all([cancelRequestBody(branch, error), cancelRequestBody(raw, error)]);
+    await Promise.all(branches.map((request) => cancelRequestBody(request, error)));
     throw error;
   }
 }

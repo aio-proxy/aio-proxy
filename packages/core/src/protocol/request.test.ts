@@ -69,6 +69,40 @@ test.each(["compress", "gzip, br"])("readJsonRequest rejects unsupported coding 
   }
 });
 
+test("readJsonRequest rejects unsupported coding without reading the body", async () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  let pulls = 0;
+  let releasePull = () => {};
+  const request = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-encoding": "compress", "content-type": "application/json" },
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        return new Promise<void>((resolve) => {
+          releasePull = () => {
+            controller.close();
+            resolve();
+          };
+        });
+      },
+    }),
+  });
+  const parsing = readJsonRequest(request);
+
+  try {
+    const result = await settleWithin(parsing, 100);
+
+    expect(result).toBeInstanceOf(UnsupportedContentEncodingError);
+    expect(pulls).toBe(0);
+    expect(request.bodyUsed).toBe(true);
+  } finally {
+    releasePull();
+    await parsing.catch(() => undefined);
+    warn.mockRestore();
+  }
+});
+
 test.each(["gzip", "zstd", "deflate", "br"])("normalizes corrupt %s bodies", async (encoding) => {
   await expect(readJsonRequest(encodedRequest(encoding, new Uint8Array([1, 2, 3, 4])))).rejects.toBeInstanceOf(
     InvalidCompressedRequestBodyError,
