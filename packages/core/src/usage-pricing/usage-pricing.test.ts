@@ -131,6 +131,20 @@ describe("calculateEstimatedCost billable normalization", () => {
     });
   });
 
+  test("keeps subsets in their parents when dedicated prices are not finite", () => {
+    expect(
+      calculateEstimatedCost(
+        { inputTokens: 100, outputTokens: 80, cacheReadTokens: 40, reasoningTokens: 30 },
+        { id: "model", input: 2, output: 5, cacheRead: Number.NaN, reasoning: Number.POSITIVE_INFINITY },
+        openaiPassthrough,
+      ),
+    ).toEqual({
+      // Invalid dedicated prices are treated as missing, so neither subset is peeled.
+      estimatedCostUsd: 0.0006,
+      priceModelId: "model",
+    });
+  });
+
   test("ai-sdk peels priced cache read and write from inclusive input", () => {
     expect(
       calculateEstimatedCost(

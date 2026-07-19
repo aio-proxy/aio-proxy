@@ -1,4 +1,3 @@
-import { PluginHostError, validateDescriptor } from "./descriptor";
 import {
   adapter,
   definePlugin,
@@ -64,30 +63,24 @@ test("apiVersion mismatch fails with incompatibility", async () => {
   });
 });
 
-test("apiVersion 1 remains loadable after host supports v2", async () => {
+test("future descriptor brand with an unsupported integer apiVersion fails with incompatibility", async () => {
+  install("@example/future-incompatible");
   const descriptor = {
-    [PLUGIN_DESCRIPTOR_BRAND]: true,
-    apiVersion: 1,
+    [Symbol.for("@aio-proxy/plugin-sdk/descriptor/v2")]: true,
+    apiVersion: 2,
     metadata: {},
     setup() {},
   };
-  expect(validateDescriptor(descriptor).apiVersion).toBe(1);
-});
-
-test("apiVersion 2 is loadable", async () => {
-  const descriptor = definePlugin(() => {});
-  expect(descriptor.apiVersion).toBe(2);
-  expect(validateDescriptor(descriptor).apiVersion).toBe(2);
-});
-
-test("apiVersion 3 fails with incompatibility", async () => {
-  const descriptor = { ...definePlugin(() => {}), apiVersion: 3 };
-  expect(() => validateDescriptor(descriptor)).toThrow(PluginHostError);
-  try {
-    validateDescriptor(descriptor);
-  } catch (error) {
-    expect(error).toMatchObject({ code: "PLUGIN_API_INCOMPATIBLE" });
-  }
+  const snapshot = await loadPluginRegistry(
+    options({
+      enablements: [{ packageName: "@example/future-incompatible" }],
+      importPackage: async () => ({ default: descriptor }),
+    }),
+  );
+  expect(snapshot.plugins.get("@example/future-incompatible")?.state).toMatchObject({
+    status: "failed",
+    diagnostic: { code: "PLUGIN_API_INCOMPATIBLE" },
+  });
 });
 
 test("built-in apiVersion mismatch also fails with incompatibility", async () => {
