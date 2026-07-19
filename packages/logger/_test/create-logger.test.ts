@@ -13,7 +13,10 @@ afterEach(async () => {
 async function captureLogs(): Promise<void> {
   await configure({
     sinks: { memory: records.push.bind(records) },
-    loggers: [{ category: ["aio-proxy"], lowestLevel: "debug", sinks: ["memory"] }],
+    loggers: [
+      { category: ["logtape", "meta"], lowestLevel: "error", sinks: [] },
+      { category: ["aio-proxy"], lowestLevel: "debug", sinks: ["memory"] },
+    ],
   });
 }
 

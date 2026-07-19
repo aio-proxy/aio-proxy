@@ -9,8 +9,6 @@ export function redactLogText(text: string, secretValues: readonly string[]): st
 
 export function redactLogValue(value: unknown, secretValues: readonly string[]): unknown {
   const secrets = activeSecrets(secretValues);
-  if (secrets.length === 0) return value;
-
   try {
     return redact(value, secrets, new WeakSet<object>());
   } catch {
@@ -49,7 +47,7 @@ function redactionFailure(secrets: readonly string[]): Record<string, unknown> {
 
 function redact(value: unknown, secrets: readonly string[], seen: WeakSet<object>): unknown {
   if (typeof value === "string") return redactText(value, secrets);
-  if (value === null || typeof value !== "object") return value;
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return value;
   if (seen.has(value)) return safeMarker(CIRCULAR, secrets);
 
   seen.add(value);
@@ -70,13 +68,13 @@ function redactError(error: Error, secrets: readonly string[], seen: WeakSet<obj
   assertNoEnumerableAccessors(descriptors);
 
   const output: Record<string, unknown> = {
-    name: redactDescriptorString(descriptors.name, "Error", secrets),
-    message: redactDescriptorString(descriptors.message, "", secrets),
+    [redactText("name", secrets)]: redactDescriptorString(descriptors.name, "Error", secrets),
+    [redactText("message", secrets)]: redactDescriptorString(descriptors.message, "", secrets),
   };
   const stack = redactOptionalDescriptor(descriptors.stack, secrets, seen);
-  if (stack !== undefined) output.stack = stack;
+  if (stack !== undefined) output[redactText("stack", secrets)] = stack;
   const cause = redactOptionalDescriptor(descriptors.cause, secrets, seen);
-  if (cause !== undefined) output.cause = cause;
+  if (cause !== undefined) output[redactText("cause", secrets)] = cause;
 
   for (const [key, descriptor] of Object.entries(descriptors)) {
     if (!descriptor.enumerable || key === "name" || key === "message" || key === "stack" || key === "cause") continue;

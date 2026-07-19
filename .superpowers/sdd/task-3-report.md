@@ -69,3 +69,15 @@ Ran 19 tests across 3 files. [40.00ms]
 ```
 
 Formatting verification: `bunx oxfmt --check packages/logger/src/redact.ts packages/logger/_test/redact.test.ts` — all matched files use the correct format.
+
+## P1 Follow-up: Canonical Error keys and callables
+
+- Canonical `Error` output keys (`name`, `message`, `stack`, and `cause`) now pass through the same collision-safe text redaction as user-defined keys, so a configured secret cannot survive in serialized key names.
+- Functions are now unsupported log values. This applies even when the configured secret list is empty, preventing callable identity/source text from passing through unchanged; the safe failure placeholder is returned instead.
+- Added regressions covering all four canonical `Error` keys and named functions with both matching and empty secret lists.
+
+### Verification
+
+- `bun test` from `packages/logger`: `21 pass`, `0 fail`, `42 expect() calls` across 3 files; LogTape meta logger notices are silenced by the test capture configuration.
+- `bunx tsc --ignoreConfig --noEmit --skipLibCheck --strict --target ESNext --module Preserve --moduleResolution Bundler --types bun src/redact.ts`: exit 0.
+- `bunx oxfmt --write src/redact.ts _test/redact.test.ts _test/create-logger.test.ts`: completed successfully; `git diff --check`: exit 0.

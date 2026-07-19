@@ -27,6 +27,23 @@ describe("redactLogValue", () => {
     );
   });
 
+  test("redacts canonical Error output keys that match a configured secret", () => {
+    const error = new Error("ok", { cause: "safe" });
+    error.name = "Failure";
+    error.stack = "trace";
+
+    for (const secret of ["name", "message", "stack", "cause"]) {
+      expect(JSON.stringify(redactLogValue(error, [secret]))).not.toContain(secret);
+    }
+  });
+
+  test("functions yield a safe placeholder instead of passing through", () => {
+    function abc() {}
+
+    expect(redactLogValue(abc, ["abc"])).toEqual({ message: "log redaction failed" });
+    expect(redactLogValue(abc, [])).toEqual({ message: "log redaction failed" });
+  });
+
   test("circular objects do not throw and do not leak secrets", () => {
     const input: Record<string, unknown> = { token: "abc" };
     input.self = input;
