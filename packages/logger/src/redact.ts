@@ -28,6 +28,13 @@ function redactText(text: string, secrets: readonly string[]): string {
   const marker = safeMarker(REDACTED, secrets);
   let redacted = text;
   for (const secret of secrets) redacted = redacted.replaceAll(secret, marker);
+
+  // A marker inserted for one secret can form another secret across its
+  // boundary. Remove such collisions to a fixed point; deletion makes every
+  // pass strictly shorter and therefore guarantees termination.
+  while (secrets.some((secret) => redacted.includes(secret))) {
+    for (const secret of secrets) redacted = redacted.replaceAll(secret, "");
+  }
   return redacted;
 }
 
@@ -121,7 +128,7 @@ function redactDescriptorString(
   fallback: string,
   secrets: readonly string[],
 ): string {
-  if (descriptor === undefined) return fallback;
+  if (descriptor === undefined) return redactText(fallback, secrets);
   if (!("value" in descriptor) || typeof descriptor.value !== "string") {
     throw new UnsafeLogValueError("invalid Error string property");
   }

@@ -21,6 +21,12 @@ describe("redactLogValue", () => {
     expect(output.stack?.includes("abc")).toBe(false);
   });
 
+  test("redacts default Error fields that match a configured secret", () => {
+    expect(redactLogValue(new Error("ok"), ["Error"])).toEqual(
+      expect.objectContaining({ name: "[REDACTED]", message: "ok" }),
+    );
+  });
+
   test("circular objects do not throw and do not leak secrets", () => {
     const input: Record<string, unknown> = { token: "abc" };
     input.self = input;
@@ -68,5 +74,9 @@ describe("redactLogValue", () => {
     expect(redactLogText("REDACTED", ["REDACTED"])).not.toContain("REDACTED");
     expect(JSON.stringify(redactLogValue(circular, ["Circular"]))).not.toContain("Circular");
     expect(JSON.stringify(redactLogValue(throwing, ["log"]))).not.toContain("log");
+  });
+
+  test("re-scans marker insertions that synthesize another configured secret", () => {
+    expect(redactLogText("Ax", ["A[R", "x"])).not.toContain("A[R");
   });
 });
