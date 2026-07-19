@@ -55,13 +55,12 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   return (
     <Card>
       <UsageTrendTabs
-        title={m["dashboard.usage.chart_title"]()}
         description={m["dashboard.usage.chart_description"]()}
         titleId={chartTitleId}
         descriptionId={chartDescriptionId}
       >
         <CardContent>
-          <ChartContainer config={chartConfig} className="min-h-80 w-full">
+          <ChartContainer config={chartConfig} className="aspect-auto h-64 w-full sm:h-72">
             <AreaChart
               data={chartData}
               margin={{ left: 8, right: 8 }}
