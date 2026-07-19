@@ -296,6 +296,7 @@
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "date-fns": "^4.4.0",

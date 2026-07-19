@@ -125,6 +125,15 @@ describe("redactPluginError", () => {
     expect(redactPluginError(error, { secretValues: ["name-secret"] }).name).toBe("PluginFailure: [REDACTED]");
   });
 
+  test("uses collision-safe exact-value redaction", () => {
+    const redacted = redactPluginError(new Error("marker [REDACTED], Ax, and Bearer abc"), {
+      secretValues: ["[REDACTED]", "A[R", "x"],
+    });
+
+    expect(redacted.message).not.toContain("[REDACTED]");
+    expect(redacted.message).not.toContain("A[R");
+    expect(redacted.message).not.toContain("x");
+  });
   test("redacts OAuth values from JSON quoted keys", () => {
     const values = {
       access_token: "json-access",

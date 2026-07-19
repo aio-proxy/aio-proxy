@@ -27,13 +27,17 @@ export class PluginHostError extends Error {
   }
 }
 
-const descriptorCache = new Map<string, Promise<PluginDescriptor<unknown>>>();
+export type LoadablePluginDescriptor<Options = unknown> = Omit<PluginDescriptor<Options>, "apiVersion"> & {
+  readonly apiVersion: (typeof PLUGIN_API_VERSIONS_SUPPORTED)[number];
+};
+
+const descriptorCache = new Map<string, Promise<LoadablePluginDescriptor<unknown>>>();
 const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const supportedApiVersions = new Set<number>(PLUGIN_API_VERSIONS_SUPPORTED);
 
-export function validateDescriptor(descriptor: unknown): PluginDescriptor<unknown> {
+export function validateDescriptor(descriptor: unknown): LoadablePluginDescriptor<unknown> {
   if (isRecord(descriptor)) {
     const apiVersion = Reflect.get(descriptor, "apiVersion");
     if (Number.isInteger(apiVersion) && !supportedApiVersions.has(apiVersion as number)) {
@@ -41,7 +45,7 @@ export function validateDescriptor(descriptor: unknown): PluginDescriptor<unknow
     }
   }
   if (!isPluginDescriptor(descriptor)) throw new PluginHostError("PLUGIN_LOAD_FAILED");
-  const typed = descriptor as PluginDescriptor<unknown>;
+  const typed = descriptor as LoadablePluginDescriptor<unknown>;
   const label = LocalizedTextSchema.safeParse(typed.metadata.label);
   const description = LocalizedTextSchema.safeParse(typed.metadata.description);
   if (
@@ -92,7 +96,7 @@ export async function loadThirdPartyDescriptor(
   packageName: string,
   installed: NpmPackageInfo,
   importer: PluginPackageImporter,
-): Promise<PluginDescriptor<unknown>> {
+): Promise<LoadablePluginDescriptor<unknown>> {
   const cacheKey = `${packageName}@${installed.version}`;
   let cached = descriptorCache.get(cacheKey);
   if (cached === undefined) {

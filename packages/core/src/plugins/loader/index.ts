@@ -3,10 +3,11 @@ import type { PluginEnablement, PluginState } from "@aio-proxy/types";
 
 import { findInstalledNpmPackage } from "../../npm";
 import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic";
-import { createPluginRegistryHost, type PluginRegistry } from "../registry";
+import { createPluginRegistryHost, type PluginLoggerFactory, type PluginRegistry } from "../registry";
 import { candidates, failedState, prepareOptions } from "./candidates";
 import {
   loadThirdPartyDescriptor,
+  type LoadablePluginDescriptor,
   observedPromiseDeadline,
   PLUGIN_SETUP_TIMEOUT_MS,
   PluginHostError,
@@ -46,11 +47,12 @@ export type LoadPluginRegistryOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly importPackage: PluginPackageImporter;
   readonly logger: PluginLogSink;
+  readonly createPluginLogger?: PluginLoggerFactory;
   readonly secrets: PluginSecretReader;
 };
 
 export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Promise<PluginRegistrySnapshot> {
-  const host = createPluginRegistryHost(options.logger);
+  const host = createPluginRegistryHost(options.logger, options.createPluginLogger);
   const plugins = new Map<string, LoadedPluginState>();
   for (const candidate of candidates(options)) {
     let secretValues: readonly string[] = [];
@@ -60,7 +62,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     try {
       const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
       secretValues = collectSecretStrings(secretOptions);
-      let descriptor: PluginDescriptor<unknown>;
+      let descriptor: LoadablePluginDescriptor<unknown>;
       if (candidate.builtIn === undefined) {
         const installed = await findInstalledNpmPackage(candidate.packageName);
         if (installed === null) throw new PluginHostError("PLUGIN_NOT_INSTALLED");
@@ -72,7 +74,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       }
       label = descriptor.metadata.label;
       description = descriptor.metadata.description;
-      const staging = host.stage(candidate.packageName);
+      const staging = host.stage(candidate.packageName, { redactSecretValues: secretValues });
       const setup = Promise.resolve().then(async () => {
         const pluginOptions = await prepareOptions(descriptor, candidate.options, secretOptions);
         return descriptor.setup(staging.api, pluginOptions);
