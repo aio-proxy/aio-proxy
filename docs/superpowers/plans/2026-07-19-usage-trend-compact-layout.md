@@ -2,125 +2,192 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reduce the Usage trend card height and combine its metric and grouping controls into one compact responsive toolbar.
+**Goal:** Keep the reduced chart height, move the model/provider choice into the chart title area, and restore shared default styling for every tab trigger.
 
-**Architecture:** Keep the existing nested Base UI tab roots and Jotai filter state unchanged. Reshape only the `UsageTrendTabs` header composition, using the existing portal to place the grouping tab list beside the metric list, and override the shared chart container's aspect ratio with an explicit responsive height.
+**Architecture:** Keep the existing nested Base UI tab roots and Jotai filter state. Portal the inner grouping list into the left side of `CardHeader` as line tabs, keep the outer metric list on the right with its default appearance, and retain a screen-reader-only active `CardTitle` for the chart's existing `aria-labelledby` relationship.
 
-**Tech Stack:** React 19, TypeScript, Base UI Tabs, Tailwind CSS 4, Recharts, Jotai, Rsbuild/Bun.
+**Tech Stack:** React 19, TypeScript, Base UI Tabs, Tailwind CSS 4, Recharts, Jotai, Paraglide, Rsbuild/Bun.
 
 ## Global Constraints
 
-- Update only the Usage trend chart and its header controls.
-- Preserve metric and grouping state, data requests, chart semantics, localized copy, theme tokens, keyboard behavior, and ARIA labels.
-- Do not change the global appearance of unrelated tabs.
-- Keep each logical control group intact; wrap only between the metric and grouping groups.
-- Use approximately 256px chart height on mobile and 288px from the small breakpoint upward.
-- Add no dependencies, user-facing copy, or new React components.
+- Update only the usage chart header, its localized grouping-title copy, and the existing responsive chart height.
+- Preserve metric and grouping state, data requests, chart semantics, description and metric copy, theme tokens, keyboard behavior, and ARIA labels.
+- Do not add local padding, height, background, border-radius, or active-state classes to `TabsTrigger`.
+- Do not change the shared tabs component or the global appearance of unrelated tabs.
+- Keep the chart at approximately 256px on mobile and 288px from the small breakpoint upward.
+- Add no dependencies or new React components.
 
 ---
 
-### Task 1: Compact Usage Trend Card
+### Task 1: Replace the static chart title copy
 
 **Files:**
-- Modify: `packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx:38-94`
-- Modify: `packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx:56-115`
-- Test: no unit test; this is a layout-only change whose observable contract is verified in a real browser.
+- Modify: `packages/i18n/messages/en.json:429`
+- Modify: `packages/i18n/messages/zh-Hans.json:429`
+
+**Contract:**
+- Replace the unused static `chart_title` message with two grouping-specific messages.
+- English: `chart_title_model` = `Model usage`; `chart_title_provider` = `Provider usage`.
+- Simplified Chinese: `chart_title_model` = `模型用量`; `chart_title_provider` = `提供商用量`.
+
+- [ ] **Step 1: Update both locale sources**
+
+Keep the two locale files structurally identical and remove the obsolete `chart_title` key rather than leaving an unused alias.
+
+- [ ] **Step 2: Regenerate and type-check Paraglide output**
+
+Run from the repository root:
+
+```bash
+rtk bun run --filter @aio-proxy/i18n build
+```
+
+Expected: Paraglide exposes both new message functions and TypeScript exits with status 0.
+
+---
+
+### Task 2: Make grouping tabs the chart title
+
+**Files:**
+- Modify: `packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx:6-96`
+- Modify: `packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx:57-62`
+- Test: no unit test; this is a presentation and accessibility composition change verified against the rendered page.
 
 **Interfaces:**
-- Consumes: `usageOverviewFiltersAtom`, `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, and the existing `groupingTabsContainer` portal target.
-- Produces: unchanged `UsageTrendTabs` props and unchanged `UsageTrendChart` export; no caller migrations.
+- Remove the `title` prop from the private `UsageTrendTabs` call contract.
+- Preserve `description`, `titleId`, `descriptionId`, `children`, and the exported component name.
+- Preserve the existing metric and grouping tab values and state transitions.
 
-- [x] **Step 1: Build the combined compact toolbar**
+- [ ] **Step 1: Confirm the private component's caller set**
 
-In `usage-trend-tabs.tsx`, preserve the outer metric `Tabs` root and inner grouping `Tabs` root. Replace the two vertically stacked control containers in `CardHeader` with one wrapping toolbar:
+Use LSP references on `UsageTrendTabs` before changing its props. Expected: `UsageTrendChart` is the only caller.
+
+- [ ] **Step 2: Replace the title and toolbar composition**
+
+In `usage-trend-tabs.tsx`:
+
+- Remove the `title` prop and the static visible `CardTitle`.
+- Map `model` and `provider` to the new grouping-title messages.
+- Render a screen-reader-only `CardTitle` containing the currently selected grouping title so the chart's existing `aria-labelledby={titleId}` remains accurate.
+- Place the `groupingTabsContainer` portal target in the visible title position above the description.
+- Render the metric list on the right with only layout classes on its wrapper and `className="shrink-0"` on `TabsList`.
+- Remove every local `TabsTrigger` class.
+
+Target header shape:
 
 ```tsx
 <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-start sm:justify-between">
-  <div className="grid gap-1.5">
-    <CardTitle id={titleId}>{title}</CardTitle>
+  <div className="grid min-w-0 gap-1.5">
+    <CardTitle id={titleId} className="sr-only">
+      {groupingLabels[filters.groupBy]}
+    </CardTitle>
+    <div ref={setGroupingTabsContainer} className="min-w-0 max-w-full overflow-x-auto pb-1" />
     <CardDescription id={descriptionId}>{description}</CardDescription>
   </div>
-  <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-xl bg-muted p-0.5 sm:justify-end">
-    <div className="min-w-0 max-w-full overflow-x-auto">
-      <TabsList
-        className="h-7! shrink-0 bg-transparent p-0"
-        aria-label={m["dashboard.usage.metric_label"]()}
-      >
-        {metrics.map((metric) => (
-          <TabsTrigger key={metric} value={metric} className="px-2.5 py-0.5">
-            {metricLabels[metric]}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </div>
-    <div ref={setGroupingTabsContainer} className="min-w-0 max-w-full overflow-x-auto" />
+  <div className="min-w-0 max-w-full overflow-x-auto pb-1 sm:shrink-0">
+    <TabsList className="shrink-0" aria-label={m["dashboard.usage.metric_label"]()}>
+      {metrics.map((metric) => (
+        <TabsTrigger key={metric} value={metric}>
+          {metricLabels[metric]}
+        </TabsTrigger>
+      ))}
+    </TabsList>
   </div>
 </CardHeader>
 ```
 
-Update the portaled grouping list to use the same compact, transparent treatment so both groups read as one command strip:
+Render the portaled grouping list with the shared line variant and no trigger overrides:
 
 ```tsx
 <TabsList
-  className="h-7! shrink-0 bg-transparent p-0"
+  variant="line"
+  className="shrink-0"
   aria-label={m["dashboard.usage.group_by_label"]()}
 >
   {groupings.map((groupBy) => (
-    <TabsTrigger key={groupBy} value={groupBy} className="px-2.5 py-0.5">
+    <TabsTrigger key={groupBy} value={groupBy}>
       {groupingLabels[groupBy]}
     </TabsTrigger>
   ))}
 </TabsList>
 ```
 
-Expected: the groups remain separate tab roots and complete wrapping units, but share one muted toolbar surface with a 32px total height when they fit on one row.
+Expected: the grouping choice reads as the card title on the left; the metric selector remains a default shared pill on the right; neither list changes shared trigger sizing.
 
-- [x] **Step 2: Constrain the chart to responsive fixed heights**
+- [ ] **Step 3: Remove the obsolete caller prop**
 
-In `usage-trend-chart.tsx`, replace the width-driven minimum-height chart class:
+In `usage-trend-chart.tsx`, remove `title={m["dashboard.usage.chart_title"]()}`. Keep `titleId`, `descriptionId`, chart height classes, and all chart internals unchanged.
 
-```tsx
-<ChartContainer config={chartConfig} className="aspect-auto h-64 w-full sm:h-72">
-```
+---
 
-Do not change `AreaChart`, axes, legend, tooltip, series, chart config, or accessibility IDs.
+### Task 3: Run static and package verification
 
-Expected: chart height is 256px below the `sm` breakpoint and 288px at `sm` and above, independent of card width.
+- [ ] **Step 1: Format and check changed source files**
 
-- [x] **Step 3: Run static and package verification**
-
-Run from the repository root:
+Run:
 
 ```bash
-rtk bun run check
-rtk bun run test:unit --filter=@aio-proxy/dashboard
+rtk bunx biome check --write packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx
+rtk bunx biome check packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx
+```
+
+Expected: the second command exits with status 0 and applies no changes.
+
+- [ ] **Step 2: Run repository and dashboard verification**
+
+Run:
+
+```bash
+rtk bun run preflight
 rtk bun run --filter @aio-proxy/dashboard build
 ```
 
-Expected: all three commands exit with status 0; no TypeScript, Biome, Rstest, or Rsbuild errors.
+Expected: all checks, unit tests, artifact tests, type tests, task-graph tests, and the dashboard production build exit with status 0.
 
-- [x] **Step 4: Smoke-test the real Usage page in a browser**
+---
 
-Run `rtk bun run dev` from the repository root, open the dashboard URL printed by the development server, navigate to `/dashboard/`, and verify at desktop and mobile-width viewports.
+### Task 4: Smoke-test the real Usage page
 
-Expected desktop observations:
+- [ ] **Step 1: Verify desktop rendering and interaction**
 
-- The chart plotting region is approximately 288px high.
-- Metric and grouping controls appear in one toolbar row at the right of the header.
-- Active, hover, and keyboard-focus states remain visible.
-- Changing metric and grouping still updates the selected state and chart.
+Use the existing worktree development server with `/Volumes/ExternalSSD/workspace/aio-proxy/.aio-proxy-dev` as its configuration directory. Open `/dashboard/` at 1440×900.
 
-Expected mobile observations:
+Expected:
 
-- The chart plotting region is approximately 256px high.
-- The header stacks naturally, and wrapping occurs between complete control groups without horizontal page overflow.
-- Axis labels, tooltip, and legend remain readable.
+- `Model usage` / `Provider usage` appear as line tabs in the title position.
+- `Cost` / `Tokens` / `Requests` appear on the right with the shared default pill appearance.
+- The chart plotting region remains approximately 288px high.
+- Clicking both grouping tabs and all metric tabs updates selected state and chart content.
+- Keyboard focus remains visible; tooltip, legend, and axis labels remain readable.
+- The page has no horizontal overflow.
 
-- [x] **Step 5: Commit the implementation**
+- [ ] **Step 2: Verify mobile rendering**
 
-Stage only the two modified component files and this plan:
+Repeat at 375×812.
+
+Expected:
+
+- The grouping title tabs and description stack above the metric tabs.
+- Both lists remain intact and usable without horizontal page overflow.
+- The chart plotting region remains approximately 256px high.
+
+---
+
+### Task 5: Commit and update the pull request
+
+- [ ] **Step 1: Commit the revised implementation**
+
+Stage only the two locale sources, two modified components, and this plan:
 
 ```bash
-rtk git add packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx docs/superpowers/plans/2026-07-19-usage-trend-compact-layout.md
-rtk git commit -m "style(dashboard): compact usage trend layout"
+rtk git add packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json packages/dashboard/src/modules/usage/components/usage-trend-tabs.tsx packages/dashboard/src/modules/usage/components/usage-trend-chart.tsx docs/superpowers/plans/2026-07-19-usage-trend-compact-layout.md
+rtk git commit -m "style(dashboard): use grouping tabs as usage title"
 ```
+
+- [ ] **Step 2: Push the branch**
+
+```bash
+rtk git push
+```
+
+Expected: pull request #42 updates with the revised title interaction and verification evidence.
