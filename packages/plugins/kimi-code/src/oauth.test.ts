@@ -161,22 +161,25 @@ test("passes cancellation through polling sleep", async () => {
   ).rejects.toThrow("stopped");
 });
 
-test("rejects unexpected token HTTP failures without polling or exposing their body", async () => {
+test.each([408, 429, 500])("retries transient token HTTP %i without parsing its body", async (status) => {
   const calls: FetchCall[] = [];
   const waits: number[] = [];
-  const error = await loginKimi(loginContext(), presentation, {
+  const result = await loginKimi(loginContext(), presentation, {
     deviceId: () => "device-1",
     now: () => 0,
     sleep: async (milliseconds) => waits.push(milliseconds),
     fetch: sequence(
-      [deviceResponse(), Response.json({ error: "authorization_pending", detail: "server-secret" }, { status: 500 })],
+      [
+        deviceResponse(),
+        new Response("not-json", { status }),
+        Response.json({ access_token: "access", refresh_token: "refresh", expires_in: 3600 }),
+      ],
       calls,
     ),
-  }).catch((caught) => caught);
-  expect(String(error)).toBe("Error: Kimi OAuth request failed");
-  expect(String(error)).not.toContain("server-secret");
-  expect(waits).toEqual([]);
-  expect(calls).toHaveLength(2);
+  });
+  expect(result.credentials.accessToken).toBe("access");
+  expect(waits).toEqual([2_000]);
+  expect(calls).toHaveLength(3);
 });
 
 test.each([

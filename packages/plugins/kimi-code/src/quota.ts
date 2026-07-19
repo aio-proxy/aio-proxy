@@ -40,7 +40,7 @@ export async function readKimiQuota(
   context: AccountContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
 ): Promise<OAuthQuotaSnapshot> {
-  const credential = await currentKimiCredential(context.credentials, dependencies);
+  const credential = await currentKimiCredential(context.credentials, { ...dependencies, signal: context.signal });
   const response = await (dependencies.fetch ?? globalThis.fetch)("https://api.kimi.com/coding/v1/usages", {
     headers: {
       Accept: "application/json",

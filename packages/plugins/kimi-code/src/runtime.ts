@@ -87,8 +87,8 @@ export function createKimiDynamicFetch(
   dependencies: KimiOAuthDependencies = {},
 ) {
   const fetchWithCredential = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const credential = await currentKimiCredential(credentials, dependencies);
     const request = new Request(input, init);
+    const credential = await currentKimiCredential(credentials, { ...dependencies, signal: request.signal });
     const headers = new Headers(request.headers);
     for (const key of [
       "authorization",
@@ -107,7 +107,7 @@ export function createKimiDynamicFetch(
       method: request.method,
       headers,
       ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body }),
-      signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
+      signal: request.signal,
       redirect: request.redirect,
     });
   };

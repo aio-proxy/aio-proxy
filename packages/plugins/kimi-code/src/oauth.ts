@@ -1,14 +1,12 @@
-import {
-  type CredentialPort,
-  CredentialRefreshError,
-  type LocalizedText,
-  type OAuthLoginContext,
-} from "@aio-proxy/plugin-sdk";
+import type { LocalizedText, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
 import { kimiIdentityHeaders } from "./headers";
+import { KIMI_OAUTH_BASE_URL } from "./oauth/constants";
+
+export { currentKimiCredential, refreshKimiCredential } from "./oauth/credential";
 
 declare const __AIO_PROXY_KIMI_CLIENT_ID__: string;
 
-const AUTH_BASE_URL = "https://auth.kimi.com/api/oauth";
+const isRetryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
 export type KimiCredential = {
   readonly accessToken: string;
@@ -98,67 +96,12 @@ export async function loginKimi(
   throw new Error("Kimi device authorization timed out");
 }
 
-export async function refreshKimiCredential(
-  current: KimiCredential,
-  options: KimiOAuthDependencies & { readonly signal?: AbortSignal } = {},
-): Promise<KimiCredential> {
-  const fetcher = options.fetch ?? globalThis.fetch;
-  const now = options.now ?? Date.now;
-  let response: Response;
-  try {
-    response = await fetcher(`${AUTH_BASE_URL}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", ...kimiIdentityHeaders(current.deviceId) },
-      body: new URLSearchParams({
-        client_id: __AIO_PROXY_KIMI_CLIENT_ID__,
-        grant_type: "refresh_token",
-        refresh_token: current.refreshToken,
-      }),
-      signal: options.signal ?? null,
-    });
-  } catch {
-    throw new CredentialRefreshError("Kimi credential refresh failed", {
-      retryable: true,
-      reason: "network",
-    });
-  }
-  if (!response.ok) {
-    throw new CredentialRefreshError("Kimi credential refresh failed", {
-      retryable: response.status === 429 || response.status >= 500,
-      reason: response.status === 401 || response.status === 403 ? "rejected" : "http",
-      status: response.status,
-    });
-  }
-  const token = await parseSuccessfulToken(response);
-  return {
-    accessToken: token.accessToken,
-    refreshToken: token.refreshToken ?? current.refreshToken,
-    expiresAt: now() + token.expiresIn * 1_000,
-    deviceId: current.deviceId,
-  };
-}
-
-export async function currentKimiCredential(
-  port: CredentialPort<KimiCredential>,
-  options: KimiOAuthDependencies = {},
-): Promise<KimiCredential> {
-  const current = await port.read();
-  const now = options.now ?? Date.now;
-  if (current.value.expiresAt > now() + 5 * 60_000) return current.value;
-  return (
-    await port.refresh(current.revision, async ({ value }, signal) => {
-      const refreshed = await refreshKimiCredential(value, { ...options, signal });
-      return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
-    })
-  ).snapshot.value;
-}
-
 async function requestDeviceAuthorization(
   fetcher: typeof fetch,
   deviceId: string,
   signal: AbortSignal,
 ): Promise<DeviceAuthorization> {
-  const value = await postForm(fetcher, `${AUTH_BASE_URL}/device_authorization`, deviceId, signal, {});
+  const value = await postForm(fetcher, `${KIMI_OAUTH_BASE_URL}/device_authorization`, deviceId, signal, {});
   const deviceCode = optionalString(value, "device_code");
   const userCode = optionalString(value, "user_code");
   const verificationUri = optionalString(value, "verification_uri");
@@ -184,7 +127,7 @@ async function requestToken(
   signal: AbortSignal,
   form: Readonly<Record<string, string>>,
 ): Promise<TokenResponse> {
-  const value = await postForm(fetcher, `${AUTH_BASE_URL}/token`, deviceId, signal, form, true);
+  const value = await postForm(fetcher, `${KIMI_OAUTH_BASE_URL}/token`, deviceId, signal, form, true);
   return {
     accessToken: optionalString(value, "access_token"),
     refreshToken: optionalString(value, "refresh_token"),
@@ -214,6 +157,7 @@ async function postForm(
     signal.throwIfAborted();
     throw new Error("Kimi OAuth request failed");
   }
+  if (acceptBadRequest && isRetryableStatus(response.status)) return { error: "authorization_pending" };
   if (!response.ok && (!acceptBadRequest || response.status !== 400)) throw new Error("Kimi OAuth request failed");
   return parseObject(response, "Kimi OAuth response is invalid");
 }
@@ -238,24 +182,6 @@ function completeCredential(token: TokenResponse, deviceId: string, now: number)
     expiresAt: now + token.expiresIn * 1_000,
     deviceId,
   };
-}
-
-async function parseSuccessfulToken(
-  response: Response,
-): Promise<{ readonly accessToken: string; readonly refreshToken?: string; readonly expiresIn: number }> {
-  let value: Record<string, unknown>;
-  try {
-    value = await parseObject(response, "Kimi OAuth token response is invalid");
-  } catch {
-    throw new CredentialRefreshError("Kimi credential refresh failed", { retryable: false, reason: "invalid" });
-  }
-  const accessToken = optionalString(value, "access_token");
-  const refreshToken = optionalString(value, "refresh_token");
-  const expiresIn = optionalPositiveNumber(value, "expires_in");
-  if (accessToken === undefined || expiresIn === undefined) {
-    throw new CredentialRefreshError("Kimi credential refresh failed", { retryable: false, reason: "invalid" });
-  }
-  return { accessToken, ...(refreshToken === undefined ? {} : { refreshToken }), expiresIn };
 }
 
 function optionalString(value: Record<string, unknown>, key: string): string | undefined {

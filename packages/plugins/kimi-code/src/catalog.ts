@@ -27,7 +27,7 @@ export async function discoverKimiCatalog(
   context: AccountContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
 ): Promise<ModelCatalog> {
-  const credential = await currentKimiCredential(context.credentials, dependencies);
+  const credential = await currentKimiCredential(context.credentials, { ...dependencies, signal: context.signal });
   const response = await (dependencies.fetch ?? globalThis.fetch)("https://api.kimi.com/coding/v1/models", {
     headers: {
       Authorization: `Bearer ${credential.accessToken}`,
