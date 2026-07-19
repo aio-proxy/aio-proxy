@@ -51,7 +51,13 @@ export const createOAuthLoginSessionManager = (options: {
   };
 
   const publish = (session: InternalSession, snapshot: DashboardOAuthSession) => {
-    if (closed) return;
+    if (
+      closed ||
+      session.snapshot.status === "succeeded" ||
+      session.snapshot.status === "failed" ||
+      session.snapshot.status === "cancelled"
+    )
+      return;
     session.snapshot = snapshot;
     if (snapshot.status === "succeeded" || snapshot.status === "failed" || snapshot.status === "cancelled") {
       session.terminalAt = now();

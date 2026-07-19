@@ -71,7 +71,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
   return (
     <PageContainer title={m["dashboard.providers.new_title"]()} backTo="/providers">
       <div className="max-w-lg space-y-6 p-4">
-        {session === undefined ? (
+        {sessionId === undefined ? (
           <form
             className="space-y-6"
             onSubmit={(event) => {
@@ -108,7 +108,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
               }}
             </form.Subscribe>
           </form>
-        ) : (
+        ) : session === undefined ? null : (
           <OAuthAuthorizationPanel
             session={session}
             isPending={callbackMutation.isPending || cancelMutation.isPending}

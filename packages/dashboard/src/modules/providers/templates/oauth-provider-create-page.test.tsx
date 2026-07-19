@@ -45,3 +45,9 @@ test("OAuth create page selects a capability and renders its account fields befo
   expect(screen.getByLabelText("Token")).toHaveAttribute("type", "password");
   expect(screen.getByRole("button", { name: /Continue authorization|继续授权/u })).toBeTruthy();
 });
+
+test("OAuth create page hides the setup form while an existing session loads", () => {
+  render(<OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />);
+
+  expect(screen.queryByRole("button", { name: /Continue authorization|继续授权/u })).toBeNull();
+});
