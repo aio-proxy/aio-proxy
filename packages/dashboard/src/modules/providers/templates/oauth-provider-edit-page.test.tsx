@@ -50,3 +50,16 @@ test("OAuth edit page keeps identity immutable and exposes account fields, model
   expect(screen.getByRole("button", { name: /Edit Aliases|编辑别名/u })).toBeTruthy();
   expect(screen.getByRole("button", { name: /Reauthorize|重新授权/u })).toBeTruthy();
 });
+
+test("OAuth edit page hides edit actions while an existing session loads", () => {
+  render(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole("button", { name: /Reauthorize|重新授权/u })).toBeNull();
+});

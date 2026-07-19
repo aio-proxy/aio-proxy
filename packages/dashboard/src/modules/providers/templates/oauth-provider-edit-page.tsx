@@ -128,7 +128,7 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
   return (
     <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
       <div className="max-w-lg space-y-6 p-4">
-        {session === undefined ? (
+        {sessionId === undefined ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -155,7 +155,7 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
               </Button>
             </div>
           </form>
-        ) : (
+        ) : session === undefined ? null : (
           <OAuthAuthorizationPanel
             session={session}
             isPending={callbackMutation.isPending || cancelMutation.isPending}
