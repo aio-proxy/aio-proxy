@@ -4,6 +4,8 @@
     "includes": [
       "**",
       "!**/dist",
+      "!.reference",
+      "!.worktrees",
       "!packages/core/src/db/migrations.manifest.ts",
       "!packages/dashboard/src/route-tree.gen.ts",
       "!packages/i18n/project.inlang/.meta.json",
@@ -20,6 +22,9 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "suspicious": {
+        "noDeprecatedImports": "on"
+      },
       "nursery": {
         "useSortedClasses": {
           "level": "warn",
