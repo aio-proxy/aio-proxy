@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a built-in Kimi Code OAuth provider with device login, token refresh, dynamic model discovery, OpenAI/Anthropic routing, same-protocol raw transport, and read-only quota windows.
+**Goal:** Add a built-in Kimi Code OAuth provider with device login, token refresh, dynamic model discovery, dual OpenAI/Anthropic raw transport, native Anthropic token count, and read-only quota windows.
 
 **Architecture:** A new `@aio-proxy/plugin-kimi-code` package owns every Kimi-specific concern behind the existing `OAuthAdapter`. OAuth, catalog, quota, and runtime share one credential refresh helper and one identity-header builder; core only embeds the descriptor and keeps protocol routing provider-agnostic.
 
@@ -14,6 +14,8 @@
 - Use Provider ID and Provider weight terminology from `AGENTS.md`.
 - Reuse the existing OAuth plugin SDK, credential CAS, catalog cache, candidate loop, and AI SDK dependencies; add no new runtime dependency or host abstraction.
 - Quota is read-only `GET /coding/v1/usages`; do not call `www.kimi.com`, implement quota reset, or return reset credits.
+- Every discovered Kimi language model supports both OpenAI Chat Completions and Anthropic Messages raw transport; catalog `protocol` selects only the AI SDK provider used after cross-protocol conversion.
+- Only Anthropic token count is forwarded to `POST /coding/v1/messages/count_tokens?beta=true`; other token-count protocols must fall back to the host's explicitly marked estimate.
 - Do not copy CPA tool-message/reasoning/model-name compatibility patches without an aio-proxy regression.
 - Every handwritten source and test file stays below 300 lines; tests are colocated with source.
 - Write each behavior test first, run it to observe the expected failure, then add only enough production code to pass.
@@ -29,7 +31,7 @@ Create `packages/plugins/kimi-code/` with these responsibilities:
 - `src/oauth.ts`: device login, token parsing, refresh, and `CredentialPort` refresh policy.
 - `src/catalog.ts`: authenticated model discovery and first-login fallback.
 - `src/quota.ts`: authenticated read-only usage-window mapping.
-- `src/runtime.ts`: AI SDK provider selection and safe raw URL rewriting.
+- `src/runtime.ts`: AI SDK provider selection, dual raw URL rewriting, and Anthropic-native token count.
 - `src/plugin.ts`: adapter assembly, localized presentation injection, and dependency wiring.
 - `src/index.ts`: package exports and default descriptor.
 - Colocated `*.test.ts` files protect each public behavior.
@@ -625,7 +627,7 @@ git commit -m "feat(kimi): expose coding quota windows" -m "Co-authored-by: Code
 
 ---
 
-### Task 5: Dual-protocol runtime and safe raw transport
+### Task 5: Dual-protocol raw runtime and native Anthropic token count
 
 **Files:**
 - Create: `packages/plugins/kimi-code/src/runtime.test.ts`
@@ -634,7 +636,7 @@ git commit -m "feat(kimi): expose coding quota windows" -m "Co-authored-by: Code
 **Interfaces:**
 - Produces: `createKimiRuntime(context, dependencies?) -> OAuthRuntimeResult`
 - Produces: `createKimiDynamicFetch(credentials, dependencies?)`
-- Consumes: catalog metadata `{ protocol: "openai-compatible" | "anthropic" }`
+- Consumes: catalog metadata `{ protocol: "openai-compatible" | "anthropic" }` only for converted model invocation
 
 - [ ] **Step 1: Write failing runtime tests**
 
@@ -644,8 +646,10 @@ Follow the existing GitHub Copilot runtime tests. Assert:
 - `languageModel("anthropic-model").provider` contains `anthropic`.
 - Unknown model throws.
 - AI SDK generation uses `/coding/v1/chat/completions` or `/coding/v1/messages`, current bearer token/device headers, caller abort signal, and no placeholder/`x-api-key`/`anthropic-api-key` credential.
-- Raw resolver only matches the catalog protocol.
+- Raw resolver returns OpenAI Chat and Anthropic transports for every model present in the language catalog, regardless of its preferred catalog protocol.
 - Raw transport preserves method/body/query/client headers but rewrites only exact `/v1/chat/completions` and `/v1/messages`; unexpected paths reject before fetch.
+- Anthropic token count replaces the request body model with the resolved model ID, calls `/coding/v1/messages/count_tokens?beta=true`, preserves abort/identity headers, and returns `{ inputTokens }` only for a non-negative integer response.
+- Non-Anthropic token count throws a protocol-unsupported error so the host returns its explicitly marked estimate.
 
 - [ ] **Step 2: Run runtime tests and verify RED**
 
@@ -701,11 +705,32 @@ export async function createKimiRuntime(
       imageModel: (modelId) => openai.imageModel(modelId),
     },
     raw(input) {
-      const protocol = protocols.get(input.modelId);
-      if (protocol === undefined || protocol !== input.protocol) return undefined;
+      if (!protocols.has(input.modelId)) return undefined;
+      const protocol = input.protocol === "anthropic" || input.protocol === "openai-compatible" ? input.protocol : undefined;
+      if (protocol === undefined) return undefined;
       return {
         invoke: async (request) => dynamicFetch(rewriteRawRequest(request, protocol)),
       };
+    },
+    tokenCount: {
+      async countTokens(input) {
+        if (input.protocol !== "anthropic") throw new Error(`Kimi token count does not support ${input.protocol}`);
+        const body: unknown = await input.request.json();
+        if (typeof body !== "object" || body === null || Array.isArray(body)) {
+          throw new Error("Kimi token count request is invalid");
+        }
+        const response = await dynamicFetch("https://api.kimi.com/coding/v1/messages/count_tokens?beta=true", {
+          method: "POST",
+          headers: input.request.headers,
+          body: JSON.stringify({ ...body, model: input.modelId }),
+          signal: input.request.signal,
+        });
+        if (!response.ok) throw new Error(`Kimi token count request failed with ${response.status}`);
+        const result: unknown = await response.json();
+        const inputTokens = typeof result === "object" && result !== null ? Reflect.get(result, "input_tokens") : undefined;
+        if (!Number.isSafeInteger(inputTokens) || inputTokens < 0) throw new Error("Kimi token count response is invalid");
+        return { inputTokens };
+      },
     },
   };
 }
@@ -751,7 +776,7 @@ function catalogProtocol(metadata: unknown): KimiProtocol | undefined {
 
 Run: `bun run --filter @aio-proxy/plugin-kimi-code test:unit -- src/runtime.test.ts`
 
-Expected: PASS for both AI SDK request shapes and raw path validation.
+Expected: PASS for both AI SDK request shapes, both raw protocols per model, raw path validation, and native Anthropic token count.
 
 ```sh
 git add packages/plugins/kimi-code/src/runtime.ts packages/plugins/kimi-code/src/runtime.test.ts

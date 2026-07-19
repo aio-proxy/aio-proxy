@@ -20,7 +20,8 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 - 实现 Kimi Code RFC 8628 device-code 登录和 refresh token 轮换。
 - 动态发现 Kimi Code 模型，并按服务端 `protocol` 选择 OpenAI-compatible 或 Anthropic runtime。
 - 通过 Kimi Code API 读取周配额与全部短周期 quota window。
-- 同协议请求提供 raw passthrough；跨协议请求继续由现有 pipeline 转换后调用 AI SDK model capability。
+- 每个 Kimi language model 同时为 OpenAI Chat Completions 与 Anthropic Messages 提供 raw passthrough；其他协议继续由现有 pipeline 转换后调用 AI SDK model capability。
+- Anthropic token count 请求转发到 Kimi 原生 `/messages/count_tokens` endpoint。
 - 沿用宿主的 credential CAS、catalog last-known-good、fallback、usage capture 和 request recording。
 
 ## 非目标
@@ -47,6 +48,8 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 | Quota | Authenticated `GET /coding/v1/usages`，映射顶层周配额与全部短周期 limits |
 | OpenAI runtime | `@ai-sdk/openai-compatible`，base URL `/coding/v1` |
 | Anthropic runtime | `@ai-sdk/anthropic`，base URL `/coding` |
+| Raw protocols | 每个 language model 同时支持 `openai-compatible` 与 `anthropic` raw；目录 protocol 只决定转换路径的首选 provider |
+| Token count | 仅 Anthropic 入站转发 `/coding/v1/messages/count_tokens?beta=true`；其他协议保留宿主估算 |
 | Provider ID 建议 | `kimi-<refresh-token-sha256-prefix>`；不持久化或展示 token 原文 |
 | Refresh threshold | access token 距过期不足 5 分钟时刷新 |
 
@@ -139,7 +142,7 @@ GET https://api.kimi.com/coding/v1/models
 Authorization: Bearer <current-access-token>
 ```
 
-只接受非空 string `id`。`display_name` 为 string 时映射为 `displayName`。每个 descriptor 写入最小 runtime metadata：
+只接受非空 string `id`。`display_name` 为 string 时映射为 `displayName`。每个 descriptor 写入最小 runtime metadata，表示跨协议转换时的首选 provider：
 
 ```ts
 {
@@ -153,23 +156,36 @@ Authorization: Bearer <current-access-token>
 
 ## 5. Runtime 与请求流
 
-runtime 建立两个 provider，并按 catalog metadata 为 model ID 选择一个：
+runtime 建立两个 provider，并按 catalog metadata 为跨协议转换选择一个：
 
 - `openai-compatible`：`createOpenAICompatible({ baseURL: "https://api.kimi.com/coding/v1" })`
 - `anthropic`：`createAnthropic({ baseURL: "https://api.kimi.com/coding" })`
 
 两者使用同一个 dynamic fetch。fetch 在发送前取得当前 credential，覆盖 Kimi auth/device headers，并保留 method、body、signal、redirect 和其他协议 headers。
 
-raw resolver 只在 `input.protocol` 等于模型 metadata protocol 时返回 transport：
+raw resolver 对 catalog 中存在的每个 language model 同时开放两种原生 transport，不以 metadata protocol 限制 raw：
 
 - `/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions`
 - `/v1/messages` → `https://api.kimi.com/coding/v1/messages`
 
-raw URL 只保留允许的协议 path 与 query，不接受客户端 host 作为 upstream 目标。OpenAI Responses、Gemini 或协议不匹配请求不 raw passthrough；现有 pipeline 将其转换为 model messages，并调用该模型对应的 AI SDK provider。
+raw URL 只保留允许的协议 path 与 query，不接受客户端 host 作为 upstream 目标。OpenAI Responses、Gemini 及其他非原生协议不 raw passthrough；现有 pipeline 将其转换为 model messages，并调用该模型对应的 AI SDK provider。
 
 Kimi upstream error 原样交给已有 pipeline error/fallback 机制。插件不实现 candidate loop、stream preflight、usage capture 或 request recording。
 
-## 6. Quota
+## 6. Token count
+
+runtime 注册 `tokenCount.countTokens(input)`。当 `input.protocol === "anthropic"` 时，读取原始 Anthropic request body，将 `model` 覆盖为已解析的 upstream model ID，并请求：
+
+```text
+POST https://api.kimi.com/coding/v1/messages/count_tokens?beta=true
+Authorization: Bearer <current-access-token>
+```
+
+请求沿用 dynamic credential fetch，因此 refresh、device headers、abort signal 与 inference 一致。响应必须包含非负整数 `input_tokens`，映射为 `{ inputTokens }`。
+
+其他入站协议不在插件内实现第二套 message conversion；`countTokens` 抛出 protocol-unsupported error，让现有 host 继续使用带 `x-aio-proxy-token-count-estimated: true` 的估算结果。这样不会把本地估算伪装成 Kimi 精确计数。
+
+## 7. Quota
 
 adapter 注册只读 `quota.read(context)`，使用与 catalog/runtime 相同的 credential refresh 和 device identity headers 请求：
 
@@ -191,7 +207,7 @@ Authorization: Bearer <current-access-token>
 
 `quota.read` 不缓存、不加锁：宿主负责 request lifecycle、error redaction 和 account credential CAS。插件不注册 `quota.reset`，也不返回 `resetCredits`。
 
-## 7. 测试与验证
+## 8. 测试与验证
 
 测试必须先失败再实现，集中保护以下行为：
 
@@ -199,7 +215,8 @@ Authorization: Bearer <current-access-token>
 - Token response 校验、refresh token 保留/轮换、5 分钟提前刷新和错误分类正确。
 - Catalog 只接收有效 model ID，并正确映射 Anthropic/OpenAI protocol；首次失败返回官方 `kimi-for-coding` fallback。
 - Quota 同时映射顶层周配额和全部短周期 limits，兼容 string/number、remaining fallback 与 reset key variants；畸形或非成功响应不泄露 token/response body。
-- Runtime 使用当前 token/device ID 覆盖 headers，按 metadata 选择 AI SDK provider，并只对同协议开放 raw transport。
+- Runtime 使用当前 token/device ID 覆盖 headers，按 metadata 选择转换路径的 AI SDK provider，并为每个 language model 同时开放 OpenAI Chat 与 Anthropic Messages raw transport。
+- Anthropic token count 覆盖请求 model、转发到 Kimi 原生 endpoint 并校验非负整数响应；非 Anthropic 协议回落宿主估算。
 - Built-in identity、descriptor、中英文文案和 artifact 内嵌 client ID 正确。
 
 不为常量、静态数组或实现细节单独写低价值测试。完成前运行：
@@ -217,6 +234,7 @@ bun run preflight
 - credential vault 中保存 access token、refresh token、真实 expiry 和 device ID；明文 token 不进入 config、Provider ID、日志或错误。
 - `/v1/models` 能展示动态 Kimi Code 模型；目录暂时不可用时，新账号至少能路由官方 `kimi-for-coding`。
 - OAuth quota reader 能展示周配额和所有有效短周期窗口的剩余比例与重置时间；不暴露或伪造 reset 操作。
-- OpenAI Chat Completions 与 Anthropic Messages 同协议调用使用 raw passthrough；其他入站协议使用现有转换路径。
+- 每个 Kimi language model 的 OpenAI Chat Completions 与 Anthropic Messages 调用都使用 raw passthrough；其他入站协议使用目录 protocol 选择的现有转换路径。
+- Claude Code token count 使用 Kimi 原生 endpoint；其他协议继续返回明确标记的宿主估算。
 - access token 在过期前刷新，refresh token rotation 不丢失，多个并发请求不产生重复持久化竞争。
 - Kimi provider 失败后仍遵循现有 Provider weight 与 fallback 规则。
