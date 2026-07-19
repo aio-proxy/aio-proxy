@@ -2,14 +2,14 @@
 
 ## Goal
 
-Make the provider model tags input visually follow the configured shadcn/ui Combobox without editing generated shadcn component files. Preserve the current free-form tag workflow and leave a direct path for adding searchable model suggestions later.
+Make the provider model tags input visually follow the configured shadcn/ui Combobox without changing its registry styling. Preserve the current free-form tag workflow and leave a direct path for adding searchable model suggestions later.
 
 ## Scope
 
 This change includes:
 
 - adding the official Base UI Combobox through the shadcn CLI;
-- keeping generated files under `packages/dashboard/src/components/ui/` unchanged;
+- keeping generated styling under `packages/dashboard/src/components/ui/` unchanged while allowing a narrow accessibility prop;
 - rebuilding `TagsInput` as an application-level wrapper around the official Combobox composition;
 - preserving arbitrary model IDs, trimming, exact duplicate prevention, Enter/comma/blur creation, batch paste, and removal;
 - accepting an optional suggestion collection so a future provider model list can appear in the dropdown without another component rewrite;
@@ -77,7 +77,7 @@ Blur creation occurs only when focus leaves the complete Combobox interaction, n
 
 Chip appearance and selection behavior come from the official shadcn Combobox components. The input keeps its `id` so the existing form label remains associated with it.
 
-The current localized `removeLabel(tag)` accessible name must be preserved. If the generated `ComboboxChip` does not expose a label for its internal remove button, `TagsInput` sets `showRemove={false}` and composes Base UI's `ChipRemove` with the same shadcn `Button` variant, size, and data slot used by the registry component. This extension stays in the application wrapper and does not modify the generated Combobox file.
+The current localized `removeLabel(tag)` accessible name must be preserved. `ComboboxChip` accepts a narrow `removeLabel` prop and passes it to its existing internal `ChipRemove`; `TagsInput` uses the normal `showRemove` behavior and does not duplicate the remove button implementation or styling.
 
 Disabled state applies to the root, input, selection, creation, and removal controls. Keyboard users can select suggestions, move among chips, and remove chips using the Base UI behavior.
 
@@ -101,4 +101,4 @@ Do not add class-name snapshots or tests that restate generated shadcn markup. P
 
 ## Acceptance Criteria
 
-The change is complete when both provider forms render the official shadcn Combobox chips styling, retain all current free-form model entry behavior, and require no changes to their submitted values. Generated shadcn files remain untouched after CLI installation. Supplying suggestions enables searchable multiple selection while still allowing unknown model IDs, and keyboard, IME, blur, Escape, paste, duplicate, disabled, and accessible removal behavior remain correct.
+The change is complete when both provider forms render the official shadcn Combobox chips styling, retain all current free-form model entry behavior, and require no changes to their submitted values. The generated Combobox styling remains untouched; its only local extension is the `removeLabel` accessibility prop. Supplying suggestions enables searchable multiple selection while still allowing unknown model IDs, and keyboard, IME, blur, Escape, paste, duplicate, disabled, and accessible removal behavior remain correct.

@@ -4,13 +4,13 @@
 
 **Goal:** Rebuild the provider model `TagsInput` on the configured shadcn/ui Base Combobox so its styling stays aligned while preserving free-form creation and supporting optional searchable suggestions.
 
-**Architecture:** The shadcn CLI supplies untouched `combobox.tsx` and `input-group.tsx` primitives. The application-level `TagsInput` controls selected string values and draft input, maps them to Base UI Combobox items, and owns only creatable-tag policy such as separators, paste, IME, blur, duplicate handling, and Escape protection.
+**Architecture:** The shadcn CLI supplies `combobox.tsx` and `input-group.tsx` primitives with registry styling left unchanged. `ComboboxChip` receives one local `removeLabel` accessibility prop; the application-level `TagsInput` controls selected string values and draft input, maps them to Base UI Combobox items, and owns only creatable-tag policy such as separators, paste, IME, blur, duplicate handling, and Escape protection.
 
 **Tech Stack:** React 19, shadcn/ui Base UI registry, `@base-ui/react` 1.6, TanStack Form, Rstest, Testing Library, Bun.
 
 ## Global Constraints
 
-- Do not modify generated shadcn files after installation.
+- Do not modify generated shadcn styles; the only local primitive extension is `ComboboxChip.removeLabel` for its existing remove button.
 - Do not overwrite the existing `button.tsx`, `input.tsx`, or `textarea.tsx` files when adding Combobox registry dependencies.
 - Keep the controlled provider form value contract as `readonly string[]` to `(next: string[]) => void`.
 - Preserve arbitrary values, trimming, exact duplicate prevention, insertion order, Enter/comma/blur creation, comma/newline paste, localized removal labels, disabled behavior, and IME safety.
@@ -193,14 +193,17 @@ Expected: FAIL because the current component has no `options` prop and does not 
 ### Task 3: Rebuild TagsInput as a creatable Combobox wrapper
 
 **Files:**
+- Modify: `packages/dashboard/src/components/ui/combobox.tsx`
 - Modify: `packages/dashboard/src/components/tags-input/tags-input.tsx`
 - Test: `packages/dashboard/src/components/tags-input/tags-input.test.tsx`
 
 **Interfaces:**
-- Consumes: official shadcn Combobox exports from Task 1 and `@base-ui/react/combobox` only for the accessible `ChipRemove` extension.
+- Consumes: official shadcn Combobox exports from Task 1, including the narrow `ComboboxChip.removeLabel` extension.
 - Produces: `TagsInput` with `TagsInputProps`, optional suggestions, and the unchanged controlled string-array contract.
 
 - [ ] **Step 1: Replace the handwritten visual control with the Combobox composition**
+
+Extend `ComboboxChip` with an optional `removeLabel?: string` prop and pass it as `aria-label` to the existing internal `ComboboxPrimitive.ChipRemove`. Do not change its markup or classes.
 
 Create the export-only `packages/dashboard/src/components/tags-input/index.ts`:
 
@@ -211,11 +214,8 @@ export * from "./tags-input";
 Implement `packages/dashboard/src/components/tags-input/tags-input.tsx` with these exact responsibilities:
 
 ```tsx
-import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
-import { XIcon } from "lucide-react";
 import type React from "react";
 import { useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Combobox,
   ComboboxChip,
@@ -331,16 +331,8 @@ export const TagsInput: React.FC<TagsInputProps> = ({
       <ComboboxChips ref={anchor}>
         <ComboboxValue>
           {value.map((tag) => (
-            <ComboboxChip key={tag} showRemove={false}>
+            <ComboboxChip key={tag} removeLabel={removeLabel(tag)}>
               {tag}
-              <ComboboxPrimitive.ChipRemove
-                render={<Button variant="ghost" size="icon-xs" />}
-                className="-ml-1 opacity-50 hover:opacity-100"
-                data-slot="combobox-chip-remove"
-                aria-label={removeLabel(tag)}
-              >
-                <XIcon className="pointer-events-none" />
-              </ComboboxPrimitive.ChipRemove>
             </ComboboxChip>
           ))}
         </ComboboxValue>
@@ -416,7 +408,7 @@ Expected: all commands pass.
 - [ ] **Step 4: Commit the behavior change**
 
 ```bash
-git add packages/dashboard/src/components/tags-input AGENTS.md docs/superpowers/specs/2026-07-19-tags-input-combobox-design.md
+git add packages/dashboard/src/components/tags-input packages/dashboard/src/components/ui/combobox.tsx AGENTS.md docs/superpowers/specs/2026-07-19-tags-input-combobox-design.md
 git commit -m "refactor(dashboard): build tags input on combobox" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 

@@ -1,8 +1,5 @@
-import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
-import { XIcon } from "lucide-react";
 import type React from "react";
 import { useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Combobox,
   ComboboxChip,
@@ -118,16 +115,8 @@ export const TagsInput: React.FC<TagsInputProps> = ({
       <ComboboxChips ref={anchor}>
         <ComboboxValue>
           {value.map((tag) => (
-            <ComboboxChip key={tag} showRemove={false}>
+            <ComboboxChip key={tag} removeLabel={removeLabel(tag)}>
               {tag}
-              <ComboboxPrimitive.ChipRemove
-                render={<Button variant="ghost" size="icon-xs" />}
-                className="-ml-1 opacity-50 hover:opacity-100"
-                data-slot="combobox-chip-remove"
-                aria-label={removeLabel(tag)}
-              >
-                <XIcon className="pointer-events-none" />
-              </ComboboxPrimitive.ChipRemove>
             </ComboboxChip>
           ))}
         </ComboboxValue>
