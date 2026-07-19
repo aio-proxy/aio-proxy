@@ -8,10 +8,17 @@ import type {
   Router,
 } from "@aio-proxy/core";
 import type { RequestLogStore } from "@aio-proxy/core/db";
-import type { Config, DashboardEvent, DashboardPluginSummary, DashboardProviderSummary } from "@aio-proxy/types";
+import type {
+  Config,
+  DashboardEvent,
+  DashboardOAuthCapability,
+  DashboardOAuthProviderEdit,
+  DashboardProviderSummary,
+} from "@aio-proxy/types";
 
 import type { ConfigStore } from "../config-store";
 import type { DashboardEventHub, DashboardEventLimits } from "../dashboard-events";
+import type { OAuthLoginSessionManager } from "../oauth-login-session/manager";
 import type { OAuthQuotaOperations } from "../plugin-quota";
 import type { CatalogJobDescriptor } from "../plugin-runtime";
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
@@ -45,6 +52,8 @@ export type ServerStateTestHooks = {
   readonly reconciliationRetryMs?: number;
   readonly recoveryScheduler?: RecoveryScheduler;
   readonly recoverPendingAccountOperations?: typeof import("@aio-proxy/core").recoverPendingAccountOperations;
+  readonly oauthSessionNow?: () => number;
+  readonly oauthSessionTtlMs?: number;
 };
 
 export type InternalServerStateOptions = ServerStateOptions & { readonly __test?: ServerStateTestHooks };
@@ -60,7 +69,9 @@ export type ServerState = ProviderRouteSource & {
   readonly events: DashboardEventHub;
   readonly modelsDevCatalog: () => Promise<ModelsDevCatalog | undefined>;
   readonly oauthQuota: OAuthQuotaOperations;
-  readonly pluginSummaries: () => readonly DashboardPluginSummary[];
+  readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
+  readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
+  readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;

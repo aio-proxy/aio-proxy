@@ -1,7 +1,7 @@
 import type { DashboardProviderSummary } from "@aio-proxy/types";
 
 import { afterEach, describe, expect, rs, test } from "@rstest/core";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { DeleteProviderDialogStub } from "../delete-provider-dialog-stub";
 import { providerStub } from "../provider-fixtures";
@@ -9,14 +9,13 @@ import { RouterLinkStub } from "../router-link-stub";
 import { ProvidersPage } from "./providers-page";
 
 const queryMocks = rs.hoisted(() => ({
-  plugins: { plugins: [] },
   providers: { providers: [] as DashboardProviderSummary[] },
 }));
 
 rs.mock("@tanstack/react-query", () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: (options: { queryKey: readonly string[] }) => ({
-    data: options.queryKey[0] === "plugins" ? queryMocks.plugins : queryMocks.providers,
+  useQuery: () => ({
+    data: queryMocks.providers,
     isLoading: false,
   }),
 }));
@@ -32,6 +31,14 @@ afterEach(() => {
 });
 
 describe("providers page diagnostics", () => {
+  test("removes the plugin inventory and offers OAuth from the new-provider menu", async () => {
+    render(<ProvidersPage />);
+
+    expect(screen.queryByTestId("plugins-table")).toBeNull();
+    fireEvent.click(screen.getByTestId("new-provider-button"));
+    expect(await screen.findByRole("menuitem", { name: /OAuth/u })).toBeTruthy();
+  });
+
   test("renders capability, account expiry, and catalog metadata without OAuth management controls", () => {
     queryMocks.providers.providers = [
       providerStub({
@@ -136,5 +143,22 @@ describe("providers page diagnostics", () => {
 
     fireEvent.click(section.getByRole("button", { name: /Previous|上一页/u }));
     expect(section.getByTestId("provider-row-provider-0")).toBeTruthy();
+  });
+
+  test("locates and highlights a focused provider on another page", async () => {
+    queryMocks.providers.providers = Array.from({ length: 11 }, (_, index) =>
+      providerStub({ id: `provider-${index}` }),
+    );
+
+    render(<ProvidersPage focusProviderId="provider-10" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-row-provider-10")).toHaveAttribute("data-focused", "true");
+    });
+  });
+
+  test("shows a catalog warning returned by OAuth login", () => {
+    render(<ProvidersPage warning="catalog_unavailable" />);
+    expect(screen.getByRole("status")).toHaveTextContent(/catalog|模型目录/u);
   });
 });

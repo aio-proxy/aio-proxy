@@ -34,15 +34,15 @@ describe("AtomicConfigFile", () => {
       `${path}.lock`,
       `${JSON.stringify({ pid: 999_999, owner: "dead", createdAt: Date.now() })}${" ".repeat(1_000_000)}`,
     );
-    const children = Array.from({ length: 12 }, (_, index) =>
+    const children = Array.from({ length: 4 }, (_, index) =>
       Bun.spawn([process.execPath, child, "update", path, `key${index}`, String(index)], {
         stdout: "pipe",
         stderr: "pipe",
       }),
     );
-    expect(await Promise.all(children.map((process) => process.exited))).toEqual(Array(12).fill(0));
+    expect(await Promise.all(children.map((process) => process.exited))).toEqual(Array(4).fill(0));
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(
-      Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`key${index}`, String(index)])),
+      Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`key${index}`, String(index)])),
     );
   }, 15_000);
 

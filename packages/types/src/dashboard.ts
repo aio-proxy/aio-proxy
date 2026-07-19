@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { providerLoginCommand } from "./commands";
 import { IdSchema } from "./common";
-import { type DiagnosticCode, PluginStateSchema, ProviderStateSchema } from "./plugin";
+import { type DiagnosticCode, ProviderStateSchema } from "./plugin";
 import { ProviderKind, ProviderProtocolSchema } from "./provider";
 import {
   RequestOutcomeSchema,
@@ -13,43 +13,6 @@ import {
 } from "./usage";
 
 export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
-
-const DashboardLocalizedTextValueSchema = z
-  .string()
-  .min(1)
-  .refine((value) => value.trim() === value);
-
-export const DashboardLocalizedTextSchema = z.union([
-  DashboardLocalizedTextValueSchema,
-  z.record(z.string(), DashboardLocalizedTextValueSchema).superRefine((value, context) => {
-    if (!Object.hasOwn(value, "default")) {
-      context.addIssue({ code: "custom", message: "default localized text is required" });
-    }
-    for (const key of Object.keys(value)) {
-      if (key === "default") continue;
-      try {
-        if (Intl.getCanonicalLocales(key)[0] !== key) {
-          context.addIssue({ code: "custom", message: "localized text keys must be canonical" });
-        }
-      } catch {
-        context.addIssue({ code: "custom", message: "localized text keys must be language tags" });
-      }
-    }
-  }),
-]);
-
-export const DashboardPluginSummarySchema = z.object({
-  packageName: z.string().min(1),
-  label: DashboardLocalizedTextSchema.optional(),
-  description: DashboardLocalizedTextSchema.optional(),
-  builtIn: z.boolean(),
-  version: z.string().optional(),
-  state: PluginStateSchema,
-});
-
-export const DashboardPluginsResponseSchema = z.object({
-  plugins: z.array(DashboardPluginSummarySchema),
-});
 
 export const DashboardProviderSummarySchema = z.object({
   id: IdSchema,
@@ -199,10 +162,6 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
 
 export type DashboardProviderProbeInput = z.input<typeof DashboardProviderProbeSchema>;
 export type DashboardProviderProbe = z.output<typeof DashboardProviderProbeSchema>;
-export type DashboardPluginSummaryInput = z.input<typeof DashboardPluginSummarySchema>;
-export type DashboardPluginSummary = z.output<typeof DashboardPluginSummarySchema>;
-export type DashboardPluginsResponseInput = z.input<typeof DashboardPluginsResponseSchema>;
-export type DashboardPluginsResponse = z.output<typeof DashboardPluginsResponseSchema>;
 export type DashboardProviderSummaryInput = z.input<typeof DashboardProviderSummarySchema>;
 export type DashboardProviderSummary = z.output<typeof DashboardProviderSummarySchema>;
 
@@ -223,6 +182,11 @@ export const dashboardProviderSuggestedCommand = (
   }
   return diagnostic.suggestedCommand;
 };
+
+export const dashboardProviderNeedsReauthorization = (
+  provider: Pick<DashboardProviderSummary, "id" | "kind" | "state">,
+): boolean =>
+  provider.kind === "oauth" && dashboardProviderSuggestedCommand(provider) === providerLoginCommand(provider.id);
 
 export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersResponseSchema>;
 export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;

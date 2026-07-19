@@ -266,21 +266,36 @@
       "catalog": {
         "last_success_at": "最近成功 {value}"
       },
-      "plugins": {
-        "title": "OAuth 插件",
-        "empty": "未加载 OAuth 插件",
-        "source_builtin": "内置",
-        "source_third_party": "第三方",
-        "table": {
-          "label": "OAuth 插件诊断",
-          "col_package": "包名",
-          "col_source": "来源",
-          "col_version": "版本",
-          "col_state": "状态",
-          "col_diagnostic": "诊断",
-          "filter": "筛选插件",
-          "columns": "插件列"
-        }
+      "oauth": {
+        "select_label": "OAuth 提供商",
+        "select_placeholder": "选择 OAuth 提供商",
+        "search_placeholder": "搜索 OAuth 提供商",
+        "empty": "没有可用的 OAuth 提供商",
+        "continue": "继续授权",
+        "reauthorize": "重新授权",
+        "preparing": "正在准备授权…",
+        "device_code_title": "使用设备代码授权",
+        "loopback_title": "在浏览器中授权",
+        "open_authorization": "打开授权页面",
+        "manual_callback_label": "完整回调 URL",
+        "manual_callback_placeholder": "粘贴完整回调 URL",
+        "submit_callback": "提交回调",
+        "cancel": "取消授权",
+        "secret_configured": "已配置值，留空将保留现有值。",
+        "clear_secret": "清除已配置的值",
+        "catalog_warning": "账号已连接，但暂时无法获取模型目录。",
+        "duplicate": "该账号已经连接。",
+        "failed": "授权失败：{code}",
+        "fingerprint_mismatch": "授权使用了其他账户，请使用原账户重新授权。",
+        "session_unavailable": "授权会话不可用。",
+        "authorization_cancelled": "授权已取消。",
+        "start_over": "重新开始",
+        "models_readonly": "模型由 OAuth 提供商自动发现，无法手动编辑。",
+        "service_label": "OAuth 服务",
+        "account_label": "账户",
+        "account_fields_title": "账户设置",
+        "models_title": "已发现模型",
+        "reauthorize_helper": "账户设置变更只会在授权成功后保存。"
       },
       "form": {
         "label_id": "提供商 ID",
@@ -396,8 +411,6 @@
       "new_title": "新建提供商",
       "edit_title": "编辑提供商",
       "aliases_title": "提供商别名",
-      "aliases_readonly_note": "请编辑配置文件来修改别名",
-      "oauth_managed_cli": "OAuth 提供商通过 CLI 管理，请使用 CLI 配置此提供商。",
       "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商"
     },
     "usage": {

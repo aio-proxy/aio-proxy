@@ -13,7 +13,12 @@ import {
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import { type Config, ConfigSchema, type DashboardPluginSummary } from "@aio-proxy/types";
+import {
+  type Config,
+  ConfigSchema,
+  type DashboardOAuthCapability,
+  DashboardOAuthProviderEditSchema,
+} from "@aio-proxy/types";
 import { dirname } from "node:path";
 
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
@@ -25,8 +30,10 @@ import { CatalogScheduler } from "../catalog-scheduler";
 import { createConfigStore } from "../config-store";
 import { watchConfigFile } from "../config-watcher";
 import { createDashboardEventHub } from "../dashboard-events";
+import { dashboardOAuthCapabilities, dashboardOAuthForm } from "../dashboard-routes/oauth-capabilities";
 import { createFifoQueue } from "../fifo-queue";
 import { LogicalSessionStore } from "../logical-session-store";
+import { createOAuthLoginSessionManager } from "../oauth-login-session/manager";
 import { createOAuthQuotaOperations } from "../plugin-quota";
 import { createSnapshotManager } from "../plugin-snapshot";
 import { providerDiff } from "../provider-runtime";
@@ -181,10 +188,31 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     verify: (candidate) => commitConfig(ConfigSchema.parse(candidate), "config-store"),
   });
 
-  function pluginSummaries(): readonly DashboardPluginSummary[] {
+  function oauthCapabilities(): readonly DashboardOAuthCapability[] {
     const lease = manager.acquire();
     try {
-      return [...(lease.snapshot as Snapshot).plugins.plugins.values()];
+      return dashboardOAuthCapabilities((lease.snapshot as Snapshot).plugins.registry);
+    } finally {
+      lease.release();
+    }
+  }
+
+  function oauthProviderEditView(providerId: string) {
+    const lease = manager.acquire();
+    try {
+      const snapshot = lease.snapshot as Snapshot;
+      const provider = snapshot.config.providers.find((candidate) => candidate.id === providerId);
+      if (provider?.kind !== "oauth") return undefined;
+      const adapter = snapshot.plugins.registry.resolveOAuth(provider.plugin, provider.capability);
+      const account = repository.readAccount(providerId);
+      const configuredSecrets = new Set(Object.keys(account?.secrets ?? {}));
+      const catalog = repository.readCatalog(providerId)?.catalog;
+      return DashboardOAuthProviderEditSchema.parse({
+        accountLabel: account?.label ?? account?.fingerprint ?? providerId,
+        publicValues: provider.options ?? {},
+        form: adapter === undefined ? [] : dashboardOAuthForm(adapter.account.options.form, configuredSecrets),
+        models: catalog?.language.map(({ id }) => id) ?? [],
+      });
     } finally {
       lease.release();
     }
@@ -193,6 +221,22 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow());
+  const oauthLoginSessions = createOAuthLoginSessionManager({
+    configFile,
+    repository,
+    acquireRegistry: () => {
+      const lease = manager.acquire();
+      return {
+        registry: (lease.snapshot as Snapshot).plugins.registry,
+        release: lease.release,
+      };
+    },
+    diagnostics,
+    logger: pluginLogger,
+    reload,
+    now: testHooks?.oauthSessionNow,
+    terminalSessionTtlMs: testHooks?.oauthSessionTtlMs,
+  });
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
@@ -205,6 +249,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       watcher?.close();
       scheduler.close();
       recovery?.close();
+      oauthLoginSessions.close();
       events.close();
       dbHandle.close();
     },
@@ -213,7 +258,9 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     currentProviderSnapshot: manager.current,
     events,
     logicalSessionStore,
-    pluginSummaries,
+    oauthCapabilities,
+    oauthProviderEditView,
+    oauthLoginSessions,
     providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     modelsDevCatalog,

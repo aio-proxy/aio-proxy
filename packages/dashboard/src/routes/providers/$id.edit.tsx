@@ -1,27 +1,19 @@
 import { m } from "@aio-proxy/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { useRef } from "react";
+import { createFileRoute, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 
 import { PageContainer } from "@/components/page-container";
-import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
-import {
-  DeleteProviderDialog,
-  type DeleteProviderDialogRef,
-} from "@/modules/providers/components/delete-provider-dialog";
 import { ProviderFormMode } from "@/modules/providers/constants";
 import { providerEditViewQueryOptions } from "@/modules/providers/services/providers-service";
+import { OAuthProviderEditPage } from "@/modules/providers/templates/oauth-provider-edit-page";
 import { ProviderFormPage } from "@/modules/providers/templates/provider-form-page";
 
-export const Route = createFileRoute("/providers/$id/edit")({
-  component: EditProviderPage,
-});
-
-function EditProviderPage() {
-  const { id } = Route.useParams();
+const EditProviderPage: React.FC = () => {
+  const { id } = useParams({ from: "/providers/$id/edit" });
+  const { session } = useSearch({ from: "/providers/$id/edit" });
+  const navigate = useNavigate({ from: "/providers/$id/edit" });
   const { data, isLoading } = useQuery(providerEditViewQueryOptions(id));
-  const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
 
   if (isLoading) {
     return (
@@ -42,16 +34,29 @@ function EditProviderPage() {
   const provider = data.provider;
 
   if (provider.kind === "oauth") {
+    if (data.oauth === undefined) {
+      return (
+        <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
+          <Empty data-testid="not-found">{m["dashboard.providers.edit_not_found"]()}</Empty>
+        </PageContainer>
+      );
+    }
     return (
-      <div data-testid="provider-oauth-readonly" className="space-y-4 p-4">
-        <p>{m["dashboard.providers.oauth_managed_cli"]()}</p>
-        <Button variant="destructive" onClick={() => deleteDialogRef.current?.open(provider)}>
-          {m["dashboard.providers.actions.delete"]()}
-        </Button>
-        <DeleteProviderDialog ref={deleteDialogRef} />
-      </div>
+      <OAuthProviderEditPage
+        provider={provider}
+        oauth={data.oauth}
+        sessionId={session}
+        onSessionIdChange={(next) =>
+          void navigate({ search: next === undefined ? {} : { session: next }, replace: true })
+        }
+      />
     );
   }
 
   return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={provider} providerId={id} />;
-}
+};
+
+export const Route = createFileRoute("/providers/$id/edit")({
+  validateSearch: (raw) => ({ session: typeof raw.session === "string" ? raw.session : undefined }),
+  component: EditProviderPage,
+});

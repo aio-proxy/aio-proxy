@@ -117,16 +117,19 @@ describe("dashboard static routes", () => {
     const routes = createDashboardRoutes(state);
 
     try {
-      const plugins = await routes.request("/plugins");
+      const removedPlugins = await routes.request("/plugins");
+      const capabilities = await routes.request("/oauth/capabilities");
       const providers = await routes.request("/providers");
-      const serialized = JSON.stringify({ plugins: await plugins.json(), providers: await providers.json() });
+      const serialized = JSON.stringify({
+        capabilities: await capabilities.json(),
+        providers: await providers.json(),
+      });
 
-      expect(plugins.status).toBe(200);
+      expect(removedPlugins.status).toBe(404);
+      expect(capabilities.status).toBe(200);
       expect(providers.status).toBe(200);
       expect(serialized).toContain("PLUGIN_LOAD_FAILED");
-      expect(serialized).toContain('"label":{"default":"Broken plugin","zh-Hans":"损坏的插件"}');
-      expect(serialized).toContain('"description":{"default":"Broken plugin description","zh-Hans":"损坏插件描述"}');
-      expect(serialized).toContain("aio-proxy plugin config @example/broken");
+      expect(serialized).toContain('"capabilities":[]');
       expect(serialized).toContain("broken-account");
       expect(serialized).not.toContain("plugin-secret-sentinel");
       expect(serialized).not.toContain("account-option-sentinel");

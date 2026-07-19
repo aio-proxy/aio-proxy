@@ -1,9 +1,10 @@
 import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
 
-import { type AliasConfig, AliasConfigSchema, ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
+import { AliasConfigSchema, ConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from "@aio-proxy/types";
 import { z } from "zod";
 
 import type { StoredAccount } from "../repository/index";
+import type { OAuthProviderPatch } from "./login";
 
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
@@ -18,7 +19,6 @@ import {
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
-type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 export function isRecord(value: unknown): value is PlainRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -147,20 +147,21 @@ export function providerEntry(
   publicOptions: Record<string, unknown>,
   existing?: PlainRecord,
   defaults?: ProviderAlias,
+  patch?: OAuthProviderPatch,
 ): PlainRecord {
+  const enabled = patch?.enabled ?? existing?.["enabled"] ?? true;
+  const weight = patch === undefined ? existing?.["weight"] : patch.weight;
+  const name = patch === undefined ? existing?.["name"] : patch.name;
+  const alias = patch === undefined ? (existing?.["alias"] ?? defaults) : patch.alias;
   return {
     kind: "oauth",
     plugin,
     capability,
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),
-    enabled: existing?.["enabled"] ?? true,
-    ...(existing?.["weight"] === undefined ? {} : { weight: existing["weight"] }),
-    ...(existing?.["name"] === undefined ? {} : { name: existing["name"] }),
-    ...(existing?.["alias"] !== undefined
-      ? { alias: existing["alias"] }
-      : defaults === undefined
-        ? {}
-        : { alias: defaults }),
+    enabled,
+    ...(weight === undefined ? {} : { weight }),
+    ...(name === undefined ? {} : { name }),
+    ...(alias === undefined ? {} : { alias }),
   };
 }
 export function validatedDefaultAliases(adapter: OAuthAdapter, catalog: ModelCatalog): ProviderAlias | undefined {

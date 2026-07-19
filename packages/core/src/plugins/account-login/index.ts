@@ -18,6 +18,7 @@ export {
   type LoginOAuthAccountOptions,
   type LoginOAuthAccountResult,
   loginOAuthAccount,
+  type OAuthProviderPatch,
   type RenderAccountOptions,
   type RenderAccountOptionsInput,
 } from "./login";

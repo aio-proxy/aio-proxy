@@ -1,7 +1,14 @@
 import type React from "react";
 
 import { m } from "@aio-proxy/i18n";
-import { type DashboardProviderSummary, dashboardProviderSuggestedCommand } from "@aio-proxy/types";
+import {
+  type DashboardProviderSummary,
+  dashboardProviderNeedsReauthorization,
+  dashboardProviderSuggestedCommand,
+} from "@aio-proxy/types";
+import { Link } from "@tanstack/react-router";
+
+import { buttonVariants } from "@/components/ui/button";
 
 import { DiagnosticDetails } from "./diagnostic-details";
 
@@ -14,7 +21,8 @@ export const ProviderStateCell: React.FC<{
   readonly provider: DashboardProviderSummary;
 }> = ({ provider }) => {
   const diagnostic = provider.state.diagnostic;
-  const command = dashboardProviderSuggestedCommand(provider);
+  const needsReauthorization = dashboardProviderNeedsReauthorization(provider);
+  const command = needsReauthorization ? undefined : dashboardProviderSuggestedCommand(provider);
 
   return (
     <fieldset
@@ -29,7 +37,20 @@ export const ProviderStateCell: React.FC<{
             : m["dashboard.providers.state.catalog_stale"]()}
         </div>
       ) : null}
-      {diagnostic === undefined ? null : <DiagnosticDetails diagnostic={diagnostic} suggestedCommand={command} />}
+      {diagnostic === undefined ? null : (
+        <>
+          <DiagnosticDetails diagnostic={diagnostic} suggestedCommand={command} />
+          {needsReauthorization ? (
+            <Link
+              to="/providers/$id/edit"
+              params={{ id: provider.id }}
+              className={buttonVariants({ variant: "link", size: "xs" })}
+            >
+              {m["dashboard.providers.oauth.reauthorize"]()}
+            </Link>
+          ) : null}
+        </>
+      )}
     </fieldset>
   );
 };
