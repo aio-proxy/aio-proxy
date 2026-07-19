@@ -1,6 +1,6 @@
 import type { AppType } from "@aio-proxy/server";
 
-import serverEntrypoint, { createServer as createBaseServer, serverDefaults } from "@aio-proxy/server";
+import { createServer as createBaseServer, serverDefaults } from "@aio-proxy/server";
 import { ConfigSchema } from "@aio-proxy/types";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { hc } from "hono/client";
@@ -77,15 +77,6 @@ describe("server routes", () => {
 
   test("server config rejects non-loopback binding", () => {
     expect(() => ConfigSchema.parse({ server: { host: "0.0.0.0" }, providers: {} })).toThrow();
-  });
-
-  test("Bun entrypoint binds localhost api port when inspected", () => {
-    // Given / When / Then
-    expect(serverEntrypoint).toMatchObject({
-      hostname: serverDefaults.host,
-      port: serverDefaults.port,
-    });
-    expect(typeof serverEntrypoint.fetch).toBe("function");
   });
 
   test("RPC client exposes typed dashboard config get when constructed", () => {

@@ -28,7 +28,6 @@ export const serverDefaults = {
 const dashboardOrigins = (port: number) => new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 
 const csrfMethods = new Set(["POST", "PUT", "DELETE"]);
-const defaultConfig = ConfigSchema.parse({ providers: {} });
 
 export type CreateServerOptions = {
   readonly config: unknown;
@@ -187,16 +186,7 @@ function modelTimestamps(releaseDate: string | undefined): { readonly created: n
   return { created: getUnixTime(date), createdAt: date.toISOString() };
 }
 
-const routes = createRoutes(await createServerState({ config: defaultConfig }));
-
-export const app = routes;
-export type AppType = typeof routes;
-
-export const bunServer = {
-  hostname: serverDefaults.host,
-  port: serverDefaults.port,
-  fetch: app.fetch,
-};
+export type AppType = ReturnType<typeof createRoutes>;
 
 export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
   const config = ConfigSchema.parse(options.config);
@@ -215,5 +205,3 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     options.dashboardAssets,
   );
 };
-
-export default bunServer;
