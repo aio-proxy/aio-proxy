@@ -46,17 +46,17 @@ export const UsageTrendTabs: React.FC<Props> = ({ title, description, titleId, d
           <CardTitle id={titleId}>{title}</CardTitle>
           <CardDescription id={descriptionId}>{description}</CardDescription>
         </div>
-        <div className="flex min-w-0 flex-col gap-2 sm:items-end">
-          <div className="min-w-0 max-w-full overflow-x-auto pb-1">
-            <TabsList className="shrink-0" aria-label={m["dashboard.usage.metric_label"]()}>
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-xl bg-muted p-0.5 sm:justify-end">
+          <div className="min-w-0 max-w-full overflow-x-auto">
+            <TabsList className="h-7! shrink-0 bg-transparent p-0" aria-label={m["dashboard.usage.metric_label"]()}>
               {metrics.map((metric) => (
-                <TabsTrigger key={metric} value={metric}>
+                <TabsTrigger key={metric} value={metric} className="px-2.5 py-0.5">
                   {metricLabels[metric]}
                 </TabsTrigger>
               ))}
             </TabsList>
           </div>
-          <div ref={setGroupingTabsContainer} className="min-w-0 max-w-full overflow-x-auto pb-1" />
+          <div ref={setGroupingTabsContainer} className="min-w-0 max-w-full overflow-x-auto" />
         </div>
       </CardHeader>
       {metrics.map((metric) => (
@@ -71,9 +71,12 @@ export const UsageTrendTabs: React.FC<Props> = ({ title, description, titleId, d
             >
               {groupingTabsContainer
                 ? createPortal(
-                    <TabsList className="shrink-0" aria-label={m["dashboard.usage.group_by_label"]()}>
+                    <TabsList
+                      className="h-7! shrink-0 bg-transparent p-0"
+                      aria-label={m["dashboard.usage.group_by_label"]()}
+                    >
                       {groupings.map((groupBy) => (
-                        <TabsTrigger key={groupBy} value={groupBy}>
+                        <TabsTrigger key={groupBy} value={groupBy} className="px-2.5 py-0.5">
                           {groupingLabels[groupBy]}
                         </TabsTrigger>
                       ))}
