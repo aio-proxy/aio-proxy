@@ -194,20 +194,23 @@ logging: z
   .optional();
 ```
 
-磁盘（`@logtape/file`）：
+磁盘（继承 `@logtape/file` 管理机制，不自研轮转/清理/命名）：
 
 ```ts
 getTimeRotatingFileSink({
-  directory: dir, // default resolved by CLI: join(aioHome(), "logs")
-  interval: "daily",
-  // 不传 filename：使用库默认 YYYY-MM-DD.log，以便 maxAgeMs 能识别并清理
+  directory: dir, // CLI 默认 join(aioHome(), "logs")
   maxAgeMs: retentionDays * 24 * 60 * 60 * 1000,
+  // 不传 interval / filename：使用库默认 daily + YYYY-MM-DD.log
 });
 ```
 
-示例文件：`~/.aio-proxy/logs/2026-07-19.log`
+原则：
 
-**禁止**自定义 `aio-proxy-YYYY-MM-DD.log` 之类前缀：`@logtape/file` 2.1.x 的 retention 只识别默认模式（`YYYY-MM-DD.log` / hourly / weekly）。自定义前缀会导致 `maxAgeMs` 静默失效。命名空间靠目录 `{AIO_PROXY_HOME}/logs` 隔离即可。
+1. **轮转、默认文件名、过期删除全部交给 `@logtape/file`**。
+2. 我们只配置 `directory` 与由 `retentionDays` 导出的 `maxAgeMs`。
+3. **禁止**自定义 filename / 自研扫盘 retention；前缀命名空间用目录隔离（`{AIO_PROXY_HOME}/logs`）。
+
+示例文件：`~/.aio-proxy/logs/2026-07-19.log`
 
 行为：
 
