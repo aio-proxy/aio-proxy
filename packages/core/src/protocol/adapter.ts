@@ -11,6 +11,7 @@ export type ProtocolErrorMapper = Readonly<{
   modelUnsupported?: (error: unknown) => Response | undefined;
   modelNotFound: (message: string) => Response;
   tooLarge: () => Response;
+  unsupportedContentEncoding: () => Response;
   unsupported: (feature: string) => Response;
   provider: (error: unknown) => Response | undefined;
 }>;
