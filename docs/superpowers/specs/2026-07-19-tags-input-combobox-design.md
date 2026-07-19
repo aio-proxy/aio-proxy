@@ -27,7 +27,7 @@ This change excludes:
 
 `packages/dashboard/src/components/ui/combobox.tsx` and any registry dependencies are installed with the configured shadcn CLI and treated as externally managed UI components. Application behavior must not be added there.
 
-`packages/dashboard/src/components/tags-input.tsx` remains the public application component used by the provider forms. It composes the official `Combobox`, `ComboboxChips`, `ComboboxChip`, `ComboboxChipsInput`, content, list, empty state, and item components. The visible control styling comes from those components; `TagsInput` contains only state and interaction policy.
+`packages/dashboard/src/components/tags-input.tsx` remains the public application component used by the provider forms. It composes the official `Combobox`, `ComboboxChips`, `ComboboxChip`, `ComboboxChipsInput`, content, list, and item components. The visible control styling comes from those components; `TagsInput` contains only state and interaction policy. A typed unknown value is rendered as a selectable creatable item, so this always-creatable component does not need a separate empty-state message.
 
 The current `className` prop is unused and is removed so callers cannot restyle the control away from the shadcn default. Layout should be controlled by the surrounding form field rather than by duplicating control styles.
 
