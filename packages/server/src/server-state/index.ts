@@ -7,12 +7,12 @@ import {
   type FetchModelsDevProviders,
   type ModelsDevCatalog,
   type PendingAccountOperation,
-  type PluginLogSink,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
+import { createLogger, isLoggingConfigured } from "@aio-proxy/logger";
 import {
   type Config,
   ConfigSchema,
@@ -22,7 +22,6 @@ import {
 import { dirname } from "node:path";
 
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
-import type { ServerLogSink } from "../server-log";
 import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from "./types";
 
 import { createAccountRemovalCoordinator } from "../account-removal";
@@ -32,6 +31,7 @@ import { watchConfigFile } from "../config-watcher";
 import { createDashboardEventHub } from "../dashboard-events";
 import { dashboardOAuthCapabilities, dashboardOAuthForm } from "../dashboard-routes/oauth-capabilities";
 import { createFifoQueue } from "../fifo-queue";
+import { createPluginLogSink, createServerLogSink } from "../logging/bridge";
 import { LogicalSessionStore } from "../logical-session-store";
 import { createOAuthLoginSessionManager } from "../oauth-login-session/manager";
 import { createOAuthQuotaOperations } from "../plugin-quota";
@@ -44,8 +44,15 @@ import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from 
 import { reloadSnapshot } from "./reload";
 import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
 
-const defaultLogger: ServerLogSink = (entry) => console.error(JSON.stringify(entry));
-const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
+const fallbackLogSink = (entry: unknown): void => console.error(JSON.stringify(entry));
+const defaultLogger = createServerLogSink(createLogger(["aio-proxy", "server"]), {
+  isConfigured: isLoggingConfigured,
+  fallback: fallbackLogSink,
+});
+const defaultPluginLogger = createPluginLogSink(
+  (context) => createLogger(["aio-proxy", "plugin", context.plugin ?? "unknown"], { bindings: context }),
+  { isConfigured: isLoggingConfigured, fallback: fallbackLogSink },
+);
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
