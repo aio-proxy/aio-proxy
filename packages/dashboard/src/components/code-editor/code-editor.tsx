@@ -7,9 +7,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 import { setCodeEditorAriaInvalid } from "./code-editor-accessibility";
-import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from "./themes";
-
 import styles from "./code-editor.module.css";
+import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from "./themes";
 
 type MonacoEditorProps = React.ComponentProps<typeof Editor>;
 
