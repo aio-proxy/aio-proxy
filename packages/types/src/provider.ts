@@ -4,7 +4,7 @@ import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantK
 import { CapabilityIdSchema, PluginPackageNameSchema } from "./plugin";
 import { type ProviderAlias, validateAliasTargets } from "./provider-alias";
 
-export { validateAliasTargets } from "./provider-alias";
+export { type ProviderAlias, validateAliasTargets } from "./provider-alias";
 
 export enum ProviderKind {
   Api = "api",
@@ -101,8 +101,21 @@ export const AiSdkProviderMutationBodySchema = z.object({
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
 });
 
+export const OAuthProviderMutationBodySchema = z.strictObject({
+  kind: z.literal(ProviderKind.OAuth),
+  id: z.string().min(1),
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  weight: z.number().optional(),
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+});
+
 export const ProviderMutationBodySchema = z
-  .discriminatedUnion("kind", [ApiProviderMutationBodySchema, AiSdkProviderMutationBodySchema])
+  .discriminatedUnion("kind", [
+    ApiProviderMutationBodySchema,
+    OAuthProviderMutationBodySchema,
+    AiSdkProviderMutationBodySchema,
+  ])
   .superRefine(validateAliasTargets)
   .transform((provider) =>
     provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
@@ -168,6 +181,8 @@ export type ApiProviderMutationBodyInput = z.input<typeof ApiProviderMutationBod
 export type ApiProviderMutationBody = z.output<typeof ApiProviderMutationBodySchema>;
 export type AiSdkProviderMutationBodyInput = z.input<typeof AiSdkProviderMutationBodySchema>;
 export type AiSdkProviderMutationBody = z.output<typeof AiSdkProviderMutationBodySchema>;
+export type OAuthProviderMutationBodyInput = z.input<typeof OAuthProviderMutationBodySchema>;
+export type OAuthProviderMutationBody = z.output<typeof OAuthProviderMutationBodySchema>;
 export type ProviderMutationBodyInput = z.input<typeof ProviderMutationBodySchema>;
 export type ProviderMutationBody = z.output<typeof ProviderMutationBodySchema>;
 export type ProviderInput = z.input<typeof ProviderSchema>;

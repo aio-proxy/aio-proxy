@@ -27,10 +27,12 @@ import type { ServerState } from "../server-state";
 
 import { ConfigReloadRejectedError } from "../config-store";
 import { isTrustedProviderPackage } from "../provider-package-trust";
+import { createDashboardOAuthLoginRoutes } from "./oauth-login";
 import {
   insertProvider,
   ProviderAlreadyExistsError,
   ProviderNotFoundError,
+  replaceOAuthProvider,
   replaceProvider,
 } from "./provider-mutation";
 import { providerPackageQueryValidator, providerPackageStatus } from "./provider-package-metadata";
@@ -125,7 +127,8 @@ function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): Req
 export const createDashboardRoutes = (state: ServerState) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
-    .get("/plugins", (context) => context.json({ plugins: state.pluginSummaries() }))
+    .get("/oauth/capabilities", (context) => context.json({ capabilities: state.oauthCapabilities() }))
+    .route("/oauth", createDashboardOAuthLoginRoutes(state))
     .get("/providers", async (context) => {
       const filter = context.req.query("filter");
       const probe = context.req.query("probe") === "true";
@@ -147,13 +150,17 @@ export const createDashboardRoutes = (state: ServerState) =>
         provider.hasApiKey = typeof provider.apiKey === "string" && provider.apiKey !== "";
         delete provider.apiKey;
       }
-      return context.json({ provider });
+      const oauth = provider.kind === "oauth" ? state.oauthProviderEditView(id) : undefined;
+      return context.json({ provider, ...(oauth === undefined ? {} : { oauth }) });
     })
     .post("/providers", providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const body = context.req.valid("json");
+      if (body.kind === "oauth") {
+        return context.json({ error: "OAuth providers must be created through login" }, 400);
+      }
       const { id, ...bodyRest } = body;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
@@ -186,7 +193,11 @@ export const createDashboardRoutes = (state: ServerState) =>
       const { id: _id, ...bodyRest } = body;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
-        await state.configStore.mutateProviders((record) => replaceProvider(record, id, providerData));
+        await state.configStore.mutateProviders((record) =>
+          body.kind === "oauth"
+            ? replaceOAuthProvider(record, id, providerData)
+            : replaceProvider(record, id, providerData),
+        );
       } catch (error) {
         if (error instanceof ProviderNotFoundError) {
           return context.json({ error: "provider not found" }, 404);

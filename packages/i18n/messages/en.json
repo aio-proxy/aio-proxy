@@ -266,21 +266,33 @@
       "catalog": {
         "last_success_at": "Last success {value}"
       },
-      "plugins": {
-        "title": "OAuth plugins",
-        "empty": "No OAuth plugins loaded",
-        "source_builtin": "Built-in",
-        "source_third_party": "Third-party",
-        "table": {
-          "label": "OAuth plugin diagnostics",
-          "col_package": "Package",
-          "col_source": "Source",
-          "col_version": "Version",
-          "col_state": "State",
-          "col_diagnostic": "Diagnostic",
-          "filter": "Filter plugins",
-          "columns": "Plugin columns"
-        }
+      "oauth": {
+        "select_label": "OAuth provider",
+        "select_placeholder": "Select an OAuth provider",
+        "search_placeholder": "Search OAuth providers",
+        "empty": "No OAuth providers are available",
+        "continue": "Continue authorization",
+        "reauthorize": "Reauthorize",
+        "preparing": "Preparing authorization…",
+        "device_code_title": "Authorize with a device code",
+        "loopback_title": "Authorize in your browser",
+        "open_authorization": "Open authorization page",
+        "manual_callback_label": "Complete callback URL",
+        "manual_callback_placeholder": "Paste the full callback URL",
+        "submit_callback": "Submit callback",
+        "cancel": "Cancel authorization",
+        "secret_configured": "A value is already configured. Leave blank to keep it.",
+        "clear_secret": "Clear the configured value",
+        "catalog_warning": "The account was connected, but its model catalog is temporarily unavailable.",
+        "duplicate": "This account is already connected.",
+        "failed": "Authorization failed: {code}",
+        "fingerprint_mismatch": "Authorization used a different account. Reauthorize with the original account.",
+        "models_readonly": "Models are discovered by the OAuth provider and cannot be edited manually.",
+        "service_label": "OAuth service",
+        "account_label": "Account",
+        "account_fields_title": "Account settings",
+        "models_title": "Discovered models",
+        "reauthorize_helper": "Account setting changes are saved only after authorization succeeds."
       },
       "form": {
         "label_id": "Provider ID",
@@ -396,8 +408,6 @@
       "new_title": "New Provider",
       "edit_title": "Edit Provider",
       "aliases_title": "Provider Aliases",
-      "aliases_readonly_note": "Edit config file to modify aliases",
-      "oauth_managed_cli": "OAuth providers are managed via CLI. Use the CLI to configure this provider.",
       "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI"
     },
     "usage": {

@@ -13,18 +13,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-
-import { PluginsTable } from "../components/plugins-table";
 import { ProvidersTable } from "../components/providers-table";
-import { pluginsQueryOptions } from "../services/plugins-service";
 import { providersQueryOptions } from "../services/providers-service";
 
-export const ProvidersPage: React.FC = () => {
+interface ProvidersPageProps {
+  readonly focusProviderId?: string;
+  readonly warning?: "catalog_unavailable";
+}
+
+export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, warning }) => {
   const providersQuery = useQuery(providersQueryOptions());
-  const pluginsQuery = useQuery(pluginsQueryOptions());
   const providers = providersQuery.data?.providers ?? [];
-  const plugins = pluginsQuery.data?.plugins ?? [];
-  const isLoading = providersQuery.isLoading || pluginsQuery.isLoading;
 
   return (
     <PageContainer
@@ -35,6 +34,9 @@ export const ProvidersPage: React.FC = () => {
             {m["dashboard.providers.new_provider"]()}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: "oauth" }} />}>
+              {m["dashboard.providers.kind_label.oauth"]()}
+            </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: "api" }} />}>
               {m["dashboard.providers.kind_label.api"]()}
             </DropdownMenuItem>
@@ -45,28 +47,24 @@ export const ProvidersPage: React.FC = () => {
         </DropdownMenu>
       }
     >
-      {isLoading ? (
+      {warning === "catalog_unavailable" ? (
+        <p role="status" className="mb-3 rounded-lg border bg-muted p-3 text-sm">
+          {m["dashboard.providers.oauth.catalog_warning"]()}
+        </p>
+      ) : null}
+      {providersQuery.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, index) => (
             <Skeleton key={index} className="h-12 w-full" />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-8">
-          <section className="space-y-3" aria-labelledby="plugins-heading">
-            <h2 id="plugins-heading" className="text-sm font-semibold">
-              {m["dashboard.providers.plugins.title"]()}
-            </h2>
-            <PluginsTable plugins={plugins} />
-          </section>
-
-          <section className="space-y-3" aria-labelledby="providers-heading">
-            <h2 id="providers-heading" className="text-sm font-semibold">
-              {m["dashboard.providers.providers_title"]()}
-            </h2>
-            <ProvidersTable providers={providers} />
-          </section>
-        </div>
+        <section className="space-y-3" aria-labelledby="providers-heading">
+          <h2 id="providers-heading" className="text-sm font-semibold">
+            {m["dashboard.providers.providers_title"]()}
+          </h2>
+          <ProvidersTable providers={providers} focusProviderId={focusProviderId} />
+        </section>
       )}
     </PageContainer>
   );

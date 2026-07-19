@@ -57,7 +57,8 @@ describe("provider state cell", () => {
     );
 
     expect(screen.getByText("Catalog unavailable.")).toBeTruthy();
-    expect(screen.getByText("aio-proxy provider login --provider provider-id")).toBeTruthy();
+    expect(screen.queryByText("aio-proxy provider login --provider provider-id")).toBeNull();
+    expect(screen.getByText(/Reauthorize|重新授权/u)).toBeTruthy();
   });
 
   test("uses an explicit provider target for credential refresh failures", () => {
@@ -79,8 +80,9 @@ describe("provider state cell", () => {
       />,
     );
 
-    expect(screen.getByText("aio-proxy provider login --provider chatgpt-personal")).toBeTruthy();
+    expect(screen.queryByText("aio-proxy provider login --provider chatgpt-personal")).toBeNull();
     expect(screen.queryByText("aio-proxy provider login default")).toBeNull();
+    expect(screen.getByText(/Reauthorize|重新授权/u)).toBeTruthy();
   });
 
   test("does not render targeted login when a credential diagnostic omits its command", () => {
@@ -107,8 +109,8 @@ describe("provider state cell", () => {
 });
 
 describe("provider diagnostics actions", () => {
-  test.each(["oauth", "invalid"] as const)("keeps %s rows read-only except delete", async (kind) => {
-    render(<ProviderActionsMenu provider={providerStub({ kind })} onDelete={() => {}} />);
+  test("keeps invalid rows read-only except delete", async () => {
+    render(<ProviderActionsMenu provider={providerStub({ kind: "invalid" })} onDelete={() => {}} />);
     fireEvent.click(screen.getByTestId("provider-actions-trigger"));
 
     expect(await screen.findByTestId("provider-action-delete")).toBeTruthy();
@@ -116,7 +118,7 @@ describe("provider diagnostics actions", () => {
     expect(screen.queryByRole("button", { name: /Login|登录/u })).toBeNull();
   });
 
-  test.each(["api", "ai-sdk"] as const)("retains edit for %s rows", async (kind) => {
+  test.each(["oauth", "api", "ai-sdk"] as const)("retains edit for %s rows", async (kind) => {
     render(<ProviderActionsMenu provider={providerStub({ kind })} onDelete={() => {}} />);
     fireEvent.click(screen.getByTestId("provider-actions-trigger"));
 

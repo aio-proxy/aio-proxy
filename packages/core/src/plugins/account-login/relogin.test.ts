@@ -57,6 +57,43 @@ test("explicit re-login preloads options and secrets, fixes Provider ID, and pre
   });
 });
 
+test("explicit re-login atomically applies a requested provider patch with account options", async () => {
+  const state = fixture();
+  await createAccount(state);
+
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: "person",
+      capability: undefined,
+      providerPatch: {
+        name: "Personal",
+        enabled: false,
+        weight: 4,
+        alias: { chat: { model: "model-2" } },
+      },
+      renderAccountOptions: async () => ({
+        publicValues: { tenant: "personal" },
+        secrets: { secret: "replacement" },
+      }),
+    }),
+  );
+
+  expect((configOf(state).providers as Record<string, unknown>).person).toMatchObject({
+    kind: "oauth",
+    plugin: "@example/oauth",
+    capability: "default",
+    name: "Personal",
+    enabled: false,
+    weight: 4,
+    alias: { chat: { model: "model-2" } },
+    options: { tenant: "personal" },
+  });
+  expect(accountOf(state, "person")).toMatchObject({
+    options: { tenant: "personal" },
+    secrets: { secret: "replacement" },
+  });
+});
+
 test("re-login preserves an edited alias despite catalog suggestions", async () => {
   const state = fixture();
   await createAccount(state);
@@ -138,11 +175,18 @@ test("re-login requires both entry and account, and cancels an older delete mark
 test("explicit re-login rejects fingerprint mismatch without changing the old revision", async () => {
   const state = fixture();
   await createAccount(state);
+  const before = configOf(state);
   await expect(
     loginOAuthAccount(
       options(state, {
         targetProviderId: "person",
         capability: undefined,
+        providerPatch: {
+          name: "Must not save",
+          enabled: false,
+          weight: undefined,
+          alias: { unsafe: { model: "other" } },
+        },
         registry: registry({
           login: async () => ({
             fingerprint: "other@example.com",
@@ -154,6 +198,7 @@ test("explicit re-login rejects fingerprint mismatch without changing the old re
     ),
   ).rejects.toBeInstanceOf(ProviderFingerprintMismatchError);
   expect(state.repository.readAccount("person")?.revision).toBe(1);
+  expect(configOf(state)).toEqual(before);
 });
 
 test("credential-only refresh is allowed during re-login but runtime revision changes invalidate it", async () => {

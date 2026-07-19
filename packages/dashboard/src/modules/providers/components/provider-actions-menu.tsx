@@ -20,7 +20,7 @@ type Props = {
 const inferredInvalidCodes = new Set(["PROVIDER_CONFIG_INVALID", "LEGACY_OAUTH_CONFIG_UNSUPPORTED"]);
 
 function canEdit(provider: DashboardProviderSummary): boolean {
-  if (provider.kind !== "api" && provider.kind !== "ai-sdk") return false;
+  if (provider.kind === "invalid") return false;
   return provider.state.diagnostic === undefined || !inferredInvalidCodes.has(provider.state.diagnostic.code);
 }
 

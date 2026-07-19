@@ -3,6 +3,8 @@ export * from "./commands";
 export * from "./common";
 export * from "./config";
 export * from "./dashboard";
+export * from "./dashboard-localized-text";
+export * from "./dashboard-oauth";
 export * from "./plugin";
 export * from "./provider";
 export * from "./trace";

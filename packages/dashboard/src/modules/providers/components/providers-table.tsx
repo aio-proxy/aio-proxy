@@ -4,15 +4,14 @@ import type React from "react";
 import { m } from "@aio-proxy/i18n";
 import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import { startCase } from "es-toolkit/string";
-import { useMemo, useRef } from "react";
-
+import { useEffect, useMemo, useRef } from "react";
 import { DataTableHeaderCell } from "@/components/data-table-header-cell";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { DataTableToolbar } from "@/components/data-table-toolbar";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { useDataTable } from "@/hooks/use-data-table";
-
+import { cn } from "@/lib/utils";
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from "./delete-provider-dialog";
 import { ProviderActionsMenu } from "./provider-actions-menu";
 import { ProviderModelsCell } from "./provider-models-cell";
@@ -38,9 +37,12 @@ const columnLabels: Record<string, () => string> = {
   actions: () => m["dashboard.providers.table.col_actions"](),
 };
 
-export const ProvidersTable: React.FC<{ readonly providers: readonly DashboardProviderSummary[] }> = ({
-  providers,
-}) => {
+interface ProvidersTableProps {
+  readonly providers: readonly DashboardProviderSummary[];
+  readonly focusProviderId?: string;
+}
+
+export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focusProviderId }) => {
   "use no memo";
 
   // TanStack exposes changing state through a stable mutable table instance.
@@ -140,6 +142,20 @@ export const ProvidersTable: React.FC<{ readonly providers: readonly DashboardPr
   );
   const { table, columnVisibilityForm } = useDataTable(providers, columns);
 
+  useEffect(() => {
+    if (focusProviderId === undefined) return;
+    const rowIndex = table.getPrePaginationRowModel().rows.findIndex((row) => row.original.id === focusProviderId);
+    if (rowIndex < 0) return;
+    table.setPageIndex(Math.floor(rowIndex / table.getState().pagination.pageSize));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const row = document.getElementById(`provider-row-${focusProviderId}`);
+        row?.scrollIntoView?.({ block: "center" });
+        row?.focus();
+      });
+    });
+  }, [focusProviderId, table]);
+
   return (
     <>
       {providers.length === 0 ? (
@@ -174,7 +190,14 @@ export const ProvidersTable: React.FC<{ readonly providers: readonly DashboardPr
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-testid={`provider-row-${row.original.id}`}>
+                <TableRow
+                  key={row.id}
+                  id={`provider-row-${row.original.id}`}
+                  tabIndex={-1}
+                  data-testid={`provider-row-${row.original.id}`}
+                  data-focused={row.original.id === focusProviderId ? "true" : undefined}
+                  className={cn(row.original.id === focusProviderId && "bg-accent ring-2 ring-ring/40")}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
                   ))}

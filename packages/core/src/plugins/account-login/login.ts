@@ -1,8 +1,7 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from "@aio-proxy/plugin-sdk";
-
+import type { ProviderAlias } from "@aio-proxy/types";
 import type { PluginRegistry } from "../registry";
 import type { PendingAccountOperation, PluginRepository, StoredAccount } from "../repository/index";
-
 import { validateModelCatalog } from "../catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
 import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
@@ -48,9 +47,16 @@ export type RenderAccountOptionsInput = {
 export type RenderAccountOptions = (
   input: RenderAccountOptionsInput,
 ) => Promise<{ readonly publicValues: Record<string, unknown>; readonly secrets: Record<string, unknown> }>;
+export type OAuthProviderPatch = {
+  readonly name: string | undefined;
+  readonly enabled: boolean;
+  readonly weight: number | undefined;
+  readonly alias: ProviderAlias | undefined;
+};
 export type LoginOAuthAccountOptions = {
   readonly targetProviderId?: string;
   readonly capability?: OAuthCapabilityReference;
+  readonly providerPatch?: OAuthProviderPatch;
   readonly registry: PluginRegistry;
   readonly repository: PluginRepository;
   readonly config: AtomicConfigFile;
@@ -59,6 +65,7 @@ export type LoginOAuthAccountOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly progress?: (message: LocalizedText) => void;
+  readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
   readonly now?: () => number;
 };
@@ -90,6 +97,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
     }
+    options.onAuthorized?.();
     const metadata: { label?: string; expiresAt?: number } = {
       ...(validated.label === undefined ? {} : { label: validated.label }),
       ...(validated.expiresAt === undefined ? {} : { expiresAt: validated.expiresAt }),
@@ -205,6 +213,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
             rendered.publicValues,
             existingEntry,
             defaults,
+            options.providerPatch,
           );
           const targetDigest = digestProviderEntry(entry);
           const catalogDiagnostic = options.diagnostics("CATALOG_UNAVAILABLE", {

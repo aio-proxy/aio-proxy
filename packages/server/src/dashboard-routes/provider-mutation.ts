@@ -56,6 +56,24 @@ export function replaceProvider(
   return { ...record, [providerId]: next };
 }
 
+export function replaceOAuthProvider(
+  record: Record<string, unknown>,
+  providerId: string,
+  provider: Record<string, unknown>,
+): Record<string, unknown> {
+  const previousValue = record[providerId];
+  if (previousValue === undefined) throw new ProviderNotFoundError(providerId);
+  if (!isRecord(previousValue) || previousValue["kind"] !== "oauth") {
+    throw new Error("PROVIDER_KIND_MISMATCH");
+  }
+  return replaceProvider(record, providerId, {
+    ...provider,
+    plugin: previousValue["plugin"],
+    capability: previousValue["capability"],
+    ...(previousValue["options"] === undefined ? {} : { options: previousValue["options"] }),
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

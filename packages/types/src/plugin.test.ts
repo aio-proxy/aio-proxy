@@ -3,8 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   CapabilityIdSchema,
   ConfigSchema,
-  DashboardPluginSummarySchema,
-  DashboardPluginsResponseSchema,
   DashboardProviderSummarySchema,
   DiagnosticCodeSchema,
   type InvalidProviderConfig,
@@ -40,29 +38,6 @@ const diagnostic = (code: (typeof diagnosticCodes)[number]) => ({
 });
 
 describe("plugin and provider diagnostics", () => {
-  test("accepts safe dashboard plugin summaries", () => {
-    const failedPlugin = {
-      packageName: "@example/broken",
-      label: { default: "Broken plugin", "zh-Hans": "损坏的插件" },
-      description: { default: "Example description", en: "Example description" },
-      builtIn: false,
-      version: "1.2.3",
-      state: {
-        status: "failed",
-        diagnostic: {
-          code: "PLUGIN_LOAD_FAILED",
-          summary: "Plugin setup failed.",
-          retryable: true,
-          occurredAt: "2026-07-14T00:00:00.000Z",
-          suggestedCommand: "aio-proxy plugin config @example/broken",
-        },
-      },
-    } as const;
-
-    expect(DashboardPluginSummarySchema.parse(failedPlugin)).toEqual(failedPlugin);
-    expect(DashboardPluginsResponseSchema.parse({ plugins: [failedPlugin] })).toEqual({ plugins: [failedPlugin] });
-  });
-
   test("accepts provider availability and safe OAuth account metadata", () => {
     const provider = {
       id: "copilot-octocat",
