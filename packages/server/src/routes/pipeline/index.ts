@@ -1,4 +1,9 @@
-import { type ProtocolAdapter, RequestBodyTooLargeError, RouterModelNotFoundError } from "@aio-proxy/core";
+import {
+  type ProtocolAdapter,
+  RequestBodyTooLargeError,
+  RouterModelNotFoundError,
+  UnsupportedContentEncodingError,
+} from "@aio-proxy/core";
 import type { RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 import { attemptCandidates } from "./attempt";
@@ -49,6 +54,17 @@ export async function handleProtocolRequest<TRequest, TContext>({
           inboundProtocol: adapter.protocol,
           response: adapter.errors.tooLarge(),
           errorCode: "request_too_large",
+          error,
+        });
+      }
+      if (error instanceof UnsupportedContentEncodingError) {
+        return rejectRequest({
+          source,
+          session,
+          rawRequest,
+          inboundProtocol: adapter.protocol,
+          response: adapter.errors.unsupportedContentEncoding(),
+          errorCode: "unsupported_content_encoding",
           error,
         });
       }

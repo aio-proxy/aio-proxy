@@ -58,7 +58,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message: "Request body too large",
+        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
         status: "RESOURCE_EXHAUSTED",
       },
     });

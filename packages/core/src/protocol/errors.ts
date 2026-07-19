@@ -10,14 +10,19 @@ import {
   ProviderNotInstalledError,
 } from "../error";
 import type { ProtocolErrorMapper } from "./adapter";
+import { InvalidCompressedRequestBodyError } from "./request";
 
 export const openAICompletionsErrors: ProtocolErrorMapper = {
   requestError: (error) =>
-    error instanceof SyntaxError || error instanceof ZodError || error instanceof OpenAICompletionsTransformError
+    error instanceof SyntaxError ||
+    error instanceof ZodError ||
+    error instanceof InvalidCompressedRequestBodyError ||
+    error instanceof OpenAICompletionsTransformError
       ? openAIInvalid(400, "invalid_request", "Invalid OpenAI Completions request")
       : undefined,
   modelNotFound: (message) => openAIInvalid(404, "model_not_found", message),
   tooLarge: () => openAIInvalid(413, "request_too_large", "Request body too large"),
+  unsupportedContentEncoding: () => openAIInvalid(415, "unsupported_content_encoding", "Unsupported Content-Encoding"),
   unsupported: () =>
     openAIInvalid(501, "not_implemented", "Provider does not support OpenAI Completions transform dispatch"),
   provider: openAIProviderError,
@@ -30,23 +35,31 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
     if (error instanceof OpenAIResponsesUnsupportedFeatureError) {
       return openAIUnsupported(error.feature);
     }
-    return error instanceof SyntaxError || error instanceof ZodError || error instanceof OpenAIResponsesTransformError
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError ||
+      error instanceof OpenAIResponsesTransformError
       ? openAIInvalid(400, "invalid_request", "Invalid OpenAI Responses request")
       : undefined;
   },
   modelNotFound: (message) => openAIInvalid(404, "model_not_found", message),
   tooLarge: () => openAIInvalid(413, "request_too_large", "Request body too large"),
+  unsupportedContentEncoding: () => openAIInvalid(415, "unsupported_content_encoding", "Unsupported Content-Encoding"),
   unsupported: openAIUnsupported,
   provider: openAIProviderError,
 };
 
 export const anthropicMessagesErrors: ProtocolErrorMapper = {
   requestError: (error) =>
-    error instanceof SyntaxError || error instanceof ZodError || error instanceof AnthropicMessagesTransformError
+    error instanceof SyntaxError ||
+    error instanceof ZodError ||
+    error instanceof InvalidCompressedRequestBodyError ||
+    error instanceof AnthropicMessagesTransformError
       ? anthropicError(400, "invalid_request_error", "Invalid Anthropic Messages request")
       : undefined,
   modelNotFound: (message) => anthropicError(404, "not_found_error", message),
   tooLarge: () => anthropicError(413, "invalid_request_error", "Request body too large"),
+  unsupportedContentEncoding: () => anthropicError(415, "invalid_request_error", "Unsupported Content-Encoding"),
   unsupported: () =>
     anthropicError(501, "invalid_request_error", "Provider does not support Anthropic Messages transform dispatch"),
   provider: (error) =>
@@ -60,12 +73,14 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
     }
     return error instanceof SyntaxError ||
       error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError ||
       error instanceof GeminiGenerateContentTransformError
       ? geminiError(400, "INVALID_ARGUMENT", "Invalid Gemini request")
       : undefined;
   },
   modelNotFound: (message) => geminiError(404, "NOT_FOUND", message),
   tooLarge: () => geminiError(413, "RESOURCE_EXHAUSTED", "Request body too large"),
+  unsupportedContentEncoding: () => geminiError(415, "INVALID_ARGUMENT", "Unsupported Content-Encoding"),
   unsupported: () =>
     geminiError(501, "UNIMPLEMENTED", "Provider does not support Gemini generateContent transform dispatch"),
   provider: (error) =>
@@ -164,7 +179,7 @@ function anthropicError(status: number, type: "invalid_request_error" | "not_fou
 }
 
 function geminiError(
-  code: 400 | 404 | 413 | 499 | 500 | 501 | 503,
+  code: 400 | 404 | 413 | 415 | 499 | 500 | 501 | 503,
   status: "CANCELLED" | "INVALID_ARGUMENT" | "NOT_FOUND" | "RESOURCE_EXHAUSTED" | "UNAVAILABLE" | "UNIMPLEMENTED",
   message: string,
 ): Response {

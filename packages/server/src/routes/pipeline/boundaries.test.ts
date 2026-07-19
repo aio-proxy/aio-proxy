@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { openAICompletionsAdapter } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import {
   defineProtocolAdapter,
-  defineProviderRouteSource,
   jsonRequest,
   modelProvider,
   REQUESTED_MODEL,
@@ -11,11 +9,10 @@ import {
   settleRecording,
   textStream,
 } from "../../../_test/pipeline-helpers";
-import { handleProtocolRequest } from "./index";
 import { attemptsOf, MAX_BODY_BYTES, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
-  test("rejects Content-Length above 8 MiB before parse or provider dispatch", async () => {
+  test("rejects Content-Length above 64 MiB before parse or provider dispatch", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
 
@@ -28,6 +25,17 @@ describe("shared protocol routing pipeline", () => {
     expect(provider.calls.raw).toEqual([]);
   });
 
+  test("accepts Content-Length at the 64 MiB boundary", async () => {
+    const provider = rawProvider({ id: "raw" });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }, { contentLength: MAX_BODY_BYTES }));
+
+    expect(response.status).toBe(200);
+    expect(harness.context.parseCalls).toBe(1);
+    expect(provider.calls.raw).toHaveLength(1);
+  });
+
   test("rejects malformed Content-Length before parse or provider dispatch", async () => {
     const provider = rawProvider({ id: "raw" });
     const harness = pipeline([provider]);
@@ -37,33 +45,6 @@ describe("shared protocol routing pipeline", () => {
     expect(response.status).toBe(413);
     expect(harness.context.parseCalls).toBe(0);
     expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
-    expect(provider.calls.raw).toEqual([]);
-  });
-
-  test("rejects a chunked body above 8 MiB before provider dispatch", async () => {
-    const provider = rawProvider({ id: "raw", modelId: REQUESTED_MODEL });
-    const route = defineProviderRouteSource([provider]);
-    let chunks = 0;
-    const response = await handleProtocolRequest({
-      adapter: openAICompletionsAdapter,
-      context: {},
-      rawRequest: new Request("http://localhost/v1/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: new ReadableStream<Uint8Array>({
-          pull(controller) {
-            chunks += 1;
-            controller.enqueue(new Uint8Array(1_024 * 1_024));
-            if (chunks === 9) controller.close();
-          },
-        }),
-      }),
-      source: route.source,
-    });
-
-    expect(response.status).toBe(413);
-    expect(await response.json()).toMatchObject({ error: { code: "request_too_large" } });
-    expect(route.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);
   });
 

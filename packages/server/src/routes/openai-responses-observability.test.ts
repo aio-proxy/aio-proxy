@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { createTempHomes, recorded } from "../../_test/openai-responses.test-support";
 import { createServer } from "../server";
@@ -19,7 +20,7 @@ const cases = [
   {
     name: "oversized Content-Length",
     body: "{}",
-    contentLength: String(8 * 1_024 * 1_024 + 1),
+    contentLength: String(REQUEST_BODY_LIMITS.encoded + 1),
     statusCode: 413,
     requestedModelId: "<unparsed>",
     errorCode: "request_too_large",
