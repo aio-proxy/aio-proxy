@@ -7,7 +7,7 @@
 
 aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh port、TTL model catalog 和 ProviderV4 model capability，但尚未支持使用 SuperGrok 或 X Premium+ 账号访问 Grok。
 
-本设计参考 `.reference/oh-my-pi`（OMP）、`.reference/CLIProxyAPI`（CPA）与 `.reference/CodexBar`：OAuth 使用 OMP/CPA 一致的 xAI Grok CLI public client、scope 和 RFC 8628 device flow；模型发现沿用 OMP 对官方 xAI `/v1/models` 的调用；模型推理沿用 CPA 对 OAuth 账号默认使用 Grok CLI proxy 的行为；额度读取沿用 CodexBar 已验证的 Grok web billing gRPC-Web 调用。
+本设计参考 `.reference/oh-my-pi`（OMP）、`.reference/CLIProxyAPI`（CPA）、`.reference/CodexBar` 与 `.reference/Cli-Proxy-API-Management-Center`：OAuth 使用 OMP/CPA 一致的 xAI Grok CLI public client、scope 和 RFC 8628 device flow；模型发现沿用 OMP 对官方 xAI `/v1/models` 的调用；模型推理与额度读取使用 Grok CLI proxy。
 
 ## 目标
 
@@ -42,7 +42,7 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 | 推理 endpoint | `https://cli-chat-proxy.grok.com/v1` |
 | Model codec | 已安装的 `@ai-sdk/openai` Responses provider |
 | Runtime capability | ProviderV4 model only，不提供 raw resolver |
-| Quota capability | 主动读取 Grok web billing，暴露只读 `credits` item，不声明 reset |
+| Quota capability | 主动读取 Grok CLI weekly/monthly billing，暴露只读 quota items，不声明 reset |
 
 ## 插件与宿主边界
 
@@ -53,7 +53,7 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 - credential schema、账号 fingerprint 和展示 label；
 - 动态模型发现、chat model 过滤和 curated fallback；
 - Grok CLI proxy URL、headers 和 Responses request compatibility。
-- Grok web billing gRPC-Web 请求、frame/trailer 校验和最小 protobuf 扫描。
+- Grok CLI weekly/monthly billing JSON 请求与 quota snapshot 映射。
 
 宿主继续负责：
 
@@ -219,47 +219,40 @@ User-Agent: xai-grok-workspace/0.2.93
 
 ## Quota
 
-adapter 实现现有 `OAuthQuotaCapability.read`，但不实现可选的 `reset`。每次读取先通过 `currentXAIGrokCredential()` 取得或刷新 credential，然后发送 CodexBar 已验证的请求：
+adapter 实现现有 `OAuthQuotaCapability.read`，但不实现可选的 `reset`。每次读取先通过 `currentXAIGrokCredential()` 取得或刷新 credential，然后并发请求 Grok CLI billing：
 
 ```text
-POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
+GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
+GET https://cli-chat-proxy.grok.com/v1/billing
 Authorization: Bearer <access token>
-Origin: https://grok.com
-Referer: https://grok.com/?_s=usage
 Accept: */*
-Content-Type: application/grpc-web+proto
-x-grpc-web: 1
-x-user-agent: connect-es/2.1.1
-User-Agent: aio-proxy
-
-body: 00 00 00 00 00
+x-xai-token-auth: xai-grok-cli
+x-grok-client-version: 0.2.93
+User-Agent: xai-grok-workspace/0.2.93
+x-userid: <OAuth subject，若存在>
 ```
 
-五个零字节表示一个合法的空 gRPC-Web data frame。请求沿用 account context 的 abort signal；network error、非 2xx、非零 `grpc-status`、空 payload 或无法识别的 billing payload 均使 quota read 失败，由现有宿主 quota 边界转成稳定错误。插件不把 OAuth token、完整响应 body 或 protobuf 内容放入错误文本。
+请求沿用 account context 的 abort signal。两个 endpoint 独立解析，至少一个返回有效 quota item 即成功；network error、非 2xx 和无有效 billing payload 使对应请求失败，只有两者都失败时 quota read 才失败。插件不把 OAuth token 或完整响应 body 放入错误文本。
 
-响应解析不引入 protobuf dependency，只实现此接口所需的有界扫描：
+响应只读取 JSON `config` 中已观察到的字段：
 
-- 解析 gRPC-Web data frame，并忽略 trailer frame；若响应是 CodexBar 已观察到的未分帧 protobuf，则作为单个 payload 处理。
-- 同时读取 HTTP `grpc-status` headers 与 body trailer fields；任一非零 status 都视为 RPC 失败。
-- 递归扫描最多 4 层 length-delimited protobuf message，记录 fixed32 float 与 varint field path。
-- `usedPercent` 选择 path 最后为 field `1`、有限且位于 `0...100` 的 fixed32；优先 path 更短、其次 wire order 更早的值。
-- `resetsAt` 只接受 2023-11 到 2036-07 范围内且晚于当前时间的 Unix seconds；优先精确 path `[1, 5, 1]`，否则取最早的未来 timestamp。
-- 若 percent 被 protobuf 省略，但响应同时包含 reset timestamp 与当前 usage period 标记，则按 `0% used` 处理；只有 reset 而没有 usage 证据时拒绝解析。
+- weekly item 使用 `creditUsagePercent` 和 `currentPeriod.end`。
+- monthly item 使用 `monthlyLimit`、`used` 和 `billingPeriodEnd`；included usage 为 `min(used, monthlyLimit)`，不把超出套餐的 on-demand usage 混入比例。
+- 百分比接受有限 number 或 numeric string，并 clamp 到 `0...100`；重置时间只接受可解析日期并输出毫秒 Unix timestamp。
+- camelCase 与 snake_case 字段均兼容。
 
-quota snapshot 固定为一个 item：
+quota snapshot 最多包含两个 item：
 
 ```ts
 {
-  items: [{
-    id: "credits",
-    label: { default: "Credits", "zh-Hans": "额度" },
-    remainingRatio: Math.max(0, Math.min(1, 1 - usedPercent / 100)),
-    ...(resetsAt === undefined ? {} : { resetsAt }),
-  }],
+  items: [
+    { id: "weekly", label: { default: "Weekly limit", "zh-Hans": "周额度" }, remainingRatio, resetsAt },
+    { id: "monthly-credits", label: { default: "Monthly credits", "zh-Hans": "月度额度" }, remainingRatio, resetsAt },
+  ],
 }
 ```
 
-`resetsAt` 使用毫秒 Unix timestamp，以匹配 plugin SDK。snapshot 不返回 `resetCredits`：billing 中的 credits 是可消费额度，不是宿主定义的手动 reset credit inventory。由于 CodexBar 和已知 xAI 接口都没有手动重置能力的证据，adapter 也不声明 `quota.reset`。
+缺失的 endpoint 不产生占位 item。`resetsAt` 使用毫秒 Unix timestamp，以匹配 plugin SDK。snapshot 不返回 `resetCredits`：billing 中的 credits 是可消费额度，不是宿主定义的手动 reset credit inventory；adapter 也不声明 `quota.reset`。
 
 ## Built-in 注册
 
@@ -280,7 +273,7 @@ quota snapshot 固定为一个 item：
 2. Refresh：旧 refresh token fallback、rotated refresh token、5xx retryable 与 `invalid_grant` non-retryable。
 3. Catalog：Bearer `/v1/models`、非 chat filter、curated display overlay、retryable fallback，以及 401/空目录不 fallback。
 4. Runtime：ProviderV4 model-only、CLI proxy URL、dynamic authorization/client headers、abort/body preservation 和 `reasoning.summary` removal。
-5. Quota：Bearer gRPC-Web request、header/trailer status、framed/unframed payload、field-path selection、zero usage、remaining ratio、reset timestamp 与 read-only capability。
+5. Quota：CLI auth headers、weekly/monthly JSON、partial success、remaining ratio、reset timestamp 与 read-only capability。
 6. Plugin/built-in：默认 descriptor、空 account options、localized copy、icon、package version、quota registration 和 embedded registration。
 
 完成前运行新 plugin tests、core built-in tests，并执行 `bun run preflight`。

@@ -1470,3 +1470,19 @@ rtk git commit -m "feat(xai-grok): add built-in oauth provider" -m "Co-authored-
 - `rtk git log -5 --oneline` shows the design commit plus the four implementation commits.
 - No source or test file exceeds 300 lines: `rtk wc -l packages/plugins/xai-grok/src/*.ts`.
 - No production route, pipeline, plugin SDK, GitHub Copilot, or ChatGPT source changed.
+
+## Follow-up: Replace Grok web protobuf quota with CLI JSON billing
+
+**Files:**
+- Modify: `packages/plugins/xai-grok/src/quota.test.ts`
+- Modify: `packages/plugins/xai-grok/src/quota.ts`
+- Modify: `packages/plugins/xai-grok/src/index.ts`
+- Delete: `packages/plugins/xai-grok/src/quota-protobuf.ts`
+- Delete: `packages/plugins/xai-grok/src/quota-protobuf.test.ts`
+
+- [ ] Write a failing quota test asserting both CLI billing URLs, CLI auth headers including `x-userid`, weekly/monthly item mapping, and partial success.
+- [ ] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts` and confirm failure because the implementation still calls the gRPC-Web endpoint.
+- [ ] Replace `readXAIGrokQuota()` with the minimum JSON parsing and mapping needed by the test; reuse one shared CLI header builder with runtime.
+- [ ] Remove the protobuf parser, its tests, and its public export.
+- [ ] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts packages/plugins/xai-grok/src/runtime.test.ts` and confirm GREEN.
+- [ ] Run `rtk bun run check`, `rtk bun run --cwd packages/plugins/xai-grok build`, and `rtk bun run preflight`.
