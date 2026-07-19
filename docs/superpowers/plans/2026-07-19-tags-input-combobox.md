@@ -88,8 +88,10 @@ git commit -m "feat(dashboard): add combobox primitives" -m "Co-authored-by: Cod
 ### Task 2: Protect the TagsInput behavior with a failing component test
 
 **Files:**
-- Create: `packages/dashboard/src/components/tags-input.test.tsx`
-- Test: `packages/dashboard/src/components/tags-input.test.tsx`
+- Create: `packages/dashboard/src/components/tags-input/index.ts`
+- Create: `packages/dashboard/src/components/tags-input/tags-input.test.tsx`
+- Move: `packages/dashboard/src/components/tags-input.tsx` to `packages/dashboard/src/components/tags-input/tags-input.tsx`
+- Test: `packages/dashboard/src/components/tags-input/tags-input.test.tsx`
 
 **Interfaces:**
 - Consumes: current `TagsInput` props plus the approved future `options?: readonly string[]` prop.
@@ -97,7 +99,7 @@ git commit -m "feat(dashboard): add combobox primitives" -m "Co-authored-by: Cod
 
 - [ ] **Step 1: Write the controlled test harness and behavior tests**
 
-Create `packages/dashboard/src/components/tags-input.test.tsx`:
+Create `packages/dashboard/src/components/tags-input/tags-input.test.tsx`:
 
 ```tsx
 import { describe, expect, test } from "@rstest/core";
@@ -191,8 +193,8 @@ Expected: FAIL because the current component has no `options` prop and does not 
 ### Task 3: Rebuild TagsInput as a creatable Combobox wrapper
 
 **Files:**
-- Modify: `packages/dashboard/src/components/tags-input.tsx`
-- Test: `packages/dashboard/src/components/tags-input.test.tsx`
+- Modify: `packages/dashboard/src/components/tags-input/tags-input.tsx`
+- Test: `packages/dashboard/src/components/tags-input/tags-input.test.tsx`
 
 **Interfaces:**
 - Consumes: official shadcn Combobox exports from Task 1 and `@base-ui/react/combobox` only for the accessible `ChipRemove` extension.
@@ -200,7 +202,13 @@ Expected: FAIL because the current component has no `options` prop and does not 
 
 - [ ] **Step 1: Replace the handwritten visual control with the Combobox composition**
 
-Implement `packages/dashboard/src/components/tags-input.tsx` with these exact responsibilities:
+Create the export-only `packages/dashboard/src/components/tags-input/index.ts`:
+
+```ts
+export * from "./tags-input";
+```
+
+Implement `packages/dashboard/src/components/tags-input/tags-input.tsx` with these exact responsibilities:
 
 ```tsx
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
@@ -408,7 +416,7 @@ Expected: all commands pass.
 - [ ] **Step 4: Commit the behavior change**
 
 ```bash
-git add packages/dashboard/src/components/tags-input.tsx packages/dashboard/src/components/tags-input.test.tsx docs/superpowers/specs/2026-07-19-tags-input-combobox-design.md
+git add packages/dashboard/src/components/tags-input AGENTS.md docs/superpowers/specs/2026-07-19-tags-input-combobox-design.md
 git commit -m "refactor(dashboard): build tags input on combobox" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 

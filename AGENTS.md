@@ -50,9 +50,27 @@ Use these terms in code, docs, and discussion; avoid the listed synonyms.
 
 - Every unit test must protect meaningful product behavior, a public contract, or a concrete regression. Completing a TDD cycle is not sufficient justification for adding a test.
 - Do not write tests that merely restate static configuration or implementation literals. Prefer a behavior-level check that would fail when the user-visible outcome breaks; if no such automated check is practical, do not add a low-value unit test just to claim coverage.
-- Keep unit tests next to their source files, for example `foo.ts` and `foo.test.ts`.
+- Keep unit tests next to their source files. When a module has a colocated test, group the public entry point, implementation, and test in a same-name directory: `foo/index.ts`, `foo/foo.ts`, and `foo/foo.test.ts`.
 - Existing `_test/` directories are legacy layout: do not add new test files there, and when materially modifying a module whose tests live in `_test/`, move those tests next to the source as part of the change.
 - When adding a colocated test in a package whose `test:unit` script still only scans `_test/`, update that script in the same change so the new test actually runs.
+
+Few-shot:
+
+Bad:
+
+```text
+components/tags-input.tsx
+components/tags-input.test.tsx
+```
+
+Good:
+
+```text
+components/tags-input/
+├── index.ts
+├── tags-input.tsx
+└── tags-input.test.tsx
+```
 
 ### Dependencies
 
@@ -73,8 +91,8 @@ Use these terms in code, docs, and discussion; avoid the listed synonyms.
 ### File Splitting
 
 - Split files by responsibility, not by moving arbitrary lines into a generic helper file.
-- When extracting private collaborators from `foo.ts`, prefer a private directory such as `foo/index.ts` and `foo/bar.ts`.
-- `foo/index.ts` is the public entry point and should contain only exports and lightweight orchestration.
+- When extracting private collaborators from `foo.ts`, prefer a directory containing export-only `foo/index.ts`, the main `foo/foo.ts` implementation, and private collaborators such as `foo/bar.ts`.
+- `foo/index.ts` is the public entry point and should contain only exports. Keep business logic and orchestration in named implementation files.
 - Private modules such as `foo/bar.ts` must not be exported from higher-level barrels or imported from outside the `foo/` directory.
 - Keep business-specific operations named and colocated with their domain. Do not move them into generic `utils.ts` files.
 - Avoid circular dependencies when splitting files.
