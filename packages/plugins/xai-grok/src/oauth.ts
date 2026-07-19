@@ -86,17 +86,33 @@ export async function loginXAIGrok(context: OAuthLoginContext, options: XAIGrokO
   const deadline = now() + device.expires_in * 1_000;
   while (now() <= deadline) {
     context.signal.throwIfAborted();
-    const response = await postFormResponse(
-      fetcher,
-      endpoints.token,
-      {
-        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        client_id: CLIENT_ID,
-        device_code: device.device_code,
-      },
-      context.signal,
-    );
-    const body = tokenSchema.parse(await response.json());
+    let response: Response;
+    try {
+      response = await postFormResponse(
+        fetcher,
+        endpoints.token,
+        {
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: CLIENT_ID,
+          device_code: device.device_code,
+        },
+        context.signal,
+      );
+    } catch (error) {
+      if (!(error instanceof XAIOAuthHttpError) || !error.retryable) throw error;
+      context.progress(options.waitingForAuthorization ?? "Waiting for xAI authorization");
+      await sleep(interval * 1_000, context.signal);
+      continue;
+    }
+    if (isRetryableStatus(response.status)) {
+      await response.body?.cancel().catch(() => undefined);
+      context.progress(options.waitingForAuthorization ?? "Waiting for xAI authorization");
+      await sleep(interval * 1_000, context.signal);
+      continue;
+    }
+    const parsed = tokenSchema.safeParse(await readJson(response));
+    if (!parsed.success) throw new Error(`xAI device authorization failed: ${response.status}`);
+    const body = parsed.data;
     if (response.ok) return loginResult(body, now());
     if (body.error !== "authorization_pending" && body.error !== "slow_down") {
       throw new Error(`xAI device authorization failed: ${body.error ?? response.status}`);
@@ -126,7 +142,7 @@ export async function refreshXAIGrokCredential(
       const body = tokenSchema.safeParse(await readJson(response));
       const oauthError = body.success ? body.data.error : undefined;
       const reason = oauthError === "invalid_grant" ? "invalid_grant" : classifyStatus(response.status);
-      throw refreshError(isRetryableStatus(response.status), reason, response.status);
+      throw refreshError(oauthError !== "invalid_grant" && isRetryableStatus(response.status), reason, response.status);
     }
     const body = tokenSchema.parse(await response.json());
     const accessToken = body.access_token?.trim();
@@ -153,6 +169,7 @@ export async function currentXAIGrokCredential(
 ): Promise<XAIGrokCredential> {
   options.signal?.throwIfAborted();
   const current = await waitForCaller(port.read(), options.signal);
+  options.signal?.throwIfAborted();
   if ((options.now ?? Date.now)() < current.value.expiresAt - REFRESH_WINDOW_MS) return current.value;
   const refreshed = port.refresh(current.revision, async ({ value }, signal) => {
     const next = await refreshXAIGrokCredential(value, { ...options, signal });
