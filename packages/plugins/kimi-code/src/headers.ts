@@ -10,8 +10,8 @@ export function kimiIdentityHeaders(deviceId: string, os: OsPort = systemOs): Re
   const name =
     platform === "darwin" ? "macOS" : platform === "win32" ? "Windows" : platform === "linux" ? "Linux" : platform;
   return Object.freeze({
-    "User-Agent": `KimiCLI/${packageJson.version}`,
-    "X-Msh-Platform": "kimi_cli",
+    "User-Agent": `AIO-Proxy/${packageJson.version}`,
+    "X-Msh-Platform": "AIO-Proxy",
     "X-Msh-Version": packageJson.version,
     "X-Msh-Device-Name": printable(os.hostname()),
     "X-Msh-Device-Model": printable(`${name} ${os.release()} ${os.arch()}`),

@@ -10,7 +10,8 @@ test("builds stable printable Kimi identity headers around the credential device
     version: () => "Darwin 25.0 主机",
   });
   expect(headers).toMatchObject({
-    "X-Msh-Platform": "kimi_cli",
+    "User-Agent": "AIO-Proxy/0.0.0",
+    "X-Msh-Platform": "AIO-Proxy",
     "X-Msh-Device-Id": "device-1",
     "X-Msh-Device-Name": "name",
     "X-Msh-Device-Model": "macOS 26.0 arm64",
