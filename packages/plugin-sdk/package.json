@@ -15,15 +15,18 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit && bun run test:types",
-    "test:unit": "bun test",
+    "test:artifact": "bun test ./build/build-artifact.test.ts",
+    "test:unit": "bun test ./_test/descriptor.test.ts ./_test/localized-text.test.ts ./build/lobe-icon-keys.test.ts",
     "test:types": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@ai-sdk/provider": "catalog:",
+    "ai": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
+    "@lobehub/icons-static-svg": "catalog:",
     "@rslib/core": "catalog:",
     "typescript": "catalog:"
   },

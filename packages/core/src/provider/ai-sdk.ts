@@ -1,3 +1,4 @@
+import type { LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
 import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind } from "@aio-proxy/types";
 import type {
   AiSdkLanguageModel,
@@ -12,11 +13,17 @@ import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
 import { type AiSdkProviderLoadOptions, loadAiSdkProvider } from "./ai-sdk-loader";
 import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "./ai-sdk-reasoning";
 
+type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
+  readonly aioProxy?: Readonly<Record<string, unknown>>;
+};
+
 export type AiSdkProviderInvokeRequest = {
+  readonly context: LogicalRequestContext;
   readonly modelId: string;
   readonly messages: readonly ModelMessage[];
-  readonly settings?: CallSettings;
+  readonly settings?: CallSettings & { readonly providerOptions?: AiSdkProviderOptions };
   readonly tools?: ToolSet;
+  readonly providerTools?: readonly ProviderExecutedTool[];
   readonly signal?: AbortSignal;
 };
 
@@ -83,6 +90,9 @@ export function createAiSdkProvider(
       return new ReadableStream({
         async start(controller) {
           try {
+            if (request.providerTools !== undefined && request.providerTools.length > 0) {
+              throw new TypeError("AI SDK providers do not support provider-executed tools");
+            }
             const model =
               options.resolveModel?.(config, request.modelId, null) ??
               (await resolveProviderModel(config, request.modelId, providerTask, options.resolveModel));

@@ -49,7 +49,7 @@ export type LoadPluginRegistryOptions = {
 };
 
 export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Promise<PluginRegistrySnapshot> {
-  const host = createPluginRegistryHost();
+  const host = createPluginRegistryHost(options.logger);
   const plugins = new Map<string, LoadedPluginState>();
   for (const candidate of candidates(options)) {
     let secretValues: readonly string[] = [];

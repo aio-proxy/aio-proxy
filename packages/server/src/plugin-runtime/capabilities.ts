@@ -1,5 +1,13 @@
 import { createProviderV4Invoke, validateProviderV4 } from "@aio-proxy/core";
-import type { ModelCatalog, ProtocolId, RawResolver } from "@aio-proxy/plugin-sdk";
+import type {
+  LogicalRequestContext,
+  ModelCatalog,
+  ProtocolId,
+  ProviderExecutedTool,
+  ProviderToolCapability,
+  RawResolver,
+  TokenCountCapability,
+} from "@aio-proxy/plugin-sdk";
 import { type OAuthProvider, ProviderKind, type ProviderProtocol } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "../runtime";
 import { modelMetadata } from "./catalog";
@@ -33,8 +41,8 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
         throw new PluginRawResolverError();
       }
       return {
-        async invoke(request: Request): Promise<Response> {
-          const response = await transport.invoke(request);
+        async invoke(request: Request, context?: LogicalRequestContext): Promise<Response> {
+          const response = await transport.invoke(request, context);
           if (!(response instanceof Response)) throw new PluginRawTransportError();
           return response;
         },
@@ -71,6 +79,9 @@ export function createRuntimeProvider(
   }
   const raw =
     "raw" in result && typeof result.raw === "function" ? rawCapability(result.raw as RawResolver, catalog) : undefined;
+  const providerTools = providerToolCapability(Reflect.get(result, "providerTools"));
+  const supportedProviderTools = new Set(providerTools?.supported);
+  const tokenCount = tokenCountCapability(Reflect.get(result, "tokenCount"));
   return {
     id: config.id,
     kind: ProviderKind.OAuth,
@@ -81,6 +92,37 @@ export function createRuntimeProvider(
     plugin: config.plugin,
     capability: config.capability,
     ...(raw === undefined ? {} : { raw }),
-    model: { invoke: createProviderV4Invoke(config.id, result.provider) },
+    ...(tokenCount === undefined ? {} : { tokenCount }),
+    model: {
+      invoke: createProviderV4Invoke(config.id, result.provider),
+      supportsProviderTool: (type) => supportedProviderTools.has(type),
+    },
   };
+}
+
+function tokenCountCapability(value: unknown): TokenCountCapability | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Invalid token count capability");
+  }
+  const countTokens = Reflect.get(value, "countTokens");
+  if (typeof countTokens !== "function") throw new Error("Invalid token count capability");
+  return { countTokens: (input) => countTokens.call(value, input) };
+}
+
+const providerToolTypes: ReadonlySet<ProviderExecutedTool["type"]> = new Set(["web-search"]);
+
+function providerToolCapability(value: unknown): ProviderToolCapability | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Invalid provider tool capability");
+  }
+  const supported = Reflect.get(value, "supported");
+  if (
+    !Array.isArray(supported) ||
+    !supported.every((type) => providerToolTypes.has(type as ProviderExecutedTool["type"]))
+  ) {
+    throw new Error("Invalid provider tool capability");
+  }
+  return { supported } as ProviderToolCapability;
 }

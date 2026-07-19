@@ -1,6 +1,6 @@
 import type { JSONObject } from "@ai-sdk/provider";
 import type { ModelMessage } from "../ai-sdk-bridge";
-import type { OpenAIResponsesRequest } from "../ingress/openai-responses";
+import type { OpenAIResponsesRequest } from "../ingress/openai-responses/index";
 
 export type OpenAIResponsesTransformTool = {
   readonly type: "function";

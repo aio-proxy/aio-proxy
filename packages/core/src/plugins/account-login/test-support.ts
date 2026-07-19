@@ -78,6 +78,14 @@ function refreshCredential(state: ReturnType<typeof fixture>, expectedRevision: 
 type AdapterControls = {
   login?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["login"];
   discover?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["catalog"]["discover"];
+  initialFallback?: OAuthAdapter<
+    Record<string, unknown>,
+    { token: string; refresh?: string }
+  >["catalog"]["initialFallback"];
+  defaultAliases?: OAuthAdapter<
+    Record<string, unknown>,
+    { token: string; refresh?: string }
+  >["catalog"]["defaultAliases"];
   credentialSchema?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>["credentials"];
   accountSchema?: OAuthAdapter<Record<string, unknown>, unknown>["account"]["options"]["schema"];
 };
@@ -105,7 +113,12 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
     login:
       controls.login ??
       (async () => ({ fingerprint: "person@example.com", suggestedKey: "person", credentials: { token: "new" } })),
-    catalog: { policy: { kind: "static" }, discover: controls.discover ?? (async () => emptyCatalog()) },
+    catalog: {
+      policy: { kind: "static" },
+      discover: controls.discover ?? (async () => emptyCatalog()),
+      ...(controls.initialFallback === undefined ? {} : { initialFallback: controls.initialFallback }),
+      ...(controls.defaultAliases === undefined ? {} : { defaultAliases: controls.defaultAliases }),
+    },
     async createRuntime() {
       throw new Error("not used");
     },

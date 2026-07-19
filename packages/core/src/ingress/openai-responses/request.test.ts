@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ZodError } from "zod";
 import type { OpenAIResponsesRequest } from "../../index";
 import { OpenAIResponsesRequestSchema, parseOpenAIResponses } from "../../index";
 
@@ -36,6 +37,27 @@ describe("OpenAIResponsesRequestSchema", () => {
     ).toThrow();
   });
 
+  test("Given invalid input role When safe parsed Then Zod path names input", () => {
+    const result = OpenAIResponsesRequestSchema.safeParse({
+      model: "gpt-5-mini",
+      input: [{ role: "tool", content: "bad" }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(["input"]);
+    }
+  });
+
+  test("Given invalid content part When parsed Then ZodError is thrown", () => {
+    expect(() =>
+      parseOpenAIResponses({
+        model: "gpt-5-mini",
+        input: [{ role: "user", content: [{ type: "input_text" }] }],
+      }),
+    ).toThrow(ZodError);
+  });
+
   test.each(["none", "xhigh"])("Given current reasoning effort %s When parsed Then request is accepted", (effort) => {
     const result = OpenAIResponsesRequestSchema.safeParse({
       model: "gpt-5",
@@ -46,14 +68,26 @@ describe("OpenAIResponsesRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  test("Given previous_response_id When parsed Then it is retained for raw routing", () => {
-    const input = {
+  test("Given session fields When parsed Then fields are preserved", () => {
+    const result = parseOpenAIResponses({
       model: "gpt-5-mini",
       input: "x",
-      previous_response_id: "r1",
-    };
+      conversation: { id: "conversation-1", extra: true },
+      prompt_cache_key: "cache-1",
+      previous_response_id: "response-1",
+      metadata: { session_id: "metadata-session", conversation_id: "metadata-conversation", extra: true },
+      session_id: "session-1",
+      conversation_id: "conversation-2",
+    });
 
-    expect(parseOpenAIResponses(input)).toEqual(input);
+    expect(result).toMatchObject({
+      conversation: { id: "conversation-1", extra: true },
+      prompt_cache_key: "cache-1",
+      previous_response_id: "response-1",
+      metadata: { session_id: "metadata-session", conversation_id: "metadata-conversation", extra: true },
+      session_id: "session-1",
+      conversation_id: "conversation-2",
+    });
   });
 
   test.each([

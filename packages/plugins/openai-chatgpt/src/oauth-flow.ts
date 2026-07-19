@@ -5,7 +5,8 @@ import { refreshTokenResponseSchema, tokenResponseSchema } from "./schema";
 
 const TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token" as const;
 const DEFAULT_REDIRECT_URI = "http://localhost:1455/auth/callback" as const;
-export const CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann" as const;
+declare const __AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__: string;
+export const CHATGPT_CLIENT_ID = __AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__;
 const REFRESH_SCOPE = "openid profile email" as const;
 const DEFAULT_EXPIRES_IN_SECONDS = 3_600 as const;
 

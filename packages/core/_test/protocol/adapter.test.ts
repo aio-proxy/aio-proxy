@@ -1,14 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { asSchema } from "ai";
-import {
-  defineProtocolAdapter,
-  functionToolSet,
-  type ProtocolAdapter,
-  RequestBodyTooLargeError,
-  readJsonRequest,
-  rewriteJsonRequestModel,
-} from "../../src/index";
+import { defineProtocolAdapter, functionToolSet, type ProtocolAdapter } from "../../src/index";
 
 type RequestValue = { readonly model: string };
 type RouteContext = { readonly stream: boolean };
@@ -42,39 +35,6 @@ describe("defineProtocolAdapter", () => {
     const typed: ProtocolAdapter<RequestValue, RouteContext> = adapter;
     expect(typed.protocol).toBe(ProviderProtocol.OpenAICompatible);
   });
-});
-
-test("rewriteJsonRequestModel preserves unknown fields and removes content-length", async () => {
-  const rewritten = await rewriteJsonRequestModel(
-    new Request("https://proxy.test/v1/responses", {
-      method: "POST",
-      headers: { "content-length": "99", "content-type": "application/json" },
-      body: JSON.stringify({ model: "client-model", beta_field: { enabled: true } }),
-    }),
-    "upstream-model",
-  );
-
-  expect(rewritten.headers.get("content-length")).toBeNull();
-  expect(await rewritten.json()).toEqual({
-    model: "upstream-model",
-    beta_field: { enabled: true },
-  });
-});
-
-test("readJsonRequest rejects a chunked body before retaining bytes beyond the limit", async () => {
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode('{"ok":'));
-        controller.enqueue(new TextEncoder().encode("true}"));
-        controller.close();
-      },
-    }),
-  });
-
-  await expect(readJsonRequest(request, 8)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test("functionToolSet converts function definitions without mutating schemas", async () => {

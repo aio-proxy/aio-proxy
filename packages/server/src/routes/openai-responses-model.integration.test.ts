@@ -8,7 +8,7 @@ const homes = createTempHomes("aio-proxy-responses-model-");
 afterEach(homes.cleanup);
 
 describe("OpenAI Responses model HTTP integration", () => {
-  test("converts developer and parallel function history for a model-only provider", async () => {
+  test("converts developer and parallel function history with a previous response session hint", async () => {
     let messagesSeen: readonly ModelMessage[] | undefined;
     const provider = {
       id: "model",
@@ -39,6 +39,7 @@ describe("OpenAI Responses model HTTP integration", () => {
       body: JSON.stringify({
         model: "gpt-5.6-terra",
         stream: false,
+        previous_response_id: "resp_1",
         input: [
           { role: "developer", content: "Use tools carefully." },
           { role: "user", content: "Read both files." },

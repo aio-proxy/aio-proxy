@@ -1,5 +1,6 @@
-import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
-import { ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
+import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
+import { type AliasConfig, AliasConfigSchema, ConfigSchema, OAuthPluginProviderSchema } from "@aio-proxy/types";
+import { z } from "zod";
 import type { StoredAccount } from "../repository/index";
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
@@ -14,6 +15,7 @@ import {
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
+type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 export function isRecord(value: unknown): value is PlainRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -141,6 +143,7 @@ export function providerEntry(
   capability: string,
   publicOptions: Record<string, unknown>,
   existing?: PlainRecord,
+  defaults?: ProviderAlias,
 ): PlainRecord {
   return {
     kind: "oauth",
@@ -150,8 +153,26 @@ export function providerEntry(
     enabled: existing?.["enabled"] ?? true,
     ...(existing?.["weight"] === undefined ? {} : { weight: existing["weight"] }),
     ...(existing?.["name"] === undefined ? {} : { name: existing["name"] }),
-    ...(existing?.["alias"] === undefined ? {} : { alias: existing["alias"] }),
+    ...(existing?.["alias"] !== undefined
+      ? { alias: existing["alias"] }
+      : defaults === undefined
+        ? {}
+        : { alias: defaults }),
   };
+}
+export function validatedDefaultAliases(adapter: OAuthAdapter, catalog: ModelCatalog): ProviderAlias | undefined {
+  const raw = adapter.catalog.defaultAliases?.(catalog);
+  if (raw === undefined) return undefined;
+  const models = new Set(catalog.language.map(({ id }) => id));
+  const parsed = z.record(z.string().min(1), AliasConfigSchema).parse(raw);
+  for (const [alias, config] of Object.entries(parsed)) {
+    for (const target of [config, ...Object.values(config.variants ?? {})]) {
+      if (!models.has(target.model)) {
+        throw new Error(`Plugin default alias target ${alias} -> ${target.model} is not in the initial catalog`);
+      }
+    }
+  }
+  return parsed;
 }
 export function duplicateOrCleanup(account: StoredAccount, providers: Record<string, unknown>) {
   const entry = structuredEntry(providers[account.providerId]);

@@ -9,6 +9,20 @@ import { openAIResponsesToolSchema } from "./tools";
 
 const idSchema = z.string().min(1);
 const looseObjectSchema = z.object({}).catchall(z.unknown());
+const sessionMetadataSchema = z
+  .object({
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
+  })
+  .catchall(z.unknown());
+const conversationSchema = z.union([
+  idSchema,
+  z
+    .object({
+      id: idSchema,
+    })
+    .catchall(z.unknown()),
+]);
 const namedToolChoiceSchema = z.union([
   z.object({ type: z.literal("function"), name: idSchema }),
   z.object({ type: z.literal("custom"), name: idSchema }),
@@ -59,7 +73,11 @@ export const OpenAIResponsesRequestSchema = z
     tool_choice: z.union([z.enum(["none", "auto", "required"]), namedToolChoiceSchema, looseObjectSchema]).optional(),
     store: z.boolean().optional(),
     background: z.boolean().optional(),
-    previous_response_id: z.unknown().optional(),
+    conversation: conversationSchema.optional(),
+    previous_response_id: z.string().optional(),
+    metadata: sessionMetadataSchema.optional(),
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
     include: z.array(z.string()).optional(),
     client_metadata: looseObjectSchema.optional(),
     prompt_cache_key: z.string().optional(),

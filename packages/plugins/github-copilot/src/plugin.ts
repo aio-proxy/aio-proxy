@@ -91,6 +91,7 @@ export function createGitHubCopilotPlugin(
   const adapter: OAuthAdapter<GitHubAccountOptions, GitHubCopilotCredential> = {
     id: "default",
     label: presentationText.adapterLabel,
+    icon: "githubcopilot",
     account: { options: accountOptions },
     credentials: zod
       .object({

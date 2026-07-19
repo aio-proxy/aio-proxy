@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { zod } from "@aio-proxy/plugin-sdk";
+import { CredentialRefreshError, zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import type { PluginLogSink } from "../diagnostic";
 import { CredentialValidationError } from "../index";
@@ -117,6 +117,34 @@ test("redacts credential, account, and plugin secrets and records terminal re-lo
   }
 });
 
+test("confirmed invalid_grant preserves the old credential and records permanent re-login guidance", async () => {
+  const { handle, repository } = fixtures.open();
+  try {
+    const credentials = port(repository);
+    const current = await credentials.read();
+    await expect(
+      credentials.refresh(current.revision, async () => {
+        throw new CredentialRefreshError("Google token refresh failed", {
+          retryable: false,
+          reason: "invalid_grant",
+          status: 400,
+        });
+      }),
+    ).rejects.toThrow("Google token refresh failed");
+
+    expect(await credentials.read()).toEqual(current);
+    expect(repository.readDiagnostics("provider-1")).toEqual([
+      expect.objectContaining({
+        code: "CREDENTIAL_REFRESH_FAILED",
+        retryable: false,
+        suggestedCommand: providerLoginCommand("provider-1"),
+      }),
+    ]);
+  } finally {
+    handle.close();
+  }
+});
+
 test("refresh failure redaction skips hostile nested plugin secret properties and collects later array values", async () => {
   const { handle, repository } = fixtures.open();
   const nested: Record<string, unknown> = {};
@@ -126,19 +154,22 @@ test("refresh failure redaction skips hostile nested plugin secret properties an
       throw new Error("blocked getter");
     },
   });
-  Object.assign(nested, { tokens: ["refresh-array-secret", ""], cycle: nested });
+  const tokens = ["refresh-array-secret", ""];
+  Object.assign(nested, { tokens, cycle: nested });
   const logs: Parameters<PluginLogSink>[0][] = [];
   try {
     const credentials = port(repository, "provider-1", {
       logger: (entry) => logs.push(entry),
       pluginSecrets: { nested },
     });
+    tokens.push("later-runtime-secret");
     const current = await credentials.read();
-    const failure = new Error("refresh-array-secret");
+    const failure = new Error("refresh-array-secret later-runtime-secret");
 
     await expect(credentials.refresh(current.revision, async () => Promise.reject(failure))).rejects.toBe(failure);
 
     expect(JSON.stringify(logs)).not.toContain("refresh-array-secret");
+    expect(JSON.stringify(logs)).not.toContain("later-runtime-secret");
   } finally {
     handle.close();
   }

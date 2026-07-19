@@ -76,12 +76,14 @@ function port(
     readonly schema?: Parameters<typeof createCredentialPort>[0]["schema"];
     readonly diagnostics?: DiagnosticFactory;
     readonly logger?: PluginLogSink;
+    readonly mode?: Parameters<typeof createCredentialPort>[0]["mode"];
     readonly onDiagnosticChanged?: () => void;
     readonly onCredentialChanged?: () => void;
     readonly pluginSecrets?: unknown;
+    readonly additionalSecretValues?: readonly string[];
   } = {},
 ) {
-  return createCredentialPort({
+  const base = {
     providerId,
     schema: overrides.schema ?? zod.object({ token: zod.string() }),
     repository,
@@ -89,7 +91,20 @@ function port(
     logger: overrides.logger ?? (() => {}),
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
     onCredentialChanged: overrides.onCredentialChanged ?? (() => {}),
-    pluginSecrets: overrides.pluginSecrets,
+  };
+  if (overrides.mode === "control-plane") {
+    return createCredentialPort({
+      ...base,
+      mode: "control-plane",
+      ...(overrides.additionalSecretValues === undefined
+        ? {}
+        : { additionalSecretValues: overrides.additionalSecretValues }),
+    });
+  }
+  return createCredentialPort({
+    ...base,
+    ...(overrides.mode === undefined ? {} : { mode: "runtime" as const }),
+    ...(overrides.pluginSecrets === undefined ? {} : { pluginSecrets: overrides.pluginSecrets }),
   });
 }
 

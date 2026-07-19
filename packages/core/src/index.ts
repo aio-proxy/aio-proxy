@@ -77,16 +77,21 @@ export {
 } from "./ingress/openai-completions";
 export {
   type OpenAIResponsesCustomTool,
+  type OpenAIResponsesExecutableTool,
   type OpenAIResponsesFunctionTool,
   type OpenAIResponsesInputMessage,
+  type OpenAIResponsesNamespaceTool,
   type OpenAIResponsesParseResult,
   type OpenAIResponsesRequest,
   OpenAIResponsesRequestSchema,
   type OpenAIResponsesTextPart,
   type OpenAIResponsesTool,
+  type OpenAIResponsesToolOutputPart,
+  type OpenAIResponsesUnsupportedInputItem,
+  type OpenAIResponsesUnsupportedTool,
   parseOpenAIResponses,
   safeParseOpenAIResponses,
-} from "./ingress/openai-responses";
+} from "./ingress/openai-responses/index";
 export {
   createModelsDevCatalog,
   createOpenRouterPriceCatalog,

@@ -1,4 +1,10 @@
 import {
+  credentialSchema as antigravityCredentialSchema,
+  CatalogDiscoveryError,
+  discoverAntigravityCatalog,
+  staticAntigravityCatalog,
+} from "@aio-proxy/plugin-google-antigravity";
+import {
   AccountCleanupPendingError,
   configOf,
   createAccount,
@@ -41,6 +47,101 @@ test("stores account, structured canonical config, credentials, and initial cata
     },
   });
   expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
+});
+
+test("new account stores catalog-derived aliases whose targets exist", async () => {
+  const state = fixture();
+  await createAccount(state, {
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: "wire-low" }, { id: "wire-high" }] }),
+      defaultAliases: () => ({
+        logical: {
+          model: "wire-low",
+          preserve: false,
+          variants: { high: { model: "wire-high", preserve: false } },
+        },
+      }),
+    }),
+  });
+
+  expect(configOf(state)["providers"]).toMatchObject({
+    person: {
+      alias: {
+        logical: {
+          model: "wire-low",
+          preserve: false,
+          variants: { high: { model: "wire-high", preserve: false } },
+        },
+      },
+    },
+  });
+});
+
+test("new account rejects default aliases that reference an undiscovered target", async () => {
+  const state = fixture();
+  await expect(
+    createAccount(state, {
+      registry: registry({
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: "wire-low" }] }),
+        defaultAliases: () => ({ logical: { model: "missing" } }),
+      }),
+    }),
+  ).rejects.toThrow("default alias target");
+});
+
+test("new account uses a validated discovery fallback", async () => {
+  const state = fixture();
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  await createAccount(state, {
+    registry: registry({
+      discover: async () => Promise.reject(new Error("offline")),
+      initialFallback: () => ({ ...emptyCatalog(), language: [{ id: "fallback" }] }),
+    }),
+    logger: (entry) => logs.push(entry),
+  });
+
+  expect(state.repository.readCatalog("person")?.catalog.language).toEqual([{ id: "fallback" }]);
+  expect(state.repository.readDiagnostics("person")).toEqual([]);
+  expect(logs.map(({ event }) => event)).not.toContain("plugin.catalog.discovery.failed");
+});
+
+test("first login reaches prod and applies the snapshot after both endpoint timeouts", async () => {
+  const state = fixture();
+  const urls: string[] = [];
+  await createAccount(state, {
+    registry: registry({
+      credentialSchema: antigravityCredentialSchema as never,
+      login: (async () => ({
+        fingerprint: "person@example.com",
+        suggestedKey: "person",
+        credentials: {
+          accessToken: "access-token",
+          refreshToken: "refresh-token",
+          expiresAt: Number.MAX_SAFE_INTEGER,
+          email: "person@example.com",
+          projectId: "project-1",
+        },
+      })) as never,
+      discover: (async (context) =>
+        await discoverAntigravityCatalog(context as never, {
+          fetch: async (input, init) => {
+            urls.push(String(input));
+            return await new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+            });
+          },
+          timeoutSignal: () => AbortSignal.timeout(1),
+        })) as never,
+      initialFallback: (error) =>
+        error instanceof CatalogDiscoveryError && error.snapshotEligible ? staticAntigravityCatalog() : undefined,
+    }),
+  });
+
+  expect(urls.map((url) => new URL(url).origin)).toEqual([
+    "https://daily-cloudcode-pa.googleapis.com",
+    "https://cloudcode-pa.googleapis.com",
+  ]);
+  expect(state.repository.readCatalog("person")?.catalog).toEqual(staticAntigravityCatalog());
 });
 
 test("discovery refreshes the in-memory credential before persistence", async () => {
@@ -98,6 +199,7 @@ test("initial discovery failure commits with CATALOG_UNAVAILABLE while re-login 
   });
   expect(state.repository.readCatalog("person")).toBeNull();
   expect(state.repository.readDiagnostics("person")).toMatchObject([{ code: "CATALOG_UNAVAILABLE" }]);
+  expect(logs.map(({ event }) => event)).toContain("plugin.catalog.discovery.failed");
   expect(JSON.stringify(logs)).not.toContain("token=new");
   expect(JSON.stringify(logs)).not.toContain("secret=hidden");
 

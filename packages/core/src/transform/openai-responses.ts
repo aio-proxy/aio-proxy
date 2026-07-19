@@ -26,7 +26,11 @@ const supportedRequestKeys = new Set([
   "tool_choice",
   "store",
   "background",
+  "conversation",
   "previous_response_id",
+  "metadata",
+  "session_id",
+  "conversation_id",
   "include",
   "client_metadata",
   "prompt_cache_key",
@@ -70,16 +74,12 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
 }
 
 function validateModelCompatibility(request: OpenAIResponsesRequest): void {
-  if (request.previous_response_id !== undefined)
-    rejectOpenAIResponsesFeature("previous_response_id", "previous_response_id");
   if (request.store === true) rejectOpenAIResponsesFeature("store", "store");
   const unknown = Object.keys(request).find((key) => !supportedRequestKeys.has(key));
   if (unknown !== undefined) rejectOpenAIResponsesFeature(unknown, unknown);
   if (request.include !== undefined) warnOpenAIResponsesDegradation("include", "include", "dropped");
   if (request.client_metadata !== undefined)
     warnOpenAIResponsesDegradation("client_metadata", "client_metadata", "stripped");
-  if (request.prompt_cache_key !== undefined)
-    warnOpenAIResponsesDegradation("prompt_cache_key", "prompt_cache_key", "dropped");
   if (request.service_tier !== undefined) warnOpenAIResponsesDegradation("service_tier", "service_tier", "dropped");
   if (request.text?.verbosity !== undefined)
     warnOpenAIResponsesDegradation("text.verbosity", "text.verbosity", "dropped");

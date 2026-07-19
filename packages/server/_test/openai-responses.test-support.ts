@@ -58,11 +58,6 @@ export function unsupportedEnvelope(feature: string) {
 
 export const unsupportedBeforeProviderInvocationCases = [
   {
-    body: { ...responsesRequest, previous_response_id: "resp-old" },
-    feature: "previous_response_id",
-    name: "previous_response_id",
-  },
-  {
     body: { ...responsesRequest, store: true },
     feature: "store",
     name: "store true",

@@ -5,8 +5,18 @@ const jsonObjectSchema = z.object({}).catchall(z.unknown());
 export class RequestBodyTooLargeError extends Error {}
 
 export async function readJsonRequest(raw: Request, maxBytes = 8 * 1024 * 1024): Promise<unknown> {
-  const reader = raw.clone().body?.getReader();
-  if (reader === undefined) return JSON.parse("");
+  const branch = raw.clone();
+  try {
+    return JSON.parse(new TextDecoder().decode(await readRequestBytes(branch, maxBytes)));
+  } catch (error) {
+    await Promise.all([cancelRequestBody(branch, error), cancelRequestBody(raw, error)]);
+    throw error;
+  }
+}
+
+async function readRequestBytes(raw: Request, maxBytes: number): Promise<Uint8Array> {
+  const reader = raw.body?.getReader();
+  if (reader === undefined) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
@@ -15,8 +25,9 @@ export async function readJsonRequest(raw: Request, maxBytes = 8 * 1024 * 1024):
       if (next.done) break;
       total += next.value.byteLength;
       if (total > maxBytes) {
-        await reader.cancel("request body too large");
-        throw new RequestBodyTooLargeError("Request body too large");
+        const error = new RequestBodyTooLargeError("Request body too large");
+        void reader.cancel(error).catch(() => undefined);
+        throw error;
       }
       chunks.push(next.value);
     }
@@ -30,7 +41,13 @@ export async function readJsonRequest(raw: Request, maxBytes = 8 * 1024 * 1024):
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return JSON.parse(new TextDecoder().decode(bytes));
+  return bytes;
+}
+
+async function cancelRequestBody(request: Request, reason: unknown): Promise<void> {
+  try {
+    await request.body?.cancel(reason);
+  } catch {}
 }
 
 export async function rewriteJsonRequestModel(raw: Request, modelId: string): Promise<Request> {

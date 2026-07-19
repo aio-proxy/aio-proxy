@@ -13,10 +13,6 @@ const rawOnlyFeatures = [
     body: { model: "gpt-5.6-terra", input: "hello", store: true },
   },
   {
-    name: "previous response reference",
-    body: { model: "gpt-5.6-terra", input: "hello", previous_response_id: "resp_1" },
-  },
-  {
     name: "item reference",
     body: { model: "gpt-5.6-terra", input: [{ type: "item_reference", id: "item_1" }] },
   },

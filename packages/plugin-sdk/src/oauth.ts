@@ -3,6 +3,38 @@ import type { ConfigSpec } from "./config";
 import type { LocalizedText } from "./localized-text";
 import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";
 
+export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
+
+export type DefaultAliasTarget = {
+  readonly model: string;
+  readonly preserve?: boolean;
+};
+
+export type DefaultAliasSuggestion = DefaultAliasTarget & {
+  readonly variants?: Readonly<Record<string, DefaultAliasTarget>>;
+};
+
+export type DefaultAliasSuggestions = Readonly<Record<string, DefaultAliasSuggestion>>;
+
+export class CredentialRefreshError extends Error {
+  override readonly name = "CredentialRefreshError";
+
+  constructor(
+    message: string,
+    readonly options: { readonly retryable: boolean; readonly reason: string; readonly status?: number },
+  ) {
+    super(message);
+  }
+
+  get retryable(): boolean {
+    return this.options.retryable;
+  }
+}
+
+export type LobeIconKey = AioProxyLobeIconKey;
+
+export type OAuthIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
+
 export type DeviceCodePresentation = {
   readonly url: string;
   readonly userCode: string;
@@ -67,6 +99,33 @@ export type AccountContext<Credential, AccountOptions> = {
   readonly signal: AbortSignal;
 };
 
+export type OAuthQuotaItem = {
+  readonly id: string;
+  readonly label: LocalizedText;
+  readonly remainingRatio?: number;
+  readonly resetsAt?: number;
+};
+
+export type OAuthQuotaResetCredit = {
+  readonly id: string;
+  readonly expiresAt?: number;
+};
+
+export type OAuthQuotaResetCredits = {
+  readonly availableCount: number;
+  readonly items?: readonly OAuthQuotaResetCredit[];
+};
+
+export type OAuthQuotaSnapshot = {
+  readonly items: readonly OAuthQuotaItem[];
+  readonly resetCredits?: OAuthQuotaResetCredits;
+};
+
+export type OAuthQuotaCapability<AccountOptions, Credential> = {
+  readonly read: (context: AccountContext<Credential, AccountOptions>) => Promise<OAuthQuotaSnapshot>;
+  readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
+};
+
 export type RuntimeContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
@@ -77,12 +136,16 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly id: string;
   readonly label: LocalizedText;
   readonly description?: LocalizedText;
+  readonly icon?: OAuthIcon;
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;
   readonly catalog: {
     readonly policy: { readonly kind: "static" } | { readonly kind: "ttl"; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;
+    readonly initialFallback?: (error: unknown) => ModelCatalog | undefined;
+    readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
   };
   readonly createRuntime: (context: RuntimeContext<Credential, AccountOptions>) => Promise<OAuthRuntimeResult>;
+  readonly quota?: OAuthQuotaCapability<AccountOptions, Credential>;
 };

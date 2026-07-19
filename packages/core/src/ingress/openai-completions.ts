@@ -2,6 +2,12 @@ import { z } from "zod";
 
 const IdSchema = z.string().min(1);
 const LooseObjectSchema = z.object({}).catchall(z.unknown());
+const SessionMetadataSchema = z
+  .object({
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
+  })
+  .catchall(z.unknown());
 
 const ContentPartSchema = z
   .object({
@@ -57,6 +63,10 @@ const ToolSchema = z.object({
 export const OpenAICompletionsRequestSchema = z.object({
   model: IdSchema,
   messages: z.array(MessageSchema).min(1),
+  prompt_cache_key: z.string().optional(),
+  metadata: SessionMetadataSchema.optional(),
+  session_id: z.string().optional(),
+  conversation_id: z.string().optional(),
   tools: z.array(ToolSchema).optional(),
   tool_choice: z.union([z.enum(["none", "auto", "required"]), LooseObjectSchema]).optional(),
   stream: z.boolean().optional(),

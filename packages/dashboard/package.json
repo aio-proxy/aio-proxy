@@ -21,7 +21,7 @@
     "@aio-proxy/types": "workspace:*",
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/lexend": "^5.2.11",
-    "@lobehub/icons-static-svg": "^1.91.0",
+    "@lobehub/icons-static-svg": "catalog:",
     "@monaco-editor/react": "4.7.0",
     "@tanstack/react-form": "^1.33.0",
     "@tanstack/react-query": "^5.101.2",

@@ -75,7 +75,13 @@ export async function chooseCapability(
       }
       return exact;
     }
-    candidates = available.filter(({ capability }) => capability === inputValue);
+    const packageCandidates = available.filter(({ plugin }) => plugin === inputValue);
+    const packageDefault = packageCandidates.find(({ capability }) => capability === "default");
+    if (packageDefault !== undefined) return packageDefault;
+    candidates =
+      packageCandidates.length === 0
+        ? available.filter(({ capability }) => capability === inputValue)
+        : packageCandidates;
   }
   if (candidates.length === 0) throw new ProviderCapabilityNotFoundError(inputValue);
   if (candidates.length === 1 && inputValue !== undefined) return candidates[0] as OAuthCapabilityReference;

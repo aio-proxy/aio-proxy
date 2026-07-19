@@ -4,6 +4,8 @@ import { createCancellableEgressStream } from "../cancellable-stream";
 import {
   customInput,
   ensureOutput,
+  type FinishPart,
+  type FinishStepPart,
   finishUsage,
   messageItem,
   type OpenAIResponsesStreamPart,
@@ -151,7 +153,13 @@ export function writeOpenAIResponsesSSE(
           });
           break;
         }
+        case "error":
+          throw part.error;
+        case "finish-step":
+          assertSuccessfulFinish(part);
+          break;
         case "finish": {
+          assertSuccessfulFinish(part);
           const usage = openAIUsage(finishUsage(part));
           if (usage !== undefined) state.usage = usage;
           break;
@@ -161,7 +169,9 @@ export function writeOpenAIResponsesSSE(
       }
     }
 
-    send({ type: "response.completed", sequence_number: sequenceNumber, response: responseObject("completed", state) });
+    const response = responseObject("completed", state);
+    send({ type: "response.completed", sequence_number: sequenceNumber, response });
+    context.onResponseId?.(response.id);
   });
 }
 
@@ -196,10 +206,14 @@ export async function writeOpenAIResponsesResponse(
         if (tool !== undefined) tool.completed = true;
         break;
       }
+      case "error":
+        throw part.error;
       case "finish-step":
+        assertSuccessfulFinish(part);
         state.metadata = upstreamMetadata(part, state.metadata);
         break;
       case "finish": {
+        assertSuccessfulFinish(part);
         const usage = openAIUsage(finishUsage(part));
         if (usage !== undefined) state.usage = usage;
         break;
@@ -208,7 +222,15 @@ export async function writeOpenAIResponsesResponse(
         break;
     }
   }
-  return responseObject("completed", state);
+  const response = responseObject("completed", state);
+  context.onResponseId?.(response.id);
+  return response;
+}
+
+function assertSuccessfulFinish(part: FinishPart | FinishStepPart): void {
+  if (part.finishReason !== "error") return;
+  const rawReason = "rawFinishReason" in part ? part.rawFinishReason : undefined;
+  throw new Error(rawReason ?? "Model stream finished with an error");
 }
 
 function frame(value: ResponseStreamEvent): Uint8Array {
