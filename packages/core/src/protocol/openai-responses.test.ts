@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { openAIResponsesAdapter } from "../index";
 
 test("drops background before raw forwarding while preserving unknown fields", async () => {
-  const body = Bun.gzipSync(
+  const body = Bun.zstdCompressSync(
     new TextEncoder().encode(
       JSON.stringify({
         model: "gpt-5.6-terra",
@@ -15,7 +15,7 @@ test("drops background before raw forwarding while preserving unknown fields", a
   const raw = new Request("https://proxy.test/v1/responses", {
     method: "POST",
     headers: {
-      "content-encoding": "gzip",
+      "content-encoding": "zstd",
       "content-length": String(body.byteLength),
       "content-type": "application/json",
     },

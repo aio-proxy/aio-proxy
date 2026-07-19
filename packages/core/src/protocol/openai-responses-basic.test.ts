@@ -51,13 +51,13 @@ describe("openAIResponsesAdapter", () => {
   });
 
   test("clones the raw request when the resolved model is unchanged", async () => {
-    const body = Bun.gzipSync(
+    const body = Bun.zstdCompressSync(
       new TextEncoder().encode(JSON.stringify({ model: "same", input: "hello", beta_field: true })),
     );
     const raw = new Request("https://proxy.test/v1/responses", {
       method: "POST",
       headers: {
-        "content-encoding": "gzip",
+        "content-encoding": "zstd",
         "content-length": String(body.byteLength),
         "content-type": "application/json",
         "x-sentinel": "preserved",
@@ -69,7 +69,7 @@ describe("openAIResponsesAdapter", () => {
     const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, "same", {});
 
     expect(forwarded).not.toBe(raw);
-    expect(forwarded.headers.get("content-encoding")).toBe("gzip");
+    expect(forwarded.headers.get("content-encoding")).toBe("zstd");
     expect(forwarded.headers.get("content-length")).toBe(String(body.byteLength));
     expect(forwarded.headers.get("x-sentinel")).toBe("preserved");
     expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(body);
