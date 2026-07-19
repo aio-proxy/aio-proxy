@@ -4,7 +4,7 @@ import {
   isPluginDescriptor,
   type LocalizedText,
   LocalizedTextSchema,
-  PLUGIN_API_VERSION,
+  PLUGIN_API_VERSIONS_SUPPORTED,
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
@@ -31,10 +31,12 @@ const descriptorCache = new Map<string, Promise<PluginDescriptor<unknown>>>();
 const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const supportedApiVersions = new Set<number>(PLUGIN_API_VERSIONS_SUPPORTED);
+
 export function validateDescriptor(descriptor: unknown): PluginDescriptor<unknown> {
   if (isRecord(descriptor)) {
     const apiVersion = Reflect.get(descriptor, "apiVersion");
-    if (Number.isInteger(apiVersion) && apiVersion !== PLUGIN_API_VERSION) {
+    if (Number.isInteger(apiVersion) && !supportedApiVersions.has(apiVersion as number)) {
       throw new PluginHostError("PLUGIN_API_INCOMPATIBLE");
     }
   }
@@ -50,7 +52,7 @@ export function validateDescriptor(descriptor: unknown): PluginDescriptor<unknow
   }
   return {
     [PLUGIN_DESCRIPTOR_BRAND]: true,
-    apiVersion: PLUGIN_API_VERSION,
+    apiVersion: typed.apiVersion,
     metadata: {
       ...(typed.metadata.label === undefined ? {} : { label: label.data as LocalizedText }),
       ...(typed.metadata.description === undefined ? {} : { description: description.data as LocalizedText }),
