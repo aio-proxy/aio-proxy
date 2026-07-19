@@ -1,21 +1,40 @@
 import { expect, test } from "bun:test";
 import { RequestBodyTooLargeError, readJsonRequest, rewriteJsonRequestModel } from "./request";
 
-test("rewriteJsonRequestModel preserves unknown fields and removes content-length", async () => {
+test("rewriteJsonRequestModel preserves unknown fields and removes stale body encoding headers", async () => {
+  const body = Bun.gzipSync(
+    new TextEncoder().encode(JSON.stringify({ model: "client-model", beta_field: { enabled: true } })),
+  );
   const rewritten = await rewriteJsonRequestModel(
     new Request("https://proxy.test/v1/responses", {
       method: "POST",
-      headers: { "content-length": "99", "content-type": "application/json" },
-      body: JSON.stringify({ model: "client-model", beta_field: { enabled: true } }),
+      headers: {
+        "content-encoding": "gzip",
+        "content-length": String(body.byteLength),
+        "content-type": "application/json",
+      },
+      body,
     }),
     "upstream-model",
   );
 
+  expect(rewritten.headers.get("content-encoding")).toBeNull();
   expect(rewritten.headers.get("content-length")).toBeNull();
   expect(await rewritten.json()).toEqual({
     model: "upstream-model",
     beta_field: { enabled: true },
   });
+});
+
+test("readJsonRequest decodes gzip request bodies", async () => {
+  const body = Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ ok: true })));
+  const request = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+    body,
+  });
+
+  expect(await readJsonRequest(request)).toEqual({ ok: true });
 });
 
 test("readJsonRequest rejects a chunked body before retaining bytes beyond the limit", async () => {
