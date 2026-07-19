@@ -1210,7 +1210,7 @@ rtk git commit -m "feat(xai-grok): add credits quota reader" -m "Co-authored-by:
 - Consumes: Task 1 login/credential APIs, Task 2 catalog/runtime APIs, and Task 3 quota reader.
 - Produces: default `PluginDescriptor`, `createXAIGrokPlugin()`, localized presentation injection, package version, read-only quota registration, and core built-in identity.
 
-- [ ] **Step 1: Write the failing descriptor test**
+- [x] **Step 1: Write the failing descriptor test**
 
 Create `packages/plugins/xai-grok/src/plugin.test.ts`:
 
@@ -1251,13 +1251,13 @@ async function adapterFrom(descriptor: PluginDescriptor): Promise<OAuthAdapter<R
 }
 ```
 
-- [ ] **Step 2: Run descriptor test and verify RED**
+- [x] **Step 2: Run descriptor test and verify RED**
 
 Run: `rtk bun test packages/plugins/xai-grok/src/plugin.test.ts`
 
 Expected: FAIL because `src/index.ts` does not exist.
 
-- [ ] **Step 3: Implement descriptor and package exports**
+- [x] **Step 3: Implement descriptor and package exports**
 
 Create `packages/plugins/xai-grok/src/plugin.ts`:
 
@@ -1358,7 +1358,7 @@ test("built artifact exports the xAI Grok descriptor", () => {
 });
 ```
 
-- [ ] **Step 4: Run plugin unit tests and verify GREEN**
+- [x] **Step 4: Run plugin unit tests and verify GREEN**
 
 Run:
 
@@ -1368,7 +1368,7 @@ rtk bun test packages/plugins/xai-grok/src
 
 Expected: all xAI Grok colocated tests pass.
 
-- [ ] **Step 5: Add the failing core built-in expectations**
+- [x] **Step 5: Add the failing core built-in expectations**
 
 In `packages/core/src/plugins/builtins.test.ts`, append `"@aio-proxy/plugin-xai-grok"` to `expectedBuiltIns`, change the built-in arrays from three values to four values, assert `resolveOAuth("@aio-proxy/plugin-xai-grok", "default")`, and add these localized assertions to the copy test:
 
@@ -1386,7 +1386,7 @@ Run: `rtk bun test packages/core/src/plugins/builtins.test.ts`
 
 Expected: FAIL because core has not embedded the new package.
 
-- [ ] **Step 6: Register the built-in and workspace dependency**
+- [x] **Step 6: Register the built-in and workspace dependency**
 
 Add this import to `packages/core/src/plugins/builtins.ts`:
 
@@ -1425,7 +1425,7 @@ Refresh workspace links and lockfile:
 rtk bun install
 ```
 
-- [ ] **Step 7: Format only the changed package and built-in files**
+- [x] **Step 7: Format only the changed package and built-in files**
 
 Run:
 
@@ -1435,7 +1435,7 @@ rtk bunx biome check --write packages/plugins/xai-grok packages/core/src/plugins
 
 Expected: Biome reports no remaining diagnostics in the changed files.
 
-- [ ] **Step 8: Run focused plugin and built-in verification**
+- [x] **Step 8: Run focused plugin and built-in verification**
 
 Run:
 
@@ -1447,7 +1447,7 @@ rtk bun run --cwd packages/plugins/xai-grok test:artifact
 
 Expected: unit tests pass, build succeeds, artifact smoke test passes.
 
-- [ ] **Step 9: Run repository preflight**
+- [x] **Step 9: Run repository preflight**
 
 Run:
 
@@ -1457,7 +1457,7 @@ rtk bun run preflight
 
 Expected: Biome check and all unit tests pass with no warnings or errors.
 
-- [ ] **Step 10: Commit the built-in plugin**
+- [x] **Step 10: Commit the built-in plugin**
 
 ```bash
 rtk git add packages/plugins/xai-grok packages/core/src/plugins/builtins.ts packages/core/src/plugins/builtins.test.ts packages/core/package.json bun.lock

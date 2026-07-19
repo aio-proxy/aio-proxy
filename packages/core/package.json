@@ -35,6 +35,7 @@
     "@aio-proxy/plugin-google-antigravity": "workspace:*",
     "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
+    "@aio-proxy/plugin-xai-grok": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "ai": "catalog:",
     "@ai-sdk/openai": "catalog:",
