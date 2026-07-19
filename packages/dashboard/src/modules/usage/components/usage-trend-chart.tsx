@@ -55,7 +55,6 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   return (
     <Card>
       <UsageTrendTabs
-        title={m["dashboard.usage.chart_title"]()}
         description={m["dashboard.usage.chart_description"]()}
         titleId={chartTitleId}
         descriptionId={chartDescriptionId}

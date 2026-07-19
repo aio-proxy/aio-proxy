@@ -30,11 +30,11 @@
 - English: `chart_title_model` = `Model usage`; `chart_title_provider` = `Provider usage`.
 - Simplified Chinese: `chart_title_model` = `模型用量`; `chart_title_provider` = `提供商用量`.
 
-- [ ] **Step 1: Update both locale sources**
+- [x] **Step 1: Update both locale sources**
 
 Keep the two locale files structurally identical and remove the obsolete `chart_title` key rather than leaving an unused alias.
 
-- [ ] **Step 2: Regenerate and type-check Paraglide output**
+- [x] **Step 2: Regenerate and type-check Paraglide output**
 
 Run from the repository root:
 
@@ -58,11 +58,11 @@ Expected: Paraglide exposes both new message functions and TypeScript exits with
 - Preserve `description`, `titleId`, `descriptionId`, `children`, and the exported component name.
 - Preserve the existing metric and grouping tab values and state transitions.
 
-- [ ] **Step 1: Confirm the private component's caller set**
+- [x] **Step 1: Confirm the private component's caller set**
 
 Use LSP references on `UsageTrendTabs` before changing its props. Expected: `UsageTrendChart` is the only caller.
 
-- [ ] **Step 2: Replace the title and toolbar composition**
+- [x] **Step 2: Replace the title and toolbar composition**
 
 In `usage-trend-tabs.tsx`:
 
@@ -114,7 +114,7 @@ Render the portaled grouping list with the shared line variant and no trigger ov
 
 Expected: the grouping choice reads as the card title on the left; the metric selector remains a default shared pill on the right; neither list changes shared trigger sizing.
 
-- [ ] **Step 3: Remove the obsolete caller prop**
+- [x] **Step 3: Remove the obsolete caller prop**
 
 In `usage-trend-chart.tsx`, remove `title={m["dashboard.usage.chart_title"]()}`. Keep `titleId`, `descriptionId`, chart height classes, and all chart internals unchanged.
 
@@ -122,7 +122,7 @@ In `usage-trend-chart.tsx`, remove `title={m["dashboard.usage.chart_title"]()}`.
 
 ### Task 3: Run static and package verification
 
-- [ ] **Step 1: Format and check changed source files**
+- [x] **Step 1: Format and check changed source files**
 
 Run:
 
@@ -133,22 +133,23 @@ rtk bunx biome check packages/i18n/messages/en.json packages/i18n/messages/zh-Ha
 
 Expected: the second command exits with status 0 and applies no changes.
 
-- [ ] **Step 2: Run repository and dashboard verification**
+- [x] **Step 2: Run repository and dashboard verification**
 
 Run:
 
 ```bash
 rtk bun run preflight
 rtk bun run --filter @aio-proxy/dashboard build
+rtk bun run test:unit --filter=@aio-proxy/dashboard
 ```
 
-Expected: all checks, unit tests, artifact tests, type tests, task-graph tests, and the dashboard production build exit with status 0.
+Observed: changed source checks, the i18n build, the dashboard production build, and the 18-file / 113-test dashboard unit suite pass. Full preflight stops at pre-existing Biome errors in untouched core and types files; no unrelated fixes are included.
 
 ---
 
 ### Task 4: Smoke-test the real Usage page
 
-- [ ] **Step 1: Verify desktop rendering and interaction**
+- [x] **Step 1: Verify desktop rendering and interaction**
 
 Use the existing worktree development server with `/Volumes/ExternalSSD/workspace/aio-proxy/.aio-proxy-dev` as its configuration directory. Open `/dashboard/` at 1440×900.
 
@@ -161,7 +162,7 @@ Expected:
 - Keyboard focus remains visible; tooltip, legend, and axis labels remain readable.
 - The page has no horizontal overflow.
 
-- [ ] **Step 2: Verify mobile rendering**
+- [x] **Step 2: Verify mobile rendering**
 
 Repeat at 375×812.
 
@@ -175,7 +176,7 @@ Expected:
 
 ### Task 5: Commit and update the pull request
 
-- [ ] **Step 1: Commit the revised implementation**
+- [x] **Step 1: Commit the revised implementation**
 
 Stage only the two locale sources, two modified components, and this plan:
 
@@ -184,7 +185,7 @@ rtk git add packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json p
 rtk git commit -m "style(dashboard): use grouping tabs as usage title"
 ```
 
-- [ ] **Step 2: Push the branch**
+- [x] **Step 2: Push the branch**
 
 ```bash
 rtk git push
