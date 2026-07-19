@@ -1,3 +1,5 @@
+import { isMap, isSet } from "node:util/types";
+
 const REDACTED = "[REDACTED]";
 const CIRCULAR = "[Circular]";
 
@@ -54,6 +56,8 @@ function redact(value: unknown, secrets: readonly string[], seen: WeakSet<object
   try {
     if (value instanceof Error) return redactError(value, secrets, seen);
     if (Array.isArray(value)) return redactArray(value, secrets, seen);
+    if (isMap(value)) return redactMap(value, secrets, seen);
+    if (isSet(value)) return redactSet(value, secrets, seen);
     if (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) {
       return redactObject(value, secrets, seen);
     }
@@ -94,6 +98,30 @@ function redactArray(array: readonly unknown[], secrets: readonly string[], seen
     if (!("value" in descriptor)) throw new UnsafeLogValueError("accessor log property");
     if (!/^\d+$/u.test(key)) throw new UnsafeLogValueError("unsupported array property");
     output[Number(key)] = redact(descriptor.value, secrets, seen);
+  }
+  return output;
+}
+
+function redactMap(map: Map<unknown, unknown>, secrets: readonly string[], seen: WeakSet<object>): unknown[] {
+  const output: unknown[] = [];
+  try {
+    Map.prototype.forEach.call(map, (value: unknown, key: unknown) => {
+      output.push([redact(key, secrets, seen), redact(value, secrets, seen)]);
+    });
+  } catch {
+    return [safeMarker("[Unsupported]", secrets)];
+  }
+  return output;
+}
+
+function redactSet(set: Set<unknown>, secrets: readonly string[], seen: WeakSet<object>): unknown[] {
+  const output: unknown[] = [];
+  try {
+    Set.prototype.forEach.call(set, (value: unknown) => {
+      output.push(redact(value, secrets, seen));
+    });
+  } catch {
+    return [safeMarker("[Unsupported]", secrets)];
   }
   return output;
 }

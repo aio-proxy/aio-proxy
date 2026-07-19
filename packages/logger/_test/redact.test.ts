@@ -96,4 +96,21 @@ describe("redactLogValue", () => {
   test("re-scans marker insertions that synthesize another configured secret", () => {
     expect(redactLogText("Ax", ["A[R", "x"])).not.toContain("A[R");
   });
+
+  test("redacts Map and Set branches while preserving safe siblings", () => {
+    const output = redactLogValue(
+      {
+        safe: "visible",
+        map: new Map([["token", "abc"]]),
+        set: new Set(["abc"]),
+      },
+      ["abc"],
+    );
+
+    expect(output).toEqual({
+      safe: "visible",
+      map: [["token", "[REDACTED]"]],
+      set: ["[REDACTED]"],
+    });
+  });
 });
