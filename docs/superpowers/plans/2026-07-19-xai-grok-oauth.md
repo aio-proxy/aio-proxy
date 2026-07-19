@@ -25,6 +25,7 @@
 
 - `packages/plugins/xai-grok/src/schema.ts`: persisted credential schema and type.
 - `packages/plugins/xai-grok/src/oauth.ts`: discovery, device flow, refresh, identity, and credential-port refresh.
+- `packages/plugins/xai-grok/src/oauth/http.ts`: private OAuth HTTP/form transport and retryable status classification.
 - `packages/plugins/xai-grok/src/catalog.ts`: official model discovery, filtering, curated fallback, and catalog errors.
 - `packages/plugins/xai-grok/src/runtime.ts`: Responses ProviderV4 and CLI proxy fetch wrapper.
 - `packages/plugins/xai-grok/src/quota-protobuf.ts`: bounded gRPC-Web framing and protobuf billing scanner.
@@ -44,13 +45,14 @@
 - Create: `packages/plugins/xai-grok/rslib.config.ts`
 - Create: `packages/plugins/xai-grok/src/schema.ts`
 - Create: `packages/plugins/xai-grok/src/oauth.ts`
+- Create: `packages/plugins/xai-grok/src/oauth/http.ts`
 - Test: `packages/plugins/xai-grok/src/oauth.test.ts`
 
 **Interfaces:**
 - Consumes: `OAuthLoginContext`, `CredentialPort`, and `CredentialRefreshError` from `@aio-proxy/plugin-sdk`.
 - Produces: `loginXAIGrok(context, options)`, `refreshXAIGrokCredential(credential, options)`, `currentXAIGrokCredential(port, options)`, `validateXAIEndpoint(url, field)`, and `XAIGrokCredential`.
 
-- [ ] **Step 1: Create package metadata and the failing OAuth behavior test**
+- [x] **Step 1: Create package metadata and the failing OAuth behavior test**
 
 Create `packages/plugins/xai-grok/package.json`:
 
@@ -93,7 +95,8 @@ Create `packages/plugins/xai-grok/tsconfig.json`:
   "extends": "@aio-proxy/infra/tsconfig/base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["bun"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
@@ -302,7 +305,7 @@ function jwt(payload: object): string {
 }
 ```
 
-- [ ] **Step 2: Run the OAuth test and verify RED**
+- [x] **Step 2: Run the OAuth test and verify RED**
 
 Run:
 
@@ -312,7 +315,7 @@ rtk bun test packages/plugins/xai-grok/src/oauth.test.ts
 
 Expected: FAIL because `./oauth` does not exist.
 
-- [ ] **Step 3: Implement the minimal credential schema and OAuth flow**
+- [x] **Step 3: Implement the minimal credential schema and OAuth flow**
 
 Create `packages/plugins/xai-grok/src/schema.ts`:
 
@@ -582,7 +585,7 @@ async function waitForCaller<T>(operation: Promise<T>, signal: AbortSignal | und
 }
 ```
 
-- [ ] **Step 4: Run the OAuth test and verify GREEN**
+- [x] **Step 4: Run the OAuth test and verify GREEN**
 
 Run:
 
@@ -592,10 +595,10 @@ rtk bun test packages/plugins/xai-grok/src/oauth.test.ts
 
 Expected: 6 tests pass with no warnings.
 
-- [ ] **Step 5: Commit the OAuth lifecycle**
+- [x] **Step 5: Commit the OAuth lifecycle**
 
 ```bash
-rtk git add packages/plugins/xai-grok/package.json packages/plugins/xai-grok/tsconfig.json packages/plugins/xai-grok/rslib.config.ts packages/plugins/xai-grok/src/schema.ts packages/plugins/xai-grok/src/oauth.ts packages/plugins/xai-grok/src/oauth.test.ts
+rtk git add packages/plugins/xai-grok/package.json packages/plugins/xai-grok/tsconfig.json packages/plugins/xai-grok/rslib.config.ts packages/plugins/xai-grok/src/schema.ts packages/plugins/xai-grok/src/oauth.ts packages/plugins/xai-grok/src/oauth packages/plugins/xai-grok/src/oauth.test.ts bun.lock
 rtk git commit -m "feat(xai-grok): add oauth credential lifecycle" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
