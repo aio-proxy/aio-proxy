@@ -1,4 +1,3 @@
-/* biome-ignore-all lint/correctness/noUnknownPseudoClass: CSS Modules global selector */
 @reference "../../styles.css";
 
 .code-editor {
