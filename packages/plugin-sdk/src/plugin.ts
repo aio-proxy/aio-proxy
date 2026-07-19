@@ -16,7 +16,7 @@ export type PluginApi = {
 
 export type PluginDescriptor<Options = undefined> = {
   readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
-  readonly apiVersion: (typeof PLUGIN_API_VERSIONS_SUPPORTED)[number];
+  readonly apiVersion: typeof PLUGIN_API_VERSION;
   readonly metadata: {
     readonly label?: LocalizedText;
     readonly description?: LocalizedText;
