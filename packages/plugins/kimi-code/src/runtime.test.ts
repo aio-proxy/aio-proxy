@@ -101,8 +101,12 @@ describe("Kimi Code runtime", () => {
         headers: {
           "content-type": "application/json",
           "x-client": "kept",
+          host: "attacker.example",
+          cookie: "session=client-secret",
+          "proxy-authorization": "Basic client-secret",
           authorization: "Bearer client-secret",
           "x-api-key": "placeholder-secret",
+          "x-goog-api-key": "placeholder-secret",
           "anthropic-api-key": "placeholder-secret",
         },
         body: JSON.stringify({ model: "client-model", marker: "kept" }),
@@ -118,8 +122,9 @@ describe("Kimi Code runtime", () => {
       expect(signal).toBe(controller.signal);
       expect(captured?.headers.get("x-client")).toBe("kept");
       expect(captured?.headers.get("authorization")).toBe("Bearer raw-token");
-      expect(captured?.headers.get("x-api-key")).toBeNull();
-      expect(captured?.headers.get("anthropic-api-key")).toBeNull();
+      for (const name of "host cookie proxy-authorization x-api-key x-goog-api-key anthropic-api-key".split(" ")) {
+        expect(captured?.headers.get(name)).toBeNull();
+      }
       expect(await captured?.json()).toEqual({ model: "client-model", marker: "kept" });
     });
   }
@@ -133,18 +138,13 @@ describe("Kimi Code runtime", () => {
       },
     });
     const transport = runtime.raw?.({ protocol: "anthropic", modelId: "openai-model" });
-    const request = new Request("https://secret-host.example/v1/messages/extra", {
+    const request = new Request("https://secret-host.example/v1/messages/client-secret-path", {
       method: "POST",
       body: "client-secret-body",
     });
 
-    await expect(transport?.invoke(request)).rejects.toThrow("Unsupported Kimi raw path");
-    try {
-      await transport?.invoke(request);
-    } catch (error) {
-      expect(String(error)).not.toContain("secret-host");
-      expect(String(error)).not.toContain("client-secret-body");
-    }
+    const error = await transport?.invoke(request).catch(String);
+    expect(error).toBe("Error: Unsupported Kimi raw path");
     expect(calls).toBe(0);
   });
 

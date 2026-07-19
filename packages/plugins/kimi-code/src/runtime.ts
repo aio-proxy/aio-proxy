@@ -90,7 +90,17 @@ export function createKimiDynamicFetch(
     const credential = await currentKimiCredential(credentials, dependencies);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
-    for (const key of ["authorization", "x-api-key", "anthropic-api-key"]) headers.delete(key);
+    for (const key of [
+      "authorization",
+      "proxy-authorization",
+      "cookie",
+      "host",
+      "x-api-key",
+      "x-goog-api-key",
+      "anthropic-api-key",
+    ]) {
+      headers.delete(key);
+    }
     headers.set("authorization", `Bearer ${credential.accessToken}`);
     for (const [key, value] of Object.entries(kimiIdentityHeaders(credential.deviceId))) headers.set(key, value);
     return await (dependencies.fetch ?? globalThis.fetch)(request.url, {
@@ -107,7 +117,7 @@ export function createKimiDynamicFetch(
 function rewriteRawRequest(request: Request, protocol: KimiProtocol): Request {
   const source = new URL(request.url);
   const expectedPath = protocol === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
-  if (source.pathname !== expectedPath) throw new Error(`Unsupported Kimi raw path: ${source.pathname}`);
+  if (source.pathname !== expectedPath) throw new Error("Unsupported Kimi raw path");
   const target = new URL(`https://api.kimi.com/coding${expectedPath}`);
   target.search = source.search;
   return new Request(target, request);
