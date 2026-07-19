@@ -1,4 +1,4 @@
-import type { DashboardOAuthCapability } from "@aio-proxy/types";
+import type { DashboardOAuthCapability, DashboardOAuthSession } from "@aio-proxy/types";
 
 import { afterEach, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -20,18 +20,26 @@ const capability: DashboardOAuthCapability = {
 const mocks = rs.hoisted(() => ({
   start: rs.fn(),
   navigate: rs.fn(),
+  invalidate: rs.fn(),
   refetch: rs.fn(),
+  session: undefined as DashboardOAuthSession | undefined,
   sessionError: false,
 }));
 
 rs.mock("@tanstack/react-query", () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: (options: { queryKey: readonly string[] }) => ({
-    data: options.queryKey[0] === "oauth-capabilities" ? { capabilities: [capability] } : undefined,
+    data:
+      options.queryKey[0] === "oauth-capabilities"
+        ? { capabilities: [capability] }
+        : mocks.session === undefined
+          ? undefined
+          : { session: mocks.session },
     isError: options.queryKey[0] === "oauth-session" && mocks.sessionError,
     isLoading: false,
     refetch: mocks.refetch,
   }),
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
   useMutation: () => ({ mutate: mocks.start, isPending: false }),
 }));
 
@@ -42,6 +50,7 @@ rs.mock("@tanstack/react-router", () => ({
 
 afterEach(() => {
   rs.restoreAllMocks();
+  mocks.session = undefined;
   mocks.sessionError = false;
 });
 
@@ -74,4 +83,16 @@ test("OAuth create page offers a restart when an existing session cannot be load
   expect(screen.getByText(/session is unavailable|授权会话不可用/u)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Start over|重新开始/u }));
   expect(changeSession).toHaveBeenCalledWith(undefined);
+});
+
+test("OAuth create page refreshes providers after authorization succeeds", () => {
+  mocks.session = {
+    id: "0198bfc4-239e-7d62-bcb0-a9e0849cabaf",
+    status: "succeeded",
+    providerId: "new-provider",
+  };
+
+  render(<OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />);
+
+  expect(mocks.invalidate).toHaveBeenCalledWith({ queryKey: ["providers"] });
 });

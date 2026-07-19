@@ -1,7 +1,7 @@
 import type { DashboardOAuthCapability, DashboardOAuthSession } from "@aio-proxy/types";
 
 import { m } from "@aio-proxy/i18n";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
@@ -30,6 +30,7 @@ const capabilityKey = (capability: DashboardOAuthCapability) => `${capability.pl
 
 export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = ({ sessionId, onSessionIdChange }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const popup = useRef<Window | null>(null);
   const capabilitiesQuery = useQuery(oauthCapabilitiesQueryOptions());
   const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ""));
@@ -65,6 +66,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
       popup.current = null;
     }
     if (session?.status === "succeeded") {
+      void queryClient.invalidateQueries({ queryKey: ["providers"] });
       void navigate({
         to: "/providers",
         search: {
@@ -73,7 +75,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
         },
       });
     }
-  }, [navigate, session]);
+  }, [navigate, queryClient, session]);
 
   return (
     <PageContainer title={m["dashboard.providers.new_title"]()} backTo="/providers">
