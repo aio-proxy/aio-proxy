@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type AiSdkProviderInstance, createAiSdkProvider } from "@aio-proxy/core";
+import { type AiSdkProviderInstance, createAiSdkProvider, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
 
 import { chatRequest, mockModelsDevCatalog, restoreFetch, textStream } from "./openai-completions.test-support";
@@ -188,7 +188,7 @@ describe("POST /v1/chat/completions", () => {
     const response = await app.request("/v1/chat/completions", {
       body: "{}",
       headers: {
-        "content-length": String(8 * 1_024 * 1_024 + 1),
+        "content-length": String(REQUEST_BODY_LIMITS.encoded + 1),
         "content-type": "application/json",
       },
       method: "POST",
