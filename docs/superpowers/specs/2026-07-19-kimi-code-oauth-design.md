@@ -1,7 +1,7 @@
 # Kimi Code OAuth Plugin 设计
 
 日期：2026-07-19  
-状态：待评审
+状态：已批准
 
 ## 背景
 
@@ -19,13 +19,15 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 - 新增 built-in `@aio-proxy/plugin-kimi-code`，登录后可立即作为 routing provider 使用。
 - 实现 Kimi Code RFC 8628 device-code 登录和 refresh token 轮换。
 - 动态发现 Kimi Code 模型，并按服务端 `protocol` 选择 OpenAI-compatible 或 Anthropic runtime。
+- 通过 Kimi Code API 读取周配额与全部短周期 quota window。
 - 同协议请求提供 raw passthrough；跨协议请求继续由现有 pipeline 转换后调用 AI SDK model capability。
 - 沿用宿主的 credential CAS、catalog last-known-good、fallback、usage capture 和 request recording。
 
 ## 非目标
 
 - 不实现 Moonshot Open Platform API key provider；本插件只面向 Kimi Code 订阅与 `api.kimi.com/coding`。
-- 不实现 Kimi quota/usage capability。
+- 不调用 `www.kimi.com` 网页会员接口补充月度或会员余额；该接口依赖 Cookie/JWT session headers，不属于 Kimi Code OAuth API contract。
+- 不实现 quota reset；Kimi Code `/usages` 是只读接口，宿主不应把本地 cooldown reset 伪装成上游配额重置。
 - 不复制 CPA 的 tool-message、reasoning 或模型名兼容补丁；只有 aio-proxy 的真实失败用例出现后才加入。
 - 不新增 Dashboard 专用 UI、数据库表、CLI vendor 分支或公共 SDK 抽象。
 - 不增加新的运行时依赖；复用 `@ai-sdk/openai-compatible`、`@ai-sdk/anthropic` 和平台 API。
@@ -42,6 +44,7 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 | Token / refresh | `POST /api/oauth/token` |
 | API base | `https://api.kimi.com/coding` |
 | 模型目录 | Authenticated `GET /coding/v1/models`，失败时以 `kimi-for-coding` 静态条目作首次兜底 |
+| Quota | Authenticated `GET /coding/v1/usages`，映射顶层周配额与全部短周期 limits |
 | OpenAI runtime | `@ai-sdk/openai-compatible`，base URL `/coding/v1` |
 | Anthropic runtime | `@ai-sdk/anthropic`，base URL `/coding` |
 | Provider ID 建议 | `kimi-<refresh-token-sha256-prefix>`；不持久化或展示 token 原文 |
@@ -54,6 +57,7 @@ aio-proxy 已用 built-in plugin 承载 GitHub Copilot、OpenAI ChatGPT 和 Goog
 - `src/plugin.ts`：声明 adapter、登录编排和 catalog policy。
 - `src/oauth.ts`：device authorization、polling、token refresh 与 token schema。
 - `src/catalog.ts`：解析 `/models` 并映射 protocol metadata。
+- `src/quota.ts`：解析 `/usages` 并映射只读 `OAuthQuotaSnapshot`。
 - `src/runtime.ts`：credential refresh、AI SDK provider 和 raw transport。
 - `src/headers.ts`：为 OAuth、catalog、refresh 和 inference 构造一致的 Kimi headers。
 - `src/index.ts`：默认 descriptor、版本和公共导出。
@@ -165,13 +169,36 @@ raw URL 只保留允许的协议 path 与 query，不接受客户端 host 作为
 
 Kimi upstream error 原样交给已有 pipeline error/fallback 机制。插件不实现 candidate loop、stream preflight、usage capture 或 request recording。
 
-## 6. 测试与验证
+## 6. Quota
+
+adapter 注册只读 `quota.read(context)`，使用与 catalog/runtime 相同的 credential refresh 和 device identity headers 请求：
+
+```text
+GET https://api.kimi.com/coding/v1/usages
+Authorization: Bearer <current-access-token>
+```
+
+该 wire contract 采用 CodexBar 已验证的 Kimi Code API 实现；CPA 提供 OAuth credential、device ID 和 identity header 的互证。插件不调用 CodexBar 的 `www.kimi.com` Billing/Membership 网页接口。
+
+响应处理接受顶层 `usage` 和 `limits[]`：
+
+- `limit`、`used`、`remaining` 可为 number 或十进制 string。
+- reset timestamp 接受 `resetTime`、`resetAt`、`reset_time` 和 `reset_at`，输出 epoch milliseconds。
+- 顶层 `usage` 映射为稳定 item ID `weekly`，中英文 label 为 `Weekly quota` / `周配额`。
+- 每个有效 `limits[]` 使用 `window.duration` 与 `window.timeUnit` 生成稳定 ID 和中英文 label；不只读取第一项。
+- `remainingRatio` 优先使用 `remaining / limit`；缺少 remaining 时使用 `1 - used / limit`，并夹在 `[0, 1]`。
+- 缺少有效正数 limit 的行忽略；顶层与 limits 都没有有效行时视为畸形响应并失败。
+
+`quota.read` 不缓存、不加锁：宿主负责 request lifecycle、error redaction 和 account credential CAS。插件不注册 `quota.reset`，也不返回 `resetCredits`。
+
+## 7. 测试与验证
 
 测试必须先失败再实现，集中保护以下行为：
 
 - Device authorization 正确展示 URL/code；pending、slow-down、成功、拒绝、超时和 abort 行为正确。
 - Token response 校验、refresh token 保留/轮换、5 分钟提前刷新和错误分类正确。
 - Catalog 只接收有效 model ID，并正确映射 Anthropic/OpenAI protocol；首次失败返回官方 `kimi-for-coding` fallback。
+- Quota 同时映射顶层周配额和全部短周期 limits，兼容 string/number、remaining fallback 与 reset key variants；畸形或非成功响应不泄露 token/response body。
 - Runtime 使用当前 token/device ID 覆盖 headers，按 metadata 选择 AI SDK provider，并只对同协议开放 raw transport。
 - Built-in identity、descriptor、中英文文案和 artifact 内嵌 client ID 正确。
 
@@ -189,6 +216,7 @@ bun run preflight
 - `aio-proxy provider login @aio-proxy/plugin-kimi-code`（或交互式 capability 选择中的 Kimi Code）显示 device verification URL 和 user code，授权后创建 OAuth Provider ID。
 - credential vault 中保存 access token、refresh token、真实 expiry 和 device ID；明文 token 不进入 config、Provider ID、日志或错误。
 - `/v1/models` 能展示动态 Kimi Code 模型；目录暂时不可用时，新账号至少能路由官方 `kimi-for-coding`。
+- OAuth quota reader 能展示周配额和所有有效短周期窗口的剩余比例与重置时间；不暴露或伪造 reset 操作。
 - OpenAI Chat Completions 与 Anthropic Messages 同协议调用使用 raw passthrough；其他入站协议使用现有转换路径。
 - access token 在过期前刷新，refresh token rotation 不丢失，多个并发请求不产生重复持久化竞争。
 - Kimi provider 失败后仍遵循现有 Provider weight 与 fallback 规则。
