@@ -98,10 +98,10 @@ function ensureDbFile(path: string): void {
 }
 
 function applyPragmas(sqlite: Database, readonly: boolean): void {
+  sqlite.exec(`PRAGMA busy_timeout = ${DEFAULT_BUSY_TIMEOUT_MS}`);
   if (!readonly) {
     sqlite.exec("PRAGMA journal_mode = WAL");
   }
-  sqlite.exec(`PRAGMA busy_timeout = ${DEFAULT_BUSY_TIMEOUT_MS}`);
   sqlite.exec("PRAGMA foreign_keys = ON");
   sqlite.exec("PRAGMA synchronous = NORMAL");
 }
