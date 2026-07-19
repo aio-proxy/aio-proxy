@@ -17,7 +17,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 - Bun workspace monorepo (`packages/*`) orchestrated by Turborepo.
 - `packages/dashboard/AGENTS.md` is the authority for dashboard/frontend rules.
-- Before considering a change complete, run `bun run preflight` (biome check + all unit tests), or at minimum `bun run check` plus the affected package's tests.
+- Before considering a change complete, run `bun run preflight` (oxlint + oxfmt check + all unit tests), or at minimum `bun run check` plus the affected package's tests.
 
 ## Domain Language
 

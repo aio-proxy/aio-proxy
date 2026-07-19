@@ -1,24 +1,31 @@
 {
-  "js/ts.tsdk.path": "frontend/node_modules/typescript/lib",
-  "biome.lsp.bin": "frontend/node_modules/.bin/biome",
-  "biome.configurationPath": "frontend/biome.json",
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "oxc.fmt.configPath": ".oxfmtrc.json",
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
   "[typescript]": {
-    "editor.defaultFormatter": "biomejs.biome",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.fixAll.biome": "explicit",
-      "source.organizeImports.biome": "explicit",
-      "source.sortImports.biome": "explicit"
-    }
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
   },
   "[typescriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.fixAll.biome": "explicit",
-      "source.organizeImports.biome": "explicit",
-      "source.sortImports.biome": "explicit"
-    }
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
   },
   "files.readonlyInclude": {
     "**/route-tree.gen.ts": true

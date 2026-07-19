@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "quoteProps": "as-needed",
+  "trailingComma": "all",
+  "semi": true,
+  "arrowParens": "always",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "sortImports": {
+    "groups": [
+      "type-import",
+      ["value-builtin", "value-external"],
+      "type-internal",
+      "value-internal",
+      ["type-parent", "type-sibling", "type-index"],
+      ["value-parent", "value-sibling", "value-index"],
+      "unknown"
+    ]
+  },
+  "sortTailwindcss": {
+    "stylesheet": "packages/dashboard/src/styles.css",
+    "functions": ["cn", "cva"]
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    ".reference/**",
+    ".worktrees/**",
+    "packages/core/src/db/migrations.manifest.ts",
+    "packages/dashboard/src/route-tree.gen.ts",
+    "packages/i18n/project.inlang/.meta.json",
+    "packages/i18n/src/paraglide/**",
+    ".omo/**",
+    "docs/superpowers/plans/**"
+  ]
+}

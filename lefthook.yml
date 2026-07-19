@@ -2,9 +2,13 @@
 
 pre-commit:
   commands:
-    biome:
+    oxlint:
+      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx}"
+      run: bunx oxlint --fix --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    oxfmt:
       glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css}"
-      run: bunx @biomejs/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
+      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     bun-check:
       glob: "bun.lock"
