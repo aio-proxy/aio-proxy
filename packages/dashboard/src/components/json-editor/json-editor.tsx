@@ -1,6 +1,9 @@
 import type { Monaco, OnMount } from "@monaco-editor/react";
+
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+
 import { CodeEditor } from "@/components/code-editor";
+
 import {
   beginJsonValidation,
   completeJsonValidation,

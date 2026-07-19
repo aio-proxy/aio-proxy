@@ -4,6 +4,7 @@ import {
   type LocalizedText,
   type OAuthAdapter,
 } from "@aio-proxy/plugin-sdk";
+
 import { OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from "./errors";
 
 export const LOGIN_TIMEOUT_MS = 20 * 60_000;

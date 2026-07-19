@@ -1,3 +1,5 @@
+import type { GoogleAntigravityAccountOptions } from "../schema";
+
 import { antigravityEndpoints } from "../runtime/endpoints";
 import {
   ANTIGRAVITY_GOOGLE_API_CLIENT,
@@ -5,7 +7,6 @@ import {
   antigravityUserAgent,
   hubVersion,
 } from "../runtime/hub-version";
-import type { GoogleAntigravityAccountOptions } from "../schema";
 
 const API_VERSION = "v1internal";
 const ONBOARD_ATTEMPTS = 5;

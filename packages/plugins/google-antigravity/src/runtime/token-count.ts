@@ -1,9 +1,12 @@
-import { createGoogleGenerativeAI, type GoogleProviderSettings } from "@ai-sdk/google";
 import type { JsonValue, LogicalRequestContext, TokenCountCapability, TokenCountInput } from "@aio-proxy/plugin-sdk";
+
+import { createGoogleGenerativeAI, type GoogleProviderSettings } from "@ai-sdk/google";
 import { generateText } from "ai";
+
+import type { CcaTransport } from "./transport";
+
 import { createAntigravityGoogleFetch } from "./google-fetch";
 import { takeAioProxyOptions } from "./private-options";
-import type { CcaTransport } from "./transport";
 
 const placeholderCredential = "dynamic-oauth-credential";
 

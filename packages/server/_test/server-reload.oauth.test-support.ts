@@ -1,6 +1,7 @@
-import { writeFileSync } from "node:fs";
 import type { PluginRepository } from "@aio-proxy/core";
+
 import { ProviderProtocol } from "@aio-proxy/types";
+import { writeFileSync } from "node:fs";
 
 export const configWithProvider = (id: string, baseURL: string) => ({
   providers: {

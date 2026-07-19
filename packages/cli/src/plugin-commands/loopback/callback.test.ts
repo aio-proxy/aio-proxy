@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
+
+import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   LoopbackCallbackMismatchError,
   LoopbackOAuthError,

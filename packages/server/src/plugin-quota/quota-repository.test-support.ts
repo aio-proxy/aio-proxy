@@ -1,8 +1,8 @@
+import { createPluginRepository, type DiagnosticFactory, type PluginRepository } from "@aio-proxy/core";
+import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPluginRepository, type DiagnosticFactory, type PluginRepository } from "@aio-proxy/core";
-import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
 
 export const PROVIDER_ID = "person";
 export const PLUGIN = "@example/oauth";

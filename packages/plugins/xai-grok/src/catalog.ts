@@ -1,6 +1,8 @@
 import type { AccountContext, ModelCatalog } from "@aio-proxy/plugin-sdk";
-import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from "./oauth";
+
 import type { XAIGrokCredential } from "./schema";
+
+import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from "./oauth";
 
 export const XAI_GROK_CATALOG_TTL_MS = 6 * 60 * 60_000;
 const MODELS_URL = "https://api.x.ai/v1/models";

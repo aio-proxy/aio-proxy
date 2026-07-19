@@ -1,15 +1,18 @@
 {
   "name": "@aio-proxy/plugin-sdk",
   "version": "0.0.0",
-  "type": "module",
   "files": [
     "dist"
   ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "rslib",
@@ -29,8 +32,5 @@
     "@lobehub/icons-static-svg": "catalog:",
     "@rslib/core": "catalog:",
     "typescript": "catalog:"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

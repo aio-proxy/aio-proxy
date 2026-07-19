@@ -1,12 +1,14 @@
 import type { RequestAttemptLog, RequestLogStore } from "@aio-proxy/core/db";
 import type { RequestOutcome, UsageRow } from "@aio-proxy/types";
+
+import type { UsageCompletion } from "./usage-capture";
+
 import {
   logServerEvent,
   type RequestRecorderPersistenceFailedLog,
   type ServerLogSink,
   serverErrorType,
 } from "./server-log";
-import type { UsageCompletion } from "./usage-capture";
 
 const RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;

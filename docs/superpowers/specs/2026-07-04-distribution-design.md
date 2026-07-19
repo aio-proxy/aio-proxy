@@ -9,14 +9,14 @@
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 产物形态 | Bun `--compile` 单文件自包含二进制（内嵌运行时 + 全部 JS + dashboard 静态资源） |
-| Dashboard 静态资源 | 嵌入二进制（curl/brew 渠道只有一个可执行文件，没有存放共享资源包的地方，此项无可选空间） |
-| 首发平台矩阵 | darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64 |
-| 主包名 | `aio-proxy`；平台包 `@aio-proxy/cli-<platform>-<arch>` |
-| 版本管理 | changesets，`fixed` 组锁定所有包同版本 |
-| 发布 | GitHub Actions；changesets 只管 version bump 与 changelog，publish 由自定义 workflow 接管 |
+| 决策点             | 结论                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| 产物形态           | Bun `--compile` 单文件自包含二进制（内嵌运行时 + 全部 JS + dashboard 静态资源）           |
+| Dashboard 静态资源 | 嵌入二进制（curl/brew 渠道只有一个可执行文件，没有存放共享资源包的地方，此项无可选空间）  |
+| 首发平台矩阵       | darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64                                       |
+| 主包名             | `aio-proxy`；平台包 `@aio-proxy/cli-<platform>-<arch>`                                    |
+| 版本管理           | changesets，`fixed` 组锁定所有包同版本                                                    |
+| 发布               | GitHub Actions；changesets 只管 version bump 与 changelog，publish 由自定义 workflow 接管 |
 
 ## 1. 产物与包结构
 
@@ -54,8 +54,8 @@ aio-proxy                      ← 用户感知的 npm 主包，bin 为 launcher
 
 - **changesets**：`fixed` 组锁定所有包（含 private 包，只 bump 不发布）。
 - **双 workflow（标准 changesets 模式）**：
-  1. *Version PR*：push main 时 changesets action 维护版本提升 PR，合并即触发发布。
-  2. *Release*：矩阵编译四平台二进制 → 冒烟测试（`aio-proxy --version`；linux-arm64 用 QEMU，或降级为产物存在性检查）→ 创建 GitHub Release 并附二进制 → 填充平台包模板 → 按序 `npm publish`：**先四个平台包，后主包**，避免主包可装而平台包 404 的窗口。
+  1. _Version PR_：push main 时 changesets action 维护版本提升 PR，合并即触发发布。
+  2. _Release_：矩阵编译四平台二进制 → 冒烟测试（`aio-proxy --version`；linux-arm64 用 QEMU，或降级为产物存在性检查）→ 创建 GitHub Release 并附二进制 → 填充平台包模板 → 按序 `npm publish`：**先四个平台包，后主包**，避免主包可装而平台包 404 的窗口。
 - **不使用 changesets 默认 publish**：一是它对含 `catalog:` 的包会原样发出（虽然我们不发这些包，防御性避开），二是它无法表达平台包先于主包的发布顺序。
 
 ## 4. 暂缓项

@@ -1,5 +1,5 @@
-import { isProxy } from "node:util/types";
 import { type LocalizedText, LocalizedTextSchema, type OAuthQuotaSnapshot } from "@aio-proxy/plugin-sdk";
+import { isProxy } from "node:util/types";
 
 type Path = readonly (string | number)[];
 

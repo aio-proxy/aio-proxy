@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AiSdkProviderError, type AiSdkProviderInstance } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   AbortStreamError,
@@ -92,42 +92,42 @@ describe("POST /v1/chat/completions", () => {
     });
   });
 
-  test.each([
-    false,
-    true,
-  ])("Given an aborted inbound signal and wrapped AbortError When stream is %s Then request is cancelled", async (stream) => {
-    const provider = {
-      id: "mock-ai",
-      kind: "ai-sdk",
-      models: ["gpt-4o-mini"],
-      alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
-      invoke: () =>
-        errorStream(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")), [
-          { type: "text-delta", id: "text-1", text: "partial" },
-        ]),
-    } satisfies AiSdkProviderInstance;
-    const dbHome = tempHome();
-    const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
-    const abort = new AbortController();
-    abort.abort();
+  test.each([false, true])(
+    "Given an aborted inbound signal and wrapped AbortError When stream is %s Then request is cancelled",
+    async (stream) => {
+      const provider = {
+        id: "mock-ai",
+        kind: "ai-sdk",
+        models: ["gpt-4o-mini"],
+        alias: { "gpt-4o-mini": { model: "gpt-4o-mini", preserve: false } },
+        invoke: () =>
+          errorStream(new AiSdkProviderError("mock-ai", new AbortStreamError("client closed request")), [
+            { type: "text-delta", id: "text-1", text: "partial" },
+          ]),
+      } satisfies AiSdkProviderInstance;
+      const dbHome = tempHome();
+      const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [provider] });
+      const abort = new AbortController();
+      abort.abort();
 
-    const response = await app.request("/v1/chat/completions", {
-      body: JSON.stringify({ ...chatRequest, stream }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-      signal: abort.signal,
-    });
-    await response.text().catch(() => undefined);
+      const response = await app.request("/v1/chat/completions", {
+        body: JSON.stringify({ ...chatRequest, stream }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: abort.signal,
+      });
+      await response.text().catch(() => undefined);
 
-    expect(response.status).toBe(stream ? 200 : 499);
-    expect(await recorded(dbHome)).toEqual({
-      requests: [
-        expect.objectContaining({
-          outcome: "cancelled",
-          attempts: [expect.objectContaining({ outcome: "cancelled" })],
-        }),
-      ],
-      usages: [],
-    });
-  });
+      expect(response.status).toBe(stream ? 200 : 499);
+      expect(await recorded(dbHome)).toEqual({
+        requests: [
+          expect.objectContaining({
+            outcome: "cancelled",
+            attempts: [expect.objectContaining({ outcome: "cancelled" })],
+          }),
+        ],
+        usages: [],
+      });
+    },
+  );
 });

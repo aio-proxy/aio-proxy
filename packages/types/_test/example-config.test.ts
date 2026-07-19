@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { ConfigAuthoringSchema, ConfigSchema } from "../src/index";
 
 // aio-proxy.json holds real credentials and is gitignored, so it is only present

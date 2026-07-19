@@ -1,5 +1,6 @@
 import type { LocalizedText, PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import type { PluginEnablement, PluginState } from "@aio-proxy/types";
+
 import { findInstalledNpmPackage } from "../../npm";
 import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic";
 import { createPluginRegistryHost, type PluginRegistry } from "../registry";

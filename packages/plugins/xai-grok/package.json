@@ -2,10 +2,10 @@
   "name": "@aio-proxy/plugin-xai-grok",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "files": [
     "dist"
   ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,8 +19,8 @@
     "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {
-    "@aio-proxy/plugin-sdk": "workspace:*",
-    "@ai-sdk/openai": "catalog:"
+    "@ai-sdk/openai": "catalog:",
+    "@aio-proxy/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

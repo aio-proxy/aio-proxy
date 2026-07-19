@@ -1,6 +1,9 @@
-import { expect, test } from "bun:test";
 import type { AccountContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import type { KimiCredential } from "./oauth";
+
 import { readKimiQuota } from "./quota";
 
 const credential: KimiCredential = {

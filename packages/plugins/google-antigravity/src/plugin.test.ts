@@ -1,8 +1,11 @@
-import { expect, test } from "bun:test";
 import type { LoopbackRequest, OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import packageJson from "../package.json" with { type: "json" };
-import googleAntigravityPlugin, { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from ".";
+
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "./schema";
+
+import googleAntigravityPlugin, { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from ".";
+import packageJson from "../package.json" with { type: "json" };
 
 test("exports a versioned default descriptor", async () => {
   const adapter = await adapterFrom(googleAntigravityPlugin);

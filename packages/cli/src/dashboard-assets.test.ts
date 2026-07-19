@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { devDashboardStaticDir, embeddedDashboardAssets } from "./dashboard-assets";
 
 describe("devDashboardStaticDir", () => {

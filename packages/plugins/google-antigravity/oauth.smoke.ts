@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { googleAntigravityClientId, googleAntigravityClientSecret } from "./rslib.config";
 
 test("build embeds Google OAuth credentials without leaving source plaintext", async () => {

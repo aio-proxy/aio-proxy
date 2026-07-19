@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
 import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
-import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from "./runtime";
+
+import { describe, expect, test } from "bun:test";
+
 import type { XAIGrokCredential } from "./schema";
+
+import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from "./runtime";
 
 describe("xAI Grok runtime", () => {
   test("exposes Responses language models without raw capability", async () => {

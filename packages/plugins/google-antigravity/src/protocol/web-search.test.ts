@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
-import { createAntigravityGoogleFetch } from "../runtime/google-fetch";
+
+import { expect, test } from "bun:test";
+
 import type { CcaTransport } from "../runtime/transport";
+
+import { createAntigravityGoogleFetch } from "../runtime/google-fetch";
 import { ccaGoogleSearch } from "./web-search";
 
 const supportedMetadata = { antigravity: { supportsWebSearch: true } };

@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import { defaultAntigravityAliases } from "./aliases";
 
 test("emits only aliases and variants whose wire targets were discovered", () => {

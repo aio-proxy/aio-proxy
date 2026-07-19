@@ -1,8 +1,11 @@
+import type { ReactNode } from "react";
+
 import { getLocale, m } from "@aio-proxy/i18n";
 import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from "lucide-react";
-import type { ReactNode } from "react";
+
 import { formatCompactTokenCount, TokenCount } from "@/components/token-count";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
 import type { UsageOverviewSummary } from "../services/usage-service";
 
 interface UsageSummaryGridProps {
@@ -90,7 +93,7 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
             <CardDescription>{card.detail}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="font-heading font-semibold text-2xl tabular-nums">{card.value}</div>
+            <div className="font-heading text-2xl font-semibold tabular-nums">{card.value}</div>
           </CardContent>
         </Card>
       ))}

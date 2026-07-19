@@ -1,6 +1,6 @@
-import { jest } from "bun:test";
 import { type PluginRepository, Router } from "@aio-proxy/core";
 import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
+import { jest } from "bun:test";
 
 export const emptyPlugins = {
   plugins: new Map(),

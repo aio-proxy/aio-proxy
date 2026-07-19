@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import {
   AccountCleanupPendingError,
   createPluginRegistryHost,
@@ -6,6 +5,8 @@ import {
   ProviderFingerprintMismatchError,
   ProviderIdCollisionError,
 } from "@aio-proxy/core";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { formatCliError } from "../../main";
 import { LoopbackPortUnavailableError } from "../loopback";
 import {

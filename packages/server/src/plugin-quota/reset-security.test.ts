@@ -1,6 +1,7 @@
+import { zod } from "@aio-proxy/plugin-sdk";
 import { afterEach, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
-import { zod } from "@aio-proxy/plugin-sdk";
+
 import {
   OAuthQuotaReadError,
   OAuthQuotaResetError,
@@ -125,49 +126,52 @@ test.each([
     },
     OAuthQuotaResetError,
   ],
-] as const)("leaves routing and persistent diagnostics unchanged for a %s failure", async (_name, options, ErrorType) => {
-  const fixture = createQuotaFixture(options);
-  fixture.repository.writeDiagnostic(PROVIDER_ID, {
-    code: "AUTHORIZATION_FAILED",
-    summary: "existing",
-    retryable: false,
-    occurredAt: new Date(0).toISOString(),
-  });
-  const { providerStates, providers, router } = fixture.snapshot;
-  const statesBefore = structuredClone([...(providerStates ?? [])]);
-  const providersBefore = providers.map(({ id, kind, enabled, models, plugin, capability }) => ({
-    id,
-    kind,
-    enabled,
-    models: models === undefined ? undefined : [...models],
-    plugin,
-    capability,
-  }));
-  const routesBefore = router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId }));
-  const diagnosticsBefore = fixture.repository.readDiagnostics(PROVIDER_ID);
-
-  const error = await capturedQuotaError(
-    createOAuthQuotaResetter(fixture.dependencies).reset(PROVIDER_ID, quotaSignal()),
-  );
-
-  expect(error).toBeInstanceOf(ErrorType);
-  expect(fixture.snapshot.providerStates).toBe(providerStates);
-  expect([...(fixture.snapshot.providerStates ?? [])]).toEqual(statesBefore);
-  expect(fixture.snapshot.providers).toBe(providers);
-  expect(
-    fixture.snapshot.providers.map(({ id, kind, enabled, models, plugin, capability }) => ({
+] as const)(
+  "leaves routing and persistent diagnostics unchanged for a %s failure",
+  async (_name, options, ErrorType) => {
+    const fixture = createQuotaFixture(options);
+    fixture.repository.writeDiagnostic(PROVIDER_ID, {
+      code: "AUTHORIZATION_FAILED",
+      summary: "existing",
+      retryable: false,
+      occurredAt: new Date(0).toISOString(),
+    });
+    const { providerStates, providers, router } = fixture.snapshot;
+    const statesBefore = structuredClone([...(providerStates ?? [])]);
+    const providersBefore = providers.map(({ id, kind, enabled, models, plugin, capability }) => ({
       id,
       kind,
       enabled,
       models: models === undefined ? undefined : [...models],
       plugin,
       capability,
-    })),
-  ).toEqual(providersBefore);
-  expect(fixture.snapshot.router).toBe(router);
-  expect(
-    fixture.snapshot.router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId })),
-  ).toEqual(routesBefore);
-  expect(fixture.repository.readDiagnostics(PROVIDER_ID)).toEqual(diagnosticsBefore);
-  expect(fixture.changed()).toBe(0);
-});
+    }));
+    const routesBefore = router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId }));
+    const diagnosticsBefore = fixture.repository.readDiagnostics(PROVIDER_ID);
+
+    const error = await capturedQuotaError(
+      createOAuthQuotaResetter(fixture.dependencies).reset(PROVIDER_ID, quotaSignal()),
+    );
+
+    expect(error).toBeInstanceOf(ErrorType);
+    expect(fixture.snapshot.providerStates).toBe(providerStates);
+    expect([...(fixture.snapshot.providerStates ?? [])]).toEqual(statesBefore);
+    expect(fixture.snapshot.providers).toBe(providers);
+    expect(
+      fixture.snapshot.providers.map(({ id, kind, enabled, models, plugin, capability }) => ({
+        id,
+        kind,
+        enabled,
+        models: models === undefined ? undefined : [...models],
+        plugin,
+        capability,
+      })),
+    ).toEqual(providersBefore);
+    expect(fixture.snapshot.router).toBe(router);
+    expect(
+      fixture.snapshot.router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId })),
+    ).toEqual(routesBefore);
+    expect(fixture.repository.readDiagnostics(PROVIDER_ID)).toEqual(diagnosticsBefore);
+    expect(fixture.changed()).toBe(0);
+  },
+);

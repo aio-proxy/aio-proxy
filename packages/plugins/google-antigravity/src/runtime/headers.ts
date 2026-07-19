@@ -1,4 +1,5 @@
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { ANTIGRAVITY_GOOGLE_API_CLIENT, antigravityUserAgent } from "./hub-version";
 
 export function createCcaHeaders(

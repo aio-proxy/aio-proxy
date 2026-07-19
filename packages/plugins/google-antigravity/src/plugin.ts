@@ -5,6 +5,7 @@ import {
   type OAuthAdapter,
   type PluginDescriptor,
 } from "@aio-proxy/plugin-sdk";
+
 import { defaultAntigravityAliases } from "./catalog/aliases";
 import { discoverAntigravityCatalog } from "./catalog/discover";
 import { CatalogDiscoveryError } from "./catalog/errors";

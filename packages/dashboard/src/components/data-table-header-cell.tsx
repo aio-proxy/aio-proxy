@@ -1,5 +1,7 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
 import type React from "react";
+
+import { ArrowDown, ArrowUp } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { TableHead } from "@/components/ui/table";
 

@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { TextStreamPart, ToolSet } from "ai";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   writeAnthropicMessagesResponse as writeAnthropicMessagesResponseRaw,
   writeAnthropicMessagesSSE as writeAnthropicMessagesSSERaw,
@@ -183,12 +185,12 @@ describe("writeAnthropicMessagesSSE", () => {
       );
 
     const [first, second] = await Promise.all([encode(), encode()]);
-    const firstMessage = (first[0]?.data as { message: { id: string; model: string } }).message;
-    const secondMessage = (second[0]?.data as { message: { id: string; model: string } }).message;
+    const firstMessage = (first[0]?.data as { message: { id: string; model: string } } | undefined)?.message;
+    const secondMessage = (second[0]?.data as { message: { id: string; model: string } } | undefined)?.message;
 
-    expect(firstMessage.id).toStartWith("msg_");
-    expect(firstMessage.id).not.toBe(secondMessage.id);
-    expect(firstMessage.model).toBe("claude-routed");
+    expect(firstMessage?.id).toStartWith("msg_");
+    expect(firstMessage?.id).not.toBe(secondMessage?.id);
+    expect(firstMessage?.model).toBe("claude-routed");
   });
 
   test("Given an empty text block When encoded Then start and stop are preserved", async () => {

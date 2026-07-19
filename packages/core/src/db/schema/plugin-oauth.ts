@@ -1,5 +1,6 @@
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
 import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
+
 import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 

@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
 import { ABSENT_PROVIDER_DIGEST, PENDING_OPERATION_TTL_MS } from "@aio-proxy/core";
+import { expect, test } from "bun:test";
+
 import { createAccountRemovalCoordinator } from "../../src/account-removal";
 
 test("a committed delete marker schedules recovery before its retired snapshot drains", async () => {

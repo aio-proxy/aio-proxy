@@ -2,19 +2,19 @@
 
 调研日期：2026-07-19。范围仅为三个本地、已更新的第一方仓库；框架行为只以其本地官方源码佐证。
 
-| 仓库 | 当前 commit |
-| --- | --- |
-| CLIProxyAPI (CPA) | `93d74a890a44802f656d7f39a573916b2611896e` |
+| 仓库                  | 当前 commit                                |
+| --------------------- | ------------------------------------------ |
+| CLIProxyAPI (CPA)     | `93d74a890a44802f656d7f39a573916b2611896e` |
 | claude-code-hub (CCH) | `595a7d988a91c730ed63a791b4a92acb5a0e9c41` |
-| oh-my-pi (OMP) | `9fd6e97113f5ed3a847e66d346970efdf8afcad9` |
+| oh-my-pi (OMP)        | `9fd6e97113f5ed3a847e66d346970efdf8afcad9` |
 
 ## 结论速览
 
-| 项目 | 入站 Content-Encoding | 解压作用域 | 压缩/解压大小限制 | 解压后出站头 |
-| --- | --- | --- | --- | --- |
-| CPA | 仅共享 helper 支持 `zstd`；不支持 gzip/deflate/br | 只有调用 helper 的部分 OpenAI handlers；非全局 | 无通用压缩前或解压后限制 | 不是 raw HTTP 直通；执行请求只携带 body/选定 headers |
-| CCH | `zstd`、`gzip`/`x-gzip`、`deflate`、`br` | `/v1`、`/v1beta` proxy 的共享 `ProxySession` | 两者默认各 100 MiB，超限 413 | 已解压则删 `content-encoding`；总是排除 `content-length` 后重算 |
-| OMP | 不支持上述任一种 | 无解压层 | 原始线上 body 默认 1 MiB，超限 413 | 无模型 API raw passthrough；typed GitHub proxy 不转发客户端 CE/CL |
+| 项目 | 入站 Content-Encoding                             | 解压作用域                                     | 压缩/解压大小限制                  | 解压后出站头                                                      |
+| ---- | ------------------------------------------------- | ---------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
+| CPA  | 仅共享 helper 支持 `zstd`；不支持 gzip/deflate/br | 只有调用 helper 的部分 OpenAI handlers；非全局 | 无通用压缩前或解压后限制           | 不是 raw HTTP 直通；执行请求只携带 body/选定 headers              |
+| CCH  | `zstd`、`gzip`/`x-gzip`、`deflate`、`br`          | `/v1`、`/v1beta` proxy 的共享 `ProxySession`   | 两者默认各 100 MiB，超限 413       | 已解压则删 `content-encoding`；总是排除 `content-length` 后重算   |
+| OMP  | 不支持上述任一种                                  | 无解压层                                       | 原始线上 body 默认 1 MiB，超限 413 | 无模型 API raw passthrough；typed GitHub proxy 不转发客户端 CE/CL |
 
 ## 1. CLIProxyAPI
 

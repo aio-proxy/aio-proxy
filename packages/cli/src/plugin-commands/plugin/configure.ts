@@ -1,5 +1,7 @@
-import { m } from "@aio-proxy/i18n";
 import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
+
+import { m } from "@aio-proxy/i18n";
+
 import { renderConfigSpec } from "../form";
 import { entries, packageNameOf, publicOptionsOf, requirePluginPackageName, secretRecord } from "./config-entry";
 import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps } from "./deps";

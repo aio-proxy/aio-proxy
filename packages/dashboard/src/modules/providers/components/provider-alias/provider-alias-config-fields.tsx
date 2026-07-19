@@ -1,12 +1,15 @@
-import { m } from "@aio-proxy/i18n";
 import type { AliasConfig } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { normalizeAliasName } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
 import { type FC, useState } from "react";
+
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+
 import {
   type AliasDraft,
   type AliasEditorIssue,

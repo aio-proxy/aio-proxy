@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { formatCompactTokenCount, formatExactTokenCount } from "./format-token-count";
 
 describe("formatCompactTokenCount", () => {

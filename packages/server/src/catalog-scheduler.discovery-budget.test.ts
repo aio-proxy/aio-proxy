@@ -1,6 +1,8 @@
-import { expect, test } from "bun:test";
-import { discoverAntigravityCatalog, type GoogleAntigravityCredential } from "@aio-proxy/plugin-google-antigravity";
 import type { AccountContext } from "@aio-proxy/plugin-sdk";
+
+import { discoverAntigravityCatalog, type GoogleAntigravityCredential } from "@aio-proxy/plugin-google-antigravity";
+import { expect, test } from "bun:test";
+
 import { CatalogScheduler } from "./catalog-scheduler";
 
 test("scheduler leaves enough host budget for daily timeout and prod discovery", async () => {

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { openAIChatGPTClientId } from "./rslib.config";
 
 test("build embeds the ChatGPT OAuth client ID without leaving source plaintext", async () => {

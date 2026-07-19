@@ -1,9 +1,10 @@
+import { createServer } from "@aio-proxy/server";
+import { ProviderProtocol } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "@aio-proxy/server";
-import { ProviderProtocol } from "@aio-proxy/types";
+
 import { configWithProvider, writeConfig } from "./server-reload.oauth.test-support";
 
 describe("server invalid provider reload", () => {

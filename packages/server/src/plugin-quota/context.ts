@@ -1,13 +1,16 @@
+import type { AccountContext, CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
+
 import {
   collectSecretStrings,
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
 } from "@aio-proxy/core";
-import type { AccountContext, CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
-import { prepareOAuthPluginAccount } from "../plugin-account";
+
 import type { ProviderSnapshotLease } from "../runtime";
+
+import { prepareOAuthPluginAccount } from "../plugin-account";
 import { OAuthQuotaCapabilityUnavailableError } from "./errors";
 
 export type OAuthQuotaServiceDependencies = {

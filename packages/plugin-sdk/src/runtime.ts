@@ -1,5 +1,6 @@
 import type { ProviderV4 } from "@ai-sdk/provider";
 import type { CallSettings, ModelMessage, ToolSet } from "ai";
+
 import type { JsonValue } from "./json";
 
 export type ProtocolId = "openai-compatible" | "openai-response" | "anthropic" | "gemini";

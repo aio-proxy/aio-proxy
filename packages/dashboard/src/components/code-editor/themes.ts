@@ -1,4 +1,5 @@
 import type { BeforeMount } from "@monaco-editor/react";
+
 import {
   type CodeEditorColor,
   type CodeEditorColorResolver,

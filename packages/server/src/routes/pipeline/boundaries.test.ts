@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import {
   defineProtocolAdapter,
   jsonRequest,

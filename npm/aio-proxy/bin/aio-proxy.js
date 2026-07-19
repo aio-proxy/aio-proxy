@@ -25,7 +25,9 @@ const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
 const forwarders = {};
 for (const sig of signals) {
   forwarders[sig] = () => {
-    try { child.kill(sig); } catch {}
+    try {
+      child.kill(sig);
+    } catch {}
   };
   process.on(sig, forwarders[sig]);
 }

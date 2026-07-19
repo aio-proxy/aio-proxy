@@ -1,7 +1,9 @@
 import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from "@aio-proxy/core";
+
 import { getLocale, m } from "@aio-proxy/i18n";
 import { type LocalizedText, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { confirm, select } from "@inquirer/prompts";
+
 import {
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityNotFoundError,

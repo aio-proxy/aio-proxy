@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { isPlainObject } from "es-toolkit/predicate";
+import { createHash } from "node:crypto";
 
 export type ConfigRecord = Record<string, unknown>;
 

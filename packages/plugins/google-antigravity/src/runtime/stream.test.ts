@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { preflightCcaSse, unwrapCcaSse } from "./stream";
 
 const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';

@@ -4,6 +4,7 @@ import type {
   StopReason,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages/messages";
+
 import type { LanguageModelV2FinishReason } from "../../ai-sdk-bridge";
 
 const encoder = new TextEncoder();

@@ -1,8 +1,11 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
+import type { CcaTransport } from "./transport";
+
 import { writeAnthropicMessagesSSE } from "../../../../core/src/egress/anthropic-messages";
 import { createAntigravityProviderV4 } from "./provider";
-import type { CcaTransport } from "./transport";
 
 const MODEL = "claude-opus-4-6-thinking";
 const FIRST_SIGNATURE = "first-signature-".repeat(4);

@@ -4,10 +4,12 @@ import {
   type PendingAccountOperation,
   type PluginRepository,
 } from "@aio-proxy/core";
-import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
+
 import type { FifoQueue } from "./fifo-queue";
-import { createFifoQueue } from "./fifo-queue";
 import type { RetiredProviderSnapshot } from "./runtime";
+
+import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
+import { createFifoQueue } from "./fifo-queue";
 
 export class ConfigPathMissingError extends Error {
   constructor() {

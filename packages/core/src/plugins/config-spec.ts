@@ -6,6 +6,7 @@ import {
   type LocalizedText,
   LocalizedTextSchema,
 } from "@aio-proxy/plugin-sdk";
+
 import { isPluginZodSchema } from "./schema";
 
 export type ValidatedConfigSpec<T = unknown> = {

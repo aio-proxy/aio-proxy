@@ -1,4 +1,5 @@
 import type { ModelsDevCapabilities } from "@aio-proxy/core";
+
 import { ProviderProtocol } from "@aio-proxy/types";
 
 export const config = {

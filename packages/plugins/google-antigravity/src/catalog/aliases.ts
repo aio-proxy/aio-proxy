@@ -1,4 +1,5 @@
 import type { DefaultAliasSuggestions, ModelCatalog } from "@aio-proxy/plugin-sdk";
+
 import { ANTIGRAVITY_FAMILIES } from "./families";
 
 export function defaultAntigravityAliases(catalog: ModelCatalog): DefaultAliasSuggestions {

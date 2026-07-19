@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { Model, Provider, ProviderMap } from "@opencode-ai/models";
+
+import { describe, expect, test } from "bun:test";
+
 import { createModelsDevCatalog, createOpenRouterPriceCatalog } from "../src/models-dev-catalog";
 
 const model = (id: string, name: string, overrides: Partial<Model> = {}): Model => ({

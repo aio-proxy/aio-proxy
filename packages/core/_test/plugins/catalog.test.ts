@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { ModelCatalogValidationError, validateModelCatalog } from "../../src/plugins/catalog";
 
 const validCatalog = () => ({
@@ -15,18 +16,14 @@ describe("validateModelCatalog", () => {
     expect(validateModelCatalog(validCatalog())).toEqual(validCatalog());
   });
 
-  test.each([
-    "language",
-    "image",
-    "embedding",
-    "speech",
-    "transcription",
-    "reranking",
-  ])("requires the %s modality array", (modality) => {
-    const catalog = validCatalog() as Record<string, unknown>;
-    delete catalog[modality];
-    expect(() => validateModelCatalog(catalog)).toThrow(ModelCatalogValidationError);
-  });
+  test.each(["language", "image", "embedding", "speech", "transcription", "reranking"])(
+    "requires the %s modality array",
+    (modality) => {
+      const catalog = validCatalog() as Record<string, unknown>;
+      delete catalog[modality];
+      expect(() => validateModelCatalog(catalog)).toThrow(ModelCatalogValidationError);
+    },
+  );
 
   test.each([
     ["blank id", { ...validCatalog(), language: [{ id: " " }] }],

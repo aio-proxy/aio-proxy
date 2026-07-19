@@ -1,4 +1,5 @@
 import type { ModelEventStream } from "@aio-proxy/core";
+
 import type { ModelPart } from "./types";
 
 export function jsonRequest(

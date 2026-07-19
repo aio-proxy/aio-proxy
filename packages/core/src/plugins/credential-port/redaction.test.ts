@@ -1,9 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
 import { CredentialRefreshError, zod } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import type { PluginLogSink } from "../diagnostic";
-import { CredentialValidationError } from "../index";
 import type { PluginRepository } from "../repository/index";
+
+import { CredentialValidationError } from "../index";
 import { createFixtureScope, port } from "./test-support";
 
 const fixtures = createFixtureScope();

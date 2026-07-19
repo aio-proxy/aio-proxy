@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@rstest/core";
 import { render, screen } from "@testing-library/react";
+
 import { DataTableHeaderCell } from "./data-table-header-cell";
 
 describe("data table header cell", () => {

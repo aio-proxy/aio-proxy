@@ -1,7 +1,8 @@
-import { expect } from "bun:test";
-import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import type { createServer } from "@aio-proxy/server";
 import type { TextStreamPart, ToolSet } from "ai";
+
+import { openDb, requestLog, usage } from "@aio-proxy/core/db";
+import { expect } from "bun:test";
 
 export { createTempHomes } from "./temporary-homes.test-support";
 

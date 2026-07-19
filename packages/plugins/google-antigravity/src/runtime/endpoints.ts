@@ -1,5 +1,6 @@
-import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from "../oauth/constants";
 import type { GoogleAntigravityAccountOptions } from "../schema";
+
+import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from "../oauth/constants";
 import { normalizeBaseURL } from "../schema";
 
 export type AntigravityOperation = "project-load" | "onboarding" | "discovery" | "inference" | "count";

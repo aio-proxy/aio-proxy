@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+
 import { AtomicConfigFile, CONFIG_LOCK_WAIT_MS } from ".";
 import {
   ageLockWithUnavailableIdentity,

@@ -1,11 +1,14 @@
 import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
+
 import { type PluginState, pluginConfigCommand } from "@aio-proxy/types";
 import { isPlainObject } from "es-toolkit/predicate";
+
+import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from "./index";
+
 import { validateConfigSpec } from "../config-spec";
 import { redactPluginError } from "../diagnostic";
 import { parsePluginSchema } from "../schema";
 import { PluginHostError } from "./descriptor";
-import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from "./index";
 
 export type Candidate = {
   readonly packageName: string;

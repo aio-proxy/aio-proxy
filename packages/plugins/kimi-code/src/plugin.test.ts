@@ -1,9 +1,12 @@
-import { expect, test } from "bun:test";
 import type { AccountContext, OAuthAdapter, OAuthLoginContext, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import packageJson from "../package.json" with { type: "json" };
-import kimiCodePlugin, { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from ".";
-import { KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
+
+import { expect, test } from "bun:test";
+
 import type { KimiCredential } from "./oauth";
+
+import kimiCodePlugin, { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from ".";
+import packageJson from "../package.json" with { type: "json" };
+import { KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
 
 test("exports a versioned default descriptor with the complete OAuth adapter contract", async () => {
   const adapter = await adapterFrom(kimiCodePlugin);

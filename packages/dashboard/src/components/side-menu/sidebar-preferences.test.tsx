@@ -1,6 +1,8 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
 import { SidebarProvider } from "@/components/ui/sidebar";
+
 import { SidebarPreferences } from "./sidebar-preferences";
 
 const mocks = rs.hoisted(() => ({

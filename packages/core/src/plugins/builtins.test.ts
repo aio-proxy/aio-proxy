@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
 import { getLocale, setLocale } from "@aio-proxy/i18n";
 import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+import { afterEach, expect, test } from "bun:test";
+
 import { BUILT_IN_PLUGIN_PACKAGE_NAMES, createEmbeddedBuiltIns } from "./builtins";
 import { loadPluginRegistry } from "./loader/index";
 

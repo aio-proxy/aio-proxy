@@ -1,3 +1,5 @@
+import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
+
 import {
   AtomicConfigFile,
   configPath,
@@ -13,8 +15,8 @@ import {
   type recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
-import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
+
 import { openBrowser } from "../../open-browser";
 import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from "../authorization";
 import { type PluginFormPrompts, renderConfigSpec } from "../form";

@@ -1,4 +1,5 @@
 import type { LocalizedText, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+
 import { kimiIdentityHeaders } from "./headers";
 import { KIMI_OAUTH_BASE_URL } from "./oauth/constants";
 

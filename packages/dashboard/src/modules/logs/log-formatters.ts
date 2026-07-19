@@ -1,5 +1,7 @@
-import { m } from "@aio-proxy/i18n";
 import type { UsageRow } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
+
 import { createUsageValueFormatter } from "../usage/services/usage-value-formatter";
 
 export const displayTotalTokens = (usage: UsageRow | undefined) =>

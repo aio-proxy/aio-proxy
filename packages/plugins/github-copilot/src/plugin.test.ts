@@ -1,13 +1,15 @@
-import { describe, expect, test } from "bun:test";
 import type { OAuthAdapter, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import { deviceFlowFetch, loginContext, withFetchMock } from "../_test/test-support";
-import packageJson from "../package.json" with { type: "json" };
+
+import { describe, expect, test } from "bun:test";
+
 import githubCopilotPlugin, {
   COPILOT_CATALOG_TTL_MS,
   GITHUB_COPILOT_PLUGIN_VERSION,
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
 } from ".";
+import { deviceFlowFetch, loginContext, withFetchMock } from "../_test/test-support";
+import packageJson from "../package.json" with { type: "json" };
 import { createGitHubCopilotPlugin } from "./plugin";
 
 describe("GitHub Copilot plugin", () => {

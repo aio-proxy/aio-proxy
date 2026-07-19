@@ -2,10 +2,10 @@
   "name": "@aio-proxy/plugin-google-antigravity",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "files": [
     "dist"
   ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,9 +19,9 @@
     "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {
-    "@aio-proxy/plugin-sdk": "workspace:*",
     "@ai-sdk/google": "catalog:",
     "@ai-sdk/provider": "catalog:",
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "ai": "catalog:",
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:"

@@ -1,36 +1,39 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
+import type { CcaTransport } from "./transport";
+
 import { createAntigravityGoogleFetch } from "./google-fetch";
 import { createAntigravityProviderV4 } from "./provider";
-import type { CcaTransport } from "./transport";
 import { AntigravityTransport } from "./transport";
 
-test.each([
-  "models/foo",
-  "tunedModels/foo",
-])("preserves the codec-encoded model resource %s for CCA routing", async (modelId) => {
-  const calls: Parameters<CcaTransport["execute"]>[0][] = [];
-  const provider = createAntigravityProviderV4({
-    call: (context: LogicalRequestContext) => ({
-      context,
-      transport: {
-        async execute(input) {
-          calls.push(input);
-          return Response.json({
-            response: {
-              candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
-            },
-          });
+test.each(["models/foo", "tunedModels/foo"])(
+  "preserves the codec-encoded model resource %s for CCA routing",
+  async (modelId) => {
+    const calls: Parameters<CcaTransport["execute"]>[0][] = [];
+    const provider = createAntigravityProviderV4({
+      call: (context: LogicalRequestContext) => ({
+        context,
+        transport: {
+          async execute(input) {
+            calls.push(input);
+            return Response.json({
+              response: {
+                candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+              },
+            });
+          },
         },
-      },
-    }),
-  });
+      }),
+    });
 
-  await provider.languageModel(modelId).doGenerate(callOptions());
+    await provider.languageModel(modelId).doGenerate(callOptions());
 
-  expect(calls).toHaveLength(1);
-  expect(calls[0]?.modelId).toBe(modelId);
-});
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.modelId).toBe(modelId);
+  },
+);
 
 test("preserves downstream cancellation and CCA reader cleanup", async () => {
   const abort = new AbortController();

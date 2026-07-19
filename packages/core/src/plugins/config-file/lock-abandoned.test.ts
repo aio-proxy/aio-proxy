@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
+
 import { AtomicConfigCommitUncertainError, AtomicConfigFile, AtomicConfigLockReleaseError } from ".";
 import { ageLockWithUnavailableIdentity, fixture } from "./test-support";
 

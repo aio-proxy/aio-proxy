@@ -1,7 +1,9 @@
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import type { GoogleAntigravityCredential } from "../schema";
+
 import { antigravityFamilyForWireModel, modelCapabilities } from "../catalog/families";
 import { applyValidatedToolMode, normalizeFunctionDeclarations } from "../protocol/tool-schema";
-import type { GoogleAntigravityCredential } from "../schema";
 
 export type CcaRequestType = "agent" | "image_gen" | "web_search";
 

@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+
 import { virtualCompiledEntry } from "./generate-compiled-entry";
 
 const targets = [

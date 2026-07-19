@@ -1,4 +1,3 @@
-import { pathToFileURL } from "node:url";
 import {
   AtomicConfigCommitUncertainError,
   ConfigSpecValidationError,
@@ -11,9 +10,12 @@ import {
   validateConfigSpec,
 } from "@aio-proxy/core";
 import { isPluginDescriptor, type PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import { pathToFileURL } from "node:url";
+
+import type { PluginLifecycleDeps, SecretRepository } from "./deps";
+
 import { cloneInertJson } from "../form";
 import { entries, packageNameOf, pluginEntry, replacePlugin, sameJson } from "./config-entry";
-import type { PluginLifecycleDeps, SecretRepository } from "./deps";
 import { createCliPluginDiagnosticFactory } from "./deps";
 import {
   PluginConfigChangedError,

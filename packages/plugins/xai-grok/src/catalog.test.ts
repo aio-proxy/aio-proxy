@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
-import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAIGrokCatalogError } from "./catalog";
+
+import { describe, expect, test } from "bun:test";
+
 import type { XAIGrokCredential } from "./schema";
+
+import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAIGrokCatalogError } from "./catalog";
 
 describe("xAI Grok model catalog", () => {
   test("discovers account models and excludes non-chat surfaces", async () => {

@@ -1,6 +1,8 @@
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
-import { currentGoogleCredential, forceRefreshGoogleCredential } from "../oauth/refresh";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
+import { currentGoogleCredential, forceRefreshGoogleCredential } from "../oauth/refresh";
 
 export type AntigravityCredentialSource = {
   readonly current: (signal?: AbortSignal) => Promise<GoogleAntigravityCredential>;

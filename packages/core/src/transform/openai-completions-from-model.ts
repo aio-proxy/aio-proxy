@@ -1,7 +1,8 @@
 import type { ModelMessage } from "../ai-sdk-bridge";
-import { OpenAICompletionsTransformError } from "../error";
 import type { OpenAICompletionsRequest } from "../ingress/openai-completions";
 import type { OpenAICompletionsFromModelMessages } from "./openai-completions";
+
+import { OpenAICompletionsTransformError } from "../error";
 
 export function modelMessagesToOpenAICompletions({
   model,

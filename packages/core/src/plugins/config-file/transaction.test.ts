@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
+
 import { AtomicConfigFile } from ".";
 import { fixture } from "./test-support";
 

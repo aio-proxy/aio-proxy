@@ -1,3 +1,5 @@
+import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
+
 import {
   type AiSdkProviderInstance,
   type ApiProviderInstance,
@@ -6,8 +8,8 @@ import {
   createApiProvider,
   modelRoutes,
 } from "@aio-proxy/core";
-import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+
 import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "./runtime";
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;

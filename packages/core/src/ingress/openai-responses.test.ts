@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+
 import type { OpenAIResponsesRequest } from "../index";
+
 import { parseOpenAIResponses } from "../index";
 
 test("accepts a developer message", () => {

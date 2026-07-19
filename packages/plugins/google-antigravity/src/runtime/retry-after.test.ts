@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { retryAfterMilliseconds } from "./retry-after";
 
 const now = Date.UTC(2026, 6, 18, 0, 0, 0);

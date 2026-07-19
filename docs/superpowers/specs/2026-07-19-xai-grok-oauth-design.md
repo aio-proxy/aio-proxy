@@ -30,19 +30,19 @@ aio-proxy 已有 built-in OAuth plugin、device-code 展示、credential refresh
 
 ## 核心决策
 
-| 决策点 | 结论 |
-| --- | --- |
-| 插件边界 | 独立 built-in `@aio-proxy/plugin-xai-grok`，OAuth adapter ID 为 `default` |
-| Account options | 空对象，不新增用户配置 |
-| OAuth flow | OIDC discovery + RFC 8628 device authorization |
-| OAuth client | xAI Grok CLI public client ID `b1a00492-073a-47ea-816f-4c329264a828` |
-| OAuth scopes | `openid profile email offline_access grok-cli:access api:access` |
-| 模型发现 | OAuth Bearer token 请求 `https://api.x.ai/v1/models`，TTL 6 小时 |
-| Catalog fallback | 仅可重试发现失败时使用 OMP curated chat snapshot |
-| 推理 endpoint | `https://cli-chat-proxy.grok.com/v1` |
-| Model codec | 已安装的 `@ai-sdk/openai` Responses provider |
-| Runtime capability | ProviderV4 model only，不提供 raw resolver |
-| Quota capability | 主动读取 Grok CLI weekly/monthly billing，暴露只读 quota items，不声明 reset |
+| 决策点             | 结论                                                                         |
+| ------------------ | ---------------------------------------------------------------------------- |
+| 插件边界           | 独立 built-in `@aio-proxy/plugin-xai-grok`，OAuth adapter ID 为 `default`    |
+| Account options    | 空对象，不新增用户配置                                                       |
+| OAuth flow         | OIDC discovery + RFC 8628 device authorization                               |
+| OAuth client       | xAI Grok CLI public client ID `b1a00492-073a-47ea-816f-4c329264a828`         |
+| OAuth scopes       | `openid profile email offline_access grok-cli:access api:access`             |
+| 模型发现           | OAuth Bearer token 请求 `https://api.x.ai/v1/models`，TTL 6 小时             |
+| Catalog fallback   | 仅可重试发现失败时使用 OMP curated chat snapshot                             |
+| 推理 endpoint      | `https://cli-chat-proxy.grok.com/v1`                                         |
+| Model codec        | 已安装的 `@ai-sdk/openai` Responses provider                                 |
+| Runtime capability | ProviderV4 model only，不提供 raw resolver                                   |
+| Quota capability   | 主动读取 Grok CLI weekly/monthly billing，暴露只读 quota items，不声明 reset |
 
 ## 插件与宿主边界
 

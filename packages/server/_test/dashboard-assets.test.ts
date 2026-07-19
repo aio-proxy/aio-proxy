@@ -1,8 +1,8 @@
+import { directoryDashboardAssets } from "@aio-proxy/server";
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { directoryDashboardAssets } from "@aio-proxy/server";
 
 describe("directoryDashboardAssets", () => {
   test("Given a dist dir When known and unknown paths are requested Then files are served and misses return null", async () => {

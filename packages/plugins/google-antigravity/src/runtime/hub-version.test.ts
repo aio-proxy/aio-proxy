@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { createHubVersionCache } from "./hub-version";
 
 test("returns the verified fallback immediately and refreshes in the background", async () => {

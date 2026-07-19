@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import { defineProtocolAdapter, jsonRequest, REQUESTED_MODEL, rawProvider } from "../../../_test/pipeline-helpers";
 import { pipeline } from "./test-support";
 

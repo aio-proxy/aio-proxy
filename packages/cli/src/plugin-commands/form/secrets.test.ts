@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import { FormSchemaValidationError, renderConfigSpec } from "./index";
 import { type PromptCall, prompts, spec } from "./test-support";
 
@@ -11,8 +12,8 @@ describe("renderConfigSpec secrets", () => {
       currentPublicValues: { endpoint: "https://old.test", retries: 2 },
       currentSecrets: { token: "old-secret" },
     });
-    expect((calls[0]?.config as { default?: unknown }).default).toBe("https://old.test");
-    expect((calls[2]?.config as { default?: unknown }).default).toBe("2");
+    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBe("https://old.test");
+    expect((calls[2]?.config as { default?: unknown } | undefined)?.default).toBe("2");
     expect(existing.secrets).toEqual({ token: "old-secret" });
     const cleared = await renderConfigSpec(spec, {
       prompts: prompts(["https://new.test", "", "4", false, "eu", '{"mode":"strict"}']),
@@ -111,7 +112,7 @@ describe("renderConfigSpec secrets", () => {
       prompts: prompts(["https://example.test/path", "  transformed-secret  "], calls),
       currentPublicValues: { endpoint: "https://old.example/path" },
     });
-    expect((calls[0]?.config as { default?: unknown }).default).toBe("https://old.example/path");
+    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBe("https://old.example/path");
     expect(result).toEqual({
       publicValues: { endpoint: "https://example.test/path" },
       secrets: { token: "transformed-secret" },

@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { createDashboardClient } from "@/lib/dashboard-client";
 
 const dashboardClient = createDashboardClient();

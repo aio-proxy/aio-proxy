@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import { setLocale } from "@aio-proxy/i18n";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   createCapabilitySelector,
   createManualOnlyConfirmation,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
+
 import { OpenAICompletionsRequestSchema, parseOpenAICompletions } from "../../src/index";
 
 const fixtureRoot = `${import.meta.dir}/../fixtures/openai-completions`;

@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { type CredentialPort, CredentialRefreshError, type OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import { kimiClientId } from "../rslib.config";
 import { currentKimiCredential, type KimiCredential, loginKimi, refreshKimiCredential } from "./oauth";
 

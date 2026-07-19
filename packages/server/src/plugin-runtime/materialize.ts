@@ -1,6 +1,8 @@
-import { type StoredCatalog, validateModelCatalog } from "@aio-proxy/core";
 import type { AccountContext, CredentialPort } from "@aio-proxy/plugin-sdk";
+
+import { type StoredCatalog, validateModelCatalog } from "@aio-proxy/core";
 import { type Diagnostic, providerLoginCommand } from "@aio-proxy/types";
+
 import {
   OAuthPluginAccountPreparationError,
   type PreparedOAuthPluginAccount,

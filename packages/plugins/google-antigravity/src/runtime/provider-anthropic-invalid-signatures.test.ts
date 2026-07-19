@@ -1,13 +1,16 @@
-import { expect, test } from "bun:test";
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
+import type { CcaTransport } from "./transport";
+
 import {
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from "../../../../core/src/egress/anthropic-messages";
 import { createAntigravityProviderV4 } from "./provider";
 import { bridgeLateReasoningSignatures } from "./reasoning-signature-stream";
-import type { CcaTransport } from "./transport";
 
 const MODEL = "claude-opus-4-6-thinking";
 const VALID_SIGNATURE = "valid-late-signature-".repeat(3);
@@ -38,44 +41,44 @@ test.each(
   expect(parts.some((part) => part.type === "raw")).toBe(preserveRaw);
 });
 
-test.each([
-  false,
-  true,
-])("uses one valid late signature after invalid inline metadata with preserveRaw=%s", async (preserveRaw) => {
-  const events = [
-    response([{ text: "reasoning", thought: true, thoughtSignature: "short" }]),
-    response([{ text: "", thought: true, thoughtSignature: VALID_SIGNATURE }]),
-    finish(),
-  ];
-  const model = provider(events).languageModel(MODEL);
+test.each([false, true])(
+  "uses one valid late signature after invalid inline metadata with preserveRaw=%s",
+  async (preserveRaw) => {
+    const events = [
+      response([{ text: "reasoning", thought: true, thoughtSignature: "short" }]),
+      response([{ text: "", thought: true, thoughtSignature: VALID_SIGNATURE }]),
+      finish(),
+    ];
+    const model = provider(events).languageModel(MODEL);
 
-  const jsonResult = await model.doStream(callOptions(preserveRaw));
-  const json = await writeAnthropicMessagesResponse(jsonResult.stream as never, { modelId: MODEL });
-  expect(json.content).toEqual([{ type: "thinking", thinking: "reasoning", signature: VALID_SIGNATURE }]);
+    const jsonResult = await model.doStream(callOptions(preserveRaw));
+    const json = await writeAnthropicMessagesResponse(jsonResult.stream as never, { modelId: MODEL });
+    expect(json.content).toEqual([{ type: "thinking", thinking: "reasoning", signature: VALID_SIGNATURE }]);
 
-  const sseResult = await model.doStream(callOptions(preserveRaw));
-  const contentEvents = parseEvents(
-    await collectBytes(writeAnthropicMessagesSSE(sseResult.stream as never, { modelId: MODEL })),
-  ).filter((event) => String(event.type).startsWith("content_block_"));
-  expect(contentEvents).toEqual([
-    {
-      type: "content_block_start",
-      index: 0,
-      content_block: { type: "thinking", thinking: "", signature: "" },
-    },
-    {
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "thinking_delta", thinking: "reasoning" },
-    },
-    {
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "signature_delta", signature: VALID_SIGNATURE },
-    },
-    { type: "content_block_stop", index: 0 },
-  ]);
-});
+    const sseResult = await model.doStream(callOptions(preserveRaw));
+    const contentEvents = parseEvents(
+      await collectBytes(writeAnthropicMessagesSSE(sseResult.stream as never, { modelId: MODEL })),
+    ).filter((event) => String(event.type).startsWith("content_block_"));
+    expect(contentEvents).toEqual([
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "", signature: "" },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "reasoning" },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "signature_delta", signature: VALID_SIGNATURE },
+      },
+      { type: "content_block_stop", index: 0 },
+    ]);
+  },
+);
 
 test("removes only the invalid Google signature field from every reasoning lifecycle part", async () => {
   const metadata = {

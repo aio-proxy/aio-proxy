@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
 import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
 import type { KimiCredential } from "./oauth";
+
 import { createKimiDynamicFetch, createKimiRuntime } from "./runtime";
 
 describe("Kimi Code runtime", () => {

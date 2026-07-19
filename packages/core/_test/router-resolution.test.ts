@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import type { ProviderInstance } from "../src/index";
+
 import { Router } from "../src/index";
 
 const openai = {

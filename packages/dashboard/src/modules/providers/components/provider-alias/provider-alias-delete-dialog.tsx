@@ -1,5 +1,7 @@
-import { m } from "@aio-proxy/i18n";
 import type { FC } from "react";
+
+import { m } from "@aio-proxy/i18n";
+
 import {
   AlertDialog,
   AlertDialogAction,

@@ -10,20 +10,20 @@ The dashboard is a quiet operational console: compact enough for configuration w
 
 All colors come from `src/styles.css`; components use semantic Tailwind tokens rather than raw color values.
 
-| Role | Token | Usage |
-|---|---|---|
-| Page surface | `background` | App and page backgrounds |
-| Primary text | `foreground` | Body text and headings |
-| Card surface | `card` | Cards and grouped configuration |
-| Elevated surface | `popover` | Drawers, sheets, selects, dialogs, and menus |
-| Primary action | `primary` | Save and affirmative actions |
-| Secondary action | `secondary` | Quiet actions and close controls |
-| Muted surface | `muted` | Supporting panels and empty states |
-| Muted text | `muted-foreground` | Descriptions, counts, and helper text |
-| Border/input | `border`, `input` | Dividers and form control outlines |
-| Focus | `ring` | Keyboard focus indication |
-| Destructive | `destructive` | Validation and destructive actions |
-| Overlay | `overlay` | Drawer, sheet, and dialog backdrops |
+| Role             | Token              | Usage                                        |
+| ---------------- | ------------------ | -------------------------------------------- |
+| Page surface     | `background`       | App and page backgrounds                     |
+| Primary text     | `foreground`       | Body text and headings                       |
+| Card surface     | `card`             | Cards and grouped configuration              |
+| Elevated surface | `popover`          | Drawers, sheets, selects, dialogs, and menus |
+| Primary action   | `primary`          | Save and affirmative actions                 |
+| Secondary action | `secondary`        | Quiet actions and close controls             |
+| Muted surface    | `muted`            | Supporting panels and empty states           |
+| Muted text       | `muted-foreground` | Descriptions, counts, and helper text        |
+| Border/input     | `border`, `input`  | Dividers and form control outlines           |
+| Focus            | `ring`             | Keyboard focus indication                    |
+| Destructive      | `destructive`      | Validation and destructive actions           |
+| Overlay          | `overlay`          | Drawer, sheet, and dialog backdrops          |
 
 Light mode uses olive neutrals with teal actions. Dark mode preserves the same roles using the dark token values already declared in `src/styles.css`.
 
@@ -45,12 +45,12 @@ Light mode uses olive neutrals with teal actions. Dark mode preserves the same r
 
 ### Scale
 
-| Level | Utility | Usage |
-|---|---|---|
-| Page heading | existing `PageContainer` heading style | Route titles |
-| Component heading | `font-heading text-base font-medium` | Drawer, sheet, and card titles |
-| Body | `text-sm` or inherited body size | Form controls and operational content |
-| Supporting | `text-sm text-muted-foreground` | Descriptions, counts, and hints |
+| Level             | Utility                                | Usage                                 |
+| ----------------- | -------------------------------------- | ------------------------------------- |
+| Page heading      | existing `PageContainer` heading style | Route titles                          |
+| Component heading | `font-heading text-base font-medium`   | Drawer, sheet, and card titles        |
+| Body              | `text-sm` or inherited body size       | Form controls and operational content |
+| Supporting        | `text-sm text-muted-foreground`        | Descriptions, counts, and hints       |
 
 Body and interactive text stays at least 14px. Model IDs may use tabular or monospace presentation when alignment benefits.
 

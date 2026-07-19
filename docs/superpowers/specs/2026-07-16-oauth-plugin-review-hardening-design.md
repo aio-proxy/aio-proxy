@@ -37,9 +37,7 @@ are excluded from public release entries.
 The SDK owns a host-neutral, JSON-serializable copy type:
 
 ```ts
-export type LocaleTextMap = Readonly<
-  { readonly default: string } & Readonly<Record<string, string>>
->;
+export type LocaleTextMap = Readonly<{ readonly default: string } & Readonly<Record<string, string>>>;
 
 export type LocalizedText = string | LocaleTextMap;
 ```

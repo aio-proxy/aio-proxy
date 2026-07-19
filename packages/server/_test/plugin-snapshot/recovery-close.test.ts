@@ -1,9 +1,10 @@
+import { RECOVERY_DRAIN_RETRY_MS } from "@aio-proxy/core";
+import { ConfigSchema } from "@aio-proxy/types";
 import { afterEach, expect, jest, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RECOVERY_DRAIN_RETRY_MS } from "@aio-proxy/core";
-import { ConfigSchema } from "@aio-proxy/types";
+
 import { createServerState } from "../../src/server-state";
 import { cleanup, deferred, flushMicrotasks } from "./test-support";
 

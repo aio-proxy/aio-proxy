@@ -1,6 +1,8 @@
 import { type CredentialPort, CredentialRefreshError } from "@aio-proxy/plugin-sdk";
-import { kimiIdentityHeaders } from "../headers";
+
 import type { KimiCredential, KimiOAuthDependencies } from "../oauth";
+
+import { kimiIdentityHeaders } from "../headers";
 import { KIMI_OAUTH_BASE_URL } from "./constants";
 
 declare const __AIO_PROXY_KIMI_CLIENT_ID__: string;

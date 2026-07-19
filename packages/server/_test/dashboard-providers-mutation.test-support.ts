@@ -1,7 +1,7 @@
+import { createServer } from "@aio-proxy/server";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "@aio-proxy/server";
 
 const PORT = 22_079;
 const ORIGIN = `http://127.0.0.1:${PORT}`;

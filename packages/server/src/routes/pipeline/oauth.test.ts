@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import { openAIResponsesAdapter } from "@aio-proxy/core";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { openAIResponsesAdapter } from "@aio-proxy/core";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import {
   defineProtocolAdapter,
   defineProviderRouteSource,

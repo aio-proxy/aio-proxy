@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import { capturedReplay, codecCalls, TEST_MODEL as MODEL } from "../../test-support/google-codec-replay";
+
 import type { ReplayPart } from "../protocol/replay-cache";
+
+import { capturedReplay, codecCalls, TEST_MODEL as MODEL } from "../../test-support/google-codec-replay";
 import { prepareReasoningReplay } from "./session-state";
 
 const SIGNATURE = "canonical-call-signature-".repeat(3);
@@ -50,27 +52,26 @@ test.each([
   { label: "string primitive number", historyArgs: "42", replayArgs: "42" },
   { label: "string primitive null", historyArgs: "null", replayArgs: "null" },
   { label: "invalid JSON string", historyArgs: "not-json", replayArgs: "not-json" },
-])("matches existing canonical $label args against the cached canonical representation", ({
-  historyArgs,
-  label,
-  replayArgs,
-}) => {
-  const existing = {
-    functionCall: { id: "call-1", name: "weather", args: historyArgs },
-    providerMetadata: { retained: label },
-  };
-  const response = {
-    role: "user",
-    parts: [{ functionResponse: { id: "call-1", name: "weather", response: { ok: true } } }],
-  };
-  const body = { contents: [{ role: "model", parts: [existing] }, response] };
+])(
+  "matches existing canonical $label args against the cached canonical representation",
+  ({ historyArgs, label, replayArgs }) => {
+    const existing = {
+      functionCall: { id: "call-1", name: "weather", args: historyArgs },
+      providerMetadata: { retained: label },
+    };
+    const response = {
+      role: "user",
+      parts: [{ functionResponse: { id: "call-1", name: "weather", response: { ok: true } } }],
+    };
+    const body = { contents: [{ role: "model", parts: [existing] }, response] };
 
-  expect(
-    prepareReasoningReplay(body, MODEL, {
-      parts: [replayCall({ id: "call-1", name: "weather", args: replayArgs }, SIGNATURE)],
-    }).contents,
-  ).toEqual([{ role: "model", parts: [{ ...existing, thoughtSignature: SIGNATURE }] }, response]);
-});
+    expect(
+      prepareReasoningReplay(body, MODEL, {
+        parts: [replayCall({ id: "call-1", name: "weather", args: replayArgs }, SIGNATURE)],
+      }).contents,
+    ).toEqual([{ role: "model", parts: [{ ...existing, thoughtSignature: SIGNATURE }] }, response]);
+  },
+);
 
 test.each([
   { canonicalString: "true", differentPrimitive: true, label: "boolean" },

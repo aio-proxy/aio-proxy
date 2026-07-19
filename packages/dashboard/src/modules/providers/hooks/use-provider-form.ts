@@ -1,6 +1,8 @@
 import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from "@aio-proxy/types";
+
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
+
 import type { ProviderFormMode } from "../constants";
 
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
@@ -18,7 +20,7 @@ export function useProviderForm({ kind, initial, onSubmit }: UseProviderFormOpti
   const schema = kind === "api" ? ApiProviderMutationBodySchema : AiSdkProviderMutationBodySchema;
 
   return useForm({
-    defaultValues: { ...(initial ?? {}), kind } as ProviderFormValues,
+    defaultValues: { ...initial, kind } as ProviderFormValues,
     validators: {
       onChange: ({ value }) => {
         const result = schema.safeParse(value);

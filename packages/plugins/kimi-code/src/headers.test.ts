@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { kimiIdentityHeaders } from "./headers";
 
 test("builds stable printable Kimi identity headers around the credential device ID", () => {

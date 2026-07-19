@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
+
 import { processIsAlive } from "./process-identity";
 
 test.serial("processIsAlive probes Windows PIDs for npm lock semantics", () => {

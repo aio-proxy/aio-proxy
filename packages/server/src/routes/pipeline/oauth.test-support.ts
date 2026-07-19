@@ -1,10 +1,11 @@
+import type { UsageCompletion } from "../../usage-capture";
+
 import {
   createProtocolContext,
   defineProtocolAdapter,
   defineProviderRouteSource,
   type FakeProvider,
 } from "../../../_test/pipeline-helpers";
-import type { UsageCompletion } from "../../usage-capture";
 import { handleProtocolRequest } from "./index";
 
 export function pipeline(

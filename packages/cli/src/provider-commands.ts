@@ -1,4 +1,3 @@
-import { dirname } from "node:path";
 import {
   listInstalledNpmPackages,
   NpmInstallError,
@@ -14,6 +13,8 @@ import {
   dashboardProviderSuggestedCommand,
 } from "@aio-proxy/types";
 import { confirm } from "@inquirer/prompts";
+import { dirname } from "node:path";
+
 import { ProviderDashboardError } from "./errors";
 import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from "./plugin-commands/provider-login";
 

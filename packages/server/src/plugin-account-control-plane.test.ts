@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
 import { collectSecretStrings, type PluginLogSink } from "@aio-proxy/core";
 import { ProviderKind } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import { type PrepareOAuthPluginAccountOptions, prepareOAuthPluginAccount } from "./plugin-account";
 import { cleanup, diagnostics, runtimeFixture } from "./plugin-runtime/test-support";
 

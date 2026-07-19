@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import type { TextStreamPart, ToolSet } from "ai";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   writeGeminiGenerateContentResponse as writeGeminiGenerateContentResponseRaw,
   writeGeminiGenerateContentSSE as writeGeminiGenerateContentSSERaw,

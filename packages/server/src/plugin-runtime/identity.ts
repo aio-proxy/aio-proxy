@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+
 import type { PluginOptionsIdentityDigest, RuntimeIdentityKey } from "./types";
 
 function stable(value: unknown, seen = new Set<object>()): unknown {

@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
+import { afterEach, expect, test } from "bun:test";
+
 import { pluginOptionsIdentityDigest } from "./index";
 import {
   catalog,
@@ -112,61 +113,66 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
 test.each([
   ["URL", URL, (value: string) => new URL(value), "https://one.example.test", "https://two.example.test"],
   ["Date", Date, (value: string) => new Date(value), "2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"],
-] as const)("%s account-option transforms reuse unchanged JSON inputs and rebuild changed inputs", async (_label, transformedType, transform, firstValue, secondValue) => {
-  const observed: unknown[] = [];
-  const fixture = runtimeFixture(
-    { kind: "static" },
-    {
-      accountOptionsSchema: zod.object({ value: zod.string() }).transform(({ value }) => ({ value: transform(value) })),
-      createRuntime: async ({ options }) => {
-        observed.push(options);
-        return {
-          provider: {
-            specificationVersion: "v4",
-            languageModel() {
-              throw new Error("not called");
+] as const)(
+  "%s account-option transforms reuse unchanged JSON inputs and rebuild changed inputs",
+  async (_label, transformedType, transform, firstValue, secondValue) => {
+    const observed: unknown[] = [];
+    const fixture = runtimeFixture(
+      { kind: "static" },
+      {
+        accountOptionsSchema: zod
+          .object({ value: zod.string() })
+          .transform(({ value }) => ({ value: transform(value) })),
+        createRuntime: async ({ options }) => {
+          observed.push(options);
+          return {
+            provider: {
+              specificationVersion: "v4",
+              languageModel() {
+                throw new Error("not called");
+              },
+              imageModel() {
+                throw new Error("not called");
+              },
+              embeddingModel() {
+                throw new Error("not called");
+              },
             },
-            imageModel() {
-              throw new Error("not called");
-            },
-            embeddingModel() {
-              throw new Error("not called");
-            },
-          },
-        } as never;
+          } as never;
+        },
       },
-    },
-  );
-  const base = {
-    plugins: fixture.plugins,
-    repository: fixture.repository,
-    diagnostics,
-    logger: () => {},
-    onDiagnosticChanged: () => {},
-  } as const;
-  const config = {
-    id: "person",
-    kind: ProviderKind.OAuth,
-    enabled: true,
-    plugin: "@example/oauth",
-    capability: "default",
-    options: { value: firstValue },
-  } as const;
+    );
+    const base = {
+      plugins: fixture.plugins,
+      repository: fixture.repository,
+      diagnostics,
+      logger: () => {},
+      onDiagnosticChanged: () => {},
+    } as const;
+    const config = {
+      id: "person",
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: "@example/oauth",
+      capability: "default",
+      options: { value: firstValue },
+    } as const;
 
-  const first = await materializePluginProvider({ ...base, config });
-  const unchanged = await materializePluginProvider({ ...base, config, previous: first.cacheEntry });
-  const changed = await materializePluginProvider({
-    ...base,
-    config: { ...config, options: { value: secondValue } },
-    previous: unchanged.cacheEntry,
-  });
+    const first = await materializePluginProvider({ ...base, config });
+    const unchanged = await materializePluginProvider({ ...base, config, previous: first.cacheEntry });
+    const changed = await materializePluginProvider({
+      ...base,
+      config: { ...config, options: { value: secondValue } },
+      previous: unchanged.cacheEntry,
+    });
 
-  expect(fixture.createCalls()).toBe(2);
-  expect(unchanged.provider?.model).toBe(first.provider?.model);
-  expect(changed.provider?.model).not.toBe(first.provider?.model);
-  expect(observed).toHaveLength(2);
-  expect((observed[0] as { value: unknown }).value).toBeInstanceOf(transformedType);
-});
+    expect(fixture.createCalls()).toBe(2);
+    expect(unchanged.provider?.model).toBe(first.provider?.model);
+    expect(changed.provider?.model).not.toBe(first.provider?.model);
+    expect(observed).toHaveLength(2);
+    expect((observed[0] as { value: unknown }).value).toBeInstanceOf(transformedType);
+  },
+);
 
 test("an in-place nested account-option transform cannot change the pre-transform runtime identity input", async () => {
   const fixture = runtimeFixture(

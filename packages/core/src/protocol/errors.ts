@@ -1,4 +1,7 @@
 import { ZodError } from "zod";
+
+import type { ProtocolErrorMapper } from "./adapter";
+
 import {
   AiSdkProviderError,
   AnthropicMessagesTransformError,
@@ -9,7 +12,6 @@ import {
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
 } from "../error";
-import type { ProtocolErrorMapper } from "./adapter";
 import { InvalidCompressedRequestBodyError } from "./request";
 
 export const openAICompletionsErrors: ProtocolErrorMapper = {

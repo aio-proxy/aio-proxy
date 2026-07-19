@@ -1,8 +1,11 @@
-import { describe, expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { describe, expect, test } from "bun:test";
+
+import type { CcaTransport } from "./transport";
+
 import { createAntigravityLanguageModel } from "./google-model";
 import { createAntigravityProviderV4, createGoogleAntigravityRuntime } from "./provider";
-import type { CcaTransport } from "./transport";
 
 describe("Google Antigravity ProviderV4", () => {
   test("exposes literal v4 language models for the routed wire ID", () => {

@@ -20,7 +20,9 @@ import {
 } from "@aio-proxy/core";
 import { openDb } from "@aio-proxy/core/db";
 import { confirm, input, password, select } from "@inquirer/prompts";
+
 import type { PluginFormPrompts } from "../form";
+
 import { PluginConfirmationRequiredError, PluginTrustRejectedError } from "./errors";
 
 export type SecretRepository = Pick<PluginRepository, "readPluginSecret" | "writePluginSecret" | "deletePluginSecret">;

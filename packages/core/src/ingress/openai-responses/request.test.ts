@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
+
 import type { OpenAIResponsesRequest } from "../../index";
+
 import { OpenAIResponsesRequestSchema, parseOpenAIResponses } from "../../index";
 
 const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/openai-responses`;
@@ -90,23 +92,19 @@ describe("OpenAIResponsesRequestSchema", () => {
     });
   });
 
-  test.each([
-    "web_search",
-    "web_search_preview",
-    "file_search",
-    "computer_use",
-    "computer-use",
-    "image_generation",
-  ])("Given raw-only %s tool When parsed Then it is retained", (toolType) => {
-    const input = {
-      model: "gpt-5-mini",
-      input: "x",
-      tools: [{ type: toolType }],
-    };
+  test.each(["web_search", "web_search_preview", "file_search", "computer_use", "computer-use", "image_generation"])(
+    "Given raw-only %s tool When parsed Then it is retained",
+    (toolType) => {
+      const input = {
+        model: "gpt-5-mini",
+        input: "x",
+        tools: [{ type: toolType }],
+      };
 
-    expect(parseOpenAIResponses(input)).toEqual({
-      ...input,
-      tools: [{ type: "__aio_proxy_unsupported_tool__", wireType: toolType }],
-    });
-  });
+      expect(parseOpenAIResponses(input)).toEqual({
+        ...input,
+        tools: [{ type: "__aio_proxy_unsupported_tool__", wireType: toolType }],
+      });
+    },
+  );
 });

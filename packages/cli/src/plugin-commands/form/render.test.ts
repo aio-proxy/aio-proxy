@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { zod } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import {
   FormJsonInvalidError,
   FormNumberInvalidError,
@@ -118,11 +119,11 @@ describe("renderConfigSpec", () => {
         data: cyclic,
       },
     });
-    expect((calls[0]?.config as { default?: unknown }).default).toBeUndefined();
-    expect((calls[1]?.config as { default?: unknown }).default).toBeUndefined();
-    expect((calls[2]?.config as { default?: unknown }).default).toBe(true);
-    expect((calls[3]?.config as { default?: unknown }).default).toBeUndefined();
-    expect((calls[4]?.config as { default?: unknown }).default).toBe('{"safe":true}');
+    expect((calls[0]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
+    expect((calls[1]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
+    expect((calls[2]?.config as { default?: unknown } | undefined)?.default).toBe(true);
+    expect((calls[3]?.config as { default?: unknown } | undefined)?.default).toBeUndefined();
+    expect((calls[4]?.config as { default?: unknown } | undefined)?.default).toBe('{"safe":true}');
   });
 
   test("forwards the same signal to every prompt and abort returns no partial result", async () => {

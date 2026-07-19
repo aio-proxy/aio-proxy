@@ -1,5 +1,6 @@
 import { defineProtocolAdapter as defineCoreProtocolAdapter, type ModelEventStream } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
+
 import type { ModelPart, TestProtocolContext, TestProtocolRequest } from "./types";
 
 export function createProtocolContext(): TestProtocolContext {
@@ -42,6 +43,7 @@ export function defineProtocolAdapter(
       const headers = new Headers(raw.headers);
       headers.delete("content-length");
       return new Request(raw, {
+        method: raw.method,
         body: JSON.stringify({ ...request, model: resolvedModel }),
         headers,
       });

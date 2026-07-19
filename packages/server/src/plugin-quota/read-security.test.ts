@@ -1,6 +1,7 @@
+import { zod } from "@aio-proxy/plugin-sdk";
 import { afterEach, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
-import { zod } from "@aio-proxy/plugin-sdk";
+
 import { OAuthQuotaReadError } from "./errors";
 import { createOAuthQuotaReader } from "./read";
 import { cleanupQuotaFixtures, createQuotaFixture, PROVIDER_ID } from "./test-support";
@@ -85,34 +86,34 @@ test("redacts a secret derived by account option parsing from read failures", as
   expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
 });
 
-test.each([
-  "Map",
-  "non-enumerable field",
-] as const)("redacts a Zod-derived secret stored only in a %s", async (storage) => {
-  const derivedSecret = `derived-${storage.replaceAll(" ", "-")}-secret`;
-  const credentials = zod.object({ token: zod.string() }).transform(() => {
-    if (storage === "Map") return new Map([["derived", derivedSecret]]);
-    return Object.defineProperty({}, "derived", { value: derivedSecret, enumerable: false });
-  });
-  const fixture = createQuotaFixture({
-    credentials,
-    read: async ({ credentials: port }) => {
-      await port.read();
-      const failure = new Error(`message ${derivedSecret}`);
-      failure.name = `name ${derivedSecret}`;
-      failure.stack = `stack ${derivedSecret}`;
-      throw failure;
-    },
-  });
+test.each(["Map", "non-enumerable field"] as const)(
+  "redacts a Zod-derived secret stored only in a %s",
+  async (storage) => {
+    const derivedSecret = `derived-${storage.replaceAll(" ", "-")}-secret`;
+    const credentials = zod.object({ token: zod.string() }).transform(() => {
+      if (storage === "Map") return new Map([["derived", derivedSecret]]);
+      return Object.defineProperty({}, "derived", { value: derivedSecret, enumerable: false });
+    });
+    const fixture = createQuotaFixture({
+      credentials,
+      read: async ({ credentials: port }) => {
+        await port.read();
+        const failure = new Error(`message ${derivedSecret}`);
+        failure.name = `name ${derivedSecret}`;
+        failure.stack = `stack ${derivedSecret}`;
+        throw failure;
+      },
+    });
 
-  const error = await capturedError(
-    createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal),
-  );
+    const error = await capturedError(
+      createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal),
+    );
 
-  expect(error).toBeInstanceOf(OAuthQuotaReadError);
-  expect(fixture.logs).toHaveLength(1);
-  expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
-});
+    expect(error).toBeInstanceOf(OAuthQuotaReadError);
+    expect(fixture.logs).toHaveLength(1);
+    expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
+  },
+);
 
 test("preserves the stable quota error when the failure log sink throws", async () => {
   const fixture = createQuotaFixture({

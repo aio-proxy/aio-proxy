@@ -1,42 +1,43 @@
 import { expect, test } from "bun:test";
+
 import { repairGroundingSse, repairGroundingUrls } from "./grounding-urls";
 
 const redirectUrl = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/search-1";
 const finalUrl = "https://example.com/final-source";
 
-test.each([
-  "http://127.0.0.1/private",
-  "http://169.254.169.254/latest/meta-data",
-])("repairs deduplicated grounding URLs with one manual HEAD without fetching %s", async (location) => {
-  const payload = groundedPayload([redirectUrl, redirectUrl]);
-  const requests: string[] = [];
-  const methods: (string | undefined)[] = [];
-  const redirectModes: (RequestRedirect | undefined)[] = [];
-  let cancellations = 0;
-  const fetch: typeof globalThis.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    requests.push(url);
-    methods.push(init?.method);
-    redirectModes.push(init?.redirect);
-    if (url !== redirectUrl) return responseAt(url);
-    if (init?.redirect === "follow") return await fetch(location, init);
-    const body = new ReadableStream({
-      cancel() {
-        cancellations += 1;
-      },
-    });
-    return new Response(body, { status: 302, headers: { Location: location } });
-  };
+test.each(["http://127.0.0.1/private", "http://169.254.169.254/latest/meta-data"])(
+  "repairs deduplicated grounding URLs with one manual HEAD without fetching %s",
+  async (location) => {
+    const payload = groundedPayload([redirectUrl, redirectUrl]);
+    const requests: string[] = [];
+    const methods: (string | undefined)[] = [];
+    const redirectModes: (RequestRedirect | undefined)[] = [];
+    let cancellations = 0;
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      requests.push(url);
+      methods.push(init?.method);
+      redirectModes.push(init?.redirect);
+      if (url !== redirectUrl) return responseAt(url);
+      if (init?.redirect === "follow") return await fetch(location, init);
+      const body = new ReadableStream({
+        cancel() {
+          cancellations += 1;
+        },
+      });
+      return new Response(body, { status: 302, headers: { Location: location } });
+    };
 
-  const repaired = await repairGroundingUrls(payload, { fetch });
+    const repaired = await repairGroundingUrls(payload, { fetch });
 
-  expect(requests).toEqual([redirectUrl]);
-  expect(methods).toEqual(["HEAD"]);
-  expect(redirectModes).toEqual(["manual"]);
-  expect(cancellations).toBe(1);
-  expect(groundingUris(repaired)).toEqual([location, location]);
-  expect(groundingUris(payload)).toEqual([redirectUrl, redirectUrl]);
-});
+    expect(requests).toEqual([redirectUrl]);
+    expect(methods).toEqual(["HEAD"]);
+    expect(redirectModes).toEqual(["manual"]);
+    expect(cancellations).toBe(1);
+    expect(groundingUris(repaired)).toEqual([location, location]);
+    expect(groundingUris(payload)).toEqual([redirectUrl, redirectUrl]);
+  },
+);
 
 test("resolves a relative redirect Location without fetching it", async () => {
   const payload = groundedPayload([redirectUrl]);

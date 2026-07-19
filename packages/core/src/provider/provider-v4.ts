@@ -1,7 +1,9 @@
 import type { ProviderV4 } from "@ai-sdk/provider";
+
+import type { AiSdkProviderInstance } from "./ai-sdk";
+
 import { streamAiSdkText } from "../ai-sdk-bridge";
 import { AiSdkProviderError } from "../error";
-import type { AiSdkProviderInstance } from "./ai-sdk";
 
 const required = ["languageModel", "imageModel", "embeddingModel"] as const;
 const optional = ["speechModel", "transcriptionModel", "rerankingModel", "files", "skills"] as const;

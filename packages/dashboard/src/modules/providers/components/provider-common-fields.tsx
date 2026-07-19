@@ -1,12 +1,16 @@
+import type React from "react";
+
 import { m } from "@aio-proxy/i18n";
 import { kebabCase } from "es-toolkit/string";
-import type React from "react";
+
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ProviderFormMode } from "../constants";
+
 import type { useProviderForm } from "../hooks/use-provider-form";
+
+import { ProviderFormMode } from "../constants";
 
 type Props = {
   form: ReturnType<typeof useProviderForm>;

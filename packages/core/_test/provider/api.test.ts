@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
+import { describe, expect, test } from "bun:test";
+
 import type { ApiProviderTrace } from "../../src/index";
+
 import { createApiProvider } from "../../src/index";
 
 const protocols = [
@@ -31,44 +33,45 @@ async function waitForTrace(trace: readonly ApiProviderTrace[]): Promise<ApiProv
 }
 
 describe("createApiProvider", () => {
-  test.each(
-    protocols,
-  )("removes inbound client credentials for %s when no provider key is configured", async (protocol) => {
-    let seen: Headers | undefined;
-    const upstream = Bun.serve({
-      port: 0,
-      fetch(request) {
-        seen = new Headers(request.headers);
-        return Response.json({ ok: true });
-      },
-    });
-
-    try {
-      const provider = createApiProvider({
-        kind: "api",
-        id: "provider",
-        protocol,
-        baseURL: upstream.url.toString(),
+  test.each(protocols)(
+    "removes inbound client credentials for %s when no provider key is configured",
+    async (protocol) => {
+      let seen: Headers | undefined;
+      const upstream = Bun.serve({
+        port: 0,
+        fetch(request) {
+          seen = new Headers(request.headers);
+          return Response.json({ ok: true });
+        },
       });
-      await provider.passthrough(
-        new Request("https://proxy.local/v1/test", {
-          headers: {
-            authorization: "Bearer client-token",
-            "proxy-authorization": "Basic client-proxy-token",
-            cookie: "session=client-cookie",
-            "x-api-key": "client-anthropic-key",
-            "x-goog-api-key": "client-gemini-key",
-            "x-custom": "kept",
-          },
-        }),
-      );
 
-      for (const name of credentialHeaders) expect(seen?.get(name)).toBeNull();
-      expect(seen?.get("x-custom")).toBe("kept");
-    } finally {
-      upstream.stop(true);
-    }
-  });
+      try {
+        const provider = createApiProvider({
+          kind: "api",
+          id: "provider",
+          protocol,
+          baseURL: upstream.url.toString(),
+        });
+        await provider.passthrough(
+          new Request("https://proxy.local/v1/test", {
+            headers: {
+              authorization: "Bearer client-token",
+              "proxy-authorization": "Basic client-proxy-token",
+              cookie: "session=client-cookie",
+              "x-api-key": "client-anthropic-key",
+              "x-goog-api-key": "client-gemini-key",
+              "x-custom": "kept",
+            },
+          }),
+        );
+
+        for (const name of credentialHeaders) expect(seen?.get(name)).toBeNull();
+        expect(seen?.get("x-custom")).toBe("kept");
+      } finally {
+        upstream.stop(true);
+      }
+    },
+  );
 
   test.each([
     [ProviderProtocol.OpenAICompatible, "authorization", "Bearer provider-key"],

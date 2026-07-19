@@ -1,6 +1,9 @@
 import { normalizeVariantKey, ProviderProtocol } from "@aio-proxy/types";
 import { z } from "zod";
+
 import type { CallSettings, JSONValue } from "../ai-sdk-bridge";
+import type { SessionCandidate } from "./session";
+
 import { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from "../egress/gemini-generate-content";
 import { type GeminiGenerateContentRequest, parseGeminiGenerateContent } from "../ingress/gemini-generate-content";
 import {
@@ -10,7 +13,6 @@ import {
 import { defineProtocolAdapter } from "./adapter";
 import { geminiGenerateContentErrors } from "./errors";
 import { readJsonRequest } from "./request";
-import type { SessionCandidate } from "./session";
 import { functionToolSet } from "./tools";
 
 type GeminiAiSdkSettings = CallSettings & {

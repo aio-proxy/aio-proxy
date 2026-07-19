@@ -1,9 +1,11 @@
+import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
+
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from "@aio-proxy/plugin-github-copilot";
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from "@aio-proxy/plugin-google-antigravity";
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from "@aio-proxy/plugin-kimi-code";
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "@aio-proxy/plugin-openai-chatgpt";
-import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from "@aio-proxy/plugin-xai-grok";
+
 import type { BuiltInPluginDefinition } from "./loader/index";
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [

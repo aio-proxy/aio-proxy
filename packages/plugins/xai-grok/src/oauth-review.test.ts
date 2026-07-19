@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
 import type { OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import { currentXAIGrokCredential, loginXAIGrok, refreshXAIGrokCredential } from "./oauth";
 
 const DEVICE = "https://auth.x.ai/oauth2/device/code";

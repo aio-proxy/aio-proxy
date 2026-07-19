@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
 import type { ProtocolId } from "@aio-proxy/plugin-sdk";
-import { credentialPort, withFetchMock } from "../../_test/test-support";
+
+import { describe, expect, test } from "bun:test";
+
 import { discoverGitHubCopilotModels, type GitHubCopilotCredential } from ".";
+import { credentialPort, withFetchMock } from "../../_test/test-support";
 
 describe("GitHub Copilot catalog", () => {
   test("filters hidden or non-chat models and maps supported protocols", async () => {

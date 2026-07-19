@@ -1,9 +1,12 @@
-import { expect, test } from "bun:test";
-import { openAIResponsesAdapter } from "@aio-proxy/core";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { openAIResponsesAdapter } from "@aio-proxy/core";
 import { ProviderProtocol } from "@aio-proxy/types";
-import { defineProviderRouteSource, jsonRequest, REQUESTED_MODEL, rawProvider } from "../../../_test/pipeline-helpers";
+import { expect, test } from "bun:test";
+
 import type { ProviderRouteSource } from "../../runtime";
+
+import { defineProviderRouteSource, jsonRequest, REQUESTED_MODEL, rawProvider } from "../../../_test/pipeline-helpers";
 import { createUsageCapture } from "../../usage-capture";
 import { handleProtocolRequest } from "./index";
 

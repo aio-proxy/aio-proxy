@@ -1,7 +1,9 @@
-import { m } from "@aio-proxy/i18n";
-import { useForm } from "@tanstack/react-form";
 import type { Table } from "@tanstack/react-table";
 import type React from "react";
+
+import { m } from "@aio-proxy/i18n";
+import { useForm } from "@tanstack/react-form";
+
 import {
   Pagination,
   PaginationContent,
@@ -12,6 +14,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { getPaginationItems } from "./pagination-items";
 
 type PaginationTable = Pick<
@@ -88,10 +91,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table,
 
         {items.map((item, index) =>
           item === "ellipsis" ? (
-            <PaginationItem
-              // biome-ignore lint/suspicious/noArrayIndexKey: ellipses are stateless separators
-              key={`ellipsis-${index}`}
-            >
+            <PaginationItem key={`ellipsis-${index}`}>
               <PaginationEllipsis />
             </PaginationItem>
           ) : (

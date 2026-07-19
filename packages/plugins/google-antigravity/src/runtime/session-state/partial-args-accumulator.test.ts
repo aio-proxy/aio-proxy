@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { PartialArgsAccumulator } from "./partial-args-accumulator";
 
 test("assembles nested arrays, objects, primitives, and string continuations", () => {

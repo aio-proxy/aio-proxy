@@ -89,4 +89,3 @@ Tests will be changed before production code and observed failing for the missin
 - Gemini includes `responseId` and `modelVersion`;
 - emitted JSON and event payloads satisfy the official SDK response/event types at compile time;
 - existing fallback, usage, tool-call, and cancellation tests remain green.
-

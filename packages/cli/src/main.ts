@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { configPath } from "@aio-proxy/core";
 import {
   ConfigWriteError,
@@ -14,6 +11,10 @@ import {
 } from "@aio-proxy/i18n";
 import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import packageJson from "../package.json" with { type: "json" };
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";

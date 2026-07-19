@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { asSchema } from "ai";
+import { describe, expect, test } from "bun:test";
+
 import { defineProtocolAdapter, functionToolSet, type ProtocolAdapter } from "../../src/index";
 
 type RequestValue = { readonly model: string };

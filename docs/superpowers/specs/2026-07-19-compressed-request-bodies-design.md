@@ -32,10 +32,10 @@ Header tokens are trimmed and compared case-insensitively. Ignore `identity` tok
 
 Bound both stages:
 
-| Stage | Fixed limit |
-| --- | ---: |
-| Encoded request bytes | 64 MiB |
-| Decoded request bytes | 128 MiB |
+| Stage                 | Fixed limit |
+| --------------------- | ----------: |
+| Encoded request bytes |      64 MiB |
+| Decoded request bytes |     128 MiB |
 
 These are fixed product limits. This change does not add environment overrides or request-decoding concurrency control.
 

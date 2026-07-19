@@ -1,4 +1,5 @@
 import { expect } from "bun:test";
+
 import { ConfigAuthoringSchema, ProviderKind, ProviderProtocol } from "../src/index";
 
 export const apiProvider = {

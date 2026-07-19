@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
+
 import { createDefaultLogsSearch, isWithinRetention, parseLogsSearch, withLogsFilters } from "./logs-search";
 
 describe("logs search", () => {

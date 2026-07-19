@@ -1,4 +1,5 @@
 import { zod } from "@aio-proxy/plugin-sdk";
+
 import type { PluginFormPrompts } from "./index";
 
 export type PromptCall = { type: string; config: unknown; signal?: AbortSignal };

@@ -1,9 +1,11 @@
 import type { ModelEgressContext, ModelInvocation, ProtocolAdapter, RouterResolution } from "@aio-proxy/core";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
 import type { ProviderProtocol } from "@aio-proxy/types";
+
 import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
-import { isInboundAbort, terminalCompletion } from "../../route-observation";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../../runtime";
+
+import { isInboundAbort, terminalCompletion } from "../../route-observation";
 import { failedAttempt, finalFailure, shouldFallbackStatus } from "./failure";
 import { logRequestRejected } from "./logging";
 import { createSseResponse, preflightStream, retainResponseBody } from "./stream";

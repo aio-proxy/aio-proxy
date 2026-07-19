@@ -1,5 +1,6 @@
-import { m } from "@aio-proxy/i18n";
 import type { DashboardRequestLog, DashboardRequestLogsResponse, RequestOutcome } from "@aio-proxy/types";
+
+import { m } from "@aio-proxy/i18n";
 import { useForm } from "@tanstack/react-form";
 import {
   type CellContext,
@@ -12,6 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { useState } from "react";
+
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { ProtocolLabel } from "@/components/protocol-label";
 import { TokenCount } from "@/components/token-count";
@@ -26,8 +28,10 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
+
 import type { LogsSearch } from "../logs-search";
+
+import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
 
 type Props = {
   readonly data: DashboardRequestLogsResponse;

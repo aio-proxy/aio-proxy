@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { createCancellableEgressStream } from "../../src/egress/cancellable-stream";
 
 test("downstream cancellation cancels the source reader exactly once", async () => {

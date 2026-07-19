@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import type { AiSdkProviderInstance, ApiProviderInstance } from "@aio-proxy/core";
+
 import { ProviderProtocol } from "@aio-proxy/types";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { createTempHomes, recorded, textStream } from "../../_test/openai-responses.test-support";
 import { createServer } from "../server";
 

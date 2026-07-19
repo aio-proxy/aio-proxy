@@ -1,6 +1,3 @@
-import { expect, jest, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import {
   definePlugin,
   type OAuthAdapter,
@@ -8,9 +5,14 @@ import {
   type PluginDescriptor,
   zod,
 } from "@aio-proxy/plugin-sdk";
-import { npmPackageCacheDir } from "../../npm";
+import { expect, jest, test } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
 import type { DiagnosticFactory } from "../diagnostic";
+
 import { loadPluginRegistry, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS, type PluginPackageImporter } from ".";
+import { npmPackageCacheDir } from "../../npm";
 
 const home = mkdtempSync(`${tmpdir()}/aio-proxy-plugin-loader-`);
 

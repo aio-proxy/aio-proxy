@@ -1,6 +1,8 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+
 import { type AntigravityGoogleFetchContext, createAntigravityGoogleFetch } from "./google-fetch";
 import { takeAioProxyOptions } from "./private-options";
 import { bridgeLateReasoningSignatures } from "./reasoning-signature-stream";

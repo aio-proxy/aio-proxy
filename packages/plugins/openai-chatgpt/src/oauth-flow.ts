@@ -1,6 +1,8 @@
 import type { ZodType } from "@aio-proxy/plugin-sdk";
-import { extractAccountId } from "./jwt";
+
 import type { ChatGPTCredential } from "./schema";
+
+import { extractAccountId } from "./jwt";
 import { refreshTokenResponseSchema, tokenResponseSchema } from "./schema";
 
 const TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token" as const;

@@ -1,5 +1,6 @@
-import { join } from "node:path";
 import { $ } from "bun";
+import { join } from "node:path";
+
 import { writeMigrationManifestFromJournal } from "./migration-manifest";
 
 const root = join(import.meta.dir, "..");

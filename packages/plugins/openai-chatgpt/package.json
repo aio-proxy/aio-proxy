@@ -2,10 +2,10 @@
   "name": "@aio-proxy/plugin-openai-chatgpt",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "files": [
     "dist"
   ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -20,8 +20,8 @@
     "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {
-    "@aio-proxy/plugin-sdk": "workspace:*",
     "@ai-sdk/openai": "catalog:",
+    "@aio-proxy/plugin-sdk": "workspace:*",
     "es-toolkit": "catalog:",
     "jose": "catalog:"
   },

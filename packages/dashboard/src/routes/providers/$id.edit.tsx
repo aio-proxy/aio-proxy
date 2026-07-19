@@ -2,6 +2,7 @@ import { m } from "@aio-proxy/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
+
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
@@ -25,7 +26,7 @@ function EditProviderPage() {
   if (isLoading) {
     return (
       <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
-        <div className="p-4 text-muted-foreground text-sm">{m["dashboard.providers.edit_loading"]()}</div>
+        <div className="p-4 text-sm text-muted-foreground">{m["dashboard.providers.edit_loading"]()}</div>
       </PageContainer>
     );
   }

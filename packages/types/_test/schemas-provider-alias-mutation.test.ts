@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { ProviderMutationBodySchema } from "../src/index";
 
 describe("ConfigSchema", () => {

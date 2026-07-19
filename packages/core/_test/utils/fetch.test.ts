@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
+
 import { fetchJson } from "../../src/utils";
 
 describe("fetchJson", () => {

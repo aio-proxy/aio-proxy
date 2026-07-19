@@ -1,7 +1,9 @@
+import type { ComponentProps, ComponentType } from "react";
+
 import { m } from "@aio-proxy/i18n";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Boxes, ChartNoAxesCombined, HandPlatter, List } from "lucide-react";
-import type { ComponentProps, ComponentType } from "react";
+
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+
 import { SidebarPreferences } from "./sidebar-preferences";
 
 interface SideMenuItem {
@@ -80,7 +83,7 @@ export const SideMenu: React.FC = () => {
       <SidebarHeader>
         <div className="ml-3">
           <div
-            className="mb-1 flex items-center gap-1 font-heading font-semibold text-foreground text-[calc(var(--logo-height)*0.75)]"
+            className="mb-1 flex items-center gap-1 font-heading text-[calc(var(--logo-height)*0.75)] font-semibold text-foreground"
             style={{ "--logo-height": "24px" } as React.CSSProperties}
           >
             <svg
@@ -93,7 +96,7 @@ export const SideMenu: React.FC = () => {
             </svg>
             <span>Proxy</span>
           </div>
-          <div className="truncate text-muted-foreground text-xs">{m["brand.tagline"]()}</div>
+          <div className="truncate text-xs text-muted-foreground">{m["brand.tagline"]()}</div>
         </div>
       </SidebarHeader>
       <SidebarContent>

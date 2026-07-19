@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { createOpenAI } from "@ai-sdk/openai";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+
+import { createOpenAI } from "@ai-sdk/openai";
+import { describe, expect, test } from "bun:test";
+
 import { createProviderV4Invoke, validateProviderV4 } from "../../src/provider/provider-v4";
 
 describe("validateProviderV4", () => {

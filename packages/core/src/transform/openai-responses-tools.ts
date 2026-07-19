@@ -1,9 +1,12 @@
 import type { JSONObject } from "@ai-sdk/provider";
+
 import { z } from "zod";
+
 import type { JSONValue } from "../ai-sdk-bridge";
-import { OpenAIResponsesTransformError, OpenAIResponsesUnsupportedFeatureError } from "../error";
 import type { OpenAIResponsesExecutableTool, OpenAIResponsesTool } from "../ingress/openai-responses";
 import type { OpenAIResponsesTransformTool, OpenAIResponsesWireMetadata } from "./openai-responses-types";
+
+import { OpenAIResponsesTransformError, OpenAIResponsesUnsupportedFeatureError } from "../error";
 
 const jsonValueSchema = z.json();
 

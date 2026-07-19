@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import type { OpenAIResponsesRequest } from "../index";
+
 import { modelMessagesToOpenAIResponses, openAIResponsesToModelMessages, parseOpenAIResponses } from "../index";
 
 const fixtureRoot = `${import.meta.dir}/../../_test/fixtures/openai-responses`;

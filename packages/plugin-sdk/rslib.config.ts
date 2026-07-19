@@ -1,5 +1,6 @@
-import { join } from "node:path";
 import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
+import { join } from "node:path";
+
 import { createLobeIconTypePlugin, prepareLobeIconTypeBuild, resolveLobeIconPackage } from "./build/lobe-icon-keys";
 
 const rootPath = import.meta.dirname;

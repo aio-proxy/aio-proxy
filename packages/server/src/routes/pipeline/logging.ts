@@ -1,6 +1,8 @@
 import type { ProtocolRequestDiagnostic } from "@aio-proxy/core";
+
 import type { RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
+
 import { logServerEvent, serverErrorType } from "../../server-log";
 
 export function logRequestDiagnostics(options: {

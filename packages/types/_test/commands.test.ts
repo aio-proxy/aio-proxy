@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { pluginConfigCommand, providerLoginCommand } from "../src/commands";
 
 const shells = ["bash", "zsh"].flatMap((name) => {

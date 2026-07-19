@@ -1,6 +1,9 @@
-import { expect, test } from "bun:test";
 import type { CredentialPort, CredentialSnapshot } from "@aio-proxy/plugin-sdk";
+
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { forceRefreshGoogleCredential } from "./refresh";
 
 const reasons = [
@@ -22,38 +25,39 @@ test.each(reasons)("preserves an already-aborted %s reason without starting refr
   expect(refreshes).toBe(0);
 });
 
-test.each(
-  reasons,
-)("preserves a mid-refresh %s reason without cancelling the shared promise", async (_label, reason) => {
-  const controller = new AbortController();
-  let resolveRefresh = (_result: RefreshResult) => {};
-  let markStarted = () => {};
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
-  const shared = new Promise<RefreshResult>((resolve) => {
-    resolveRefresh = resolve;
-  });
-  const port = staticPort(() => {
-    markStarted();
-    return shared;
-  });
+test.each(reasons)(
+  "preserves a mid-refresh %s reason without cancelling the shared promise",
+  async (_label, reason) => {
+    const controller = new AbortController();
+    let resolveRefresh = (_result: RefreshResult) => {};
+    let markStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const shared = new Promise<RefreshResult>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const port = staticPort(() => {
+      markStarted();
+      return shared;
+    });
 
-  const waiting = forceRefreshGoogleCredential(port, { signal: controller.signal });
-  await started;
-  controller.abort(reason);
-  const outcome = await Promise.race([
-    waiting.then(
-      () => "resolved",
-      (error: unknown) => error,
-    ),
-    Bun.sleep(25).then(() => "timeout"),
-  ]);
-  resolveRefresh({ status: "superseded", snapshot: snapshot() });
-  await waiting.catch(() => undefined);
+    const waiting = forceRefreshGoogleCredential(port, { signal: controller.signal });
+    await started;
+    controller.abort(reason);
+    const outcome = await Promise.race([
+      waiting.then(
+        () => "resolved",
+        (error: unknown) => error,
+      ),
+      Bun.sleep(25).then(() => "timeout"),
+    ]);
+    resolveRefresh({ status: "superseded", snapshot: snapshot() });
+    await waiting.catch(() => undefined);
 
-  expect(outcome).toBe(reason);
-});
+    expect(outcome).toBe(reason);
+  },
+);
 
 test("a late shared rejection after caller abort does not become unhandled", async () => {
   const controller = new AbortController();

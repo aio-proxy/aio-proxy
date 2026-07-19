@@ -1,8 +1,11 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+
+import { createOpenAI } from "@ai-sdk/openai";
+
+import type { XAIGrokCredential } from "./schema";
+
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "./cli-headers";
 import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from "./oauth";
-import type { XAIGrokCredential } from "./schema";
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,

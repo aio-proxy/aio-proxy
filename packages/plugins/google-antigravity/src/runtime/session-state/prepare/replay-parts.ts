@@ -1,5 +1,7 @@
 import { isEqual } from "es-toolkit/predicate";
+
 import type { ReplayPart } from "../../../protocol/replay-cache";
+
 import { validThoughtSignature } from "../../../protocol/signatures";
 import { asRecord } from "../payload-shape";
 

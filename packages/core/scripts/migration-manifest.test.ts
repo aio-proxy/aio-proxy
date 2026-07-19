@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
+
 import { writeMigrationManifestFromJournal } from "./migration-manifest";
 
 const roots: string[] = [];

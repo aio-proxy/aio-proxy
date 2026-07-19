@@ -1,6 +1,7 @@
+import type { OAuthHttpOptions } from "./flow";
+
 import { antigravityUserAgent } from "../runtime/hub-version";
 import { GOOGLE_USERINFO_ENDPOINT } from "./constants";
-import type { OAuthHttpOptions } from "./flow";
 
 export async function fetchGoogleEmail(accessToken: string, options: OAuthHttpOptions = {}): Promise<string> {
   if (accessToken.trim() === "") throw new Error("Google userinfo request failed: access token is missing");

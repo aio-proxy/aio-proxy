@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
-import { createAntigravityLanguageModel } from "./google-model";
+
+import { expect, test } from "bun:test";
+
 import type { CcaTransport } from "./transport";
+
+import { createAntigravityLanguageModel } from "./google-model";
 
 test("masks non-OK CCA response bodies before the Google codec sees them", async () => {
   const marker = "hostile-upstream-tool-argument";

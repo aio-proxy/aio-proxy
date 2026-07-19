@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { githubCopilotClientId } from "./rslib.config";
 
 test("build embeds the GitHub OAuth client ID without leaving source plaintext", async () => {

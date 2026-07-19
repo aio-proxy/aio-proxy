@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { CredentialPort } from "@aio-proxy/plugin-sdk";
-import { readXAIGrokQuota } from "./quota";
+
+import { expect, test } from "bun:test";
+
 import type { XAIGrokCredential } from "./schema";
+
+import { readXAIGrokQuota } from "./quota";
 
 test("reads weekly and monthly Grok billing through the CLI proxy", async () => {
   const requests: Request[] = [];

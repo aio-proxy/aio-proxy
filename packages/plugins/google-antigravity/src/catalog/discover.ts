@@ -5,10 +5,12 @@ import {
   type ModelDescriptor,
   zod,
 } from "@aio-proxy/plugin-sdk";
+
+import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
+
 import { currentGoogleCredential } from "../oauth/refresh";
 import { antigravityEndpoints } from "../runtime/endpoints";
 import { antigravityUserAgent } from "../runtime/hub-version";
-import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
 import { CatalogDiscoveryError } from "./errors";
 import { ANTIGRAVITY_RETIRED_MODEL_IDS } from "./families";
 

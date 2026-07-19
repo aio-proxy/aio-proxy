@@ -1,6 +1,8 @@
-import { m } from "@aio-proxy/i18n";
 import type { AnyFieldApi } from "@tanstack/react-form";
+
+import { m } from "@aio-proxy/i18n";
 import { type FC, useEffect, useRef, useState } from "react";
+
 import { JsonEditor, type JsonEditorValidation, type JsonValue } from "@/components/json-editor";
 import {
   AlertDialog,
@@ -15,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
+
 import type { UseProviderOptionsSchemaResult } from "../hooks/use-provider-options-schema";
 
 export const isProviderOptionsObject = (

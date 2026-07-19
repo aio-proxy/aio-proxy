@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { capturedReplay, codecCalls, TEST_MODEL as MODEL } from "../../test-support/google-codec-replay";
 import { prepareReasoningReplay } from "./session-state";
 

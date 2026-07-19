@@ -6,6 +6,7 @@ import {
   type PluginDescriptor,
   zod,
 } from "@aio-proxy/plugin-sdk";
+
 import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
 import { type KimiCredential, type KimiOAuthDependencies, loginKimi } from "./oauth";
 import { readKimiQuota } from "./quota";

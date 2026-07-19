@@ -1,9 +1,11 @@
+import { definePlugin, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { definePlugin, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
-import { npmPackageCacheDir } from "../npm";
+
 import type { DiagnosticFactory, PluginLogSink } from "./diagnostic";
+
+import { npmPackageCacheDir } from "../npm";
 import { loadPluginRegistry } from "./loader/index";
 
 const homeEnv = "AIO_PROXY_HOME";

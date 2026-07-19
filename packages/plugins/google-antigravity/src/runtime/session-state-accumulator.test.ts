@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { appendSseReplayPayload, completedSseReplay, createSseReplayState } from "./session-state/replay-accumulator";
 
 const MODEL = "claude-opus-4-6-thinking";

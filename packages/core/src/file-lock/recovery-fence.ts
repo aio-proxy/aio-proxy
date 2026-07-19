@@ -1,8 +1,10 @@
-import { randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
+
+import { isPlainObject } from "es-toolkit/predicate";
+import { randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { isPlainObject } from "es-toolkit/predicate";
+
 import { abortableDelay } from "./delay";
 import { isNodeError, sameFileSnapshot } from "./fs";
 import { processIsAlive, processStarttime } from "./process-identity";

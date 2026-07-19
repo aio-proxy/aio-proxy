@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { createAiSdkProvider } from "@aio-proxy/core";
 import { createServer } from "@aio-proxy/server";
+import { describe, expect, test } from "bun:test";
 
 const responsesRequest = {
   model: "gpt-4.1-mini",

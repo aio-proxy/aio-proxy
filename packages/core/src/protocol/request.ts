@@ -158,6 +158,7 @@ export async function rewriteJsonRequestModel(raw: Request, modelId: string): Pr
   headers.delete("content-encoding");
   headers.delete("content-length");
   return new Request(raw, {
+    method: raw.method,
     body: JSON.stringify({ ...body, model: modelId }),
     headers,
   });

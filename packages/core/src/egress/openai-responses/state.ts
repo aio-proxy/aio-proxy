@@ -8,7 +8,9 @@ import type {
   ResponseStatus,
   ResponseUsage,
 } from "openai/resources/responses/responses";
+
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../../ai-sdk-bridge";
+
 import { OpenAIResponsesTransformError } from "../../error";
 import { readOpenAIResponsesWireMetadata } from "../../transform/openai-responses-tools";
 

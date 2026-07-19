@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+
 import type { ReplayPart } from "../../../protocol/replay-cache";
+
 import { allocateCallOccurrences, type CallOccurrence } from "./call-allocation";
 
 const MODEL = "claude-opus-4-6-thinking";

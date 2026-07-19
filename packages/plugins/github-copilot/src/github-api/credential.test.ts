@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { credentialPort, withFetchMock } from "../../_test/test-support";
+
 import { currentGitHubCopilotCredential, fetchCopilotToken } from ".";
+import { credentialPort, withFetchMock } from "../../_test/test-support";
 
 describe("GitHub Copilot credential", () => {
   test("calculates token expiry in milliseconds", async () => {

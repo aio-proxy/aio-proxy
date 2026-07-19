@@ -1,8 +1,10 @@
-import { randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
+
+import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+
 import { NpmLockError } from "./error";
 import { isNodeError } from "./file-lock/fs";
 import { processIsAlive, processStarttime } from "./file-lock/process-identity";

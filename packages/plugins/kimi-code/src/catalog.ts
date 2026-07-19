@@ -1,4 +1,5 @@
 import type { AccountContext, ModelCatalog, ModelDescriptor } from "@aio-proxy/plugin-sdk";
+
 import { kimiIdentityHeaders } from "./headers";
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from "./oauth";
 

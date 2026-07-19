@@ -1,7 +1,9 @@
 import type { CredentialPort, CredentialSnapshot } from "@aio-proxy/plugin-sdk";
+
+import type { GitHubCopilotCredential } from "./types";
+
 import { copilotTokenResponseSchema } from "../schema";
 import { authHeaders, fetchJson } from "./http";
-import type { GitHubCopilotCredential } from "./types";
 import { getGitHubCopilotBaseURL, githubApiBase } from "./urls";
 
 export async function currentGitHubCopilotCredential(

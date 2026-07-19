@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { serverErrorType } from "./server-log";
 
 test("serverErrorType ignores constructor data on arbitrary thrown objects", () => {

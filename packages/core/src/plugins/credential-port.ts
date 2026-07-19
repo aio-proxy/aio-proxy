@@ -6,8 +6,10 @@ import {
 } from "@aio-proxy/plugin-sdk";
 import { providerLoginCommand } from "@aio-proxy/types";
 import { delay } from "es-toolkit/promise";
-import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
+
 import type { PluginRepository, StoredAccount } from "./repository/index";
+
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
 import { parsePluginSchema } from "./schema";
 
 const REFRESH_LEASE_MS = 45_000;

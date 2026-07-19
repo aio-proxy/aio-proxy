@@ -2,6 +2,7 @@ import { parsePluginSchema, validateConfigSpec } from "@aio-proxy/core";
 import { getLocale } from "@aio-proxy/i18n";
 import { type ConfigSpec, type FormField, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
 import { confirm, input, password, select } from "@inquirer/prompts";
+
 import {
   FormJsonInvalidError,
   FormNumberInvalidError,

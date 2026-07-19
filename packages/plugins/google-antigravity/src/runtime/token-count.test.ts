@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
 import type { LogicalRequestContext, TokenCountInput } from "@aio-proxy/plugin-sdk";
+
 import { jsonSchema } from "ai";
+import { expect, test } from "bun:test";
+
 import type { GoogleAntigravityCredential } from "../schema";
+
 import { wireSessionId } from "./envelope";
 import { createAntigravityTokenCount } from "./token-count";
 import { AntigravityTransport } from "./transport";

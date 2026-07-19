@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { definePlugin } from "@aio-proxy/plugin-sdk";
+import { describe, expect, test } from "bun:test";
+
 import {
   collectSecretStrings,
   createPluginDiagnosticFactory,

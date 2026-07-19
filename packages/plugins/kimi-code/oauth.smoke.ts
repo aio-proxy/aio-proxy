@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { kimiClientId } from "./rslib.config";
 
 test("build embeds the Kimi OAuth client ID without leaving source plaintext", async () => {

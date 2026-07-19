@@ -1,11 +1,12 @@
 import type { StoredAccount } from "../../repository/index";
+import type { LoginOAuthAccountOptions } from "../login";
+
 import {
   AccountCleanupPendingError,
   type OAuthCapabilityReference,
   OAuthCapabilityRequiredError,
   ProviderCapabilityTargetMismatchError,
 } from "../errors";
-import type { LoginOAuthAccountOptions } from "../login";
 import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability, structuredEntry } from "../validation";
 
 export type Preflight = {

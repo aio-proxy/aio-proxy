@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import type { ProviderKind } from "./provider";
 
 export const PluginPackageNameSchema = z
