@@ -8,7 +8,11 @@ describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: apiProvider }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: {
+        host: "127.0.0.1",
+        port: 22078,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [{ ...apiProvider, enabled: true, id: "openai" }],
       invalidProviders: [],
     });
@@ -17,7 +21,11 @@ describe("ConfigSchema", () => {
   test("accepts disabled provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: { ...apiProvider, enabled: false } }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: {
+        host: "127.0.0.1",
+        port: 22078,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [{ ...apiProvider, enabled: false, id: "openai" }],
       invalidProviders: [],
     });
@@ -32,7 +40,11 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: {
+        host: "127.0.0.1",
+        port: 22078,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [{ ...provider, enabled: true, id: "chatgpt" }],
       invalidProviders: [],
     });
@@ -74,7 +86,11 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: {
+        host: "127.0.0.1",
+        port: 22078,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [{ ...provider, enabled: true, id: "google" }],
       invalidProviders: [],
     });
@@ -122,7 +138,11 @@ describe("ConfigSchema", () => {
       }),
     ).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 3000 },
+      server: {
+        host: "127.0.0.1",
+        port: 3000,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
         {

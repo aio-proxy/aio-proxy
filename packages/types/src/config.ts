@@ -15,6 +15,13 @@ import {
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
+const ServerLoggingSchema = z.object({
+  enabled: z.boolean().default(false),
+  dir: z.string().min(1).optional(),
+  retentionDays: z.number().int().min(1).max(365).default(14),
+  level: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
 export const ServerConfigSchema = z.object({
   host: z
     .string()
@@ -22,6 +29,7 @@ export const ServerConfigSchema = z.object({
     .default("127.0.0.1")
     .describe("Loopback host for the proxy API server."),
   port: z.number().int().min(1).max(65_535).default(22_078).describe("HTTP port for the proxy API server."),
+  logging: ServerLoggingSchema.prefault({}).optional(),
 });
 
 const ProviderInputValueSchema = z
