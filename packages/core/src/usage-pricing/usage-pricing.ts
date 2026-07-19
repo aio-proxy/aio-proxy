@@ -134,5 +134,5 @@ function peelSubsets(
 }
 
 function pricedSubset(count: number | undefined, unitPrice: number | undefined): number | undefined {
-  return count !== undefined && unitPrice !== undefined ? count : undefined;
+  return count !== undefined && unitPrice !== undefined && Number.isFinite(unitPrice) ? count : undefined;
 }
