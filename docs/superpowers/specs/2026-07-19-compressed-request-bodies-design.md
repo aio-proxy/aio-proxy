@@ -32,16 +32,18 @@ Header tokens are trimmed and compared case-insensitively. Ignore `identity` tok
 
 Bound both stages:
 
-| Stage | Default | Environment override |
-| --- | ---: | --- |
-| Encoded request bytes | 64 MiB | `AIO_PROXY_MAX_COMPRESSED_REQUEST_BYTES` |
-| Decoded request bytes | 128 MiB | `AIO_PROXY_MAX_DECOMPRESSED_REQUEST_BYTES` |
+| Stage | Fixed limit |
+| --- | ---: |
+| Encoded request bytes | 64 MiB |
+| Decoded request bytes | 128 MiB |
 
-Environment values are positive integer byte counts. A missing value uses the default. An invalid or non-positive value emits one `console.warn` at configuration load and falls back to the default.
+These are fixed product limits. This change does not add environment overrides or request-decoding concurrency control.
 
-The server's `Content-Length` early rejection and the core stream reader must consume the same encoded limit source. The stream reader remains authoritative for missing, misleading, or chunked lengths. Each zlib operation receives the decoded limit through `maxOutputLength`; a size error must not trigger the raw-deflate fallback.
+The server's `Content-Length` early rejection and the core stream reader must import the same encoded constant. The stream reader remains authoritative for missing, misleading, or chunked lengths. Each zlib operation receives the decoded constant through `maxOutputLength`; a size error must not trigger the raw-deflate fallback.
 
-Bun's default 128 MiB server limit remains an outer safety net. No Bun server limit change is needed because the encoded application limit is 64 MiB.
+Bun's default 128 MiB server limit remains an outer safety net. No Bun server limit change is needed because the encoded application limit is 64 MiB. Bodies between 64 and 128 MiB that reach the application receive the protocol-shaped 413. A declared body above Bun's outer limit can be rejected before the handler with Bun's generic 413; that response is explicitly outside the protocol-shaped application guarantee.
+
+A Bun 1.3.14 probe of the retained raw request, clone, decoded buffer, string, and parsed object measured about 555 MiB RSS for a highly compressible 128 MiB single-string JSON body. The 64/128 MiB limits are an explicit product capacity choice; operators must account for the resulting per-request memory ceiling. Admission control and a process-wide memory budget remain out of scope.
 
 ### Raw passthrough and rewrites
 
@@ -51,11 +53,17 @@ When the model or Responses background behavior requires a JSON rewrite, build t
 
 ### Errors and diagnostics
 
-- Encoded or decoded limit exceeded: existing protocol-shaped HTTP 413 response.
-- Unknown coding or more than one effective coding: protocol-shaped HTTP 415 response.
-- Invalid compressed data: protocol-shaped HTTP 400 invalid-request response.
+- Encoded or decoded limit exceeded: preserve or create `RequestBodyTooLargeError`, producing the existing protocol-shaped HTTP 413 response.
+- Unknown coding or more than one effective coding: create `UnsupportedContentEncodingError`, producing a protocol-shaped HTTP 415 response.
+- Invalid compressed data: normalize native algorithm errors into `InvalidCompressedRequestBodyError`, producing a protocol-shaped HTTP 400 invalid-request response.
 
-Introduce a typed unsupported-content-encoding error so the server pipeline can map it separately from JSON and schema failures. The temporary diagnostic uses `console.warn` and records only the normalized coding value or coding list, never headers wholesale or request body data. Existing request-rejection recording remains responsible for request ID, protocol, path, status, error code, and error type.
+Do not expose native zlib messages. Map `ERR_BUFFER_TOO_LARGE` directly to `RequestBodyTooLargeError`. Treat `ERR_OUT_OF_RANGE` as an internal programming/configuration failure rather than a client 400. Normalize known corrupt/truncated-data codes (`Z_DATA_ERROR`, `Z_BUF_ERROR`, `ERR_BROTLI_DECODER_*`, and `ZSTD_error_*`) to `InvalidCompressedRequestBodyError`; allow unrelated runtime failures to propagate as internal errors.
+
+For deflate, retry with `inflateRaw` only when the first `inflate` attempt has `code === "Z_DATA_ERROR"`. Do not retry after `Z_BUF_ERROR`, `ERR_BUFFER_TOO_LARGE`, `ERR_OUT_OF_RANGE`, or any other error. If the raw retry also reports a known corrupt/truncated-data code, return the safe domain error.
+
+Add a dedicated `unsupportedContentEncoding` operation to `ProtocolErrorMapper`; do not reuse the provider-transform `unsupported` operation, which means HTTP 501. Each production mapper must return HTTP 415 in its own protocol envelope. `InvalidCompressedRequestBodyError` remains part of each mapper's normal 400 request-error recognition. The pipeline gives the three domain failures stable rejection codes (`request_too_large`, `unsupported_content_encoding`, and `invalid_request`) and preserves the domain error class as the diagnostic error type.
+
+The temporary unsupported-coding diagnostic uses `console.warn` and records only the normalized coding value or coding list, never headers wholesale or request body data. Existing request-rejection recording remains responsible for request ID, protocol, path, status, error code, and error type.
 
 ## Verification
 
@@ -66,10 +74,10 @@ Keep behavior tests at the shared boundary:
 - decoded 128 MiB boundary behavior through `maxOutputLength` with a small injected test limit;
 - unsupported and multi-coding rejection;
 - invalid compressed payload rejection;
+- a decoded-output limit error does not trigger raw-deflate fallback;
 - cancellation of retained request branches on failure;
-- invalid environment values fall back to defaults.
 
-Add one server pipeline regression for the protocol-shaped 415 response and safe rejection diagnostic. Retain the existing OpenAI Responses tests proving unchanged raw bytes/headers without rewrite and CE/CL removal after rewrite. Do not duplicate the same decompression matrix across every protocol adapter because each calls the shared helper.
+Add one server pipeline regression for 415 dispatch, recording, and safe rejection diagnostics. Add a small table-driven mapper test that verifies OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini each return HTTP 415 with the expected protocol body shape and stable code/type, without reflecting the original header or body. Retain the existing OpenAI Responses tests proving unchanged raw bytes/headers without rewrite and CE/CL removal after rewrite. Do not duplicate the decompression matrix across every protocol adapter because each calls the shared helper.
 
 Before completion, run the focused core and server tests, then `bun run preflight`.
 
@@ -78,4 +86,5 @@ Before completion, run the focused core and server tests, then `bun run prefligh
 - Nested or repeated content-coding chains.
 - Decompressing and normalizing requests that can be forwarded without parsing.
 - Applying Hono body limits to dashboard, OAuth, plugin, or other non-model routes.
+- Runtime-configurable request-body limits or request-decoding admission control.
 - Replacing temporary console diagnostics with a new logging subsystem.
