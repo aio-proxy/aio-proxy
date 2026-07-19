@@ -55,6 +55,7 @@ const jsonObjectSchema = z.object({}).catchall(z.unknown());
 async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string): Promise<Request> {
   const { background: _background, ...body } = jsonObjectSchema.parse(await readJsonRequest(raw));
   const headers = new Headers(raw.headers);
+  headers.delete("content-encoding");
   headers.delete("content-length");
   return new Request(raw, {
     body: JSON.stringify({ ...body, model: resolvedModel }),

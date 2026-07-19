@@ -3,6 +3,7 @@ import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from "@aio-proxy/plugin-kimi-code";
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from "@aio-proxy/plugin-openai-chatgpt";
 import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from "@aio-proxy/plugin-xai-grok";
 import type { BuiltInPluginDefinition } from "./loader/index";
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
@@ -10,6 +11,7 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   "@aio-proxy/plugin-openai-chatgpt",
   "@aio-proxy/plugin-google-antigravity",
   "@aio-proxy/plugin-kimi-code",
+  "@aio-proxy/plugin-xai-grok",
 ] as const;
 
 const localized = (english: string, chinese: string) => ({ default: english, "zh-Hans": chinese }) as const;
@@ -77,6 +79,20 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         adapterLabel: localized("Login with Kimi Code", "使用 Kimi Code 登录"),
         deviceInstructions: localized("Enter code", "输入代码"),
         waitingForAuthorization: localized("Waiting for Kimi authorization", "正在等待 Kimi 授权"),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: "@aio-proxy/plugin-xai-grok",
+      version: XAI_GROK_PLUGIN_VERSION,
+      descriptor: createXAIGrokPlugin({
+        pluginLabel: "xAI Grok",
+        pluginDescription: localized(
+          "Use a SuperGrok or X Premium+ account to access Grok models",
+          "使用 SuperGrok 或 X Premium+ 账号访问 Grok 模型",
+        ),
+        adapterLabel: localized("Login with xAI Grok", "使用 xAI Grok 登录"),
+        deviceInstructions: localized("Enter code", "输入代码"),
+        waitingForAuthorization: localized("Waiting for xAI authorization", "正在等待 xAI 授权"),
       }) as unknown as PluginDescriptor<unknown>,
     },
   ];

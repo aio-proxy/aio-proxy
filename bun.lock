@@ -83,6 +83,7 @@
         "@aio-proxy/plugin-kimi-code": "workspace:*",
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/plugin-xai-grok": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
@@ -260,6 +261,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/xai-grok": {
+      "name": "@aio-proxy/plugin-xai-grok",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/openai": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/server": {
       "name": "@aio-proxy/server",
       "version": "0.0.0",
@@ -377,6 +392,8 @@
     "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
 
     "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
+
+    "@aio-proxy/plugin-xai-grok": ["@aio-proxy/plugin-xai-grok@workspace:packages/plugins/xai-grok"],
 
     "@aio-proxy/provider-schemas": ["@aio-proxy/provider-schemas@0.1.1", "", { "peerDependencies": { "zod": "^4.1.5" }, "optionalPeers": ["zod"] }, "sha512-jYutoOrOFeCvt6qImGjZ3S9GpqPC/8b5mo1dSrWxJr86V4+wjXi0bX/8eiOJ0IpkT9b5QJJVrCCUbPb6X7jGZw=="],
 

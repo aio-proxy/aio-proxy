@@ -51,16 +51,27 @@ describe("openAIResponsesAdapter", () => {
   });
 
   test("clones the raw request when the resolved model is unchanged", async () => {
+    const body = Bun.zstdCompressSync(
+      new TextEncoder().encode(JSON.stringify({ model: "same", input: "hello", beta_field: true })),
+    );
     const raw = new Request("https://proxy.test/v1/responses", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "same", input: "hello", beta_field: true }),
+      headers: {
+        "content-encoding": "zstd",
+        "content-length": String(body.byteLength),
+        "content-type": "application/json",
+        "x-sentinel": "preserved",
+      },
+      body,
     });
     const parsed = await openAIResponsesAdapter.parse(raw, {});
 
     const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, "same", {});
 
     expect(forwarded).not.toBe(raw);
-    expect(await forwarded.json()).toEqual({ model: "same", input: "hello", beta_field: true });
+    expect(forwarded.headers.get("content-encoding")).toBe("zstd");
+    expect(forwarded.headers.get("content-length")).toBe(String(body.byteLength));
+    expect(forwarded.headers.get("x-sentinel")).toBe("preserved");
+    expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(body);
   });
 });

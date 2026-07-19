@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AiSdkProviderInstance } from "@aio-proxy/core";
+import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import type { ModelMessage, ToolSet } from "ai";
 import { asSchema } from "ai";
 
@@ -203,7 +203,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       body: JSON.stringify(generateRequest),
       headers: {
         ...jsonHeaders,
-        "content-length": "8388609",
+        "content-length": String(REQUEST_BODY_LIMITS.encoded + 1),
       },
       method: "POST",
     });
@@ -245,7 +245,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
     expect(body).toEqual({
       error: {
         code: 413,
-        message: "Request body too large",
+        message: "Gemini inlineData at contents.0.parts.0.inlineData.data is 20971521 bytes; limit is 20971520",
         status: "RESOURCE_EXHAUSTED",
       },
     });

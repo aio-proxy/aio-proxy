@@ -4,6 +4,7 @@ import {
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   type RouterResolution,
+  UnsupportedContentEncodingError,
 } from "@aio-proxy/core";
 import type { LogicalRequestContext, TokenCountInput } from "@aio-proxy/plugin-sdk";
 import type { RequestAttemptInput, RequestSession } from "../request-recorder";
@@ -39,6 +40,7 @@ export async function handleTokenCount<TRequest, TContext>({
   } catch (error) {
     await cancelRetainedRequestBody(rawRequest, error);
     if (error instanceof RequestBodyTooLargeError) return adapter.errors.tooLarge();
+    if (error instanceof UnsupportedContentEncodingError) return adapter.errors.unsupportedContentEncoding();
     const mapped = adapter.errors.requestError(error);
     if (mapped !== undefined) return mapped;
     throw error;

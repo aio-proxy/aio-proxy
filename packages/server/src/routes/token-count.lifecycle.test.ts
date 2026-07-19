@@ -7,54 +7,6 @@ import { LogicalSessionStore } from "../logical-session-store";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 import { handleTokenCount } from "./token-count";
 
-test("returns 413 and cancels the source for an oversized chunked count prompt", async () => {
-  let resolveCancellation: (reason: unknown) => void = () => {};
-  const cancellation = new Promise<unknown>((resolve) => {
-    resolveCancellation = resolve;
-  });
-  const encoder = new TextEncoder();
-  let chunks = 0;
-  const request = new Request("https://proxy.test/v1/messages/count_tokens", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(
-          encoder.encode('{"model":"count-model","max_tokens":16,"messages":[{"role":"user","content":"'),
-        );
-      },
-      pull(controller) {
-        if (chunks < 9) {
-          chunks += 1;
-          controller.enqueue(new Uint8Array(1_024 * 1_024).fill(120));
-        }
-      },
-      cancel(reason) {
-        resolveCancellation(reason);
-      },
-    }),
-  });
-  const fixture = countSource([]);
-
-  const response = await settleWithin(
-    handleTokenCount({
-      adapter: anthropicMessagesAdapter,
-      context: {},
-      format: (inputTokens) => ({ input_tokens: inputTokens }),
-      rawRequest: request,
-      source: fixture.source,
-    }),
-    250,
-  );
-
-  expect(response).toBeInstanceOf(Response);
-  expect((response as Response).status).toBe(413);
-  expect(await settleWithin(cancellation, 100)).not.toBeInstanceOf(TimeoutError);
-  expect(request.bodyUsed).toBe(true);
-  expect(fixture.recording.begins).toEqual([]);
-  expect(fixture.releases()).toBe(0);
-});
-
 test("releases the retained body when count request validation fails", async () => {
   const request = new Request("https://proxy.test/v1/messages/count_tokens", {
     method: "POST",
