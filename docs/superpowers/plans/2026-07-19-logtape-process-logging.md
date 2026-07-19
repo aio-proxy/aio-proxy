@@ -15,7 +15,7 @@
 - Dashboard / SQLite request logs are out of scope; do not change their schema or UI.
 - `@aio-proxy/logger` must not depend on `@aio-proxy/core` or `@aio-proxy/plugin-sdk` (sdk defines the interface only; logger implements a structurally compatible type, or depends on a tiny shared types-only path if unavoidable — prefer structural typing / duplicate the tiny interface in logger and have sdk own the canonical export).
 - Prefer: `plugin-sdk` exports `Logger`; `@aio-proxy/logger` depends on `plugin-sdk` **only if that does not create a cycle**. Today `plugin-sdk` does not depend on logger or core, so `logger → plugin-sdk` is allowed. `plugin-sdk → logger` is forbidden.
-- Disk logging uses `@logtape/file` `getTimeRotatingFileSink` with **library defaults** for interval/filename (`daily`, `YYYY-MM-DD.log`). Pass only `directory` + `maxAgeMs`.
+- Disk logging uses `@logtape/file` `getTimeRotatingFileSink` with library defaults for interval/filename (`daily`, `YYYY-MM-DD.log`), plus LogTape `jsonLinesFormatter`; rotation options remain only `directory` + `maxAgeMs`.
 - No custom filename prefix; no hand-rolled retention scanner.
 - No `LOG_LEVEL` env override; level comes from `server.logging.level`.
 - Map config/`Logger` level `"warn"` → LogTape `"warning"` at configure boundaries.
@@ -264,6 +264,7 @@ export async function configureLogging(config: {
   if (config.enabled === true) {
     sinks.file = getTimeRotatingFileSink({
       directory: config.dir,
+      formatter: jsonLinesFormatter,
       maxAgeMs: retentionDays * 24 * 60 * 60 * 1000,
     });
     sinkIds.push("file");
@@ -605,7 +606,7 @@ git commit -m "test: verify LogTape process logging integration"
 | `api.logger` required on v2 PluginApi; injected for v1 too | Task 1, 7 |
 | Dual message styles | Task 2 |
 | `warn` → LogTape `warning` | Task 2 |
-| `@logtape/file` defaults only (`directory` + `maxAgeMs`) | Task 2, 5 |
+| `@logtape/file` rotation defaults + JSON Lines (`directory`, `formatter`, `maxAgeMs`) | Task 2, 5 |
 | `server.logging` config | Task 4 |
 | configure before server init / no import-time state | Task 5 |
 | ServerLog exhaustive levels + sink bridge | Task 6 |
