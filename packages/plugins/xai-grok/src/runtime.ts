@@ -1,10 +1,8 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "./cli-headers";
 import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from "./oauth";
 import type { XAIGrokCredential } from "./schema";
-
-const BASE_URL = "https://cli-chat-proxy.grok.com/v1";
-const CLIENT_VERSION = "0.2.93";
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
@@ -12,7 +10,7 @@ export async function createXAIGrokRuntime(
 ): Promise<OAuthRuntimeResult> {
   const openai = createOpenAI({
     name: "xai-grok-oauth",
-    baseURL: BASE_URL,
+    baseURL: XAI_GROK_CLI_BASE_URL,
     apiKey: "dynamic-credential",
     fetch: createXAIGrokDynamicFetch(context.credentials, options) as typeof globalThis.fetch,
   });
@@ -37,11 +35,7 @@ export function createXAIGrokDynamicFetch(
       ...(signal === undefined ? {} : { signal }),
     });
     const request = new Request(input, init);
-    const headers = new Headers(request.headers);
-    headers.set("authorization", `Bearer ${credential.accessToken}`);
-    headers.set("X-XAI-Token-Auth", "xai-grok-cli");
-    headers.set("x-grok-client-version", CLIENT_VERSION);
-    headers.set("User-Agent", `xai-grok-workspace/${CLIENT_VERSION}`);
+    const headers = createXAIGrokCLIHeaders(credential, request.headers);
     headers.delete("content-length");
     const body = await outgoingBody(request);
     return await (options.fetch ?? globalThis.fetch)(request.url, {

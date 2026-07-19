@@ -1474,15 +1474,17 @@ rtk git commit -m "feat(xai-grok): add built-in oauth provider" -m "Co-authored-
 ## Follow-up: Replace Grok web protobuf quota with CLI JSON billing
 
 **Files:**
+- Create: `packages/plugins/xai-grok/src/cli-headers.ts`
 - Modify: `packages/plugins/xai-grok/src/quota.test.ts`
 - Modify: `packages/plugins/xai-grok/src/quota.ts`
+- Modify: `packages/plugins/xai-grok/src/runtime.ts`
 - Modify: `packages/plugins/xai-grok/src/index.ts`
 - Delete: `packages/plugins/xai-grok/src/quota-protobuf.ts`
 - Delete: `packages/plugins/xai-grok/src/quota-protobuf.test.ts`
 
-- [ ] Write a failing quota test asserting both CLI billing URLs, CLI auth headers including `x-userid`, weekly/monthly item mapping, and partial success.
-- [ ] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts` and confirm failure because the implementation still calls the gRPC-Web endpoint.
-- [ ] Replace `readXAIGrokQuota()` with the minimum JSON parsing and mapping needed by the test; reuse one shared CLI header builder with runtime.
-- [ ] Remove the protobuf parser, its tests, and its public export.
-- [ ] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts packages/plugins/xai-grok/src/runtime.test.ts` and confirm GREEN.
-- [ ] Run `rtk bun run check`, `rtk bun run --cwd packages/plugins/xai-grok build`, and `rtk bun run preflight`.
+- [x] Write a failing quota test asserting both CLI billing URLs, CLI auth headers including `x-userid`, weekly/monthly item mapping, and partial success.
+- [x] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts` and confirm failure because the implementation still calls the gRPC-Web endpoint.
+- [x] Replace `readXAIGrokQuota()` with the minimum JSON parsing and mapping needed by the test; reuse one shared CLI header builder with runtime.
+- [x] Remove the protobuf parser, its tests, and its public export.
+- [x] Run `rtk bun test packages/plugins/xai-grok/src/quota.test.ts packages/plugins/xai-grok/src/runtime.test.ts` and confirm GREEN.
+- [x] Run `rtk bun run check`, `rtk bun run --cwd packages/plugins/xai-grok build`, and `rtk bun run preflight`.

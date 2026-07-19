@@ -5,7 +5,6 @@ export * from "./catalog";
 export * from "./oauth";
 export { createXAIGrokPlugin, englishPresentationText, type XAIGrokPresentationText } from "./plugin";
 export * from "./quota";
-export * from "./quota-protobuf";
 export * from "./runtime";
 export * from "./schema";
 
