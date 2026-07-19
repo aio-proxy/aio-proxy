@@ -1,3 +1,4 @@
+import { isMap, isProxy, isSet } from "node:util/types";
 import { m } from "@aio-proxy/i18n";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
 import { escapeRegExp } from "es-toolkit/string";
@@ -65,7 +66,12 @@ export function createPluginDiagnosticFactory(now: () => number = Date.now): Dia
   });
 }
 
-export type PluginLogCode = DiagnosticCode | "ACCOUNT_RECOVERY_FAILED";
+export type PluginLogCode =
+  | DiagnosticCode
+  | "ACCOUNT_RECOVERY_FAILED"
+  | "PLUGIN_ICON_INVALID"
+  | "QUOTA_READ_FAILED"
+  | "QUOTA_RESET_FAILED";
 
 export type PluginLogSink = (entry: {
   readonly event: string;
@@ -180,8 +186,22 @@ export function collectSecretStrings(value: unknown): readonly string[] {
       if (current !== "") secrets.add(current);
       return;
     }
-    if (typeof current !== "object" || current === null || seen.has(current)) return;
+    if (typeof current !== "object" || current === null || seen.has(current) || isProxy(current)) return;
     seen.add(current);
+
+    if (isMap(current)) {
+      try {
+        Map.prototype.forEach.call(current, (mapValue: unknown, mapKey: unknown) => {
+          visit(mapKey);
+          visit(mapValue);
+        });
+      } catch {}
+    } else if (isSet(current)) {
+      try {
+        Set.prototype.forEach.call(current, (setValue: unknown) => visit(setValue));
+      } catch {}
+    }
+
     let keys: readonly PropertyKey[];
     try {
       keys = Reflect.ownKeys(current);
@@ -190,8 +210,8 @@ export function collectSecretStrings(value: unknown): readonly string[] {
     }
     for (const key of keys) {
       try {
-        if (!Reflect.getOwnPropertyDescriptor(current, key)?.enumerable) continue;
-        visit(Reflect.get(current, key));
+        const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
+        if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value);
       } catch {}
     }
   };
@@ -207,7 +227,7 @@ export function redactPluginError(error: unknown, redaction: PluginErrorRedactio
       const message = typeof error.message === "string" ? error.message : SAFE_ERROR_MESSAGE;
       const stack = typeof error.stack === "string" ? error.stack : undefined;
       return {
-        name,
+        name: redactText(name, secretValues),
         message: redactText(message, secretValues),
         ...(stack === undefined ? {} : { stack: redactText(stack, secretValues) }),
       };

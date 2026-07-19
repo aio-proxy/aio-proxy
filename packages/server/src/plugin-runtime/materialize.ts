@@ -1,13 +1,11 @@
-import {
-  createCredentialPort,
-  PluginSchemaContractError,
-  parsePluginSchema,
-  type StoredCatalog,
-  validateConfigSpec,
-  validateModelCatalog,
-} from "@aio-proxy/core";
+import { type StoredCatalog, validateModelCatalog } from "@aio-proxy/core";
 import type { AccountContext, CredentialPort } from "@aio-proxy/plugin-sdk";
 import { type Diagnostic, providerLoginCommand } from "@aio-proxy/types";
+import {
+  OAuthPluginAccountPreparationError,
+  type PreparedOAuthPluginAccount,
+  prepareOAuthPluginAccount,
+} from "../plugin-account";
 import { createRuntimeProvider, withRoutingConfig } from "./capabilities";
 import {
   catalogDiagnostic,
@@ -25,10 +23,6 @@ import {
   PLUGIN_RUNTIME_TIMEOUT_MS,
   type PluginProviderMaterialization,
 } from "./types";
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function runtimeDeadline<T>(task: Promise<T>): Promise<T> {
   task.catch(() => {});
@@ -51,56 +45,21 @@ export async function materializePluginProvider(
   options: MaterializePluginProviderOptions,
 ): Promise<PluginProviderMaterialization> {
   const { config, plugins, repository } = options;
-  const loaded = plugins.plugins.get(config.plugin);
-  if (loaded === undefined || loaded.state.status === "failed") {
+  let prepared: PreparedOAuthPluginAccount;
+  try {
+    prepared = await prepareOAuthPluginAccount(options);
+  } catch (error) {
+    if (!(error instanceof OAuthPluginAccountPreparationError)) throw error;
     return failure(
       options,
-      loaded?.state.status === "failed" ? loaded.state.diagnostic.code : "PLUGIN_NOT_INSTALLED",
+      error.code,
       false,
+      error.suggestLogin ? providerLoginCommand(options.config.id) : undefined,
+      error.accountSummary,
     );
   }
-  const adapter = plugins.registry.resolveOAuth(config.plugin, config.capability);
-  if (adapter === undefined) return failure(options, "CAPABILITY_MISSING", false);
-  let account: ReturnType<typeof repository.readAccount>;
-  try {
-    account = repository.readAccount(config.id);
-  } catch {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id));
-  }
-  if (account === null || account.plugin !== config.plugin || account.capability !== config.capability) {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false);
-  }
-  const accountSummary = {
-    ...(account.label === undefined ? {} : { accountLabel: account.label }),
-    ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
-  };
-
-  let accountOptions: unknown;
-  let accountOptionsDigest: `sha256:${string}`;
-  try {
-    const { secretKeys } = validateConfigSpec(adapter.account.options);
-    const publicOptions = config.options ?? {};
-    if (!isRecord(publicOptions) || !isRecord(account.secrets)) throw new Error("Invalid account options");
-    for (const key of secretKeys) if (Object.hasOwn(publicOptions, key)) throw new Error("Secret option in config");
-    accountOptionsDigest = digest({ public: publicOptions, secret: account.secrets });
-    const parsed = await parsePluginSchema(adapter.account.options.schema, { ...publicOptions, ...account.secrets });
-    if (!parsed.ok) throw new Error("Invalid account options");
-    accountOptions = parsed.value;
-  } catch {
-    return failure(options, "ACCOUNT_OPTIONS_INVALID", false, providerLoginCommand(config.id), accountSummary);
-  }
-
-  let parsedCredential: Awaited<ReturnType<typeof parsePluginSchema>>;
-  try {
-    parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
-  } catch (error) {
-    if (error instanceof PluginSchemaContractError)
-      return failure(options, "PLUGIN_LOAD_FAILED", false, undefined, accountSummary);
-    throw error;
-  }
-  if (!parsedCredential.ok) {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id), accountSummary);
-  }
+  const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;
+  const accountOptionsDigest = digest(prepared.accountOptionsIdentity);
   let diagnostics: readonly Diagnostic[];
   try {
     diagnostics = repository.readDiagnostics(config.id);
@@ -146,17 +105,6 @@ export async function materializePluginProvider(
       ...accountSummary,
       ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
     });
-  const createCredentials = (): CredentialPort<unknown> =>
-    createCredentialPort({
-      providerId: config.id,
-      schema: adapter.credentials,
-      repository,
-      diagnostics: options.diagnostics,
-      logger: options.logger,
-      onDiagnosticChanged: options.onDiagnosticChanged,
-      onCredentialChanged: options.onDiagnosticChanged,
-      pluginSecrets: options.pluginSecrets,
-    }) as CredentialPort<unknown>;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
     policy: adapter.catalog.policy,

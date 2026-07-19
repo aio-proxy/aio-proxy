@@ -39,6 +39,7 @@ export function createOpenAIChatGPTPlugin(
   const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
     id: "default",
     label: presentationText.adapterLabel,
+    icon: "openai",
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string(),

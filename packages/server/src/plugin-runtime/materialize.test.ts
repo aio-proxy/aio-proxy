@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { loadPluginRegistry, Router } from "@aio-proxy/core";
 import { definePlugin, zod } from "@aio-proxy/plugin-sdk";
 import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
-import { createServerState } from "../../src/server-state";
+import { createServerState } from "../server-state";
 import { cleanup, diagnostics, homes, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
@@ -77,7 +77,7 @@ test("the provider config key becomes the materialized runtime provider ID", asy
   const fixture = runtimeFixture({ kind: "static" }, { providerId: "configured-key" });
   const serverHome = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-runtime-server-"));
   homes.push(serverHome);
-  const descriptor = definePlugin((api) => {
+  const descriptor = definePlugin<unknown>((api) => {
     api.oauth.register({
       id: "default",
       label: "Example",
@@ -197,12 +197,12 @@ test("disabling and re-enabling reuses the runtime while updating enabled and al
   const enabled = await materializePluginProvider({ ...options, config: { ...base, enabled: true } });
   const disabled = await materializePluginProvider({
     ...options,
-    config: { ...base, enabled: false, alias: { client: { model: "model" } } },
+    config: { ...base, enabled: false, alias: { client: { model: "model", preserve: false } } },
     previous: enabled.cacheEntry,
   });
   const reenabled = await materializePluginProvider({
     ...options,
-    config: { ...base, enabled: true, alias: { client: { model: "model" } } },
+    config: { ...base, enabled: true, alias: { client: { model: "model", preserve: false } } },
     previous: disabled.cacheEntry,
   });
 
@@ -221,8 +221,9 @@ test("plugin descriptor import is cached while setup runs for every registry sna
   mkdirSync(packageDir, { recursive: true });
   writeFileSync(join(packageDir, "package.json"), JSON.stringify({ version: "1.0.0", main: "index.js" }));
   writeFileSync(join(packageDir, "index.js"), "export default {};");
-  const previousHome = process.env.AIO_PROXY_HOME;
-  process.env.AIO_PROXY_HOME = home;
+  const aioProxyHome = "AIO_PROXY_HOME";
+  const previousHome = process.env[aioProxyHome];
+  process.env[aioProxyHome] = home;
   const descriptor = definePlugin(() => {
     setups++;
   });
@@ -245,8 +246,8 @@ test("plugin descriptor import is cached while setup runs for every registry sna
     expect(imports).toBe(1);
     expect(setups).toBe(2);
   } finally {
-    if (previousHome === undefined) delete process.env.AIO_PROXY_HOME;
-    else process.env.AIO_PROXY_HOME = previousHome;
+    if (previousHome === undefined) delete process.env[aioProxyHome];
+    else process.env[aioProxyHome] = previousHome;
     rmSync(home, { recursive: true, force: true });
   }
 });
