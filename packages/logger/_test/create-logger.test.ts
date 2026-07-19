@@ -56,6 +56,38 @@ describe("createLogger", () => {
     expect(JSON.stringify(records[0])).not.toContain("sekrit");
   });
 
+  test("uses a safe placeholder when properties cannot be inspected", async () => {
+    await captureLogs();
+    const properties = Object.defineProperty({}, "token", {
+      enumerable: true,
+      get(): never {
+        throw new Error("sekrit");
+      },
+    });
+
+    expect(() =>
+      createLogger(["aio-proxy", "test"], { redactSecretValues: ["sekrit"] }).info(properties),
+    ).not.toThrow();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.properties).toMatchObject({ message: "log redaction failed" });
+    expect(JSON.stringify(records[0])).not.toContain("sekrit");
+  });
+
+  test("safe placeholder does not reproduce a configured secret", async () => {
+    await captureLogs();
+    const properties = Object.defineProperty({}, "token", {
+      enumerable: true,
+      get(): never {
+        throw new Error("unreachable");
+      },
+    });
+
+    createLogger(["aio-proxy", "test"], { redactSecretValues: ["log"] }).info(properties);
+
+    expect(JSON.stringify(records[0])).not.toContain("log");
+  });
+
   test("child loggers merge bindings", async () => {
     await captureLogs();
 
