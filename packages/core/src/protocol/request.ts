@@ -44,13 +44,14 @@ function requestContentEncoding(header: string | null): ContentEncoding | undefi
     .split(",")
     .map((encoding) => encoding.trim().toLowerCase())
     .filter((encoding) => encoding !== "" && encoding !== "identity");
-  if (encodings.length === 0) return undefined;
+  const [first] = encodings;
+  if (first === undefined) return undefined;
   const encoding = encodings.join(", ");
-  if (encodings.length > 1 || !isContentEncoding(encodings[0])) {
+  if (encodings.length > 1 || !isContentEncoding(first)) {
     console.warn("request.content_encoding.unsupported", { encoding });
     throw new UnsupportedContentEncodingError(encoding);
   }
-  return encodings[0];
+  return first;
 }
 
 function isContentEncoding(value: string): value is ContentEncoding {
