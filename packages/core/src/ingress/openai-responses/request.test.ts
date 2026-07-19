@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
 import type { OpenAIResponsesRequest } from "../../index";
-import {
-  OpenAIResponsesRequestSchema,
-  OpenAIResponsesUnsupportedFeatureError,
-  parseOpenAIResponses,
-} from "../../index";
+import { OpenAIResponsesRequestSchema, parseOpenAIResponses } from "../../index";
 
 const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/openai-responses`;
 
@@ -30,6 +26,15 @@ describe("OpenAIResponsesRequestSchema", () => {
     const input = await readFixture("reasoning-tools.json");
 
     expect(parseOpenAIResponses(input)).toEqual(input);
+  });
+
+  test("Given a malformed known item When parsed Then validation fails", () => {
+    expect(() =>
+      parseOpenAIResponses({
+        model: "gpt-5-mini",
+        input: [{ type: "custom_tool_call", call_id: "call_1", name: "exec" }],
+      }),
+    ).toThrow();
   });
 
   test("Given invalid input role When safe parsed Then Zod path names input", () => {
@@ -92,14 +97,16 @@ describe("OpenAIResponsesRequestSchema", () => {
     "computer_use",
     "computer-use",
     "image_generation",
-  ])("Given forbidden %s tool When parsed Then unsupported feature is thrown", (toolType) => {
-    const parse = () =>
-      parseOpenAIResponses({
-        model: "gpt-5-mini",
-        input: "x",
-        tools: [{ type: toolType }],
-      });
+  ])("Given raw-only %s tool When parsed Then it is retained", (toolType) => {
+    const input = {
+      model: "gpt-5-mini",
+      input: "x",
+      tools: [{ type: toolType }],
+    };
 
-    expect(parse).toThrow(new OpenAIResponsesUnsupportedFeatureError(toolType, "tools.0.type"));
+    expect(parseOpenAIResponses(input)).toEqual({
+      ...input,
+      tools: [{ type: "__aio_proxy_unsupported_tool__", wireType: toolType }],
+    });
   });
 });

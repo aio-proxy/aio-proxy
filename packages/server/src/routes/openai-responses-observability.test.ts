@@ -33,14 +33,6 @@ const cases = [
     errorCode: "model_not_found",
     errorType: "RouterModelNotFoundError",
   },
-  {
-    name: "unsupported built-in item",
-    body: JSON.stringify({ model: "gpt-5.6-terra", input: [{ type: "computer_call", id: "computer_1" }] }),
-    statusCode: 501,
-    requestedModelId: "<unparsed>",
-    errorCode: "unsupported_feature",
-    errorType: "OpenAIResponsesUnsupportedFeatureError",
-  },
 ] as const;
 
 describe("OpenAI Responses early request observability", () => {

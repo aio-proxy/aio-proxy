@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  OpenAIResponsesUnsupportedFeatureError,
-  openAIResponsesAdapter,
-  writeOpenAIResponsesResponse,
-  writeOpenAIResponsesSSE,
-} from "../index";
+import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../index";
 
 describe("openAIResponsesAdapter", () => {
   test("defaults to non-stream and exposes routing, tools, and current writers", async () => {
@@ -16,7 +11,6 @@ describe("openAIResponsesAdapter", () => {
         input: "hello",
         tools: [{ type: "function", name: "weather", parameters: { type: "object" } }],
         reasoning: { effort: "high" },
-        beta_field: true,
       }),
     });
 
@@ -30,13 +24,12 @@ describe("openAIResponsesAdapter", () => {
     expect(invocation.settings).toEqual({ reasoning: "high" });
     expect(await (await openAIResponsesAdapter.rawRequest(raw, parsed, "upstream", {})).json()).toMatchObject({
       model: "upstream",
-      beta_field: true,
     });
     expect(openAIResponsesAdapter.modelJson).toBe(writeOpenAIResponsesResponse);
     expect(openAIResponsesAdapter.modelSse).toBe(writeOpenAIResponsesSSE);
   });
 
-  test("rejects custom tools with the typed unsupported-feature error", async () => {
+  test("wraps custom tools as metadata-carrying function tools", async () => {
     const parsed = await openAIResponsesAdapter.parse(
       new Request("https://proxy.test/v1/responses", {
         method: "POST",
@@ -46,15 +39,15 @@ describe("openAIResponsesAdapter", () => {
       {},
     );
 
-    try {
-      openAIResponsesAdapter.modelInvocation(parsed, {});
-      throw new Error("expected custom tool rejection");
-    } catch (error) {
-      expect(error).toBeInstanceOf(OpenAIResponsesUnsupportedFeatureError);
-      const { feature, path: field } = error as OpenAIResponsesUnsupportedFeatureError;
-      expect(feature).toBe("custom_tool");
-      expect(field).toBe("tools");
-    }
+    const customTool = Object.entries(openAIResponsesAdapter.modelInvocation(parsed, {}).tools ?? {}).find(
+      ([name]) => name === "emit_raw",
+    )?.[1];
+    expect(customTool).toMatchObject({
+      type: "function",
+      metadata: {
+        aioProxy: { openaiResponses: { protocol: "openai-responses", wireToolType: "custom" } },
+      },
+    });
   });
 
   test("clones the raw request when the resolved model is unchanged", async () => {

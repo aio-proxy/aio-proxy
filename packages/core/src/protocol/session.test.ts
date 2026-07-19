@@ -93,6 +93,7 @@ describe("protocol sessions", () => {
         previousResponseId: "resp_previous",
         transcript: [{ role: "user", content: "hello" }],
       });
+      expect(openAIResponsesAdapter.modelInvocation(parsed, {}).messages).toHaveLength(1);
     });
   });
 

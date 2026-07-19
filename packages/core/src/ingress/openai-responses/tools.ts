@@ -1,83 +1,63 @@
 import { z } from "zod";
-import { OpenAIResponsesUnsupportedFeatureError } from "../../error";
 
 const idSchema = z.string().min(1);
-const forbiddenToolTypes = [
-  "computer-use",
-  "computer_use",
-  "computer_use_preview",
-  "file_search",
-  "web_search",
-  "web_search_preview",
-  "image_generation",
-] as const;
 
-const functionToolSchema = z.object({
+export const functionToolSchema = z.object({
   type: z.literal("function"),
   name: idSchema,
   description: z.string().optional(),
   parameters: z.unknown().optional(),
+  strict: z.boolean().optional(),
+  defer_loading: z.boolean().optional(),
 });
 
-const customToolSchema = z.object({
+export const customToolSchema = z.object({
   type: z.literal("custom"),
   name: idSchema,
   description: z.string().optional(),
   format: z.unknown().optional(),
 });
 
-const forbiddenToolSchema = z
-  .object({
-    type: z.enum(forbiddenToolTypes),
-  })
-  .catchall(z.unknown());
+export const namespaceToolSchema = z.object({
+  type: z.literal("namespace"),
+  name: idSchema,
+  description: z.string().optional(),
+  tools: z.array(functionToolSchema).min(1),
+});
 
-const toolsProbeSchema = z
-  .object({
-    tools: z.array(z.object({ type: z.string() }).catchall(z.unknown())).optional(),
-  })
-  .passthrough();
+const executableToolSchema = z.union([functionToolSchema, customToolSchema, namespaceToolSchema]);
+const knownToolTypes = new Set(["function", "custom", "namespace"]);
 
-export const openAIResponsesToolSchema = z.union([functionToolSchema, customToolSchema, forbiddenToolSchema]);
+const unsupportedToolSchema = z.object({
+  type: z.literal("__aio_proxy_unsupported_tool__"),
+  wireType: idSchema,
+});
 
-type RawOpenAIResponsesTool = z.output<typeof openAIResponsesToolSchema>;
+export const openAIResponsesToolSchema = z.unknown().transform((tool, context) => {
+  const parsed = executableToolSchema.safeParse(tool);
+  if (parsed.success) return parsed.data;
+
+  const wireType = safeToolType(tool);
+  if (wireType !== undefined && !knownToolTypes.has(wireType)) {
+    return { type: "__aio_proxy_unsupported_tool__" as const, wireType };
+  }
+
+  context.addIssue({ code: "custom", message: "Invalid OpenAI Responses tool" });
+  return z.NEVER;
+});
+
 export type OpenAIResponsesFunctionTool = z.output<typeof functionToolSchema>;
 export type OpenAIResponsesCustomTool = z.output<typeof customToolSchema>;
-export type OpenAIResponsesTool = OpenAIResponsesFunctionTool | OpenAIResponsesCustomTool;
+export type OpenAIResponsesNamespaceTool = z.output<typeof namespaceToolSchema>;
+export type OpenAIResponsesUnsupportedTool = z.output<typeof unsupportedToolSchema>;
+export type OpenAIResponsesExecutableTool =
+  | OpenAIResponsesFunctionTool
+  | OpenAIResponsesCustomTool
+  | OpenAIResponsesNamespaceTool;
+export type OpenAIResponsesTool = OpenAIResponsesExecutableTool | OpenAIResponsesUnsupportedTool;
 
-export function unsupportedToolFeature(input: unknown): OpenAIResponsesUnsupportedFeatureError | undefined {
-  const parsed = toolsProbeSchema.safeParse(input);
-  if (!parsed.success) return undefined;
-
-  for (const [index, tool] of (parsed.data.tools ?? []).entries()) {
-    if (forbiddenToolTypes.some((forbidden) => forbidden === tool.type)) {
-      return new OpenAIResponsesUnsupportedFeatureError(tool.type, `tools.${index}.type`);
-    }
-  }
-
-  return undefined;
-}
-
-export function supportedTools(
-  tools: readonly RawOpenAIResponsesTool[] | undefined,
-): readonly OpenAIResponsesTool[] | undefined {
-  return tools?.map(supportedTool);
-}
-
-function supportedTool(tool: RawOpenAIResponsesTool): OpenAIResponsesTool {
-  switch (tool.type) {
-    case "function":
-    case "custom":
-      return tool;
-    case "computer-use":
-    case "computer_use":
-    case "computer_use_preview":
-    case "file_search":
-    case "web_search":
-    case "web_search_preview":
-    case "image_generation":
-      throw new OpenAIResponsesUnsupportedFeatureError(tool.type, "tools.type");
-  }
-
-  throw new OpenAIResponsesUnsupportedFeatureError("tool", "tools.type");
+function safeToolType(value: unknown): string | undefined {
+  return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
+    ? value.type
+    : undefined;
 }

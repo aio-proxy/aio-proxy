@@ -9,16 +9,20 @@ afterEach(homes.cleanup);
 
 const rawOnlyFeatures = [
   {
-    name: "reasoning state",
-    body: { model: "gpt-5.6-terra", input: [{ type: "reasoning", id: "rs_1", summary: [] }] },
+    name: "stored response",
+    body: { model: "gpt-5.6-terra", input: "hello", store: true },
   },
   {
     name: "item reference",
     body: { model: "gpt-5.6-terra", input: [{ type: "item_reference", id: "item_1" }] },
   },
   {
-    name: "stored response",
-    body: { model: "gpt-5.6-terra", input: "hello", store: true },
+    name: "unknown semantic item",
+    body: { model: "gpt-5.6-terra", input: [{ type: "future_semantic_item", id: "item_1" }] },
+  },
+  {
+    name: "unknown top-level field",
+    body: { model: "gpt-5.6-terra", input: "hello", future_semantics: true },
   },
 ] as const;
 

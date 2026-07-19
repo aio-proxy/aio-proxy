@@ -1,3 +1,4 @@
+import type { JSONObject } from "@ai-sdk/provider";
 import { z } from "zod";
 import type { JSONValue, ToolSet } from "../ai-sdk-bridge";
 import { jsonSchema } from "../ai-sdk-bridge";
@@ -8,6 +9,8 @@ export type FunctionToolDefinition = {
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
+  readonly strict?: boolean;
+  readonly metadata?: JSONObject;
 };
 
 export function functionToolSet(tools: readonly FunctionToolDefinition[] | undefined): ToolSet | undefined {
@@ -22,6 +25,8 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
       ...(tool.description === undefined ? {} : { description: tool.description }),
       inputSchema: jsonSchema(jsonSchemaObject(tool.inputSchema)),
       outputSchema: jsonSchema({}),
+      ...(tool.strict === undefined ? {} : { strict: tool.strict }),
+      ...(tool.metadata === undefined ? {} : { metadata: tool.metadata }),
     };
   }
   return result;

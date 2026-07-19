@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { OpenAIResponsesRequest } from "../index";
-import { OpenAIResponsesUnsupportedFeatureError, parseOpenAIResponses, safeParseOpenAIResponses } from "../index";
+import { parseOpenAIResponses } from "../index";
 
 test("accepts a developer message", () => {
   const request: OpenAIResponsesRequest = {
@@ -47,17 +47,31 @@ test("accepts background true for synchronous downgrade", () => {
   expect(parseOpenAIResponses(request)).toEqual(request);
 });
 
-test("identifies an unsupported built-in item", () => {
-  const result = safeParseOpenAIResponses({
-    model: "gpt-5.6-terra",
-    input: [{ type: "computer_call", id: "computer_1" }],
-  });
+test("preserves known semantic extension items", () => {
+  const input: Extract<OpenAIResponsesRequest["input"], unknown[]> = [
+    {
+      type: "additional_tools",
+      role: "developer",
+      tools: [{ type: "custom", name: "exec", format: { type: "text" } }],
+    },
+    { type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "exec", input: "pwd" },
+    { type: "custom_tool_call_output", id: "out_1", call_id: "call_1", output: "done" },
+    {
+      type: "agent_message",
+      id: "amsg_1",
+      author: "worker",
+      recipient: "root",
+      content: [{ type: "input_text", text: "finished" }],
+    },
+  ];
 
-  expect(result).toEqual({
-    ok: false,
-    error: new OpenAIResponsesUnsupportedFeatureError("computer_call", "input.0.type"),
-  });
-  if (!result.ok && result.error instanceof OpenAIResponsesUnsupportedFeatureError) {
-    expect(result.error.status).toBe(501);
-  }
+  expect(parseOpenAIResponses({ model: "gpt-5.6-terra", input }).input).toEqual(input);
+});
+
+test("retains unknown typed items for raw-only routing", () => {
+  const input = [{ type: "computer_call", id: "computer_1" }];
+
+  expect(parseOpenAIResponses({ model: "gpt-5.6-terra", input }).input).toEqual([
+    { type: "__aio_proxy_unsupported__", wireType: "computer_call" },
+  ]);
 });

@@ -72,18 +72,40 @@ describe("OpenAI Responses transform", () => {
 
     const converted = openAIResponsesToModelMessages(request);
 
-    expect(converted.tools).toEqual([
-      {
-        type: "function",
-        name: "lookup",
-        description: "Lookup a value",
-        inputSchema: {
-          type: "object",
-          properties: { query: { type: "string" } },
-          required: ["query"],
-        },
-      },
-      { type: "custom", name: "emit_raw", description: "Emit raw data", format: { type: "text" } },
+    expect(converted.tools).toMatchObject([
+      { type: "function", name: "lookup", metadata: { aioProxy: { openaiResponses: { wireToolType: "function" } } } },
+      { type: "function", name: "emit_raw", metadata: { aioProxy: { openaiResponses: { wireToolType: "custom" } } } },
     ]);
+    expect(modelMessagesToOpenAIResponses({ model: request.model, ...converted }).tools).toEqual(request.tools);
+  });
+
+  test("Given additional tools When transformed twice Then they are normalized before messages", () => {
+    const request = parseOpenAIResponses({
+      model: "gpt-5.6-terra",
+      input: [
+        { type: "reasoning", summary: [] },
+        {
+          type: "additional_tools",
+          role: "developer",
+          tools: [
+            { type: "custom", name: "emit_raw", format: { type: "text" } },
+            {
+              type: "namespace",
+              name: "agents",
+              tools: [{ type: "function", name: "spawn_agent", strict: false }],
+            },
+          ],
+        },
+        { role: "user", content: "after" },
+      ],
+      tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }],
+      tool_choice: { type: "custom", name: "emit_raw" },
+    });
+
+    const converted = openAIResponsesToModelMessages(request);
+    const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
+
+    expect(converted.settings.toolChoice).toEqual({ type: "tool", toolName: "emit_raw" });
+    expect(roundTrip.input).toEqual([request.input[1], request.input[2]]);
   });
 });

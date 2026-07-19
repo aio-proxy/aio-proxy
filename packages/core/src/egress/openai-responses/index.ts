@@ -1,25 +1,27 @@
 import type { Response, ResponseStreamEvent } from "openai/resources/responses/responses";
-import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
-import type { ModelEgressContext } from "../protocol/adapter";
-import { createCancellableEgressStream } from "./cancellable-stream";
+import type { ModelEgressContext } from "../../protocol/adapter";
+import { createCancellableEgressStream } from "../cancellable-stream";
 import {
+  customInput,
   ensureOutput,
+  type FinishPart,
+  type FinishStepPart,
+  finishUsage,
   messageItem,
+  type OpenAIResponsesStreamPart,
   openAIUsage,
   outputIndex,
+  reasoningDelta,
   reasoningItem,
   responseObject,
   responseState,
+  startTool,
+  textDelta,
   toolItem,
   upstreamMetadata,
-} from "./openai-responses/response-state";
+} from "./state";
 
 const encoder = new TextEncoder();
-type OpenAIResponsesStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
-type TextDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "text-delta" }>;
-type ReasoningDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "reasoning-delta" }>;
-type FinishPart = Extract<OpenAIResponsesStreamPart, { type: "finish" }>;
-type FinishStepPart = Extract<OpenAIResponsesStreamPart, { type: "finish-step" }>;
 
 export type OpenAIResponsesResponse = Response;
 
@@ -35,11 +37,7 @@ export function writeOpenAIResponsesSSE(
       sequenceNumber += 1;
     };
 
-    send({
-      type: "response.created",
-      sequence_number: sequenceNumber,
-      response: responseObject("in_progress", state),
-    });
+    send({ type: "response.created", sequence_number: sequenceNumber, response: responseObject("in_progress", state) });
 
     for await (const part of parts) {
       switch (part.type) {
@@ -90,13 +88,7 @@ export function writeOpenAIResponsesSSE(
         }
         case "tool-input-start": {
           if (state.tools.has(part.id)) break;
-          const tool = {
-            id: `fc_${crypto.randomUUID()}`,
-            callId: part.id,
-            name: part.toolName,
-            arguments: "",
-            completed: false,
-          };
+          const tool = startTool(part);
           state.tools.set(part.id, tool);
           const output = ensureOutput(state, { type: "tool", callId: part.id });
           send({
@@ -110,14 +102,16 @@ export function writeOpenAIResponsesSSE(
         case "tool-input-delta": {
           const tool = state.tools.get(part.id);
           if (tool === undefined || tool.completed) break;
-          tool.arguments += part.delta;
-          send({
-            type: "response.function_call_arguments.delta",
-            sequence_number: sequenceNumber,
-            item_id: tool.id,
-            output_index: outputIndex(state, { type: "tool", callId: part.id }),
-            delta: part.delta,
-          });
+          tool.input += part.delta;
+          if (tool.wireType === "function") {
+            send({
+              type: "response.function_call_arguments.delta",
+              sequence_number: sequenceNumber,
+              item_id: tool.id,
+              output_index: outputIndex(state, { type: "tool", callId: part.id }),
+              delta: part.delta,
+            });
+          }
           break;
         }
         case "tool-input-end": {
@@ -125,14 +119,32 @@ export function writeOpenAIResponsesSSE(
           if (tool === undefined || tool.completed) break;
           tool.completed = true;
           const index = outputIndex(state, { type: "tool", callId: part.id });
-          send({
-            type: "response.function_call_arguments.done",
-            sequence_number: sequenceNumber,
-            item_id: tool.id,
-            output_index: index,
-            name: tool.name,
-            arguments: tool.arguments,
-          });
+          if (tool.wireType === "custom") {
+            const input = customInput(tool.input);
+            send({
+              type: "response.custom_tool_call_input.delta",
+              sequence_number: sequenceNumber,
+              item_id: tool.id,
+              output_index: index,
+              delta: input,
+            });
+            send({
+              type: "response.custom_tool_call_input.done",
+              sequence_number: sequenceNumber,
+              item_id: tool.id,
+              output_index: index,
+              input,
+            });
+          } else {
+            send({
+              type: "response.function_call_arguments.done",
+              sequence_number: sequenceNumber,
+              item_id: tool.id,
+              output_index: index,
+              name: tool.name,
+              arguments: tool.input,
+            });
+          }
           send({
             type: "response.output_item.done",
             sequence_number: sequenceNumber,
@@ -158,11 +170,7 @@ export function writeOpenAIResponsesSSE(
     }
 
     const response = responseObject("completed", state);
-    send({
-      type: "response.completed",
-      sequence_number: sequenceNumber,
-      response,
-    });
+    send({ type: "response.completed", sequence_number: sequenceNumber, response });
     context.onResponseId?.(response.id);
   });
 }
@@ -172,7 +180,6 @@ export async function writeOpenAIResponsesResponse(
   context: ModelEgressContext,
 ): Promise<Response> {
   const state = responseState(context.modelId);
-
   for await (const part of stream) {
     switch (part.type) {
       case "reasoning-delta":
@@ -185,19 +192,13 @@ export async function writeOpenAIResponsesResponse(
         break;
       case "tool-input-start":
         if (!state.tools.has(part.id)) {
-          state.tools.set(part.id, {
-            id: `fc_${crypto.randomUUID()}`,
-            callId: part.id,
-            name: part.toolName,
-            arguments: "",
-            completed: false,
-          });
+          state.tools.set(part.id, startTool(part));
           ensureOutput(state, { type: "tool", callId: part.id });
         }
         break;
       case "tool-input-delta": {
         const tool = state.tools.get(part.id);
-        if (tool !== undefined && !tool.completed) tool.arguments += part.delta;
+        if (tool !== undefined && !tool.completed) tool.input += part.delta;
         break;
       }
       case "tool-input-end": {
@@ -209,7 +210,7 @@ export async function writeOpenAIResponsesResponse(
         throw part.error;
       case "finish-step":
         assertSuccessfulFinish(part);
-        if ("response" in part) state.metadata = upstreamMetadata(part.response, state.metadata);
+        state.metadata = upstreamMetadata(part, state.metadata);
         break;
       case "finish": {
         assertSuccessfulFinish(part);
@@ -221,32 +222,15 @@ export async function writeOpenAIResponsesResponse(
         break;
     }
   }
-
   const response = responseObject("completed", state);
   context.onResponseId?.(response.id);
   return response;
-}
-
-function textDelta(part: TextDeltaPart): string {
-  return "delta" in part ? part.delta : part.text;
-}
-
-function reasoningDelta(part: ReasoningDeltaPart): string {
-  return "delta" in part ? part.delta : part.text;
 }
 
 function assertSuccessfulFinish(part: FinishPart | FinishStepPart): void {
   if (part.finishReason !== "error") return;
   const rawReason = "rawFinishReason" in part ? part.rawFinishReason : undefined;
   throw new Error(rawReason ?? "Model stream finished with an error");
-}
-
-function finishUsage(part: FinishPart): {
-  readonly inputTokens?: number | undefined;
-  readonly outputTokens?: number | undefined;
-  readonly totalTokens?: number | undefined;
-} {
-  return "usage" in part ? part.usage : part.totalUsage;
 }
 
 function frame(value: ResponseStreamEvent): Uint8Array {
