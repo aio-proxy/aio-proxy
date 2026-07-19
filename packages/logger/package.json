@@ -1,0 +1,22 @@
+{
+  "name": "@aio-proxy/logger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun run test:unit",
+    "test:unit": "bun test"
+  },
+  "dependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "@logtape/file": "2.1.1",
+    "@logtape/logtape": "2.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
