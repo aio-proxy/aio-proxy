@@ -11,9 +11,6 @@ export const displayTotalTokens = (usage: UsageRow | undefined) =>
 export const formatLogCost = (cost: number | undefined, locale = navigator.language) =>
   cost === undefined ? m["dashboard.logs.not_available"]() : createUsageValueFormatter("cost", locale)(cost);
 
-export const formatLogNumber = (value: number | undefined, locale = navigator.language) =>
-  value === undefined ? m["dashboard.logs.not_available"]() : new Intl.NumberFormat(locale).format(value);
-
 export const formatDuration = (milliseconds: number, locale = navigator.language) =>
   milliseconds < 1_000
     ? m["dashboard.logs.duration_ms"]({ value: new Intl.NumberFormat(locale).format(milliseconds) })

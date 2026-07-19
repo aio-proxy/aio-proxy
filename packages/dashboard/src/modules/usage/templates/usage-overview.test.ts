@@ -32,7 +32,7 @@ describe("usage overview", () => {
     const formatTokens = createUsageValueFormatter("tokens", "en-US");
     const formatRequests = createUsageValueFormatter("requests", "en-US");
 
-    expect(formatTokens(1_200)).toBe("1K");
+    expect(formatTokens(1_200)).toBe("1.2K");
     expect(formatRequests(1_234_567)).toBe("1M");
   });
 });

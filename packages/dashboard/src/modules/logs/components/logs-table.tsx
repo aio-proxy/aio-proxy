@@ -14,6 +14,7 @@ import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { useState } from "react";
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { ProtocolLabel } from "@/components/protocol-label";
+import { TokenCount } from "@/components/token-count";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +26,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { displayTotalTokens, formatDuration, formatLogCost, formatLogNumber } from "../log-formatters";
+import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
 import type { LogsSearch } from "../logs-search";
 
 type Props = {
@@ -95,8 +96,10 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
   {
     id: "tokens",
     header: () => m["dashboard.logs.tokens"](),
-    cell: ({ row }: CellContext<DashboardRequestLog, unknown>) =>
-      formatLogNumber(displayTotalTokens(row.original.usage)),
+    cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => {
+      const tokens = displayTotalTokens(row.original.usage);
+      return tokens === undefined ? m["dashboard.logs.not_available"]() : <TokenCount value={tokens} />;
+    },
   },
   {
     id: "cost",

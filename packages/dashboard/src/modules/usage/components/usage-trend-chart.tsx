@@ -4,6 +4,7 @@ import { enUS, zhCN } from "date-fns/locale";
 import { useAtomValue } from "jotai";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { formatExactTokenCount } from "@/components/token-count";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   type ChartConfig,
@@ -33,8 +34,11 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const { metric } = useAtomValue(usageOverviewFiltersAtom);
   const chartTitleId = useId();
   const chartDescriptionId = useId();
-  const locale = getLocale().startsWith("zh") ? zhCN : enUS;
-  const formatValue = createUsageValueFormatter(metric, getLocale());
+  const uiLocale = getLocale();
+  const dateLocale = uiLocale.startsWith("zh") ? zhCN : enUS;
+  const formatValue = createUsageValueFormatter(metric, uiLocale);
+  const formatTooltipValue =
+    metric === "tokens" ? (value: number) => formatExactTokenCount(value, uiLocale) : formatValue;
   const seriesLabel = (series: UsageOverviewSeries) => {
     if (series.kind === "dimension")
       return series.key.startsWith("dimension:")
@@ -50,7 +54,7 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const chartData = data.buckets.map((bucket) => ({ bucket: bucket.key, ...bucket.values }));
   const formatBucket = (value: string, tooltip: boolean) =>
     format(parseISO(value), data.bucketUnit === "hour" ? "MMM d, HH:mm xxx" : tooltip ? "PP" : "MMM d", {
-      locale,
+      locale: dateLocale,
     });
   return (
     <Card>
@@ -88,7 +92,7 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
                     formatter={(value, name) => (
                       <div className="flex w-full items-center justify-between gap-4">
                         <span className="text-muted-foreground">{String(name)}</span>
-                        <span className="font-medium font-mono tabular-nums">{formatValue(Number(value))}</span>
+                        <span className="font-medium font-mono tabular-nums">{formatTooltipValue(Number(value))}</span>
                       </div>
                     )}
                   />
