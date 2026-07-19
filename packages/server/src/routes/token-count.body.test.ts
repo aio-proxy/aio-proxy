@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { anthropicMessagesAdapter, Router } from "@aio-proxy/core";
+import { expect, spyOn, test } from "bun:test";
+import { anthropicMessagesAdapter, REQUEST_BODY_LIMITS, Router } from "@aio-proxy/core";
 import type { TokenCountCapability } from "@aio-proxy/plugin-sdk";
 import { ProviderKind } from "@aio-proxy/types";
 import { createRecording } from "../../_test/pipeline-helpers/recording";
@@ -11,7 +11,7 @@ test("rejects oversized Content-Length and cancels the count request body before
   let cancelled = false;
   const request = new Request("https://proxy.test/v1/messages/count_tokens", {
     method: "POST",
-    headers: { "content-length": String(8 * 1_024 * 1_024 + 1), "content-type": "application/json" },
+    headers: { "content-length": String(REQUEST_BODY_LIMITS.encoded + 1), "content-type": "application/json" },
     body: new ReadableStream<Uint8Array>({
       cancel() {
         cancelled = true;
@@ -27,6 +27,31 @@ test("rejects oversized Content-Length and cancels the count request body before
   expect(request.bodyUsed).toBe(true);
   expect(fixture.recording.begins).toEqual([]);
   expect(fixture.releases()).toBe(0);
+});
+
+test("rejects unsupported content encoding before counting tokens", async () => {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const fixture = countFixture([]);
+  try {
+    const response = await runCount(
+      fixture.source,
+      new Request("https://proxy.test/v1/messages/count_tokens", {
+        method: "POST",
+        headers: { "content-encoding": "compress", "content-type": "application/json" },
+        body: JSON.stringify({ model: "count-model", max_tokens: 16, messages: [] }),
+      }),
+    );
+
+    expect(response.status).toBe(415);
+    expect(await response.json()).toEqual({
+      type: "error",
+      error: { type: "invalid_request_error", message: "Unsupported Content-Encoding" },
+    });
+    expect(fixture.recording.begins).toEqual([]);
+    expect(fixture.releases()).toBe(0);
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test("releases the retained count body after a provider returns a real count", async () => {

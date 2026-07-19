@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AiSdkProviderInstance } from "@aio-proxy/core";
+import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import { messagesRequest, textStream } from "../../_test/anthropic-messages.test-support";
 import { createServer } from "../server";
 
@@ -41,7 +41,7 @@ describe("POST /v1/messages/count_tokens", () => {
     const response = await app.request("/v1/messages/count_tokens", {
       body: JSON.stringify(messagesRequest),
       headers: {
-        "content-length": String(8 * 1_024 * 1_024 + 1),
+        "content-length": String(REQUEST_BODY_LIMITS.encoded + 1),
         "content-type": "application/json",
       },
       method: "POST",

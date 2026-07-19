@@ -1,3 +1,4 @@
+import { REQUEST_BODY_LIMITS } from "@aio-proxy/core";
 import {
   createProtocolContext,
   defineProtocolAdapter,
@@ -7,7 +8,7 @@ import {
 import type { UsageCompletion } from "../../usage-capture";
 import { handleProtocolRequest } from "./index";
 
-export const MAX_BODY_BYTES = 8 * 1_024 * 1_024;
+export const MAX_BODY_BYTES = REQUEST_BODY_LIMITS.encoded;
 
 export function pipeline(
   fixtures: readonly FakeProvider[],
