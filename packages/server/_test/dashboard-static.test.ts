@@ -8,8 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createDashboardAuthentication } from "../src/dashboard-auth";
-import { loopbackServer } from "../src/dashboard-auth/test-support";
+import { disabledDashboardAuthentication, loopbackServer } from "../src/dashboard-auth/test-support";
 import { createDashboardRoutes } from "../src/dashboard-routes/config";
 import { createServerState } from "../src/server-state";
 
@@ -116,10 +115,7 @@ describe("dashboard static routes", () => {
       builtIns: [{ packageName: "@example/broken", version: "1.2.3", descriptor }],
       pluginLogger: () => {},
     });
-    const routes = createDashboardRoutes(
-      state,
-      createDashboardAuthentication(() => undefined),
-    );
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
       const removedPlugins = await routes.request("/plugins");

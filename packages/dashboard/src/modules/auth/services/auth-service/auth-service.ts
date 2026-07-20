@@ -1,6 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 
-import { dashboardClient, setDashboardUnauthorizedHandler } from "@/lib/dashboard-client";
+import {
+  dashboardClient,
+  setDashboardUnauthorizedHandler,
+  setDashboardUnavailableHandler,
+} from "@/lib/dashboard-client";
 import { queryClient } from "@/lib/query-client";
 
 import {
@@ -8,10 +12,12 @@ import {
   type DashboardAuthSession,
   isNotDashboardAuthQuery,
   markDashboardSessionExpired,
+  markDashboardUnavailable,
   setDashboardAuthSession,
 } from "../auth-session-store";
 
 setDashboardUnauthorizedHandler(markDashboardSessionExpired);
+setDashboardUnavailableHandler(markDashboardUnavailable);
 
 export type DashboardLoginResult =
   | { readonly ok: true }

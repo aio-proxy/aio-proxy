@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { disabledDashboardAuthentication } from "../dashboard-auth/test-support";
 import { createServerState } from "../server-state";
 import { createDashboardRoutes } from "./config";
 
@@ -47,7 +48,7 @@ test("GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
   });
 
   try {
-    const response = await createDashboardRoutes(state).request("/oauth/capabilities");
+    const response = await createDashboardRoutes(state, disabledDashboardAuthentication).request("/oauth/capabilities");
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload).toEqual({

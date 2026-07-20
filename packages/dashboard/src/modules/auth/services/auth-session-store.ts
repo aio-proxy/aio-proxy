@@ -24,3 +24,10 @@ export function markDashboardSessionExpired(): void {
       : { status: "unauthenticated" },
   );
 }
+
+export function markDashboardUnavailable(): void {
+  const current = queryClient.getQueryData<DashboardAuthSession>(dashboardAuthQueryKey);
+  if (current?.status !== "authenticated" && current?.status !== "disabled") return;
+  queryClient.removeQueries({ predicate: isNotDashboardAuthQuery });
+  setDashboardAuthSession({ status: "unavailable" });
+}

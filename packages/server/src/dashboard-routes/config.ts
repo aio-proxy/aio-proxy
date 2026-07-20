@@ -27,8 +27,8 @@ import type { DashboardAuthentication } from "../dashboard-auth";
 import type { ServerState } from "../server-state";
 
 import { ConfigReloadRejectedError } from "../config-store";
-import { dashboardSessionToken } from "../dashboard-auth";
 import { isTrustedProviderPackage } from "../provider-package-trust";
+import { createDashboardEventsRoute } from "./events";
 import { createDashboardOAuthLoginRoutes } from "./oauth-login";
 import {
   insertProvider,
@@ -284,18 +284,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
         throw error;
       }
     })
-    .get("/events", (context) => {
-      const token = dashboardSessionToken(context);
-      return new Response(
-        state.events.stream(() => auth.available() && (!auth.enabled() || auth.verify(token))),
-        {
-          headers: {
-            "cache-control": "no-cache",
-            "content-type": "text/event-stream; charset=utf-8",
-          },
-        },
-      );
-    })
+    .route("/events", createDashboardEventsRoute(state, auth))
     .post("/reload", async (context) => {
       const result = await state.reload();
       if (result.ok) {

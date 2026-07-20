@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { disabledDashboardAuthentication } from "../dashboard-auth/test-support";
 import { createServerState } from "../server-state";
 import { createDashboardRoutes } from "./config";
 
@@ -95,7 +96,7 @@ test("OAuth edit-view is secret-safe and common edits preserve account identity 
     watchConfig: false,
     builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
   });
-  const routes = createDashboardRoutes(state);
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
   try {
     const editResponse = await routes.request("/providers/person/edit-view");

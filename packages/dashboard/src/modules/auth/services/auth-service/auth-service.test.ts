@@ -8,6 +8,7 @@ import { loginDashboard } from "./auth-service";
 const mocks = rs.hoisted(() => ({
   login: rs.fn(),
   unauthorized: undefined as (() => void) | undefined,
+  unavailable: undefined as (() => void) | undefined,
 }));
 
 rs.mock("@/lib/dashboard-client", () => ({
@@ -16,6 +17,9 @@ rs.mock("@/lib/dashboard-client", () => ({
   },
   setDashboardUnauthorizedHandler: (handler: () => void) => {
     mocks.unauthorized = handler;
+  },
+  setDashboardUnavailableHandler: (handler: () => void) => {
+    mocks.unavailable = handler;
   },
 }));
 
