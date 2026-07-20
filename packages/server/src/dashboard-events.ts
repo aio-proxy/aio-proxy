@@ -7,12 +7,13 @@ export type DashboardEventLimits = {
 
 export type DashboardEventHub = {
   readonly publish: (event: DashboardEvent) => void;
-  readonly stream: () => ReadableStream<Uint8Array>;
+  readonly stream: (authorized?: () => boolean) => ReadableStream<Uint8Array>;
   readonly close: () => void;
 };
 
 type Subscriber = {
   readonly id: number;
+  readonly authorized: () => boolean;
   controller?: ReadableStreamDefaultController<Uint8Array>;
   closed: boolean;
   outstandingBytes: number;
@@ -49,9 +50,10 @@ export function createDashboardEventHub(limits: DashboardEventLimits = defaultLi
     }
   }
 
-  function stream(): ReadableStream<Uint8Array> {
+  function stream(authorized: () => boolean = () => true): ReadableStream<Uint8Array> {
     const subscriber: Subscriber = {
       id: nextSubscriberId,
+      authorized,
       closed: false,
       outstandingBytes: 0,
       outstandingEvents: 0,
@@ -106,6 +108,10 @@ export function createDashboardEventHub(limits: DashboardEventLimits = defaultLi
 
   function push(subscriber: Subscriber, bytes: Uint8Array): void {
     if (subscriber.closed) {
+      return;
+    }
+    if (!subscriber.authorized()) {
+      closeSubscriber(subscriber, true);
       return;
     }
 

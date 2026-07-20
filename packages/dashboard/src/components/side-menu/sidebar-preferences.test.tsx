@@ -30,6 +30,7 @@ rs.mock("@aio-proxy/i18n", () => ({
 }));
 
 rs.mock("./reload-dashboard", () => ({ reloadDashboard: mocks.reloadDashboard }));
+rs.mock("./sidebar-logout", () => ({ SidebarLogout: () => null }));
 
 const renderPreferences = () =>
   render(

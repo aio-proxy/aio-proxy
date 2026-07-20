@@ -7,6 +7,7 @@ import type { RetiredProviderSnapshot } from "../runtime";
 import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure } from "./types";
 
 import { type AccountRemovalCoordinator, asProviderRecord } from "../account-removal";
+import { normalizeDashboardPassword } from "../dashboard-auth";
 import { providerDiff } from "../provider-runtime";
 import { providerConfigRecord, type Snapshot } from "./snapshot";
 
@@ -16,6 +17,7 @@ export async function reloadSnapshot({
   configFile,
   logger,
   manager,
+  onDashboardAuthHealthChanged = () => {},
   retainedOperations = [],
 }: {
   readonly accountRemovals: AccountRemovalCoordinator;
@@ -23,12 +25,21 @@ export async function reloadSnapshot({
   readonly configFile: AtomicConfigFile | undefined;
   readonly logger: (entry: ConfigReloadLog) => void;
   readonly manager: SnapshotManager;
+  readonly onDashboardAuthHealthChanged?: (available: boolean) => void;
   readonly retainedOperations?: readonly PendingAccountOperation[];
 }): Promise<ConfigReloadResult> {
   try {
     const before = (manager.current() as Snapshot).summaries;
     if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, "reload");
-    else await reloadConfigFile({ accountRemovals, commitConfig, configFile, manager, retainedOperations });
+    else
+      await reloadConfigFile({
+        accountRemovals,
+        commitConfig,
+        configFile,
+        manager,
+        onDashboardAuthHealthChanged,
+        retainedOperations,
+      });
     return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
   } catch (error) {
     const result = reloadError(error);
@@ -42,38 +53,60 @@ async function reloadConfigFile({
   commitConfig,
   configFile,
   manager,
+  onDashboardAuthHealthChanged,
   retainedOperations,
 }: {
   readonly accountRemovals: AccountRemovalCoordinator;
   readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
   readonly configFile: AtomicConfigFile;
   readonly manager: SnapshotManager;
+  readonly onDashboardAuthHealthChanged: (available: boolean) => void;
   readonly retainedOperations: readonly PendingAccountOperation[];
 }): Promise<void> {
   const staged: PendingAccountOperation[] = [...retainedOperations];
   const newlyStaged: PendingAccountOperation[] = [];
   const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
   let retired: RetiredProviderSnapshot | undefined;
+  let commitAfterWrite = false;
+  let dashboardPasswordNormalized: boolean | undefined;
   try {
-    await configFile.transaction(async (current) => {
-      const previous = manager.current() as Snapshot;
-      const previousProviders = Object.fromEntries(
-        Object.entries(providerConfigRecord(previous.config)).filter(
-          ([providerId]) => !retainedProviderIds.has(providerId),
-        ),
-      );
-      const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
-      newlyStaged.push(...detected);
-      staged.push(...detected);
-      retired = await commitConfig(ConfigSchema.parse(current), "reload");
-      return { next: current, result: undefined };
-    });
+    await configFile.transaction(
+      async (current) => {
+        let next: Record<string, unknown>;
+        try {
+          next = await normalizeDashboardPassword(current);
+          dashboardPasswordNormalized = true;
+        } catch (error) {
+          dashboardPasswordNormalized = false;
+          throw error;
+        }
+        const previous = manager.current() as Snapshot;
+        const previousProviders = Object.fromEntries(
+          Object.entries(providerConfigRecord(previous.config)).filter(
+            ([providerId]) => !retainedProviderIds.has(providerId),
+          ),
+        );
+        const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(next["providers"]));
+        newlyStaged.push(...detected);
+        staged.push(...detected);
+        commitAfterWrite = next !== current;
+        if (!commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(next), "reload");
+        return { next, result: undefined };
+      },
+      {
+        verify: async (candidate) => {
+          if (commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(candidate), "reload");
+        },
+      },
+    );
   } catch (error) {
+    if (dashboardPasswordNormalized === false) onDashboardAuthHealthChanged(false);
     if (retired !== undefined) void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
     else if (error instanceof AtomicConfigCommitUncertainError) accountRemovals.scheduleRecovery(staged);
     else accountRemovals.compensate(newlyStaged);
     throw error;
   }
+  onDashboardAuthHealthChanged(true);
   void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
 }
 

@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { disabledDashboardAuthentication, loopbackServer } from "../src/dashboard-auth/test-support";
 import { createDashboardRoutes } from "../src/dashboard-routes/config";
 import { createServerState } from "../src/server-state";
 
@@ -24,14 +25,14 @@ describe("dashboard static routes", () => {
 
     try {
       // When
-      const dashboard = await app.request("/dashboard");
-      const dashboardSlash = await app.request("/dashboard/");
-      const asset = await app.request("/dashboard/static/app.js");
-      const missingAsset = await app.request("/dashboard/static/missing.js");
-      const frontendRoute = await app.request("/dashboard/providers");
-      const api = await app.request("/dashboard/api/config");
-      const missingApi = await app.request("/dashboard/api/missing");
-      const oldApi = await app.request("/dashboard/config");
+      const dashboard = await app.request("/dashboard", undefined, loopbackServer);
+      const dashboardSlash = await app.request("/dashboard/", undefined, loopbackServer);
+      const asset = await app.request("/dashboard/static/app.js", undefined, loopbackServer);
+      const missingAsset = await app.request("/dashboard/static/missing.js", undefined, loopbackServer);
+      const frontendRoute = await app.request("/dashboard/providers", undefined, loopbackServer);
+      const api = await app.request("/dashboard/api/config", undefined, loopbackServer);
+      const missingApi = await app.request("/dashboard/api/missing", undefined, loopbackServer);
+      const oldApi = await app.request("/dashboard/config", undefined, loopbackServer);
 
       // Then
       expect(dashboard.status).toBe(200);
@@ -114,7 +115,7 @@ describe("dashboard static routes", () => {
       builtIns: [{ packageName: "@example/broken", version: "1.2.3", descriptor }],
       pluginLogger: () => {},
     });
-    const routes = createDashboardRoutes(state);
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
       const removedPlugins = await routes.request("/plugins");

@@ -23,10 +23,12 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
 
+import type { DashboardAuthentication } from "../dashboard-auth";
 import type { ServerState } from "../server-state";
 
 import { ConfigReloadRejectedError } from "../config-store";
 import { isTrustedProviderPackage } from "../provider-package-trust";
+import { createDashboardEventsRoute } from "./events";
 import { createDashboardOAuthLoginRoutes } from "./oauth-login";
 import {
   insertProvider,
@@ -124,7 +126,7 @@ function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): Req
   };
 }
 
-export const createDashboardRoutes = (state: ServerState) =>
+export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
     .get("/oauth/capabilities", (context) => context.json({ capabilities: state.oauthCapabilities() }))
@@ -282,16 +284,7 @@ export const createDashboardRoutes = (state: ServerState) =>
         throw error;
       }
     })
-    .get(
-      "/events",
-      () =>
-        new Response(state.events.stream(), {
-          headers: {
-            "cache-control": "no-cache",
-            "content-type": "text/event-stream; charset=utf-8",
-          },
-        }),
-    )
+    .route("/events", createDashboardEventsRoute(state, auth))
     .post("/reload", async (context) => {
       const result = await state.reload();
       if (result.ok) {

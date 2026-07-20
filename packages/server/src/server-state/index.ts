@@ -46,7 +46,8 @@ export function createServerDiagnosticFactory(now: () => number = Date.now): Dia
 }
 
 export async function createServerState(options: ServerStateOptions): Promise<ServerState> {
-  const testHooks = (options as InternalServerStateOptions).__test;
+  const internalOptions = options as InternalServerStateOptions;
+  const testHooks = internalOptions.__test;
   const createRouter =
     testHooks?.createRouter ?? ((providers: readonly RuntimeProviderInstance[]) => new Router(providers));
   const events = createDashboardEventHub(options.eventLimits);
@@ -156,7 +157,15 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   }
 
   const reloadNow = (retainedOperations: readonly PendingAccountOperation[] = []) =>
-    reloadSnapshot({ accountRemovals, commitConfig, configFile, logger, manager, retainedOperations });
+    reloadSnapshot({
+      accountRemovals,
+      commitConfig,
+      configFile,
+      logger,
+      manager,
+      onDashboardAuthHealthChanged: internalOptions.__dashboardAuthHealthChanged,
+      retainedOperations,
+    });
 
   recovery = createRecovery({
     configFile,

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAccountRemovalCoordinator } from "../../src/account-removal";
+import { disabledDashboardAuthentication } from "../../src/dashboard-auth/test-support";
 import { createDashboardRoutes } from "../../src/dashboard-routes/config";
 import { createSnapshotManager } from "../../src/plugin-snapshot";
 import { createServerState } from "../../src/server-state";
@@ -147,7 +148,7 @@ test("delete, re-add, and delete again only removes the account after every rout
     builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
   });
   const oldestLease = state.acquireProviderSnapshot();
-  const routes = createDashboardRoutes(state);
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
   try {
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toContain("person");

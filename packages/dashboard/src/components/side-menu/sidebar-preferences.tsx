@@ -12,6 +12,7 @@ import {
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 import { reloadDashboard } from "./reload-dashboard";
+import { SidebarLogout } from "./sidebar-logout";
 
 const themes = [
   ["system", () => m["dashboard.preferences.theme_system"]()],
@@ -65,6 +66,7 @@ export const SidebarPreferences: React.FC = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
+        <SidebarLogout />
       </SidebarMenu>
     </SidebarFooter>
   );

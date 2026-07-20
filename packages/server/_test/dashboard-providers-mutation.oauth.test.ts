@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { disabledDashboardAuthentication } from "../src/dashboard-auth/test-support";
 import { createDashboardRoutes } from "../src/dashboard-routes/config";
 import { createServerState } from "../src/server-state";
 import { seedOAuthAccount, waitUntil } from "./dashboard-providers-mutation.oauth.test-support";
@@ -35,7 +36,7 @@ describe("dashboard OAuth provider deletion", () => {
         pluginRepository: repository,
         watchConfig: false,
       });
-      const routes = createDashboardRoutes(state);
+      const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
       try {
         const response = await routes.request("/providers/person", { method: "DELETE" });
@@ -70,7 +71,7 @@ describe("dashboard OAuth provider deletion", () => {
       pluginRepository: repository,
       watchConfig: false,
     });
-    const routes = createDashboardRoutes(state);
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
       const response = await routes.request("/providers/person", { method: "DELETE" });
@@ -106,7 +107,7 @@ describe("dashboard OAuth provider deletion", () => {
       pluginRepository: repository,
       watchConfig: false,
     });
-    const routes = createDashboardRoutes(state);
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
       const response = await routes.request("/providers/person", { method: "DELETE" });
@@ -154,7 +155,7 @@ describe("dashboard OAuth provider deletion", () => {
       pluginRepository: repository,
       watchConfig: false,
     });
-    const routes = createDashboardRoutes(state);
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
       const response = await routes.request("/providers/person", { method: "DELETE" });

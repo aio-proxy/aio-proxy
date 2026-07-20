@@ -6,6 +6,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
+
 const homes: string[] = [];
 
 afterEach(() => {
@@ -76,7 +78,7 @@ describe("GET /dashboard/api/usage", () => {
   test("returns the requested overview with pinned provider series", async () => {
     const response = await (
       await seededApp()
-    ).request("/dashboard/api/usage?range=24h&metric=requests&groupBy=provider");
+    ).request("/dashboard/api/usage?range=24h&metric=requests&groupBy=provider", undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -105,7 +107,7 @@ describe("GET /dashboard/api/usage", () => {
   });
 
   test("uses the default range, metric, and grouping", async () => {
-    const response = await (await seededApp()).request("/dashboard/api/usage");
+    const response = await (await seededApp()).request("/dashboard/api/usage", undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -113,7 +115,7 @@ describe("GET /dashboard/api/usage", () => {
   });
 
   test.each(["range=1h", "metric=latency", "groupBy=protocol"])("rejects invalid query %s", async (query) => {
-    const response = await (await seededApp()).request(`/dashboard/api/usage?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/usage?${query}`, undefined, loopbackServer);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "validation failed", details: expect.any(Array) });

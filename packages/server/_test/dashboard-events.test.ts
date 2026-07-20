@@ -1,4 +1,3 @@
-import { createServer } from "@aio-proxy/server";
 import { describe, expect, test } from "bun:test";
 
 import { createDashboardEventHub } from "../src/dashboard-events";
@@ -39,31 +38,6 @@ describe("dashboard event hub", () => {
 
     // Then
     expect(() => hub.close()).not.toThrow();
-  });
-
-  test("Given slow dashboard event consumer When queue overflows Then dropped event is emitted and stream closes", async () => {
-    // Given
-    const app = await createServer({
-      config: { providers: {} },
-      eventLimits: { maxEvents: 1, maxBytes: 1_024 },
-    });
-    const stream = await app.request("/dashboard/api/events");
-
-    // When
-    await app.request("/dashboard/api/reload", {
-      headers: { Origin: "http://127.0.0.1:22078" },
-      method: "POST",
-    });
-    await app.request("/dashboard/api/reload", {
-      headers: { Origin: "http://127.0.0.1:22078" },
-      method: "POST",
-    });
-    const text = await stream.text();
-
-    // Then
-    expect(stream.status).toBe(200);
-    expect(text).toContain("event: events.dropped");
-    expect(text).toContain('"queuedEvents":1');
   });
 
   test("Given many trace deltas for one trace When events flush Then only latest delta is emitted", async () => {

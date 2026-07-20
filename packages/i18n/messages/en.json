@@ -193,6 +193,27 @@
     }
   },
   "dashboard": {
+    "auth": {
+      "password": "Password",
+      "logout": "Sign out",
+      "logout_failed": "Could not sign out. Try again.",
+      "loading": "Loading Dashboard",
+      "login": {
+        "title": "Dashboard sign in",
+        "description": "Enter the password configured for this local Dashboard.",
+        "expired": "Your session expired. Sign in again to continue.",
+        "password_required": "Enter your password.",
+        "invalid": "The password is incorrect.",
+        "rate_limited": "Too many failed attempts. Try again in one minute.",
+        "unavailable": "The Dashboard is unavailable. Check the server logs and configuration.",
+        "submit": "Sign in"
+      },
+      "unavailable": {
+        "title": "Dashboard unavailable",
+        "description": "The Dashboard password could not be loaded safely. Check server.password and the server logs, then restart aio-proxy.",
+        "reload": "Reload"
+      }
+    },
     "menus": {
       "overview": "Overview",
       "dashboard": "Dashboard",

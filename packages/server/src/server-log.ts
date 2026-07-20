@@ -4,6 +4,12 @@ export type ConfigReloadLog = {
   readonly stage: "parse" | "providers" | "router" | "alias-collision";
 };
 
+export type DashboardAuthUnavailableLog = {
+  readonly error: string;
+  readonly errorType: string;
+  readonly event: "dashboard.auth_unavailable";
+};
+
 export type RequestRejectedLog = {
   readonly event: "request.rejected";
   readonly requestId: string;
@@ -55,6 +61,7 @@ export type RequestRecorderPersistenceFailedLog = {
 
 export type ServerLog =
   | ConfigReloadLog
+  | DashboardAuthUnavailableLog
   | RequestFailedLog
   | RequestFeatureDowngradedLog
   | RequestRecorderInvariantLog

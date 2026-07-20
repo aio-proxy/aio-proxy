@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
 import { config } from "./server.test-support";
 
 describe("server routes", () => {
@@ -25,14 +26,18 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/providers/install", {
-      body: JSON.stringify({ npm: "aio-proxy-test-provider" }),
-      headers: {
-        "content-type": "application/json",
-        Origin: "http://127.0.0.1:22078",
+    const response = await app.request(
+      "/dashboard/api/providers/install",
+      {
+        body: JSON.stringify({ npm: "aio-proxy-test-provider" }),
+        headers: {
+          "content-type": "application/json",
+          Origin: "http://127.0.0.1:22078",
+        },
+        method: "POST",
       },
-      method: "POST",
-    });
+      loopbackServer,
+    );
     const body = await response.json();
 
     // Then
@@ -48,14 +53,18 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/providers/install", {
-      body: JSON.stringify({ npm: "../bad", confirmed: true }),
-      headers: {
-        "content-type": "application/json",
-        Origin: "http://127.0.0.1:22078",
+    const response = await app.request(
+      "/dashboard/api/providers/install",
+      {
+        body: JSON.stringify({ npm: "../bad", confirmed: true }),
+        headers: {
+          "content-type": "application/json",
+          Origin: "http://127.0.0.1:22078",
+        },
+        method: "POST",
       },
-      method: "POST",
-    });
+      loopbackServer,
+    );
     const body = await response.json();
 
     // Then
@@ -68,18 +77,22 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/providers/install", {
-      body: JSON.stringify({
-        npm: "aio-proxy-dashboard-missing-package",
-        confirmed: true,
-        registry: "http://127.0.0.1:9",
-      }),
-      headers: {
-        "content-type": "application/json",
-        Origin: "http://127.0.0.1:22078",
+    const response = await app.request(
+      "/dashboard/api/providers/install",
+      {
+        body: JSON.stringify({
+          npm: "aio-proxy-dashboard-missing-package",
+          confirmed: true,
+          registry: "http://127.0.0.1:9",
+        }),
+        headers: {
+          "content-type": "application/json",
+          Origin: "http://127.0.0.1:22078",
+        },
+        method: "POST",
       },
-      method: "POST",
-    });
+      loopbackServer,
+    );
     const body = await response.json();
 
     // Then
@@ -111,7 +124,7 @@ describe("server routes", () => {
 
     try {
       // When
-      const probe = await app.request("/dashboard/api/providers?probe=true&filter=bad");
+      const probe = await app.request("/dashboard/api/providers?probe=true&filter=bad", undefined, loopbackServer);
       const body = await probe.json();
 
       // Then

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { disabledDashboardAuthentication } from "../dashboard-auth/test-support";
 import { createServerState } from "../server-state";
 import { createDashboardRoutes } from "./config";
 
@@ -68,7 +69,7 @@ test("dashboard device-code session can be resumed by id and creates an OAuth pr
     builtIns: [{ packageName: "@example/oauth", version: "1.0.0", descriptor }],
     __test: { oauthSessionNow: () => now, oauthSessionTtlMs: 5 },
   });
-  const routes = createDashboardRoutes(state);
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
   try {
     const started = await routes.request("/oauth/sessions", {
@@ -174,7 +175,7 @@ test("dashboard loopback session rejects a mismatched callback and accepts a val
     watchConfig: false,
     builtIns: [{ packageName: "@example/loopback", version: "1.0.0", descriptor }],
   });
-  const routes = createDashboardRoutes(state);
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
   try {
     const started = await routes.request("/oauth/sessions", {

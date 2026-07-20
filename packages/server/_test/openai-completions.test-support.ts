@@ -4,6 +4,8 @@ import type { TextStreamPart, ToolSet } from "ai";
 import { openDb, requestLog, usage } from "@aio-proxy/core/db";
 import { expect } from "bun:test";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
+
 export { createTempHomes } from "./temporary-homes.test-support";
 
 export const chatRequest = {
@@ -58,7 +60,11 @@ export class AbortStreamError extends Error {
 }
 
 async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
-  const usageResponse = await app.request("/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider");
+  const usageResponse = await app.request(
+    "/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider",
+    undefined,
+    loopbackServer,
+  );
   expect(usageResponse.status).toBe(200);
   return usageResponse.json();
 }
