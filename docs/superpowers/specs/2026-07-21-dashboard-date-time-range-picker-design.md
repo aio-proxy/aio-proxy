@@ -4,13 +4,13 @@
 
 Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.
 
-The component owns presentation, draft state, parsing, and validation. It does not know about TanStack Router, Logs search parameters, polling, or server APIs. Logs remains responsible for its default range, URL representation, rolling preset resolution, and ISO serialization.
+The component owns presentation, draft state, parsing, and validation. It does not know about TanStack Router, Logs search parameters, polling, or server APIs. Logs remains responsible for its default range, URL representation, and ISO serialization.
 
 ## Goals
 
 - Replace the Logs-specific calendar popover with a reusable date-time range picker.
 - Preserve the existing default of the user's local current day, from `00:00:00.000` through `23:59:59.999`.
-- Support rolling relative presets without freezing them into one historical range.
+- Support caller-provided relative presets that resolve into an absolute range when selected.
 - Support custom date and time input using a caller-provided format string.
 - Interpret every range in the user's current browser time zone.
 - Match the existing dashboard design system and remain usable on narrow screens.
@@ -46,23 +46,15 @@ interface DateTimeRangePreset {
   readonly resolve: (now: Date) => ResolvedDateTimeRangeValue;
 }
 
-interface DateTimeRangeChangeContext {
-  readonly presetId: string | undefined;
-}
-
 interface DateTimeRangePickerProps {
   readonly value: DateTimeRangeValue | undefined;
-  readonly presetId?: string;
   readonly presets?: readonly DateTimeRangePreset[];
   readonly format?: string;
   readonly min?: DateTimeInput;
   readonly max?: DateTimeInput;
   readonly allowClear?: boolean;
   readonly disabled?: boolean;
-  readonly onChange: (
-    value: ResolvedDateTimeRangeValue | undefined,
-    context: DateTimeRangeChangeContext,
-  ) => void;
+  readonly onChange: (value: ResolvedDateTimeRangeValue | undefined) => void;
 }
 ```
 
@@ -70,11 +62,10 @@ Contract details:
 
 - `value` uses `from/to` to match `react-day-picker`'s range language. Logs maps those names to `startedAfter/completedBefore` at its boundary.
 - `format` defaults to `yyyy-MM-dd HH:mm` and controls both editable absolute values and the collapsed absolute summary.
-- `presetId` is intentionally separate from `value`. Two dates cannot retain the intent "past hour" after time advances.
 - `presets` defaults to an empty list. The shared component does not own product-specific durations or copy.
 - `allowClear` defaults to `false`.
 - Invalid incoming date values produce an invalid draft state instead of crashing the page. Apply remains disabled until the draft is valid.
-- An applied custom range has `value` without `presetId`. An applied relative range has both the currently resolved `value` and `presetId`. An empty/reset state has neither. This keeps the clear control and absolute draft available while preserving the rolling intent separately.
+- Presets are draft conveniences only. Once applied, their resolved dates are indistinguishable from a manually entered absolute range.
 
 ## Applied State and Draft State
 
@@ -84,13 +75,11 @@ The controlled props represent the applied filter. Each time the panel opens, th
 - Apply normalizes the draft, calls `onChange`, and closes the panel.
 - Escape, outside click, and ordinary dismissal close the panel without changing the applied value.
 - Reopening starts from the latest controlled props, so abandoned drafts never leak into a later session.
-- When `presetId` is active, opening the panel resolves that preset using the current time so the displayed absolute endpoints are current.
-- Consumers pass a currently resolved `value` alongside an active `presetId`; Apply returns a fresh resolved value plus the same preset ID. Logs may resolve it again later for polling without mutating the component contract.
 
 The clear control is the sole exception. When `allowClear` is true and `value` is defined, the collapsed trigger shows a trailing clear button. It does not open the panel. Activating it immediately calls:
 
 ```ts
-onChange(undefined, { presetId: undefined });
+onChange(undefined);
 ```
 
 Consumers decide what `undefined` means. Logs interprets it as a reset to its existing default local day.
@@ -102,8 +91,7 @@ The collapsed control uses the existing Input/Button visual vocabulary:
 - Calendar icon at the leading edge.
 - Semantic summary in the middle.
 - Accessible clear button at the trailing edge when allowed.
-- Relative selections display their localized preset label, such as "Past hour".
-- Custom selections display the formatted From/To range.
+- Applied selections display the formatted From/To range, including ranges created from presets.
 
 The desktop Popover follows the Cloudflare structure:
 
@@ -117,7 +105,6 @@ There is no separate Cancel button. Popover dismissal is cancellation.
 ### Calendar behavior
 
 - The calendar uses range mode and shows one month.
-- Selecting a complete date range clears `presetId`.
 - The selected start date becomes `00:00:00.000` in the user's current time zone.
 - The selected end date becomes `23:59:59.999` in the user's current time zone.
 - The panel remains open so users can edit the resulting times.
@@ -125,9 +112,10 @@ There is no separate Cancel button. Popover dismissal is cancellation.
 
 ### Preset behavior
 
-- Clicking a preset resolves it against the current time, highlights it, and updates the draft fields/calendar.
+- Clicking a preset resolves it against the current time, highlights it for the current draft session, and updates the draft fields/calendar.
 - It does not apply or close the panel.
-- Editing either endpoint or choosing a calendar date clears the active preset.
+- Editing either endpoint or choosing a calendar date clears the draft highlight.
+- Apply emits only the resolved From/To dates. Reopening the panel does not restore a preset highlight.
 
 ### From and To fields
 
@@ -191,22 +179,19 @@ Logs also passes its existing policy of no future dates and at most 45 days of c
 
 ### URL representation
 
-The Logs route supports two mutually exclusive applied forms:
+The Logs route keeps one applied form: `startedAfter=<ISO>&completedBefore=<ISO>`. Presets resolve into that same absolute pair when applied.
 
-1. Relative: `preset=<id>`. It omits `startedAfter/completedBefore`.
-2. Custom: `startedAfter=<ISO>&completedBefore=<ISO>`. It omits `preset`.
-
-If a malformed URL contains both forms, a valid `preset` wins and canonicalization removes the absolute pair. Unknown presets, invalid dates, or partial absolute ranges fall back to the existing default local current day.
+Invalid dates or partial absolute ranges fall back to the existing default local current day.
 
 Missing range parameters continue to mean the current local day. Route canonicalization may replace them with the resolved default ISO pair as it does today.
 
 ### Query resolution
 
-- Custom ISO ranges are stable and pass through unchanged on every request.
-- Relative presets are resolved with the current `now` for every polling request. A past-hour selection made at 11:00 therefore queries 10:05–11:05 when polling at 11:05.
+- All applied ISO ranges are stable and pass through unchanged on every request.
+- A past-hour preset selected at 11:00 resolves to 10:00–11:00 and remains that fixed range during later polling and refreshes.
 - The existing Logs service still sends only `startedAfter/completedBefore` ISO strings to the server.
 - The server and database keep their current inclusive comparisons.
-- Clearing calls `onChange(undefined, ...)`; Logs removes the applied range, its existing default logic restores today, and the picker receives that normalized default on the next render.
+- Clearing calls `onChange(undefined)`; Logs removes the applied range, its existing default logic restores today, and the picker receives that normalized default on the next render.
 
 ## Accessibility and Internationalization
 
@@ -228,7 +213,7 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Resolve, highlight, and apply caller-provided presets.
 - Clear immediately only when `allowClear` is enabled.
 - Normalize calendar selections to full-day boundaries.
-- Clear `presetId` after manual or calendar edits.
+- Clear the draft preset highlight after manual or calendar edits.
 - Reject invalid, reversed, partial, out-of-bounds, and nonexistent DST ranges.
 - Apply the earlier/later offset rule to repeated local times.
 - Cover keyboard names and focus behavior for the trigger and clear control.
@@ -237,10 +222,9 @@ Missing range parameters continue to mean the current local day. Route canonical
 
 - Preserve the local-current-day default.
 - Reset to that default after a clear result.
-- Parse, serialize, and canonicalize relative and custom URL forms.
-- Give a valid relative preset precedence over conflicting absolute parameters.
-- Re-resolve relative presets for each poll using the current time.
-- Keep custom ISO ranges fixed across polls.
+- Parse, serialize, and canonicalize the absolute URL range.
+- Resolve presets once when applied.
+- Keep all applied ISO ranges fixed across polls.
 - Preserve the existing 45-day/future-date UI policy without adding server validation.
 
 ### Visual verification
@@ -253,7 +237,7 @@ Missing range parameters continue to mean the current local day. Route canonical
 ## Implementation Boundaries
 
 - Reuse the existing dashboard primitives and `react-day-picker` wrapper.
-- Keep preset definitions in the Logs module so the picker and polling resolver consume the same source of truth.
+- Keep preset definitions in the Logs module and pass them into the shared picker.
 - Keep URL parsing and API conversion in the Logs module.
 - Use native `Date` behavior for the user's current time zone; do not add time-zone infrastructure.
 - Add no unrelated Logs, Usage, server, or database changes.
@@ -262,9 +246,9 @@ Missing range parameters continue to mean the current local day. Route canonical
 
 - The Logs picker matches the confirmed Cloudflare-style interaction on desktop and mobile.
 - Default and calendar-selected ranges use the user's current local day boundaries.
-- Relative presets continue rolling across refreshes and polling.
+- Presets resolve once into fixed absolute ISO ranges.
 - Custom ranges remain fixed absolute ISO ranges.
-- `value` stays a plain `from/to` date-compatible range; rolling preset state remains separate.
+- `value` stays a plain `from/to` date-compatible range with no separate preset state.
 - `allowClear` immediately returns `undefined`, and Logs restores its default today behavior.
 - Invalid ranges cannot be applied.
 - The implementation passes focused tests, repository preflight, and desktop/mobile browser QA.
