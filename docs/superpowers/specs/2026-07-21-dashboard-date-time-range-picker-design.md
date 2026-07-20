@@ -66,7 +66,7 @@ Contract details:
 - `format` defaults to `yyyy-MM-dd HH:mm` and controls both editable absolute values and the collapsed absolute summary.
 - `render` defaults to the built-in input-style trigger and follows Base UI's existing render-prop contract.
 - `presets` defaults to an empty list. The shared component does not own product-specific durations or copy.
-- `allowClear` defaults to `false`.
+- `allowClear` defaults to `false` and only affects the built-in input-style trigger.
 - Invalid incoming date values produce an invalid draft state instead of crashing the page. Apply remains disabled until the draft is valid.
 - Presets are draft conveniences only. Once applied, their resolved dates are indistinguishable from a manually entered absolute range.
 
@@ -79,7 +79,7 @@ The controlled props represent the applied filter. Each time the panel opens, th
 - Escape, outside click, and ordinary dismissal close the panel without changing the applied value.
 - Reopening starts from the latest controlled props, so abandoned drafts never leak into a later session.
 
-The clear control is the sole exception. When `allowClear` is true and `value` is defined, the collapsed trigger shows a trailing clear button. It does not open the panel. Activating it immediately calls:
+The clear control is the sole exception for the built-in trigger. When `render` is undefined, `allowClear` is true, and `value` is defined, the collapsed trigger shows a trailing clear button. It does not open the panel. Activating it immediately calls:
 
 ```ts
 onChange(undefined);
@@ -98,7 +98,7 @@ The component passes `render` directly to `PopoverTrigger`:
 - A custom component must accept the merged props and ref and forward them to its interactive DOM element.
 - When a custom element does not provide children, it receives the picker's default calendar icon and formatted range summary.
 - A consumer may provide its own children to replace that default trigger content.
-- The picker continues to own the clear control. It renders as an adjacent control rather than a nested interactive element, so `allowClear` remains valid with either the default or a custom trigger.
+- Supplying `render` disables the built-in clear control, so `allowClear` has no effect. Consumers that need clearing with a custom trigger own that action outside the picker and set their controlled value to `undefined` directly.
 
 Leaving `render` undefined uses the built-in input-style trigger and requires no extra consumer code.
 
@@ -229,14 +229,14 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Keep changes in draft until Apply.
 - Discard drafts on Escape/outside dismissal.
 - Resolve, highlight, and apply caller-provided presets.
-- Clear immediately only when `allowClear` is enabled.
+- Clear immediately only when the built-in trigger is active and `allowClear` is enabled.
 - Normalize calendar selections to full-day boundaries.
 - Clear the draft preset highlight after manual or calendar edits.
 - Reject invalid, reversed, partial, out-of-bounds, and nonexistent DST ranges.
 - Apply the earlier/later offset rule to repeated local times.
 - Cover keyboard names and focus behavior for the trigger and clear control.
 - Verify element and callback forms of `render` receive merged interaction and accessibility props.
-- Verify a custom trigger opens the same panel without changing draft, Apply, or clear behavior.
+- Verify a custom trigger opens the same panel without changing draft or Apply behavior and never renders the built-in clear control.
 
 ### Logs tests
 
@@ -270,6 +270,6 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Custom ranges remain fixed absolute ISO ranges.
 - `value` stays a plain `from/to` date-compatible range with no separate preset state.
 - `render` can replace the trigger element while preserving panel behavior and accessibility wiring.
-- `allowClear` immediately returns `undefined`, and Logs restores its default today behavior.
+- With the default trigger, `allowClear` immediately returns `undefined`, and Logs restores its default today behavior; it is ignored when `render` is supplied.
 - Invalid ranges cannot be applied.
 - The implementation passes focused tests, repository preflight, and desktop/mobile browser QA.
