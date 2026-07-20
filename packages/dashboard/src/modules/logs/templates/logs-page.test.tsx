@@ -135,4 +135,14 @@ describe("logs page", () => {
 
     expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, requestId: "request-exact" }));
   });
+
+  test("does not expose current-page filtering, sorting, or column controls", () => {
+    render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: /Filter current page|筛选当前页/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Columns|列/u })).toBeNull();
+    expect(screen.getByText(/Completed|完成时间/u).closest("button")).toBeNull();
+  });
 });
