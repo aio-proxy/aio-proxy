@@ -9,7 +9,7 @@ describe("AtomicConfigFile", () => {
   test("reads every supported config format", async () => {
     const { dir } = fixture();
     const cases = [
-      ["config.json", '{"format":"json"}'],
+      ["config.json", "{format: 'json',}"],
       ["config.jsonc", "{format: 'jsonc',}"],
       ["config.yaml", "format: yaml\n"],
       ["config.yml", "format: yml\n"],

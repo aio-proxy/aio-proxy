@@ -27,7 +27,6 @@ export function parseConfig(bytes: Uint8Array | null, path: string): ConfigRecor
   const value: unknown = (() => {
     switch (extension) {
       case ".json":
-        return JSON.parse(text);
       case ".jsonc":
         return JSON5.parse(text);
       case ".yaml":
