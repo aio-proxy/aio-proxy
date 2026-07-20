@@ -46,6 +46,7 @@ This file is the frontend authority for `packages/dashboard`.
 - Every data table must use TanStack Table plus shadcn `Table`.
 - Default capabilities are sorting, filtering, pagination, and column visibility.
 - Table state stays local to the component or module unless explicitly requested.
+- Exception: server-paginated tables (e.g. request logs) must not expose client-side sorting, current-page filtering, or column visibility, because those controls would only affect the loaded page and misrepresent the full result set. Headers render as plain labels; ordering and pagination come from the server.
 
 ## Copy And i18n
 

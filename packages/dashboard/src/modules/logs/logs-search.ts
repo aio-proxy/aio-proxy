@@ -14,7 +14,7 @@ export type LogsSearch = {
   readonly finalStatusCode?: number;
 };
 
-type LogsFilterPatch = { [Key in keyof Omit<LogsSearch, "page">]?: LogsSearch[Key] | undefined };
+export type LogsFilterPatch = { [Key in keyof Omit<LogsSearch, "page">]?: LogsSearch[Key] | undefined };
 type RawLogsSearch = Record<string, unknown> & Partial<Record<keyof LogsSearch, unknown>>;
 
 const pageSizes = new Set([10, 20, 50, 100]);

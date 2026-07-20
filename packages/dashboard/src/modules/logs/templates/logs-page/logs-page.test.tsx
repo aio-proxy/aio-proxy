@@ -1,12 +1,12 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { createDefaultLogsSearch } from "../logs-search";
+import { createDefaultLogsSearch } from "../../logs-search";
 import { LogsPage } from "./logs-page";
 
 const mocks = rs.hoisted(() => ({ refetch: rs.fn(), mode: "data" }));
 
-rs.mock("../hooks/use-logs-query", () => ({
+rs.mock("../../hooks/use-logs-query", () => ({
   useLogsQuery: () =>
     mocks.mode === "loading"
       ? { isLoading: true, isError: false, isFetching: false, refetch: mocks.refetch }
@@ -117,5 +117,79 @@ describe("logs page", () => {
     );
     expect(screen.queryByText(name) ?? screen.queryByLabelText(name)).toBeTruthy();
     mocks.mode = "data";
+  });
+
+  test("applies an exact filter from More filters and resets pagination", async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          page: 3,
+          outcome: "failure",
+        }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /More filters|更多筛选/u }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /Request ID|请求 ID/u }), {
+      target: { value: "request-exact" },
+    });
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, requestId: "request-exact", outcome: "failure" }),
+    );
+  });
+
+  test("does not expose current-page filtering, sorting, or column controls", () => {
+    render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: /Filter current page|筛选当前页/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Columns|列/u })).toBeNull();
+    expect(screen.getByText(/Completed|完成时间/u).closest("button")).toBeNull();
+  });
+
+  test("updates common filter controls when search changes via navigation", () => {
+    const { rerender } = render(
+      <LogsPage
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          requestedModelId: "gpt-5",
+          outcome: "failure",
+          inboundProtocol: "openai-chat",
+        }}
+        onSearchChange={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("gpt-5");
+    expect(screen.getByRole("combobox", { name: /Outcome|结果/u })).toHaveTextContent(/failure/u);
+    expect(screen.getByRole("combobox", { name: /Protocol|协议/u })).toHaveTextContent(/openai-chat/u);
+
+    rerender(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: /Outcome|结果/u })).not.toHaveTextContent(/failure/u);
+    expect(screen.getByRole("combobox", { name: /Protocol|协议/u })).not.toHaveTextContent(/openai-chat/u);
+  });
+
+  test("resets all filters to defaults", () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), outcome: "failure", page: 3 }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Reset|重置/u }));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+    expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty("outcome");
   });
 });
