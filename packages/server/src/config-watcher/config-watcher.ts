@@ -1,20 +1,13 @@
-import { watch } from "node:fs";
-import { basename, dirname } from "node:path";
+import { type Stats, unwatchFile, watchFile } from "node:fs";
 
 export type ConfigWatcher = {
   readonly close: () => void;
 };
 
 export function watchConfigFile(configPath: string, onChange: () => Promise<unknown>): ConfigWatcher {
-  const targetName = basename(configPath);
-  const lockName = `${targetName}.lock`;
   let pendingReload: ReturnType<typeof setTimeout> | undefined;
-  const watcher = watch(dirname(configPath), (event, filename) => {
-    const changedName = filename === null ? undefined : filename;
-    if (changedName === lockName || changedName?.startsWith(`${lockName}.`)) return;
-    if (event === "change" && changedName !== undefined && changedName !== targetName) {
-      return;
-    }
+  const changed = (current: Stats, previous: Stats) => {
+    if (current.ino === previous.ino && current.mtimeMs === previous.mtimeMs && current.size === previous.size) return;
     if (pendingReload !== undefined) {
       return;
     }
@@ -22,13 +15,14 @@ export function watchConfigFile(configPath: string, onChange: () => Promise<unkn
       pendingReload = undefined;
       void onChange();
     }, 25);
-  });
+  };
+  watchFile(configPath, { interval: 100 }, changed);
   return {
     close() {
       if (pendingReload !== undefined) {
         clearTimeout(pendingReload);
       }
-      watcher.close();
+      unwatchFile(configPath, changed);
     },
   };
 }

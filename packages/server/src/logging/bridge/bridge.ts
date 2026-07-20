@@ -5,6 +5,7 @@ import type { ServerLog, ServerLogSink } from "../../server-log";
 
 export const SERVER_LOG_LEVEL = {
   "config.reload_failed": "error",
+  "dashboard.auth_unavailable": "error",
   "request.failed": "error",
   "request.feature_downgraded": "info",
   "request.recorder_invariant": "warn",

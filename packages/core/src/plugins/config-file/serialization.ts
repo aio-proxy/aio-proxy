@@ -1,17 +1,16 @@
-import { JSON5, TOML, YAML } from "bun";
+import { JSON5, YAML } from "bun";
 import { isPlainObject } from "es-toolkit/predicate";
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
 
 export type ConfigRecord = Record<string, unknown>;
-type ConfigExtension = ".json" | ".jsonc" | ".toml" | ".yaml" | ".yml";
+type ConfigExtension = ".json" | ".jsonc" | ".yaml" | ".yml";
 
 function configExtension(path: string): ConfigExtension {
   const extension = extname(path);
   switch (extension) {
     case ".json":
     case ".jsonc":
-    case ".toml":
     case ".yaml":
     case ".yml":
       return extension;
@@ -32,8 +31,6 @@ export function parseConfig(bytes: Uint8Array | null, path: string): ConfigRecor
       case ".yaml":
       case ".yml":
         return YAML.parse(text);
-      case ".toml":
-        return TOML.parse(text);
     }
   })();
   if (!isPlainObject(value)) throw new Error("Config root must be an object");
@@ -42,7 +39,6 @@ export function parseConfig(bytes: Uint8Array | null, path: string): ConfigRecor
 
 export function encodeCandidate(candidate: ConfigRecord, path: string): Uint8Array {
   const extension = configExtension(path);
-  if (extension === ".toml") throw new Error("TOML config updates are not supported by this Bun version");
   const text = [".yaml", ".yml"].includes(extension)
     ? YAML.stringify(candidate)
     : JSON.stringify(candidate, undefined, 2);

@@ -193,6 +193,27 @@
     "tagline": "一站式网关"
   },
   "dashboard": {
+    "auth": {
+      "password": "密码",
+      "logout": "退出登录",
+      "logout_failed": "退出失败，请重试。",
+      "loading": "正在加载控制台",
+      "login": {
+        "title": "登录控制台",
+        "description": "请输入为本地控制台配置的密码。",
+        "expired": "会话已过期，请重新登录以继续。",
+        "password_required": "请输入密码。",
+        "invalid": "密码不正确。",
+        "rate_limited": "失败次数过多，请一分钟后重试。",
+        "unavailable": "控制台不可用，请检查服务日志和配置。",
+        "submit": "登录"
+      },
+      "unavailable": {
+        "title": "控制台不可用",
+        "description": "无法安全加载控制台密码。请检查 server.password 和服务日志，然后重启 aio-proxy。",
+        "reload": "重新加载"
+      }
+    },
     "menus": {
       "overview": "概览",
       "dashboard": "控制台",

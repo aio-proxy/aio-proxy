@@ -50,13 +50,25 @@ describe("paths", () => {
   test("selects the first existing config file by format priority", () => {
     const home = mkdtempSync(join(tmpdir(), "aio-proxy-paths-"));
     process.env.AIO_PROXY_HOME = home;
-    const names = ["config.json", "config.jsonc", "config.yaml", "config.yml", "config.toml"];
+    const names = ["config.json", "config.jsonc", "config.yaml", "config.yml"];
 
     try {
       for (const name of names) {
         writeFileSync(join(home, name), "{}");
         expect(configPath()).toBe(join(home, name));
       }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("does not discover TOML config", () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-paths-"));
+    process.env.AIO_PROXY_HOME = home;
+
+    try {
+      writeFileSync(join(home, "config.toml"), "[server]\nport = 22078\n");
+      expect(configPath()).toBe(join(home, "config.jsonc"));
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

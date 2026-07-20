@@ -13,19 +13,29 @@ import type { DashboardEventLimits } from "../dashboard-events";
 import type { RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
 import type { ServerLogSink } from "../server-log";
 
+import {
+  createDashboardAuthentication,
+  createDashboardAuthRoutes,
+  prepareDashboardConfig,
+  requireDashboardAuthentication,
+  requireDashboardLoopback,
+} from "../dashboard-auth";
 import { createDashboardRoutes } from "../dashboard-routes/config";
 import { createAnthropicMessagesRoutes } from "../routes/anthropic-messages";
 import { createGeminiGenerateContentRoutes } from "../routes/gemini-generate-content";
 import { createOpenAICompletionsRoutes } from "../routes/openai-completions";
 import { createOpenAIResponsesRoutes } from "../routes/openai-responses";
+import { logServerEvent, serverErrorType } from "../server-log";
 import { createServerState, type ServerState } from "../server-state";
+import { defaultLogger } from "../server-state/logging";
 
 export const serverDefaults = {
   host: "127.0.0.1",
   port: 22_078,
 } as const;
 
-const dashboardOrigins = (port: number) => new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+const dashboardOrigins = (port: number) =>
+  new Set([`http://127.0.0.1:${port}`, `http://[::1]:${port}`, `http://localhost:${port}`]);
 
 const csrfMethods = new Set(["POST", "PUT", "DELETE"]);
 
@@ -47,6 +57,7 @@ const createRoutes = (
   state: ServerState,
   dashboardOriginPort: number = serverDefaults.port,
   dashboardAssets?: DashboardAssets,
+  dashboardUnavailable = false,
 ) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
@@ -57,6 +68,14 @@ const createRoutes = (
   );
   app.get("/v1/models", async (context) => context.json(await listModels(state)));
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
+  const dashboardAuth = createDashboardAuthentication(
+    () => state.currentConfig().server.password,
+    Date.now,
+    () => !dashboardUnavailable,
+  );
+
+  app.use("/dashboard", requireDashboardLoopback);
+  app.use("/dashboard/*", requireDashboardLoopback);
 
   app.use("/dashboard/api/*", async (context, next) => {
     if (!csrfMethods.has(context.req.method)) {
@@ -72,7 +91,17 @@ const createRoutes = (
     await next();
   });
 
+  const requireDashboardAuth = requireDashboardAuthentication(dashboardAuth);
+  app.use("/dashboard/api/*", async (context, next) => {
+    if (context.req.path.startsWith("/dashboard/api/auth/")) {
+      await next();
+      return;
+    }
+    return requireDashboardAuth(context, next);
+  });
+
   const dashboardRoutes = createDashboardRoutes(state);
+  const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
   const openAICompletionsRoutes = createOpenAICompletionsRoutes(state);
@@ -82,6 +111,7 @@ const createRoutes = (
     .route("/", geminiGenerateContentRoutes)
     .route("/", openAICompletionsRoutes)
     .route("/", openAIResponsesRoutes)
+    .route("/dashboard/api/auth", dashboardAuthRoutes)
     .route("/dashboard/api", dashboardRoutes);
 
   if (dashboardAssets !== undefined) {
@@ -189,7 +219,15 @@ function modelTimestamps(releaseDate: string | undefined): { readonly created: n
 export type AppType = ReturnType<typeof createRoutes>;
 
 export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
-  const config = ConfigSchema.parse(options.config);
+  const prepared = await prepareDashboardConfig(options.config, options.configPath);
+  if (prepared.error !== undefined) {
+    logServerEvent(options.logger ?? defaultLogger, {
+      error: prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
+      errorType: serverErrorType(prepared.error),
+      event: "dashboard.auth_unavailable",
+    });
+  }
+  const config = ConfigSchema.parse(prepared.config);
   return createRoutes(
     await createServerState({
       config,
@@ -203,5 +241,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     }),
     options.port ?? config.server.port,
     options.dashboardAssets,
+    prepared.dashboardUnavailable,
   );
 };

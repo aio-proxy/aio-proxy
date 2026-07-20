@@ -284,6 +284,7 @@ export const createDashboardRoutes = (state: ServerState) =>
     })
     .get(
       "/events",
+      // ponytail: SSE sessions are verified at connect; track and cancel streams if immediate revocation becomes necessary.
       () =>
         new Response(state.events.stream(), {
           headers: {

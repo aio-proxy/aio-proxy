@@ -7,6 +7,7 @@ import type { RetiredProviderSnapshot } from "../runtime";
 import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure } from "./types";
 
 import { type AccountRemovalCoordinator, asProviderRecord } from "../account-removal";
+import { normalizeDashboardPassword } from "../dashboard-auth";
 import { providerDiff } from "../provider-runtime";
 import { providerConfigRecord, type Snapshot } from "./snapshot";
 
@@ -54,20 +55,30 @@ async function reloadConfigFile({
   const newlyStaged: PendingAccountOperation[] = [];
   const retainedProviderIds = new Set(retainedOperations.map((operation) => operation.providerId));
   let retired: RetiredProviderSnapshot | undefined;
+  let commitAfterWrite = false;
   try {
-    await configFile.transaction(async (current) => {
-      const previous = manager.current() as Snapshot;
-      const previousProviders = Object.fromEntries(
-        Object.entries(providerConfigRecord(previous.config)).filter(
-          ([providerId]) => !retainedProviderIds.has(providerId),
-        ),
-      );
-      const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(current["providers"]));
-      newlyStaged.push(...detected);
-      staged.push(...detected);
-      retired = await commitConfig(ConfigSchema.parse(current), "reload");
-      return { next: current, result: undefined };
-    });
+    await configFile.transaction(
+      async (current) => {
+        const next = await normalizeDashboardPassword(current);
+        const previous = manager.current() as Snapshot;
+        const previousProviders = Object.fromEntries(
+          Object.entries(providerConfigRecord(previous.config)).filter(
+            ([providerId]) => !retainedProviderIds.has(providerId),
+          ),
+        );
+        const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(next["providers"]));
+        newlyStaged.push(...detected);
+        staged.push(...detected);
+        commitAfterWrite = next !== current;
+        if (!commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(next), "reload");
+        return { next, result: undefined };
+      },
+      {
+        verify: async (candidate) => {
+          if (commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(candidate), "reload");
+        },
+      },
+    );
   } catch (error) {
     if (retired !== undefined) void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
     else if (error instanceof AtomicConfigCommitUncertainError) accountRemovals.scheduleRecovery(staged);

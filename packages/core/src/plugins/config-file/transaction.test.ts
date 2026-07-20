@@ -13,7 +13,6 @@ describe("AtomicConfigFile", () => {
       ["config.jsonc", "{format: 'jsonc',}"],
       ["config.yaml", "format: yaml\n"],
       ["config.yml", "format: yml\n"],
-      ["config.toml", 'format = "toml"\n'],
     ] as const;
 
     for (const [name, contents] of cases) {
@@ -23,16 +22,12 @@ describe("AtomicConfigFile", () => {
     }
   });
 
-  test("does not rewrite TOML as another format", async () => {
+  test("rejects TOML config", async () => {
     const { dir } = fixture();
     const path = join(dir, "config.toml");
-    const original = "one = 1\n";
-    writeFileSync(path, original);
+    writeFileSync(path, "one = 1\n");
 
-    await expect(new AtomicConfigFile(path).replace((current) => ({ ...current, two: 2 }))).rejects.toThrow(
-      "TOML config updates are not supported",
-    );
-    expect(readFileSync(path, "utf8")).toBe(original);
+    await expect(new AtomicConfigFile(path).read()).rejects.toThrow("Unsupported config format: .toml");
   });
 
   test("preserves YAML syntax when updating YAML config", async () => {
