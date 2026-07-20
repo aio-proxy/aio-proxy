@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from "./error";
 import { acquireNpmInstallLock } from "./npm-lock";
-import { packagesDir } from "./paths";
+import { packagesDir } from "./paths/index";
 
 const REGISTRY = "https://registry.npmjs.org";
 const INSTALL_TIMEOUT_MS = 120_000;

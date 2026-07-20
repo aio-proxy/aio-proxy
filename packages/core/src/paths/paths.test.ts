@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { homedir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "../src/paths";
+import { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from ".";
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -44,5 +45,20 @@ describe("paths", () => {
     expect(packagesDir().endsWith("/packages")).toBe(true);
     expect(pidPath().endsWith("/aio-proxy.pid")).toBe(true);
     expect(logPath().endsWith("/aio-proxy.log")).toBe(true);
+  });
+
+  test("selects the first existing config file by format priority", () => {
+    const home = mkdtempSync(join(tmpdir(), "aio-proxy-paths-"));
+    process.env.AIO_PROXY_HOME = home;
+    const names = ["config.json", "config.jsonc", "config.yaml", "config.yml", "config.toml"];
+
+    try {
+      for (const name of names) {
+        writeFileSync(join(home, name), "{}");
+        expect(configPath()).toBe(join(home, name));
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

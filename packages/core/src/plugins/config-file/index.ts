@@ -62,7 +62,7 @@ export class AtomicConfigFile {
   }
 
   async read(): Promise<ConfigRecord> {
-    return parseConfig((await originalFile(this.#path)).bytes);
+    return parseConfig((await originalFile(this.#path)).bytes, this.#path);
   }
 
   async transaction<T>(
@@ -78,7 +78,7 @@ export class AtomicConfigFile {
       result = await lock.withOwnership(async (assertOwnership) => {
         options.signal?.throwIfAborted();
         original = await originalFile(this.#path);
-        const current = parseConfig(original.bytes);
+        const current = parseConfig(original.bytes, this.#path);
         options.signal?.throwIfAborted();
         const { next, result } = await mutate(current);
         options.signal?.throwIfAborted();
@@ -87,7 +87,13 @@ export class AtomicConfigFile {
         if (next === current) return result;
         options.validateCandidate?.(next);
         options.signal?.throwIfAborted();
-        await writeAtomic(this.#path, encodeCandidate(next), original.mode, tempPath, lock.withOwnershipFence);
+        await writeAtomic(
+          this.#path,
+          encodeCandidate(next, this.#path),
+          original.mode,
+          tempPath,
+          lock.withOwnershipFence,
+        );
         let candidateCommitted = true;
         try {
           await assertOwnership();

@@ -5,7 +5,7 @@ import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from "../error";
-import { dbPath } from "../paths";
+import { dbPath } from "../paths/index";
 import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from "./migrations.manifest";
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;

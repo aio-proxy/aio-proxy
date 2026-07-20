@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
+const CONFIG_FILE_NAMES = ["config.toml", "config.yml", "config.yaml", "config.jsonc", "config.json"] as const;
 
 /**
  * Single source of truth for the `~/.aio-proxy` filesystem layout.
@@ -14,7 +17,8 @@ export function aioHome(): string {
 }
 
 export function configPath(): string {
-  return join(aioHome(), "config.jsonc");
+  const home = aioHome();
+  return CONFIG_FILE_NAMES.map((name) => join(home, name)).find(existsSync) ?? join(home, "config.jsonc");
 }
 
 export function dbPath(): string {

@@ -107,7 +107,7 @@ export {
   withNpmPackageLifecycle,
 } from "./npm";
 export { type InstalledNpmPackage, listInstalledNpmPackages } from "./npm-list";
-export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths";
+export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths/index";
 export * from "./plugins";
 export * from "./protocol";
 export { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./provider/ai-sdk";
