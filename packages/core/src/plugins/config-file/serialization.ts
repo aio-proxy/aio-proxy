@@ -1,17 +1,52 @@
+import { JSON5, TOML, YAML } from "bun";
 import { isPlainObject } from "es-toolkit/predicate";
 import { createHash } from "node:crypto";
+import { extname } from "node:path";
 
 export type ConfigRecord = Record<string, unknown>;
+type ConfigExtension = ".json" | ".jsonc" | ".toml" | ".yaml" | ".yml";
 
-export function parseConfig(bytes: Uint8Array | null): ConfigRecord {
+function configExtension(path: string): ConfigExtension {
+  const extension = extname(path);
+  switch (extension) {
+    case ".json":
+    case ".jsonc":
+    case ".toml":
+    case ".yaml":
+    case ".yml":
+      return extension;
+    default:
+      throw new Error(`Unsupported config format: ${extension}`);
+  }
+}
+
+export function parseConfig(bytes: Uint8Array | null, path: string): ConfigRecord {
+  const extension = configExtension(path);
   if (bytes === null || bytes.byteLength === 0) return {};
-  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  const text = new TextDecoder().decode(bytes);
+  const value: unknown = (() => {
+    switch (extension) {
+      case ".json":
+      case ".jsonc":
+        return JSON5.parse(text);
+      case ".yaml":
+      case ".yml":
+        return YAML.parse(text);
+      case ".toml":
+        return TOML.parse(text);
+    }
+  })();
   if (!isPlainObject(value)) throw new Error("Config root must be an object");
   return value;
 }
 
-export function encodeCandidate(candidate: ConfigRecord): Uint8Array {
-  return new TextEncoder().encode(`${JSON.stringify(candidate, undefined, 2)}\n`);
+export function encodeCandidate(candidate: ConfigRecord, path: string): Uint8Array {
+  const extension = configExtension(path);
+  if (extension === ".toml") throw new Error("TOML config updates are not supported by this Bun version");
+  const text = [".yaml", ".yml"].includes(extension)
+    ? YAML.stringify(candidate)
+    : JSON.stringify(candidate, undefined, 2);
+  return new TextEncoder().encode(`${text.trimEnd()}\n`);
 }
 
 function stable(value: unknown, seen = new Set<object>()): unknown {

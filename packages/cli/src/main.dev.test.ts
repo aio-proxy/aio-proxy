@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { freePort, repoCwd, waitForOk } from "../_test/cli-test-helpers";
 
 test("development entry advertises the Rsbuild Dashboard", async () => {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-cli-dev-"));
+  writeFileSync(join(home, "config.jsonc"), "{ server: { port: 22078, }, providers: {}, }\n");
   const port = freePort();
   const child = Bun.spawn([process.execPath, "run", "packages/cli/src/main.dev.ts", "serve", "--port", String(port)], {
     cwd: repoCwd,

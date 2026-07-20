@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { configPath } from "@aio-proxy/core";
+import { AtomicConfigFile, configPath } from "@aio-proxy/core";
 import {
   ConfigWriteError,
   formatUserError,
@@ -11,7 +11,6 @@ import {
 } from "@aio-proxy/i18n";
 import { Command } from "commander";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import packageJson from "../package.json" with { type: "json" };
@@ -94,8 +93,7 @@ const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
     }
   }
 
-  const config: unknown = JSON.parse(await readFile(path, "utf8"));
-  return config;
+  return new AtomicConfigFile(path).read();
 };
 
 const assertPortAvailable = (host: string, port: number) => {
