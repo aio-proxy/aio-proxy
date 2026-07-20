@@ -2,7 +2,7 @@
 
 ## Summary
 
-Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a single-month range calendar, caller-provided relative presets, editable From/To values, Local/UTC selection, draft-and-apply behavior, and a responsive mobile Sheet.
+Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.
 
 The component owns presentation, draft state, parsing, and validation. It does not know about TanStack Router, Logs search parameters, polling, or server APIs. Logs remains responsible for its default range, URL representation, rolling preset resolution, and ISO serialization.
 
@@ -12,13 +12,13 @@ The component owns presentation, draft state, parsing, and validation. It does n
 - Preserve the existing default of the user's local current day, from `00:00:00.000` through `23:59:59.999`.
 - Support rolling relative presets without freezing them into one historical range.
 - Support custom date and time input using a caller-provided format string.
-- Make the active time basis explicit while limiting the choice to Local and UTC.
+- Interpret every range in the user's current browser time zone.
 - Match the existing dashboard design system and remain usable on narrow screens.
 
 ## Non-goals
 
 - Do not replace Usage range tabs or extend the Usage API.
-- Do not add arbitrary IANA time-zone selection.
+- Do not expose time-zone selection or add arbitrary-zone infrastructure.
 - Do not enforce the Logs 45-day window on the server.
 - Do not change the Logs API or database's inclusive range semantics.
 - Do not create a single-date mode.
@@ -30,8 +30,6 @@ The shared component accepts range endpoints that JavaScript `Date` can consume 
 
 ```ts
 type DateTimeInput = string | number | Date;
-type DateTimeRangeTimeZone = "local" | "utc";
-
 interface DateTimeRangeValue {
   readonly from: DateTimeInput;
   readonly to: DateTimeInput;
@@ -50,13 +48,11 @@ interface DateTimeRangePreset {
 
 interface DateTimeRangeChangeContext {
   readonly presetId: string | undefined;
-  readonly timeZone: DateTimeRangeTimeZone;
 }
 
 interface DateTimeRangePickerProps {
   readonly value: DateTimeRangeValue | undefined;
   readonly presetId?: string;
-  readonly timeZone?: DateTimeRangeTimeZone;
   readonly presets?: readonly DateTimeRangePreset[];
   readonly format?: string;
   readonly min?: DateTimeInput;
@@ -75,7 +71,6 @@ Contract details:
 - `value` uses `from/to` to match `react-day-picker`'s range language. Logs maps those names to `startedAfter/completedBefore` at its boundary.
 - `format` defaults to `yyyy-MM-dd HH:mm` and controls both editable absolute values and the collapsed absolute summary.
 - `presetId` is intentionally separate from `value`. Two dates cannot retain the intent "past hour" after time advances.
-- `timeZone` defaults to `local`. It is also separate because it controls wall-time interpretation and display, not the absolute range shape.
 - `presets` defaults to an empty list. The shared component does not own product-specific durations or copy.
 - `allowClear` defaults to `false`.
 - Invalid incoming date values produce an invalid draft state instead of crashing the page. Apply remains disabled until the draft is valid.
@@ -85,7 +80,7 @@ Contract details:
 
 The controlled props represent the applied filter. Each time the panel opens, the component creates a fresh draft from them.
 
-- Calendar, preset, time-field, and time-zone changes affect only the draft.
+- Calendar, preset, and time-field changes affect only the draft.
 - Apply normalizes the draft, calls `onChange`, and closes the panel.
 - Escape, outside click, and ordinary dismissal close the panel without changing the applied value.
 - Reopening starts from the latest controlled props, so abandoned drafts never leak into a later session.
@@ -95,7 +90,7 @@ The controlled props represent the applied filter. Each time the panel opens, th
 The clear control is the sole exception. When `allowClear` is true and `value` is defined, the collapsed trigger shows a trailing clear button. It does not open the panel. Activating it immediately calls:
 
 ```ts
-onChange(undefined, { presetId: undefined, timeZone });
+onChange(undefined, { presetId: undefined });
 ```
 
 Consumers decide what `undefined` means. Logs interprets it as a reset to its existing default local day.
@@ -108,14 +103,14 @@ The collapsed control uses the existing Input/Button visual vocabulary:
 - Semantic summary in the middle.
 - Accessible clear button at the trailing edge when allowed.
 - Relative selections display their localized preset label, such as "Past hour".
-- Custom selections display the formatted From/To range and a compact Local or UTC indicator.
+- Custom selections display the formatted From/To range.
 
 The desktop Popover follows the Cloudflare structure:
 
 1. A single-month range calendar on the left.
 2. A vertically scrollable preset list on the right.
 3. From and To editable fields below the calendar/preset region.
-4. A footer with the time-zone selector on the left and Apply on the right.
+4. A footer with Apply aligned to the right.
 
 There is no separate Cancel button. Popover dismissal is cancellation.
 
@@ -123,8 +118,8 @@ There is no separate Cancel button. Popover dismissal is cancellation.
 
 - The calendar uses range mode and shows one month.
 - Selecting a complete date range clears `presetId`.
-- The selected start date becomes `00:00:00.000` in the draft time zone.
-- The selected end date becomes `23:59:59.999` in the draft time zone.
+- The selected start date becomes `00:00:00.000` in the user's current time zone.
+- The selected end date becomes `23:59:59.999` in the user's current time zone.
 - The panel remains open so users can edit the resulting times.
 - Future and historical selection limits come from `min/max`; the component does not hardcode Logs retention policy.
 
@@ -133,31 +128,27 @@ There is no separate Cancel button. Popover dismissal is cancellation.
 - Clicking a preset resolves it against the current time, highlights it, and updates the draft fields/calendar.
 - It does not apply or close the panel.
 - Editing either endpoint or choosing a calendar date clears the active preset.
-- Relative duration resolution is independent of Local/UTC; the time-zone choice only changes its presentation.
 
 ### From and To fields
 
 - Both fields use `format` for display and parsing.
 - When the format omits seconds, a custom From value starts at second `00.000` and a custom To value ends at second `59.999`.
 - The default format therefore retains inclusive minute semantics while a selected full day still ends at `23:59:59.999`.
-- Manual edits remain wall-clock values until Apply converts them into absolute `Date` instances.
+- Manual edits are interpreted as wall-clock values in the user's current time zone until Apply converts them into absolute `Date` instances.
 
-## Time-Zone Behavior
+## User Time-Zone Behavior
 
-The selector contains at most two choices:
+The component always uses the browser's current time zone. It has no time-zone prop, selector, URL parameter, or alternate UTC mode.
 
-- Local: the browser's resolved local time zone, labeled with its localized long name and current GMT offset, for example `China Standard Time (GMT+8)`.
-- UTC: localized copy for Coordinated Universal Time.
+- Calendar-day boundaries use local `Date` behavior.
+- Manual values are parsed as local wall-clock values.
+- Applied `Date` instances serialize to UTC ISO strings only at the Logs boundary.
+- If the operating-system time zone changes while the dashboard is open, a reload establishes the new user time zone.
 
-If the browser's resolved local zone is UTC, the component shows one UTC choice instead of duplicate entries.
-
-Switching Local/UTC preserves the draft's displayed wall-clock dates and times, then reinterprets them in the new time basis. It does not preserve the previous absolute instants.
-
-Local daylight-saving behavior is explicit:
+Daylight-saving behavior in the user's time zone remains explicit:
 
 - A nonexistent spring-forward wall time is invalid. The field shows an inline error and Apply is disabled.
 - For a repeated fall-back wall time, From selects the earlier offset and To selects the later offset so the requested closed range covers the full ambiguous interval.
-- UTC has neither ambiguity.
 
 ## Validation
 
@@ -165,9 +156,9 @@ Apply is enabled only when all of the following are true:
 
 - Both endpoints parse according to `format`.
 - Both endpoints are valid dates.
-- `from <= to` after time-zone resolution.
-- Both endpoints satisfy `min/max` in the selected time basis.
-- No Local endpoint falls in a nonexistent DST interval.
+- `from <= to` after local-time resolution.
+- Both endpoints satisfy `min/max`.
+- Neither endpoint falls in a nonexistent local DST interval.
 
 Errors appear beside the relevant field using existing Field error patterns. Range-order errors identify both endpoints. The component never silently swaps endpoints, silently shifts a nonexistent time, or applies a partial range.
 
@@ -180,7 +171,6 @@ Sheet content is one scrollable column in this order:
 1. Single-month calendar.
 2. Preset list.
 3. From and To fields.
-4. Local/UTC selector.
 
 Apply remains in a sticky Sheet footer. Dismissal and Escape discard the draft exactly as on desktop. No separate mobile state model or alternate value contract is introduced.
 
@@ -203,10 +193,10 @@ Logs also passes its existing policy of no future dates and at most 45 days of c
 
 The Logs route supports two mutually exclusive applied forms:
 
-1. Relative: `preset=<id>&timeZone=<local|utc>`. It omits `startedAfter/completedBefore`.
-2. Custom: `startedAfter=<ISO>&completedBefore=<ISO>&timeZone=<local|utc>`. It omits `preset`.
+1. Relative: `preset=<id>`. It omits `startedAfter/completedBefore`.
+2. Custom: `startedAfter=<ISO>&completedBefore=<ISO>`. It omits `preset`.
 
-If a malformed URL contains both forms, a valid `preset` wins and canonicalization removes the absolute pair. Unknown presets, invalid dates, invalid time zones, or partial absolute ranges fall back to the existing default local current day.
+If a malformed URL contains both forms, a valid `preset` wins and canonicalization removes the absolute pair. Unknown presets, invalid dates, or partial absolute ranges fall back to the existing default local current day.
 
 Missing range parameters continue to mean the current local day. Route canonicalization may replace them with the resolved default ISO pair as it does today.
 
@@ -220,12 +210,12 @@ Missing range parameters continue to mean the current local day. Route canonical
 
 ## Accessibility and Internationalization
 
-- All labels, preset copy, errors, time-zone names not provided by `Intl`, clear-button names, and summaries come from i18n messages.
-- The trigger, trailing clear button, calendar controls, presets, time-zone selector, and Apply are keyboard reachable.
+- All labels, preset copy, errors, clear-button names, and summaries come from i18n messages.
+- The trigger, trailing clear button, calendar controls, presets, and Apply are keyboard reachable.
 - The clear button stops trigger activation so clearing never opens the panel.
 - Focus enters the panel predictably and returns to the trigger on dismissal.
 - Errors are associated with their fields and announced through the existing Field primitives.
-- Existing Calendar, Popover, Sheet, Input, Select, Field, and Button components provide the visual and accessibility baseline.
+- Existing Calendar, Popover, Sheet, Input, Field, and Button components provide the visual and accessibility baseline.
 
 ## Testing
 
@@ -239,9 +229,8 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Clear immediately only when `allowClear` is enabled.
 - Normalize calendar selections to full-day boundaries.
 - Clear `presetId` after manual or calendar edits.
-- Preserve wall time when switching Local/UTC.
 - Reject invalid, reversed, partial, out-of-bounds, and nonexistent DST ranges.
-- Apply the earlier/later offset rule to repeated Local times.
+- Apply the earlier/later offset rule to repeated local times.
 - Cover keyboard names and focus behavior for the trigger and clear control.
 
 ### Logs tests
@@ -258,7 +247,7 @@ Missing range parameters continue to mean the current local day. Route canonical
 
 - Verify the desktop Popover at normal and constrained widths.
 - Verify the mobile Sheet without horizontal overflow or obscured Apply action.
-- Exercise preset, calendar, manual time, Local/UTC, clear, cancellation, and Apply flows against the running Logs page.
+- Exercise preset, calendar, manual time, clear, cancellation, and Apply flows against the running Logs page.
 - Confirm no new browser console errors.
 
 ## Implementation Boundaries
@@ -266,16 +255,16 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Reuse the existing dashboard primitives and `react-day-picker` wrapper.
 - Keep preset definitions in the Logs module so the picker and polling resolver consume the same source of truth.
 - Keep URL parsing and API conversion in the Logs module.
-- Use native `Date`/`Intl` behavior for Local and UTC; do not add arbitrary-zone infrastructure.
+- Use native `Date` behavior for the user's current time zone; do not add time-zone infrastructure.
 - Add no unrelated Logs, Usage, server, or database changes.
 
 ## Acceptance Criteria
 
 - The Logs picker matches the confirmed Cloudflare-style interaction on desktop and mobile.
-- Default and calendar-selected ranges use the user's local day boundaries unless UTC is explicitly selected.
+- Default and calendar-selected ranges use the user's current local day boundaries.
 - Relative presets continue rolling across refreshes and polling.
 - Custom ranges remain fixed absolute ISO ranges.
-- `value` stays a plain `from/to` date-compatible range; preset and time-zone state remain separate.
+- `value` stays a plain `from/to` date-compatible range; rolling preset state remains separate.
 - `allowClear` immediately returns `undefined`, and Logs restores its default today behavior.
 - Invalid ranges cannot be applied.
 - The implementation passes focused tests, repository preflight, and desktop/mobile browser QA.
