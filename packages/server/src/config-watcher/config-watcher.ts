@@ -7,9 +7,11 @@ export type ConfigWatcher = {
 
 export function watchConfigFile(configPath: string, onChange: () => Promise<unknown>): ConfigWatcher {
   const targetName = basename(configPath);
+  const lockName = `${targetName}.lock`;
   let pendingReload: ReturnType<typeof setTimeout> | undefined;
   const watcher = watch(dirname(configPath), (event, filename) => {
     const changedName = filename === null ? undefined : filename;
+    if (changedName === lockName || changedName?.startsWith(`${lockName}.`)) return;
     if (event === "change" && changedName !== undefined && changedName !== targetName) {
       return;
     }
