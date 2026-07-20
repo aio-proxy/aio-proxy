@@ -8,6 +8,7 @@
         "../infra/src/rslib.ts",
         "../infra/tsconfig/base.json",
         "build/**",
+        "messages/**",
         "src/**",
         "scripts/**",
         "package.json",
