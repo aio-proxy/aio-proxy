@@ -224,6 +224,7 @@ Components must come from `src/components/ui`; install missing components throug
 
 - **Style:** Use the shared Table with TanStack Table: 12px cell padding, horizontal dividers, and muted/50 row hover.
 - **States:** Sorting, filtering, pagination, and column visibility use shared controls; mobile retains horizontal scrolling instead of becoming a separate card list.
+- **Exception:** Server-paginated tables (e.g. request logs) omit client-side sorting, current-page filtering, and column visibility. Their headers are plain labels and ordering/pagination are server-driven, so the loaded page never misrepresents the full result set.
 
 ## 6. Do's and Don'ts
 

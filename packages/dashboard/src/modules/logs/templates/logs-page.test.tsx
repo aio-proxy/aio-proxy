@@ -123,7 +123,11 @@ describe("logs page", () => {
     const onSearchChange = rs.fn();
     render(
       <LogsPage
-        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), page: 3 }}
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          page: 3,
+          outcome: "failure",
+        }}
         onSearchChange={onSearchChange}
       />,
     );
@@ -133,7 +137,9 @@ describe("logs page", () => {
       target: { value: "request-exact" },
     });
 
-    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, requestId: "request-exact" }));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, requestId: "request-exact", outcome: "failure" }),
+    );
   });
 
   test("does not expose current-page filtering, sorting, or column controls", () => {

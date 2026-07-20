@@ -1,7 +1,7 @@
 import { m } from "@aio-proxy/i18n";
 import { ProviderProtocol, type RequestOutcome } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 import { z } from "zod";
 
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 
 import { toPickerRange, toQueryRange } from "../log-date-range";
-import { type LogsFilterPatch, type LogsSearch, withLogsFilters } from "../logs-search";
+import { createDefaultLogsSearch, type LogsFilterPatch, type LogsSearch, withLogsFilters } from "../logs-search";
 import { LogsAdvancedFilters } from "./logs-advanced-filters";
 import { LogsDateRangePicker } from "./logs-date-range-picker";
 
@@ -63,7 +63,7 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
     <div className="flex flex-wrap items-end gap-2">
       <form.Field name="dateRange">
         {(field) => (
-          <Field className="min-w-60 flex-1">
+          <Field className="w-auto min-w-60 flex-1">
             <FieldLabel>{m["dashboard.logs.range"]()}</FieldLabel>
             <LogsDateRangePicker
               value={field.state.value}
@@ -78,7 +78,7 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
       </form.Field>
       <form.Field name="requestedModelId">
         {(field) => (
-          <Field className="min-w-52 flex-1">
+          <Field className="w-auto min-w-52 flex-1">
             <FieldLabel htmlFor="logs-requestedModelId">{m["dashboard.logs.requested_model"]()}</FieldLabel>
             <Input
               id="logs-requestedModelId"
@@ -93,7 +93,7 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
       </form.Field>
       <form.Field name="outcome">
         {(field) => (
-          <Field className="min-w-36">
+          <Field className="w-36">
             <FieldLabel>{m["dashboard.logs.outcome"]()}</FieldLabel>
             <Select
               value={field.state.value}
@@ -118,7 +118,7 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
       </form.Field>
       <form.Field name="inboundProtocol">
         {(field) => (
-          <Field className="min-w-44">
+          <Field className="w-44">
             <FieldLabel>{m["dashboard.logs.protocol"]()}</FieldLabel>
             <Select
               value={field.state.value}
@@ -147,7 +147,7 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
       {search.page === 1 && (
         <form.Field name="autoRefresh">
           {(field) => (
-            <Field orientation="horizontal" className="h-9 px-1">
+            <Field orientation="horizontal" className="h-9 w-auto px-1">
               <Switch
                 id="logs-auto-refresh"
                 checked={field.state.value}
@@ -161,6 +161,15 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
           )}
         </form.Field>
       )}
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        aria-label={m["dashboard.logs.reset"]()}
+        onClick={() => onChange(createDefaultLogsSearch())}
+      >
+        <RotateCcw />
+      </Button>
       <Button
         type="button"
         variant="outline"

@@ -1,6 +1,7 @@
 import { m } from "@aio-proxy/i18n";
 import { useForm } from "@tanstack/react-form";
 import { ListFilter } from "lucide-react";
+import { useEffect } from "react";
 import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,12 @@ export const LogsAdvancedFilters: React.FC<LogsAdvancedFiltersProps> = ({ search
     },
     validators: { onChange: schema },
   });
+  useEffect(() => {
+    form.setFieldValue("requestId", search.requestId ?? "");
+    form.setFieldValue("finalProviderId", search.finalProviderId ?? "");
+    form.setFieldValue("finalModelId", search.finalModelId ?? "");
+    form.setFieldValue("finalStatusCode", search.finalStatusCode?.toString() ?? "");
+  }, [form, search.requestId, search.finalProviderId, search.finalModelId, search.finalStatusCode]);
   const activeCount = [search.requestId, search.finalProviderId, search.finalModelId, search.finalStatusCode].filter(
     (value) => value !== undefined,
   ).length;
