@@ -118,4 +118,21 @@ describe("logs page", () => {
     expect(screen.queryByText(name) ?? screen.queryByLabelText(name)).toBeTruthy();
     mocks.mode = "data";
   });
+
+  test("applies an exact filter from More filters and resets pagination", async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), page: 3 }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /More filters|更多筛选/u }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /Request ID|请求 ID/u }), {
+      target: { value: "request-exact" },
+    });
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, requestId: "request-exact" }));
+  });
 });

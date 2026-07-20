@@ -478,6 +478,8 @@
       "reset": "重置",
       "refresh": "刷新",
       "auto_refresh": "自动刷新",
+      "more_filters": "更多筛选",
+      "clear_advanced_filters": "清除高级筛选",
       "loading": "正在加载请求日志",
       "empty_title": "没有匹配的请求",
       "empty_description": "请调整或重置筛选条件以查看保留的请求。",

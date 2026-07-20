@@ -478,6 +478,8 @@
       "reset": "Reset",
       "refresh": "Refresh",
       "auto_refresh": "Auto refresh",
+      "more_filters": "More filters",
+      "clear_advanced_filters": "Clear advanced filters",
       "loading": "Loading request logs",
       "empty_title": "No matching requests",
       "empty_description": "Change or reset the filters to see retained requests.",
