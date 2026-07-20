@@ -9,7 +9,12 @@ import { delay } from "es-toolkit/promise";
 
 import type { PluginRepository, StoredAccount } from "./repository/index";
 
-import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "./diagnostic";
+import {
+  collectSecretStrings,
+  type DiagnosticFactory,
+  type PluginLogSink,
+  redactPluginError,
+} from "./diagnostic/index";
 import { parsePluginSchema } from "./schema";
 
 const REFRESH_LEASE_MS = 45_000;

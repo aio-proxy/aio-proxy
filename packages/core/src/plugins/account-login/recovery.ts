@@ -1,6 +1,6 @@
 import { ConfigSchema, providerLoginCommand } from "@aio-proxy/types";
 
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
+import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
 import type { PendingAccountOperation, PluginRepository } from "../repository/index";
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";

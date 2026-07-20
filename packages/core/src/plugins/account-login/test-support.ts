@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
+import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
 
 import {
   ABSENT_PROVIDER_DIGEST,

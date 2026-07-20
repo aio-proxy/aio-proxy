@@ -9,7 +9,7 @@ import { expect, jest, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import type { DiagnosticFactory } from "../diagnostic";
+import type { DiagnosticFactory } from "../diagnostic/index";
 
 import { loadPluginRegistry, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS, type PluginPackageImporter } from ".";
 import { npmPackageCacheDir } from "../../npm";

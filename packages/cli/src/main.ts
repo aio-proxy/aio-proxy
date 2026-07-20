@@ -9,13 +9,13 @@ import {
   resolveLocaleFromArgv,
   setLocale,
 } from "@aio-proxy/i18n";
-import { createServer } from "@aio-proxy/server";
 import { Command } from "commander";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import packageJson from "../package.json" with { type: "json" };
+import { bootProxyServer } from "./boot-proxy-server";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
 import { openBrowser } from "./open-browser";
@@ -125,7 +125,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   assertPortAvailable(host, port);
   const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
-  const app = await createServer({
+  const app = await bootProxyServer({
     config,
     configPath: resolvedConfigPath,
     dashboardAssets,

@@ -4,7 +4,7 @@ import {
   isPluginDescriptor,
   type PluginDescriptor,
   type PluginDescriptorShell,
-} from "../src";
+} from "..";
 
 type MyOptions = {
   readonly baseURL: string;
@@ -24,6 +24,13 @@ const fullDescriptor: PluginDescriptor<MyOptions> = typedDescriptor;
 const descriptorShell: PluginDescriptorShell = typedDescriptor;
 void fullDescriptor;
 void descriptorShell;
+
+const staleAuthoredDescriptor: PluginDescriptor<MyOptions> = {
+  ...typedDescriptor,
+  // @ts-expect-error Authored descriptors must advertise the current API version.
+  apiVersion: 1,
+};
+void staleAuthoredDescriptor;
 
 declare const candidate: unknown;
 

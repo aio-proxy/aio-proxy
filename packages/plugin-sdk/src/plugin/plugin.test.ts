@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from "../src";
+import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from "..";
 
 describe("definePlugin", () => {
-  test("brands an apiVersion 1 descriptor", () => {
+  test("brands an apiVersion 2 descriptor", () => {
     const descriptor = definePlugin(() => {});
-    expect(descriptor.apiVersion).toBe(1);
+    expect(descriptor.apiVersion).toBe(2);
     expect(descriptor[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
     expect(isPluginDescriptor(descriptor)).toBe(true);
   });
@@ -22,11 +22,10 @@ describe("definePlugin", () => {
 
     expect(descriptor.metadata.options).toBe(options);
     expect(calls).toBe(0);
-    expect(PLUGIN_API_VERSION).toBe(1);
   });
 
   test("rejects unbranded lookalikes", () => {
-    expect(isPluginDescriptor({ apiVersion: 1, setup() {} })).toBe(false);
+    expect(isPluginDescriptor({ apiVersion: 2, setup() {} })).toBe(false);
   });
 
   test("rejects branded descriptors without object metadata", () => {
@@ -50,5 +49,15 @@ describe("definePlugin", () => {
 
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: null } })).toBe(true);
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: "bad" } } })).toBe(true);
+  });
+
+  test("accepts branded apiVersion 1 descriptors for compatibility", () => {
+    const descriptor = {
+      [PLUGIN_DESCRIPTOR_BRAND]: true,
+      apiVersion: 1,
+      metadata: {},
+      setup() {},
+    };
+    expect(isPluginDescriptor(descriptor)).toBe(true);
   });
 });

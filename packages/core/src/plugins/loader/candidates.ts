@@ -1,14 +1,12 @@
-import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
-
 import { type PluginState, pluginConfigCommand } from "@aio-proxy/types";
 import { isPlainObject } from "es-toolkit/predicate";
 
 import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from "./index";
 
 import { validateConfigSpec } from "../config-spec";
-import { redactPluginError } from "../diagnostic";
+import { redactPluginError } from "../diagnostic/index";
 import { parsePluginSchema } from "../schema";
-import { PluginHostError } from "./descriptor";
+import { type LoadablePluginDescriptor, PluginHostError } from "./descriptor/index";
 
 export type Candidate = {
   readonly packageName: string;
@@ -22,7 +20,7 @@ const isEmptyRecord = (value: unknown) =>
   value === undefined || (isPlainRecord(value) && Reflect.ownKeys(value).length === 0);
 
 export async function prepareOptions(
-  descriptor: PluginDescriptor<unknown>,
+  descriptor: LoadablePluginDescriptor<unknown>,
   publicOptions: unknown,
   secretOptions: unknown,
 ): Promise<unknown> {

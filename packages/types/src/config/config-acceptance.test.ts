@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
-import { AiSdkProviderSchema, ConfigAuthoringSchema, ConfigSchema, OAuthProviderSchema } from "../src/index";
-import { apiProvider, providers } from "./schemas.test-support";
+import { AiSdkProviderSchema, ConfigAuthoringSchema, ConfigSchema, OAuthProviderSchema } from "..";
+import { apiProvider, providers } from "../../_test/schemas.test-support";
+
+const defaultServer = {
+  host: "127.0.0.1",
+  port: 22_078,
+  logging: { enabled: false, retentionDays: 14, level: "info" },
+} as const;
 
 describe("ConfigSchema", () => {
   test("accepts api provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: apiProvider }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: defaultServer,
       providers: [{ ...apiProvider, enabled: true, id: "openai" }],
       invalidProviders: [],
     });
@@ -17,7 +23,7 @@ describe("ConfigSchema", () => {
   test("accepts disabled provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: { ...apiProvider, enabled: false } }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: defaultServer,
       providers: [{ ...apiProvider, enabled: false, id: "openai" }],
       invalidProviders: [],
     });
@@ -32,7 +38,7 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: defaultServer,
       providers: [{ ...provider, enabled: true, id: "chatgpt" }],
       invalidProviders: [],
     });
@@ -74,7 +80,7 @@ describe("ConfigSchema", () => {
 
     expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: defaultServer,
       providers: [{ ...provider, enabled: true, id: "google" }],
       invalidProviders: [],
     });
@@ -122,7 +128,7 @@ describe("ConfigSchema", () => {
       }),
     ).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 3000 },
+      server: { ...defaultServer, port: 3000 },
       providers: [
         { ...apiProvider, enabled: true, id: "openai" },
         {

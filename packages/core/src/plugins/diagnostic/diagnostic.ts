@@ -1,6 +1,6 @@
 import { m } from "@aio-proxy/i18n";
+import { redactLogText } from "@aio-proxy/logger";
 import { type Diagnostic, type DiagnosticCode, PluginPackageNameSchema } from "@aio-proxy/types";
-import { escapeRegExp } from "es-toolkit/string";
 import { isMap, isProxy, isSet } from "node:util/types";
 
 export type DiagnosticContext = {
@@ -161,10 +161,7 @@ function redactJsonQuotedFields(input: string): string {
 }
 
 function redactText(input: string, secretValues: readonly string[]): string {
-  let output = input;
-  for (const secret of [...secretValues].filter((value) => value.length > 0).sort((a, b) => b.length - a.length)) {
-    output = output.replace(new RegExp(escapeRegExp(secret), "gu"), "[REDACTED]");
-  }
+  let output = redactLogText(input, secretValues);
   output = output.replace(
     /\bhttps?:\/\/[^\s"'<>?]+\?[^\s"'<>]*/giu,
     (url) => `${url.slice(0, url.indexOf("?"))}?[REDACTED]`,
@@ -175,7 +172,7 @@ function redactText(input: string, secretValues: readonly string[]): string {
     /((?:["'])?\b(?:access_token|refresh_token|authorization_code|code_verifier|accessToken|refreshToken|code|state)\b(?:["'])?\s*(?:=|:)\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;&}]+)/giu,
     "$1[REDACTED]",
   );
-  return output;
+  return redactLogText(output, secretValues);
 }
 
 export function collectSecretStrings(value: unknown): readonly string[] {

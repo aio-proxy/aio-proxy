@@ -152,7 +152,11 @@ describe("OAuth plugin config schema", () => {
     // Then
     expect(config).toEqual({
       plugins: [],
-      server: { host: "127.0.0.1", port: 22078 },
+      server: {
+        host: "127.0.0.1",
+        port: 22078,
+        logging: { enabled: false, retentionDays: 14, level: "info" },
+      },
       providers: [
         {
           kind: "oauth",

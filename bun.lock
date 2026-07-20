@@ -53,6 +53,7 @@
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/server": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -182,6 +183,19 @@
         "typescript": "catalog:",
       },
     },
+    "packages/logger": {
+      "name": "@aio-proxy/logger",
+      "version": "0.0.0",
+      "dependencies": {
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "@logtape/file": "2.1.1",
+        "@logtape/logtape": "2.1.1",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
       "version": "0.0.0",
@@ -282,6 +296,7 @@
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
+        "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "date-fns": "^4.4.0",
@@ -383,6 +398,8 @@
     "@aio-proxy/i18n": ["@aio-proxy/i18n@workspace:packages/i18n"],
 
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
+
+    "@aio-proxy/logger": ["@aio-proxy/logger@workspace:packages/logger"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 
@@ -697,6 +714,10 @@
     "@lix-js/server-protocol-schema": ["@lix-js/server-protocol-schema@0.1.1", "", {}, "sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ=="],
 
     "@lobehub/icons-static-svg": ["@lobehub/icons-static-svg@1.93.0", "", {}, "sha512-in3w3Epepw4h/Opw0zIyOSVrABioI/QDDyxINRl/kaVkIfKlGms+RVtRH3rXtnALpCEIRVm/kJo8bphoT59Bow=="],
+
+    "@logtape/file": ["@logtape/file@2.1.1", "", { "peerDependencies": { "@logtape/logtape": "^2.1.1" } }, "sha512-AlT69oM1MEe1TV04go9s50/orHxc9n4fPu9MW7P5sG+hH55EDHJALd6D9zTEIm0PP4znR+XgTeml2ANnY2bkNw=="],
+
+    "@logtape/logtape": ["@logtape/logtape@2.1.1", "", {}, "sha512-aULbCqUQGerfOsZ3CMvcKtueKzmdchluXYUd3bIHKmOIS93fx1ko0+hyRQ4flloGZ8EiyRPydZXiy8n1J/eAQA=="],
 
     "@manypkg/find-root": ["@manypkg/find-root@1.1.0", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@types/node": "^12.7.1", "find-up": "^4.1.0", "fs-extra": "^8.1.0" } }, "sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA=="],
 

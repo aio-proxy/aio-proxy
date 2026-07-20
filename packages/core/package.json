@@ -39,6 +39,7 @@
     "@ai-sdk/provider": "catalog:",
     "@ai-sdk/xai": "catalog:",
     "@aio-proxy/i18n": "workspace:*",
+    "@aio-proxy/logger": "workspace:*",
     "@aio-proxy/plugin-github-copilot": "workspace:*",
     "@aio-proxy/plugin-google-antigravity": "workspace:*",
     "@aio-proxy/plugin-kimi-code": "workspace:*",

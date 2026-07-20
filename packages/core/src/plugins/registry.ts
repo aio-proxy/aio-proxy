@@ -1,7 +1,14 @@
-import { type LocalizedText, LocalizedTextSchema, type OAuthAdapter, type PluginApi } from "@aio-proxy/plugin-sdk";
+import { createLogger } from "@aio-proxy/logger";
+import {
+  type LocalizedText,
+  LocalizedTextSchema,
+  type Logger,
+  type OAuthAdapter,
+  type PluginApi,
+} from "@aio-proxy/plugin-sdk";
 import { CapabilityIdSchema } from "@aio-proxy/types";
 
-import type { PluginLogSink } from "./diagnostic";
+import type { PluginLogSink } from "./diagnostic/index";
 
 import { validateConfigSpec } from "./config-spec";
 import { validateOAuthIcon } from "./icon";
@@ -123,11 +130,23 @@ export type PluginStagingRegistry = {
   readonly commit: () => void;
 };
 
+export type PluginLoggerFactory = (
+  category: readonly string[],
+  options?: { readonly redactSecretValues?: readonly string[] },
+) => Logger;
+
+export type PluginStagingOptions = {
+  readonly redactSecretValues?: readonly string[];
+};
+
 const noopPluginLogger: PluginLogSink = () => {};
 
-export function createPluginRegistryHost(logger: PluginLogSink = noopPluginLogger): {
+export function createPluginRegistryHost(
+  logger: PluginLogSink = noopPluginLogger,
+  createPluginLogger: PluginLoggerFactory = createLogger,
+): {
   readonly registry: PluginRegistry;
-  readonly stage: (plugin: string) => PluginStagingRegistry;
+  readonly stage: (plugin: string, options?: PluginStagingOptions) => PluginStagingRegistry;
 } {
   const committed = new Map<string, OAuthCapability>();
   const registry: PluginRegistry = {
@@ -141,11 +160,12 @@ export function createPluginRegistryHost(logger: PluginLogSink = noopPluginLogge
 
   return {
     registry,
-    stage(plugin) {
+    stage(plugin, options = {}) {
       const staged = new Map<string, OAuthCapability>();
       let sealed = false;
       return {
         api: {
+          logger: createPluginLogger(["aio-proxy", "plugin", plugin], options),
           oauth: {
             register(value) {
               if (sealed) throw new Error("Plugin staging registry is sealed");

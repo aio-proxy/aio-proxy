@@ -6,7 +6,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createModelsDevCatalogTask, createServerState } from "../src/server-state";
+import { createModelsDevCatalogTask } from ".";
+import { createServerState } from "..";
 
 const homes: string[] = [];
 

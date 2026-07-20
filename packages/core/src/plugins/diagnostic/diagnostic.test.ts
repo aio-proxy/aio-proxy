@@ -1,13 +1,8 @@
 import { definePlugin } from "@aio-proxy/plugin-sdk";
 import { describe, expect, test } from "bun:test";
 
-import {
-  collectSecretStrings,
-  createPluginDiagnosticFactory,
-  type DiagnosticFactory,
-  redactPluginError,
-} from "./diagnostic";
-import { loadPluginRegistry } from "./loader/index";
+import { collectSecretStrings, type DiagnosticFactory, redactPluginError } from ".";
+import { loadPluginRegistry } from "../loader/index";
 
 describe("redactPluginError", () => {
   test("skips proxies and accessors without invoking them", () => {
@@ -125,6 +120,15 @@ describe("redactPluginError", () => {
     expect(redactPluginError(error, { secretValues: ["name-secret"] }).name).toBe("PluginFailure: [REDACTED]");
   });
 
+  test("uses collision-safe exact-value redaction", () => {
+    const redacted = redactPluginError(new Error("marker [REDACTED], Ax, and Bearer abc"), {
+      secretValues: ["[REDACTED]", "A[R", "x"],
+    });
+
+    expect(redacted.message).not.toContain("[REDACTED]");
+    expect(redacted.message).not.toContain("A[R");
+    expect(redacted.message).not.toContain("x");
+  });
   test("redacts OAuth values from JSON quoted keys", () => {
     const values = {
       access_token: "json-access",
@@ -251,26 +255,5 @@ describe("redactPluginError", () => {
     expect(JSON.stringify(capturedOptions)).not.toContain("cause");
     expect(JSON.stringify(capturedOptions)).not.toContain("stack");
     expect(Object.keys(capturedOptions as object).sort()).toEqual(["plugin", "retryable"]);
-  });
-});
-
-describe("createPluginDiagnosticFactory", () => {
-  test("centralizes localized summaries, safe identifiers, and injected timestamps", () => {
-    const diagnostic = createPluginDiagnosticFactory(() => 123)("CAPABILITY_MISSING", {
-      plugin: "not a package secret-plugin",
-      capability: "secret capability",
-      providerId: "provider",
-      retryable: false,
-      suggestedCommand: "aio-proxy provider login",
-    });
-
-    expect(diagnostic).toEqual({
-      code: "CAPABILITY_MISSING",
-      occurredAt: new Date(123).toISOString(),
-      retryable: false,
-      suggestedCommand: "aio-proxy provider login",
-      summary: "Plugin <plugin> does not provide capability <capability>.",
-    });
-    expect(diagnostic.summary).not.toContain("secret");
   });
 });

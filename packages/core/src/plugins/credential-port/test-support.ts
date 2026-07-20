@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic";
+import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
 
 import { type OpenDbHandle, openDb } from "../../db";
 import { createCredentialPort } from "../index";

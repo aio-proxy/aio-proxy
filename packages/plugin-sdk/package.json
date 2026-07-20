@@ -19,7 +19,7 @@
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit && bun run test:types",
     "test:artifact": "bun test ./build/build-artifact.test.ts",
-    "test:unit": "bun test ./_test/descriptor.test.ts ./_test/localized-text.test.ts ./build/lobe-icon-keys.test.ts",
+    "test:unit": "bun test ./src/plugin/plugin.test.ts ./_test/localized-text.test.ts ./build/lobe-icon-keys.test.ts",
     "test:types": "tsc -p tsconfig.test.json"
   },
   "dependencies": {

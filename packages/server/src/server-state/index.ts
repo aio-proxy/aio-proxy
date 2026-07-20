@@ -1,13 +1,9 @@
 import {
   AtomicConfigFile,
-  createModelsDevCatalog,
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
-  type FetchModelsDevProviders,
-  type ModelsDevCatalog,
   type PendingAccountOperation,
-  type PluginLogSink,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
@@ -22,7 +18,6 @@ import {
 import { dirname } from "node:path";
 
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
-import type { ServerLogSink } from "../server-log";
 import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from "./types";
 
 import { createAccountRemovalCoordinator } from "../account-removal";
@@ -39,14 +34,12 @@ import { createSnapshotManager } from "../plugin-snapshot";
 import { providerDiff } from "../provider-runtime";
 import { createRequestRecorder } from "../request-recorder";
 import { createUsageCapture } from "../usage-capture";
+import { defaultLogger, defaultPluginLogger } from "./logging";
+import { createModelsDevCatalogTask } from "./models-dev-catalog-task";
 import { createProviderSummaries } from "./probe";
 import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
 import { reloadSnapshot } from "./reload";
 import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
-
-const defaultLogger: ServerLogSink = (entry) => console.error(JSON.stringify(entry));
-const defaultPluginLogger: PluginLogSink = (entry) => console.error(JSON.stringify(entry));
-const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
@@ -278,24 +271,7 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
-export function createModelsDevCatalogTask(
-  fetchProviders?: FetchModelsDevProviders,
-): () => Promise<ModelsDevCatalog | undefined> {
-  let catalog: { readonly expiresAt: number; readonly task: Promise<ModelsDevCatalog | undefined> } | undefined;
-  return () => {
-    const now = Date.now();
-    if (catalog === undefined || catalog.expiresAt <= now) {
-      catalog = {
-        expiresAt: now + PRICE_CATALOG_TTL_MS,
-        task: createModelsDevCatalog(fetchProviders).catch((error: unknown) => {
-          if (error instanceof Error) return undefined;
-          throw error;
-        }),
-      };
-    }
-    return catalog.task;
-  };
-}
+export { createModelsDevCatalogTask } from "./models-dev-catalog-task";
 
 export type {
   ConfigReloadLog,
