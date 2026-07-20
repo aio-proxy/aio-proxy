@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { LogDetailDrawer } from "../components/log-detail-drawer";
-import { LogsFilters } from "../components/logs-filters";
-import { LogsTable } from "../components/logs-table";
-import { useLogsQuery } from "../hooks/use-logs-query";
-import { createDefaultLogsSearch, type LogsSearch } from "../logs-search";
+import { LogDetailDrawer } from "../../components/log-detail-drawer";
+import { LogsFilters } from "../../components/logs-filters";
+import { LogsTable } from "../../components/logs-table";
+import { useLogsQuery } from "../../hooks/use-logs-query";
+import { createDefaultLogsSearch, type LogsSearch } from "../../logs-search";
 
 type Props = { readonly search: LogsSearch; readonly onSearchChange: (search: LogsSearch) => void };
 

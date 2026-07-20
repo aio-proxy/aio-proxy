@@ -1,12 +1,12 @@
 import { describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { createDefaultLogsSearch } from "../logs-search";
+import { createDefaultLogsSearch } from "../../logs-search";
 import { LogsPage } from "./logs-page";
 
 const mocks = rs.hoisted(() => ({ refetch: rs.fn(), mode: "data" }));
 
-rs.mock("../hooks/use-logs-query", () => ({
+rs.mock("../../hooks/use-logs-query", () => ({
   useLogsQuery: () =>
     mocks.mode === "loading"
       ? { isLoading: true, isError: false, isFetching: false, refetch: mocks.refetch }
@@ -152,24 +152,30 @@ describe("logs page", () => {
     expect(screen.getByText(/Completed|完成时间/u).closest("button")).toBeNull();
   });
 
-  test("updates common and advanced controls when search changes via navigation", () => {
+  test("updates common filter controls when search changes via navigation", () => {
     const { rerender } = render(
       <LogsPage
         search={{
           ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
           requestedModelId: "gpt-5",
+          outcome: "failure",
+          inboundProtocol: "openai-chat",
         }}
         onSearchChange={rs.fn()}
       />,
     );
 
     expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("gpt-5");
+    expect(screen.getByRole("combobox", { name: /Outcome|结果/u })).toHaveTextContent(/failure/u);
+    expect(screen.getByRole("combobox", { name: /Protocol|协议/u })).toHaveTextContent(/openai-chat/u);
 
     rerender(
       <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
     );
 
     expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: /Outcome|结果/u })).not.toHaveTextContent(/failure/u);
+    expect(screen.getByRole("combobox", { name: /Protocol|协议/u })).not.toHaveTextContent(/openai-chat/u);
   });
 
   test("resets all filters to defaults", () => {
