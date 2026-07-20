@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { aioHome, configPath } from "@aio-proxy/core";
+import { configPath } from "@aio-proxy/core";
 import {
   ConfigWriteError,
   formatUserError,
@@ -9,15 +9,13 @@ import {
   resolveLocaleFromArgv,
   setLocale,
 } from "@aio-proxy/i18n";
-import { configureLogging, type LoggingConfig } from "@aio-proxy/logger";
-import { createServer, type CreateServerOptions } from "@aio-proxy/server";
-import { ConfigSchema } from "@aio-proxy/types";
 import { Command } from "commander";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
 import packageJson from "../package.json" with { type: "json" };
+import { bootProxyServer } from "./boot-proxy-server";
 import { type CliDeps, defaultCliDeps } from "./dashboard-assets";
 import { ServeListenError } from "./errors";
 import { openBrowser } from "./open-browser";
@@ -116,29 +114,6 @@ const assertPortAvailable = (host: string, port: number) => {
   } finally {
     probe?.stop(true);
   }
-};
-
-type BootProxyServerDeps = {
-  readonly aioHome: typeof aioHome;
-  readonly configureLogging: (config: LoggingConfig) => Promise<void>;
-  readonly createServer: typeof createServer;
-};
-
-const defaultBootProxyServerDeps: BootProxyServerDeps = { aioHome, configureLogging, createServer };
-
-export const bootProxyServer = async (
-  options: CreateServerOptions,
-  deps: BootProxyServerDeps = defaultBootProxyServerDeps,
-) => {
-  const config = ConfigSchema.parse(options.config);
-  const logging = config.server.logging;
-  await deps.configureLogging({
-    dir: logging?.dir ?? join(deps.aioHome(), "logs"),
-    ...(logging?.enabled === undefined ? {} : { enabled: logging.enabled }),
-    ...(logging?.retentionDays === undefined ? {} : { retentionDays: logging.retentionDays }),
-    ...(logging?.level === undefined ? {} : { level: logging.level }),
-  });
-  return deps.createServer(options);
 };
 
 const serve = (deps: CliDeps) => async (options: ServeOptions) => {

@@ -4,9 +4,9 @@ import { isPlainObject } from "es-toolkit/predicate";
 import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from "./index";
 
 import { validateConfigSpec } from "../config-spec";
-import { redactPluginError } from "../diagnostic";
+import { redactPluginError } from "../diagnostic/index";
 import { parsePluginSchema } from "../schema";
-import { type LoadablePluginDescriptor, PluginHostError } from "./descriptor";
+import { type LoadablePluginDescriptor, PluginHostError } from "./descriptor/index";
 
 export type Candidate = {
   readonly packageName: string;

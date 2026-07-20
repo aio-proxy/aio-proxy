@@ -2,7 +2,7 @@ import type { LocalizedText, PluginDescriptor } from "@aio-proxy/plugin-sdk";
 import type { PluginEnablement, PluginState } from "@aio-proxy/types";
 
 import { findInstalledNpmPackage } from "../../npm";
-import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic";
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic/index";
 import { createPluginRegistryHost, type PluginLoggerFactory, type PluginRegistry } from "../registry";
 import { candidates, failedState, prepareOptions } from "./candidates";
 import {
@@ -12,10 +12,10 @@ import {
   PLUGIN_SETUP_TIMEOUT_MS,
   PluginHostError,
   validateDescriptor,
-} from "./descriptor";
+} from "./descriptor/index";
 
-export type { ObservedPromiseDeadlineOptions } from "./descriptor";
-export { observedPromiseDeadline, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS } from "./descriptor";
+export type { ObservedPromiseDeadlineOptions } from "./descriptor/index";
+export { observedPromiseDeadline, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS } from "./descriptor/index";
 
 export type BuiltInPluginDefinition = {
   readonly packageName: string;

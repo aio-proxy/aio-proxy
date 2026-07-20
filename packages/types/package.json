@@ -14,7 +14,7 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test _test/*.test.ts src/*.test.ts"
+    "test:unit": "bun test _test/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {
     "zod": "catalog:"

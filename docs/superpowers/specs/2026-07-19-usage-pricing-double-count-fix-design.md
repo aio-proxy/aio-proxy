@@ -16,10 +16,10 @@ That double-counts whenever a parent total already includes a detail bucket.
 
 ### Two usage sources, two inclusion models
 
-| Source | How tokens arrive | Inclusion reality (verified on installed AI SDK 4.x) |
-| --- | --- | --- |
-| **Raw passthrough** | Protocol-native fields via `passthrough-usage.ts` | OpenAI/Gemini: prompt includes cache; Anthropic: input vs cache are exclusive; Gemini raw keeps `candidates` and `thoughts` separate |
-| **AI SDK stream** | `finish.totalUsage` via `normalizeAiSdkUsage` | `@ai-sdk/anthropic`: `inputTokens.total = noCache + cacheRead + cacheWrite`; `@ai-sdk/google`: `outputTokens.total = candidates + thoughts`, and reasoning details also expose thoughts |
+| Source              | How tokens arrive                                 | Inclusion reality (verified on installed AI SDK 4.x)                                                                                                                                    |
+| ------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Raw passthrough** | Protocol-native fields via `passthrough-usage.ts` | OpenAI/Gemini: prompt includes cache; Anthropic: input vs cache are exclusive; Gemini raw keeps `candidates` and `thoughts` separate                                                    |
+| **AI SDK stream**   | `finish.totalUsage` via `normalizeAiSdkUsage`     | `@ai-sdk/anthropic`: `inputTokens.total = noCache + cacheRead + cacheWrite`; `@ai-sdk/google`: `outputTokens.total = candidates + thoughts`, and reasoning details also expose thoughts |
 
 Using **inbound** `adapter.protocol` as the billing key is wrong for the stream path: cross-protocol routing would bill the same upstream usage differently, Anthropic AI SDK would still double-count cache, and Gemini AI SDK would double-count thoughts if we naively added reasoning on top of inclusive output.
 
@@ -33,17 +33,17 @@ CCH / new-api always charge after cache subtract (CCH invents `input×0.1`; new-
 
 ## Decisions
 
-| Topic | Choice |
-| --- | --- |
-| Alignment target | CCH/new-api **inclusion** for raw passthrough; AI SDK totals for stream; models.dev unit prices with price-aware subset handling |
-| Normalization key | **Usage source** (+ raw upstream protocol), **not** inbound adapter protocol alone |
-| Missing cache / reasoning unit price | **Only peel that subset when its price exists**; else leave tokens in the parent bucket |
-| Normalization owner | `calculateEstimatedCost` only; `toBillableUsage` stays private |
-| Stored usage | Keep upstream / AI SDK **raw** totals as recorded today |
-| When to normalize | Inside `calculateEstimatedCost`, immediately before summing |
-| Historical rows | Forward-only; no backfill |
-| Price source | Unchanged (`models.dev` OpenRouter USD / 1M) |
-| Multipliers / CPT / group ratio | Out of scope |
+| Topic                                | Choice                                                                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Alignment target                     | CCH/new-api **inclusion** for raw passthrough; AI SDK totals for stream; models.dev unit prices with price-aware subset handling |
+| Normalization key                    | **Usage source** (+ raw upstream protocol), **not** inbound adapter protocol alone                                               |
+| Missing cache / reasoning unit price | **Only peel that subset when its price exists**; else leave tokens in the parent bucket                                          |
+| Normalization owner                  | `calculateEstimatedCost` only; `toBillableUsage` stays private                                                                   |
+| Stored usage                         | Keep upstream / AI SDK **raw** totals as recorded today                                                                          |
+| When to normalize                    | Inside `calculateEstimatedCost`, immediately before summing                                                                      |
+| Historical rows                      | Forward-only; no backfill                                                                                                        |
+| Price source                         | Unchanged (`models.dev` OpenRouter USD / 1M)                                                                                     |
+| Multipliers / CPT / group ratio      | Out of scope                                                                                                                     |
 
 ## Billable normalization
 
@@ -67,8 +67,7 @@ packages/server/src/usage-capture/
 
 ```ts
 type UsageAccounting =
-  | { readonly source: "passthrough"; readonly protocol: ProviderProtocol }
-  | { readonly source: "ai-sdk" };
+  { readonly source: "passthrough"; readonly protocol: ProviderProtocol } | { readonly source: "ai-sdk" };
 
 function calculateEstimatedCost(
   usage: UsagePricingInput,
@@ -106,21 +105,21 @@ Exclusive Anthropic passthrough never peels cache from input.
 
 ### Rules — `source: "passthrough"`
 
-| `protocol` | Billable input | Billable output / reasoning |
-| --- | --- | --- |
-| `OpenAICompatible` / `OpenAIResponse` | peel priced `cacheRead` (and `cacheWrite` if present) from inclusive prompt/input | peel priced `reasoning` from inclusive completion/output; else keep full output |
-| `Gemini` | peel priced `cacheRead` from inclusive prompt | Raw extractor keeps `candidates` and `thoughts` split. If `price.reasoning` exists → output = candidates, charge thoughts on reasoning line. If missing → `output = candidates + thoughts`, no reasoning line (CCH/new-api fold). |
-| `Anthropic` | unchanged (already exclusive of cache) | unchanged; no reasoning peel |
+| `protocol`                            | Billable input                                                                    | Billable output / reasoning                                                                                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OpenAICompatible` / `OpenAIResponse` | peel priced `cacheRead` (and `cacheWrite` if present) from inclusive prompt/input | peel priced `reasoning` from inclusive completion/output; else keep full output                                                                                                                                                   |
+| `Gemini`                              | peel priced `cacheRead` from inclusive prompt                                     | Raw extractor keeps `candidates` and `thoughts` split. If `price.reasoning` exists → output = candidates, charge thoughts on reasoning line. If missing → `output = candidates + thoughts`, no reasoning line (CCH/new-api fold). |
+| `Anthropic`                           | unchanged (already exclusive of cache)                                            | unchanged; no reasoning peel                                                                                                                                                                                                      |
 
 ### Rules — `source: "ai-sdk"`
 
 Independent of inbound protocol (same upstream ⇒ same cost):
 
-| Field | Billable rule |
-| --- | --- |
-| input | peel priced `cacheRead` and priced `cacheWrite` from inclusive total |
-| output / reasoning | peel priced `reasoning` from inclusive output total; if reasoning price missing, leave thoughts/reasoning inside output (Google already folded them into `outputTokens.total`) |
-| cacheRead / cacheWrite | charged only when unit price exists (else left in input) |
+| Field                  | Billable rule                                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| input                  | peel priced `cacheRead` and priced `cacheWrite` from inclusive total                                                                                                           |
+| output / reasoning     | peel priced `reasoning` from inclusive output total; if reasoning price missing, leave thoughts/reasoning inside output (Google already folded them into `outputTokens.total`) |
+| cacheRead / cacheWrite | charged only when unit price exists (else left in input)                                                                                                                       |
 
 Rationale vs installed converters:
 

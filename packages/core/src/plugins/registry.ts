@@ -8,7 +8,7 @@ import {
 } from "@aio-proxy/plugin-sdk";
 import { CapabilityIdSchema } from "@aio-proxy/types";
 
-import type { PluginLogSink } from "./diagnostic";
+import type { PluginLogSink } from "./diagnostic/index";
 
 import { validateConfigSpec } from "./config-spec";
 import { validateOAuthIcon } from "./icon";

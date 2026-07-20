@@ -5,5 +5,5 @@ export * from "./json";
 export * from "./localized-text";
 export * from "./logger";
 export * from "./oauth";
-export * from "./plugin";
+export * from "./plugin/index";
 export * from "./runtime";

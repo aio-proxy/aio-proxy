@@ -6,7 +6,12 @@ import type { PendingAccountOperation, PluginRepository, StoredAccount } from ".
 
 import { validateModelCatalog } from "../catalog";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
-import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink, redactPluginError } from "../diagnostic";
+import {
+  collectSecretStrings,
+  type DiagnosticFactory,
+  type PluginLogSink,
+  redactPluginError,
+} from "../diagnostic/index";
 import { resolveProviderId } from "../provider-id";
 import {
   CATALOG_DISCOVERY_TIMEOUT_MS,

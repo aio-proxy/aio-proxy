@@ -14,7 +14,7 @@ export {
   type PluginLogSink,
   type RedactedPluginError,
   redactPluginError,
-} from "./diagnostic";
+} from "./diagnostic/index";
 export * from "./icon";
 export * from "./loader/index";
 export * from "./provider-id";
