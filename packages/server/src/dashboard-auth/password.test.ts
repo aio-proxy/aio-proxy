@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { normalizeDashboardPassword } from "./password";
 
@@ -27,13 +27,32 @@ describe("normalizeDashboardPassword", () => {
     ).rejects.toThrow("Invalid Argon2id password hash");
   });
 
-  test("rejects an Argon2id PHC with unsafe parameters", async () => {
-    await expect(
-      normalizeDashboardPassword({
-        server: { password: "$argon2id$v=19$m=1,t=1,p=1$AA$AA" },
-        providers: {},
-      }),
-    ).rejects.toThrow("Invalid Argon2id password hash");
+  test("rejects a valid Argon2id PHC with weak parameters before verification", async () => {
+    const hash = (await Bun.password.hash("secret")).replace(/m=\d+,t=\d+,p=\d+/u, "m=1024,t=1,p=1");
+    const verify = spyOn(Bun.password, "verify").mockResolvedValue(true);
+
+    try {
+      await expect(normalizeDashboardPassword({ server: { password: hash }, providers: {} })).rejects.toThrow(
+        "Invalid Argon2id password hash",
+      );
+      expect(verify).not.toHaveBeenCalled();
+    } finally {
+      verify.mockRestore();
+    }
+  });
+
+  test("rejects a valid Argon2id PHC with excessive parameters before verification", async () => {
+    const hash = (await Bun.password.hash("secret")).replace(/m=\d+,t=\d+,p=\d+/u, "m=262145,t=2,p=1");
+    const verify = spyOn(Bun.password, "verify").mockResolvedValue(true);
+
+    try {
+      await expect(normalizeDashboardPassword({ server: { password: hash }, providers: {} })).rejects.toThrow(
+        "Invalid Argon2id password hash",
+      );
+      expect(verify).not.toHaveBeenCalled();
+    } finally {
+      verify.mockRestore();
+    }
   });
 
   test("keeps config without a password", async () => {

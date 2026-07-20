@@ -17,6 +17,7 @@ rs.mock("@aio-proxy/i18n", () => ({
     "dashboard.auth.login.rate_limited": () => "Too many attempts.",
     "dashboard.auth.login.submit": () => "Sign in",
     "dashboard.auth.login.title": () => "Dashboard sign in",
+    "dashboard.auth.login.unavailable": () => "Dashboard sign-in is unavailable.",
     "dashboard.auth.password": () => "Password",
   },
 }));
@@ -46,4 +47,14 @@ test("shows a field error for an empty password", async () => {
 
   expect(await screen.findByText("Enter your password.")).toBeInTheDocument();
   expect(mocks.loginDashboard).not.toHaveBeenCalled();
+});
+
+test("shows localized unavailable feedback for an unknown login failure", async () => {
+  mocks.loginDashboard.mockResolvedValue({ ok: false, error: "unknown" });
+  render(<LoginPage />);
+
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard sign-in is unavailable.");
 });

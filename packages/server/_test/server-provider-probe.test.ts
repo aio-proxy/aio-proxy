@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
 import { config } from "./server.test-support";
 
 describe("server routes", () => {
@@ -46,8 +47,8 @@ describe("server routes", () => {
 
     try {
       // When
-      const list = await app.request("/dashboard/api/providers");
-      const probe = await app.request("/dashboard/api/providers?probe=true&filter=openai");
+      const list = await app.request("/dashboard/api/providers", undefined, loopbackServer);
+      const probe = await app.request("/dashboard/api/providers?probe=true&filter=openai", undefined, loopbackServer);
 
       // Then
       expect(list.status).toBe(200);
@@ -102,7 +103,7 @@ describe("server routes", () => {
     });
 
     try {
-      await app.request("/dashboard/api/providers?probe=true&filter=authenticated");
+      await app.request("/dashboard/api/providers?probe=true&filter=authenticated", undefined, loopbackServer);
       expect(authorization).toBe("Bearer probe-secret");
     } finally {
       await upstream.stop(true);
@@ -134,7 +135,7 @@ describe("server routes", () => {
     });
 
     try {
-      await app.request("/dashboard/api/providers?probe=true&filter=configured");
+      await app.request("/dashboard/api/providers?probe=true&filter=configured", undefined, loopbackServer);
       expect(model).toBe("gpt-real");
     } finally {
       await upstream.stop(true);
@@ -180,9 +181,9 @@ describe("server routes", () => {
 
     try {
       // When
-      await app.request("/dashboard/api/providers?probe=true&filter=chat");
-      await app.request("/dashboard/api/providers?probe=true&filter=responses");
-      await app.request("/dashboard/api/providers?probe=true&filter=gemini");
+      await app.request("/dashboard/api/providers?probe=true&filter=chat", undefined, loopbackServer);
+      await app.request("/dashboard/api/providers?probe=true&filter=responses", undefined, loopbackServer);
+      await app.request("/dashboard/api/providers?probe=true&filter=gemini", undefined, loopbackServer);
 
       // Then
       expect(requests.get("/v1/chat/completions")).toMatchObject({ max_tokens: 1 });
@@ -200,8 +201,8 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const found = await app.request("/dashboard/api/providers/openai-compatible");
-    const missing = await app.request("/dashboard/api/providers/missing");
+    const found = await app.request("/dashboard/api/providers/openai-compatible", undefined, loopbackServer);
+    const missing = await app.request("/dashboard/api/providers/missing", undefined, loopbackServer);
 
     // Then
     expect(found.status).toBe(200);

@@ -12,6 +12,7 @@ import type { DashboardAssets } from "../dashboard-assets";
 import type { DashboardEventLimits } from "../dashboard-events";
 import type { RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
 import type { ServerLogSink } from "../server-log";
+import type { InternalServerStateOptions } from "../server-state/types";
 
 import {
   createDashboardAuthentication,
@@ -57,7 +58,7 @@ const createRoutes = (
   state: ServerState,
   dashboardOriginPort: number = serverDefaults.port,
   dashboardAssets?: DashboardAssets,
-  dashboardUnavailable = false,
+  dashboardAuthAvailable: () => boolean = () => true,
 ) => {
   const app = new Hono().get("/health", (context) =>
     context.json({
@@ -71,7 +72,7 @@ const createRoutes = (
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
     Date.now,
-    () => !dashboardUnavailable,
+    dashboardAuthAvailable,
   );
 
   app.use("/dashboard", requireDashboardLoopback);
@@ -100,7 +101,7 @@ const createRoutes = (
     return requireDashboardAuth(context, next);
   });
 
-  const dashboardRoutes = createDashboardRoutes(state);
+  const dashboardRoutes = createDashboardRoutes(state, dashboardAuth);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
@@ -220,6 +221,7 @@ export type AppType = ReturnType<typeof createRoutes>;
 
 export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
+  let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {
     logServerEvent(options.logger ?? defaultLogger, {
       error: prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
@@ -228,19 +230,23 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     });
   }
   const config = ConfigSchema.parse(prepared.config);
+  const stateOptions: InternalServerStateOptions = {
+    config,
+    __dashboardAuthHealthChanged: (available) => {
+      dashboardAuthAvailable = available;
+    },
+    ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
+    ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
+    ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
+    ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
+    ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
+  };
   return createRoutes(
-    await createServerState({
-      config,
-      ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
-      ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
-      ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
-      ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
-      ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
-      ...(options.logger === undefined ? {} : { logger: options.logger }),
-      ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
-    }),
+    await createServerState(stateOptions),
     options.port ?? config.server.port,
     options.dashboardAssets,
-    prepared.dashboardUnavailable,
+    () => dashboardAuthAvailable,
   );
 };

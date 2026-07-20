@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
+
 const PORT = 22_079;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
@@ -36,22 +38,30 @@ export async function createDashboardProviderFixture(prefix: string) {
     onDisk: () =>
       JSON.parse(readFileSync(configPath, "utf8")) as { providers: Record<string, Record<string, unknown>> },
     req: (method: string, path: string, body?: unknown) =>
-      app.request(`/dashboard/api${path}`, {
-        method,
-        headers: method === "GET" ? {} : { Origin: ORIGIN, "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      }),
+      app.request(
+        `/dashboard/api${path}`,
+        {
+          method,
+          headers: method === "GET" ? {} : { Origin: ORIGIN, "Content-Type": "application/json" },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        },
+        loopbackServer,
+      ),
     requestPathlessProviders: async () => {
       const pathless = await createServer({ config: createSeedConfig(), port: PORT });
-      return pathless.request("/dashboard/api/providers");
+      return pathless.request("/dashboard/api/providers", undefined, loopbackServer);
     },
     requestPathless: async (body: unknown) => {
       const pathless = await createServer({ config: createSeedConfig(), port: PORT });
-      return pathless.request("/dashboard/api/providers", {
-        method: "POST",
-        headers: { Origin: ORIGIN, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      return pathless.request(
+        "/dashboard/api/providers",
+        {
+          method: "POST",
+          headers: { Origin: ORIGIN, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        loopbackServer,
+      );
     },
     cleanup: () => {
       try {

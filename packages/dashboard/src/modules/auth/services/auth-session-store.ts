@@ -16,7 +16,11 @@ export function setDashboardAuthSession(session: DashboardAuthSession): void {
 
 export function markDashboardSessionExpired(): void {
   const current = queryClient.getQueryData<DashboardAuthSession>(dashboardAuthQueryKey);
-  if (current?.status !== "authenticated") return;
+  if (current?.status !== "authenticated" && current?.status !== "disabled") return;
   queryClient.removeQueries({ predicate: isNotDashboardAuthQuery });
-  setDashboardAuthSession({ status: "unauthenticated", reason: "expired" });
+  setDashboardAuthSession(
+    current.status === "authenticated"
+      ? { status: "unauthenticated", reason: "expired" }
+      : { status: "unauthenticated" },
+  );
 }

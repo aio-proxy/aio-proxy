@@ -6,6 +6,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
+
 const homes: string[] = [];
 
 afterEach(() => {
@@ -71,7 +73,7 @@ async function seededApp() {
 
 describe("GET /dashboard/api/logs", () => {
   test("returns newest terminal requests with usage and attempts", async () => {
-    const response = await (await seededApp()).request("/dashboard/api/logs");
+    const response = await (await seededApp()).request("/dashboard/api/logs", undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -105,7 +107,7 @@ describe("GET /dashboard/api/logs", () => {
       startedAfter: "2026-07-12T07:59:00.000Z",
       completedBefore: "2026-07-12T08:01:00.000Z",
     });
-    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`, undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -122,7 +124,7 @@ describe("GET /dashboard/api/logs", () => {
     "startedAfter=not-a-date",
     "completedBefore=not-a-date",
   ])("rejects invalid query %s", async (query) => {
-    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`);
+    const response = await (await seededApp()).request(`/dashboard/api/logs?${query}`, undefined, loopbackServer);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "validation failed", details: expect.any(Array) });

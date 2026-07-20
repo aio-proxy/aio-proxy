@@ -56,7 +56,10 @@ export type ServerStateTestHooks = {
   readonly oauthSessionTtlMs?: number;
 };
 
-export type InternalServerStateOptions = ServerStateOptions & { readonly __test?: ServerStateTestHooks };
+export type InternalServerStateOptions = ServerStateOptions & {
+  readonly __dashboardAuthHealthChanged?: (available: boolean) => void;
+  readonly __test?: ServerStateTestHooks;
+};
 
 export type ConfigChangedData = Extract<DashboardEvent, { readonly event: "config.changed" }>["data"];
 export type ReloadFailure = { readonly error: string; readonly ok: false; readonly stage: ConfigReloadLog["stage"] };

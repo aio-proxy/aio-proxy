@@ -22,7 +22,7 @@ export const createDashboardAuthRoutes = (auth: DashboardAuthentication) =>
           ? ("unavailable" as const)
           : !auth.enabled()
             ? ("disabled" as const)
-            : auth.verify(getCookie(context, COOKIE_NAME))
+            : auth.verify(dashboardSessionToken(context))
               ? ("authenticated" as const)
               : ("unauthenticated" as const),
       }),
@@ -55,7 +55,7 @@ export const requireDashboardAuthentication =
   (auth: DashboardAuthentication): MiddlewareHandler =>
   async (context, next) => {
     if (!auth.available()) return context.json({ error: "dashboard_unavailable" }, 503);
-    if (!auth.enabled() || auth.verify(getCookie(context, COOKIE_NAME))) {
+    if (!auth.enabled() || auth.verify(dashboardSessionToken(context))) {
       await next();
       return;
     }
@@ -64,9 +64,13 @@ export const requireDashboardAuthentication =
 
 export const requireDashboardLoopback: MiddlewareHandler = async (context, next) => {
   const address = requestAddress(context);
-  if (address !== undefined && !isLoopbackAddress(address)) return context.notFound();
+  if (address === undefined || !isLoopbackAddress(address)) return context.notFound();
   await next();
 };
+
+export function dashboardSessionToken(context: Context): string | undefined {
+  return getCookie(context, COOKIE_NAME);
+}
 
 function isPasswordBody(value: unknown): value is { readonly password: string } {
   return typeof value === "object" && value !== null && "password" in value && typeof value.password === "string";

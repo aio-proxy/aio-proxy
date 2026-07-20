@@ -1,6 +1,7 @@
 import { createServer } from "@aio-proxy/server";
 import { describe, expect, test } from "bun:test";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
 import { createDashboardEventHub } from "../src/dashboard-events";
 
 const decoder = new TextDecoder();
@@ -47,17 +48,25 @@ describe("dashboard event hub", () => {
       config: { providers: {} },
       eventLimits: { maxEvents: 1, maxBytes: 1_024 },
     });
-    const stream = await app.request("/dashboard/api/events");
+    const stream = await app.request("/dashboard/api/events", undefined, loopbackServer);
 
     // When
-    await app.request("/dashboard/api/reload", {
-      headers: { Origin: "http://127.0.0.1:22078" },
-      method: "POST",
-    });
-    await app.request("/dashboard/api/reload", {
-      headers: { Origin: "http://127.0.0.1:22078" },
-      method: "POST",
-    });
+    await app.request(
+      "/dashboard/api/reload",
+      {
+        headers: { Origin: "http://127.0.0.1:22078" },
+        method: "POST",
+      },
+      loopbackServer,
+    );
+    await app.request(
+      "/dashboard/api/reload",
+      {
+        headers: { Origin: "http://127.0.0.1:22078" },
+        method: "POST",
+      },
+      loopbackServer,
+    );
     const text = await stream.text();
 
     // Then

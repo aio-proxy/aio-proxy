@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createServer } from "../server";
+import { loopbackServer } from "./test-support";
 
 const origin = "http://127.0.0.1:22078";
 
@@ -9,11 +10,15 @@ async function login(
   password: string,
   requestOrigin = origin,
 ): Promise<Response> {
-  return app.request("/dashboard/api/auth/login", {
-    body: JSON.stringify({ password }),
-    headers: { "content-type": "application/json", origin: requestOrigin },
-    method: "POST",
-  });
+  return app.request(
+    "/dashboard/api/auth/login",
+    {
+      body: JSON.stringify({ password }),
+      headers: { "content-type": "application/json", origin: requestOrigin },
+      method: "POST",
+    },
+    loopbackServer,
+  );
 }
 
 function cookieFrom(response: Response): string {
@@ -27,12 +32,12 @@ describe("dashboard authentication", () => {
     const hash = await Bun.password.hash("correct horse");
     const app = await createServer({ config: { server: { password: hash }, providers: {} } });
 
-    const sessionBefore = await app.request("/dashboard/api/auth/session");
-    const protectedBefore = await app.request("/dashboard/api/config");
+    const sessionBefore = await app.request("/dashboard/api/auth/session", undefined, loopbackServer);
+    const protectedBefore = await app.request("/dashboard/api/config", undefined, loopbackServer);
     const wrong = await login(app, "wrong");
     const correct = await login(app, "correct horse");
     const cookie = cookieFrom(correct);
-    const protectedAfter = await app.request("/dashboard/api/config", { headers: { cookie } });
+    const protectedAfter = await app.request("/dashboard/api/config", { headers: { cookie } }, loopbackServer);
 
     expect(sessionBefore.status).toBe(200);
     expect(await sessionBefore.json()).toEqual({ status: "unauthenticated" });
@@ -53,7 +58,7 @@ describe("dashboard authentication", () => {
     const cookie = cookieFrom(await login(first, "restart-safe"));
     const second = await createServer({ config: { server: { password: hash }, providers: {} } });
 
-    expect((await second.request("/dashboard/api/config", { headers: { cookie } })).status).toBe(200);
+    expect((await second.request("/dashboard/api/config", { headers: { cookie } }, loopbackServer)).status).toBe(200);
   });
 
   test("clears only the current browser cookie on logout", async () => {
@@ -61,10 +66,14 @@ describe("dashboard authentication", () => {
     const app = await createServer({ config: { server: { password: hash }, providers: {} } });
     const cookie = cookieFrom(await login(app, "logout"));
 
-    const response = await app.request("/dashboard/api/auth/logout", {
-      headers: { cookie, origin },
-      method: "POST",
-    });
+    const response = await app.request(
+      "/dashboard/api/auth/logout",
+      {
+        headers: { cookie, origin },
+        method: "POST",
+      },
+      loopbackServer,
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
@@ -86,7 +95,9 @@ describe("dashboard authentication", () => {
 
     expect((await app.request("/dashboard/api/auth/session", undefined, remote)).status).toBe(404);
     expect((await app.request("/dashboard", undefined, remote)).status).toBe(404);
-    expect((await app.request("/dashboard")).status).toBe(200);
+    expect((await app.request("/dashboard/api/auth/session")).status).toBe(404);
+    expect((await app.request("/dashboard")).status).toBe(404);
+    expect((await app.request("/dashboard", undefined, loopbackServer)).status).toBe(200);
     expect((await app.request("/v1/models", undefined, remote)).status).toBe(200);
   });
 

@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
 import { configWithProvider, writeConfig } from "./server-reload.oauth.test-support";
 
 describe("server invalid provider reload", () => {
@@ -44,11 +45,15 @@ describe("server invalid provider reload", () => {
       });
 
       // When
-      const reload = await app.request("/dashboard/api/reload", {
-        headers: { Origin: "http://127.0.0.1:22078" },
-        method: "POST",
-      });
-      const providers = await app.request("/dashboard/api/providers/duplicate");
+      const reload = await app.request(
+        "/dashboard/api/reload",
+        {
+          headers: { Origin: "http://127.0.0.1:22078" },
+          method: "POST",
+        },
+        loopbackServer,
+      );
+      const providers = await app.request("/dashboard/api/providers/duplicate", undefined, loopbackServer);
       const body = await providers.json();
 
       // Then

@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
 import { expectedModel, expectedModelList, noModelsDevCatalog, testCapabilities } from "./server.test-support";
 
 describe("server routes", () => {
@@ -157,7 +158,7 @@ describe("server routes", () => {
 
     // When
     const models = await app.request("/v1/models");
-    const providers = await app.request("/dashboard/api/providers");
+    const providers = await app.request("/dashboard/api/providers", undefined, loopbackServer);
 
     // Then
     expect(await models.json()).toEqual(expectedModelList([]));

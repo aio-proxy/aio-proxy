@@ -23,9 +23,11 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
 
+import type { DashboardAuthentication } from "../dashboard-auth";
 import type { ServerState } from "../server-state";
 
 import { ConfigReloadRejectedError } from "../config-store";
+import { dashboardSessionToken } from "../dashboard-auth";
 import { isTrustedProviderPackage } from "../provider-package-trust";
 import { createDashboardOAuthLoginRoutes } from "./oauth-login";
 import {
@@ -124,7 +126,7 @@ function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): Req
   };
 }
 
-export const createDashboardRoutes = (state: ServerState) =>
+export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication) =>
   new Hono()
     .get("/config", (context) => context.json(redactSecrets(state.currentConfig())))
     .get("/oauth/capabilities", (context) => context.json({ capabilities: state.oauthCapabilities() }))
@@ -282,17 +284,18 @@ export const createDashboardRoutes = (state: ServerState) =>
         throw error;
       }
     })
-    .get(
-      "/events",
-      // ponytail: SSE sessions are verified at connect; track and cancel streams if immediate revocation becomes necessary.
-      () =>
-        new Response(state.events.stream(), {
+    .get("/events", (context) => {
+      const token = dashboardSessionToken(context);
+      return new Response(
+        state.events.stream(() => auth.available() && (!auth.enabled() || auth.verify(token))),
+        {
           headers: {
             "cache-control": "no-cache",
             "content-type": "text/event-stream; charset=utf-8",
           },
-        }),
-    )
+        },
+      );
+    })
     .post("/reload", async (context) => {
       const result = await state.reload();
       if (result.ok) {

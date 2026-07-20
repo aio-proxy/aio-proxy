@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { config } from "../../_test/server.test-support";
+import { loopbackServer } from "../dashboard-auth/test-support";
 
 describe("server routes", () => {
   let dir: string;
@@ -28,7 +29,7 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/config");
+    const response = await app.request("/dashboard/api/config", undefined, loopbackServer);
     const body = await response.json();
 
     // Then
@@ -48,10 +49,14 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/config", {
-      method: "POST",
-      headers: { Origin: "http://evil.example" },
-    });
+    const response = await app.request(
+      "/dashboard/api/config",
+      {
+        method: "POST",
+        headers: { Origin: "http://evil.example" },
+      },
+      loopbackServer,
+    );
 
     // Then
     expect(response.status).toBe(403);
@@ -62,9 +67,7 @@ describe("server routes", () => {
     const app = await createServer({ config });
 
     // When
-    const response = await app.request("/dashboard/api/config", {
-      method: "POST",
-    });
+    const response = await app.request("/dashboard/api/config", { method: "POST" }, loopbackServer);
 
     // Then
     expect(response.status).toBe(403);

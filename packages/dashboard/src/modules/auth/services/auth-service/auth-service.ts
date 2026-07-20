@@ -9,7 +9,7 @@ import {
   isNotDashboardAuthQuery,
   markDashboardSessionExpired,
   setDashboardAuthSession,
-} from "./auth-session-store";
+} from "../auth-session-store";
 
 setDashboardUnauthorizedHandler(markDashboardSessionExpired);
 
@@ -30,13 +30,22 @@ export const dashboardAuthSessionQueryOptions = () =>
   });
 
 export async function loginDashboard(password: string): Promise<DashboardLoginResult> {
-  const response = await dashboardClient.dashboard.api.auth.login.$post({ json: { password } });
+  let response: Awaited<ReturnType<typeof dashboardClient.dashboard.api.auth.login.$post>>;
+  try {
+    response = await dashboardClient.dashboard.api.auth.login.$post({ json: { password } });
+  } catch {
+    return { ok: false, error: "unknown" };
+  }
   if (response.status === 200) {
     setDashboardAuthSession({ status: "authenticated" });
     await queryClient.invalidateQueries({ predicate: isNotDashboardAuthQuery });
     return { ok: true };
   }
   if (response.status === 401) return { ok: false, error: "invalid" };
+  if (response.status === 409) {
+    setDashboardAuthSession({ status: "disabled" });
+    await queryClient.invalidateQueries({ predicate: isNotDashboardAuthQuery });
+  }
   if (response.status === 429) return { ok: false, error: "rate-limited" };
   if (response.status === 503) return { ok: false, error: "unavailable" };
   return { ok: false, error: "unknown" };

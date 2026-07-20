@@ -5,6 +5,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loopbackServer } from "../src/dashboard-auth/test-support";
+
 const installRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify(body),
   headers: {
@@ -37,7 +39,11 @@ describe("dashboard provider package metadata", () => {
 
   test("package status returns runtime fields only", async () => {
     const app = await createServer({ config: { providers: {} } });
-    const response = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fopenai-compatible");
+    const response = await app.request(
+      "/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fopenai-compatible",
+      undefined,
+      loopbackServer,
+    );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -55,8 +61,16 @@ describe("dashboard provider package metadata", () => {
     writeFileSync(join(packageDir, "package.json"), JSON.stringify({ version: "1.2.3" }));
     const app = await createServer({ config: { providers: {} } });
 
-    const installed = await app.request("/dashboard/api/providers/package-status?npm=%40vendor%2Finstalled-provider");
-    const missing = await app.request("/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fmissing-provider");
+    const installed = await app.request(
+      "/dashboard/api/providers/package-status?npm=%40vendor%2Finstalled-provider",
+      undefined,
+      loopbackServer,
+    );
+    const missing = await app.request(
+      "/dashboard/api/providers/package-status?npm=%40ai-sdk%2Fmissing-provider",
+      undefined,
+      loopbackServer,
+    );
 
     expect(await installed.json()).toEqual({
       npm: installedPackage,
@@ -73,7 +87,11 @@ describe("dashboard provider package metadata", () => {
   test("invalid package names return a stable code", async () => {
     const app = await createServer({ config: { providers: {} } });
 
-    const response = await app.request("/dashboard/api/providers/package-status?npm=..%2Fbad");
+    const response = await app.request(
+      "/dashboard/api/providers/package-status?npm=..%2Fbad",
+      undefined,
+      loopbackServer,
+    );
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
@@ -88,6 +106,7 @@ describe("dashboard provider package metadata", () => {
     const response = await app.request(
       "/dashboard/api/providers/install",
       installRequest({ npm: "@ai-sdk/aio-proxy-missing-provider", registry: "http://127.0.0.1:9" }),
+      loopbackServer,
     );
 
     expect(response.status).toBe(502);
@@ -104,6 +123,7 @@ describe("dashboard provider package metadata", () => {
         confirmed: false,
         registry: "http://127.0.0.1:9",
       }),
+      loopbackServer,
     );
 
     expect(response.status).toBe(502);
@@ -116,6 +136,7 @@ describe("dashboard provider package metadata", () => {
     const response = await app.request(
       "/dashboard/api/providers/install",
       installRequest({ npm: "aio-proxy-missing-provider" }),
+      loopbackServer,
     );
 
     expect(response.status).toBe(400);
@@ -131,6 +152,7 @@ describe("dashboard provider package metadata", () => {
     const response = await app.request(
       "/dashboard/api/providers/install",
       installRequest({ npm: "aio-proxy-missing-provider", confirmed: false }),
+      loopbackServer,
     );
 
     expect(response.status).toBe(400);
