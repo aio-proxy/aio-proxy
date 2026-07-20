@@ -2,7 +2,7 @@
 
 ## Summary
 
-Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.
+Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a customizable trigger, single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.
 
 The component owns presentation, draft state, parsing, and validation. It does not know about TanStack Router, Logs search parameters, polling, or server APIs. Logs remains responsible for its default range, URL representation, and ISO serialization.
 
@@ -12,6 +12,7 @@ The component owns presentation, draft state, parsing, and validation. It does n
 - Preserve the existing default of the user's local current day, from `00:00:00.000` through `23:59:59.999`.
 - Support caller-provided relative presets that resolve into an absolute range when selected.
 - Support custom date and time input using a caller-provided format string.
+- Provide an input-style default trigger while allowing consumers to replace its rendered element.
 - Interpret every range in the user's current browser time zone.
 - Match the existing dashboard design system and remain usable on narrow screens.
 
@@ -50,6 +51,7 @@ interface DateTimeRangePickerProps {
   readonly value: DateTimeRangeValue | undefined;
   readonly presets?: readonly DateTimeRangePreset[];
   readonly format?: string;
+  readonly render?: React.ComponentProps<typeof PopoverTrigger>["render"];
   readonly min?: DateTimeInput;
   readonly max?: DateTimeInput;
   readonly allowClear?: boolean;
@@ -62,6 +64,7 @@ Contract details:
 
 - `value` uses `from/to` to match `react-day-picker`'s range language. Logs maps those names to `startedAfter/completedBefore` at its boundary.
 - `format` defaults to `yyyy-MM-dd HH:mm` and controls both editable absolute values and the collapsed absolute summary.
+- `render` defaults to the built-in input-style trigger and follows Base UI's existing render-prop contract.
 - `presets` defaults to an empty list. The shared component does not own product-specific durations or copy.
 - `allowClear` defaults to `false`.
 - Invalid incoming date values produce an invalid draft state instead of crashing the page. Apply remains disabled until the draft is valid.
@@ -84,9 +87,24 @@ onChange(undefined);
 
 Consumers decide what `undefined` means. Logs interprets it as a reset to its existing default local day.
 
+## Trigger Rendering
+
+The customization prop is named `render`, matching the existing Base UI trigger API used throughout the dashboard. `renderTrigger` would repeat context already supplied by `DateTimeRangePicker`, while `trigger` would not communicate that the value follows Base UI's render-prop behavior.
+
+The component passes `render` directly to `PopoverTrigger`:
+
+- It accepts either a React element or Base UI's `(props, state) => ReactElement` callback.
+- Base UI merges the popover ref, event handlers, state attributes, and ARIA attributes into the rendered element.
+- A custom component must accept the merged props and ref and forward them to its interactive DOM element.
+- When a custom element does not provide children, it receives the picker's default calendar icon and formatted range summary.
+- A consumer may provide its own children to replace that default trigger content.
+- The picker continues to own the clear control. It renders as an adjacent control rather than a nested interactive element, so `allowClear` remains valid with either the default or a custom trigger.
+
+Leaving `render` undefined uses the built-in input-style trigger and requires no extra consumer code.
+
 ## Desktop Interaction
 
-The collapsed control uses the existing Input/Button visual vocabulary:
+The default collapsed control uses the existing Input/Button visual vocabulary:
 
 - Calendar icon at the leading edge.
 - Semantic summary in the middle.
@@ -217,6 +235,8 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Reject invalid, reversed, partial, out-of-bounds, and nonexistent DST ranges.
 - Apply the earlier/later offset rule to repeated local times.
 - Cover keyboard names and focus behavior for the trigger and clear control.
+- Verify element and callback forms of `render` receive merged interaction and accessibility props.
+- Verify a custom trigger opens the same panel without changing draft, Apply, or clear behavior.
 
 ### Logs tests
 
@@ -249,6 +269,7 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Presets resolve once into fixed absolute ISO ranges.
 - Custom ranges remain fixed absolute ISO ranges.
 - `value` stays a plain `from/to` date-compatible range with no separate preset state.
+- `render` can replace the trigger element while preserving panel behavior and accessibility wiring.
 - `allowClear` immediately returns `undefined`, and Logs restores its default today behavior.
 - Invalid ranges cannot be applied.
 - The implementation passes focused tests, repository preflight, and desktop/mobile browser QA.
