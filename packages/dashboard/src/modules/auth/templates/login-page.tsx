@@ -3,6 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { z } from "zod";
 
+import { AioProxyBrand } from "@/components/aio-proxy-brand";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -29,10 +30,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
   });
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-8">
+    <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <div className="mb-4 font-heading text-sm font-medium text-muted-foreground">{m["brand.name"]()}</div>
+          <div className="mb-4">
+            <AioProxyBrand />
+          </div>
           <CardTitle>
             <h1 className="text-xl font-semibold text-balance">{m["dashboard.auth.login.title"]()}</h1>
           </CardTitle>

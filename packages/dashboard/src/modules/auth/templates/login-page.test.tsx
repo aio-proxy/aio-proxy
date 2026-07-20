@@ -27,6 +27,10 @@ test("submits the exact password after an expired session", async () => {
   mocks.loginDashboard.mockResolvedValue({ ok: true });
   render(<LoginPage reason="expired" />);
 
+  expect(screen.getByTitle("AIO")).toBeInTheDocument();
+  expect(screen.getByText("Proxy")).toBeInTheDocument();
+  expect(screen.getByText("All-in-one Gateway")).toBeInTheDocument();
+  expect(screen.getByRole("main")).toHaveClass("bg-sidebar");
   expect(screen.getByText("Your session expired. Sign in again.")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "  exact password  " } });
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
