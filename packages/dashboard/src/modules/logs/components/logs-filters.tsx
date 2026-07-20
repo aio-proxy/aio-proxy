@@ -53,11 +53,14 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
     validators: { onChange: schema },
   });
   const patch = (value: LogsFilterPatch) => onChange(withLogsFilters(search, value));
-  const { startedAfter, completedBefore } = search;
+  const { startedAfter, completedBefore, outcome, inboundProtocol, requestedModelId } = search;
 
   useEffect(() => {
     form.setFieldValue("dateRange", toPickerRange({ startedAfter, completedBefore }));
-  }, [form, startedAfter, completedBefore]);
+    form.setFieldValue("outcome", outcome ?? "");
+    form.setFieldValue("inboundProtocol", inboundProtocol ?? "");
+    form.setFieldValue("requestedModelId", requestedModelId ?? "");
+  }, [form, startedAfter, completedBefore, outcome, inboundProtocol, requestedModelId]);
 
   return (
     <div className="flex flex-wrap items-end gap-2">

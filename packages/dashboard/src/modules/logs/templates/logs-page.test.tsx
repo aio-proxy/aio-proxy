@@ -151,4 +151,39 @@ describe("logs page", () => {
     expect(screen.queryByRole("button", { name: /Columns|列/u })).toBeNull();
     expect(screen.getByText(/Completed|完成时间/u).closest("button")).toBeNull();
   });
+
+  test("updates common and advanced controls when search changes via navigation", () => {
+    const { rerender } = render(
+      <LogsPage
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          requestedModelId: "gpt-5",
+        }}
+        onSearchChange={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("gpt-5");
+
+    rerender(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /Requested model|请求模型/u })).toHaveValue("");
+  });
+
+  test("resets all filters to defaults", () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), outcome: "failure", page: 3 }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Reset|重置/u }));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+    expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty("outcome");
+  });
 });
