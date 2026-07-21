@@ -89,6 +89,7 @@
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
+        "@handlebars/parser": "2.2.2",
         "@opencode-ai/models": "catalog:",
         "@openrouter/ai-sdk-provider": "catalog:",
         "ai": "catalog:",
@@ -658,6 +659,8 @@
     "@fontsource-variable/lexend": ["@fontsource-variable/lexend@5.2.11", "", {}, "sha512-0hgEQ4O7Nh8fxL/WWmspJf0BErbocRkZwtLRGey/V4mUUqxfF7QUwqhcdzwpjom3NYCniY4uzQ5wYD7r9/92tQ=="],
 
     "@google/genai": ["@google/genai@2.11.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-d2Csf29vS0GfHc52H0MG25ccY4FKvvbDgqDlEovLrPLF8sPegWr/GGO+LMOy85/1SnX0iV0zDAW7R8SsvWg8Vg=="],
+
+    "@handlebars/parser": ["@handlebars/parser@2.2.2", "", {}, "sha512-n/SZW+12rwikx/f8YcSv9JCi5p9vn1Bnts9ZtVvfErG4h0gbjHI1H1ZMhVUnaOC7yzFc6PtsCKIK8XeTnL90Gw=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 
