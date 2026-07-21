@@ -486,7 +486,13 @@
     "logs": {
       "title": "Request logs",
       "range": "Time range",
+      "range_15m": "Last 15 minutes",
+      "range_1h": "Last 1 hour",
+      "range_3h": "Last 3 hours",
+      "range_6h": "Last 6 hours",
+      "range_12h": "Last 12 hours",
       "range_24h": "Last 24 hours",
+      "range_3d": "Last 3 days",
       "range_7d": "Last 7 days",
       "range_14d": "Last 14 days",
       "range_30d": "Last 30 days",

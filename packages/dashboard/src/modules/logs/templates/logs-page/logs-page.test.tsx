@@ -1,5 +1,5 @@
 import { describe, expect, rs, test } from "@rstest/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { createDefaultLogsSearch } from "../../logs-search";
 import { LogsPage } from "./logs-page";
@@ -88,14 +88,76 @@ describe("logs page", () => {
     expect(onSearchChange).not.toHaveBeenCalled();
   });
 
-  test("uses one accessible date range picker without custom presets", () => {
-    const { container } = render(
+  test("opens one shared date time calendar with the Logs presets", async () => {
+    render(
       <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
     );
 
-    expect(screen.getByRole("button", { name: /Time range|时间范围/u })).toBeTruthy();
-    expect(container.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(screen.queryByRole("button", { name: /Last 7 days|近 7 天/u })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Time range|时间范围/u }));
+
+    expect(await screen.findAllByTestId("date-time-range-calendar")).toHaveLength(1);
+    for (const name of [
+      /Last 15 minutes|最近 15 分钟/u,
+      /Last 1 hour|最近 1 小时/u,
+      /Last 3 hours|最近 3 小时/u,
+      /Last 6 hours|最近 6 小时/u,
+      /Last 12 hours|最近 12 小时/u,
+      /Last 24 hours|最近 24 小时/u,
+      /Last 3 days|最近 3 天/u,
+      /Last 7 days|最近 7 天/u,
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+  });
+
+  test("applies exact typed times and resets pagination", async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), page: 3 }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Time range|时间范围/u }));
+    fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), { target: { value: "2026-07-20 08:15" } });
+    fireEvent.change(screen.getByLabelText(/End|结束时间/u), { target: { value: "2026-07-20 09:45" } });
+    fireEvent.click(screen.getByRole("button", { name: /Apply|应用/u }));
+
+    await waitFor(() => expect(onSearchChange).toHaveBeenCalledTimes(1));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 1,
+        startedAfter: new Date(2026, 6, 20, 8, 15, 0, 0).toISOString(),
+        completedBefore: new Date(2026, 6, 20, 9, 45, 59, 999).toISOString(),
+      }),
+    );
+  });
+
+  test("clears only the date range back to today's default", () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          page: 3,
+          outcome: "failure",
+        }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Clear time range|清除时间范围/u }));
+
+    const defaults = createDefaultLogsSearch();
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 1,
+        startedAfter: defaults.startedAfter,
+        completedBefore: defaults.completedBefore,
+        outcome: "failure",
+      }),
+    );
   });
 
   test("renders rows per page inside the table pagination", () => {
