@@ -1,9 +1,10 @@
 import { pathToFileURL } from "node:url";
 
-import type { LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
+import type { LoadedAiSdkRuntimeProvider } from "../../ai-sdk-bridge";
+import type { ProviderFetch } from "../proxy-fetch";
 
-import { AiSdkProviderLoaderError } from "../error";
-import { findInstalledNpmPackage } from "../npm";
+import { AiSdkProviderLoaderError } from "../../error";
+import { findInstalledNpmPackage } from "../../npm";
 
 export const BUNDLED_PROVIDER_PACKAGES = [
   "@ai-sdk/openai",
@@ -34,6 +35,7 @@ export type AiSdkProviderLoadOptions = {
   readonly baseURL?: string;
   readonly headers?: Record<string, string>;
   readonly name?: string;
+  readonly fetch?: ProviderFetch;
   readonly [key: string]: unknown;
 };
 
@@ -69,6 +71,7 @@ const bundledProviders = {
       baseURL: options.baseURL,
       ...(options.headers === undefined ? {} : { headers: options.headers }),
       name: options.name,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     });
   },
   "@ai-sdk/mistral": async (options) => {

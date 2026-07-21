@@ -1,78 +1,16 @@
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 
-import type {
-  AiSdkProviderLoadOptions,
-  LanguageModelV2,
-  LoadedAiSdkProvider,
-  ModelMessage,
-  TextStreamPart,
-  ToolSet,
-} from "../../src/index";
+import type { AiSdkProviderLoadOptions, ProviderFetch } from "../../index";
 
-import { bridgeApiProviderToAiSdk, createApiProvider } from "../../src/index";
+import { bridgeApiProviderToAiSdk, createApiProvider } from "../../index";
+import { collect, loadedProvider, messages, model } from "./api-bridge-test-helpers";
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
 };
 
-const messages: readonly ModelMessage[] = [{ role: "user", content: "hello" }];
-
-type LoadedProviderFactory = {
-  readonly languageModel: (modelId: string) => LanguageModelV2;
-  readonly responses?: (modelId: string) => LanguageModelV2;
-};
-
-type ModelStreamPart =
-  | { readonly type: "text-start"; readonly id: string }
-  | {
-      readonly type: "text-delta";
-      readonly id: string;
-      readonly delta: string;
-    }
-  | { readonly type: "text-end"; readonly id: string };
-
-async function collect(stream: ReadableStream<TextStreamPart<ToolSet>>): Promise<readonly TextStreamPart<ToolSet>[]> {
-  const parts: TextStreamPart<ToolSet>[] = [];
-  for await (const part of stream) {
-    parts.push(part);
-  }
-
-  return parts;
-}
-
-function textPartStream(text: string): ReadableStream<ModelStreamPart> {
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue({ type: "text-start", id: "text-1" });
-      controller.enqueue({ type: "text-delta", id: "text-1", delta: text });
-      controller.enqueue({ type: "text-end", id: "text-1" });
-      controller.close();
-    },
-  });
-}
-
-function model(modelId: string, text: string): LanguageModelV2 {
-  return {
-    specificationVersion: "v2",
-    provider: "mock",
-    modelId,
-    supportedUrls: {},
-    async doGenerate() {
-      throw new Error("doGenerate should not be called");
-    },
-    async doStream() {
-      return { stream: textPartStream(text) };
-    },
-  };
-}
-
-function loadedProvider(factory: LoadedProviderFactory): LoadedAiSdkProvider {
-  return Object.assign((modelId: string) => factory.languageModel(modelId), {
-    languageModel: factory.languageModel,
-    ...(factory.responses === undefined ? {} : { responses: factory.responses }),
-  });
-}
+Object.assign(globalThis, { AI_SDK_LOG_WARNINGS: false });
 
 describe("bridgeApiProviderToAiSdk", () => {
   test("Given api provider protocols When bridged Then package and options are forwarded", async () => {
@@ -155,6 +93,51 @@ describe("bridgeApiProviderToAiSdk", () => {
       } else {
         process.env.AIO_PROXY_BRIDGE_KEY = previousKey;
       }
+    }
+  });
+
+  test("forwards configured headers and injected fetch for every protocol", async () => {
+    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
+    const headers = { Authorization: "Bearer configured", "X-Tenant": "team-a" };
+    const protocols = [
+      ProviderProtocol.OpenAICompatible,
+      ProviderProtocol.Anthropic,
+      ProviderProtocol.Gemini,
+      ProviderProtocol.OpenAIResponse,
+    ] as const;
+
+    for (const protocol of protocols) {
+      let optionsSeen: AiSdkProviderLoadOptions | undefined;
+      const bridge = bridgeApiProviderToAiSdk(
+        {
+          kind: ProviderKind.Api,
+          id: `provider-${protocol}`,
+          protocol,
+          apiKey: "secret",
+          baseURL: "https://api.example.com/v1",
+          headers,
+          models: ["gpt-test"],
+        },
+        {
+          fetch: providerFetch,
+          async loadProvider(_packageName, options) {
+            optionsSeen = options;
+            return loadedProvider({
+              languageModel: (modelId) => model(modelId, "ok"),
+            });
+          },
+        },
+      );
+
+      await bridge?.ensureAvailable?.();
+
+      expect(optionsSeen?.fetch).toBe(providerFetch);
+      expect(optionsSeen?.headers).toEqual({
+        Authorization: "Bearer configured",
+        "X-Tenant": "team-a",
+      });
+      expect(optionsSeen?.apiKey).toBe("secret");
+      expect(optionsSeen?.baseURL).toBe("https://api.example.com/v1");
     }
   });
 

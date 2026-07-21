@@ -2,11 +2,11 @@ import type { AiSdkProvider, ApiProvider } from "@aio-proxy/types";
 
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 
-import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../ai-sdk-bridge";
-import type { AiSdkProviderLoadOptions } from "./ai-sdk-loader";
+import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../../ai-sdk-bridge";
+import type { AiSdkProviderLoadOptions } from "../ai-sdk-loader/index";
 
-import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./ai-sdk";
-import { resolveApiKey } from "./api/index";
+import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "../ai-sdk/index";
+import { resolveApiKey } from "../api/index";
 
 type BridgeMapping = {
   readonly options: AiSdkProviderLoadOptions;
@@ -50,6 +50,7 @@ function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: strin
   const sharedOptions = {
     ...(apiKey === undefined ? {} : { apiKey }),
     baseURL,
+    ...(provider.headers === undefined ? {} : { headers: provider.headers }),
   } satisfies AiSdkProviderLoadOptions;
 
   switch (provider.protocol) {

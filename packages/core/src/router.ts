@@ -1,6 +1,6 @@
 import { type AliasConfig, type ModelId, resolveAliasTarget } from "@aio-proxy/types";
 
-import type { AiSdkProviderInstance } from "./provider/ai-sdk";
+import type { AiSdkProviderInstance } from "./provider/ai-sdk/index";
 import type { ApiProviderInstance } from "./provider/api/index";
 
 import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
