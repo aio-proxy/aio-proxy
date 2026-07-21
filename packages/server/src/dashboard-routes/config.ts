@@ -12,8 +12,6 @@ import {
 } from "@aio-proxy/core";
 import {
   DashboardRequestLogsPageSizeSchema,
-  type ProviderMutationBody,
-  ProviderMutationBodySchema,
   RequestOutcomeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
@@ -32,6 +30,8 @@ import { createDashboardEventsRoute } from "./events";
 import { createDashboardOAuthLoginRoutes } from "./oauth-login";
 import {
   insertProvider,
+  type ParsedProviderMutation,
+  parseProviderMutation,
   ProviderAlreadyExistsError,
   ProviderNotFoundError,
   replaceOAuthProvider,
@@ -48,21 +48,8 @@ const ProviderInstallRequestSchema = z.object({
 
 export { redactSecrets } from "./provider-secrets";
 
-type MutationParseResult =
-  | { readonly ok: true; readonly body: ProviderMutationBody }
-  | { readonly ok: false; readonly status: 400; readonly payload: Record<string, unknown> };
-
-// oauth bodies 400 here with no explicit check: ProviderMutationBodySchema's union omits kind "oauth".
-const parseMutationBody = (raw: unknown): MutationParseResult => {
-  const parsed = ProviderMutationBodySchema.safeParse(raw);
-  if (!parsed.success) {
-    return { ok: false, status: 400, payload: { error: "validation failed", details: parsed.error.issues } };
-  }
-  return { ok: true, body: parsed.data };
-};
-
-const providerMutationValidator = validator("json", (raw, context): ProviderMutationBody | Response => {
-  const parsed = parseMutationBody(raw);
+const providerMutationValidator = validator("json", (raw, context): ParsedProviderMutation | Response => {
+  const parsed = parseProviderMutation(raw);
   return parsed.ok ? parsed.body : context.json(parsed.payload, parsed.status);
 });
 
@@ -159,11 +146,11 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       if (state.configPath === undefined) {
         return context.json({ error: "config file path is not configured" }, 409);
       }
-      const body = context.req.valid("json");
-      if (body.kind === "oauth") {
+      const { authored, materialized } = context.req.valid("json");
+      if (materialized.kind === "oauth") {
         return context.json({ error: "OAuth providers must be created through login" }, 400);
       }
-      const { id, ...bodyRest } = body;
+      const { id, ...bodyRest } = authored;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
         await state.configStore.mutateProviders((record) => insertProvider(record, id, providerData));
@@ -188,15 +175,15 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
         return context.json({ error: "config file path is not configured" }, 409);
       }
       const id = context.req.param("id");
-      const body = context.req.valid("json");
-      if (body.id !== id) {
+      const { authored, materialized } = context.req.valid("json");
+      if (materialized.id !== id) {
         return context.json({ error: "provider rename not supported" }, 400);
       }
-      const { id: _id, ...bodyRest } = body;
+      const { id: _id, ...bodyRest } = authored;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
         await state.configStore.mutateProviders((record) =>
-          body.kind === "oauth"
+          materialized.kind === "oauth"
             ? replaceOAuthProvider(record, id, providerData)
             : replaceProvider(record, id, providerData),
         );
