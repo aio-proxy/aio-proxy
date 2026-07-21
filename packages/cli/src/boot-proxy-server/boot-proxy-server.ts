@@ -1,7 +1,6 @@
-import { aioHome } from "@aio-proxy/core";
+import { aioHome, parseRuntimeConfig } from "@aio-proxy/core";
 import { configureLogging, type LoggingConfig } from "@aio-proxy/logger";
 import { createServer, type CreateServerOptions } from "@aio-proxy/server";
-import { ConfigSchema } from "@aio-proxy/types";
 import { join } from "node:path";
 
 type BootProxyServerDeps = {
@@ -16,7 +15,7 @@ export const bootProxyServer = async (
   options: CreateServerOptions,
   deps: BootProxyServerDeps = defaultBootProxyServerDeps,
 ) => {
-  const config = ConfigSchema.parse(options.config);
+  const config = parseRuntimeConfig(options.config);
   const logging = config.server.logging;
   await deps.configureLogging({
     dir: logging?.dir ?? join(deps.aioHome(), "logs"),

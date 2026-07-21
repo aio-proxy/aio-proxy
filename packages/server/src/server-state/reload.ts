@@ -1,5 +1,11 @@
-import { AtomicConfigCommitUncertainError, type AtomicConfigFile, type PendingAccountOperation } from "@aio-proxy/core";
-import { type Config, ConfigSchema } from "@aio-proxy/types";
+import type { Config } from "@aio-proxy/types";
+
+import {
+  AtomicConfigCommitUncertainError,
+  type AtomicConfigFile,
+  type PendingAccountOperation,
+  parseRuntimeConfig,
+} from "@aio-proxy/core";
 import { ZodError } from "zod";
 
 import type { SnapshotManager } from "../plugin-snapshot";
@@ -90,12 +96,12 @@ async function reloadConfigFile({
         newlyStaged.push(...detected);
         staged.push(...detected);
         commitAfterWrite = next !== current;
-        if (!commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(next), "reload");
+        if (!commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(next), "reload");
         return { next, result: undefined };
       },
       {
         verify: async (candidate) => {
-          if (commitAfterWrite) retired = await commitConfig(ConfigSchema.parse(candidate), "reload");
+          if (commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(candidate), "reload");
         },
       },
     );

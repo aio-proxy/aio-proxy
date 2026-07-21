@@ -1,11 +1,12 @@
 import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
 
-import { AliasConfigSchema, ConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from "@aio-proxy/types";
+import { AliasConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from "@aio-proxy/types";
 import { z } from "zod";
 
 import type { StoredAccount } from "../repository/index";
 import type { OAuthProviderPatch } from "./login";
 
+import { parseRuntimeConfig } from "../../config";
 import { parsePluginSchema } from "../schema";
 import { withAbort } from "./deadline";
 import {
@@ -26,7 +27,7 @@ export function providerRecord(current: ConfigRecord): Record<string, unknown> {
   const providers = current["providers"];
   if (providers === undefined) return {};
   if (isRecord(providers)) return providers;
-  ConfigSchema.parse(current);
+  parseRuntimeConfig(current);
   throw new ProviderConfigInvalidError();
 }
 export function structuredEntry(value: unknown): PlainRecord | null {
@@ -45,7 +46,7 @@ export function accountMatches(account: StoredAccount, capability: OAuthCapabili
 export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
   const providers = candidate["providers"];
   if (!isRecord(providers)) {
-    ConfigSchema.parse(candidate);
+    parseRuntimeConfig(candidate);
     return;
   }
   const legacyProviders: Record<string, unknown> = {};
@@ -56,7 +57,7 @@ export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
       legacyProviders[id] = value;
     }
   }
-  ConfigSchema.parse({ ...candidate, providers: legacyProviders });
+  parseRuntimeConfig({ ...candidate, providers: legacyProviders });
 }
 export async function validatedAccountOptions<Options, Credential>(
   adapter: OAuthAdapter<Options, Credential>,
