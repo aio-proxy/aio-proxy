@@ -54,7 +54,8 @@ function evaluateStatement(
 
 function sliceLoc(source: string, loc: AST.SourceLocation | undefined): string | undefined {
   if (loc === undefined || loc.start.line !== loc.end.line) return undefined;
-  const line = source.split("\n")[loc.start.line - 1];
+  // Handlebars treats bare CR as a line break; match CRLF, CR, and LF when locating the path.
+  const line = source.split(/\r\n|\r|\n/u)[loc.start.line - 1];
   if (line === undefined) return undefined;
   return line.slice(loc.start.column, loc.end.column);
 }

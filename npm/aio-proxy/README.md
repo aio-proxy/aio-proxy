@@ -18,9 +18,9 @@ host. Remote binding is deliberately rejected until an authenticated remote mode
 
 Only HTTP(S) proxy URLs are supported. A provider `proxy` inherits the top-level value when omitted, overrides it
 with a string, or disables it with `false`. API `headers` are applied last on raw and bridged upstream calls.
-`{{env.NAME}}` templates are one-pass environment substitutions; missing values become empty strings before
-validation. Built-in AI SDK packages guarantee injected proxy fetch support; third-party dynamic packages are best
-effort.
+`{{env.NAME}}` templates are one-pass environment substitutions on configuration string leaves (provider `kind` and
+object keys are not templatable); missing values become empty strings before validation. Built-in AI SDK packages
+guarantee injected proxy fetch support; third-party dynamic packages are best effort.
 
 ```yaml
 proxy: "{{env.GLOBAL_PROXY}}"

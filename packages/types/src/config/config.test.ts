@@ -203,6 +203,28 @@ test("authoring schema accepts templates on constrained string leaves", () => {
   ).toBe(true);
 });
 
+test("authoring and mutation schemas reject templated provider kind", () => {
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      providers: {
+        api: {
+          kind: "{{env.KIND}}",
+          protocol: "openai-response",
+          baseURL: "https://api.example/v1",
+        },
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "{{env.KIND}}",
+      id: "openai",
+      protocol: "openai-response",
+      baseURL: "https://api.example/v1",
+    }).success,
+  ).toBe(false);
+});
+
 test("provider mutation authoring accepts proxy templates and API headers", () => {
   expect(
     ProviderMutationAuthoringBodySchema.safeParse({

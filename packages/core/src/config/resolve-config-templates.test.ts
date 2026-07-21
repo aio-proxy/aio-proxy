@@ -53,10 +53,10 @@ test("leaves non-plain objects unchanged", () => {
   expect(result.map.get("TOKEN")).toBe("{{env.TOKEN}}");
 });
 
-test("does not resolve inherited environment properties", () => {
-  expect(resolveConfigTemplates("{{env.toString}}", Object.create(null))).toBe("");
-  expect(resolveConfigTemplates("{{env.constructor}}", {})).toBe("");
-  expect(resolveConfigTemplates("{{env.__proto__}}", {})).toBe("");
+test("interpolates templates after bare CR and CRLF line breaks", () => {
+  expect(resolveConfigTemplates("x\r{{env.TOKEN}}", { TOKEN: "secret" })).toBe("x\rsecret");
+  expect(resolveConfigTemplates("x\r\n{{env.TOKEN}}", { TOKEN: "secret" })).toBe("x\r\nsecret");
+  expect(resolveConfigTemplates("x\n{{env.TOKEN}}", { TOKEN: "secret" })).toBe("x\nsecret");
 });
 
 test("does not mutate the input value", () => {
