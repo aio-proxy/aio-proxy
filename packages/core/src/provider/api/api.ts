@@ -59,7 +59,7 @@ export function createApiProvider(
     protocol: config.protocol,
     async passthrough(req) {
       const upstreamUrl = rewrittenUrl(baseURL, req.url);
-      const headers = upstreamHeaders(req.headers, config.protocol, resolveApiKey(config.apiKey), config.headers);
+      const headers = upstreamHeaders(req.headers, config);
 
       const response = await fetchUpstream(upstreamUrl, {
         body: req.body,
@@ -82,19 +82,18 @@ export function createApiProvider(
 
 function upstreamHeaders(
   inbound: Headers,
-  protocol: ProviderProtocol,
-  apiKey: string | undefined,
-  configured: Readonly<Record<string, string>> | undefined,
+  config: Pick<ApiProviderConfig, "apiKey" | "headers" | "protocol">,
 ): Headers {
   const headers = new Headers(inbound);
   headers.delete("host");
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
+  const apiKey = resolveApiKey(config.apiKey);
   if (apiKey !== undefined) {
-    if (protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
-    else if (protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
+    if (config.protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
+    else if (config.protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
     else headers.set("authorization", `Bearer ${apiKey}`);
   }
-  for (const [name, value] of Object.entries(configured ?? {})) headers.set(name, value);
+  for (const [name, value] of Object.entries(config.headers ?? {})) headers.set(name, value);
   return headers;
 }
 
