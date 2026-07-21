@@ -20,6 +20,22 @@ describe("ConfigSchema", () => {
     });
   });
 
+  test("accepts a provider proxy override and headers alongside an inherited top-level proxy", () => {
+    const provider = {
+      ...apiProvider,
+      proxy: "http://provider-proxy.example:8080",
+      headers: { "X-Tenant": "team-a" },
+    };
+
+    expect(ConfigSchema.parse({ proxy: "https://proxy.example:8443", providers: { openai: provider } })).toEqual({
+      plugins: [],
+      server: defaultServer,
+      proxy: "https://proxy.example:8443",
+      providers: [{ ...provider, enabled: true, id: "openai" }],
+      invalidProviders: [],
+    });
+  });
+
   test("accepts disabled provider config", () => {
     expect(ConfigSchema.parse(providers({ openai: { ...apiProvider, enabled: false } }))).toEqual({
       plugins: [],

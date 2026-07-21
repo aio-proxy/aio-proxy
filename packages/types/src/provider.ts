@@ -23,6 +23,35 @@ export const ProviderProtocolSchema = z
   .enum(ProviderProtocol)
   .describe("Wire protocol supported by this provider base URL.");
 
+/** Authoring-only string that still contains an unresolved `{{env.NAME}}` template. */
+export const ConfigTemplateStringSchema = z.string().regex(/\{\{[\s\S]*\}\}/u, "Expected a config template");
+
+export const HttpProxyUrlSchema = z.url().refine((value) => {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Proxy URL must use http: or https:");
+
+const ProviderProxySchema = z.union([HttpProxyUrlSchema, z.literal(false)]).optional();
+const AuthoringProviderProxySchema = z
+  .union([HttpProxyUrlSchema, ConfigTemplateStringSchema, z.literal(false)])
+  .optional();
+const PROXY_DESCRIPTION = "HTTP(S) proxy URL; inherits the top-level proxy when omitted, false disables it.";
+
+const ApiHeadersSchema = z
+  .record(z.string(), z.string())
+  .superRefine((headers, context) => {
+    try {
+      new Headers(headers);
+    } catch (error) {
+      context.addIssue({ code: "custom", message: error instanceof Error ? error.message : "Invalid headers" });
+    }
+  })
+  .readonly();
+
 const SharedProviderSchemaBase = {
   id: z.string().describe("Stable provider id used in routing."),
   enabled: z.boolean().default(true).describe("Whether this provider participates in routing."),
@@ -37,13 +66,25 @@ const modelsField = {
 
 const AiSdkPackageNameSchema = z.string().trim().min(1, "AI SDK package name cannot be blank");
 
-export const ApiProviderSchema = z.object({
+const ApiProviderSharedFields = {
   kind: z.literal(ProviderKind.Api).describe("Provider backed by a raw HTTP API."),
   ...SharedProviderSchemaBase,
   ...modelsField,
   protocol: ProviderProtocolSchema,
-  baseURL: z.url().describe("Provider API base URL."),
   apiKey: z.string().optional().describe("Bearer token or API key for the provider."),
+  headers: ApiHeadersSchema.optional().describe("Headers applied to upstream requests; configured values win."),
+} as const;
+
+export const ApiProviderSchema = z.object({
+  ...ApiProviderSharedFields,
+  baseURL: z.url().describe("Provider API base URL."),
+  proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
+});
+
+export const ApiProviderAuthoringSchema = z.object({
+  ...ApiProviderSharedFields,
+  baseURL: z.union([z.url(), ConfigTemplateStringSchema]).describe("Provider API base URL."),
+  proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
 export const OAuthPluginProviderSchema = z.object({
@@ -56,7 +97,7 @@ export const OAuthPluginProviderSchema = z.object({
 
 export const OAuthProviderSchema = OAuthPluginProviderSchema;
 
-export const AiSdkProviderSchema = z.object({
+const AiSdkProviderSharedFields = {
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
   ...SharedProviderSchemaBase,
   ...modelsField,
@@ -71,24 +112,46 @@ export const AiSdkProviderSchema = z.object({
     .boolean()
     .optional()
     .describe("Parse reasoning content from OpenAI-compatible stream chunks."),
+} as const;
+
+export const AiSdkProviderSchema = z.object({
+  ...AiSdkProviderSharedFields,
+  proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
+});
+
+export const AiSdkProviderAuthoringSchema = z.object({
+  ...AiSdkProviderSharedFields,
+  proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
 // ── Mutation body schemas (POST/PUT) ───────────────────────────────────────────
 // id is REQUIRED on both POST and PUT. apiKey uses "" → retain semantics server-side.
-export const ApiProviderMutationBodySchema = z.object({
+const ApiProviderMutationSharedFields = {
   kind: z.literal(ProviderKind.Api),
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
   protocol: ProviderProtocolSchema,
-  baseURL: z.url(),
   apiKey: z.string().optional(),
+  headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+} as const;
+
+export const ApiProviderMutationBodySchema = z.object({
+  ...ApiProviderMutationSharedFields,
+  baseURL: z.url(),
+  proxy: ProviderProxySchema,
 });
 
-export const AiSdkProviderMutationBodySchema = z.object({
+const ApiProviderMutationAuthoringBodySchema = z.object({
+  ...ApiProviderMutationSharedFields,
+  baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
+  proxy: AuthoringProviderProxySchema,
+});
+
+const AiSdkProviderMutationSharedFields = {
   kind: z.literal(ProviderKind.AiSdk),
   id: z.string().min(1),
   name: z.string().optional(),
@@ -99,6 +162,16 @@ export const AiSdkProviderMutationBodySchema = z.object({
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe("Client-facing model aliases."),
+} as const;
+
+export const AiSdkProviderMutationBodySchema = z.object({
+  ...AiSdkProviderMutationSharedFields,
+  proxy: ProviderProxySchema,
+});
+
+const AiSdkProviderMutationAuthoringBodySchema = z.object({
+  ...AiSdkProviderMutationSharedFields,
+  proxy: AuthoringProviderProxySchema,
 });
 
 export const OAuthProviderMutationBodySchema = z.strictObject({
@@ -115,6 +188,17 @@ export const ProviderMutationBodySchema = z
     ApiProviderMutationBodySchema,
     OAuthProviderMutationBodySchema,
     AiSdkProviderMutationBodySchema,
+  ])
+  .superRefine(validateAliasTargets)
+  .transform((provider) =>
+    provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
+  );
+
+export const ProviderMutationAuthoringBodySchema = z
+  .discriminatedUnion("kind", [
+    ApiProviderMutationAuthoringBodySchema,
+    OAuthProviderMutationBodySchema,
+    AiSdkProviderMutationAuthoringBodySchema,
   ])
   .superRefine(validateAliasTargets)
   .transform((provider) =>
@@ -171,12 +255,16 @@ function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;
+export type ApiProviderAuthoringInput = z.input<typeof ApiProviderAuthoringSchema>;
+export type ApiProviderAuthoring = z.output<typeof ApiProviderAuthoringSchema>;
 export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
 export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
 export type OAuthPluginProviderInput = z.input<typeof OAuthPluginProviderSchema>;
 export type OAuthPluginProvider = z.output<typeof OAuthPluginProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;
 export type AiSdkProvider = z.output<typeof AiSdkProviderSchema>;
+export type AiSdkProviderAuthoringInput = z.input<typeof AiSdkProviderAuthoringSchema>;
+export type AiSdkProviderAuthoring = z.output<typeof AiSdkProviderAuthoringSchema>;
 export type ApiProviderMutationBodyInput = z.input<typeof ApiProviderMutationBodySchema>;
 export type ApiProviderMutationBody = z.output<typeof ApiProviderMutationBodySchema>;
 export type AiSdkProviderMutationBodyInput = z.input<typeof AiSdkProviderMutationBodySchema>;
@@ -185,5 +273,7 @@ export type OAuthProviderMutationBodyInput = z.input<typeof OAuthProviderMutatio
 export type OAuthProviderMutationBody = z.output<typeof OAuthProviderMutationBodySchema>;
 export type ProviderMutationBodyInput = z.input<typeof ProviderMutationBodySchema>;
 export type ProviderMutationBody = z.output<typeof ProviderMutationBodySchema>;
+export type ProviderMutationAuthoringBodyInput = z.input<typeof ProviderMutationAuthoringBodySchema>;
+export type ProviderMutationAuthoringBody = z.output<typeof ProviderMutationAuthoringBodySchema>;
 export type ProviderInput = z.input<typeof ProviderSchema>;
 export type Provider = z.output<typeof ProviderSchema>;

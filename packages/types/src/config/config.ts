@@ -4,8 +4,12 @@ import type { InvalidProviderConfig } from "../plugin";
 
 import { PluginPackageNameSchema } from "../plugin";
 import {
+  AiSdkProviderAuthoringSchema,
   AiSdkProviderSchema,
+  ApiProviderAuthoringSchema,
   ApiProviderSchema,
+  ConfigTemplateStringSchema,
+  HttpProxyUrlSchema,
   OAuthProviderSchema,
   type Provider,
   ProviderKind,
@@ -41,6 +45,14 @@ const ProviderInputValueSchema = z
   ])
   .superRefine(validateAliasTargets);
 
+const ProviderAuthoringInputValueSchema = z
+  .discriminatedUnion("kind", [
+    ApiProviderAuthoringSchema.omit({ id: true }),
+    OAuthProviderSchema.omit({ id: true }),
+    AiSdkProviderAuthoringSchema.omit({ id: true }),
+  ])
+  .superRefine(validateAliasTargets);
+
 const PluginEnablementSchema = z
   .union([PluginPackageNameSchema, z.tuple([PluginPackageNameSchema, z.unknown()])])
   .transform((entry) =>
@@ -64,15 +76,19 @@ export const PluginsInputSchema = z
     }
   });
 
+const CONFIG_PROXY_DESCRIPTION = "Default HTTP(S) proxy URL inherited by providers that omit their own proxy.";
+
 export const ConfigAuthoringSchema = z.object({
   server: ServerConfigSchema.prefault({}).describe("Local server settings."),
   plugins: PluginsInputSchema,
-  providers: z.record(z.string().min(1), ProviderInputValueSchema),
+  proxy: z.union([HttpProxyUrlSchema, ConfigTemplateStringSchema]).optional().describe(CONFIG_PROXY_DESCRIPTION),
+  providers: z.record(z.string().min(1), ProviderAuthoringInputValueSchema),
 });
 
 const ConfigEnvelopeSchema = z.object({
   server: ServerConfigSchema.prefault({}).describe("Local server settings."),
   plugins: PluginsInputSchema,
+  proxy: HttpProxyUrlSchema.optional().describe(CONFIG_PROXY_DESCRIPTION),
   providers: z.record(z.string().min(1), z.unknown()),
 });
 
@@ -123,7 +139,7 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
     providers.push(ProviderSchema.parse({ ...result.data, id }));
   }
   providers.sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0));
-  return { server: input.server, plugins: input.plugins, providers, invalidProviders };
+  return { server: input.server, plugins: input.plugins, proxy: input.proxy, providers, invalidProviders };
 });
 
 export type ServerConfigInput = z.input<typeof ServerConfigSchema>;
