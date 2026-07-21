@@ -54,6 +54,24 @@ describe("DateTimeRangePicker", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
+  test("renders an invalid or after-max End error beside End", async () => {
+    render(<DateTimeRangePicker value={value} max={new Date(2026, 6, 20, 23, 59, 59, 999)} onChange={rs.fn()} />);
+    openPicker();
+    const start = await screen.findByLabelText(/Start|开始时间/u);
+    const end = screen.getByLabelText(/End|结束时间/u);
+    fireEvent.change(end, { target: { value: "2026-07-21 00:00" } });
+
+    const startField = start.closest('[data-slot="field"]');
+    const endField = end.closest('[data-slot="field"]');
+    expect(startField).not.toBeNull();
+    expect(endField).not.toBeNull();
+    expect(within(startField as HTMLElement).queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(endField as HTMLElement).getByRole("alert")).toHaveTextContent(
+      /End is after the allowed range|结束时间晚于允许范围/u,
+    );
+    expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeDisabled();
+  });
+
   test("discards the draft when the Popover closes without Apply", async () => {
     const onChange = rs.fn();
     render(<DateTimeRangePicker value={value} onChange={onChange} />);

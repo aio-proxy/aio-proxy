@@ -133,12 +133,15 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
       <form.Subscribe selector={(state) => state.values}>
         {(draft) => {
           const parsed = schema.safeParse(draft);
-          const issue = parsed.success ? undefined : parsed.error.issues[0];
+          const issues = parsed.success ? [] : parsed.error.issues;
+          const fromErrors = issues.filter((issue) => issue.path[0] === "from");
+          const toErrors = issues.filter((issue) => issue.path[0] === "to");
+          const rangeErrors = issues.filter((issue) => issue.path.length === 0);
           return (
             <div className="grid content-start gap-4">
               <form.Field name="from">
                 {(field) => (
-                  <Field data-invalid={issue !== undefined}>
+                  <Field data-invalid={fromErrors.length > 0}>
                     <FieldLabel htmlFor="date-time-range-from">
                       {m["dashboard.date_time_range_picker.start"]()}
                     </FieldLabel>
@@ -150,13 +153,13 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
                         field.handleChange(event.target.value);
                       }}
                     />
-                    {issue !== undefined && <FieldError>{issue.message}</FieldError>}
+                    <FieldError errors={fromErrors} />
                   </Field>
                 )}
               </form.Field>
               <form.Field name="to">
                 {(field) => (
-                  <Field>
+                  <Field data-invalid={toErrors.length > 0}>
                     <FieldLabel htmlFor="date-time-range-to">{m["dashboard.date_time_range_picker.end"]()}</FieldLabel>
                     <Input
                       id="date-time-range-to"
@@ -166,9 +169,11 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
                         field.handleChange(event.target.value);
                       }}
                     />
+                    <FieldError errors={toErrors} />
                   </Field>
                 )}
               </form.Field>
+              <FieldError errors={rangeErrors} />
               <Button type="submit" disabled={!parsed.success}>
                 {m["dashboard.date_time_range_picker.apply"]()}
               </Button>
