@@ -1,6 +1,6 @@
 import { getLocale, m } from "@aio-proxy/i18n";
 import { enUS, zhCN } from "date-fns/locale";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ interface DateTimeRangePickerProps {
   readonly min?: DateTimeInput;
   readonly max?: DateTimeInput;
   readonly disabled?: boolean;
+  readonly render?: React.ComponentProps<typeof PopoverTrigger>["render"];
+  readonly allowClear?: boolean;
   readonly onChange: (value: ResolvedDateTimeRangeValue | undefined) => void;
 }
 
@@ -35,6 +37,8 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   min,
   max,
   disabled,
+  render,
+  allowClear = false,
   onChange,
 }) => {
   const [open, setOpen] = useState(false);
@@ -45,19 +49,40 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled}
-            aria-label={m["dashboard.date_time_range_picker.title"]()}
-          />
-        }
-      >
-        <CalendarIcon />
-        {summary}
-      </PopoverTrigger>
+      {render === undefined ? (
+        <span className="inline-flex items-center">
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                disabled={disabled}
+                aria-label={m["dashboard.date_time_range_picker.title"]()}
+              />
+            }
+          >
+            <CalendarIcon />
+            {summary}
+          </PopoverTrigger>
+          {allowClear && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              aria-label={m["dashboard.date_time_range_picker.clear"]()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onChange(undefined);
+              }}
+            >
+              <XIcon />
+            </Button>
+          )}
+        </span>
+      ) : (
+        <PopoverTrigger render={render} disabled={disabled} />
+      )}
       <PopoverContent className="w-auto" align="start">
         {open && (
           <DateTimeRangePickerPanel

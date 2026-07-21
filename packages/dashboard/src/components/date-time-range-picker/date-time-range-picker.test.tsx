@@ -94,4 +94,47 @@ describe("DateTimeRangePicker", () => {
     expect(screen.getByLabelText(/Start|开始时间/u)).toHaveValue("2026-07-20 00:00");
     expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue("2026-07-21 23:59");
   });
+
+  test("clears immediately from the default trigger without opening", () => {
+    const onChange = rs.fn();
+    render(<DateTimeRangePicker value={value} allowClear onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Clear time range|清除时间范围/u }));
+    expect(onChange).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("button", { name: /Apply|应用/u })).toBeNull();
+  });
+
+  test("uses Base UI element render and ignores allowClear", () => {
+    render(
+      <DateTimeRangePicker
+        value={value}
+        render={<button type="button">Custom range</button>}
+        allowClear
+        onChange={rs.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Clear time range|清除时间范围/u })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Custom range" }));
+    expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
+  });
+
+  test("passes open state and merged props to callback render", () => {
+    render(
+      <DateTimeRangePicker
+        value={value}
+        render={(props, state) => (
+          <button {...props} type="button" data-picker-open={state.open ? "yes" : "no"}>
+            Callback range
+          </button>
+        )}
+        onChange={rs.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Callback range" });
+    expect(trigger).toHaveAttribute("data-picker-open", "no");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("data-picker-open", "yes");
+  });
 });
