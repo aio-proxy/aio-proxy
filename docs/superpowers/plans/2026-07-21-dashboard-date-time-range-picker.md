@@ -154,7 +154,8 @@ testInNewYork("rejects gaps and expands repeated local end times", () => {
   });
   expect(schema.safeParse({ from: "2026-03-08 02:30", to: "2026-03-08 03:30" }).success).toBe(false);
   const overlap = schema.parse({ from: "2026-11-01 01:30", to: "2026-11-01 01:30" });
-  expect(overlap.to.getTime() - overlap.from.getTime()).toBe(60 * 60 * 1_000);
+  expect(overlap.to.getTime() - overlap.from.getTime()).toBe(60 * 60 * 1_000 + 59 * 1_000 + 999);
+  expect([overlap.to.getSeconds(), overlap.to.getMilliseconds()]).toEqual([59, 999]);
 });
 ```
 
