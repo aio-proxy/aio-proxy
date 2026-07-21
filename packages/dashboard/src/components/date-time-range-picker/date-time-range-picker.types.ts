@@ -10,10 +10,15 @@ export interface ResolvedDateTimeRangeValue {
   readonly to: Date;
 }
 
+export interface DateTimeRange {
+  readonly from: Date;
+  readonly to: Date;
+}
+
 export interface DateTimeRangePreset {
   readonly id: string;
   readonly label: string;
-  readonly resolve: (now: Date) => ResolvedDateTimeRangeValue;
+  readonly resolve: (now: Date) => DateTimeRange;
 }
 
 export interface DateTimeRangeDraft {
