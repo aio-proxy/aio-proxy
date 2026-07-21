@@ -6,9 +6,6 @@ import {
   dashboardProviderNeedsReauthorization,
   dashboardProviderSuggestedCommand,
 } from "@aio-proxy/types";
-import { Link } from "@tanstack/react-router";
-
-import { buttonVariants } from "@/components/ui/button";
 
 import { DiagnosticDetails } from "./diagnostic-details";
 
@@ -40,15 +37,6 @@ export const ProviderStateCell: React.FC<{
       {diagnostic === undefined ? null : (
         <>
           <DiagnosticDetails diagnostic={diagnostic} suggestedCommand={command} />
-          {needsReauthorization ? (
-            <Link
-              to="/providers/$id/edit"
-              params={{ id: provider.id }}
-              className={buttonVariants({ variant: "link", size: "xs" })}
-            >
-              {m["dashboard.providers.oauth.reauthorize"]()}
-            </Link>
-          ) : null}
         </>
       )}
     </fieldset>

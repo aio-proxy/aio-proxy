@@ -30,7 +30,7 @@ afterEach(() => {
   queryMocks.providers.providers = [];
 });
 
-describe("providers page diagnostics", () => {
+describe("providers page", () => {
   test("removes the plugin inventory and offers OAuth from the new-provider menu", async () => {
     render(<ProvidersPage />);
 
@@ -55,6 +55,7 @@ describe("providers page diagnostics", () => {
     render(<ProvidersPage />);
 
     const row = within(screen.getByTestId("provider-row-copilot-octocat"));
+    expect(screen.getByRole("columnheader", { name: /Details|详情/u })).toBeTruthy();
     expect(row.getByText("@aio-proxy/plugin-github-copilot/default")).toBeTruthy();
     expect(row.getByText("octocat")).toBeTruthy();
     expect(row.getByText(/Expires|过期时间/u)).toBeTruthy();
@@ -89,14 +90,20 @@ describe("providers page diagnostics", () => {
     expect(localized.mock.calls).toEqual([[], []]);
   });
 
-  test("sorts providers from a column header control", () => {
-    queryMocks.providers.providers = [providerStub({ id: "z-provider" }), providerStub({ id: "a-provider" })];
+  test("renders one Provider identity column with a direct edit link", () => {
+    queryMocks.providers.providers = [
+      providerStub({ id: "carpool", name: "Carpool", kind: "api", clientModels: ["model-1"] }),
+    ];
     render(<ProvidersPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: /^ID$/u }));
-
-    const rows = screen.getAllByTestId(/^provider-row-/u);
-    expect(rows[0]?.getAttribute("data-testid")).toBe("provider-row-a-provider");
+    const row = within(screen.getByTestId("provider-row-carpool"));
+    expect(row.getByText("Carpool")).toBeTruthy();
+    expect(row.getByText("carpool").parentElement).toHaveTextContent(/carpool.*API/u);
+    expect(row.getByTestId("provider-mobile-models-carpool")).toHaveTextContent(/1.*Models|1.*模型/u);
+    expect(row.getByLabelText(/Edit provider carpool|编辑提供商 carpool/u)).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: /Details|详情/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Provider columns|提供商列/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Previous|上一页/u })).toBeNull();
   });
 
   test("filters providers from the table filter control", () => {
@@ -111,20 +118,13 @@ describe("providers page diagnostics", () => {
     expect(screen.queryByTestId("provider-row-hide-provider")).toBeNull();
   });
 
-  test("toggles provider columns from the column visibility control", async () => {
-    queryMocks.providers.providers = [providerStub()];
+  test("keeps deletion available for a Provider without an edit route", () => {
+    queryMocks.providers.providers = [providerStub({ id: "broken", kind: "invalid" })];
     render(<ProvidersPage />);
 
-    expect(screen.getByRole("columnheader", { name: /Name|名称/u })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Provider columns|提供商列/u }));
-    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Name|名称/u, checked: true }));
-
-    expect(screen.queryByRole("columnheader", { name: /Name|名称/u })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Provider columns|提供商列/u }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /Name|名称/u })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    const row = within(screen.getByTestId("provider-row-broken"));
+    expect(row.queryByRole("link")).toBeNull();
+    expect(row.getByRole("button", { name: /Delete provider broken|删除提供商 broken/u })).toBeTruthy();
   });
 
   test("pages forward and backward through more than one page of providers", () => {
@@ -132,17 +132,15 @@ describe("providers page diagnostics", () => {
       providerStub({ id: `provider-${index}` }),
     );
     render(<ProvidersPage />);
-    const section = within(screen.getByRole("region", { name: /Provider diagnostics|提供商诊断/u }));
+    expect(screen.getByTestId("provider-row-provider-0")).toBeTruthy();
+    expect(screen.queryByTestId("provider-row-provider-10")).toBeNull();
 
-    expect(section.getByTestId("provider-row-provider-0")).toBeTruthy();
-    expect(section.queryByTestId("provider-row-provider-10")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Next|下一页/u }));
+    expect(screen.queryByTestId("provider-row-provider-0")).toBeNull();
+    expect(screen.getByTestId("provider-row-provider-10")).toBeTruthy();
 
-    fireEvent.click(section.getByRole("button", { name: /Next|下一页/u }));
-    expect(section.queryByTestId("provider-row-provider-0")).toBeNull();
-    expect(section.getByTestId("provider-row-provider-10")).toBeTruthy();
-
-    fireEvent.click(section.getByRole("button", { name: /Previous|上一页/u }));
-    expect(section.getByTestId("provider-row-provider-0")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Previous|上一页/u }));
+    expect(screen.getByTestId("provider-row-provider-0")).toBeTruthy();
   });
 
   test("locates and highlights a focused provider on another page", async () => {

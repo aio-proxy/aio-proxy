@@ -34,7 +34,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <div className="mb-4">
-            <AioProxyBrand />
+            <AioProxyBrand logoHeight="32px" showTagline={false} />
           </div>
           <CardTitle>
             <h1 className="text-xl font-semibold text-balance">{m["dashboard.auth.login.title"]()}</h1>
