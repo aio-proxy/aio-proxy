@@ -1,140 +1,108 @@
-import type { DateRange, Matcher } from "react-day-picker";
+import type { Locale } from "date-fns";
 
-import { getLocale, m } from "@aio-proxy/i18n";
-import { useForm } from "@tanstack/react-form";
-import { endOfDay, format, startOfDay } from "date-fns";
-import { enUS, zhCN } from "date-fns/locale";
-import { useMemo, useState } from "react";
+import { m } from "@aio-proxy/i18n";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-import type {
-  DateTimeInput,
-  DateTimeRangePreset,
-  DateTimeRangeValue,
-  ResolvedDateTimeRangeValue,
-} from "./date-time-range-picker.types";
+import type { DateTimeRange, DateTimeRangePreset } from "./date-time-range-picker.types";
 
-import {
-  createDateTimeRangeDraft,
-  createDateTimeRangeDraftSchema,
-  normalizeDateTimeInput,
-} from "./date-time-range-value";
+import { useDateTimeRangePicker } from "./use-date-time-range-picker";
 
 interface DateTimeRangePickerPanelProps {
-  readonly value: DateTimeRangeValue | undefined;
-  readonly presets: readonly DateTimeRangePreset[];
+  readonly value?: DateTimeRange;
   readonly pattern: string;
-  readonly min: DateTimeInput | undefined;
-  readonly max: DateTimeInput | undefined;
+  readonly locale: Locale;
+  readonly min?: Date;
+  readonly max?: Date;
+  readonly presets: readonly DateTimeRangePreset[];
   readonly mobile: boolean;
-  readonly onApply: (value: ResolvedDateTimeRangeValue) => void;
+  readonly onApply: (value: DateTimeRange) => void;
 }
 
-const messages = () => ({
-  invalid: m["dashboard.date_time_range_picker.invalid"](),
-  order: m["dashboard.date_time_range_picker.order"](),
-  beforeMin: m["dashboard.date_time_range_picker.before_min"](),
-  afterMax: m["dashboard.date_time_range_picker.after_max"](),
-});
+const LAYOUT = {
+  mobile: {
+    panel: "grid w-full gap-4",
+    primary: "grid gap-4",
+    calendarWrapper: "order-2 min-w-0",
+    calendar: "w-full p-0",
+    presets: "order-1 grid grid-cols-2 gap-2",
+    presetVariant: "outline",
+    preset: undefined,
+    fields: "grid gap-4",
+    rangeError: undefined,
+    actions: "sticky bottom-0 bg-popover pt-2",
+    apply: "w-full",
+  },
+  desktop: {
+    panel: "grid w-128 max-w-[calc(100vw-2rem)]",
+    primary: "grid grid-cols-[minmax(0,1fr)_11rem] gap-4 border-b pb-4",
+    calendarWrapper: "min-w-0",
+    calendar: "p-0",
+    presets: "grid max-h-72 content-start gap-1 overflow-y-auto",
+    presetVariant: "ghost",
+    preset: "justify-start",
+    fields: "grid grid-cols-2 gap-4 border-b py-4",
+    rangeError: "col-span-full",
+    actions: "flex justify-end pt-4",
+    apply: undefined,
+  },
+} as const;
 
 export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> = ({
   value,
-  presets,
   pattern,
+  locale,
   min,
   max,
+  presets,
   mobile,
   onApply,
 }) => {
-  const locale = getLocale() === "zh-Hans" ? zhCN : enUS;
-  const normalizedFrom = normalizeDateTimeInput(value?.from);
-  const normalizedTo = normalizeDateTimeInput(value?.to);
-  const minimum = normalizeDateTimeInput(min);
-  const maximum = normalizeDateTimeInput(max);
-  const [selected, setSelected] = useState<DateRange | undefined>(
-    normalizedFrom === undefined ? undefined : { from: normalizedFrom, to: normalizedTo },
-  );
-  const [activePreset, setActivePreset] = useState<string>();
-  const schema = useMemo(
-    () => createDateTimeRangeDraftSchema({ pattern, locale, min, max, messages: messages() }),
-    [locale, max, min, pattern],
-  );
-  const form = useForm({
-    defaultValues: createDateTimeRangeDraft(value, pattern, locale),
-    validators: {
-      onChange: ({ value: draft }) => {
-        const parsed = schema.safeParse(draft);
-        return parsed.success ? undefined : parsed.error.issues.map((issue) => issue.message).join(", ");
-      },
-    },
-    onSubmit: ({ value: draft }) => {
-      const parsed = schema.safeParse(draft);
-      if (parsed.success) onApply(parsed.data);
-    },
-  });
-  const disabled: Matcher[] = [
-    ...(minimum === undefined ? [] : [{ before: minimum }]),
-    ...(maximum === undefined ? [] : [{ after: maximum }]),
-  ];
-
-  const selectRange = (range: DateRange | undefined) => {
-    setActivePreset(undefined);
-    setSelected(range);
-    form.setFieldValue("from", range?.from === undefined ? "" : format(startOfDay(range.from), pattern, { locale }));
-    form.setFieldValue("to", range?.to === undefined ? "" : format(endOfDay(range.to), pattern, { locale }));
-  };
+  const layout = LAYOUT[mobile ? "mobile" : "desktop"];
+  const { form, selected, disabledDates, activePresetId, selectRange, selectPreset, clearActivePreset } =
+    useDateTimeRangePicker({ value, pattern, locale, min, max, onApply });
+  const endpoints = [
+    { name: "from", id: "date-time-range-from", label: m["dashboard.date_time_range_picker.start"]() },
+    { name: "to", id: "date-time-range-to", label: m["dashboard.date_time_range_picker.end"]() },
+  ] as const;
 
   return (
     <form
       data-testid="date-time-range-panel"
-      className={mobile ? "grid w-full gap-4" : "grid w-128 max-w-[calc(100vw-2rem)]"}
+      className={layout.panel}
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
     >
-      <div
-        data-slot="date-time-range-primary"
-        className={mobile ? "grid gap-4" : "grid grid-cols-[minmax(0,1fr)_11rem] gap-4 border-b pb-4"}
-      >
-        <div className={mobile ? "order-2 min-w-0" : "min-w-0"}>
+      <div data-slot="date-time-range-primary" className={layout.primary}>
+        <div className={layout.calendarWrapper}>
           <Calendar
             data-testid="date-time-range-calendar"
-            className={mobile ? "w-full p-0" : "p-0"}
-            classNames={mobile ? { root: "w-full" } : undefined}
+            className={layout.calendar}
             mode="range"
             numberOfMonths={1}
             excludeDisabled
-            defaultMonth={normalizedFrom}
+            defaultMonth={selected?.from}
             selected={selected}
-            disabled={disabled}
+            disabled={disabledDates}
             locale={locale}
             onSelect={selectRange}
           />
         </div>
         {presets.length > 0 && (
-          <div
-            data-slot="date-time-range-presets"
-            className={mobile ? "order-1 grid grid-cols-2 gap-2" : "grid max-h-72 content-start gap-1 overflow-y-auto"}
-          >
+          <div data-slot="date-time-range-presets" className={layout.presets}>
             {presets.map((preset) => (
               <Button
                 key={preset.id}
                 type="button"
-                variant={mobile ? "outline" : "ghost"}
-                className={mobile ? undefined : "justify-start"}
-                aria-pressed={activePreset === preset.id}
-                onClick={() => {
-                  const resolved = preset.resolve(new Date());
-                  setActivePreset(preset.id);
-                  setSelected(resolved);
-                  form.setFieldValue("from", format(resolved.from, pattern, { locale }));
-                  form.setFieldValue("to", format(resolved.to, pattern, { locale }));
-                }}
+                variant={layout.presetVariant}
+                className={layout.preset}
+                aria-pressed={activePresetId === preset.id}
+                onClick={() => selectPreset(preset)}
               >
                 {preset.label}
               </Button>
@@ -142,69 +110,38 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
           </div>
         )}
       </div>
-      <form.Subscribe selector={(state) => state.values}>
-        {(draft) => {
-          const parsed = schema.safeParse(draft);
-          const issues = parsed.success ? [] : parsed.error.issues;
-          const fromErrors = issues.filter((issue) => issue.path[0] === "from");
-          const toErrors = issues.filter((issue) => issue.path[0] === "to");
-          const rangeErrors = issues.filter((issue) => issue.path.length === 0);
-          return (
-            <>
-              <div
-                data-slot="date-time-range-fields"
-                className={mobile ? "grid gap-4" : "grid grid-cols-2 gap-4 border-b py-4"}
-              >
-                <form.Field name="from">
-                  {(field) => (
-                    <Field data-invalid={fromErrors.length > 0}>
-                      <FieldLabel htmlFor="date-time-range-from">
-                        {m["dashboard.date_time_range_picker.start"]()}
-                      </FieldLabel>
-                      <Input
-                        id="date-time-range-from"
-                        value={field.state.value}
-                        onChange={(event) => {
-                          setActivePreset(undefined);
-                          field.handleChange(event.target.value);
-                        }}
-                      />
-                      <FieldError errors={fromErrors} />
-                    </Field>
-                  )}
-                </form.Field>
-                <form.Field name="to">
-                  {(field) => (
-                    <Field data-invalid={toErrors.length > 0}>
-                      <FieldLabel htmlFor="date-time-range-to">
-                        {m["dashboard.date_time_range_picker.end"]()}
-                      </FieldLabel>
-                      <Input
-                        id="date-time-range-to"
-                        value={field.state.value}
-                        onChange={(event) => {
-                          setActivePreset(undefined);
-                          field.handleChange(event.target.value);
-                        }}
-                      />
-                      <FieldError errors={toErrors} />
-                    </Field>
-                  )}
-                </form.Field>
-                <FieldError className={mobile ? undefined : "col-span-full"} errors={rangeErrors} />
-              </div>
-              <div
-                data-slot="date-time-range-actions"
-                className={mobile ? "sticky bottom-0 bg-popover pt-2" : "flex justify-end pt-4"}
-              >
-                <Button type="submit" className={mobile ? "w-full" : undefined} disabled={!parsed.success}>
-                  {m["dashboard.date_time_range_picker.apply"]()}
-                </Button>
-              </div>
-            </>
-          );
-        }}
-      </form.Subscribe>
+      <div data-slot="date-time-range-fields" className={layout.fields}>
+        {endpoints.map((endpoint) => (
+          <form.Field key={endpoint.name} name={endpoint.name}>
+            {(field) => (
+              <Field data-invalid={field.state.meta.errors.length > 0}>
+                <FieldLabel htmlFor={endpoint.id}>{endpoint.label}</FieldLabel>
+                <Input
+                  id={endpoint.id}
+                  value={field.state.value}
+                  onChange={(event) => {
+                    clearActivePreset();
+                    field.handleChange(event.target.value);
+                  }}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </Field>
+            )}
+          </form.Field>
+        ))}
+        <form.Subscribe selector={(state) => state.errorMap.onChange ?? state.errorMap.onMount}>
+          {(error) => <FieldError className={layout.rangeError} errors={error?.form?.[""]} />}
+        </form.Subscribe>
+      </div>
+      <div data-slot="date-time-range-actions" className={layout.actions}>
+        <form.Subscribe selector={(state) => state.canSubmit}>
+          {(canSubmit) => (
+            <Button type="submit" className={layout.apply} disabled={!canSubmit}>
+              {m["dashboard.date_time_range_picker.apply"]()}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   );
 };

@@ -109,6 +109,23 @@ describe("DateTimeRangePicker", () => {
     expect(onChange.mock.calls[0]?.[0].from).toEqual(new Date(2026, 6, 20, 8, 15, 0, 0));
   });
 
+  test("derives Calendar selection from manual draft edits", async () => {
+    render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
+    openPicker();
+    fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
+      target: { value: "2026-07-21 00:00" },
+    });
+    fireEvent.change(screen.getByLabelText(/End|结束时间/u), {
+      target: { value: "2026-07-21 23:59" },
+    });
+
+    expect(
+      within(screen.getByTestId("date-time-range-calendar")).getByRole("button", {
+        name: /Tuesday, July 21st, 2026/u,
+      }),
+    ).toHaveAttribute("data-range-start", "true");
+  });
+
   test("resolves a preset once and waits for Apply", async () => {
     const onChange = rs.fn();
     const now = new Date(2026, 6, 20, 12, 0);

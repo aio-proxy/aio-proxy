@@ -15,8 +15,9 @@ import type {
   ResolvedDateTimeRangeValue,
 } from "./date-time-range-picker.types";
 
+import { createDateTimeRangeDraft } from "./date-time-range";
 import { DateTimeRangePickerPanel } from "./date-time-range-picker-panel";
-import { createDateTimeRangeDraft } from "./date-time-range-value";
+import { normalizeDateTimeInput } from "./date-time-range-value";
 
 interface DateTimeRangePickerProps {
   readonly value: DateTimeRangeValue | undefined;
@@ -46,7 +47,13 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   const [open, setOpen] = useState(false);
   const mobile = useIsMobile();
   const locale = getLocale() === "zh-Hans" ? zhCN : enUS;
-  const draft = createDateTimeRangeDraft(value, format, locale);
+  const normalizedFrom = normalizeDateTimeInput(value?.from);
+  const normalizedTo = normalizeDateTimeInput(value?.to);
+  const normalizedValue =
+    normalizedFrom === undefined || normalizedTo === undefined ? undefined : { from: normalizedFrom, to: normalizedTo };
+  const minimum = normalizeDateTimeInput(min);
+  const maximum = normalizeDateTimeInput(max);
+  const draft = createDateTimeRangeDraft(normalizedValue, format, locale);
   const summary =
     draft.from && draft.to ? `${draft.from} – ${draft.to}` : m["dashboard.date_time_range_picker.title"]();
   const triggerRender = render ?? (
@@ -98,11 +105,12 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
     );
   const panel = open && (
     <DateTimeRangePickerPanel
-      value={value}
+      value={normalizedValue}
       presets={presets}
       pattern={format}
-      min={min}
-      max={max}
+      locale={locale}
+      min={minimum}
+      max={maximum}
       mobile={mobile}
       onApply={(next) => {
         onChange(next);
