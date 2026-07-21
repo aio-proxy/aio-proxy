@@ -320,6 +320,7 @@
       "name": "@aio-proxy/types",
       "version": "0.0.0",
       "dependencies": {
+        "es-toolkit": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

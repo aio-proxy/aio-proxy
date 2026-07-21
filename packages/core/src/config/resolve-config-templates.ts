@@ -1,4 +1,5 @@
 import { type AST, parse } from "@handlebars/parser";
+import { mapValues } from "es-toolkit/object";
 import { isPlainObject } from "es-toolkit/predicate";
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -12,7 +13,7 @@ export function resolveConfigTemplates(
   if (typeof value === "string") return resolveString(value, env);
   if (Array.isArray(value)) return value.map((item) => resolveConfigTemplates(item, env));
   if (!isPlainObject(value)) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, resolveConfigTemplates(child, env)]));
+  return mapValues(value, (child) => resolveConfigTemplates(child, env));
 }
 
 function resolveString(value: string, env: Readonly<Record<string, string | undefined>>): string {

@@ -1,3 +1,4 @@
+import { isPlainObject } from "es-toolkit/predicate";
 import { z } from "zod";
 
 import type { InvalidProviderConfig } from "../plugin";
@@ -118,16 +119,12 @@ const ConfigEnvelopeSchema = z.object({
   providers: z.record(z.string().min(1), z.unknown()),
 });
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isLegacyOAuthEntry(value: unknown): boolean {
-  return isRecord(value) && value["kind"] === ProviderKind.OAuth && Object.hasOwn(value, "vendor");
+  return isPlainObject(value) && value["kind"] === ProviderKind.OAuth && Object.hasOwn(value, "vendor");
 }
 
 function inferProviderKind(value: unknown): ProviderKind | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isPlainObject(value)) return undefined;
   const kind = value["kind"];
   return Object.values(ProviderKind).includes(kind as ProviderKind) ? (kind as ProviderKind) : undefined;
 }

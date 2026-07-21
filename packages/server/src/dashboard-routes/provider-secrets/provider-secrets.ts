@@ -1,4 +1,6 @@
 import { resolveConfigTemplates } from "@aio-proxy/core";
+import { mapValues } from "es-toolkit/object";
+import { isPlainObject } from "es-toolkit/predicate";
 
 const OPENAI_SECRET_PATTERN = /^sk-[A-Za-z0-9_-]{20,}$/;
 const BEARER_SECRET_PATTERN = /^Bearer\s+.+$/i;
@@ -35,16 +37,13 @@ export const redactSecrets = (value: unknown, key = "", insideSecretBoundary = f
     return value.map((item) => redactSecrets(item, key, insideSecretBoundary));
   }
 
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([entryKey, entryValue]) => [
+  if (isPlainObject(value)) {
+    return mapValues(value, (entryValue, entryKey) =>
+      redactSecrets(
+        entryValue,
         entryKey,
-        redactSecrets(
-          entryValue,
-          entryKey,
-          insideSecretBoundary || entryKey.toLowerCase() === "headers" || entryKey.toLowerCase() === "proxy",
-        ),
-      ]),
+        insideSecretBoundary || entryKey.toLowerCase() === "headers" || entryKey.toLowerCase() === "proxy",
+      ),
     );
   }
 
@@ -76,11 +75,9 @@ export function retainAuthoredTemplateStrings(
     return submitted.map((value, index) => retainAuthoredTemplateStrings(previousItems[index], value, env));
   }
 
-  if (isRecord(submitted)) {
-    const previous = isRecord(authored) ? authored : {};
-    return Object.fromEntries(
-      Object.entries(submitted).map(([key, value]) => [key, retainAuthoredTemplateStrings(previous[key], value, env)]),
-    );
+  if (isPlainObject(submitted)) {
+    const previous = isPlainObject(authored) ? authored : {};
+    return mapValues(submitted, (value, key) => retainAuthoredTemplateStrings(previous[key], value, env));
   }
 
   return submitted;
@@ -91,16 +88,13 @@ function mergeRecord(
   submitted: Record<string, unknown>,
   insideSecretBoundary: boolean,
 ): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(submitted).map(([key, value]) => [
+  return mapValues(submitted, (value, key) =>
+    mergeValue(
+      previous[key],
+      value,
       key,
-      mergeValue(
-        previous[key],
-        value,
-        key,
-        insideSecretBoundary || key.toLowerCase() === "headers" || key.toLowerCase() === "proxy",
-      ),
-    ]),
+      insideSecretBoundary || key.toLowerCase() === "headers" || key.toLowerCase() === "proxy",
+    ),
   );
 }
 
@@ -115,13 +109,9 @@ function mergeValue(previous: unknown, submitted: unknown, key: string, insideSe
     return submitted.map((value, index) => mergeValue(previousItems[index], value, key, insideSecretBoundary));
   }
 
-  if (isRecord(submitted)) {
-    return mergeRecord(isRecord(previous) ? previous : {}, submitted, insideSecretBoundary);
+  if (isPlainObject(submitted)) {
+    return mergeRecord(isPlainObject(previous) ? previous : {}, submitted, insideSecretBoundary);
   }
 
   return submitted;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

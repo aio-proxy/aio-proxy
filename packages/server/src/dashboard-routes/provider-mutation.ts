@@ -5,6 +5,7 @@ import {
   ProviderMutationAuthoringBodySchema,
   ProviderMutationBodySchema,
 } from "@aio-proxy/types";
+import { isPlainObject } from "es-toolkit/predicate";
 
 import { retainAuthoredTemplateStrings, retainRedactedSecrets } from "./provider-secrets";
 
@@ -84,7 +85,7 @@ export function replaceProvider(
   }
 
   const previousValue = record[providerId];
-  const previous = isRecord(previousValue) ? previousValue : {};
+  const previous = isPlainObject(previousValue) ? previousValue : {};
   const next = retainRedactedSecrets(previous, provider);
 
   for (const key of ["headers", "proxy"] as const) {
@@ -116,7 +117,7 @@ export function replaceOAuthProvider(
 ): Record<string, unknown> {
   const previousValue = record[providerId];
   if (previousValue === undefined) throw new ProviderNotFoundError(providerId);
-  if (!isRecord(previousValue) || previousValue["kind"] !== "oauth") {
+  if (!isPlainObject(previousValue) || previousValue["kind"] !== "oauth") {
     throw new Error("PROVIDER_KIND_MISMATCH");
   }
   return replaceProvider(record, providerId, {
@@ -128,11 +129,7 @@ export function replaceOAuthProvider(
 }
 
 function stripRedactedProxyPlaceholder(raw: unknown): unknown {
-  if (!isRecord(raw) || raw["proxy"] !== "****") return raw;
+  if (!isPlainObject(raw) || raw["proxy"] !== "****") return raw;
   const { proxy: _proxy, ...rest } = raw;
   return rest;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
