@@ -129,7 +129,7 @@ export {
   type ApiProviderTraceSink,
   createApiProvider,
   resolveApiKey,
-} from "./provider/api";
+} from "./provider/api/index";
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
 export { createProviderV4Invoke, validateProviderV4 } from "./provider/provider-v4";
 export { createProxyFetch, type ProviderFetch } from "./provider/proxy-fetch";

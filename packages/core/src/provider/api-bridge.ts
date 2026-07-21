@@ -6,7 +6,7 @@ import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../ai-sdk-b
 import type { AiSdkProviderLoadOptions } from "./ai-sdk-loader";
 
 import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./ai-sdk";
-import { resolveApiKey } from "./api";
+import { resolveApiKey } from "./api/index";
 
 type BridgeMapping = {
   readonly options: AiSdkProviderLoadOptions;
