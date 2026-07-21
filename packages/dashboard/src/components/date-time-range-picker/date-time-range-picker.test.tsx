@@ -147,12 +147,26 @@ describe("DateTimeRangePicker", () => {
     expect(onChange.mock.calls[0]?.[0].from).toEqual(new Date(2026, 6, 20, 11, 0));
   });
 
-  test("disables Apply for invalid or reversed text", async () => {
+  test("disables Apply for invalid text", async () => {
     render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
     openPicker();
     fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), { target: { value: "bad" } });
     expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeDisabled();
     expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  test("renders an order error for a reversed range", async () => {
+    render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
+    openPicker();
+    fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
+      target: { value: "2026-07-21 00:00" },
+    });
+    fireEvent.change(screen.getByLabelText(/End|结束时间/u), {
+      target: { value: "2026-07-20 23:59" },
+    });
+
+    expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Start must not be after end|开始时间不能晚于结束时间/u);
   });
 
   test("renders an invalid or after-max End error beside End", async () => {
@@ -220,11 +234,11 @@ describe("DateTimeRangePicker", () => {
     expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
   });
 
-  test("opens with empty fields for invalid external Dates", async () => {
-    render(<DateTimeRangePicker value={{ from: new Date(Number.NaN), to: new Date(Number.NaN) }} onChange={rs.fn()} />);
+  test("preserves a valid external endpoint when its sibling Date is invalid", async () => {
+    render(<DateTimeRangePicker value={{ from: new Date(Number.NaN), to: value.to }} onChange={rs.fn()} />);
     openPicker();
     expect(await screen.findByLabelText(/Start|开始时间/u)).toHaveValue("");
-    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue("");
+    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue("2026-07-20 23:59");
     expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeDisabled();
   });
 });

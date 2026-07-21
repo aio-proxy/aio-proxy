@@ -1,5 +1,7 @@
 # Dashboard Date-Time Range Picker Design
 
+> **Superseded:** See the [Date-Time Range Picker Refactor Design](./2026-07-21-date-time-range-picker-refactor-design.md). The API section below is retained for historical context and is no longer current.
+
 ## Summary
 
 Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a customizable trigger, single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.

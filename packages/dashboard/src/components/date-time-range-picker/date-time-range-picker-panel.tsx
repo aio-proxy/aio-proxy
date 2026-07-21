@@ -130,7 +130,7 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
           </form.Field>
         ))}
         <form.Subscribe selector={(state) => state.errorMap.onChange ?? state.errorMap.onMount}>
-          {(error) => <FieldError className={layout.rangeError} errors={error?.form?.[""]} />}
+          {(error) => <FieldError className={layout.rangeError} errors={error?.[""]} />}
         </form.Subscribe>
       </div>
       <div data-slot="date-time-range-actions" className={layout.actions}>

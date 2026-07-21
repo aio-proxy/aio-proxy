@@ -41,13 +41,9 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   const [open, setOpen] = useState(false);
   const mobile = useIsMobile();
   const locale = getLocale() === "zh-Hans" ? zhCN : enUS;
-  const normalizedFrom = cloneValidDate(value?.from);
-  const normalizedTo = cloneValidDate(value?.to);
-  const normalizedValue =
-    normalizedFrom === undefined || normalizedTo === undefined ? undefined : { from: normalizedFrom, to: normalizedTo };
   const minimum = cloneValidDate(min);
   const maximum = cloneValidDate(max);
-  const draft = createDateTimeRangeDraft(normalizedValue, pattern, locale);
+  const draft = createDateTimeRangeDraft(value, pattern, locale);
   const summary =
     draft.from && draft.to ? `${draft.from} – ${draft.to}` : m["dashboard.date_time_range_picker.title"]();
   const triggerElement = trigger ?? (
@@ -94,7 +90,7 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
     );
   const panel = open && (
     <DateTimeRangePickerPanel
-      value={normalizedValue}
+      value={value}
       presets={presets}
       pattern={pattern}
       locale={locale}
