@@ -3,13 +3,12 @@ import { describe, expect, test } from "@rstest/core";
 import { createDefaultLogsSearch, isWithinRetention, parseLogsSearch, withLogsFilters } from "./logs-search";
 
 describe("logs search", () => {
-  test("creates an explicit rolling 24 hour default range", () => {
-    expect(createDefaultLogsSearch(new Date("2026-07-12T12:00:00.000Z"))).toEqual({
-      page: 1,
-      pageSize: 50,
-      startedAfter: "2026-07-11T12:00:00.000Z",
-      completedBefore: "2026-07-12T12:00:00.000Z",
-    });
+  test("creates the current local day as the default range", () => {
+    const search = createDefaultLogsSearch(new Date(2026, 6, 12, 12, 34, 56, 789));
+
+    expect([search.page, search.pageSize]).toEqual([1, 50]);
+    expect(localTime(search.startedAfter)).toEqual([2026, 6, 12, 0, 0, 0, 0]);
+    expect(localTime(search.completedBefore)).toEqual([2026, 6, 12, 23, 59, 59, 999]);
   });
 
   test("parses valid URL values into typed search state", () => {
@@ -56,3 +55,16 @@ describe("logs search", () => {
     expect(isWithinRetention("2026-06-01T12:00:00.000Z", now)).toBe(true);
   });
 });
+
+const localTime = (value: string) => {
+  const date = new Date(value);
+  return [
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  ];
+};
