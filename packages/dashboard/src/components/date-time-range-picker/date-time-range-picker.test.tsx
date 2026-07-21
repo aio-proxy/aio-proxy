@@ -205,11 +205,11 @@ describe("DateTimeRangePicker", () => {
     expect(screen.queryByRole("button", { name: /Apply|应用/u })).toBeNull();
   });
 
-  test("uses Base UI element render and ignores allowClear", () => {
+  test("uses a custom trigger and leaves clear ownership to it", () => {
     render(
       <DateTimeRangePicker
         value={value}
-        render={<button type="button">Custom range</button>}
+        trigger={<button type="button">Custom range</button>}
         allowClear
         onChange={rs.fn()}
       />,
@@ -220,22 +220,11 @@ describe("DateTimeRangePicker", () => {
     expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
   });
 
-  test("passes open state and merged props to callback render", () => {
-    render(
-      <DateTimeRangePicker
-        value={value}
-        render={(props, state) => (
-          <button {...props} type="button" data-picker-open={state.open ? "yes" : "no"}>
-            Callback range
-          </button>
-        )}
-        onChange={rs.fn()}
-      />,
-    );
-
-    const trigger = screen.getByRole("button", { name: "Callback range" });
-    expect(trigger).toHaveAttribute("data-picker-open", "no");
-    fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute("data-picker-open", "yes");
+  test("opens with empty fields for invalid external Dates", async () => {
+    render(<DateTimeRangePicker value={{ from: new Date(Number.NaN), to: new Date(Number.NaN) }} onChange={rs.fn()} />);
+    openPicker();
+    expect(await screen.findByLabelText(/Start|开始时间/u)).toHaveValue("");
+    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue("");
+    expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeDisabled();
   });
 });
