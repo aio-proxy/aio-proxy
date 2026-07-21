@@ -1,5 +1,7 @@
 import { type ApiProvider, ProviderProtocol } from "@aio-proxy/types";
 
+import type { ProviderFetch } from "./proxy-fetch";
+
 declare const process: {
   readonly env: Record<string, string | undefined>;
 };
@@ -34,6 +36,8 @@ export type ApiProviderInstance = ApiProvider & {
 
 export type ApiProviderFactoryOptions = {
   readonly trace?: ApiProviderTraceTarget;
+  /** Injected by provider materialization to route upstream calls through the effective proxy. Wired in Tasks 5–6. */
+  readonly fetch?: ProviderFetch;
 };
 
 export function createApiProvider(

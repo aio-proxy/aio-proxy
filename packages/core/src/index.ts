@@ -132,6 +132,7 @@ export {
 } from "./provider/api";
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
 export { createProviderV4Invoke, validateProviderV4 } from "./provider/provider-v4";
+export { createProxyFetch, type ProviderFetch } from "./provider/proxy-fetch";
 export {
   type ModelRoute,
   modelRoutes,

@@ -6,10 +6,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeProviderInstance } from "../src/runtime";
+import type { RuntimeProviderInstance } from "../runtime";
 
-import { materializeProviders, materializeRuntimeProvider } from "../src/provider-runtime";
-import { createServerState } from "../src/server-state";
+import { createServerState } from "../server-state";
+import { materializeProviders, materializeRuntimeProvider } from "./materialize";
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
   // @ts-expect-error a materialized runtime provider must expose raw or model

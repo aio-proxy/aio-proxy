@@ -9,10 +9,12 @@ import type {
   TextStreamPart,
   ToolSet,
 } from "../ai-sdk-bridge";
+import type { AiSdkProviderLoadOptions } from "./ai-sdk-loader";
+import type { ProviderFetch } from "./proxy-fetch";
 
 import { streamAiSdkText } from "../ai-sdk-bridge";
 import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
-import { type AiSdkProviderLoadOptions, loadAiSdkProvider } from "./ai-sdk-loader";
+import { loadAiSdkProvider } from "./ai-sdk-loader";
 import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "./ai-sdk-reasoning";
 
 type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
@@ -39,6 +41,8 @@ export type AiSdkProviderFactoryOptions = {
     modelId: string,
     provider: LoadedAiSdkRuntimeProvider | null,
   ) => AiSdkLanguageModel | undefined;
+  /** Injected by provider materialization to route upstream calls through the effective proxy. Wired in Tasks 5–6. */
+  readonly fetch?: ProviderFetch;
 };
 
 export type AiSdkProviderInstance = {
