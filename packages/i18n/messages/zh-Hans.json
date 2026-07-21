@@ -193,6 +193,17 @@
     "tagline": "一站式网关"
   },
   "dashboard": {
+    "date_time_range_picker": {
+      "title": "时间范围",
+      "start": "开始时间",
+      "end": "结束时间",
+      "apply": "应用",
+      "clear": "清除时间范围",
+      "invalid": "请输入有效的日期和时间",
+      "order": "开始时间不能晚于结束时间",
+      "before_min": "开始时间早于允许范围",
+      "after_max": "结束时间晚于允许范围"
+    },
     "auth": {
       "password": "密码",
       "logout": "退出登录",

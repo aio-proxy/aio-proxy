@@ -193,6 +193,17 @@
     }
   },
   "dashboard": {
+    "date_time_range_picker": {
+      "title": "Time range",
+      "start": "Start",
+      "end": "End",
+      "apply": "Apply",
+      "clear": "Clear time range",
+      "invalid": "Enter a valid date and time",
+      "order": "Start must not be after end",
+      "before_min": "Start is before the allowed range",
+      "after_max": "End is after the allowed range"
+    },
     "auth": {
       "password": "Password",
       "logout": "Sign out",
