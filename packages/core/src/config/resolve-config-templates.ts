@@ -1,4 +1,5 @@
 import { type AST, parse } from "@handlebars/parser";
+import { isPlainObject } from "es-toolkit/predicate";
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const EXACT_ENV_PATH = /^env\.[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -59,10 +60,4 @@ function sliceLoc(source: string, loc: AST.SourceLocation | undefined): string |
 
 function invalidTemplate(): TypeError {
   return new TypeError(UNSUPPORTED_TEMPLATE);
-}
-
-function isPlainObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
