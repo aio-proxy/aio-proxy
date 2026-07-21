@@ -193,6 +193,17 @@
     }
   },
   "dashboard": {
+    "date_time_range_picker": {
+      "title": "Time range",
+      "start": "Start",
+      "end": "End",
+      "apply": "Apply",
+      "clear": "Clear time range",
+      "invalid": "Enter a valid date and time",
+      "order": "Start must not be after end",
+      "before_min": "Start is before the allowed range",
+      "after_max": "End is after the allowed range"
+    },
     "auth": {
       "password": "Password",
       "logout": "Sign out",
@@ -222,6 +233,9 @@
       "providers": "Providers",
       "models": "Models"
     },
+    "navigation": {
+      "back": "Back"
+    },
     "preferences": {
       "appearance": "Appearance",
       "language": "Language",
@@ -237,7 +251,7 @@
     },
     "providers": {
       "list_title": "Providers",
-      "providers_title": "Provider diagnostics",
+      "providers_title": "Providers",
       "new_provider": "New Provider",
       "edit_loading": "Loading provider…",
       "edit_not_found": "Provider not found",
@@ -248,7 +262,9 @@
         "invalid": "Invalid"
       },
       "table": {
-        "label": "Provider diagnostics",
+        "label": "Providers",
+        "col_provider": "Provider",
+        "col_details": "Details",
         "col_type": "Type",
         "col_id": "ID",
         "col_name": "Name",
@@ -262,6 +278,7 @@
         "col_weight": "Weight",
         "col_actions": "Actions",
         "filter": "Filter providers",
+        "filter_placeholder": "Search by name or Provider ID",
         "columns": "Provider columns"
       },
       "badge": {
@@ -336,10 +353,15 @@
         "label_aliases": "Aliases",
         "label_variants": "Variants",
         "label_enabled": "Enabled",
+        "section_basic": "Basic information",
+        "section_connection": "Connection",
+        "section_integration": "Integration",
+        "section_models_aliases": "Models and aliases",
         "placeholder_id": "e.g. openai",
         "placeholder_name": "e.g. OpenAI",
         "placeholder_base_url": "https://api.openai.com",
         "placeholder_api_key": "sk-...",
+        "placeholder_protocol": "Select a protocol",
         "placeholder_package_name": "@ai-sdk/openai-compatible",
         "placeholder_options": "{\"baseURL\":\"...\"}",
         "placeholder_models": "gpt-5-mini, gpt-5",
@@ -412,7 +434,9 @@
         "edit": "Edit",
         "probe_now": "Probe Now",
         "edit_aliases": "Edit Aliases",
-        "open_menu": "Open actions for provider {id}"
+        "open_menu": "Open actions for provider {id}",
+        "edit_provider": "Edit provider {id}",
+        "delete_provider": "Delete provider {id}"
       },
       "toast": {
         "created": "Provider created",
@@ -475,7 +499,13 @@
     "logs": {
       "title": "Request logs",
       "range": "Time range",
+      "range_15m": "Last 15 minutes",
+      "range_1h": "Last 1 hour",
+      "range_3h": "Last 3 hours",
+      "range_6h": "Last 6 hours",
+      "range_12h": "Last 12 hours",
       "range_24h": "Last 24 hours",
+      "range_3d": "Last 3 days",
       "range_7d": "Last 7 days",
       "range_14d": "Last 14 days",
       "range_30d": "Last 30 days",

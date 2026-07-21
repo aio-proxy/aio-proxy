@@ -1,5 +1,6 @@
 import { describe, expect, rs, test } from "@rstest/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { format } from "date-fns";
 
 import { createDefaultLogsSearch } from "../../logs-search";
 import { LogsPage } from "./logs-page";
@@ -88,14 +89,85 @@ describe("logs page", () => {
     expect(onSearchChange).not.toHaveBeenCalled();
   });
 
-  test("uses one accessible date range picker without custom presets", () => {
-    const { container } = render(
+  test("opens one shared date time calendar with the Logs presets", async () => {
+    render(
       <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
     );
 
-    expect(screen.getByRole("button", { name: /Time range|时间范围/u })).toBeTruthy();
-    expect(container.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(screen.queryByRole("button", { name: /Last 7 days|近 7 天/u })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Time range|时间范围/u }));
+
+    expect(await screen.findAllByTestId("date-time-range-calendar")).toHaveLength(1);
+    for (const name of [
+      /Last 15 minutes|最近 15 分钟/u,
+      /Last 1 hour|最近 1 小时/u,
+      /Last 3 hours|最近 3 小时/u,
+      /Last 6 hours|最近 6 小时/u,
+      /Last 12 hours|最近 12 小时/u,
+      /Last 24 hours|最近 24 小时/u,
+      /Last 3 days|最近 3 天/u,
+      /Last 7 days|最近 7 天/u,
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+  });
+
+  test("applies exact typed times and resets pagination", async () => {
+    const onSearchChange = rs.fn();
+    const target = new Date();
+    target.setDate(target.getDate() - 1);
+    const from = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 8, 15);
+    const to = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 9, 45);
+    render(
+      <LogsPage
+        search={{ ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")), page: 3 }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Time range|时间范围/u }));
+    fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
+      target: { value: format(from, "yyyy-MM-dd HH:mm") },
+    });
+    fireEvent.change(screen.getByLabelText(/End|结束时间/u), {
+      target: { value: format(to, "yyyy-MM-dd HH:mm") },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Apply|应用/u }));
+
+    await waitFor(() => expect(onSearchChange).toHaveBeenCalledTimes(1));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 1,
+        startedAfter: from.toISOString(),
+        completedBefore: new Date(to.getFullYear(), to.getMonth(), to.getDate(), 9, 45, 59, 999).toISOString(),
+      }),
+    );
+  });
+
+  test("clears only the date range back to today's default", () => {
+    const onSearchChange = rs.fn();
+    render(
+      <LogsPage
+        search={{
+          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
+          page: 3,
+          outcome: "failure",
+        }}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    const beforeClear = new Date();
+    fireEvent.click(screen.getByRole("button", { name: /Clear time range|清除时间范围/u }));
+    const afterClear = new Date();
+
+    const cleared = onSearchChange.mock.calls.at(-1)?.[0];
+    expect(cleared).toEqual(expect.objectContaining({ page: 1, outcome: "failure" }));
+    const startedAfter = new Date(cleared?.startedAfter ?? "");
+    const completedBefore = new Date(cleared?.completedBefore ?? "");
+    expect(localClock(startedAfter)).toEqual([0, 0, 0, 0]);
+    expect(localClock(completedBefore)).toEqual([23, 59, 59, 999]);
+    expect(localDate(completedBefore)).toEqual(localDate(startedAfter));
+    expect([localDate(beforeClear), localDate(afterClear)]).toContainEqual(localDate(startedAfter));
   });
 
   test("renders rows per page inside the table pagination", () => {
@@ -193,3 +265,6 @@ describe("logs page", () => {
     expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty("outcome");
   });
 });
+
+const localDate = (date: Date) => [date.getFullYear(), date.getMonth(), date.getDate()];
+const localClock = (date: Date) => [date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds()];

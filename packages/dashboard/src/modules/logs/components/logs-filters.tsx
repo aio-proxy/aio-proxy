@@ -1,10 +1,12 @@
 import { m } from "@aio-proxy/i18n";
 import { ProviderProtocol, type RequestOutcome } from "@aio-proxy/types";
 import { useForm } from "@tanstack/react-form";
+import { endOfDay, startOfDay } from "date-fns";
 import { RefreshCw, RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 import { z } from "zod";
 
+import { DateTimeRangePicker } from "@/components/date-time-range-picker";
 import { ProtocolLabel } from "@/components/protocol-label";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -12,10 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
-import { toPickerRange, toQueryRange } from "../log-date-range";
+import { createLogsDateTimeRangePresets, toPickerRange, toQueryRange } from "../log-date-range";
 import { createDefaultLogsSearch, type LogsFilterPatch, type LogsSearch, withLogsFilters } from "../logs-search";
 import { LogsAdvancedFilters } from "./logs-advanced-filters";
-import { LogsDateRangePicker } from "./logs-date-range-picker";
 
 interface LogsFiltersProps {
   readonly search: LogsSearch;
@@ -30,7 +31,7 @@ const schema = z.object({
   outcome: z.string(),
   inboundProtocol: z.string(),
   requestedModelId: z.string(),
-  dateRange: z.object({ from: z.date().optional(), to: z.date().optional() }),
+  dateRange: z.object({ from: z.date(), to: z.date() }).optional(),
   autoRefresh: z.boolean(),
 });
 
@@ -42,14 +43,17 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
   onAutoRefresh,
   onRefresh,
 }) => {
+  const now = new Date();
+  const retentionStart = startOfDay(new Date(now.getTime() - 45 * 86_400_000));
+  const defaultValues: z.input<typeof schema> = {
+    outcome: search.outcome ?? "",
+    inboundProtocol: search.inboundProtocol ?? "",
+    requestedModelId: search.requestedModelId ?? "",
+    dateRange: toPickerRange(search),
+    autoRefresh,
+  };
   const form = useForm({
-    defaultValues: {
-      outcome: search.outcome ?? "",
-      inboundProtocol: search.inboundProtocol ?? "",
-      requestedModelId: search.requestedModelId ?? "",
-      dateRange: toPickerRange(search),
-      autoRefresh,
-    },
+    defaultValues,
     validators: { onChange: schema },
   });
   const patch = (value: LogsFilterPatch) => onChange(withLogsFilters(search, value));
@@ -68,12 +72,23 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
         {(field) => (
           <Field className="w-auto min-w-60 flex-1">
             <FieldLabel>{m["dashboard.logs.range"]()}</FieldLabel>
-            <LogsDateRangePicker
+            <DateTimeRangePicker
               value={field.state.value}
+              presets={createLogsDateTimeRangePresets()}
+              min={retentionStart}
+              max={endOfDay(now)}
+              allowClear
               onChange={(value) => {
                 field.handleChange(value);
-                const query = toQueryRange(value);
-                if (query) patch(query);
+                if (value === undefined) {
+                  const defaults = createDefaultLogsSearch();
+                  patch({
+                    startedAfter: defaults.startedAfter,
+                    completedBefore: defaults.completedBefore,
+                  });
+                } else {
+                  patch(toQueryRange(value));
+                }
               }}
             />
           </Field>

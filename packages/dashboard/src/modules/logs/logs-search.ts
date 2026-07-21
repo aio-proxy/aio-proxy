@@ -1,5 +1,7 @@
 import type { DashboardRequestLogsPageSize, RequestOutcome } from "@aio-proxy/types";
 
+import { endOfDay, startOfDay } from "date-fns";
+
 export type LogsSearch = {
   readonly page: number;
   readonly pageSize: DashboardRequestLogsPageSize;
@@ -24,8 +26,8 @@ export function createDefaultLogsSearch(now = new Date()): LogsSearch {
   return {
     page: 1,
     pageSize: 50,
-    startedAfter: new Date(now.getTime() - 24 * 60 * 60 * 1_000).toISOString(),
-    completedBefore: now.toISOString(),
+    startedAfter: startOfDay(now).toISOString(),
+    completedBefore: endOfDay(now).toISOString(),
   };
 }
 

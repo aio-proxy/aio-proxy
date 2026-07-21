@@ -60,12 +60,7 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
           ))}
         </div>
       ) : (
-        <section className="space-y-3" aria-labelledby="providers-heading">
-          <h2 id="providers-heading" className="text-sm font-semibold">
-            {m["dashboard.providers.providers_title"]()}
-          </h2>
-          <ProvidersTable providers={providers} focusProviderId={focusProviderId} />
-        </section>
+        <ProvidersTable providers={providers} focusProviderId={focusProviderId} />
       )}
     </PageContainer>
   );

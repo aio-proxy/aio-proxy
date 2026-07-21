@@ -47,22 +47,23 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
           )}
         </form.Field>
       </div>
-      <div data-testid="provider-form-field-id">
-        <form.Field name="id">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_id"]()}</Label>
-              <Input
-                id={field.name}
-                value={field.state.value ?? ""}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder={m["dashboard.providers.form.placeholder_id"]()}
-                disabled={mode === ProviderFormMode.Edit}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
+      {mode === ProviderFormMode.Create ? (
+        <div data-testid="provider-form-field-id">
+          <form.Field name="id">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m["dashboard.providers.form.label_id"]()}</Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value ?? ""}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder={m["dashboard.providers.form.placeholder_id"]()}
+                />
+              </Field>
+            )}
+          </form.Field>
+        </div>
+      ) : null}
       <div data-testid="provider-form-field-enabled">
         <form.Field name="enabled">
           {(field) => (

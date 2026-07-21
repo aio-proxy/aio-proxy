@@ -193,6 +193,17 @@
     "tagline": "一站式网关"
   },
   "dashboard": {
+    "date_time_range_picker": {
+      "title": "时间范围",
+      "start": "开始时间",
+      "end": "结束时间",
+      "apply": "应用",
+      "clear": "清除时间范围",
+      "invalid": "请输入有效的日期和时间",
+      "order": "开始时间不能晚于结束时间",
+      "before_min": "开始时间早于允许范围",
+      "after_max": "结束时间晚于允许范围"
+    },
     "auth": {
       "password": "密码",
       "logout": "退出登录",
@@ -222,6 +233,9 @@
       "providers": "提供商",
       "models": "模型"
     },
+    "navigation": {
+      "back": "返回"
+    },
     "preferences": {
       "appearance": "外观",
       "language": "语言",
@@ -237,7 +251,7 @@
     },
     "providers": {
       "list_title": "提供商",
-      "providers_title": "提供商诊断",
+      "providers_title": "提供商",
       "new_provider": "新建提供商",
       "edit_loading": "正在加载提供商…",
       "edit_not_found": "未找到提供商",
@@ -248,7 +262,9 @@
         "invalid": "无效"
       },
       "table": {
-        "label": "提供商诊断",
+        "label": "提供商",
+        "col_provider": "提供商",
+        "col_details": "详情",
         "col_type": "类型",
         "col_id": "ID",
         "col_name": "名称",
@@ -262,6 +278,7 @@
         "col_weight": "权重",
         "col_actions": "操作",
         "filter": "筛选提供商",
+        "filter_placeholder": "按名称或提供商 ID 搜索",
         "columns": "提供商列"
       },
       "badge": {
@@ -336,10 +353,15 @@
         "label_aliases": "别名",
         "label_variants": "变体",
         "label_enabled": "启用",
+        "section_basic": "基本信息",
+        "section_connection": "连接",
+        "section_integration": "集成",
+        "section_models_aliases": "模型与别名",
         "placeholder_id": "例如 openai",
         "placeholder_name": "例如 OpenAI",
         "placeholder_base_url": "https://api.openai.com",
         "placeholder_api_key": "sk-...",
+        "placeholder_protocol": "请选择协议",
         "placeholder_package_name": "@ai-sdk/openai-compatible",
         "placeholder_options": "{\"baseURL\":\"...\"}",
         "placeholder_models": "gpt-5-mini, gpt-5",
@@ -412,7 +434,9 @@
         "edit": "编辑",
         "probe_now": "立即探测",
         "edit_aliases": "编辑别名",
-        "open_menu": "打开提供商 {id} 的操作菜单"
+        "open_menu": "打开提供商 {id} 的操作菜单",
+        "edit_provider": "编辑提供商 {id}",
+        "delete_provider": "删除提供商 {id}"
       },
       "toast": {
         "created": "提供商已创建",
@@ -475,7 +499,13 @@
     "logs": {
       "title": "请求日志",
       "range": "时间范围",
+      "range_15m": "最近 15 分钟",
+      "range_1h": "最近 1 小时",
+      "range_3h": "最近 3 小时",
+      "range_6h": "最近 6 小时",
+      "range_12h": "最近 12 小时",
       "range_24h": "最近 24 小时",
+      "range_3d": "最近 3 天",
       "range_7d": "最近 7 天",
       "range_14d": "最近 14 天",
       "range_30d": "最近 30 天",

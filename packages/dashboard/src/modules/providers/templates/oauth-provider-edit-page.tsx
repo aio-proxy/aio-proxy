@@ -133,10 +133,15 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
   };
 
   return (
-    <PageContainer title={m["dashboard.providers.edit_title"]()} backTo="/providers">
-      <div className="max-w-lg space-y-6 p-4">
+    <PageContainer
+      title={m["dashboard.providers.edit_title"]()}
+      subtitle={`${provider.id} · ${m["dashboard.providers.kind_label.oauth"]()}`}
+      backTo="/providers"
+    >
+      <div className="mx-auto max-w-4xl space-y-6 px-1 pb-4 sm:p-4">
         {sessionId === undefined ? (
           <form
+            className="space-y-8"
             onSubmit={(event) => {
               event.preventDefault();
               submit(false);
@@ -149,14 +154,18 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
               accountForm={accountForm}
               aliasOpen={aliasOpen}
               onAliasOpenChange={setAliasOpen}
+              onReauthorize={() => submit(true)}
+              isReauthorizing={isUpdating || startMutation.isPending}
             />
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button type="submit" disabled={isUpdating || startMutation.isPending}>
-                {m["dashboard.providers.actions.save"]()}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => submit(true)} disabled={startMutation.isPending}>
-                {m["dashboard.providers.oauth.reauthorize"]()}
-              </Button>
+            <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
+              <div className="flex gap-3">
+                <Button type="submit" disabled={isUpdating || startMutation.isPending}>
+                  {m["dashboard.providers.actions.save"]()}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => void navigate({ to: "/providers" })}>
+                  {m["dashboard.providers.actions.cancel"]()}
+                </Button>
+              </div>
               <Button type="button" variant="destructive" onClick={() => deleteDialogRef.current?.open(provider)}>
                 {m["dashboard.providers.actions.delete"]()}
               </Button>
@@ -179,7 +188,7 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
           />
         )}
       </div>
-      <DeleteProviderDialog ref={deleteDialogRef} />
+      <DeleteProviderDialog ref={deleteDialogRef} onDeleted={() => void navigate({ to: "/providers" })} />
     </PageContainer>
   );
 };

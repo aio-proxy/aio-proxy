@@ -22,48 +22,57 @@ export type DeleteProviderDialogRef = {
   readonly open: (provider: DeleteProviderTarget) => void;
 };
 
-export const DeleteProviderDialog = forwardRef<DeleteProviderDialogRef>((_, ref) => {
-  const [provider, setProvider] = useState<DeleteProviderTarget | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const { mutate: deleteProvider, isPending } = useProviderDelete();
+interface DeleteProviderDialogProps {
+  readonly onDeleted?: () => void;
+}
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      open: (nextProvider) => {
-        setProvider(nextProvider);
-        setIsOpen(true);
-      },
-    }),
-    [],
-  );
+export const DeleteProviderDialog = forwardRef<DeleteProviderDialogRef, DeleteProviderDialogProps>(
+  ({ onDeleted }, ref) => {
+    const [provider, setProvider] = useState<DeleteProviderTarget | null>(null);
+    const [isOpen, setIsOpen] = useState(false);
+    const { mutate: deleteProvider, isPending } = useProviderDelete();
 
-  const handleConfirm = () => {
-    if (provider === null) return;
+    useImperativeHandle(
+      ref,
+      () => ({
+        open: (nextProvider) => {
+          setProvider(nextProvider);
+          setIsOpen(true);
+        },
+      }),
+      [],
+    );
 
-    deleteProvider(provider.id, {
-      onSuccess: () => setIsOpen(false),
-    });
-  };
+    const handleConfirm = () => {
+      if (provider === null) return;
 
-  return (
-    <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
-      {provider !== null && (
-        <AlertDialogContent data-testid="delete-provider-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{m["dashboard.providers.delete_dialog.title"]()}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {m["dashboard.providers.delete_dialog.description"]({ id: provider.id })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{m["dashboard.providers.delete_dialog.cancel"]()}</AlertDialogCancel>
-            <AlertDialogAction data-testid="delete-confirm" onClick={handleConfirm} disabled={isPending}>
-              {m["dashboard.providers.delete_dialog.confirm"]()}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      )}
-    </AlertDialog>
-  );
-});
+      deleteProvider(provider.id, {
+        onSuccess: () => {
+          setIsOpen(false);
+          onDeleted?.();
+        },
+      });
+    };
+
+    return (
+      <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
+        {provider !== null && (
+          <AlertDialogContent data-testid="delete-provider-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{m["dashboard.providers.delete_dialog.title"]()}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {m["dashboard.providers.delete_dialog.description"]({ id: provider.id })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{m["dashboard.providers.delete_dialog.cancel"]()}</AlertDialogCancel>
+              <AlertDialogAction data-testid="delete-confirm" onClick={handleConfirm} disabled={isPending}>
+                {m["dashboard.providers.delete_dialog.confirm"]()}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
+    );
+  },
+);
