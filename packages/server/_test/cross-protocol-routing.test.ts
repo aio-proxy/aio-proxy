@@ -93,6 +93,62 @@ describe("cross-protocol HTTP routing", () => {
       expect.objectContaining({ outcome: "success", providerId: "second" }),
     ]);
   });
+
+  test("falls back on proxy failure without direct retry of the failed Provider ID", async () => {
+    // Bun may bypass proxy for literal 127.0.0.1; localtest.me still binds locally.
+    let firstHits = 0;
+    let secondHits = 0;
+    const serve = (onHit: () => number, body: Response) =>
+      Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => (onHit(), body) });
+    const firstUpstream = serve(() => (firstHits += 1), Response.json({ error: "unreachable" }, { status: 500 }));
+    const secondUpstream = serve(
+      () => (secondHits += 1),
+      Response.json({ choices: [{ message: { role: "assistant", content: "fallback ok" } }] }),
+    );
+    const reserved = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    const deadProxy = `http://proxy-user:proxy-pass-secret@127.0.0.1:${reserved.port}`;
+    await reserved.stop(true);
+    const headerSecret = "hdr-secret-proxy-fallback";
+    const home = tempHome();
+    const api = (baseURL: string, weight: number, proxy: string | false) => ({
+      kind: "api" as const,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL,
+      models: ["m"],
+      weight,
+      proxy,
+      ...(typeof proxy === "string" ? { headers: { "X-Secret": headerSecret } } : {}),
+    });
+    try {
+      const app = await createServer({
+        config: {
+          providers: {
+            proxied: api(`http://localtest.me:${firstUpstream.port}`, 10, deadProxy),
+            direct: api(`http://127.0.0.1:${secondUpstream.port}`, 1, false),
+          },
+        },
+        dbHome: home,
+      });
+      const response = await app.request("/v1/chat/completions", {
+        body: JSON.stringify({ model: "m", messages: [{ role: "user", content: "hello" }] }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(body).toContain("fallback ok");
+      expect([firstHits, secondHits]).toEqual([0, 1]);
+      const attempts = await recordedAttempts(home);
+      expect(attempts).toEqual([
+        expect.objectContaining({ outcome: "failure", providerId: "proxied" }),
+        expect.objectContaining({ outcome: "success", providerId: "direct" }),
+      ]);
+      const diagnostic = JSON.stringify({ attempts, body });
+      for (const secret of [headerSecret, "proxy-pass-secret", deadProxy]) expect(diagnostic).not.toContain(secret);
+    } finally {
+      await Promise.all([firstUpstream.stop(true), secondUpstream.stop(true)]);
+    }
+  });
 });
 
 type InboundCase = (typeof inboundCases)[number];
@@ -121,33 +177,25 @@ function antigravityProvider(rawAvailable: boolean): {
   readonly value: RuntimeProviderInstance;
 } {
   const calls: Calls = { model: 0, raw: 0 };
-  const value = {
-    alias: { m: { model: "m", preserve: false } },
-    capability: "default",
-    enabled: true,
-    id: "antigravity",
-    kind: ProviderKind.OAuth,
-    model: {
-      invoke() {
-        calls.model += 1;
-        return modelStream("model:antigravity");
+  return {
+    calls,
+    value: {
+      alias: { m: { model: "m", preserve: false } },
+      capability: "default",
+      enabled: true,
+      id: "antigravity",
+      kind: ProviderKind.OAuth,
+      model: { invoke: () => ((calls.model += 1), modelStream("model:antigravity")) },
+      models: ["m"],
+      plugin: "@aio-proxy/plugin-google-antigravity",
+      raw: {
+        resolve: ({ protocol }: { readonly protocol: ProviderProtocol }) =>
+          rawAvailable && protocol === ProviderProtocol.Gemini
+            ? { invoke: async () => ((calls.raw += 1), new Response("raw:antigravity")) }
+            : undefined,
       },
-    },
-    models: ["m"],
-    plugin: "@aio-proxy/plugin-google-antigravity",
-    raw: {
-      resolve: ({ protocol }: { readonly protocol: ProviderProtocol }) =>
-        rawAvailable && protocol === ProviderProtocol.Gemini
-          ? {
-              invoke: async () => {
-                calls.raw += 1;
-                return new Response("raw:antigravity");
-              },
-            }
-          : undefined,
-    },
-  } satisfies RuntimeProviderInstance;
-  return { calls, value };
+    } satisfies RuntimeProviderInstance,
+  };
 }
 
 function provider(
@@ -156,30 +204,27 @@ function provider(
   options: { readonly model?: () => ReadableStream<TextStreamPart<ToolSet>> } = {},
 ): { readonly calls: Calls; readonly value: RuntimeProviderInstance } {
   const calls: Calls = { model: 0, raw: 0 };
-  const raw = async () => {
-    calls.raw += 1;
-    return new Response(`raw:${protocol}`);
+  const raw = async () => ((calls.raw += 1), new Response(`raw:${protocol}`));
+  const invoke = () => ((calls.model += 1), options.model?.() ?? modelStream(`model:${protocol}`));
+  return {
+    calls,
+    value: {
+      alias: { m: { model: "m", preserve: false } },
+      baseURL: `https://${id}.example.test`,
+      enabled: true,
+      id,
+      kind: ProviderKind.Api,
+      model: { invoke },
+      models: ["m"],
+      passthrough: raw,
+      protocol,
+      raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: raw } : undefined) },
+    } satisfies ApiProviderInstance & RuntimeProviderInstance,
   };
-  const invoke = () => {
-    calls.model += 1;
-    return options.model?.() ?? modelStream(`model:${protocol}`);
-  };
-  const value = {
-    alias: { m: { model: "m", preserve: false } },
-    baseURL: `https://${id}.example.test`,
-    enabled: true,
-    id,
-    kind: ProviderKind.Api,
-    model: { invoke },
-    models: ["m"],
-    passthrough: raw,
-    protocol,
-    raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: raw } : undefined) },
-  } satisfies ApiProviderInstance & RuntimeProviderInstance;
-  return { calls, value };
 }
 
 function modelStream(text: string): ReadableStream<TextStreamPart<ToolSet>> {
+  const empty = { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 };
   return new ReadableStream({
     start(controller) {
       controller.enqueue({ type: "text-delta", id: "text-1", text });
@@ -188,7 +233,7 @@ function modelStream(text: string): ReadableStream<TextStreamPart<ToolSet>> {
         finishReason: "stop",
         rawFinishReason: "stop",
         totalUsage: {
-          inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
+          inputTokenDetails: empty,
           inputTokens: 0,
           outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
           outputTokens: 0,
@@ -231,21 +276,14 @@ async function recordedAttempts(home: string) {
 }
 
 function expectModelResponse(protocol: ProviderProtocol, body: unknown, text: string): void {
-  switch (protocol) {
-    case ProviderProtocol.OpenAICompatible:
-      expect(body).toMatchObject({ choices: [{ message: { role: "assistant", content: text } }] });
-      break;
-    case ProviderProtocol.OpenAIResponse:
-      expect(body).toMatchObject({
-        object: "response",
-        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
-      });
-      break;
-    case ProviderProtocol.Anthropic:
-      expect(body).toMatchObject({ type: "message", role: "assistant", content: [{ type: "text", text }] });
-      break;
-    case ProviderProtocol.Gemini:
-      expect(body).toMatchObject({ candidates: [{ content: { role: "model", parts: [{ text }] } }] });
-      break;
-  }
+  const shapes = {
+    [ProviderProtocol.OpenAICompatible]: { choices: [{ message: { role: "assistant", content: text } }] },
+    [ProviderProtocol.OpenAIResponse]: {
+      object: "response",
+      output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
+    },
+    [ProviderProtocol.Anthropic]: { type: "message", role: "assistant", content: [{ type: "text", text }] },
+    [ProviderProtocol.Gemini]: { candidates: [{ content: { role: "model", parts: [{ text }] } }] },
+  } as const;
+  expect(body).toMatchObject(shapes[protocol]);
 }

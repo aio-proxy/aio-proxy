@@ -1,5 +1,7 @@
 import { type ApiProvider, ProviderProtocol } from "@aio-proxy/types";
 
+import type { ProviderFetch } from "../proxy-fetch";
+
 declare const process: {
   readonly env: Record<string, string | undefined>;
 };
@@ -34,6 +36,8 @@ export type ApiProviderInstance = ApiProvider & {
 
 export type ApiProviderFactoryOptions = {
   readonly trace?: ApiProviderTraceTarget;
+  /** Injected by provider materialization to route upstream calls through the effective proxy. Wired in Tasks 5–6. */
+  readonly fetch?: ProviderFetch;
 };
 
 export function createApiProvider(
@@ -42,6 +46,7 @@ export function createApiProvider(
 ): ApiProviderInstance {
   const baseURL = config.baseURL;
   const trace = options.trace ?? config.trace;
+  const fetchUpstream = options.fetch ?? globalThis.fetch;
 
   return {
     ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
@@ -54,9 +59,9 @@ export function createApiProvider(
     protocol: config.protocol,
     async passthrough(req) {
       const upstreamUrl = rewrittenUrl(baseURL, req.url);
-      const headers = upstreamHeaders(req.headers, config.protocol, resolveApiKey(config.apiKey));
+      const headers = upstreamHeaders(req.headers, config);
 
-      const response = await fetch(upstreamUrl, {
+      const response = await fetchUpstream(upstreamUrl, {
         body: req.body,
         headers,
         method: req.method,
@@ -75,16 +80,20 @@ export function createApiProvider(
   };
 }
 
-function upstreamHeaders(inbound: Headers, protocol: ProviderProtocol, apiKey: string | undefined): Headers {
+function upstreamHeaders(
+  inbound: Headers,
+  config: Pick<ApiProviderConfig, "apiKey" | "headers" | "protocol">,
+): Headers {
   const headers = new Headers(inbound);
   headers.delete("host");
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
-  headers.set("accept-encoding", "identity");
-  headers.set("x-forwarded-by", "aio-proxy/0.0.0");
-  if (apiKey === undefined) return headers;
-  if (protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
-  else if (protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
-  else headers.set("authorization", `Bearer ${apiKey}`);
+  const apiKey = resolveApiKey(config.apiKey);
+  if (apiKey !== undefined) {
+    if (config.protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
+    else if (config.protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
+    else headers.set("authorization", `Bearer ${apiKey}`);
+  }
+  for (const [name, value] of Object.entries(config.headers ?? {})) headers.set(name, value);
   return headers;
 }
 

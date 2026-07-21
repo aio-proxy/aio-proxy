@@ -14,6 +14,7 @@ export type {
   ToolSet,
 } from "./ai-sdk-bridge";
 export { jsonSchema } from "./ai-sdk-bridge";
+export { parseRuntimeConfig, resolveConfigTemplates } from "./config/index";
 export {
   type AnthropicMessageResponse,
   writeAnthropicMessagesResponse,
@@ -110,7 +111,11 @@ export { type InstalledNpmPackage, listInstalledNpmPackages } from "./npm-list";
 export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from "./paths/index";
 export * from "./plugins";
 export * from "./protocol";
-export { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "./provider/ai-sdk";
+export {
+  type AiSdkProviderFactoryOptions,
+  type AiSdkProviderInstance,
+  createAiSdkProvider,
+} from "./provider/ai-sdk/index";
 export {
   type AiSdkProviderLoadOptions,
   BUNDLED_PROVIDER_PACKAGES,
@@ -119,7 +124,7 @@ export {
   type BundledAiSdkProviderPackage,
   type LoadedAiSdkProvider,
   loadAiSdkProvider,
-} from "./provider/ai-sdk-loader";
+} from "./provider/ai-sdk-loader/index";
 export {
   type ApiProviderConfig,
   type ApiProviderFactoryOptions,
@@ -128,9 +133,10 @@ export {
   type ApiProviderTraceSink,
   createApiProvider,
   resolveApiKey,
-} from "./provider/api";
-export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge";
+} from "./provider/api/index";
+export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from "./provider/api-bridge/index";
 export { createProviderV4Invoke, validateProviderV4 } from "./provider/provider-v4";
+export { createProxyFetch, type ProviderFetch } from "./provider/proxy-fetch";
 export {
   type ModelRoute,
   modelRoutes,

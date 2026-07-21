@@ -8,12 +8,14 @@ import type {
   ModelMessage,
   TextStreamPart,
   ToolSet,
-} from "../ai-sdk-bridge";
+} from "../../ai-sdk-bridge";
+import type { AiSdkProviderLoadOptions } from "../ai-sdk-loader/index";
+import type { ProviderFetch } from "../proxy-fetch";
 
-import { streamAiSdkText } from "../ai-sdk-bridge";
-import { AiSdkProviderError, ProviderNotInstalledError } from "../error";
-import { type AiSdkProviderLoadOptions, loadAiSdkProvider } from "./ai-sdk-loader";
-import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "./ai-sdk-reasoning";
+import { streamAiSdkText } from "../../ai-sdk-bridge";
+import { AiSdkProviderError, ProviderNotInstalledError } from "../../error";
+import { loadAiSdkProvider } from "../ai-sdk-loader/index";
+import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "../ai-sdk-reasoning";
 
 type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
   readonly aioProxy?: Readonly<Record<string, unknown>>;
@@ -39,6 +41,8 @@ export type AiSdkProviderFactoryOptions = {
     modelId: string,
     provider: LoadedAiSdkRuntimeProvider | null,
   ) => AiSdkLanguageModel | undefined;
+  /** Injected by provider materialization to route upstream calls through the effective proxy. Wired in Tasks 5–6. */
+  readonly fetch?: ProviderFetch;
 };
 
 export type AiSdkProviderInstance = {
@@ -65,7 +69,7 @@ export function createAiSdkProvider(
   let loadedProviderTask: Promise<LoadedAiSdkRuntimeProvider | null> | undefined;
 
   function providerTask(): Promise<LoadedAiSdkRuntimeProvider | null> {
-    loadedProviderTask ??= loadProvider(config.packageName, loadOptions(config));
+    loadedProviderTask ??= loadProvider(config.packageName, loadOptions(config, options.fetch));
     return loadedProviderTask;
   }
 
@@ -153,11 +157,10 @@ function enqueueStreamParts(
   }
 }
 
-function loadOptions(config: AiSdkProvider): AiSdkProviderLoadOptions {
-  const options = config.options ?? {};
-  if (config.packageName !== "@ai-sdk/openai-compatible" || options["name"] !== undefined) {
-    return options;
-  }
+function loadOptions(config: AiSdkProvider, providerFetch: ProviderFetch | undefined): AiSdkProviderLoadOptions {
+  const configured = config.options ?? {};
+  const options = providerFetch === undefined ? configured : { ...configured, fetch: providerFetch };
+  if (config.packageName !== "@ai-sdk/openai-compatible" || options["name"] !== undefined) return options;
   return { ...options, name: config.id };
 }
 

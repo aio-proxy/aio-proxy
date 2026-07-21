@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 
-import { ConfigAuthoringSchema, ConfigSchema, ProviderKind } from "..";
+import {
+  ConfigAuthoringSchema,
+  ConfigSchema,
+  ProviderKind,
+  ProviderMutationAuthoringBodySchema,
+  ProviderMutationBodySchema,
+} from "..";
 
 test("preserves an exact non-empty dashboard password", () => {
   expect(ConfigSchema.parse({ server: { password: "  " }, providers: {} }).server.password).toBe("  ");
@@ -108,4 +114,176 @@ test("rejects duplicate plugin enablements", () => {
       providers: {},
     }),
   ).toThrow("Duplicate plugin @example/duplicate");
+});
+
+test("resolves top-level and per-provider proxy plus API headers on the runtime config", () => {
+  const runtime = ConfigSchema.parse({
+    proxy: "https://proxy.example:8443",
+    providers: {
+      api: {
+        kind: "api",
+        protocol: "openai-response",
+        baseURL: "https://api.example/v1",
+        proxy: false,
+        headers: { Authorization: "Bearer upstream", "X-Tenant": "team-a" },
+      },
+      sdk: {
+        kind: "ai-sdk",
+        packageName: "@ai-sdk/anthropic",
+        proxy: "http://provider-proxy.example:8080",
+      },
+    },
+  });
+
+  expect(runtime.proxy).toBe("https://proxy.example:8443");
+  expect(runtime.providers[0]).toMatchObject({ proxy: false, headers: { "X-Tenant": "team-a" } });
+  expect(runtime.providers[1]).toMatchObject({ proxy: "http://provider-proxy.example:8080" });
+});
+
+test("rejects a non-HTTP(S) top-level proxy scheme", () => {
+  expect(ConfigSchema.safeParse({ proxy: "socks5://localhost:1080", providers: {} }).success).toBe(false);
+});
+
+test("degrades an API provider with an invalid header name instead of failing the whole config", () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        kind: "api",
+        protocol: "openai-response",
+        baseURL: "https://api.example/v1",
+        headers: { "Bad\nName": "value" },
+      },
+    },
+  });
+
+  expect(config.providers).toEqual([]);
+  expect(config.invalidProviders).toEqual([
+    { id: "api", kind: ProviderKind.Api, code: "PROVIDER_CONFIG_INVALID", issuePaths: [["headers"]] },
+  ]);
+});
+
+test("accepts config templates for top-level proxy, provider base URL, and header values in the authoring schema", () => {
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      proxy: "{{env.PROXY_URL}}",
+      providers: {
+        api: {
+          kind: "api",
+          protocol: "openai-response",
+          baseURL: "{{env.API_BASE_URL}}",
+          headers: { Authorization: "Bearer {{env.API_TOKEN}}" },
+        },
+      },
+    }).success,
+  ).toBe(true);
+});
+
+test("authoring schema accepts templates on constrained string leaves", () => {
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      server: { host: "{{env.HOST}}" },
+      plugins: ["{{env.PLUGIN_PACKAGE}}"],
+      providers: {
+        api: {
+          kind: "api",
+          protocol: "{{env.PROTOCOL}}",
+          baseURL: "https://api.example/v1",
+        },
+        sdk: {
+          kind: "ai-sdk",
+          packageName: "{{env.SDK_PACKAGE}}",
+        },
+        oauth: {
+          kind: "oauth",
+          plugin: "{{env.OAUTH_PLUGIN}}",
+          capability: "{{env.OAUTH_CAPABILITY}}",
+        },
+      },
+    }).success,
+  ).toBe(true);
+});
+
+test("authoring and mutation schemas reject templated provider kind", () => {
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      providers: {
+        api: {
+          kind: "{{env.KIND}}",
+          protocol: "openai-response",
+          baseURL: "https://api.example/v1",
+        },
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "{{env.KIND}}",
+      id: "openai",
+      protocol: "openai-response",
+      baseURL: "https://api.example/v1",
+    }).success,
+  ).toBe(false);
+});
+
+test("provider mutation authoring accepts proxy templates and API headers", () => {
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "api",
+      id: "openai",
+      protocol: "openai-response",
+      baseURL: "{{env.API_BASE_URL}}",
+      proxy: "{{env.PROVIDER_PROXY}}",
+      headers: { Authorization: "Bearer {{env.API_TOKEN}}" },
+    }).success,
+  ).toBe(true);
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "ai-sdk",
+      id: "anthropic",
+      packageName: "@ai-sdk/anthropic",
+      proxy: "{{env.PROVIDER_PROXY}}",
+    }).success,
+  ).toBe(true);
+});
+
+test("provider mutation authoring accepts protocol and packageName templates", () => {
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "api",
+      id: "openai",
+      protocol: "{{env.PROTOCOL}}",
+      baseURL: "https://api.example/v1",
+    }).success,
+  ).toBe(true);
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "ai-sdk",
+      id: "anthropic",
+      packageName: "{{env.SDK_PACKAGE}}",
+    }).success,
+  ).toBe(true);
+});
+
+test("provider mutation body accepts API headers", () => {
+  expect(
+    ProviderMutationBodySchema.safeParse({
+      kind: "api",
+      id: "openai",
+      protocol: "openai-response",
+      baseURL: "https://api.example/v1",
+      headers: { Authorization: "Bearer upstream" },
+    }).success,
+  ).toBe(true);
+});
+
+test("provider mutation body rejects unresolved proxy and base URL templates", () => {
+  expect(
+    ProviderMutationBodySchema.safeParse({
+      kind: "api",
+      id: "openai",
+      protocol: "openai-response",
+      baseURL: "{{env.API_BASE_URL}}",
+      proxy: "{{env.PROVIDER_PROXY}}",
+    }).success,
+  ).toBe(false);
 });

@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import type { ProviderFetch } from "../../index";
 
 import {
   BUNDLED_PROVIDER_VERSIONS,
@@ -9,7 +11,7 @@ import {
   type BundledAiSdkProviderPackage,
   loadAiSdkProvider,
   npmPackageCacheDir,
-} from "../../src/index";
+} from "../../index";
 
 type ExpectedProvider = {
   readonly packageName: BundledAiSdkProviderPackage;
@@ -66,7 +68,7 @@ const expectedProviders: readonly ExpectedProvider[] = [
 
 describe("loadAiSdkProvider", () => {
   test("bundled provider versions match installed package metadata", async () => {
-    const corePackageRoot = join(import.meta.dir, "../..");
+    const corePackageRoot = join(import.meta.dir, "../../..");
     expect(Object.keys(BUNDLED_PROVIDER_VERSIONS).sort()).toEqual(
       expectedProviders.map((provider) => provider.packageName).sort(),
     );
@@ -98,6 +100,36 @@ describe("loadAiSdkProvider", () => {
     });
 
     expect(provider).toBeNull();
+  });
+
+  test("forwards fetch into createOpenAICompatible instead of dropping it", async () => {
+    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
+    let createOptions: { readonly fetch?: ProviderFetch } | undefined;
+
+    mock.module("@ai-sdk/openai-compatible", () => ({
+      createOpenAICompatible(options: { readonly fetch?: ProviderFetch }) {
+        createOptions = options;
+        return {
+          languageModel() {
+            throw new Error("languageModel should not be called");
+          },
+        };
+      },
+    }));
+
+    try {
+      const provider = await loadAiSdkProvider("@ai-sdk/openai-compatible", {
+        apiKey: "test",
+        baseURL: "https://example.invalid/v1",
+        name: "test",
+        fetch: providerFetch,
+      });
+
+      expect(provider).not.toBeNull();
+      expect(createOptions?.fetch).toBe(providerFetch);
+    } finally {
+      mock.restore();
+    }
   });
 
   test("Given runtime package cached When bundled lookup misses Then provider factory imports from cache", async () => {

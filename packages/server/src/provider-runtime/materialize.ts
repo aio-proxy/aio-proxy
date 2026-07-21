@@ -1,25 +1,25 @@
-import type { Config, DashboardProviderProbe, DashboardProviderSummary, Provider } from "@aio-proxy/types";
+import type { Config, DashboardProviderSummary, Provider } from "@aio-proxy/types";
 
 import {
   type AiSdkProviderInstance,
-  type ApiProviderInstance,
   bridgeApiProviderToAiSdk,
   createAiSdkProvider,
   createApiProvider,
+  createProxyFetch,
   modelRoutes,
 } from "@aio-proxy/core";
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import { ProviderKind } from "@aio-proxy/types";
 
-import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "./runtime";
+import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "../runtime";
 
-export type ProviderProbe = () => Promise<DashboardProviderProbe>;
+import { probeAiSdk, probeApi, type ProviderProbe } from "./probe";
 
 export type MaterializeProvidersOptions = {
   readonly bridgeApiProvider?: typeof bridgeApiProviderToAiSdk;
+  readonly createApiProvider?: typeof createApiProvider;
+  readonly createAiSdkProvider?: typeof createAiSdkProvider;
+  readonly createProxyFetch?: typeof createProxyFetch;
 };
-
-const probeMaxOutputTokens = 1;
-const openAIResponsesProbeMaxOutputTokens = 16;
 
 export type ProviderRuntime = {
   readonly providers: readonly RuntimeProviderInstance[];
@@ -106,8 +106,20 @@ function isModelTransport(value: unknown): value is ModelTransport {
   );
 }
 
+/** `false` disables the top-level proxy for this provider; omitted inherits it. */
+function effectiveProxy(
+  globalProxy: string | undefined,
+  providerProxy: string | false | undefined,
+): string | undefined {
+  if (providerProxy === false) return undefined;
+  return providerProxy ?? globalProxy;
+}
+
 export function materializeProviders(config: Config, options: MaterializeProvidersOptions = {}): ProviderRuntime {
   const bridgeApiProvider = options.bridgeApiProvider ?? bridgeApiProviderToAiSdk;
+  const createApi = options.createApiProvider ?? createApiProvider;
+  const createAiSdk = options.createAiSdkProvider ?? createAiSdkProvider;
+  const createFetch = options.createProxyFetch ?? createProxyFetch;
   const probes = new Map<string, ProviderProbe>();
   const providers: RuntimeProviderInstance[] = [];
   const summaries: ProviderRuntimeSummary[] = [];
@@ -120,15 +132,19 @@ export function materializeProviders(config: Config, options: MaterializeProvide
 
     switch (provider.kind) {
       case ProviderKind.Api: {
-        const api = createApiProvider(provider);
-        const instance = materializeRuntimeProvider(api, { apiBridge: bridgeApiProvider(provider) });
+        const providerFetch = createFetch(effectiveProxy(config.proxy, provider.proxy));
+        const api = createApi(provider, { fetch: providerFetch });
+        const instance = materializeRuntimeProvider(api, {
+          apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
+        });
         probes.set(id, () => probeApi(provider, api));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name));
         break;
       }
       case ProviderKind.AiSdk: {
-        const aiSdk = createAiSdkProvider(provider);
+        const providerFetch = createFetch(effectiveProxy(config.proxy, provider.proxy));
+        const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = materializeRuntimeProvider(aiSdk);
         probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
@@ -197,98 +213,6 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
     clientModels,
     hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
   };
-}
-
-async function probeApi(
-  provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  instance: ApiProviderInstance,
-): Promise<DashboardProviderProbe> {
-  try {
-    const model = providerProbeModel(provider);
-    if (model === undefined) {
-      return "FAIL";
-    }
-    const request = providerProbeRequest(provider, model);
-    const response = await instance.passthrough(
-      new Request(request.url, {
-        body: JSON.stringify(request.body),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        signal: AbortSignal.timeout(1_000),
-      }),
-    );
-    if (response.body !== null) {
-      await response.body.cancel();
-    }
-    return response.ok ? "OK" : "FAIL";
-  } catch (error) {
-    if (error instanceof Error) {
-      return "FAIL";
-    }
-    throw error;
-  }
-}
-
-function providerProbeRequest(
-  provider: Extract<Provider, { kind: ProviderKind.Api }>,
-  model: string,
-): { readonly body: unknown; readonly url: URL } {
-  const url = new URL(provider.baseURL);
-  switch (provider.protocol) {
-    case ProviderProtocol.OpenAICompatible:
-      url.pathname = "/v1/chat/completions";
-      return {
-        body: { max_tokens: probeMaxOutputTokens, messages: [{ role: "user", content: "ping" }], model },
-        url,
-      };
-    case ProviderProtocol.OpenAIResponse:
-      url.pathname = "/v1/responses";
-      return { body: { input: "ping", max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
-    case ProviderProtocol.Anthropic:
-      url.pathname = "/v1/messages";
-      return {
-        body: {
-          max_tokens: probeMaxOutputTokens,
-          messages: [{ role: "user", content: "ping" }],
-          model,
-        },
-        url,
-      };
-    case ProviderProtocol.Gemini:
-      url.pathname = `/v1beta/models/${model}:generateContent`;
-      return {
-        body: {
-          contents: [{ role: "user", parts: [{ text: "ping" }] }],
-          generationConfig: { maxOutputTokens: probeMaxOutputTokens },
-        },
-        url,
-      };
-    default:
-      return assertNever(provider.protocol);
-  }
-}
-
-function providerProbeModel(provider: Extract<Provider, { kind: ProviderKind.Api }>): string | undefined {
-  const aliasTarget = provider.alias === undefined ? undefined : Object.values(provider.alias)[0]?.model;
-  return aliasTarget ?? provider.models?.[0];
-}
-
-async function probeAiSdk(provider: {
-  readonly ensureAvailable?: () => Promise<void>;
-}): Promise<DashboardProviderProbe> {
-  if (provider.ensureAvailable === undefined) {
-    return "OK";
-  }
-
-  try {
-    await provider.ensureAvailable();
-    return "OK";
-  } catch (error) {
-    if (error instanceof Error) {
-      return "FAIL";
-    }
-    throw error;
-  }
 }
 
 function assertNever(value: never): never {

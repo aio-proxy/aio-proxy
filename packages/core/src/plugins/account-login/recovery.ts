@@ -1,8 +1,9 @@
-import { ConfigSchema, providerLoginCommand } from "@aio-proxy/types";
+import { providerLoginCommand } from "@aio-proxy/types";
 
 import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
 import type { PendingAccountOperation, PluginRepository } from "../repository/index";
 
+import { parseRuntimeConfig } from "../../config";
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
 import { AccountCleanupPendingError } from "./errors";
 import {
@@ -111,7 +112,9 @@ export async function recoverPendingAccountOperations(
   await config.transaction(async (current) => {
     const rawProviders = current["providers"];
     if (rawProviders !== undefined && !isRecord(rawProviders)) {
-      ConfigSchema.safeParse(current);
+      try {
+        parseRuntimeConfig(current);
+      } catch {}
       nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
       return { next: current, result: undefined };
     }

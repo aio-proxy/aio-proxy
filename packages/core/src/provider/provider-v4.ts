@@ -1,6 +1,6 @@
 import type { ProviderV4 } from "@ai-sdk/provider";
 
-import type { AiSdkProviderInstance } from "./ai-sdk";
+import type { AiSdkProviderInstance } from "./ai-sdk/index";
 
 import { streamAiSdkText } from "../ai-sdk-bridge";
 import { AiSdkProviderError } from "../error";

@@ -49,6 +49,7 @@
     "@aio-proxy/types": "workspace:*",
     "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",
+    "@handlebars/parser": "2.2.2",
     "@opencode-ai/models": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "ai": "catalog:",

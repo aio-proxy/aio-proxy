@@ -17,6 +17,7 @@
     "test:unit": "bun test _test/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {
+    "es-toolkit": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

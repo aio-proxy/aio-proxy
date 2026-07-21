@@ -4,17 +4,13 @@ import {
   createPluginRepository,
   type DiagnosticFactory,
   type PendingAccountOperation,
+  parseRuntimeConfig,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
 } from "@aio-proxy/core";
 import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import {
-  type Config,
-  ConfigSchema,
-  type DashboardOAuthCapability,
-  DashboardOAuthProviderEditSchema,
-} from "@aio-proxy/types";
+import { type Config, type DashboardOAuthCapability, DashboardOAuthProviderEditSchema } from "@aio-proxy/types";
 import { dirname } from "node:path";
 
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
@@ -187,7 +183,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     enqueue: queue,
     onReconciliationNeeded: recovery.scheduleReconciliation,
     repository,
-    verify: (candidate) => commitConfig(ConfigSchema.parse(candidate), "config-store"),
+    verify: (candidate) => commitConfig(parseRuntimeConfig(candidate), "config-store"),
   });
 
   function oauthCapabilities(): readonly DashboardOAuthCapability[] {

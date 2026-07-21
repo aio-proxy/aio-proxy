@@ -2,8 +2,8 @@ import type { ModelInfo as AnthropicModelInfo } from "@anthropic-ai/sdk/resource
 import type { Context } from "hono";
 import type { Model as OpenAIModel } from "openai/resources/models";
 
-import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes } from "@aio-proxy/core";
-import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes, parseRuntimeConfig } from "@aio-proxy/core";
+import { ProviderKind } from "@aio-proxy/types";
 import { getUnixTime, isValid, parseISO } from "date-fns";
 import { filter, flatMap, map, pipe, uniqBy } from "es-toolkit/fp";
 import { Hono } from "hono";
@@ -229,7 +229,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       event: "dashboard.auth_unavailable",
     });
   }
-  const config = ConfigSchema.parse(prepared.config);
+  const config = parseRuntimeConfig(prepared.config);
   const stateOptions: InternalServerStateOptions = {
     config,
     __dashboardAuthHealthChanged: (available) => {
