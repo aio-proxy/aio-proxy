@@ -81,11 +81,13 @@ export const ApiProviderSchema = z.object({
   proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
-export const ApiProviderAuthoringSchema = z.object({
-  ...ApiProviderSharedFields,
-  baseURL: z.union([z.url(), ConfigTemplateStringSchema]).describe("Provider API base URL."),
-  proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
-});
+export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({ baseURL: true, proxy: true, protocol: true }).extend(
+  {
+    protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
+    baseURL: z.union([z.url(), ConfigTemplateStringSchema]).describe("Provider API base URL."),
+    proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
+  },
+);
 
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe("Provider backed by a plugin OAuth account."),
@@ -96,6 +98,11 @@ export const OAuthPluginProviderSchema = z.object({
 });
 
 export const OAuthProviderSchema = OAuthPluginProviderSchema;
+
+export const OAuthProviderAuthoringSchema = OAuthProviderSchema.omit({ plugin: true, capability: true }).extend({
+  plugin: z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]),
+  capability: z.union([CapabilityIdSchema, ConfigTemplateStringSchema]),
+});
 
 const AiSdkProviderSharedFields = {
   kind: z.literal(ProviderKind.AiSdk).describe("Provider loaded from an AI SDK provider package."),
@@ -119,8 +126,11 @@ export const AiSdkProviderSchema = z.object({
   proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
-export const AiSdkProviderAuthoringSchema = z.object({
-  ...AiSdkProviderSharedFields,
+export const AiSdkProviderAuthoringSchema = AiSdkProviderSchema.omit({ proxy: true, packageName: true }).extend({
+  packageName: z
+    .union([AiSdkPackageNameSchema, ConfigTemplateStringSchema])
+    .default("@ai-sdk/openai-compatible")
+    .describe("npm package name that exports the AI SDK provider factory."),
   proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
@@ -145,8 +155,12 @@ export const ApiProviderMutationBodySchema = z.object({
   proxy: ProviderProxySchema,
 });
 
-const ApiProviderMutationAuthoringBodySchema = z.object({
-  ...ApiProviderMutationSharedFields,
+const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omit({
+  baseURL: true,
+  proxy: true,
+  protocol: true,
+}).extend({
+  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
   baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
   proxy: AuthoringProviderProxySchema,
 });
@@ -169,8 +183,11 @@ export const AiSdkProviderMutationBodySchema = z.object({
   proxy: ProviderProxySchema,
 });
 
-const AiSdkProviderMutationAuthoringBodySchema = z.object({
-  ...AiSdkProviderMutationSharedFields,
+const AiSdkProviderMutationAuthoringBodySchema = AiSdkProviderMutationBodySchema.omit({
+  proxy: true,
+  packageName: true,
+}).extend({
+  packageName: z.union([AiSdkPackageNameSchema, ConfigTemplateStringSchema]).optional(),
   proxy: AuthoringProviderProxySchema,
 });
 
@@ -259,6 +276,8 @@ export type ApiProviderAuthoringInput = z.input<typeof ApiProviderAuthoringSchem
 export type ApiProviderAuthoring = z.output<typeof ApiProviderAuthoringSchema>;
 export type OAuthProviderInput = z.input<typeof OAuthProviderSchema>;
 export type OAuthProvider = z.output<typeof OAuthProviderSchema>;
+export type OAuthProviderAuthoringInput = z.input<typeof OAuthProviderAuthoringSchema>;
+export type OAuthProviderAuthoring = z.output<typeof OAuthProviderAuthoringSchema>;
 export type OAuthPluginProviderInput = z.input<typeof OAuthPluginProviderSchema>;
 export type OAuthPluginProvider = z.output<typeof OAuthPluginProviderSchema>;
 export type AiSdkProviderInput = z.input<typeof AiSdkProviderSchema>;

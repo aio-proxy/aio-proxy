@@ -178,6 +178,31 @@ test("accepts config templates for top-level proxy, provider base URL, and heade
   ).toBe(true);
 });
 
+test("authoring schema accepts templates on constrained string leaves", () => {
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      server: { host: "{{env.HOST}}" },
+      plugins: ["{{env.PLUGIN_PACKAGE}}"],
+      providers: {
+        api: {
+          kind: "api",
+          protocol: "{{env.PROTOCOL}}",
+          baseURL: "https://api.example/v1",
+        },
+        sdk: {
+          kind: "ai-sdk",
+          packageName: "{{env.SDK_PACKAGE}}",
+        },
+        oauth: {
+          kind: "oauth",
+          plugin: "{{env.OAUTH_PLUGIN}}",
+          capability: "{{env.OAUTH_CAPABILITY}}",
+        },
+      },
+    }).success,
+  ).toBe(true);
+});
+
 test("provider mutation authoring accepts proxy templates and API headers", () => {
   expect(
     ProviderMutationAuthoringBodySchema.safeParse({
@@ -195,6 +220,24 @@ test("provider mutation authoring accepts proxy templates and API headers", () =
       id: "anthropic",
       packageName: "@ai-sdk/anthropic",
       proxy: "{{env.PROVIDER_PROXY}}",
+    }).success,
+  ).toBe(true);
+});
+
+test("provider mutation authoring accepts protocol and packageName templates", () => {
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "api",
+      id: "openai",
+      protocol: "{{env.PROTOCOL}}",
+      baseURL: "https://api.example/v1",
+    }).success,
+  ).toBe(true);
+  expect(
+    ProviderMutationAuthoringBodySchema.safeParse({
+      kind: "ai-sdk",
+      id: "anthropic",
+      packageName: "{{env.SDK_PACKAGE}}",
     }).success,
   ).toBe(true);
 });

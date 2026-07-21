@@ -124,3 +124,39 @@ describe("config-store runtime materialization", () => {
     }
   });
 });
+
+describe("config reload template errors", () => {
+  test("reload logger omits malformed template source that could contain secrets", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-reload-template-"));
+    const configPath = join(dir, "config.json");
+    const valid = { providers: {} };
+    writeFileSync(configPath, JSON.stringify(valid, null, 2));
+
+    const logs: unknown[] = [];
+    const state = await createServerState({
+      config: parseRuntimeConfig(valid),
+      configPath,
+      logger: (entry) => {
+        logs.push(entry);
+      },
+    });
+
+    try {
+      writeFileSync(configPath, JSON.stringify({ providers: {}, proxy: "secret-value {{#if" }, null, 2));
+      const result = await state.reload();
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toBe("Unsupported config template");
+      expect(result.error).not.toContain("secret-value");
+      expect(JSON.stringify(logs)).not.toContain("secret-value");
+      expect(logs).toContainEqual({
+        error: "Unsupported config template",
+        event: "config.reload_failed",
+        stage: "providers",
+      });
+    } finally {
+      state.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

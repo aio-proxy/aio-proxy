@@ -37,6 +37,28 @@ test("leaves object keys and non-string values unchanged", () => {
   expect(resolveConfigTemplates(input, {})).toEqual({ "{{env.KEY}}": 42, flag: true, empty: null });
 });
 
+test("leaves non-plain objects unchanged", () => {
+  const url = new URL("https://example.test/v1");
+  const headers = new Headers({ Authorization: "secret" });
+  const date = new Date("2026-01-01T00:00:00.000Z");
+  const map = new Map([["TOKEN", "{{env.TOKEN}}"]]);
+  const input = { url, headers, date, map };
+
+  const result = resolveConfigTemplates(input, { TOKEN: "secret" }) as typeof input;
+
+  expect(result.url).toBe(url);
+  expect(result.headers).toBe(headers);
+  expect(result.date).toBe(date);
+  expect(result.map).toBe(map);
+  expect(result.map.get("TOKEN")).toBe("{{env.TOKEN}}");
+});
+
+test("does not resolve inherited environment properties", () => {
+  expect(resolveConfigTemplates("{{env.toString}}", Object.create(null))).toBe("");
+  expect(resolveConfigTemplates("{{env.constructor}}", {})).toBe("");
+  expect(resolveConfigTemplates("{{env.__proto__}}", {})).toBe("");
+});
+
 test("does not mutate the input value", () => {
   const input = Object.freeze({
     nested: Object.freeze({ token: "{{env.TOKEN}}" }),
@@ -60,8 +82,33 @@ const rejected = [
   "{{env.1TOKEN}}",
   "{{{env.TOKEN}}}",
   "{{! comment}}",
+  "{{env/TOKEN}}",
+  "{{env.[TOKEN]}}",
+  "{{./env.TOKEN}}",
+  "{{this.env.TOKEN}}",
+  "{{~env.TOKEN}}",
+  "{{env.TOKEN~}}",
 ];
 
 test.each(rejected)("rejects unsupported template syntax: %s", (template) => {
   expect(() => resolveConfigTemplates(template, { TOKEN: "secret" })).toThrow(TypeError);
+  try {
+    resolveConfigTemplates(template, { TOKEN: "secret" });
+  } catch (error) {
+    expect(error).toBeInstanceOf(TypeError);
+    expect((error as Error).message).toBe("Unsupported config template");
+    expect((error as Error).message).not.toContain("secret");
+    expect((error as Error).message).not.toContain(template);
+  }
+});
+
+test("parser failures omit the original source from the error message", () => {
+  const template = "secret-value {{#if";
+  expect(() => resolveConfigTemplates(template, {})).toThrow(TypeError);
+  try {
+    resolveConfigTemplates(template, {});
+  } catch (error) {
+    expect((error as Error).message).toBe("Unsupported config template");
+    expect((error as Error).message).not.toContain("secret-value");
+  }
 });

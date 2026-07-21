@@ -10,6 +10,7 @@ import {
   ApiProviderSchema,
   ConfigTemplateStringSchema,
   HttpProxyUrlSchema,
+  OAuthProviderAuthoringSchema,
   OAuthProviderSchema,
   type Provider,
   ProviderKind,
@@ -19,6 +20,10 @@ import {
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
+const LoopbackHostSchema = z
+  .string()
+  .refine((host) => LOOPBACK_HOSTS.has(host), "Remote binding requires an authenticated remote-mode design");
+
 const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
@@ -26,15 +31,24 @@ const ServerLoggingSchema = z.object({
   level: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
+const ServerLoggingAuthoringSchema = ServerLoggingSchema.omit({ dir: true, level: true }).extend({
+  dir: z.union([z.string().min(1), ConfigTemplateStringSchema]).optional(),
+  level: z.union([z.enum(["debug", "info", "warn", "error"]), ConfigTemplateStringSchema]).default("info"),
+});
+
 export const ServerConfigSchema = z.object({
-  host: z
-    .string()
-    .refine((host) => LOOPBACK_HOSTS.has(host), "Remote binding requires an authenticated remote-mode design")
-    .default("127.0.0.1")
-    .describe("Loopback host for the proxy API server."),
+  host: LoopbackHostSchema.default("127.0.0.1").describe("Loopback host for the proxy API server."),
   port: z.number().int().min(1).max(65_535).default(22_078).describe("HTTP port for the proxy API server."),
   password: z.string().min(1).optional().describe("Dashboard password or Argon2id PHC hash."),
   logging: ServerLoggingSchema.prefault({}).optional(),
+});
+
+const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, logging: true }).extend({
+  host: z
+    .union([LoopbackHostSchema, ConfigTemplateStringSchema])
+    .default("127.0.0.1")
+    .describe("Loopback host for the proxy API server."),
+  logging: ServerLoggingAuthoringSchema.prefault({}).optional(),
 });
 
 const ProviderInputValueSchema = z
@@ -48,10 +62,12 @@ const ProviderInputValueSchema = z
 const ProviderAuthoringInputValueSchema = z
   .discriminatedUnion("kind", [
     ApiProviderAuthoringSchema.omit({ id: true }),
-    OAuthProviderSchema.omit({ id: true }),
+    OAuthProviderAuthoringSchema.omit({ id: true }),
     AiSdkProviderAuthoringSchema.omit({ id: true }),
   ])
   .superRefine(validateAliasTargets);
+
+const PluginPackageNameAuthoringSchema = z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]);
 
 const PluginEnablementSchema = z
   .union([PluginPackageNameSchema, z.tuple([PluginPackageNameSchema, z.unknown()])])
@@ -59,28 +75,38 @@ const PluginEnablementSchema = z
     typeof entry === "string" ? { packageName: entry } : { packageName: entry[0], options: entry[1] },
   );
 
-export const PluginsInputSchema = z
-  .array(PluginEnablementSchema)
-  .default([])
-  .superRefine((plugins, context) => {
-    const seen = new Set<string>();
-    for (const [index, plugin] of plugins.entries()) {
-      if (seen.has(plugin.packageName)) {
-        context.addIssue({
-          code: "custom",
-          message: `Duplicate plugin ${plugin.packageName}`,
-          path: [index],
-        });
-      }
-      seen.add(plugin.packageName);
+const PluginEnablementAuthoringSchema = z
+  .union([PluginPackageNameAuthoringSchema, z.tuple([PluginPackageNameAuthoringSchema, z.unknown()])])
+  .transform((entry) =>
+    typeof entry === "string" ? { packageName: entry } : { packageName: entry[0], options: entry[1] },
+  );
+
+function refineUniquePlugins(plugins: readonly { readonly packageName: string }[], context: z.RefinementCtx): void {
+  const seen = new Set<string>();
+  for (const [index, plugin] of plugins.entries()) {
+    if (seen.has(plugin.packageName)) {
+      context.addIssue({
+        code: "custom",
+        message: `Duplicate plugin ${plugin.packageName}`,
+        path: [index],
+      });
     }
-  });
+    seen.add(plugin.packageName);
+  }
+}
+
+export const PluginsInputSchema = z.array(PluginEnablementSchema).default([]).superRefine(refineUniquePlugins);
+
+const PluginsAuthoringInputSchema = z
+  .array(PluginEnablementAuthoringSchema)
+  .default([])
+  .superRefine(refineUniquePlugins);
 
 const CONFIG_PROXY_DESCRIPTION = "Default HTTP(S) proxy URL inherited by providers that omit their own proxy.";
 
 export const ConfigAuthoringSchema = z.object({
-  server: ServerConfigSchema.prefault({}).describe("Local server settings."),
-  plugins: PluginsInputSchema,
+  server: ServerConfigAuthoringSchema.prefault({}).describe("Local server settings."),
+  plugins: PluginsAuthoringInputSchema,
   proxy: z.union([HttpProxyUrlSchema, ConfigTemplateStringSchema]).optional().describe(CONFIG_PROXY_DESCRIPTION),
   providers: z.record(z.string().min(1), ProviderAuthoringInputValueSchema),
 });
