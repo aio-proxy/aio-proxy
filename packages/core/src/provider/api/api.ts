@@ -89,8 +89,6 @@ function upstreamHeaders(
   const headers = new Headers(inbound);
   headers.delete("host");
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
-  headers.set("accept-encoding", "identity");
-  headers.set("x-forwarded-by", "aio-proxy/0.0.0");
   if (apiKey !== undefined) {
     if (protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
     else if (protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);

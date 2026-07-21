@@ -207,8 +207,8 @@ describe("createApiProvider", () => {
       expect(seen).toEqual({
         authorization: "Bearer env-secret",
         body: '{"model":"gpt-5-mini"}',
-        encoding: "identity",
-        forwardedBy: "aio-proxy/0.0.0",
+        encoding: "gzip",
+        forwardedBy: null,
         host: upstream.url.host,
         method: "POST",
         pathname: "/v1/chat/completions",
