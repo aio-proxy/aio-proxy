@@ -45,7 +45,7 @@ const parseLocalDateTime = (
   boundary: "from" | "to",
 ): Date | undefined => {
   const reference = new Date(2000, 0, 1, 0, 0, boundary === "from" ? 0 : 59, boundary === "from" ? 0 : 999);
-  const parsed = parse(text, pattern, reference, { locale });
+  let parsed = parse(text, pattern, reference, { locale });
   if (!isValid(parsed) || format(parsed, pattern, { locale }) !== text) return undefined;
 
   if (boundary === "to") {
@@ -53,15 +53,15 @@ const parseLocalDateTime = (
     nextDay.setDate(nextDay.getDate() + 1);
     const overlap = nextDay.getTime() - parsed.getTime() - DAY_IN_MILLISECONDS;
     const candidate = new Date(parsed.getTime() + overlap);
-    if (overlap > 0 && format(candidate, pattern, { locale }) === text) return candidate;
+    if (overlap > 0 && format(candidate, pattern, { locale }) === text) parsed = candidate;
   }
 
   const zero = new Date(2000, 0, 1);
   if (format(zero, pattern, { locale }) === format(new Date(2000, 0, 1, 0, 0, 59), pattern, { locale })) {
-    parsed.setSeconds(reference.getSeconds());
+    parsed.setTime(parsed.getTime() + (reference.getSeconds() - parsed.getSeconds()) * 1_000);
   }
   if (format(zero, pattern, { locale }) === format(new Date(2000, 0, 1, 0, 0, 0, 999), pattern, { locale })) {
-    parsed.setMilliseconds(reference.getMilliseconds());
+    parsed.setTime(parsed.getTime() + reference.getMilliseconds() - parsed.getMilliseconds());
   }
   return parsed;
 };
