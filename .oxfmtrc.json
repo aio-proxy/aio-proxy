@@ -35,6 +35,6 @@
     "packages/i18n/project.inlang/.meta.json",
     "packages/i18n/src/paraglide/**",
     ".omo/**",
-    "docs/superpowers/plans/**"
+    "docs/superpowers/**"
   ]
 }
