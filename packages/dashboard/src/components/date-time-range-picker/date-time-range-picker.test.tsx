@@ -3,6 +3,12 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import { DateTimeRangePicker } from "./date-time-range-picker";
 
+const viewport = rs.hoisted(() => ({ mobile: false }));
+
+rs.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => viewport.mobile,
+}));
+
 const value = {
   from: new Date(2026, 6, 20, 0, 0),
   to: new Date(2026, 6, 20, 23, 59, 59, 999),
@@ -11,6 +17,37 @@ const value = {
 const openPicker = () => fireEvent.click(screen.getByRole("button", { name: /Time range|时间范围/u }));
 
 describe("DateTimeRangePicker", () => {
+  test("uses a bottom Sheet on mobile", async () => {
+    viewport.mobile = true;
+    render(
+      <DateTimeRangePicker
+        value={value}
+        presets={[{ id: "today", label: "Today", resolve: () => value }]}
+        onChange={rs.fn()}
+      />,
+    );
+
+    openPicker();
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveAttribute("data-slot", "sheet-content");
+    expect(dialog).toHaveAttribute("data-side", "bottom");
+    expect(within(dialog).getAllByTestId("date-time-range-calendar")).toHaveLength(1);
+    expect(within(dialog).getAllByRole("button", { name: "Today" })).toHaveLength(1);
+    expect(within(dialog).getByLabelText(/Start|开始时间/u)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/End|结束时间/u)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
+    viewport.mobile = false;
+  });
+
+  test("uses a Popover on desktop", async () => {
+    render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
+
+    openPicker();
+    expect(await screen.findByTestId("date-time-range-calendar")).toBeTruthy();
+    expect(document.querySelector('[data-slot="popover-content"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
+  });
+
   test("keeps calendar and time edits in draft until Apply", async () => {
     const onChange = rs.fn();
     render(<DateTimeRangePicker value={value} onChange={onChange} />);

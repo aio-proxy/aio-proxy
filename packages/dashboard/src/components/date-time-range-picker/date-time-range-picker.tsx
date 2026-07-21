@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import type {
   DateTimeInput,
@@ -42,62 +44,86 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   onChange,
 }) => {
   const [open, setOpen] = useState(false);
+  const mobile = useIsMobile();
   const locale = getLocale() === "zh-Hans" ? zhCN : enUS;
   const draft = createDateTimeRangeDraft(value, format, locale);
   const summary =
     draft.from && draft.to ? `${draft.from} – ${draft.to}` : m["dashboard.date_time_range_picker.title"]();
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      {render === undefined ? (
-        <span className="inline-flex items-center">
-          <PopoverTrigger
-            render={
-              <Button
-                type="button"
-                variant="outline"
-                disabled={disabled}
-                aria-label={m["dashboard.date_time_range_picker.title"]()}
-              />
-            }
-          >
-            <CalendarIcon />
-            {summary}
-          </PopoverTrigger>
-          {allowClear && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              disabled={disabled}
-              aria-label={m["dashboard.date_time_range_picker.clear"]()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onChange(undefined);
-              }}
-            >
-              <XIcon />
-            </Button>
-          )}
-        </span>
-      ) : (
-        <PopoverTrigger render={render} disabled={disabled} />
-      )}
-      <PopoverContent className="w-auto" align="start">
-        {open && (
-          <DateTimeRangePickerPanel
-            value={value}
-            presets={presets}
-            pattern={format}
-            min={min}
-            max={max}
-            mobile={false}
-            onApply={(next) => {
-              onChange(next);
-              setOpen(false);
+  const triggerRender = render ?? (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={disabled}
+      aria-label={m["dashboard.date_time_range_picker.title"]()}
+    />
+  );
+  const triggerChildren =
+    render === undefined ? (
+      <>
+        <CalendarIcon />
+        {summary}
+      </>
+    ) : undefined;
+  const trigger = mobile ? (
+    <SheetTrigger render={triggerRender} disabled={render === undefined ? undefined : disabled}>
+      {triggerChildren}
+    </SheetTrigger>
+  ) : (
+    <PopoverTrigger render={triggerRender} disabled={render === undefined ? undefined : disabled}>
+      {triggerChildren}
+    </PopoverTrigger>
+  );
+  const triggerWithClear =
+    render === undefined ? (
+      <span className="inline-flex items-center">
+        {trigger}
+        {allowClear && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled}
+            aria-label={m["dashboard.date_time_range_picker.clear"]()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onChange(undefined);
             }}
-          />
+          >
+            <XIcon />
+          </Button>
         )}
+      </span>
+    ) : (
+      trigger
+    );
+  const panel = open && (
+    <DateTimeRangePickerPanel
+      value={value}
+      presets={presets}
+      pattern={format}
+      min={min}
+      max={max}
+      mobile={mobile}
+      onApply={(next) => {
+        onChange(next);
+        setOpen(false);
+      }}
+    />
+  );
+
+  return mobile ? (
+    <Sheet open={open} onOpenChange={setOpen}>
+      {triggerWithClear}
+      <SheetContent side="bottom" className="max-h-[90dvh] rounded-t-3xl p-0">
+        <SheetTitle className="p-6 pr-16 pb-4">{m["dashboard.date_time_range_picker.title"]()}</SheetTitle>
+        <div className="min-h-0 overflow-y-auto px-4 pb-4">{panel}</div>
+      </SheetContent>
+    </Sheet>
+  ) : (
+    <Popover open={open} onOpenChange={setOpen}>
+      {triggerWithClear}
+      <PopoverContent className="w-auto" align="start">
+        {panel}
       </PopoverContent>
     </Popover>
   );

@@ -174,9 +174,11 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
                 )}
               </form.Field>
               <FieldError errors={rangeErrors} />
-              <Button type="submit" disabled={!parsed.success}>
-                {m["dashboard.date_time_range_picker.apply"]()}
-              </Button>
+              <div className={mobile ? "sticky bottom-0 bg-popover pt-2" : undefined}>
+                <Button type="submit" className={mobile ? "w-full" : undefined} disabled={!parsed.success}>
+                  {m["dashboard.date_time_range_picker.apply"]()}
+                </Button>
+              </div>
             </div>
           );
         }}
