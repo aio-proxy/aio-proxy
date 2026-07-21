@@ -1,4 +1,4 @@
-import { describe, expect, rs, test } from "@rstest/core";
+import { afterEach, describe, expect, rs, test } from "@rstest/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { DateTimeRangePicker } from "./date-time-range-picker";
@@ -8,6 +8,10 @@ const viewport = rs.hoisted(() => ({ mobile: false }));
 rs.mock("@/hooks/use-mobile", () => ({
   useIsMobile: () => viewport.mobile,
 }));
+
+afterEach(() => {
+  viewport.mobile = false;
+});
 
 const value = {
   from: new Date(2026, 6, 20, 0, 0),
@@ -22,7 +26,10 @@ describe("DateTimeRangePicker", () => {
     render(
       <DateTimeRangePicker
         value={value}
-        presets={[{ id: "today", label: "Today", resolve: () => value }]}
+        presets={[
+          { id: "today", label: "Today", resolve: () => value },
+          { id: "yesterday", label: "Yesterday", resolve: () => value },
+        ]}
         onChange={rs.fn()}
       />,
     );
@@ -36,14 +43,54 @@ describe("DateTimeRangePicker", () => {
     expect(within(dialog).getByLabelText(/Start|开始时间/u)).toBeTruthy();
     expect(within(dialog).getByLabelText(/End|结束时间/u)).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
-    viewport.mobile = false;
+
+    const panel = within(dialog).getByTestId("date-time-range-panel");
+    const calendar = within(dialog).getByTestId("date-time-range-calendar");
+    const presets = dialog.querySelector('[data-slot="date-time-range-presets"]');
+    const fields = dialog.querySelector('[data-slot="date-time-range-fields"]');
+    const actions = dialog.querySelector('[data-slot="date-time-range-actions"]');
+    if (presets === null || fields === null || actions === null) throw new Error("Expected responsive picker regions");
+
+    expect(dialog).toHaveClass("rounded-t-3xl");
+    expect(panel).toHaveClass("w-full");
+    expect(calendar).toHaveClass("w-full", "p-0");
+    expect(calendar).not.toHaveClass("w-fit");
+    expect(presets).toHaveClass("grid-cols-2");
+    expect(fields).toHaveClass("grid");
+    expect(fields).not.toHaveClass("grid-cols-2");
+    expect(actions).toHaveClass("sticky", "bottom-0");
+    expect(within(actions as HTMLElement).getByRole("button", { name: /Apply|应用/u })).toHaveClass("w-full");
   });
 
   test("uses a Popover on desktop", async () => {
-    render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
+    render(
+      <DateTimeRangePicker
+        value={value}
+        presets={[{ id: "today", label: "Today", resolve: () => value }]}
+        onChange={rs.fn()}
+      />,
+    );
 
     openPicker();
-    expect(await screen.findByTestId("date-time-range-calendar")).toBeTruthy();
+    const panel = await screen.findByTestId("date-time-range-panel");
+    const primary = panel.querySelector('[data-slot="date-time-range-primary"]');
+    const presets = panel.querySelector('[data-slot="date-time-range-presets"]');
+    const fields = panel.querySelector('[data-slot="date-time-range-fields"]');
+    const actions = panel.querySelector('[data-slot="date-time-range-actions"]');
+    if (primary === null || presets === null || fields === null || actions === null) {
+      throw new Error("Expected desktop picker regions");
+    }
+
+    expect(panel).toHaveClass("w-128", "max-w-[calc(100vw-2rem)]");
+    expect(primary).toHaveClass("grid-cols-[minmax(0,1fr)_11rem]");
+    expect(presets).toHaveClass("grid", "content-start");
+    expect(presets).not.toHaveClass("flex-wrap");
+    expect(within(presets as HTMLElement).getByRole("button", { name: "Today" })).toHaveClass(
+      "hover:bg-muted",
+      "justify-start",
+    );
+    expect(fields).toHaveClass("grid-cols-2");
+    expect(actions).toHaveClass("justify-end");
     expect(document.querySelector('[data-slot="popover-content"]')).not.toBeNull();
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
   });

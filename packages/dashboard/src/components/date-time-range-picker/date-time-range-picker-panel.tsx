@@ -90,20 +90,43 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
 
   return (
     <form
-      className={mobile ? "grid gap-4" : "grid grid-cols-[auto_16rem] gap-4"}
+      data-testid="date-time-range-panel"
+      className={mobile ? "grid w-full gap-4" : "grid w-128 max-w-[calc(100vw-2rem)]"}
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
     >
-      <div className="grid content-start gap-3">
+      <div
+        data-slot="date-time-range-primary"
+        className={mobile ? "grid gap-4" : "grid grid-cols-[minmax(0,1fr)_11rem] gap-4 border-b pb-4"}
+      >
+        <div className={mobile ? "order-2 min-w-0" : "min-w-0"}>
+          <Calendar
+            data-testid="date-time-range-calendar"
+            className={mobile ? "w-full p-0" : "p-0"}
+            classNames={mobile ? { root: "w-full" } : undefined}
+            mode="range"
+            numberOfMonths={1}
+            excludeDisabled
+            defaultMonth={normalizedFrom}
+            selected={selected}
+            disabled={disabled}
+            locale={locale}
+            onSelect={selectRange}
+          />
+        </div>
         {presets.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div
+            data-slot="date-time-range-presets"
+            className={mobile ? "order-1 grid grid-cols-2 gap-2" : "grid max-h-72 content-start gap-1 overflow-y-auto"}
+          >
             {presets.map((preset) => (
               <Button
                 key={preset.id}
                 type="button"
-                variant="outline"
+                variant={mobile ? "outline" : "ghost"}
+                className={mobile ? undefined : "justify-start"}
                 aria-pressed={activePreset === preset.id}
                 onClick={() => {
                   const resolved = preset.resolve(new Date());
@@ -118,17 +141,6 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
             ))}
           </div>
         )}
-        <Calendar
-          data-testid="date-time-range-calendar"
-          mode="range"
-          numberOfMonths={1}
-          excludeDisabled
-          defaultMonth={normalizedFrom}
-          selected={selected}
-          disabled={disabled}
-          locale={locale}
-          onSelect={selectRange}
-        />
       </div>
       <form.Subscribe selector={(state) => state.values}>
         {(draft) => {
@@ -138,48 +150,58 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
           const toErrors = issues.filter((issue) => issue.path[0] === "to");
           const rangeErrors = issues.filter((issue) => issue.path.length === 0);
           return (
-            <div className="grid content-start gap-4">
-              <form.Field name="from">
-                {(field) => (
-                  <Field data-invalid={fromErrors.length > 0}>
-                    <FieldLabel htmlFor="date-time-range-from">
-                      {m["dashboard.date_time_range_picker.start"]()}
-                    </FieldLabel>
-                    <Input
-                      id="date-time-range-from"
-                      value={field.state.value}
-                      onChange={(event) => {
-                        setActivePreset(undefined);
-                        field.handleChange(event.target.value);
-                      }}
-                    />
-                    <FieldError errors={fromErrors} />
-                  </Field>
-                )}
-              </form.Field>
-              <form.Field name="to">
-                {(field) => (
-                  <Field data-invalid={toErrors.length > 0}>
-                    <FieldLabel htmlFor="date-time-range-to">{m["dashboard.date_time_range_picker.end"]()}</FieldLabel>
-                    <Input
-                      id="date-time-range-to"
-                      value={field.state.value}
-                      onChange={(event) => {
-                        setActivePreset(undefined);
-                        field.handleChange(event.target.value);
-                      }}
-                    />
-                    <FieldError errors={toErrors} />
-                  </Field>
-                )}
-              </form.Field>
-              <FieldError errors={rangeErrors} />
-              <div className={mobile ? "sticky bottom-0 bg-popover pt-2" : undefined}>
+            <>
+              <div
+                data-slot="date-time-range-fields"
+                className={mobile ? "grid gap-4" : "grid grid-cols-2 gap-4 border-b py-4"}
+              >
+                <form.Field name="from">
+                  {(field) => (
+                    <Field data-invalid={fromErrors.length > 0}>
+                      <FieldLabel htmlFor="date-time-range-from">
+                        {m["dashboard.date_time_range_picker.start"]()}
+                      </FieldLabel>
+                      <Input
+                        id="date-time-range-from"
+                        value={field.state.value}
+                        onChange={(event) => {
+                          setActivePreset(undefined);
+                          field.handleChange(event.target.value);
+                        }}
+                      />
+                      <FieldError errors={fromErrors} />
+                    </Field>
+                  )}
+                </form.Field>
+                <form.Field name="to">
+                  {(field) => (
+                    <Field data-invalid={toErrors.length > 0}>
+                      <FieldLabel htmlFor="date-time-range-to">
+                        {m["dashboard.date_time_range_picker.end"]()}
+                      </FieldLabel>
+                      <Input
+                        id="date-time-range-to"
+                        value={field.state.value}
+                        onChange={(event) => {
+                          setActivePreset(undefined);
+                          field.handleChange(event.target.value);
+                        }}
+                      />
+                      <FieldError errors={toErrors} />
+                    </Field>
+                  )}
+                </form.Field>
+                <FieldError className={mobile ? undefined : "col-span-full"} errors={rangeErrors} />
+              </div>
+              <div
+                data-slot="date-time-range-actions"
+                className={mobile ? "sticky bottom-0 bg-popover pt-2" : "flex justify-end pt-4"}
+              >
                 <Button type="submit" className={mobile ? "w-full" : undefined} disabled={!parsed.success}>
                   {m["dashboard.date_time_range_picker.apply"]()}
                 </Button>
               </div>
-            </div>
+            </>
           );
         }}
       </form.Subscribe>
