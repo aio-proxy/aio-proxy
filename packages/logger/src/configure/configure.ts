@@ -24,14 +24,6 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
   const sinks: Record<string, Sink> = {
     console: getConsoleSink({
       formatter: process.stderr.isTTY === true ? ansiColorFormatter : jsonLinesFormatter,
-      levelMap: {
-        trace: "error",
-        debug: "error",
-        info: "error",
-        warning: "error",
-        error: "error",
-        fatal: "error",
-      },
     }),
   };
 

@@ -21,8 +21,8 @@ describe("toLogTapeLevel", () => {
 });
 
 describe("configureLogging", () => {
-  test("defaults to info and configures the aio-proxy hierarchy", async () => {
-    const error = spyOn(console, "error").mockImplementation(() => undefined);
+  test("defaults to info and uses the default console routing", async () => {
+    const info = spyOn(console, "info").mockImplementation(() => undefined);
 
     expect(isLoggingConfigured()).toBe(false);
     await configureLogging({ dir: "/unused/when-disabled" });
@@ -31,14 +31,14 @@ describe("configureLogging", () => {
     logger.debug("hidden");
     logger.info("visible");
 
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error.mock.calls[0]?.[0]).toContain('"message":"visible"');
-    error.mockRestore();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0]?.[0]).toContain('"message":"visible"');
+    info.mockRestore();
   });
 
   test("writes daily JSON lines with structured properties", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aio-proxy-logger-"));
-    const error = spyOn(console, "error").mockImplementation(() => undefined);
+    const info = spyOn(console, "info").mockImplementation(() => undefined);
     try {
       await configureLogging({ dir, enabled: true });
       getLogger(["aio-proxy", "test"]).info("written", { requestId: "request-1" });
@@ -53,7 +53,7 @@ describe("configureLogging", () => {
       expect(records).toHaveLength(1);
       expect(records[0]).toMatchObject({ message: "written", properties: { requestId: "request-1" } });
     } finally {
-      error.mockRestore();
+      info.mockRestore();
       rmSync(dir, { force: true, recursive: true });
     }
   });
