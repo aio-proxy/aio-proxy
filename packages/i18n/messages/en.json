@@ -198,7 +198,6 @@
       "start": "Start",
       "end": "End",
       "apply": "Apply",
-      "clear": "Clear time range",
       "invalid": "Enter a valid date and time",
       "order": "Start must not be after end",
       "before_min": "Start is before the allowed range",

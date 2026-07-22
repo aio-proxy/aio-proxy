@@ -38,6 +38,7 @@ This file is the frontend authority for `packages/dashboard`.
 ## Forms
 
 - Every input, select, checkbox, textarea, and editable field must use TanStack Form.
+- Self-contained composite controls may keep their private draft in local state when they expose one value.
 - Zod is the validation and schema source.
 - Use shadcn `Field`, `Label`, `Input`, `Select`, `Checkbox`, and `Textarea` components for form UI.
 

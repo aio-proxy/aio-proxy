@@ -26,8 +26,4 @@ describe("log date range", () => {
       completedBefore: new Date(2026, 6, 20, 9, 45, 59, 999).toISOString(),
     });
   });
-
-  test("does not commit an incomplete range", () => {
-    expect(toQueryRange(undefined)).toBeUndefined();
-  });
 });

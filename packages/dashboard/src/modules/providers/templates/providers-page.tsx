@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,20 +49,24 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
         </DropdownMenu>
       }
     >
-      {warning === "catalog_unavailable" ? (
-        <p role="status" className="mb-3 rounded-lg border bg-muted p-3 text-sm">
-          {m["dashboard.providers.oauth.catalog_warning"]()}
-        </p>
-      ) : null}
-      {providersQuery.isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Skeleton key={index} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : (
-        <ProvidersTable providers={providers} focusProviderId={focusProviderId} />
-      )}
+      <Card>
+        <CardContent>
+          {warning === "catalog_unavailable" ? (
+            <p role="status" className="mb-3 rounded-lg border bg-muted p-3 text-sm">
+              {m["dashboard.providers.oauth.catalog_warning"]()}
+            </p>
+          ) : null}
+          {providersQuery.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <ProvidersTable providers={providers} focusProviderId={focusProviderId} />
+          )}
+        </CardContent>
+      </Card>
     </PageContainer>
   );
 };

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -33,29 +34,33 @@ export const LogsPage: React.FC<Props> = ({ search, onSearchChange }) => {
           onAutoRefresh={setAutoRefresh}
           onRefresh={() => void query.refetch()}
         />
-        {query.isLoading ? (
-          <div className="space-y-2" role="status" aria-label={m["dashboard.logs.loading"]()}>
-            {["a", "b", "c", "d", "e", "f"].map((key) => (
-              <Skeleton className="h-12 w-full" key={key} />
-            ))}
-          </div>
-        ) : query.isError ? (
-          <Empty>
-            <EmptyTitle>{m["dashboard.logs.error_title"]()}</EmptyTitle>
-            <EmptyDescription>{m["dashboard.logs.error_description"]()}</EmptyDescription>
-            <Button onClick={() => void query.refetch()}>{m["dashboard.logs.refresh"]()}</Button>
-          </Empty>
-        ) : query.data?.items.length === 0 ? (
-          <Empty>
-            <EmptyTitle>{m["dashboard.logs.empty_title"]()}</EmptyTitle>
-            <EmptyDescription>{m["dashboard.logs.empty_description"]()}</EmptyDescription>
-            <Button onClick={() => onSearchChange(createDefaultLogsSearch())}>{m["dashboard.logs.reset"]()}</Button>
-          </Empty>
-        ) : query.data ? (
-          <LogsTable data={query.data} search={search} onSearchChange={onSearchChange} onSelect={setSelected} />
-        ) : (
-          <Empty />
-        )}
+        <Card>
+          <CardContent>
+            {query.isLoading ? (
+              <div className="space-y-2" role="status" aria-label={m["dashboard.logs.loading"]()}>
+                {["a", "b", "c", "d", "e", "f"].map((key) => (
+                  <Skeleton className="h-12 w-full" key={key} />
+                ))}
+              </div>
+            ) : query.isError ? (
+              <Empty>
+                <EmptyTitle>{m["dashboard.logs.error_title"]()}</EmptyTitle>
+                <EmptyDescription>{m["dashboard.logs.error_description"]()}</EmptyDescription>
+                <Button onClick={() => void query.refetch()}>{m["dashboard.logs.refresh"]()}</Button>
+              </Empty>
+            ) : query.data?.items.length === 0 ? (
+              <Empty>
+                <EmptyTitle>{m["dashboard.logs.empty_title"]()}</EmptyTitle>
+                <EmptyDescription>{m["dashboard.logs.empty_description"]()}</EmptyDescription>
+                <Button onClick={() => onSearchChange(createDefaultLogsSearch())}>{m["dashboard.logs.reset"]()}</Button>
+              </Empty>
+            ) : query.data ? (
+              <LogsTable data={query.data} search={search} onSearchChange={onSearchChange} onSelect={setSelected} />
+            ) : (
+              <Empty />
+            )}
+          </CardContent>
+        </Card>
       </div>
       <LogDetailDrawer log={selected} onClose={() => setSelected(undefined)} />
     </PageContainer>
