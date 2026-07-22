@@ -204,6 +204,7 @@
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "ai": "catalog:",
+        "eventsource-parser": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

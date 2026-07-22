@@ -19,6 +19,14 @@ test("build exposes exact Lobe icon keys without bundling them into runtime Java
   expect(declaration).not.toContain(packagePath);
   expect(runtime).not.toContain('"githubcopilot"');
   expect(runtime).not.toContain("lobeIconKeys");
+  // Node-only OpenAI stream transport must stay off the main barrel so browser
+  // consumers (dashboard) never resolve node:zlib through @aio-proxy/plugin-sdk.
+  expect(runtime).not.toContain("openai-stream");
+  expect(runtime).not.toContain("node:zlib");
+
+  const openaiStreamDts = readFileSync(join(packagePath, "dist", "openai-stream", "index.d.ts"), "utf8");
+  expect(openaiStreamDts).toContain("createOpenAIStreamFetch");
+  expect(openaiStreamDts).toContain("OpenAIStreamProtocol");
 
   const fixtureDirectory = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-sdk-icon-types-"));
   const fixturePath = join(fixtureDirectory, "fixture.ts");
