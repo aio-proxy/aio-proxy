@@ -1,6 +1,6 @@
 {
   "name": "aio-proxy",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "All-in-one LLM API proxy with a local dashboard",
   "repository": "github:baranwang/aio-proxy",
   "bin": {
@@ -10,9 +10,9 @@
     "bin"
   ],
   "optionalDependencies": {
-    "@aio-proxy/cli-darwin-arm64": "0.0.0",
-    "@aio-proxy/cli-darwin-x64": "0.0.0",
-    "@aio-proxy/cli-linux-arm64": "0.0.0",
-    "@aio-proxy/cli-linux-x64": "0.0.0"
+    "@aio-proxy/cli-darwin-arm64": "1.0.0",
+    "@aio-proxy/cli-darwin-x64": "1.0.0",
+    "@aio-proxy/cli-linux-arm64": "1.0.0",
+    "@aio-proxy/cli-linux-x64": "1.0.0"
   }
 }

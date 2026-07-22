@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/cli-linux-x64",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "aio-proxy binary for linux-x64",
   "repository": "github:baranwang/aio-proxy",
   "files": [
