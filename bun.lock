@@ -210,6 +210,7 @@
         "@aio-proxy/infra": "workspace:*",
         "@lobehub/icons-static-svg": "catalog:",
         "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
