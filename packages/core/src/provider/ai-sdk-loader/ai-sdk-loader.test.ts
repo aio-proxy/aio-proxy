@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,33 +103,27 @@ describe("loadAiSdkProvider", () => {
   });
 
   test("forwards fetch into createOpenAICompatible instead of dropping it", async () => {
-    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
-    let createOptions: { readonly fetch?: ProviderFetch } | undefined;
-
-    mock.module("@ai-sdk/openai-compatible", () => ({
-      createOpenAICompatible(options: { readonly fetch?: ProviderFetch }) {
-        createOptions = options;
-        return {
-          languageModel() {
-            throw new Error("languageModel should not be called");
-          },
-        };
-      },
-    }));
-
-    try {
-      const provider = await loadAiSdkProvider("@ai-sdk/openai-compatible", {
-        apiKey: "test",
-        baseURL: "https://example.invalid/v1",
-        name: "test",
-        fetch: providerFetch,
+    let fetchCalls = 0;
+    const providerFetch = (async () => {
+      fetchCalls += 1;
+      return new Response('data: {"id":"x","choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', {
+        headers: { "content-type": "text/event-stream" },
       });
+    }) as ProviderFetch;
 
-      expect(provider).not.toBeNull();
-      expect(createOptions?.fetch).toBe(providerFetch);
-    } finally {
-      mock.restore();
-    }
+    const provider = await loadAiSdkProvider("@ai-sdk/openai-compatible", {
+      apiKey: "test",
+      baseURL: "https://example.invalid/v1",
+      name: "test",
+      fetch: providerFetch,
+    });
+
+    expect(provider).not.toBeNull();
+    const result = await provider!.languageModel("gpt-test").doStream({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    });
+    await Array.fromAsync(result.stream);
+    expect(fetchCalls).toBeGreaterThan(0);
   });
 
   test("Given runtime package cached When bundled lookup misses Then provider factory imports from cache", async () => {

@@ -138,7 +138,11 @@ describe("createApiProvider", () => {
       expect(seenHeaders?.get("host")).toBe("configured-host.example");
       expect(seenHeaders?.get("x-api-key")).toBe("configured-api-key");
       expect(seenHeaders?.get("x-goog-api-key")).toBe("configured-google-key");
-      expect(seenHeaders?.get("accept-encoding")).toBe("configured-encoding");
+      expect(seenHeaders?.get("accept-encoding")).toBe(
+        protocol === ProviderProtocol.OpenAIResponse || protocol === ProviderProtocol.OpenAICompatible
+          ? "gzip, deflate, br, zstd"
+          : "configured-encoding",
+      );
       expect(seenHeaders?.get("x-tenant")).toBe("team-a");
     },
   );
@@ -207,7 +211,7 @@ describe("createApiProvider", () => {
       expect(seen).toEqual({
         authorization: "Bearer env-secret",
         body: '{"model":"gpt-5-mini"}',
-        encoding: "gzip",
+        encoding: "gzip, deflate, br, zstd",
         forwardedBy: null,
         host: upstream.url.host,
         method: "POST",

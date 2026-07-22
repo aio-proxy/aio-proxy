@@ -34,7 +34,9 @@ describe("createAiSdkProvider", () => {
     );
 
     await provider.ensureAvailable?.();
-    expect(optionsSeen).toEqual({ baseURL: "https://example.test/v1", name: "carpool" });
+    expect(optionsSeen?.["baseURL"]).toBe("https://example.test/v1");
+    expect(optionsSeen?.["name"]).toBe("carpool");
+    expect(typeof optionsSeen?.["fetch"]).toBe("function");
   });
 
   test("preserves an explicit openai-compatible name", async () => {
@@ -55,7 +57,9 @@ describe("createAiSdkProvider", () => {
     );
 
     await provider.ensureAvailable?.();
-    expect(optionsSeen).toEqual({ baseURL: "https://example.test/v1", name: "custom" });
+    expect(optionsSeen?.["baseURL"]).toBe("https://example.test/v1");
+    expect(optionsSeen?.["name"]).toBe("custom");
+    expect(typeof optionsSeen?.["fetch"]).toBe("function");
   });
 
   test("rejects an explicit non-string openai-compatible name without replacing it", async () => {
@@ -88,11 +92,19 @@ describe("createAiSdkProvider", () => {
     );
 
     await provider.ensureAvailable?.();
-    expect(optionsSeen).toEqual({ apiKey: "test" });
+    expect(optionsSeen?.["apiKey"]).toBe("test");
+    expect(optionsSeen?.["name"]).toBeUndefined();
+    expect(typeof optionsSeen?.["fetch"]).toBe("function");
   });
 
   test("forwards injected fetch and wins over serializable options.fetch", async () => {
-    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
+    let decompressSeen: boolean | undefined;
+    let acceptEncodingSeen: string | null = null;
+    const providerFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      acceptEncodingSeen = new Request(input, init).headers.get("accept-encoding");
+      decompressSeen = (init as { decompress?: boolean } | undefined)?.decompress;
+      return new Response("ok");
+    }) as ProviderFetch;
     let optionsSeen: AiSdkProviderLoadOptions | undefined;
     const provider = createAiSdkProvider(
       {
@@ -111,8 +123,30 @@ describe("createAiSdkProvider", () => {
     );
 
     await provider.ensureAvailable?.();
-    expect(optionsSeen?.fetch).toBe(providerFetch);
+    expect(optionsSeen?.fetch).not.toBe(providerFetch);
+    expect(typeof optionsSeen?.fetch).toBe("function");
     expect(optionsSeen?.apiKey).toBe("test");
+    await (optionsSeen!.fetch as ProviderFetch)("https://example.test/v1", { method: "GET" });
+    expect(decompressSeen).toBe(false);
+    expect(acceptEncodingSeen).toBe("gzip, deflate, br, zstd");
+  });
+
+  test("leaves non-OpenAI package fetch identity unchanged", async () => {
+    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
+    let optionsSeen: AiSdkProviderLoadOptions | undefined;
+    const provider = createAiSdkProvider(
+      { kind: "ai-sdk", id: "anthropic", packageName: "@ai-sdk/anthropic", options: { apiKey: "test" } },
+      {
+        fetch: providerFetch,
+        async loadProvider(_packageName, options) {
+          optionsSeen = options;
+          return availableProvider;
+        },
+      },
+    );
+
+    await provider.ensureAvailable?.();
+    expect(optionsSeen?.fetch).toBe(providerFetch);
   });
 
   test("Given uninstalled ai-sdk package When invoked Then request fails with install hint", async () => {

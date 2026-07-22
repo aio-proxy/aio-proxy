@@ -1,10 +1,11 @@
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
 
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAIStreamFetch } from "@aio-proxy/plugin-sdk/openai-stream";
 
-import type { ChatGPTCredential } from "./schema";
+import type { ChatGPTCredential } from "../schema";
 
-import { refreshAccessToken } from "./oauth-flow";
+import { refreshAccessToken } from "../oauth-flow";
 
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex" as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
@@ -14,11 +15,12 @@ const PLACEHOLDER_CREDENTIAL = "dynamic-credential" as const;
 export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
 ): Promise<OAuthRuntimeResult> {
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials);
   const openAI = createOpenAI({
     name: "openai-chatgpt",
     baseURL: CHATGPT_CODEX_BASE_URL,
     apiKey: PLACEHOLDER_CREDENTIAL,
-    fetch: createOpenAIChatGPTDynamicFetch(context.credentials),
+    fetch: dynamicFetch,
   });
 
   return {
@@ -28,6 +30,8 @@ export async function createOpenAIChatGPTRuntime(
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
+    raw: ({ protocol }) =>
+      protocol === "openai-response" ? { invoke: (request) => dynamicFetch(request) } : undefined,
   };
 }
 
@@ -35,6 +39,7 @@ export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   fetcher: typeof fetch = globalThis.fetch,
 ): typeof fetch {
+  const fetchOpenAIResponses = createOpenAIStreamFetch("openai-response", fetcher);
   return async (input, init) => {
     const credential = await currentCredential(credentials);
     const request = new Request(input, init);
@@ -46,7 +51,7 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set("User-Agent", CHATGPT_USER_AGENT);
     headers.set("session-id", crypto.randomUUID());
 
-    return await fetcher(rewriteCodexUrl(request.url), {
+    return await fetchOpenAIResponses(rewriteCodexUrl(request.url), {
       method: request.method,
       headers,
       ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body }),

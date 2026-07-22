@@ -2,6 +2,8 @@ import { type ApiProvider, ProviderProtocol } from "@aio-proxy/types";
 
 import type { ProviderFetch } from "../proxy-fetch";
 
+import { wrapOpenAIProtocolFetch } from "../openai-stream-fetch";
+
 declare const process: {
   readonly env: Record<string, string | undefined>;
 };
@@ -46,7 +48,7 @@ export function createApiProvider(
 ): ApiProviderInstance {
   const baseURL = config.baseURL;
   const trace = options.trace ?? config.trace;
-  const fetchUpstream = options.fetch ?? globalThis.fetch;
+  const fetchUpstream = wrapOpenAIProtocolFetch(config.protocol, options.fetch ?? globalThis.fetch);
 
   return {
     ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),

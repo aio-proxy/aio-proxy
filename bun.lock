@@ -204,12 +204,14 @@
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "ai": "catalog:",
+        "eventsource-parser": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
         "@lobehub/icons-static-svg": "catalog:",
         "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },

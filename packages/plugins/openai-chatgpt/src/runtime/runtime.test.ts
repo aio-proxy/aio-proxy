@@ -2,19 +2,20 @@ import type { CredentialPort } from "@aio-proxy/plugin-sdk";
 
 import { describe, expect, test } from "bun:test";
 
-import type { ChatGPTCredential } from "../src/schema";
+import type { ChatGPTCredential } from "../schema";
 
-import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from "../src/runtime";
+import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from ".";
 
 type FetchCall = {
   readonly body: string;
+  readonly decompress: boolean | undefined;
   readonly headers: Headers;
   readonly signal: AbortSignal | null | undefined;
   readonly url: string;
 };
 
 describe("OpenAI ChatGPT runtime", () => {
-  test("returns a ProviderV4 without a raw resolver", async () => {
+  test("returns a ProviderV4 with same-protocol raw capability only", async () => {
     const runtime = await createOpenAIChatGPTRuntime({
       credentials: staticCredentialPort(credential()),
       options: {},
@@ -23,7 +24,10 @@ describe("OpenAI ChatGPT runtime", () => {
 
     expect(runtime.provider.specificationVersion).toBe("v4");
     expect(runtime.provider.languageModel("gpt-5.5")).toBeDefined();
-    expect(runtime.raw).toBeUndefined();
+    expect(runtime.raw?.({ protocol: "openai-response", modelId: "gpt-5.5" })).toBeDefined();
+    expect(runtime.raw?.({ protocol: "openai-compatible", modelId: "gpt-5.5" })).toBeUndefined();
+    expect(runtime.raw?.({ protocol: "anthropic", modelId: "gpt-5.5" })).toBeUndefined();
+    expect(runtime.raw?.({ protocol: "gemini", modelId: "gpt-5.5" })).toBeUndefined();
   });
 
   test("routes every concurrent expired request through the host credential refresh port", async () => {
@@ -104,6 +108,8 @@ describe("OpenAI ChatGPT runtime", () => {
     );
     expect(first.headers.get("session-id")).toBeString();
     expect(first.headers.get("x-keep")).toBe("1");
+    expect(first.headers.get("accept-encoding")).toBe("gzip, deflate, br, zstd");
+    expect(first.decompress).toBe(false);
     expect(first.body).toBe(body);
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get("session-id")).not.toBe(first.headers.get("session-id"));
@@ -139,9 +145,11 @@ function emptyCatalog() {
 
 function captureFetch(calls: FetchCall[]): typeof fetch {
   return async (input, init) => {
+    const decompress = (init as { decompress?: boolean } | undefined)?.decompress;
     const request = new Request(input, init);
     calls.push({
       body: await request.text(),
+      decompress,
       headers: new Headers(request.headers),
       signal: init?.signal ?? request.signal,
       url: request.url,
