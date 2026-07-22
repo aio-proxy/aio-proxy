@@ -2,9 +2,9 @@ import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-pr
 
 import { createOpenAI } from "@ai-sdk/openai";
 
-import type { ChatGPTCredential } from "./schema";
+import type { ChatGPTCredential } from "../schema";
 
-import { refreshAccessToken } from "./oauth-flow";
+import { refreshAccessToken } from "../oauth-flow";
 
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex" as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
