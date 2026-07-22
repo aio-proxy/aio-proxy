@@ -2,7 +2,6 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
 
 import { writeMigrationManifestFromJournal } from "./migration-manifest";
 
@@ -29,12 +28,7 @@ test("writes an idempotent AST manifest in Drizzle journal order", async () => {
   expect(source).toContain(`sha256: "${sha256("SELECT 2;\n")}"`);
   expect(source).toContain("version: 1");
   expect(source).toContain("version: 2");
-  expect(
-    ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.ESNext },
-      reportDiagnostics: true,
-    }).diagnostics,
-  ).toEqual([]);
+  expect(() => new Bun.Transpiler({ loader: "ts" }).transformSync(source)).not.toThrow();
 
   await expect(writeMigrationManifestFromJournal(root)).resolves.toEqual({ changed: false, migrations: 2 });
 });
