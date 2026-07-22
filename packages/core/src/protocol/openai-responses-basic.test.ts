@@ -22,7 +22,10 @@ describe("openAIResponsesAdapter", () => {
     expect(openAIResponsesAdapter.wantsStream(parsed, {})).toBe(false);
     const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(["weather"]);
-    expect(invocation.settings).toEqual({ reasoning: "high" });
+    expect(invocation.settings).toEqual({
+      providerOptions: { openai: { store: false } },
+      reasoning: "high",
+    });
     expect(await (await openAIResponsesAdapter.rawRequest(raw, parsed, "upstream", {})).json()).toMatchObject({
       model: "upstream",
     });
