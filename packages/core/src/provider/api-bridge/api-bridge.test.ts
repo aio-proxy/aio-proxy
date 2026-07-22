@@ -85,7 +85,15 @@ describe("bridgeApiProviderToAiSdk", () => {
         expect(bridge?.kind).toBe(ProviderKind.AiSdk);
         expect(bridge?.models).toEqual(["gpt-test"]);
         expect(packageSeen).toBe(expected.packageName);
-        expect(optionsSeen).toEqual(expected.options);
+        const openAI =
+          expected.packageName === "@ai-sdk/openai" || expected.packageName === "@ai-sdk/openai-compatible";
+        if (openAI) {
+          expect(typeof optionsSeen?.fetch).toBe("function");
+          const { fetch: _fetch, ...rest } = optionsSeen ?? {};
+          expect(rest).toEqual(expected.options);
+        } else {
+          expect(optionsSeen).toEqual(expected.options);
+        }
       }
     } finally {
       if (previousKey === undefined) {
@@ -131,7 +139,13 @@ describe("bridgeApiProviderToAiSdk", () => {
 
       await bridge?.ensureAvailable?.();
 
-      expect(optionsSeen?.fetch).toBe(providerFetch);
+      const openAI = protocol === ProviderProtocol.OpenAICompatible || protocol === ProviderProtocol.OpenAIResponse;
+      if (openAI) {
+        expect(optionsSeen?.fetch).not.toBe(providerFetch);
+        expect(typeof optionsSeen?.fetch).toBe("function");
+      } else {
+        expect(optionsSeen?.fetch).toBe(providerFetch);
+      }
       expect(optionsSeen?.headers).toEqual({
         Authorization: "Bearer configured",
         "X-Tenant": "team-a",
@@ -239,7 +253,9 @@ describe("bridgeApiProviderToAiSdk", () => {
 
     // Then
     expect(packageSeen).toBe("@ai-sdk/openai");
-    expect(optionsSeen).toEqual({
+    expect(typeof optionsSeen?.fetch).toBe("function");
+    const { fetch: _fetch, ...rest } = optionsSeen ?? {};
+    expect(rest).toEqual({
       apiKey: "secret",
       baseURL: "https://api.example.com/v1",
     });

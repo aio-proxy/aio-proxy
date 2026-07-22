@@ -16,6 +16,7 @@ import { streamAiSdkText } from "../../ai-sdk-bridge";
 import { AiSdkProviderError, ProviderNotInstalledError } from "../../error";
 import { loadAiSdkProvider } from "../ai-sdk-loader/index";
 import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "../ai-sdk-reasoning";
+import { wrapOpenAIPackageFetch } from "../openai-stream-fetch";
 
 type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
   readonly aioProxy?: Readonly<Record<string, unknown>>;
@@ -66,10 +67,11 @@ export function createAiSdkProvider(
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
   const loadProvider = options.loadProvider ?? loadAiSdkProvider;
+  const providerFetch = wrapOpenAIPackageFetch(config.packageName, options.fetch);
   let loadedProviderTask: Promise<LoadedAiSdkRuntimeProvider | null> | undefined;
 
   function providerTask(): Promise<LoadedAiSdkRuntimeProvider | null> {
-    loadedProviderTask ??= loadProvider(config.packageName, loadOptions(config, options.fetch));
+    loadedProviderTask ??= loadProvider(config.packageName, loadOptions(config, providerFetch));
     return loadedProviderTask;
   }
 
