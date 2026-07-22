@@ -88,7 +88,7 @@ test("setup receives a redacting plugin logger for API v1 and v2", async () => {
 
 test("default plugin logger redacts setup logs for API v1 and v2", async () => {
   const calls: unknown[][] = [];
-  const error = spyOn(console, "error").mockImplementation((...args) => {
+  const info = spyOn(console, "info").mockImplementation((...args) => {
     calls.push(args);
   });
 
@@ -142,6 +142,6 @@ test("default plugin logger redacts setup logs for API v1 and v2", async () => {
     expect(captured).not.toContain("production-private-v1");
     expect(captured).not.toContain("production-private-v2");
   } finally {
-    error.mockRestore();
+    info.mockRestore();
   }
 });
