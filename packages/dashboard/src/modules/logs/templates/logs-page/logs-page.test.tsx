@@ -143,33 +143,6 @@ describe("logs page", () => {
     );
   });
 
-  test("clears only the date range back to today's default", () => {
-    const onSearchChange = rs.fn();
-    render(
-      <LogsPage
-        search={{
-          ...createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z")),
-          page: 3,
-          outcome: "failure",
-        }}
-        onSearchChange={onSearchChange}
-      />,
-    );
-
-    const beforeClear = new Date();
-    fireEvent.click(screen.getByRole("button", { name: /Clear time range|清除时间范围/u }));
-    const afterClear = new Date();
-
-    const cleared = onSearchChange.mock.calls.at(-1)?.[0];
-    expect(cleared).toEqual(expect.objectContaining({ page: 1, outcome: "failure" }));
-    const startedAfter = new Date(cleared?.startedAfter ?? "");
-    const completedBefore = new Date(cleared?.completedBefore ?? "");
-    expect(localClock(startedAfter)).toEqual([0, 0, 0, 0]);
-    expect(localClock(completedBefore)).toEqual([23, 59, 59, 999]);
-    expect(localDate(completedBefore)).toEqual(localDate(startedAfter));
-    expect([localDate(beforeClear), localDate(afterClear)]).toContainEqual(localDate(startedAfter));
-  });
-
   test("renders rows per page inside the table pagination", () => {
     render(
       <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
@@ -265,6 +238,3 @@ describe("logs page", () => {
     expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty("outcome");
   });
 });
-
-const localDate = (date: Date) => [date.getFullYear(), date.getMonth(), date.getDate()];
-const localClock = (date: Date) => [date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds()];

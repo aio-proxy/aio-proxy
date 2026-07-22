@@ -58,7 +58,7 @@ describe("DateTimeRangePicker", () => {
     expect(presets).toHaveClass("grid-cols-2");
     expect(fields).toHaveClass("grid");
     expect(fields).not.toHaveClass("grid-cols-2");
-    expect(actions).toHaveClass("sticky", "bottom-0");
+    expect(actions).not.toHaveClass("sticky");
     expect(within(actions as HTMLElement).getByRole("button", { name: /Apply|应用/u })).toHaveClass("w-full");
   });
 
@@ -126,7 +126,7 @@ describe("DateTimeRangePicker", () => {
     ).toHaveAttribute("data-range-start", "true");
   });
 
-  test("resolves a preset once and waits for Apply", async () => {
+  test("applies a preset immediately", async () => {
     const onChange = rs.fn();
     const now = new Date(2026, 6, 20, 12, 0);
     const resolve = rs.fn(() => ({ from: new Date(2026, 6, 20, 11, 0), to: now }));
@@ -141,10 +141,9 @@ describe("DateTimeRangePicker", () => {
     openPicker();
     fireEvent.click(await screen.findByRole("button", { name: "Past hour" }));
     expect(resolve).toHaveBeenCalledTimes(1);
-    expect(onChange).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Apply|应用/u }));
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
     expect(onChange.mock.calls[0]?.[0].from).toEqual(new Date(2026, 6, 20, 11, 0));
+    expect(screen.queryByRole("button", { name: /Apply|应用/u })).not.toBeInTheDocument();
   });
 
   test("disables Apply for invalid text", async () => {
@@ -210,26 +209,11 @@ describe("DateTimeRangePicker", () => {
     expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue("2026-07-21 23:59");
   });
 
-  test("clears immediately from the default trigger without opening", () => {
-    const onChange = rs.fn();
-    render(<DateTimeRangePicker value={value} allowClear onChange={onChange} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Clear time range|清除时间范围/u }));
-    expect(onChange).toHaveBeenCalledWith(undefined);
-    expect(screen.queryByRole("button", { name: /Apply|应用/u })).toBeNull();
-  });
-
-  test("uses a custom trigger and leaves clear ownership to it", () => {
+  test("uses a custom trigger", () => {
     render(
-      <DateTimeRangePicker
-        value={value}
-        trigger={<button type="button">Custom range</button>}
-        allowClear
-        onChange={rs.fn()}
-      />,
+      <DateTimeRangePicker value={value} trigger={<button type="button">Custom range</button>} onChange={rs.fn()} />,
     );
 
-    expect(screen.queryByRole("button", { name: /Clear time range|清除时间范围/u })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Custom range" }));
     expect(screen.getByRole("button", { name: /Apply|应用/u })).toBeTruthy();
   });

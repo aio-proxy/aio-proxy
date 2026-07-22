@@ -10,13 +10,7 @@ export const toPickerRange = (range: QueryRange): DateTimeRange => ({
   to: new Date(range.completedBefore),
 });
 
-export function toQueryRange(range: DateTimeRange): QueryRange;
-export function toQueryRange(range: undefined): undefined;
-export function toQueryRange(range: DateTimeRange | undefined): QueryRange | undefined {
-  return range === undefined
-    ? undefined
-    : {
-        startedAfter: range.from.toISOString(),
-        completedBefore: range.to.toISOString(),
-      };
-}
+export const toQueryRange = (range: DateTimeRange): QueryRange => ({
+  startedAfter: range.from.toISOString(),
+  completedBefore: range.to.toISOString(),
+});

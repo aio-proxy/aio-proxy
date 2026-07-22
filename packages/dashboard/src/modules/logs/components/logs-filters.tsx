@@ -77,18 +77,9 @@ export const LogsFilters: React.FC<LogsFiltersProps> = ({
               presets={createLogsDateTimeRangePresets()}
               min={retentionStart}
               max={endOfDay(now)}
-              allowClear
               onChange={(value) => {
                 field.handleChange(value);
-                if (value === undefined) {
-                  const defaults = createDefaultLogsSearch();
-                  patch({
-                    startedAfter: defaults.startedAfter,
-                    completedBefore: defaults.completedBefore,
-                  });
-                } else {
-                  patch(toQueryRange(value));
-                }
+                patch(toQueryRange(value));
               }}
             />
           </Field>
