@@ -49,7 +49,10 @@ describe("OpenAI Responses routes", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(messagesSeen).toEqual([{ role: "user", content: "Say pong." }]);
     expect(modelSeen).toBe("gpt-4.1-mini");
-    expect(settingsSeen).toEqual({ stream: true });
+    expect(settingsSeen).toEqual({
+      providerOptions: { openai: { store: false } },
+      stream: true,
+    });
     expect(Object.keys(toolsSeen ?? {})).toEqual(["lookup"]);
     expect(text).toContain("event: response.created");
     expect(text).toContain("event: response.output_item.added");
@@ -99,7 +102,11 @@ describe("OpenAI Responses routes", () => {
     // Then
     expect(response.status).toBe(200);
     expect(modelSeen).toBe("gpt-high");
-    expect(settingsSeen).toEqual({ reasoning: "high", stream: true });
+    expect(settingsSeen).toEqual({
+      providerOptions: { openai: { store: false } },
+      reasoning: "high",
+      stream: true,
+    });
   });
 
   test("Given ai-sdk provider When POST streams reasoning Then reasoning summary deltas are returned", async () => {
