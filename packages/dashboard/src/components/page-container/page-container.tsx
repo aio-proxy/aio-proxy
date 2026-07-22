@@ -41,7 +41,7 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
         {extra && <div className="ml-2">{extra}</div>}
       </header>
       <ScrollArea className="h-full min-h-0 flex-1">
-        <div className="px-3 pb-3">{children}</div>
+        <div className="container mx-auto p-3">{children}</div>
         <ScrollBar orientation="vertical" />
       </ScrollArea>
     </>
