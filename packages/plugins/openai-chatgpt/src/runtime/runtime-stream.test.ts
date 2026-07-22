@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ChatGPTCredential } from "../schema";
 
-import { createOpenAIChatGPTDynamicFetch } from ".";
+import { createOpenAIChatGPTRuntime } from ".";
 
 const RESPONSES_TERMINAL =
   'data: {"type":"response.completed","response":{"incomplete_details":null,"usage":{"input_tokens":1,"output_tokens":1}}}\n\n';
@@ -12,16 +12,9 @@ const RESPONSES_TERMINAL =
 describe("OpenAI ChatGPT runtime stream protection", () => {
   test("model path finishes a zstd terminal without a late decode error", async () => {
     const { fetch, secondPulls, cancelled } = terminalThenErrorUpstream(RESPONSES_TERMINAL);
-    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), fetch);
-    const { createOpenAI } = await import("@ai-sdk/openai");
-    const openAI = createOpenAI({
-      name: "openai-chatgpt",
-      baseURL: "https://chatgpt.com/backend-api/codex",
-      apiKey: "dynamic-credential",
-      fetch: dynamicFetch,
-    });
+    const runtime = await runtimeWithFetch(fetch);
 
-    const result = await openAI.languageModel("gpt-5.5").doStream({
+    const result = await runtime.provider.languageModel("gpt-5.5").doStream({
       prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
     });
     const parts = await Array.fromAsync(result.stream);
@@ -76,13 +69,11 @@ describe("OpenAI ChatGPT runtime stream protection", () => {
       );
     }) as typeof globalThis.fetch;
 
-    const dynamicFetch = createOpenAIChatGPTDynamicFetch(
-      staticCredentialPort(credential({ accessToken: "runtime-token" })),
-      upstreamFetch,
-    );
-    const raw = { invoke: (request: Request) => dynamicFetch(request) };
+    const runtime = await runtimeWithFetch(upstreamFetch, credential({ accessToken: "runtime-token" }));
+    const raw = runtime.raw?.({ protocol: "openai-response", modelId: "gpt-5.5" });
+    expect(raw).toBeDefined();
 
-    const response = await raw.invoke(new Request("https://api.openai.com/v1/responses?stream=true"));
+    const response = await raw!.invoke(new Request("https://api.openai.com/v1/responses?stream=true"));
     expect(decompress).toBe(false);
     expect(acceptEncoding).toBe("gzip, deflate, br, zstd");
     expect(await response.text()).toBe(RESPONSES_TERMINAL);
@@ -148,4 +139,18 @@ function staticCredentialPort(value: ChatGPTCredential): CredentialPort<ChatGPTC
       throw new Error("valid credentials must not refresh");
     },
   };
+}
+
+async function runtimeWithFetch(fetcher: typeof fetch, value = credential()) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fetcher;
+  try {
+    return await createOpenAIChatGPTRuntime({
+      credentials: staticCredentialPort(value),
+      options: {},
+      catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }

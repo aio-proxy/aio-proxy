@@ -43,7 +43,7 @@ function toUint8Array(chunk: ArrayBufferView): Uint8Array {
   return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
 }
 
-function createManagedStage(encoding: SupportedEncoding): ManagedStage {
+function createManagedStage(encoding: SupportedEncoding, onIdleError: (error: unknown) => void): ManagedStage {
   const definition = decoderDefinitions[encoding];
   const managed: ManagedStage = {
     stage: definition.create() as DecoderStage,
@@ -52,7 +52,9 @@ function createManagedStage(encoding: SupportedEncoding): ManagedStage {
   // One persistent listener: records between-op errors and settles any active operation.
   managed.stage.on("error", (error: Error) => {
     if (managed.pendingError === undefined) managed.pendingError = error;
-    managed.activeSettle?.(error);
+    const settle = managed.activeSettle;
+    if (settle === undefined) onIdleError(error);
+    else settle(error);
   });
   return managed;
 }
@@ -90,19 +92,13 @@ function runStageOperation(
       resolve(combined === undefined ? { chunks } : { chunks, error: combined });
     };
     stage.on("data", onData);
-    managed.activeSettle = (error) => {
-      finish(error);
-    };
-    start((error) => {
-      finish(error);
-    });
+    managed.activeSettle = finish;
+    start(finish);
   });
 }
 
 function writeStage(managed: ManagedStage, bytes: Uint8Array): Promise<{ chunks: Uint8Array[]; error?: unknown }> {
-  if (managed.stage.destroyed) {
-    return Promise.resolve({ chunks: [] });
-  }
+  if (managed.stage.destroyed) return Promise.resolve({ chunks: [] });
   return runStageOperation(managed, (settle) => {
     // node:zlib Transform accepts Uint8Array; avoid Buffer so library DTS builds without Node types.
     managed.stage.write(bytes as never, settle);
@@ -124,9 +120,7 @@ function endStage(managed: ManagedStage): Promise<{ chunks: Uint8Array[]; error?
   }
   // Settle on close: zlib may emit error after the end() callback (e.g. truncated gzip).
   return runStageOperation(managed, (settle) => {
-    managed.stage.once("close", () => {
-      settle(null);
-    });
+    managed.stage.once("close", () => settle(null));
     if (managed.stage.writableEnded) {
       if (managed.stage.closed) settle(null);
       return;
@@ -211,7 +205,11 @@ export function createContentDecodedReader(
   }
 
   // Decode in reverse of Content-Encoding application order (toReversed-equivalent).
-  const stages = encodings.slice().reverse().map(createManagedStage);
+  let activeReadError: ((error: unknown) => void) | undefined;
+  const stages = encodings
+    .slice()
+    .reverse()
+    .map((encoding) => createManagedStage(encoding, (error) => activeReadError?.(error)));
 
   const sourceReader = source.getReader();
   let cancelled = false;
@@ -232,17 +230,14 @@ export function createContentDecodedReader(
       return;
     }
     cancelled = true;
-    try {
-      if (!sourceCancelled) {
-        sourceCancelled = true;
-        try {
-          await sourceReader.cancel(reason);
-        } catch {
-          // Cancel rejection must not skip decoder destruction.
-        }
+    destroyStages();
+    if (!sourceCancelled) {
+      sourceCancelled = true;
+      try {
+        await sourceReader.cancel(reason);
+      } catch {
+        // Source cancellation is best-effort after local decoder cleanup.
       }
-    } finally {
-      destroyStages();
     }
   };
 
@@ -254,36 +249,50 @@ export function createContentDecodedReader(
 
       const pendingBefore = takePendingError(stages);
       if (pendingBefore !== undefined) {
+        void cleanup(pendingBefore);
         return { chunks: [], done: false, error: pendingBefore };
       }
 
+      let decoderFailed = false;
+      const decoderFailure = new Promise<never>((_resolve, reject) => {
+        activeReadError = (error) => {
+          decoderFailed = true;
+          reject(error);
+        };
+      });
       let encoded;
       try {
-        encoded = await sourceReader.read();
+        encoded = await Promise.race([sourceReader.read(), decoderFailure]);
       } catch (error) {
-        await cleanup(error);
-        return { chunks: [], done: true, error };
+        activeReadError = undefined;
+        void cleanup(error);
+        return { chunks: [], done: !decoderFailed, error };
+      }
+      activeReadError = undefined;
+
+      const pendingAfter = takePendingError(stages);
+      if (pendingAfter !== undefined) {
+        void cleanup(pendingAfter);
+        return { chunks: [], done: false, error: pendingAfter };
       }
 
       if (encoded.done) {
         const result = await finalizeThroughStages(stages);
+        if (result.error !== undefined) void cleanup(result.error);
         return result.error === undefined
           ? { chunks: result.chunks, done: true }
           : { chunks: result.chunks, done: true, error: result.error };
       }
 
-      if (stages.length === 0) {
-        return { chunks: [encoded.value], done: false };
-      }
+      if (stages.length === 0) return { chunks: [encoded.value], done: false };
 
       const result = await decodeThroughStages(stages, encoded.value);
+      if (result.error !== undefined) void cleanup(result.error);
       return result.error === undefined
         ? { chunks: result.chunks, done: false }
         : { chunks: result.chunks, done: false, error: result.error };
     },
 
-    async cancel(reason?: unknown) {
-      await cleanup(reason);
-    },
+    cancel: cleanup,
   };
 }

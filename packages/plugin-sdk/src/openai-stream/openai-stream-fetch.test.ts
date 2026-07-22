@@ -177,6 +177,64 @@ describe("createOpenAIStreamFetch", () => {
     await expect(errFetch("https://example.test/json").then((r) => r.text())).rejects.toBeDefined();
   });
 
+  test("preserves a bodyless upstream response", async () => {
+    const fetch = createOpenAIStreamFetch(
+      "openai-response",
+      async () => new Response(null, { status: 204, headers: { "x-request-id": "req-empty" } }),
+    );
+
+    const response = await fetch("https://example.test/empty");
+    expect(response.status).toBe(204);
+    expect(response.body).toBeNull();
+    expect(response.headers.get("x-request-id")).toBe("req-empty");
+  });
+
+  test("rejects a bodyless Responses event stream without a terminal event", async () => {
+    const fetch = createOpenAIStreamFetch(
+      "openai-response",
+      async () => new Response(null, { headers: { "content-type": "text/event-stream" } }),
+    );
+
+    await expect(fetch("https://example.test/empty-stream").then((response) => response.text())).rejects.toThrow(
+      /terminal event/i,
+    );
+  });
+
+  test("preserves representation headers on an unencoded non-SSE response", async () => {
+    const fetch = createOpenAIStreamFetch(
+      "openai-response",
+      async () =>
+        new Response("error", {
+          status: 400,
+          headers: { "content-type": "application/json", "content-length": "5" },
+        }),
+    );
+
+    const response = await fetch("https://example.test/error");
+    expect(response.headers.get("content-length")).toBe("5");
+    expect(await response.text()).toBe("error");
+  });
+
+  test("preserves representation headers on an identity-encoded non-SSE response", async () => {
+    const fetch = createOpenAIStreamFetch(
+      "openai-response",
+      async () =>
+        new Response("error", {
+          status: 400,
+          headers: {
+            "content-type": "application/json",
+            "content-encoding": "identity",
+            "content-length": "5",
+          },
+        }),
+    );
+
+    const response = await fetch("https://example.test/error");
+    expect(response.headers.get("content-encoding")).toBe("identity");
+    expect(response.headers.get("content-length")).toBe("5");
+    expect(await response.text()).toBe("error");
+  });
+
   test("rejects unsupported encoding before returning a response", async () => {
     let pulls = 0;
     const body = new ReadableStream<Uint8Array>(

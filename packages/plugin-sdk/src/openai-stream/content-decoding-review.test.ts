@@ -8,10 +8,24 @@ import { gzipSync } from "node:zlib";
 const require = createRequire(import.meta.url);
 const actualZlib = require("node:zlib") as typeof Zlib;
 const actualCreateGunzip = actualZlib.createGunzip.bind(actualZlib);
+const actualCreateBrotliDecompress = actualZlib.createBrotliDecompress.bind(
+  actualZlib,
+) as typeof actualZlib.createBrotliDecompress;
 
 const DELAYED_ERROR_MARKER = Uint8Array.of(0x5b, 0xae, 0x03, 0x04);
 const DELAYED_ERROR = new Error("between-operations decoder failure");
 const trackedStages: Transform[] = [];
+const destroyCounts = new WeakMap<Transform, number>();
+
+function trackStage<T extends Transform>(stage: T): T {
+  const originalDestroy = stage.destroy.bind(stage);
+  stage.destroy = ((error?: Error) => {
+    destroyCounts.set(stage, (destroyCounts.get(stage) ?? 0) + 1);
+    return originalDestroy(error);
+  }) as typeof stage.destroy;
+  trackedStages.push(stage);
+  return stage;
+}
 
 mock.module("node:zlib", () => {
   const createGunzip = (options?: Zlib.ZlibOptions) => {
@@ -69,10 +83,11 @@ mock.module("node:zlib", () => {
       if (!real.destroyed) real.destroy(error);
       return originalDestroy(error);
     }) as typeof wrapper.destroy;
-    trackedStages.push(wrapper);
-    return wrapper as unknown as ReturnType<typeof actualCreateGunzip>;
+    return trackStage(wrapper) as unknown as ReturnType<typeof actualCreateGunzip>;
   };
-  return { ...actualZlib, createGunzip };
+  const createBrotliDecompress = (...args: Parameters<typeof actualCreateBrotliDecompress>) =>
+    trackStage(actualCreateBrotliDecompress(...args));
+  return { ...actualZlib, createBrotliDecompress, createGunzip };
 });
 
 afterAll(() => {
@@ -135,6 +150,41 @@ describe("createContentDecodedReader review regressions", () => {
     expect(second.error).toBe(DELAYED_ERROR);
   });
 
+  test("wakes an in-flight source read when a decoder error arrives between operations", async () => {
+    trackedStages.length = 0;
+    let pulls = 0;
+    let markSecondPullStarted = () => undefined;
+    const secondPullStarted = new Promise<void>((resolve) => {
+      markSecondPullStarted = resolve;
+    });
+    const reader = createContentDecodedReader(
+      new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulls += 1;
+            if (pulls === 1) {
+              controller.enqueue(DELAYED_ERROR_MARKER);
+              return;
+            }
+            markSecondPullStarted();
+            return new Promise(() => undefined);
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+      "gzip",
+    );
+
+    const first = await reader.read();
+    expect(first.error).toBeUndefined();
+    const secondRead = reader.read();
+    await secondPullStarted;
+    const second = await Promise.race([secondRead, Bun.sleep(100).then(() => undefined)]);
+
+    expect(pulls).toBe(2);
+    expect(second?.error).toBe(DELAYED_ERROR);
+  });
+
   test("destroys every decoder stage even when source cancel rejects", async () => {
     trackedStages.length = 0;
     const encoded = new Uint8Array(gzipSync(Buffer.from("cancel-reject")));
@@ -154,6 +204,41 @@ describe("createContentDecodedReader review regressions", () => {
     const stage = trackedStages.at(-1);
     expect(stage).toBeDefined();
     expect(stage!.destroyed).toBe(true);
+  });
+
+  test("destroys every decoder stage before a hung source cancel settles", async () => {
+    trackedStages.length = 0;
+    const encoded = new Uint8Array(gzipSync(Buffer.from("cancel-hangs")));
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoded);
+      },
+      cancel() {
+        return new Promise(() => undefined);
+      },
+    });
+
+    const reader = createContentDecodedReader(source, "gzip");
+    await reader.read();
+    void reader.cancel(new Error("caller cancel"));
+    await Bun.sleep(10);
+
+    const stage = trackedStages.at(-1);
+    expect(stage).toBeDefined();
+    expect(stage!.destroyed).toBe(true);
+  });
+
+  test("destroys every stacked decoder exactly once across repeated cancellation", async () => {
+    trackedStages.length = 0;
+    const source = new ReadableStream<Uint8Array>({});
+    const reader = createContentDecodedReader(source, "gzip, br");
+
+    await reader.cancel(new Error("caller cancel"));
+    await reader.cancel(new Error("repeated cancel"));
+
+    expect(trackedStages).toHaveLength(2);
+    expect(trackedStages.every((stage) => stage.destroyed)).toBe(true);
+    expect(trackedStages.map((stage) => destroyCounts.get(stage))).toEqual([1, 1]);
   });
 
   test("cancels and destroys after a rejected source read", async () => {

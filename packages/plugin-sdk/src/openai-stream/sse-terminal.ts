@@ -107,10 +107,19 @@ export function createOpenAISseBody(
 ): ReadableStream<Uint8Array> {
   let carry = new Uint8Array(0);
   let finished = false;
+  let pendingError: unknown;
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (finished) return;
+      if (pendingError !== undefined) {
+        const error = pendingError;
+        pendingError = undefined;
+        finished = true;
+        ignoreCancel(decoded, error);
+        controller.error(error);
+        return;
+      }
 
       // Read until we can enqueue, terminate, error, or close. Incomplete carries must not stall.
       while (!finished) {
@@ -149,15 +158,24 @@ export function createOpenAISseBody(
           return;
         }
         if (read.error !== undefined) {
+          if (outbound.length > 0) {
+            pendingError = read.error;
+            return;
+          }
           finished = true;
           ignoreCancel(decoded, read.error);
           controller.error(read.error);
           return;
         }
         if (read.done && protocol === "openai-response") {
+          const error = new Error("OpenAI Responses stream ended before a terminal event");
+          if (outbound.length > 0) {
+            pendingError = error;
+            return;
+          }
           finished = true;
-          ignoreCancel(decoded, "OpenAI Responses stream ended before a terminal event");
-          controller.error(new Error("OpenAI Responses stream ended before a terminal event"));
+          ignoreCancel(decoded, error);
+          controller.error(error);
           return;
         }
         if (read.done) {

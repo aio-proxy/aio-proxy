@@ -97,4 +97,22 @@ describe("createOpenAISseBody review regressions", () => {
     expect(String(error)).toMatch(/pre-terminal decoder failure/);
     expect(cancelled).toBe(1);
   });
+
+  test("drains every complete same-batch frame before surfacing a decoder error", async () => {
+    const failure = new Error("same-batch decoder failure");
+    const decoded: ContentDecodedReader = {
+      async read(): Promise<DecodedRead> {
+        return {
+          chunks: [encoder.encode("data: one\n\ndata: two\n\n")],
+          done: false,
+          error: failure,
+        };
+      },
+      async cancel() {},
+    };
+
+    const { text, error } = await readBodyResult(createOpenAISseBody(decoded, "openai-compatible"));
+    expect(text).toBe("data: one\n\ndata: two\n\n");
+    expect(error).toBe(failure);
+  });
 });

@@ -113,7 +113,7 @@ describe("createContentDecodedReader control", () => {
     expect(end.error).toBeDefined();
   });
 
-  test("cancels the encoded reader and destroys every decoder exactly once", async () => {
+  test("cancels the encoded reader exactly once and preserves the first reason", async () => {
     const plaintext = new TextEncoder().encode("cancel-me");
     const encoded = await compressGzip(plaintext);
     let cancelCount = 0;
@@ -128,8 +128,7 @@ describe("createContentDecodedReader control", () => {
       },
     });
 
-    // Two stages so cancel must destroy every decoder; body is unused.
-    const reader = createContentDecodedReader(source, "gzip, br");
+    const reader = createContentDecodedReader(source, null);
     const reason = new Error("caller cancel");
     await reader.cancel(reason);
     await reader.cancel(new Error("second cancel"));

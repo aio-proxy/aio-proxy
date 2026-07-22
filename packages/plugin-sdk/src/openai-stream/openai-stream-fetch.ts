@@ -38,12 +38,25 @@ function isEventStream(contentType: string | null): boolean {
 
 function createPlainDecodedBody(decoded: ContentDecodedReader): ReadableStream<Uint8Array> {
   let finished = false;
+  let pendingError: unknown;
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (finished) return;
+      if (pendingError !== undefined) {
+        const error = pendingError;
+        pendingError = undefined;
+        finished = true;
+        void decoded.cancel(error).catch(() => undefined);
+        controller.error(error);
+        return;
+      }
       const read = await decoded.read();
       for (const chunk of read.chunks) controller.enqueue(chunk);
       if (read.error !== undefined) {
+        if (read.chunks.length > 0) {
+          pendingError = read.error;
+          return;
+        }
         finished = true;
         void decoded.cancel(read.error).catch(() => undefined);
         controller.error(read.error);
@@ -71,12 +84,19 @@ function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | 
 }
 
 function normalizeOpenAIStreamResponse(response: Response, protocol: OpenAIStreamProtocol): Response {
+  const eventStream = isEventStream(response.headers.get("content-type"));
+  if (response.body === null && !eventStream) return response;
+
   const encoding = response.headers.get("content-encoding");
-  const source = response.body ?? new ReadableStream<Uint8Array>({ start: (c) => c.close() });
+  const needsDecoding = (encoding ?? "").split(",").some((value) => {
+    const token = value.trim().toLowerCase();
+    return token !== "" && token !== "identity";
+  });
+  if (!needsDecoding && !eventStream) return response;
+
   // Throws before a Response is returned when Content-Encoding is unsupported.
+  const source = response.body ?? new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
   const decoded = createContentDecodedReader(source, encoding);
-  const body = isEventStream(response.headers.get("content-type"))
-    ? createOpenAISseBody(decoded, protocol)
-    : createPlainDecodedBody(decoded);
+  const body = eventStream ? createOpenAISseBody(decoded, protocol) : createPlainDecodedBody(decoded);
   return rebuildResponse(response, body);
 }
