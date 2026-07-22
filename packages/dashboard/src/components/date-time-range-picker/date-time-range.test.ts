@@ -2,10 +2,11 @@ import { describe, expect, test } from "@rstest/core";
 import { enUS } from "date-fns/locale";
 
 import {
+  cloneValidDate,
   createDateTimeRangeDraft,
   createDateTimeRangeDraftSchema,
-  normalizeDateTimeInput,
-} from "./date-time-range-value";
+  parseDateTimeEndpoint,
+} from "./date-time-range";
 
 const messages = {
   invalid: "Invalid date and time",
@@ -14,14 +15,22 @@ const messages = {
   afterMax: "After maximum",
 };
 
-describe("date time range values", () => {
-  test("normalizes Date-compatible inputs without sharing mutable Dates", () => {
+describe("date time ranges", () => {
+  test("clones valid Dates and rejects invalid Dates", () => {
     const source = new Date(2026, 6, 20, 12, 30);
-    expect(normalizeDateTimeInput(source)).not.toBe(source);
-    expect(normalizeDateTimeInput(source)?.getTime()).toBe(source.getTime());
-    expect(normalizeDateTimeInput(source.getTime())?.getTime()).toBe(source.getTime());
-    expect(normalizeDateTimeInput(source.toISOString())?.getTime()).toBe(source.getTime());
-    expect(normalizeDateTimeInput("invalid")).toBeUndefined();
+    expect(cloneValidDate(source)).not.toBe(source);
+    expect(cloneValidDate(source)?.getTime()).toBe(source.getTime());
+    expect(cloneValidDate(new Date(Number.NaN))).toBeUndefined();
+  });
+
+  test("turns invalid external endpoints into an empty draft", () => {
+    expect(
+      createDateTimeRangeDraft(
+        { from: new Date(Number.NaN), to: new Date(2026, 6, 20, 23, 59, 59, 999) },
+        "yyyy-MM-dd HH:mm",
+        enUS,
+      ),
+    ).toEqual({ from: "", to: "2026-07-20 23:59" });
   });
 
   test("formats a complete incoming value into an editable draft", () => {
@@ -32,6 +41,15 @@ describe("date time range values", () => {
         enUS,
       ),
     ).toEqual({ from: "2026-07-20 00:00", to: "2026-07-21 23:59" });
+  });
+
+  test("parses strict endpoint text for Calendar selection", () => {
+    const pattern = "yyyy-MM-dd HH:mm";
+    expect(parseDateTimeEndpoint("2026-07-20 12:34", "from", pattern, enUS)).toEqual(
+      new Date(2026, 6, 20, 12, 34, 0, 0),
+    );
+    expect(parseDateTimeEndpoint("bad", "to", pattern, enUS)).toBeUndefined();
+    expect(parseDateTimeEndpoint("2026-7-20 12:34", "from", pattern, enUS)).toBeUndefined();
   });
 
   test("fills omitted seconds with inclusive start and end boundaries", () => {

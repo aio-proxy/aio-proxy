@@ -8,26 +8,21 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-import type {
-  DateTimeInput,
-  DateTimeRangePreset,
-  DateTimeRangeValue,
-  ResolvedDateTimeRangeValue,
-} from "./date-time-range-picker.types";
+import type { DateTimeRange, DateTimeRangePreset } from "./date-time-range-picker.types";
 
+import { cloneValidDate, createDateTimeRangeDraft } from "./date-time-range";
 import { DateTimeRangePickerPanel } from "./date-time-range-picker-panel";
-import { createDateTimeRangeDraft } from "./date-time-range-value";
 
-interface DateTimeRangePickerProps {
-  readonly value: DateTimeRangeValue | undefined;
+export interface DateTimeRangePickerProps {
+  readonly value: DateTimeRange | undefined;
   readonly presets?: readonly DateTimeRangePreset[];
-  readonly format?: string;
-  readonly min?: DateTimeInput;
-  readonly max?: DateTimeInput;
+  readonly pattern?: string;
+  readonly min?: Date;
+  readonly max?: Date;
   readonly disabled?: boolean;
-  readonly render?: React.ComponentProps<typeof PopoverTrigger>["render"];
+  readonly trigger?: React.ReactElement;
   readonly allowClear?: boolean;
-  readonly onChange: (value: ResolvedDateTimeRangeValue | undefined) => void;
+  readonly onChange: (value: DateTimeRange | undefined) => void;
 }
 
 const DEFAULT_PATTERN = "yyyy-MM-dd HH:mm";
@@ -35,48 +30,45 @@ const DEFAULT_PATTERN = "yyyy-MM-dd HH:mm";
 export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   value,
   presets = [],
-  format = DEFAULT_PATTERN,
+  pattern = DEFAULT_PATTERN,
   min,
   max,
   disabled,
-  render,
+  trigger,
   allowClear = false,
   onChange,
 }) => {
   const [open, setOpen] = useState(false);
   const mobile = useIsMobile();
   const locale = getLocale() === "zh-Hans" ? zhCN : enUS;
-  const draft = createDateTimeRangeDraft(value, format, locale);
+  const minimum = cloneValidDate(min);
+  const maximum = cloneValidDate(max);
+  const draft = createDateTimeRangeDraft(value, pattern, locale);
   const summary =
     draft.from && draft.to ? `${draft.from} – ${draft.to}` : m["dashboard.date_time_range_picker.title"]();
-  const triggerRender = render ?? (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={disabled}
-      aria-label={m["dashboard.date_time_range_picker.title"]()}
-    />
+  const triggerElement = trigger ?? (
+    <Button type="button" variant="outline" aria-label={m["dashboard.date_time_range_picker.title"]()} />
   );
   const triggerChildren =
-    render === undefined ? (
+    trigger === undefined ? (
       <>
         <CalendarIcon />
         {summary}
       </>
     ) : undefined;
-  const trigger = mobile ? (
-    <SheetTrigger render={triggerRender} disabled={render === undefined ? undefined : disabled}>
+  const pickerTrigger = mobile ? (
+    <SheetTrigger render={triggerElement} disabled={disabled}>
       {triggerChildren}
     </SheetTrigger>
   ) : (
-    <PopoverTrigger render={triggerRender} disabled={render === undefined ? undefined : disabled}>
+    <PopoverTrigger render={triggerElement} disabled={disabled}>
       {triggerChildren}
     </PopoverTrigger>
   );
   const triggerWithClear =
-    render === undefined ? (
+    trigger === undefined ? (
       <span className="inline-flex items-center">
-        {trigger}
+        {pickerTrigger}
         {allowClear && (
           <Button
             type="button"
@@ -94,15 +86,16 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
         )}
       </span>
     ) : (
-      trigger
+      pickerTrigger
     );
   const panel = open && (
     <DateTimeRangePickerPanel
       value={value}
       presets={presets}
-      pattern={format}
-      min={min}
-      max={max}
+      pattern={pattern}
+      locale={locale}
+      min={minimum}
+      max={maximum}
       mobile={mobile}
       onApply={(next) => {
         onChange(next);

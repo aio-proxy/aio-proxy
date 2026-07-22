@@ -1,5 +1,7 @@
 # Dashboard Date-Time Range Picker Design
 
+> **Superseded:** See the [Date-Time Range Picker Refactor Design](./2026-07-21-date-time-range-picker-refactor-design.md). The API section below is retained for historical context and is no longer current.
+
 ## Summary
 
 Create one reusable dashboard date-time range picker modeled on Cloudflare's compact range selector, then use it on the request Logs page. The component combines a customizable trigger, single-month range calendar, caller-provided relative presets, editable From/To values, draft-and-apply behavior, and a responsive mobile Sheet.
@@ -118,6 +120,8 @@ The desktop Popover follows the Cloudflare structure:
 3. From and To editable fields below the calendar/preset region.
 4. A footer with Apply aligned to the right.
 
+The Popover uses a compact content width derived from those two columns and is capped to the available viewport. Presets never form a horizontal row above the calendar, and the time fields never occupy a third side column. The calendar, preset list, time row, and footer are separated by the existing Popover dividers instead of being wrapped in nested cards.
+
 There is no separate Cancel button. Popover dismissal is cancellation.
 
 ### Calendar behavior
@@ -172,13 +176,15 @@ Errors appear beside the relevant field using existing Field error patterns. Ran
 
 At the dashboard's mobile breakpoint, the same trigger opens the existing Sheet primitive from the bottom instead of trying to fit a desktop Popover into the viewport.
 
+The Sheet remains edge-to-edge at the viewport level with the existing rounded top treatment. Its inner content uses the full available width after standard Sheet padding; it must not retain the desktop calendar's intrinsic `w-fit` width.
+
 Sheet content is one scrollable column in this order:
 
-1. Single-month calendar.
-2. Preset list.
+1. Preset list in a two-column grid.
+2. Single-month calendar with seven equal-width weekday/date columns.
 3. From and To fields.
 
-Apply remains in a sticky Sheet footer. Dismissal and Escape discard the draft exactly as on desktop. No separate mobile state model or alternate value contract is introduced.
+The calendar, both fields, and Apply fill the Sheet's inner width. Apply remains in a sticky Sheet footer. Dismissal and Escape discard the draft exactly as on desktop. No separate mobile state model or alternate value contract is introduced.
 
 ## Logs Integration
 
@@ -237,6 +243,8 @@ Missing range parameters continue to mean the current local day. Route canonical
 - Cover keyboard names and focus behavior for the trigger and clear control.
 - Verify element and callback forms of `render` receive merged interaction and accessibility props.
 - Verify a custom trigger opens the same panel without changing draft or Apply behavior and never renders the built-in clear control.
+- Verify desktop DOM order matches calendar/presets, time row, then footer and does not render presets above the calendar.
+- Verify the mobile Sheet gives its panel and Calendar full-width layout hooks while retaining the two-column preset grid and full-width Apply action.
 
 ### Logs tests
 
