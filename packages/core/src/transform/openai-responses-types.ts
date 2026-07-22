@@ -33,6 +33,7 @@ export type OpenAIResponsesWireMetadata = {
 
 export type OpenAIResponsesProviderOptions = {
   readonly openai: {
+    readonly store?: false;
     readonly reasoningEffort?: OpenAIResponsesReasoningEffort;
     readonly reasoningSummary?: OpenAIResponsesReasoningSummary;
   };

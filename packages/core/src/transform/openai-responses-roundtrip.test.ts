@@ -35,7 +35,7 @@ describe("OpenAI Responses transform", () => {
     const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
 
     expect(converted.settings.reasoning).toBe("medium");
-    expect(converted.settings.providerOptions).toEqual({ openai: { reasoningSummary: "auto" } });
+    expect(converted.settings.providerOptions).toMatchObject({ openai: { reasoningSummary: "auto" } });
     expect(roundTrip.reasoning).toEqual(request.reasoning);
   });
 

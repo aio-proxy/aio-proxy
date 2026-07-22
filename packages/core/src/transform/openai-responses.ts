@@ -1,6 +1,7 @@
 import type { OpenAIResponsesRequest } from "../ingress/openai-responses";
 import type {
   OpenAIResponsesModelMessages,
+  OpenAIResponsesProviderOptions,
   OpenAIResponsesToolChoice,
   OpenAIResponsesTransformSettings,
   OpenAIResponsesTransformTool,
@@ -93,8 +94,12 @@ function transformSettings(
   request: OpenAIResponsesRequest,
   tools: readonly OpenAIResponsesTransformTool[] | undefined,
 ): OpenAIResponsesTransformSettings {
-  const providerOptions =
-    request.reasoning?.summary === undefined ? undefined : { openai: { reasoningSummary: request.reasoning.summary } };
+  const providerOptions: OpenAIResponsesProviderOptions = {
+    openai: {
+      store: false,
+      ...(request.reasoning?.summary === undefined ? {} : { reasoningSummary: request.reasoning.summary }),
+    },
+  };
   const toolChoice = transformToolChoice(request.tool_choice, tools);
   return {
     ...(request.stream === undefined ? {} : { stream: request.stream }),
@@ -105,7 +110,7 @@ function transformSettings(
     ...(toolChoice === undefined ? {} : { toolChoice }),
     ...(request.reasoning?.effort === undefined ? {} : { reasoning: request.reasoning.effort }),
     ...(request.reasoning?.summary === undefined ? {} : { reasoningSummary: request.reasoning.summary }),
-    ...(providerOptions === undefined ? {} : { providerOptions }),
+    providerOptions,
   };
 }
 

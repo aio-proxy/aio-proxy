@@ -242,3 +242,9 @@ test("rejects store true on the model path", () => {
     new OpenAIResponsesUnsupportedFeatureError("store", "store"),
   );
 });
+
+test("disables response storage on the model path", () => {
+  const request = parseOpenAIResponses({ model: "gpt-5.6-terra", input: "hello" });
+
+  expect(openAIResponsesToModelMessages(request).settings.providerOptions).toEqual({ openai: { store: false } });
+});
