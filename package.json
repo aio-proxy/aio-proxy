@@ -23,7 +23,7 @@
       "@openrouter/ai-sdk-provider": "2.10.0",
       "@rslib/core": "^0.23.1",
       "@types/bun": "^1.3.14",
-      "@inlang/paraglide-js": "2.20.2",
+      "@inlang/paraglide-js": "2.22.0",
       "@lobehub/icons-static-svg": "1.93.0",
       "es-toolkit": "^1.49.0",
       "jose": "^6.2.3",
@@ -32,7 +32,7 @@
       "openai": "6.46.0",
       "drizzle-orm": "^0.45.2",
       "eventsource-parser": "^3.1.0",
-      "typescript": "^6.0.3"
+      "typescript": "^7.0.2"
     }
   },
   "type": "module",
@@ -63,7 +63,7 @@
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "turbo": "^2.10.1",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "bun": ">=1.3.14"
