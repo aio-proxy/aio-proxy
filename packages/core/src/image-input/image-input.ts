@@ -17,11 +17,22 @@ export type ImageFilePartOptions = {
 };
 
 const fullImageMediaType = /^image\/[A-Za-z0-9!#$&^_.+-]+$/u;
-const base64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const dataImageUrl = /^data:(image\/[A-Za-z0-9!#$&^_.+-]+);base64,([^,]+)$/u;
 
 export function isValidBase64(value: string): boolean {
-  return value.length > 0 && value.length % 4 === 0 && base64.test(value);
+  if (value.length === 0 || value.length % 4 !== 0) return false;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  for (let index = 0; index < value.length - padding; index += 1) {
+    const code = value.charCodeAt(index);
+    const isAlphabet =
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      code === 43 ||
+      code === 47;
+    if (!isAlphabet) return false;
+  }
+  return true;
 }
 
 export function isImageMediaType(value: string): boolean {
