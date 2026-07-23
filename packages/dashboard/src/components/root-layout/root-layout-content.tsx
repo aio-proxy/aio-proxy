@@ -29,7 +29,7 @@ export const RootLayoutContent: React.FC = () => {
   if (session.data.status === "unauthenticated") return <LoginPage reason={session.data.reason} />;
 
   return (
-    <SidebarProvider className="bg-sidebar">
+    <SidebarProvider className="bg-olive-50 dark:bg-olive-950">
       <SideMenu />
       <SidebarInset className="h-dvh bg-transparent">
         <Outlet />
