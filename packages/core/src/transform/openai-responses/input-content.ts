@@ -1,5 +1,5 @@
 import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
-import type { OpenAIResponsesInputMessage, OpenAIResponsesToolOutputPart } from "../../ingress/openai-responses";
+import type { OpenAIResponsesInputMessage, OpenAIResponsesToolOutputPart } from "../../ingress/openai-responses/index";
 import type { OpenAIResponsesWireMetadata } from "./types";
 
 import { OpenAIResponsesTransformError } from "../../error";

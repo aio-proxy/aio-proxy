@@ -9,6 +9,7 @@ import type { UsageCapture } from "./usage-capture";
 
 export type RuntimeModelMetadata = {
   readonly displayName?: string;
+  readonly protocol?: ProviderProtocol;
 };
 
 export type RawTransport = {
@@ -26,6 +27,7 @@ export type ModelTransport = {
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: AiSdkProviderInstance["invoke"];
   readonly supportsProviderTool?: (type: ProviderExecutedTool["type"]) => boolean;
+  readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 };
 
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;

@@ -71,7 +71,7 @@ export {
   type AnthropicToolResultBlock,
   type AnthropicToolUseBlock,
   parseAnthropicMessages,
-} from "./ingress/anthropic-messages";
+} from "./ingress/anthropic-messages/index";
 export {
   type GeminiGenerateContentParseResult,
   type GeminiGenerateContentPart,
@@ -79,7 +79,7 @@ export {
   GeminiGenerateContentRequestSchema,
   parseGeminiGenerateContent,
   safeParseGeminiGenerateContent,
-} from "./ingress/gemini-generate-content";
+} from "./ingress/gemini-generate-content/index";
 export {
   type OpenAICompletionsRequest,
   OpenAICompletionsRequestSchema,
@@ -167,7 +167,7 @@ export {
   type AnthropicModelMessage,
   anthropicMessagesToModelMessages,
   modelMessagesToAnthropicMessages,
-} from "./transform/anthropic-messages";
+} from "./transform/anthropic-messages/index";
 export {
   type GeminiGenerateContentFromModelMessages,
   type GeminiGenerateContentModelMessages,
@@ -175,7 +175,7 @@ export {
   type GeminiGenerateContentTool,
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
-} from "./transform/gemini-generate-content";
+} from "./transform/gemini-generate-content/index";
 export {
   type OpenAICompletionsFromModelMessages,
   type OpenAICompletionsModelMessages,
@@ -183,7 +183,7 @@ export {
   type OpenAICompletionsTransformTool,
   modelMessagesToOpenAICompletions,
   openAICompletionsToModelMessages,
-} from "./transform/openai-completions";
+} from "./transform/openai-completions/index";
 export {
   modelMessagesToOpenAIResponses,
   type OpenAIResponsesFromModelMessages,
@@ -194,7 +194,7 @@ export {
   type OpenAIResponsesTransformSettings,
   type OpenAIResponsesTransformTool,
   openAIResponsesToModelMessages,
-} from "./transform/openai-responses";
+} from "./transform/openai-responses/index";
 export {
   calculateEstimatedCost,
   type OpenRouterModelPrice,

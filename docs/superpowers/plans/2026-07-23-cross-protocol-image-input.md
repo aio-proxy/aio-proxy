@@ -3767,7 +3767,7 @@ rtk git commit -m "feat(provider): encode compatible tool images" -m "Co-authore
 - Consumes: Task 2 `imageTargetProtocolForPackage()`, `assertImageInputSupported()`, and `ImageInputUnsupportedError`.
 - Produces: optional per-candidate `targetProtocol(modelId)` metadata and candidate-local 501 fallback before a lossy SDK call.
 
-- [ ] **Step 1: Add protocol-shaped typed-error tests**
+- [x] **Step 1: Add protocol-shaped typed-error tests**
 
 In `packages/core/src/protocol/errors.test.ts`, import `ImageInputUnsupportedError` and the four error mappers. Add:
 
@@ -3792,7 +3792,7 @@ test("maps image compatibility errors into every inbound protocol shape", async 
 });
 ```
 
-- [ ] **Step 2: Add server fallback regressions**
+- [x] **Step 2: Add server fallback regressions**
 
 Add the optional field below to both inline parameter types: `modelProvider(options: { ... })` and `instrumentModel(model: { ... })`. Then preserve it in `instrumentModel()` as a constant resolver:
 
@@ -3917,7 +3917,7 @@ test("falls back after an OpenAI-compatible endpoint rejects the CPA extension",
 
 Add `errorStream` to the existing pipeline-helper import. The first test is the required real route-level canonical image and typed-preflight fallback case; the second proves there is no same-Provider semantic retry.
 
-- [ ] **Step 3: Run the new tests and observe missing target/preflight behavior**
+- [x] **Step 3: Run the new tests and observe missing target/preflight behavior**
 
 Run:
 
@@ -3927,7 +3927,7 @@ rtk bun test packages/core/src/protocol/errors.test.ts packages/server/src/route
 
 Expected: FAIL because error mappers have no image mapping and the Gemini model is invoked.
 
-- [ ] **Step 4: Publish target protocol on configured AI SDK instances**
+- [x] **Step 4: Publish target protocol on configured AI SDK instances**
 
 In `ai-sdk.ts`, add `ProviderProtocol` to the existing `@aio-proxy/types` type import and import `imageTargetProtocolForPackage` from `../../image-input`. Extend `AiSdkProviderInstance`:
 
@@ -3995,7 +3995,7 @@ test.each([
 
 This is correct because `bridgeMapping()` maps each API protocol to the matching installed package.
 
-- [ ] **Step 5: Add the runtime target resolver and materialize it**
+- [x] **Step 5: Add the runtime target resolver and materialize it**
 
 Extend `ModelTransport` in `packages/server/src/runtime.ts`:
 
@@ -4063,7 +4063,7 @@ test("materializes configured target protocol resolvers", () => {
 });
 ```
 
-- [ ] **Step 6: Retain OAuth catalog protocol metadata**
+- [x] **Step 6: Retain OAuth catalog protocol metadata**
 
 Extend `RuntimeModelMetadata`:
 
@@ -4131,7 +4131,7 @@ expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.
 
 The raw resolver must still receive the full original catalog metadata object including `region`.
 
-- [ ] **Step 7: Map the typed error through all protocol adapters**
+- [x] **Step 7: Map the typed error through all protocol adapters**
 
 Import `ImageInputUnsupportedError` in `packages/core/src/protocol/errors.ts`. Add these exact `modelUnsupported` functions:
 
@@ -4163,7 +4163,7 @@ modelUnsupported: (error) =>
 
 Do not add the compatibility error to `provider()` mapping; it is a local candidate capability decision.
 
-- [ ] **Step 8: Run preflight immediately before model invocation**
+- [x] **Step 8: Run preflight immediately before model invocation**
 
 Import `assertImageInputSupported` in `attempt.ts`. After confirming `invocation` is defined and before Provider-tool support and `ensureAvailable()`, insert:
 
@@ -4186,7 +4186,7 @@ try {
 
 Do not materialize `adapter.modelInvocation()` per candidate; keep the existing single cached invocation. Do not call `ensureAvailable()` or `model.invoke()` for a rejected candidate.
 
-- [ ] **Step 9: Run target, protocol, and pipeline tests**
+- [x] **Step 9: Run target, protocol, and pipeline tests**
 
 Run:
 
@@ -4199,7 +4199,7 @@ rtk bun run check
 
 Expected: all commands exit 0. The Gemini candidate records a local unsupported attempt without invocation, the Anthropic fallback receives the URL `FilePart`, and a CPA rejection reaches the next Provider.
 
-- [ ] **Step 10: Commit Task 9**
+- [x] **Step 10: Commit Task 9**
 
 ```bash
 rtk git add packages/core/src/provider/ai-sdk/ai-sdk.ts packages/core/src/provider/ai-sdk/ai-sdk.test.ts packages/core/src/provider/api-bridge/api-bridge-target-protocol.test.ts packages/core/src/protocol/errors.ts packages/core/src/protocol/errors.test.ts packages/server/src/runtime.ts packages/server/src/provider-runtime/materialize.ts packages/server/src/provider-runtime/materialize-target-protocol.test.ts packages/server/src/plugin-runtime/catalog.ts packages/server/src/plugin-runtime/capabilities.ts packages/server/src/plugin-runtime/capabilities.test.ts packages/server/src/routes/pipeline/attempt.ts packages/server/src/routes/pipeline/attempt.test.ts packages/server/_test/pipeline-helpers/providers.ts

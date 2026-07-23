@@ -56,6 +56,9 @@ export function materializeRuntimeProvider(
                 ? {}
                 : { ensureAvailable: options.apiBridge.ensureAvailable }),
               invoke: options.apiBridge.invoke,
+              ...(options.apiBridge.targetProtocol === undefined
+                ? {}
+                : { targetProtocol: () => options.apiBridge.targetProtocol }),
             },
           }),
     };
@@ -71,6 +74,7 @@ export function materializeRuntimeProvider(
       model: {
         ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
         invoke: provider.invoke,
+        ...(provider.targetProtocol === undefined ? {} : { targetProtocol: () => provider.targetProtocol }),
       },
     };
   }
@@ -102,7 +106,8 @@ function isModelTransport(value: unknown): value is ModelTransport {
     typeof value.invoke === "function" &&
     (!("ensureAvailable" in value) ||
       value.ensureAvailable === undefined ||
-      typeof value.ensureAvailable === "function")
+      typeof value.ensureAvailable === "function") &&
+    (!("targetProtocol" in value) || value.targetProtocol === undefined || typeof value.targetProtocol === "function")
   );
 }
 

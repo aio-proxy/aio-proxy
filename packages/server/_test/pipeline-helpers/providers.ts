@@ -50,6 +50,7 @@ export function modelProvider(options: {
   readonly id: string;
   readonly invoke: ModelTransport["invoke"];
   readonly modelId?: string;
+  readonly targetProtocol?: ProviderProtocol;
 }): FakeProvider {
   const calls = providerCalls();
   const model = instrumentModel(options, calls);
@@ -133,6 +134,7 @@ function instrumentModel(
   model: {
     readonly ensureAvailable?: () => Promise<void>;
     readonly invoke: ModelTransport["invoke"];
+    readonly targetProtocol?: ProviderProtocol;
   },
   calls: FakeProvider["calls"],
 ): ModelTransport {
@@ -145,6 +147,7 @@ function instrumentModel(
             await model.ensureAvailable?.();
           },
         }),
+    ...(model.targetProtocol === undefined ? {} : { targetProtocol: () => model.targetProtocol }),
     invoke(request) {
       calls.model.push(request);
       return model.invoke(request);

@@ -11,8 +11,8 @@ import {
   type AnthropicMessagesRequest,
   type AnthropicWebSearchTool,
   parseAnthropicMessages,
-} from "../../ingress/anthropic-messages";
-import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "../../transform/anthropic-messages";
+} from "../../ingress/anthropic-messages/index";
+import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "../../transform/anthropic-messages/index";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "../adapter";
 import { anthropicThinkingOption } from "../anthropic-thinking";
 import { anthropicMessagesErrors } from "../errors";

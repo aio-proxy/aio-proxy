@@ -6,7 +6,7 @@ import type {
   AnthropicTextBlock,
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
-} from "../../ingress/anthropic-messages";
+} from "../../ingress/anthropic-messages/index";
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesFromModelMessages,

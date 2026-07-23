@@ -1,5 +1,5 @@
 import type { ModelMessage } from "../../ai-sdk-bridge";
-import type { OpenAIResponsesInputItem } from "../../ingress/openai-responses";
+import type { OpenAIResponsesInputItem } from "../../ingress/openai-responses/index";
 import type { OpenAIResponsesWireMetadata } from "./types";
 
 import { OpenAIResponsesTransformError } from "../../error";

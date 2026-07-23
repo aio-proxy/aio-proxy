@@ -1,5 +1,5 @@
 import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
-import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content";
+import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content/index";
 import type { GeminiGenerateContentModelMessages } from "./gemini-generate-content-types";
 
 import { GeminiGenerateContentTransformError } from "../../error";

@@ -1,5 +1,5 @@
 import type { FilePart } from "../../ai-sdk-bridge";
-import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages";
+import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages/index";
 import type { AnthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
 export type AnthropicProviderOptions = {

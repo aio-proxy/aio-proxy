@@ -7,6 +7,7 @@ import {
   AnthropicMessagesTransformError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,
+  ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
@@ -15,6 +16,10 @@ import {
 import { InvalidCompressedRequestBodyError } from "./request";
 
 export const openAICompletionsErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? openAIInvalid(501, "unsupported_feature", "Image input cannot be represented by this provider")
+      : undefined,
   requestError: (error) =>
     error instanceof SyntaxError ||
     error instanceof ZodError ||
@@ -31,8 +36,10 @@ export const openAICompletionsErrors: ProtocolErrorMapper = {
 };
 
 export const openAIResponsesErrors: ProtocolErrorMapper = {
-  modelUnsupported: (error) =>
-    error instanceof OpenAIResponsesUnsupportedFeatureError ? openAIUnsupported(error.feature) : undefined,
+  modelUnsupported(error) {
+    if (error instanceof OpenAIResponsesUnsupportedFeatureError) return openAIUnsupported(error.feature);
+    return error instanceof ImageInputUnsupportedError ? openAIUnsupported("image_input") : undefined;
+  },
   requestError(error) {
     if (error instanceof OpenAIResponsesUnsupportedFeatureError) {
       return openAIUnsupported(error.feature);
@@ -52,6 +59,10 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
 };
 
 export const anthropicMessagesErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? anthropicError(501, "invalid_request_error", "Image input cannot be represented by this provider")
+      : undefined,
   requestError: (error) =>
     error instanceof SyntaxError ||
     error instanceof ZodError ||
@@ -69,6 +80,10 @@ export const anthropicMessagesErrors: ProtocolErrorMapper = {
 };
 
 export const geminiGenerateContentErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? geminiError(501, "UNIMPLEMENTED", "Image input cannot be represented by this provider")
+      : undefined,
   requestError(error) {
     if (error instanceof GeminiInlineDataTooLargeError) {
       return geminiError(413, "RESOURCE_EXHAUSTED", error.message);

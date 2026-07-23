@@ -1,5 +1,6 @@
 import type { LanguageModelV2, ProviderV3 } from "@ai-sdk/provider";
 
+import { ProviderProtocol } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 
 import type { AiSdkProviderLoadOptions, ProviderFetch } from "../../index";
@@ -198,4 +199,20 @@ describe("createAiSdkProvider", () => {
       /mock-ai-sdk.*upstream exploded/,
     );
   });
+});
+
+test.each([
+  ["@ai-sdk/openai", ProviderProtocol.OpenAIResponse],
+  ["@ai-sdk/openai-compatible", ProviderProtocol.OpenAICompatible],
+  ["@ai-sdk/anthropic", ProviderProtocol.Anthropic],
+  ["@ai-sdk/google", ProviderProtocol.Gemini],
+  ["@vendor/unknown", undefined],
+] as const)("publishes the image target for %s", (packageName, targetProtocol) => {
+  const provider = createAiSdkProvider({
+    kind: "ai-sdk",
+    id: packageName,
+    packageName,
+  });
+
+  expect(provider.targetProtocol).toBe(targetProtocol);
 });

@@ -85,13 +85,14 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, "providerTools"));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, "tokenCount"));
+  const metadata = modelMetadata(catalog);
   return {
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     models: catalog.language.map(({ id }) => id),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    modelMetadata: modelMetadata(catalog),
+    modelMetadata: metadata,
     plugin: config.plugin,
     capability: config.capability,
     ...(raw === undefined ? {} : { raw }),
@@ -99,6 +100,7 @@ export function createRuntimeProvider(
     model: {
       invoke: createProviderV4Invoke(config.id, result.provider),
       supportsProviderTool: (type) => supportedProviderTools.has(type),
+      targetProtocol: (modelId) => metadata[modelId]?.protocol,
     },
   };
 }

@@ -4,8 +4,8 @@ import { z } from "zod";
 import type { SessionCandidate } from "./session";
 
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses/index";
-import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses";
-import { openAIResponsesToModelMessages } from "../transform/openai-responses";
+import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses/index";
+import { openAIResponsesToModelMessages } from "../transform/openai-responses/index";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAIResponsesErrors } from "./errors";
 import { readJsonRequest } from "./request";

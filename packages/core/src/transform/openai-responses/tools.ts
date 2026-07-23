@@ -3,7 +3,7 @@ import type { JSONObject } from "@ai-sdk/provider";
 import { z } from "zod";
 
 import type { JSONValue } from "../../ai-sdk-bridge";
-import type { OpenAIResponsesExecutableTool, OpenAIResponsesTool } from "../../ingress/openai-responses";
+import type { OpenAIResponsesExecutableTool, OpenAIResponsesTool } from "../../ingress/openai-responses/index";
 import type { OpenAIResponsesTransformTool, OpenAIResponsesWireMetadata } from "./types";
 
 import { OpenAIResponsesTransformError, OpenAIResponsesUnsupportedFeatureError } from "../../error";

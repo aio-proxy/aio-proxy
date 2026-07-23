@@ -1,4 +1,4 @@
-import type { OpenAIResponsesRequest } from "../../ingress/openai-responses";
+import type { OpenAIResponsesRequest } from "../../ingress/openai-responses/index";
 import type {
   OpenAIResponsesModelMessages,
   OpenAIResponsesProviderOptions,

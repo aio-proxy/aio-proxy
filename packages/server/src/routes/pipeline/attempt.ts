@@ -1,6 +1,13 @@
-import type { ModelEgressContext, ModelInvocation, ProtocolAdapter, RouterResolution } from "@aio-proxy/core";
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
 import type { ProviderProtocol } from "@aio-proxy/types";
+
+import {
+  assertImageInputSupported,
+  type ModelEgressContext,
+  type ModelInvocation,
+  type ProtocolAdapter,
+  type RouterResolution,
+} from "@aio-proxy/core";
 
 import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../../runtime";
@@ -130,6 +137,20 @@ export async function attemptCandidates<TRequest, TContext>({
           return invocationUnsupported;
         }
         if (invocation === undefined) throw new TypeError("Protocol adapter returned no model invocation");
+        try {
+          assertImageInputSupported(invocation.messages, model.targetProtocol?.(candidate.modelId));
+        } catch (error) {
+          const unsupported = adapter.errors.modelUnsupported?.(error);
+          if (unsupported === undefined) throw error;
+          const base = attemptBase(provider, candidate.modelId, startedAt);
+          if (hasNext) {
+            session.attempt(failedAttempt(base, unsupported.status, "unsupported_feature"));
+            lastFailure = unsupported;
+            continue;
+          }
+          session.finish(finalFailure(base, unsupported.status, "unsupported_feature"));
+          return unsupported;
+        }
         const unsupportedProviderTool = invocation.providerTools?.find(
           (tool) => model.supportsProviderTool?.(tool.type) !== true,
         );
