@@ -25,6 +25,25 @@ export type RequestRejectedLog = {
   }[];
 };
 
+export type RequestProviderAttemptFailedLog = {
+  readonly event: "request.provider_attempt_failed";
+  readonly requestId: string;
+  readonly inboundProtocol: string;
+  readonly requestedModelId: string;
+  readonly path: string;
+  readonly providerId: string;
+  readonly providerKind: string;
+  readonly modelId: string;
+  readonly protocol?: string;
+  readonly durationMs: number;
+  readonly statusCode?: number;
+  readonly errorCode?: string;
+  readonly failureKind: "response" | "exception";
+  readonly fallback: boolean;
+  readonly errorType?: string;
+  readonly upstreamRequestId?: string;
+};
+
 export type RequestFailedLog = {
   readonly event: "request.failed";
   readonly requestId: string;
@@ -64,6 +83,7 @@ export type ServerLog =
   | DashboardAuthUnavailableLog
   | RequestFailedLog
   | RequestFeatureDowngradedLog
+  | RequestProviderAttemptFailedLog
   | RequestRecorderInvariantLog
   | RequestRecorderPersistenceFailedLog
   | RequestRejectedLog;

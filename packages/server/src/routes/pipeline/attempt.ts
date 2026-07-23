@@ -14,7 +14,7 @@ import type { ProviderRouteSource, RuntimeProviderInstance } from "../../runtime
 
 import { isInboundAbort, terminalCompletion } from "../../route-observation";
 import { failedAttempt, finalFailure, shouldFallbackStatus } from "./failure";
-import { logRequestRejected } from "./logging";
+import { logProviderAttemptFailed, logRequestRejected } from "./logging";
 import { createSseResponse, preflightStream, retainResponseBody } from "./stream";
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
@@ -47,6 +47,13 @@ export async function attemptCandidates<TRequest, TContext>({
   let invocation: ModelInvocation | undefined;
   let invocationUnsupported: Response | undefined;
   let lastFailure: Response | undefined;
+  const failureLogContext = { source, session, rawRequest, inboundProtocol: adapter.protocol, requestedModelId };
+  const logFailure = (
+    attempt: RequestAttemptInput,
+    failureKind: "response" | "exception",
+    fallback: boolean,
+    detail: { readonly response?: Response; readonly error?: unknown } = {},
+  ) => logProviderAttemptFailed({ ...failureLogContext, attempt, failureKind, fallback, ...detail });
 
   for (const [index, candidate] of candidates.entries()) {
     const provider = candidate.provider;
@@ -58,20 +65,28 @@ export async function attemptCandidates<TRequest, TContext>({
         const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
         const response = await raw.invoke(upstream, logicalRequest);
         if (!(response instanceof Response)) throw new TypeError("Provider raw transport must return a Response");
-        if (hasNext && shouldFallbackStatus(response.status)) {
-          session.attempt(
-            failedAttempt(attemptBase(provider, candidate.modelId, startedAt, adapter.protocol), response.status),
+        const fallback = hasNext && shouldFallbackStatus(response.status);
+        if (fallback || response.status < 200 || response.status >= 400) {
+          const attempt = failedAttempt(
+            attemptBase(provider, candidate.modelId, startedAt, adapter.protocol),
+            response.status,
           );
-          lastFailure = response;
-          try {
-            await response.body?.cancel();
-          } catch {}
-          continue;
-        }
-        if (response.status < 200 || response.status >= 400) {
-          session.finish(
-            finalFailure(attemptBase(provider, candidate.modelId, startedAt, adapter.protocol), response.status),
-          );
+          logFailure(attempt, "response", fallback, { response });
+          if (fallback) {
+            session.attempt(attempt);
+            lastFailure = response;
+            try {
+              await response.body?.cancel();
+            } catch {}
+            continue;
+          }
+          session.finish({
+            outcome: "failure",
+            finalProviderId: attempt.providerId,
+            finalModelId: attempt.modelId,
+            finalStatusCode: response.status,
+            attempt,
+          });
           const retained = retainResponseBody(response, release);
           if (retained !== response) deferRelease();
           return retained;
@@ -233,6 +248,7 @@ export async function attemptCandidates<TRequest, TContext>({
       if (mapped === undefined) {
         const attempt = { ...attemptBase(provider, candidate.modelId, startedAt), outcome: "failure" as const };
         session.attempt(attempt);
+        logFailure(attempt, "exception", false, { error });
         throw error;
       }
 
@@ -243,8 +259,13 @@ export async function attemptCandidates<TRequest, TContext>({
         outcome,
         statusCode: mapped.status,
       };
+      const fallback = !cancelled && hasNext;
 
-      if (!cancelled && hasNext) {
+      if (!cancelled) {
+        logFailure(attempt, "exception", fallback, { error });
+      }
+
+      if (fallback) {
         session.attempt(attempt);
         lastFailure = mapped;
         continue;

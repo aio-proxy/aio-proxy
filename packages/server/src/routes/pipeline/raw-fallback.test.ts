@@ -5,9 +5,11 @@ import { attemptsOf, pipeline } from "./test-support";
 
 describe("shared protocol routing pipeline", () => {
   test.each([429, 503])("falls back after raw status %d", async (status) => {
+    const bodySecret = `upstream-body-must-not-be-logged-${status}`;
     const primary = rawProvider({
       id: "primary",
-      invoke: async () => Response.json({ provider: "primary" }, { status }),
+      invoke: async () =>
+        Response.json({ error: { message: bodySecret } }, { status, headers: { "x-request-id": "upstream-primary" } }),
     });
     const backup = rawProvider({
       id: "backup",
@@ -28,6 +30,18 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: "backup", outcome: "success" }),
     );
+    expect(harness.logs).toContainEqual(
+      expect.objectContaining({
+        event: "request.provider_attempt_failed",
+        requestId: "request-1",
+        providerId: "primary",
+        statusCode: status,
+        failureKind: "response",
+        fallback: true,
+        upstreamRequestId: "upstream-primary",
+      }),
+    );
+    expect(JSON.stringify(harness.logs)).not.toContain(bodySecret);
   });
 
   test("cancels a raw fallback body even when cleanup rejects", async () => {
@@ -77,6 +91,15 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: "primary", finalStatusCode: 400, outcome: "failure" }),
     );
+    expect(harness.logs).toContainEqual(
+      expect.objectContaining({
+        event: "request.provider_attempt_failed",
+        providerId: "primary",
+        statusCode: 400,
+        failureKind: "response",
+        fallback: false,
+      }),
+    );
   });
 
   test("falls back after a raw network throw", async () => {
@@ -99,5 +122,16 @@ describe("shared protocol routing pipeline", () => {
       { outcome: "failure", providerId: "primary", statusCode: 502 },
       { outcome: "success", providerId: "backup", statusCode: 200 },
     ]);
+    expect(harness.logs).toContainEqual(
+      expect.objectContaining({
+        event: "request.provider_attempt_failed",
+        providerId: "primary",
+        statusCode: 502,
+        failureKind: "exception",
+        fallback: true,
+        errorType: "Error",
+      }),
+    );
+    expect(JSON.stringify(harness.logs)).not.toContain("network down");
   });
 });

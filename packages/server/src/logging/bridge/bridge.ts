@@ -8,6 +8,7 @@ export const SERVER_LOG_LEVEL = {
   "dashboard.auth_unavailable": "error",
   "request.failed": "error",
   "request.feature_downgraded": "info",
+  "request.provider_attempt_failed": "warn",
   "request.recorder_invariant": "warn",
   "request.recorder_persistence_failed": "error",
   "request.rejected": "warn",
