@@ -1,3 +1,4 @@
+import type { FilePart } from "../../ai-sdk-bridge";
 import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages";
 import type { AnthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
@@ -31,7 +32,7 @@ export type ToolResultPart = {
     | { readonly type: "text"; readonly value: string }
     | {
         readonly type: "content";
-        readonly value: readonly { readonly type: "text"; readonly text: string }[];
+        readonly value: readonly (TextPart | FilePart)[];
       };
   readonly providerOptions?: AnthropicProviderOptions;
 };
@@ -50,7 +51,7 @@ export type AnthropicSystemMessage = {
 
 export type AnthropicUserMessage = {
   readonly role: "user";
-  readonly content: string | readonly (TextPart | ToolResultPart)[];
+  readonly content: string | readonly (TextPart | FilePart | ToolResultPart)[];
 };
 
 export type AnthropicAssistantMessage = {

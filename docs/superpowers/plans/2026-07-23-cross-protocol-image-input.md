@@ -1640,7 +1640,7 @@ Use `apply_patch` move directives. The exact import rewrites and test boilerplat
 - Consumes: Task 2 `imageFilePart()` and its marker.
 - Produces: Anthropic base64/URL image blocks as canonical file parts, including nested `tool_result.content`; the protocol adapter emits ordinary images as user messages and tool outputs as tool messages.
 
-- [ ] **Step 1: Add Anthropic ingress rejection and transform preservation tests**
+- [x] **Step 1: Add Anthropic ingress rejection and transform preservation tests**
 
 In the moved ingress test, add these cases to `invalidInputs`:
 
@@ -1808,7 +1808,7 @@ test("normalizes an Anthropic data URL image source to native base64", () => {
 });
 ```
 
-- [ ] **Step 2: Move and split the protocol test before adding coverage**
+- [x] **Step 2: Move and split the protocol test before adding coverage**
 
 Move the complete current file to `anthropic-messages.test.ts`, then cut only the test block named `flushes user content on kind changes and preserves part provider options` from it into `anthropic-messages-images.test.ts`. The normal file keeps its existing imports, `request()` helper, `describe("anthropicMessagesAdapter", ...)` wrapper, stream loop, and four remaining tests.
 
@@ -1899,7 +1899,7 @@ test("keeps image runs in user messages and image tool results in tool messages"
 
 Each protocol test file must remain below 300 lines.
 
-- [ ] **Step 3: Run the moved tests and observe schema/transform failures**
+- [x] **Step 3: Run the moved tests and observe schema/transform failures**
 
 Run:
 
@@ -1909,7 +1909,7 @@ rtk bun test packages/core/src/ingress/anthropic-messages/anthropic-messages.tes
 
 Expected: FAIL because `image` is not admitted and the user-message bridge treats every non-text part as a tool result.
 
-- [ ] **Step 4: Add the Anthropic image schemas and ingress barrel**
+- [x] **Step 4: Add the Anthropic image schemas and ingress barrel**
 
 In the moved ingress implementation, add this exact relative import and add the schemas after `TextBlockSchema`:
 
@@ -1970,7 +1970,7 @@ type AnthropicImageBlock,
 
 This root export is mandatory; the root index does not use `export *` for this ingress module.
 
-- [ ] **Step 5: Widen the private Anthropic model types**
+- [x] **Step 5: Widen the private Anthropic model types**
 
 In `types.ts`, import `FilePart` and replace the affected unions:
 
@@ -1996,7 +1996,7 @@ export type AnthropicUserMessage = {
 };
 ```
 
-- [ ] **Step 6: Convert Anthropic image blocks to canonical files**
+- [x] **Step 6: Convert Anthropic image blocks to canonical files**
 
 In `to-model.ts`, add `FilePart` from `../../ai-sdk-bridge`, `AnthropicImageBlock` to the existing `../../ingress/anthropic-messages` type import, and `imageFilePart` from `../../image-input`.
 
@@ -2089,7 +2089,7 @@ Add `path: string` to `toolResultPart()`'s parameters and replace its array bran
 
 Keep string tool results as `output.type === "text"` and keep the outer tool result cache-control metadata unchanged.
 
-- [ ] **Step 7: Reverse canonical files back into Anthropic image blocks**
+- [x] **Step 7: Reverse canonical files back into Anthropic image blocks**
 
 In the moved `anthropic-messages.ts`, import `FilePart` from `../../ai-sdk-bridge`; add `AnthropicImageBlock` to the ingress type import and `AnthropicProviderOptions` to the existing `./types` type import. Add `case "file"` to `userContentFromModelParts()` and call `imageBlock(part, `${path}.${index}`)`. Use this helper:
 
@@ -2130,7 +2130,7 @@ part.output.value.map((contentPart, index) =>
 
 Provider references must throw; they must never become text.
 
-- [ ] **Step 8: Fix the Anthropic protocol split**
+- [x] **Step 8: Fix the Anthropic protocol split**
 
 Before editing the moved protocol implementation, apply these exact import-path rewrites:
 
@@ -2204,7 +2204,7 @@ Create all three module barrels as export-only files:
 export * from "./anthropic-messages";
 ```
 
-- [ ] **Step 9: Run all Anthropic behavior tests and checking**
+- [x] **Step 9: Run all Anthropic behavior tests and checking**
 
 Run:
 
@@ -2216,7 +2216,7 @@ rtk bun run check
 
 Expected: all commands exit 0; base64/URL images round-trip, tool-image order is retained, and the protocol adapter splits only on tool-result boundaries.
 
-- [ ] **Step 10: Confirm legacy paths are gone and commit Task 5**
+- [x] **Step 10: Confirm legacy paths are gone and commit Task 5**
 
 Run:
 

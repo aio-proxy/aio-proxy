@@ -2,27 +2,27 @@ import type { ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
 
 import { ProviderProtocol } from "@aio-proxy/types";
 
-import type { ModelMessage } from "../ai-sdk-bridge";
-import type { SessionCandidate } from "./session";
+import type { ModelMessage } from "../../ai-sdk-bridge";
+import type { SessionCandidate } from "../session";
 
-import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "../egress/anthropic-messages";
+import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "../../egress/anthropic-messages";
 import {
   type AnthropicFunctionTool,
   type AnthropicMessagesRequest,
   type AnthropicWebSearchTool,
   parseAnthropicMessages,
-} from "../ingress/anthropic-messages";
-import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "../transform/anthropic-messages";
-import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
-import { anthropicThinkingOption } from "./anthropic-thinking";
-import { anthropicMessagesErrors } from "./errors";
-import { readJsonRequest, rewriteJsonRequestModel } from "./request";
-import { functionToolSet } from "./tools";
+} from "../../ingress/anthropic-messages";
+import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "../../transform/anthropic-messages";
+import { defineProtocolAdapter, type EmptyProtocolContext } from "../adapter";
+import { anthropicThinkingOption } from "../anthropic-thinking";
+import { anthropicMessagesErrors } from "../errors";
+import { readJsonRequest, rewriteJsonRequestModel } from "../request";
+import { functionToolSet } from "../tools";
 
 type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: "assistant" }>["content"], string>[number];
 type AnthropicUserContent = Extract<AnthropicModelMessage, { role: "user" }>["content"];
 type AnthropicUserPart = Exclude<AnthropicUserContent, string>[number];
-type AnthropicTextPart = Extract<AnthropicAssistantPart | AnthropicUserPart, { type: "text" }>;
+type AnthropicUserPromptPart = Extract<AnthropicUserPart, { type: "file" | "text" }>;
 type AnthropicToolResultPart = Extract<AnthropicAssistantPart | AnthropicUserPart, { type: "tool-result" }>;
 
 export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesRequest, EmptyProtocolContext>({
@@ -154,31 +154,27 @@ function userMessages(content: AnthropicUserContent): ModelMessage[] {
   }
 
   const messages: ModelMessage[] = [];
-  let textParts: ReturnType<typeof textPart>[] = [];
+  let userParts: ReturnType<typeof userPart>[] = [];
   let toolResultParts: ReturnType<typeof toolResultPart>[] = [];
 
   for (const part of content) {
-    if (part.type === "text") {
+    if (part.type === "tool-result") {
+      if (userParts.length > 0) {
+        messages.push({ role: "user", content: userParts });
+        userParts = [];
+      }
+      toolResultParts.push(toolResultPart(part));
+    } else {
       if (toolResultParts.length > 0) {
         messages.push({ role: "tool", content: toolResultParts });
         toolResultParts = [];
       }
-      textParts.push(textPart(part));
-    } else {
-      if (textParts.length > 0) {
-        messages.push({ role: "user", content: textParts });
-        textParts = [];
-      }
-      toolResultParts.push(toolResultPart(part));
+      userParts.push(userPart(part));
     }
   }
 
-  if (textParts.length > 0) {
-    messages.push({ role: "user", content: textParts });
-  }
-  if (toolResultParts.length > 0) {
-    messages.push({ role: "tool", content: toolResultParts });
-  }
+  if (userParts.length > 0) messages.push({ role: "user", content: userParts });
+  if (toolResultParts.length > 0) messages.push({ role: "tool", content: toolResultParts });
   return messages;
 }
 
@@ -186,7 +182,7 @@ function assistantPart(part: AnthropicAssistantPart) {
   return part.type === "tool-result" ? toolResultPart(part) : { ...part };
 }
 
-function textPart(part: AnthropicTextPart) {
+function userPart(part: AnthropicUserPromptPart) {
   return { ...part };
 }
 

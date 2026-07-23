@@ -64,6 +64,7 @@ export {
 } from "./image-input";
 export {
   type AnthropicCacheControl,
+  type AnthropicImageBlock,
   type AnthropicMessagesRequest,
   AnthropicMessagesRequestSchema,
   type AnthropicTextBlock,

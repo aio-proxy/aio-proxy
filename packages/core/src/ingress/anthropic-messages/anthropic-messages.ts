@@ -2,6 +2,8 @@ import type { Tool } from "@anthropic-ai/sdk/resources/messages/messages";
 
 import { z } from "zod";
 
+import { imageFilePart, isImageMediaType, isValidBase64 } from "../../image-input";
+
 const IdSchema = z.string().min(1);
 const MetadataSchema = z
   .object({
@@ -22,6 +24,23 @@ const TextBlockSchema = z.object({
   cache_control: CacheControlSchema.optional(),
 });
 
+const Base64ImageSourceSchema = z.object({
+  type: z.literal("base64"),
+  media_type: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+  data: z.string().refine(isValidBase64),
+});
+
+const UrlImageSourceSchema = z.object({
+  type: z.literal("url"),
+  url: z.string().refine((url) => imageFilePart({ type: "url", url }) !== undefined),
+});
+
+const ImageBlockSchema = z.object({
+  type: z.literal("image"),
+  source: z.discriminatedUnion("type", [Base64ImageSourceSchema, UrlImageSourceSchema]),
+  cache_control: CacheControlSchema.optional(),
+});
+
 const ToolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
   id: IdSchema,
@@ -35,11 +54,13 @@ const ToolResultTextBlockSchema = z.object({
   text: z.string(),
 });
 
+const ToolResultContentBlockSchema = z.discriminatedUnion("type", [ToolResultTextBlockSchema, ImageBlockSchema]);
+
 const ToolResultBlockSchema = z
   .object({
     type: z.literal("tool_result"),
     tool_use_id: IdSchema.optional(),
-    content: z.union([z.string(), z.array(ToolResultTextBlockSchema)]),
+    content: z.union([z.string(), z.array(ToolResultContentBlockSchema)]),
     cache_control: CacheControlSchema.optional(),
   })
   .superRefine((block, ctx) => {
@@ -55,7 +76,7 @@ const ToolResultBlockSchema = z
     z.object({
       type: z.literal("tool_result"),
       tool_use_id: IdSchema,
-      content: z.union([z.string(), z.array(ToolResultTextBlockSchema)]),
+      content: z.union([z.string(), z.array(ToolResultContentBlockSchema)]),
       cache_control: CacheControlSchema.optional(),
     }),
   );
@@ -84,7 +105,7 @@ const ThinkingBlockSchema = z
     }),
   );
 
-const UserContentBlockSchema = z.discriminatedUnion("type", [TextBlockSchema, ToolResultBlockSchema]);
+const UserContentBlockSchema = z.discriminatedUnion("type", [TextBlockSchema, ImageBlockSchema, ToolResultBlockSchema]);
 
 const AssistantContentBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
@@ -173,6 +194,7 @@ export const AnthropicMessagesRequestSchema = z.object({
 
 export type AnthropicCacheControl = z.output<typeof CacheControlSchema>;
 export type AnthropicTextBlock = z.output<typeof TextBlockSchema>;
+export type AnthropicImageBlock = z.output<typeof ImageBlockSchema>;
 export type AnthropicToolUseBlock = z.output<typeof ToolUseBlockSchema>;
 export type AnthropicToolResultBlock = z.output<typeof ToolResultBlockSchema>;
 export type AnthropicThinkingBlock = z.output<typeof ThinkingBlockSchema>;

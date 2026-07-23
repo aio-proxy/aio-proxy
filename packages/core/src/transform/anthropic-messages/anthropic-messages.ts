@@ -1,29 +1,32 @@
+import type { FilePart } from "../../ai-sdk-bridge";
 import type {
   AnthropicAssistantContentBlock,
+  AnthropicImageBlock,
   AnthropicMessagesRequest,
   AnthropicTextBlock,
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
-} from "../ingress/anthropic-messages";
+} from "../../ingress/anthropic-messages";
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesFromModelMessages,
   AnthropicMessagesModelMessages,
+  AnthropicProviderOptions,
   AnthropicUserMessage,
   ReasoningPart,
   TextPart,
   ToolCallPart,
   ToolResultPart,
-} from "./anthropic-messages/types";
+} from "./types";
 
-import { AnthropicMessagesTransformError } from "../error";
-import { convertAnthropicMessagesToModelMessages } from "./anthropic-messages/to-model";
+import { AnthropicMessagesTransformError } from "../../error";
+import { convertAnthropicMessagesToModelMessages } from "./to-model";
 
 export type {
   AnthropicMessagesFromModelMessages,
   AnthropicMessagesModelMessages,
   AnthropicModelMessage,
-} from "./anthropic-messages/types";
+} from "./types";
 
 export function anthropicMessagesToModelMessages(req: AnthropicMessagesRequest): AnthropicMessagesModelMessages {
   return convertAnthropicMessagesToModelMessages(req);
@@ -88,8 +91,10 @@ function userContentFromModelParts(
         switch (part.type) {
           case "text":
             return textBlock(part);
+          case "file":
+            return imageBlock(part, `${path}.${index}`);
           case "tool-result":
-            return toolResultBlock(part);
+            return toolResultBlock(part, `${path}.${index}`);
           default:
             throw new AnthropicMessagesTransformError(`${path}.${index}.type`);
         }
@@ -140,20 +145,44 @@ function toolUseBlock(part: ToolCallPart): AnthropicToolUseBlock {
   };
 }
 
-function toolResultBlock(part: ToolResultPart): AnthropicToolResultBlock {
+function toolResultBlock(part: ToolResultPart, path: string): AnthropicToolResultBlock {
   return {
     type: "tool_result",
     tool_use_id: part.toolCallId,
     content:
       part.output.type === "text"
         ? part.output.value
-        : part.output.value.map((contentPart) => ({
-            type: "text",
-            text: contentPart.text,
-          })),
+        : part.output.value.map((contentPart, index) =>
+            contentPart.type === "text"
+              ? { type: "text" as const, text: contentPart.text }
+              : imageBlock(contentPart, `${path}.content.${index}`),
+          ),
     ...(part.providerOptions?.anthropic.cache_control !== undefined
       ? { cache_control: part.providerOptions.anthropic.cache_control }
       : {}),
+  };
+}
+
+function imageBlock(part: FilePart, path: string): AnthropicImageBlock {
+  if (part.mediaType !== "image" && !part.mediaType.startsWith("image/")) {
+    throw new AnthropicMessagesTransformError(`${path}.mediaType`);
+  }
+  const data = part.data;
+  if (typeof data !== "object" || data === null || !("type" in data)) {
+    throw new AnthropicMessagesTransformError(`${path}.data`);
+  }
+  const source =
+    data.type === "url"
+      ? ({ type: "url", url: data.url.toString() } as const)
+      : data.type === "data" && typeof data.data === "string" && part.mediaType !== "image"
+        ? ({ type: "base64", media_type: part.mediaType, data: data.data } as const)
+        : undefined;
+  if (source === undefined) throw new AnthropicMessagesTransformError(`${path}.data`);
+  const cacheControl = (part.providerOptions as AnthropicProviderOptions | undefined)?.anthropic?.cache_control;
+  return {
+    type: "image",
+    source,
+    ...(cacheControl === undefined ? {} : { cache_control: cacheControl }),
   };
 }
 

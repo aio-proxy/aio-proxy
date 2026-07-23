@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { ZodError } from "zod";
 
-import { AnthropicMessagesRequestSchema, parseAnthropicMessages } from "../../src/index";
+import { AnthropicMessagesRequestSchema, parseAnthropicMessages } from "../../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/anthropic-messages`;
+const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/anthropic-messages`;
 
 const validFixtures = [
   "simple.json",
@@ -59,6 +59,41 @@ const invalidInputs = [
       ],
     },
     path: ["messages", 0, "content", 0, "tool_use_id"],
+  },
+
+  {
+    name: "image invalid base64",
+    input: {
+      model: "claude-sonnet-4-5",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "!" } }],
+        },
+      ],
+    },
+    path: ["messages", 0, "content", 0, "source", "data"],
+  },
+  {
+    name: "image non-image MIME",
+    input: {
+      model: "claude-sonnet-4-5",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "image", source: { type: "base64", media_type: "application/pdf", data: "AA==" } }],
+        },
+      ],
+    },
+    path: ["messages", 0, "content", 0, "source", "media_type"],
+  },
+  {
+    name: "image non-HTTP URL",
+    input: {
+      model: "claude-sonnet-4-5",
+      messages: [{ role: "user", content: [{ type: "image", source: { type: "url", url: "file:///tmp/image.png" } }] }],
+    },
+    path: ["messages", 0, "content", 0, "source", "url"],
   },
 ] as const;
 

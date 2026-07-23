@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AnthropicMessagesModelMessages, AnthropicMessagesRequest } from "../../src/index";
+import type { AnthropicMessagesModelMessages, AnthropicMessagesRequest } from "../../index";
 
 import {
   AnthropicMessagesTransformError,
   anthropicMessagesToModelMessages,
   modelMessagesToAnthropicMessages,
   parseAnthropicMessages,
-} from "../../src/index";
+} from "../../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/anthropic-messages`;
+const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/anthropic-messages`;
 
 const validFixtures = [
   "simple.json",

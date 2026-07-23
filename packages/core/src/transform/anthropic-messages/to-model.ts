@@ -1,5 +1,7 @@
+import type { FilePart } from "../../ai-sdk-bridge";
 import type {
   AnthropicCacheControl,
+  AnthropicImageBlock,
   AnthropicMessagesRequest,
   AnthropicTextBlock,
   AnthropicToolResultBlock,
@@ -20,6 +22,7 @@ import type {
 } from "./types";
 
 import { AnthropicMessagesTransformError } from "../../error";
+import { imageFilePart } from "../../image-input";
 import { anthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
 export function convertAnthropicMessagesToModelMessages(
@@ -27,7 +30,9 @@ export function convertAnthropicMessagesToModelMessages(
 ): AnthropicMessagesModelMessages {
   const toolNames = new Map<string, string>();
   const messages: AnthropicModelMessage[] = [];
-  for (const message of request.messages) messages.push(messageToModelMessage(message, toolNames));
+  for (const [messageIndex, message] of request.messages.entries()) {
+    messages.push(messageToModelMessage(message, toolNames, messageIndex));
+  }
 
   const settings: AnthropicMessagesSettings = {
     ...(request.stream !== undefined ? { stream: request.stream } : {}),
@@ -53,10 +58,14 @@ export function convertAnthropicMessagesToModelMessages(
 function messageToModelMessage(
   message: AnthropicMessagesRequest["messages"][number],
   toolNames: Map<string, string>,
+  messageIndex: number,
 ): AnthropicUserMessage | AnthropicAssistantMessage {
   switch (message.role) {
     case "user":
-      return { role: "user", content: userContentToModelParts(message.content, toolNames) };
+      return {
+        role: "user",
+        content: userContentToModelParts(message.content, toolNames, `messages.${messageIndex}.content`),
+      };
     case "assistant":
       return { role: "assistant", content: assistantContentToModelParts(message.content, toolNames) };
     default:
@@ -76,15 +85,18 @@ function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest["syst
 function userContentToModelParts(
   content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
   toolNames: ReadonlyMap<string, string>,
-): string | readonly (TextPart | ToolResultPart)[] {
+  path: string,
+): string | readonly (TextPart | FilePart | ToolResultPart)[] {
   return typeof content === "string"
     ? content
-    : content.map((part) => {
+    : content.map((part, index) => {
         switch (part.type) {
           case "text":
             return textPart(part);
+          case "image":
+            return anthropicImagePart(part, `${path}.${index}`, false);
           case "tool_result":
-            return toolResultPart(part, toolNames);
+            return toolResultPart(part, toolNames, `${path}.${index}`);
           default:
             return assertNever(part);
         }
@@ -134,7 +146,11 @@ function toolCallPart(part: AnthropicToolUseBlock): ToolCallPart {
   };
 }
 
-function toolResultPart(part: AnthropicToolResultBlock, toolNames: ReadonlyMap<string, string>): ToolResultPart {
+function toolResultPart(
+  part: AnthropicToolResultBlock,
+  toolNames: ReadonlyMap<string, string>,
+  path: string,
+): ToolResultPart {
   return {
     type: "tool-result",
     toolCallId: part.tool_use_id,
@@ -142,8 +158,31 @@ function toolResultPart(part: AnthropicToolResultBlock, toolNames: ReadonlyMap<s
     output:
       typeof part.content === "string"
         ? { type: "text", value: part.content }
-        : { type: "content", value: part.content.map(({ text }) => ({ type: "text", text })) },
+        : {
+            type: "content",
+            value: part.content.map((contentPart, index) =>
+              contentPart.type === "text"
+                ? { type: "text", text: contentPart.text }
+                : anthropicImagePart(contentPart, `${path}.content.${index}`, true),
+            ),
+          },
     ...(part.cache_control === undefined ? {} : { providerOptions: cacheProviderOptions(part.cache_control) }),
+  };
+}
+
+function anthropicImagePart(part: AnthropicImageBlock, path: string, toolResult: boolean): FilePart {
+  const image =
+    part.source.type === "base64"
+      ? imageFilePart({ type: "base64", mediaType: part.source.media_type, data: part.source.data }, { toolResult })
+      : imageFilePart({ type: "url", url: part.source.url }, { toolResult });
+  if (image === undefined) throw new AnthropicMessagesTransformError(path);
+  if (part.cache_control === undefined) return image;
+  return {
+    ...image,
+    providerOptions: {
+      ...image.providerOptions,
+      anthropic: { cache_control: part.cache_control },
+    },
   };
 }
 
