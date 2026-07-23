@@ -1,18 +1,15 @@
-import type { ModelMessage } from "../ai-sdk-bridge";
-import type {
-  OpenAIResponsesInputItem,
-  OpenAIResponsesInputMessage,
-  OpenAIResponsesToolOutputPart,
-} from "../ingress/openai-responses";
-import type { OpenAIResponsesWireMetadata } from "./openai-responses-types";
+import type { ModelMessage } from "../../ai-sdk-bridge";
+import type { OpenAIResponsesInputItem } from "../../ingress/openai-responses";
+import type { OpenAIResponsesWireMetadata } from "./types";
 
-import { OpenAIResponsesTransformError } from "../error";
+import { OpenAIResponsesTransformError } from "../../error";
+import { inputMessage, toolOutput } from "./input-content";
 import {
   flattenOpenAIResponsesToolName,
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
   wireProviderOptions,
-} from "./openai-responses-tools";
+} from "./tools";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
@@ -175,72 +172,6 @@ export function openAIResponsesInputMessages(items: readonly OpenAIResponsesInpu
   }
 
   return messages;
-}
-
-function inputMessage(message: OpenAIResponsesInputMessage, index: number): ModelMessage {
-  const metadata: OpenAIResponsesWireMetadata | undefined =
-    message.type === undefined &&
-    message.id === undefined &&
-    message.status === undefined &&
-    message.phase === undefined &&
-    message.role !== "developer"
-      ? undefined
-      : {
-          protocol: "openai-responses",
-          inputIndex: index,
-          itemType: message.type ?? "message",
-          ...(message.id === undefined ? {} : { itemId: message.id }),
-          ...(message.status === undefined ? {} : { status: message.status }),
-          ...(message.phase === undefined ? {} : { phase: message.phase }),
-          wireRole: message.role,
-        };
-  if (message.role === "developer") {
-    warnOpenAIResponsesDegradation("message.role.developer", `input.${index}.role`, "converted");
-  }
-  const content = messageTextContent(message, index);
-  const options = metadata === undefined ? {} : { providerOptions: wireProviderOptions(metadata) };
-  switch (message.role) {
-    case "system":
-    case "developer":
-      return {
-        role: "system",
-        content: typeof content === "string" ? content : content.map((part) => part.text).join(""),
-        ...options,
-      };
-    case "user":
-      return { role: "user", content, ...options };
-    case "assistant":
-      return { role: "assistant", content, ...options };
-  }
-}
-
-function messageTextContent(
-  message: OpenAIResponsesInputMessage,
-  index: number,
-): string | { type: "text"; text: string }[] {
-  if (typeof message.content === "string") return message.content;
-  return message.content.map((part, partIndex) => {
-    if (!("text" in part) || typeof part.text !== "string") {
-      return rejectOpenAIResponsesFeature(part.type, `input.${index}.content.${partIndex}.type`);
-    }
-    if (part.annotations !== undefined || part.logprobs !== undefined) {
-      warnOpenAIResponsesDegradation("message.content_metadata", `input.${index}.content.${partIndex}`, "dropped");
-    }
-    return { type: "text", text: part.text };
-  });
-}
-
-function toolOutput(output: string | OpenAIResponsesToolOutputPart[], path: string): ToolResultPart["output"] {
-  if (typeof output === "string") return { type: "text", value: output };
-  return {
-    type: "content",
-    value: output.map((part, index) => {
-      if (part.type === "input_text" || part.type === "output_text" || part.type === "text") {
-        return { type: "text", text: part.text };
-      }
-      return rejectOpenAIResponsesFeature(part.type, `${path}.${index}.type`);
-    }),
-  };
 }
 
 function appendAssistantPart(messages: ModelMessage[], previous: "call" | "result" | undefined, part: AssistantPart) {

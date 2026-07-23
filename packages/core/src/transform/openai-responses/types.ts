@@ -1,7 +1,7 @@
 import type { JSONObject } from "@ai-sdk/provider";
 
-import type { ModelMessage } from "../ai-sdk-bridge";
-import type { OpenAIResponsesRequest } from "../ingress/openai-responses/index";
+import type { ModelMessage } from "../../ai-sdk-bridge";
+import type { OpenAIResponsesRequest } from "../../ingress/openai-responses/index";
 
 export type OpenAIResponsesTransformTool = {
   readonly type: "function";
@@ -28,7 +28,7 @@ export type OpenAIResponsesWireMetadata = {
   readonly namespaceDescription?: string;
   readonly source?: "request" | "additional_tools";
   readonly outputKind?: "string" | "content";
-  readonly format?: import("../ai-sdk-bridge").JSONValue;
+  readonly format?: import("../../ai-sdk-bridge").JSONValue;
 };
 
 export type OpenAIResponsesProviderOptions = {

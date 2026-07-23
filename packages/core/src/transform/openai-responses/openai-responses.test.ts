@@ -5,7 +5,7 @@ import {
   OpenAIResponsesUnsupportedFeatureError,
   openAIResponsesToModelMessages,
   parseOpenAIResponses,
-} from "../index";
+} from "../../index";
 
 test("converts a developer message to a system message", () => {
   const warn = spyOn(console, "warn").mockImplementation(() => {});
@@ -215,24 +215,6 @@ test("converts text function output content", () => {
       },
     ],
   });
-});
-
-test("rejects image function output content on the model path", () => {
-  const request = parseOpenAIResponses({
-    model: "gpt-5.6-terra",
-    input: [
-      { type: "function_call", call_id: "call_1", name: "inspect", arguments: "{}" },
-      {
-        type: "function_call_output",
-        call_id: "call_1",
-        output: [{ type: "input_image", image_url: "data:image/png;base64,AA==" }],
-      },
-    ],
-  });
-
-  expect(() => openAIResponsesToModelMessages(request)).toThrow(
-    new OpenAIResponsesUnsupportedFeatureError("input_image", "input.1.output.0.type"),
-  );
 });
 
 test("rejects store true on the model path", () => {

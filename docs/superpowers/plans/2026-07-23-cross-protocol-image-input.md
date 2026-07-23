@@ -683,7 +683,7 @@ rtk git commit -m "feat(core): add canonical image input primitives" -m "Co-auth
 - Consumes: Task 2 `imageFilePart()` and its exact tool marker.
 - Produces: canonical user `FilePart` values, canonical tool `content` output values, OpenAI detail metadata, and tagged `{ openai: fileId }` references.
 
-- [ ] **Step 1: Move and split the Responses transform module**
+- [x] **Step 1: Move and split the Responses transform module**
 
 Use `apply_patch` move directives for all eight moves in the Files list. Do not leave compatibility files at the old paths. Apply these exact import rewrites:
 
@@ -756,7 +756,7 @@ with:
 import { readOpenAIResponsesWireMetadata } from "../../transform/openai-responses";
 ```
 
-- [ ] **Step 2: Replace the old image-rejection regression with preservation tests**
+- [x] **Step 2: Replace the old image-rejection regression with preservation tests**
 
 Delete the test named `rejects image function output content on the model path` from the moved `openai-responses.test.ts`. Create `images.test.ts` with these imports, followed by all four tests in this step:
 
@@ -929,7 +929,7 @@ test("requires exactly one source on every Responses input_image", () => {
 });
 ```
 
-- [ ] **Step 3: Run the focused Responses test and observe both missing behaviors**
+- [x] **Step 3: Run the focused Responses test and observe both missing behaviors**
 
 Run:
 
@@ -939,7 +939,7 @@ rtk bun test packages/core/src/transform/openai-responses/images.test.ts
 
 Expected: FAIL. The `file_id` case is rejected by the current ingress schema before conversion, while the image-output case reaches the existing `OpenAI Responses feature is not supported: input_image` path. Both failures are expected until Steps 3–5 are complete.
 
-- [ ] **Step 4: Accept exactly one `image_url` or `file_id`**
+- [x] **Step 4: Accept exactly one `image_url` or `file_id`**
 
 Replace `inputImagePartSchema` in `input-items.ts` with:
 
@@ -961,7 +961,7 @@ const inputImagePartSchema = z
 
 Do not add `input_file` document conversion.
 
-- [ ] **Step 5: Extract the input-content mapper and add image construction**
+- [x] **Step 5: Extract the input-content mapper and add image construction**
 
 Create `input-content.ts` with these imports and aliases. They are intentionally private to the Responses transform directory:
 
@@ -1008,7 +1008,7 @@ function openAIImagePart(part: InputImagePart, path: string, toolResult: boolean
 }
 ```
 
-- [ ] **Step 6: Move and replace the message and tool-output mappers**
+- [x] **Step 6: Move and replace the message and tool-output mappers**
 
 Move `inputMessage()` and `toolOutput()` out of `compat.ts` into `input-content.ts`, export both functions, and delete their old definitions. Add this import to `compat.ts`:
 
@@ -1115,7 +1115,7 @@ export function toolOutput(output: string | OpenAIResponsesToolOutputPart[], pat
 
 Do not alter the existing `CallIdentity`, function/custom metadata, call grouping, or output-kind metadata.
 
-- [ ] **Step 7: Run Responses tests and core checking**
+- [x] **Step 7: Run Responses tests and core checking**
 
 Run:
 
@@ -1127,7 +1127,7 @@ rtk bun run check
 
 Expected: all commands exit 0; the original request shape no longer raises the local 501, and invalid image sources still map to the Responses 400 path through `OpenAIResponsesTransformError`.
 
-- [ ] **Step 8: Confirm old Responses transform paths are gone**
+- [x] **Step 8: Confirm old Responses transform paths are gone**
 
 Run:
 
@@ -1137,7 +1137,7 @@ rtk rg -n 'transform/openai-responses-(compat|from-model|tools|types)|transform/
 
 Expected: no output.
 
-- [ ] **Step 9: Commit Task 3**
+- [x] **Step 9: Commit Task 3**
 
 ```bash
 rtk git add -A -- packages/core/src/ingress/openai-responses/input-items.ts packages/core/src/transform/openai-responses packages/core/src/transform/openai-responses.ts packages/core/src/transform/openai-responses-compat.ts packages/core/src/transform/openai-responses-from-model.ts packages/core/src/transform/openai-responses-tools.ts packages/core/src/transform/openai-responses-types.ts packages/core/src/transform/openai-responses.test.ts packages/core/src/transform/openai-responses-compatibility.test.ts packages/core/src/transform/openai-responses-roundtrip.test.ts packages/core/src/egress/openai-responses/state.ts

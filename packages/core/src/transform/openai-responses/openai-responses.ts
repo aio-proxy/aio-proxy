@@ -1,19 +1,19 @@
-import type { OpenAIResponsesRequest } from "../ingress/openai-responses";
+import type { OpenAIResponsesRequest } from "../../ingress/openai-responses";
 import type {
   OpenAIResponsesModelMessages,
   OpenAIResponsesProviderOptions,
   OpenAIResponsesToolChoice,
   OpenAIResponsesTransformSettings,
   OpenAIResponsesTransformTool,
-} from "./openai-responses-types";
+} from "./types";
 
-import { openAIResponsesInputMessages } from "./openai-responses-compat";
+import { openAIResponsesInputMessages } from "./compat";
 import {
   normalizeOpenAIResponsesTools,
   readOpenAIResponsesWireMetadata,
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
-} from "./openai-responses-tools";
+} from "./tools";
 
 const supportedRequestKeys = new Set([
   "model",
@@ -39,18 +39,6 @@ const supportedRequestKeys = new Set([
   "service_tier",
   "text",
 ]);
-
-export { modelMessagesToOpenAIResponses } from "./openai-responses-from-model";
-export type {
-  OpenAIResponsesFromModelMessages,
-  OpenAIResponsesModelMessages,
-  OpenAIResponsesProviderOptions,
-  OpenAIResponsesReasoningEffort,
-  OpenAIResponsesReasoningSummary,
-  OpenAIResponsesTransformSettings,
-  OpenAIResponsesTransformTool,
-  OpenAIResponsesWireMetadata,
-} from "./openai-responses-types";
 
 export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest): OpenAIResponsesModelMessages {
   validateModelCompatibility(request);

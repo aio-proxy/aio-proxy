@@ -1,6 +1,10 @@
 import { expect, spyOn, test } from "bun:test";
 
-import { OpenAIResponsesUnsupportedFeatureError, openAIResponsesToModelMessages, parseOpenAIResponses } from "../index";
+import {
+  OpenAIResponsesUnsupportedFeatureError,
+  openAIResponsesToModelMessages,
+  parseOpenAIResponses,
+} from "../../index";
 
 test("converts custom tool history with reversible metadata", () => {
   const request = parseOpenAIResponses({

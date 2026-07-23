@@ -12,7 +12,7 @@ import type {
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../../ai-sdk-bridge";
 
 import { OpenAIResponsesTransformError } from "../../error";
-import { readOpenAIResponsesWireMetadata } from "../../transform/openai-responses-tools";
+import { readOpenAIResponsesWireMetadata } from "../../transform/openai-responses";
 
 export type OpenAIResponsesStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
 export type TextDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "text-delta" }>;

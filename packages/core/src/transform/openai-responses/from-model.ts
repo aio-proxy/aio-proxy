@@ -1,20 +1,20 @@
-import type { ModelMessage } from "../ai-sdk-bridge";
+import type { ModelMessage } from "../../ai-sdk-bridge";
 import type {
   OpenAIResponsesExecutableTool,
   OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
   OpenAIResponsesTextPart,
-} from "../ingress/openai-responses";
+} from "../../ingress/openai-responses";
 import type {
   OpenAIResponsesFromModelMessages,
   OpenAIResponsesToolChoice,
   OpenAIResponsesTransformTool,
   OpenAIResponsesWireMetadata,
-} from "./openai-responses-types";
+} from "./types";
 
-import { OpenAIResponsesTransformError } from "../error";
-import { readOpenAIResponsesWireMetadata } from "./openai-responses-tools";
+import { OpenAIResponsesTransformError } from "../../error";
+import { readOpenAIResponsesWireMetadata } from "./tools";
 
 type UserMessage = Extract<ModelMessage, { role: "user" }>;
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
