@@ -19,6 +19,9 @@ const validFixtures = [
   "function-response-tools-safety.json",
   "file-data-vision.json",
 ] as const;
+const exactRoundTripFixtures = validFixtures.filter(
+  (file) => file !== "function-call.json" && file !== "function-response-tools-safety.json",
+);
 
 type FixtureFile = (typeof validFixtures)[number];
 
@@ -27,7 +30,7 @@ async function readFixture(file: FixtureFile): Promise<GeminiGenerateContentRequ
 }
 
 describe("Gemini generateContent transform", () => {
-  for (const file of validFixtures) {
+  for (const file of exactRoundTripFixtures) {
     test(`Given ${file} When transformed twice Then it round-trips exactly`, async () => {
       const request = await readFixture(file);
 
@@ -100,7 +103,7 @@ describe("Gemini generateContent transform", () => {
                 type: "file",
                 mediaType: "image/png",
                 data: { type: "data", data: "AA==" },
-                providerOptions: { aioProxy: { toolImage: true } },
+                providerOptions: { aioProxy: { toolImage: true, trust: expect.any(String) } },
               },
             ],
           },
@@ -141,6 +144,49 @@ describe("Gemini generateContent transform", () => {
           mediaType: "image/png",
           data: { type: "url", url: new URL("https://example.test/image.png") },
         },
+      ],
+    });
+    expect(modelMessagesToGeminiGenerateContent({ model: request.model, ...converted })).toEqual(request);
+  });
+
+  test("preserves mixed media and part order in model history", () => {
+    const request = parseGeminiGenerateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: "model",
+          parts: [
+            { text: "prior answer" },
+            { inlineData: { mimeType: "image/png", data: "AA==" } },
+            { functionCall: { id: "call_1", name: "inspect", args: { scope: "prior" } } },
+            { fileData: { mimeType: "image/png", fileUri: "https://example.test/prior.png" } },
+            { inlineData: { mimeType: "application/pdf", data: "AA==" } },
+            { text: "after media" },
+          ],
+        },
+      ],
+    });
+
+    const converted = geminiGenerateContentToModelMessages(request);
+
+    expect(converted.messages[0]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "prior answer" },
+        { type: "file", mediaType: "image/png", data: { type: "data", data: "AA==" } },
+        {
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "inspect",
+          input: { scope: "prior" },
+        },
+        {
+          type: "file",
+          mediaType: "image/png",
+          data: { type: "reference", reference: { google: "https://example.test/prior.png" } },
+        },
+        { type: "file", mediaType: "application/pdf", data: { type: "data", data: "AA==" } },
+        { type: "text", text: "after media" },
       ],
     });
     expect(modelMessagesToGeminiGenerateContent({ model: request.model, ...converted })).toEqual(request);

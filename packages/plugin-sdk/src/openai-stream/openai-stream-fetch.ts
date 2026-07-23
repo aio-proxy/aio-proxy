@@ -1,5 +1,6 @@
 import { createContentDecodedReader, type ContentDecodedReader } from "./content-decoding";
 import { createOpenAISseBody, type OpenAIStreamProtocol } from "./sse-terminal";
+import { isTrustedToolImageMarker } from "./tool-image-trust";
 
 export type { OpenAIStreamProtocol } from "./sse-terminal";
 
@@ -97,8 +98,7 @@ function compatibleToolContent(content: string): readonly unknown[] | undefined 
 
 function isMarkedToolImage(value: unknown): value is Readonly<Record<string, unknown>> {
   if (!isRecord(value) || value["type"] !== "file" || !isRecord(value["providerOptions"])) return false;
-  const aioProxy = value["providerOptions"]["aioProxy"];
-  return isRecord(aioProxy) && aioProxy["toolImage"] === true;
+  return isTrustedToolImageMarker(value["providerOptions"]["aioProxy"]);
 }
 
 function compatibleImagePart(part: Readonly<Record<string, unknown>>) {

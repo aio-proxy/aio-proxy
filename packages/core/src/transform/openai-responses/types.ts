@@ -28,8 +28,12 @@ export type OpenAIResponsesWireMetadata = {
   readonly namespaceDescription?: string;
   readonly source?: "request" | "additional_tools";
   readonly outputKind?: "string" | "content";
-  readonly format?: import("../../ai-sdk-bridge").JSONValue;
+  readonly format?: OpenAIResponsesCustomToolFormat;
 };
+
+export type OpenAIResponsesCustomToolFormat =
+  | { readonly type: "text" }
+  | { readonly type: "grammar"; readonly syntax: "regex" | "lark"; readonly definition: string };
 
 export type OpenAIResponsesProviderOptions = {
   readonly openai: {

@@ -13,6 +13,7 @@ test("converts custom tool history with reversible metadata", () => {
       { type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "exec", input: "pwd" },
       { type: "custom_tool_call_output", id: "out_1", call_id: "call_1", output: "done" },
     ],
+    tools: [{ type: "custom", name: "exec" }],
   });
 
   expect(openAIResponsesToModelMessages(request).messages).toEqual([
@@ -35,6 +36,7 @@ test("converts custom tool history with reversible metadata", () => {
                 wireToolName: "exec",
               },
             },
+            openai: { itemId: "ctc_1" },
           },
         },
       ],

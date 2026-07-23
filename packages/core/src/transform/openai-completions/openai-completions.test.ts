@@ -65,7 +65,7 @@ describe("OpenAI Completions transform", () => {
         { type: "text", text: "Describe this image." },
         {
           type: "file",
-          mediaType: "image",
+          mediaType: "image/png",
           data: { type: "url", url: new URL("https://example.com/image.png") },
         },
       ],
@@ -114,7 +114,7 @@ describe("OpenAI Completions transform", () => {
                 data: { type: "data", data: "AA==" },
                 providerOptions: {
                   openai: { imageDetail: "high" },
-                  aioProxy: { toolImage: true },
+                  aioProxy: { toolImage: true, trust: expect.any(String) },
                 },
               },
               { type: "text", text: "after" },
@@ -126,6 +126,65 @@ describe("OpenAI Completions transform", () => {
     expect(modelMessagesToOpenAICompletions({ model: request.model, ...converted }).messages[1]).toEqual(
       request.messages[1],
     );
+  });
+
+  test("emits every tool result as an ordered Chat message", () => {
+    const converted = modelMessagesToOpenAICompletions({
+      model: "gpt-5.6-sol",
+      messages: [
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call_1",
+              toolName: "first",
+              output: { type: "text", value: "first result" },
+            },
+            {
+              type: "tool-result",
+              toolCallId: "call_2",
+              toolName: "second",
+              output: {
+                type: "content",
+                value: [
+                  {
+                    type: "file",
+                    mediaType: "image/png",
+                    data: { type: "data", data: "AA==" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      settings: {},
+    });
+
+    expect(converted.messages).toEqual([
+      { role: "tool", tool_call_id: "call_1", content: "first result" },
+      {
+        role: "tool",
+        tool_call_id: "call_2",
+        content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }],
+      },
+    ]);
+  });
+
+  test("rejects tool approval responses that Chat cannot encode", () => {
+    expect(() =>
+      modelMessagesToOpenAICompletions({
+        model: "gpt-5.6-sol",
+        messages: [
+          {
+            role: "tool",
+            content: [{ type: "tool-approval-response", approvalId: "approval_1", approved: true }],
+          },
+        ],
+        settings: {},
+      }),
+    ).toThrow(new OpenAICompletionsTransformError("messages.0.content.0.type"));
   });
 
   test("rejects a non-HTTP image_url instead of dropping it", () => {

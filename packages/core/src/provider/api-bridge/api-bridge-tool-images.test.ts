@@ -1,3 +1,4 @@
+import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
 import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 import { expect, test } from "bun:test";
 
@@ -42,7 +43,7 @@ test("compatible API bridge rewrites marked tool images", async () => {
             type: "file",
             mediaType: "image/png",
             data: { type: "data", data: "AA==" },
-            providerOptions: { aioProxy: { toolImage: true } },
+            providerOptions: { aioProxy: createToolImageMarker() },
           },
         ]),
       },

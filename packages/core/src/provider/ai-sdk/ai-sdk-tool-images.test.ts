@@ -1,5 +1,6 @@
 import type { ProviderV3 } from "@ai-sdk/provider";
 
+import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
 import { expect, test } from "bun:test";
 
 import type { AiSdkProviderLoadOptions } from "../../index";
@@ -46,7 +47,7 @@ test("configured compatible provider rewrites marked tool images", async () => {
             type: "file",
             mediaType: "image/png",
             data: { type: "data", data: "AA==" },
-            providerOptions: { aioProxy: { toolImage: true } },
+            providerOptions: { aioProxy: createToolImageMarker() },
           },
         ]),
       },

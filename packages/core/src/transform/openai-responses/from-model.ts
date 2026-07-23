@@ -4,7 +4,6 @@ import type {
   OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
-  OpenAIResponsesTextPart,
 } from "../../ingress/openai-responses/index";
 import type {
   OpenAIResponsesFromModelMessages,
@@ -14,11 +13,8 @@ import type {
 } from "./types";
 
 import { OpenAIResponsesTransformError } from "../../error";
+import { assistantResponsesContent, userResponsesContent } from "./from-model-content";
 import { readOpenAIResponsesWireMetadata } from "./tools";
-
-type UserMessage = Extract<ModelMessage, { role: "user" }>;
-type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
-type ResponsesContentInput = UserMessage["content"] | AssistantMessage["content"];
 
 export function modelMessagesToOpenAIResponses({
   model,
@@ -77,27 +73,16 @@ function responsesMessage(message: ModelMessage, messageIndex: number): OpenAIRe
     case "user":
       return {
         role: "user",
-        content: responsesContent(message.content, "input_text"),
+        content: userResponsesContent(message.content, `messages.${messageIndex}.content`),
       };
     case "assistant":
       return {
         role: "assistant",
-        content: responsesContent(message.content, "output_text"),
+        content: assistantResponsesContent(message.content),
       };
     case "tool":
       throw new OpenAIResponsesTransformError(`messages.${messageIndex}.role`);
   }
-}
-
-function responsesContent(
-  content: ResponsesContentInput,
-  type: OpenAIResponsesTextPart["type"],
-): string | OpenAIResponsesTextPart[] {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  return content.flatMap((part) => (part.type === "text" ? [{ type, text: part.text }] : []));
 }
 
 function responsesToolSources(tools: readonly OpenAIResponsesTransformTool[] | undefined): {

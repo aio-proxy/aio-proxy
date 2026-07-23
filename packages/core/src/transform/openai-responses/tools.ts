@@ -4,11 +4,24 @@ import { z } from "zod";
 
 import type { JSONValue } from "../../ai-sdk-bridge";
 import type { OpenAIResponsesExecutableTool, OpenAIResponsesTool } from "../../ingress/openai-responses/index";
-import type { OpenAIResponsesTransformTool, OpenAIResponsesWireMetadata } from "./types";
+import type {
+  OpenAIResponsesCustomToolFormat,
+  OpenAIResponsesTransformTool,
+  OpenAIResponsesWireMetadata,
+} from "./types";
 
 import { OpenAIResponsesTransformError, OpenAIResponsesUnsupportedFeatureError } from "../../error";
 
-const jsonValueSchema = z.json();
+const customToolFormatSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text") }).strict(),
+  z
+    .object({
+      type: z.literal("grammar"),
+      syntax: z.enum(["regex", "lark"]),
+      definition: z.string(),
+    })
+    .strict(),
+]);
 
 export function normalizeOpenAIResponsesTools(
   sources: readonly {
@@ -54,6 +67,16 @@ export function wireProviderOptions(metadata: OpenAIResponsesWireMetadata) {
   return { aioProxy: { openaiResponses: metadata as unknown as Record<string, JSONValue> } };
 }
 
+export function wireToolCallProviderOptions(metadata: OpenAIResponsesWireMetadata) {
+  const openai = {
+    ...(metadata.itemId === undefined ? {} : { itemId: metadata.itemId }),
+    ...(metadata.namespace === undefined ? {} : { namespace: metadata.namespace }),
+  };
+  return Object.keys(openai).length === 0
+    ? wireProviderOptions(metadata)
+    : { ...wireProviderOptions(metadata), openai };
+}
+
 export function readOpenAIResponsesWireMetadata(value: unknown): OpenAIResponsesWireMetadata | undefined {
   if (typeof value !== "object" || value === null || !("aioProxy" in value)) return undefined;
   const aioProxy = value.aioProxy;
@@ -89,7 +112,7 @@ function normalizeTool(
     ...(namespace === undefined ? {} : { namespace: namespace.name }),
     ...(namespace?.description === undefined ? {} : { namespaceDescription: namespace.description }),
     source: source.source,
-    ...(tool.type === "custom" && tool.format !== undefined ? { format: jsonValue(tool.format) } : {}),
+    ...(tool.type === "custom" && tool.format !== undefined ? { format: customToolFormat(tool.format, path) } : {}),
   };
   return {
     type: "function",
@@ -112,7 +135,8 @@ function normalizeTool(
   };
 }
 
-function jsonValue(value: unknown): JSONValue {
-  const parsed = jsonValueSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+function customToolFormat(value: unknown, path: string): OpenAIResponsesCustomToolFormat {
+  const parsed = customToolFormatSchema.safeParse(value);
+  if (!parsed.success) return rejectOpenAIResponsesFeature("custom_tool.format", `${path}.format`);
+  return parsed.data;
 }

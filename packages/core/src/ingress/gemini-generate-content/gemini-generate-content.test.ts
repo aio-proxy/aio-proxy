@@ -98,9 +98,9 @@ describe("GeminiGenerateContentRequestSchema", () => {
     }
   });
 
-  test("Given oversize inlineData with invalid padding When parsed Then size wins over base64 refine", () => {
+  test("Given oversized invalid base64 When schema parses Then base64 validation still fails", () => {
     const data = `${"A".repeat(27_962_028)}====`;
-    const result = safeParseGeminiGenerateContent({
+    const result = GeminiGenerateContentRequestSchema.safeParse({
       model: "gemini-2.5-flash",
       contents: [
         {
@@ -110,11 +110,21 @@ describe("GeminiGenerateContentRequestSchema", () => {
       ],
     });
 
+    expect(result.success).toBe(false);
+  });
+
+  test("Given oversized valid base64 with double padding When parsed Then actual byte count is exact", () => {
+    const actualBytes = inlineLimitBytes + 2;
+    const data = `${"A".repeat(27_962_030)}==`;
+    const result = safeParseGeminiGenerateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/png", data } }] }],
+    });
+
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBeInstanceOf(GeminiInlineDataTooLargeError);
-      expect(result.error.status).toBe(413);
-      expect(result.error.path).toBe("contents.0.parts.0.inlineData.data");
+      expect(result.error.actualBytes).toBe(actualBytes);
     }
   });
 

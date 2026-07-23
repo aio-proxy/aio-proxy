@@ -137,8 +137,10 @@ export async function attemptCandidates<TRequest, TContext>({
           return invocationUnsupported;
         }
         if (invocation === undefined) throw new TypeError("Protocol adapter returned no model invocation");
+        const targetProtocol = model.targetProtocol?.(candidate.modelId);
+        const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol);
         try {
-          assertImageInputSupported(invocation.messages, model.targetProtocol?.(candidate.modelId));
+          assertImageInputSupported(candidateInvocation.messages, targetProtocol);
         } catch (error) {
           const unsupported = adapter.errors.modelUnsupported?.(error);
           if (unsupported === undefined) throw error;
@@ -151,7 +153,7 @@ export async function attemptCandidates<TRequest, TContext>({
           session.finish(finalFailure(base, unsupported.status, "unsupported_feature"));
           return unsupported;
         }
-        const unsupportedProviderTool = invocation.providerTools?.find(
+        const unsupportedProviderTool = candidateInvocation.providerTools?.find(
           (tool) => model.supportsProviderTool?.(tool.type) !== true,
         );
         if (unsupportedProviderTool !== undefined) {
@@ -170,12 +172,14 @@ export async function attemptCandidates<TRequest, TContext>({
           modelId: candidate.modelId,
           stream: model.invoke({
             context: logicalRequest,
-            messages: invocation.messages,
+            messages: candidateInvocation.messages,
             modelId: candidate.modelId,
             signal: rawRequest.signal,
-            ...(invocation.settings === undefined ? {} : { settings: invocation.settings }),
-            ...(invocation.tools === undefined ? {} : { tools: invocation.tools }),
-            ...(invocation.providerTools === undefined ? {} : { providerTools: invocation.providerTools }),
+            ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
+            ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
+            ...(candidateInvocation.providerTools === undefined
+              ? {}
+              : { providerTools: candidateInvocation.providerTools }),
           }),
         });
         const egressContext = {

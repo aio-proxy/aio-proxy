@@ -111,8 +111,10 @@ function assistantPartsToGemini(content: AssistantMessage["content"], path: stri
     }
 
     if (part.type === "tool-call") {
-      return { functionCall: { name: part.toolName, args: part.input } };
+      return { functionCall: { id: part.toolCallId, name: part.toolName, args: part.input } };
     }
+
+    if (part.type === "file") return geminiFilePart(part, `${path}.content.${index}`);
 
     throw new GeminiGenerateContentTransformError(`${path}.content.${index}.type`);
   });
@@ -122,6 +124,7 @@ function functionResponsePart(part: ToolPart, path: string): GeminiPart {
   const output = functionResponseOutput(part.output, path);
   return {
     functionResponse: {
+      id: part.toolCallId,
       name: part.toolName,
       response: output.response,
       ...(output.parts === undefined ? {} : { parts: output.parts }),
@@ -174,6 +177,12 @@ function geminiFilePart(part: FilePart, path: string): GeminiPart {
   }
   if (data.type === "data" && typeof data.data === "string") {
     return { inlineData: { mimeType: part.mediaType, data: data.data } };
+  }
+  if (data.type === "reference") {
+    const fileUri = data.reference["google"];
+    if (typeof fileUri === "string" && fileUri.length > 0) {
+      return { fileData: { mimeType: part.mediaType, fileUri } };
+    }
   }
   throw new GeminiGenerateContentTransformError(`${path}.data`);
 }

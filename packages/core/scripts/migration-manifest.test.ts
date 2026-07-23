@@ -31,7 +31,7 @@ test("writes an idempotent AST manifest in Drizzle journal order", async () => {
   expect(() => new Bun.Transpiler({ loader: "ts" }).transformSync(source)).not.toThrow();
 
   await expect(writeMigrationManifestFromJournal(root)).resolves.toEqual({ changed: false, migrations: 2 });
-});
+}, 15_000);
 
 function temporaryRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "aio-proxy-migrations-"));

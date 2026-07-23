@@ -1,5 +1,6 @@
 import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
 
+import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
 import { expect, test } from "bun:test";
 
 import type { KimiCredential } from "../oauth";
@@ -28,7 +29,7 @@ const toolImagePrompt = [
               data: { type: "data" as const, data: "AA==" },
               providerOptions: {
                 openai: { imageDetail: "low" },
-                aioProxy: { toolImage: true },
+                aioProxy: createToolImageMarker(),
               },
             },
           ],

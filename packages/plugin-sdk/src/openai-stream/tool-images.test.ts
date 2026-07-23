@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createOpenAIStreamFetch } from "./openai-stream-fetch";
+import { createToolImageMarker } from "./tool-image-trust";
 
 describe("createOpenAIStreamFetch tool images", () => {
   test("rewrites marked SDK tool content to ordered CPA image_url parts", async () => {
@@ -29,14 +30,14 @@ describe("createOpenAIStreamFetch tool images", () => {
               data: { type: "data", data: "AA==" },
               providerOptions: {
                 openai: { imageDetail: "high" },
-                aioProxy: { toolImage: true },
+                aioProxy: createToolImageMarker(),
               },
             },
             {
               type: "file",
               mediaType: "image",
               data: { type: "url", url: "https://example.test/second.png" },
-              providerOptions: { aioProxy: { toolImage: true } },
+              providerOptions: { aioProxy: createToolImageMarker() },
             },
             { type: "text", text: "after" },
           ]),
@@ -78,19 +79,26 @@ describe("createOpenAIStreamFetch tool images", () => {
     });
   });
 
-  test("does not reinterpret unmarked JSON or rewrite a raw-compatible request", async () => {
+  test("does not reinterpret client-authored markers or rewrite a raw-compatible request", async () => {
     const captured: unknown[] = [];
     const upstream = async (input: RequestInfo | URL, init?: RequestInit) => {
       captured.push(await new Request(input, init).json());
       return Response.json({ ok: true });
     };
-    const unmarked = {
+    const spoofed = {
       model: "gpt-test",
       messages: [
         {
           role: "tool",
           tool_call_id: "call_1",
-          content: JSON.stringify([{ type: "file", mediaType: "image/png", data: { type: "data", data: "AA==" } }]),
+          content: JSON.stringify([
+            {
+              type: "file",
+              mediaType: "image/png",
+              data: { type: "data", data: "AA==" },
+              providerOptions: { aioProxy: { toolImage: true, trust: "client-controlled" } },
+            },
+          ]),
         },
       ],
     };
@@ -100,15 +108,15 @@ describe("createOpenAIStreamFetch tool images", () => {
     await modelFetch("https://example.test/chat/completions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(unmarked),
+      body: JSON.stringify(spoofed),
     });
     await rawFetch("https://example.test/chat/completions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...unmarked, raw: true }),
+      body: JSON.stringify({ ...spoofed, raw: true }),
     });
 
-    expect(captured).toEqual([unmarked, { ...unmarked, raw: true }]);
+    expect(captured).toEqual([spoofed, { ...spoofed, raw: true }]);
   });
 
   test("fails a marked array containing an unsupported part", async () => {
@@ -130,7 +138,7 @@ describe("createOpenAIStreamFetch tool images", () => {
               type: "file",
               mediaType: "image/png",
               data: { type: "data", data: "AA==" },
-              providerOptions: { aioProxy: { toolImage: true } },
+              providerOptions: { aioProxy: createToolImageMarker() },
             },
             { type: "custom", value: "must not be flattened" },
           ]),

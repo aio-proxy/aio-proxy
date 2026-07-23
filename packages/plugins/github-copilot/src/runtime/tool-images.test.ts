@@ -1,5 +1,6 @@
 import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
 
+import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
 import { expect, test } from "bun:test";
 
 import type { GitHubCopilotCredential } from "../github-api";
@@ -29,7 +30,7 @@ const toolImagePrompt = [
               data: { type: "data" as const, data: "AA==" },
               providerOptions: {
                 openai: { imageDetail: "low" },
-                aioProxy: { toolImage: true },
+                aioProxy: createToolImageMarker(),
               },
             },
           ],

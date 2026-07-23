@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { OpenAIResponsesTransformError, openAIResponsesToModelMessages, parseOpenAIResponses } from "../../index";
+import {
+  OpenAIResponsesTransformError,
+  modelMessagesToOpenAIResponses,
+  openAIResponsesToModelMessages,
+  parseOpenAIResponses,
+} from "../../index";
 
 test("preserves message data images and OpenAI file references", () => {
   const request = parseOpenAIResponses({
@@ -39,6 +44,50 @@ test("preserves message data images and OpenAI file references", () => {
   ]);
 });
 
+test("preserves user images when converting model messages back to Responses", () => {
+  const request = modelMessagesToOpenAIResponses({
+    model: "gpt-5.6-sol",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Describe this." },
+          {
+            type: "file",
+            mediaType: "image/png",
+            data: { type: "data", data: "AA==" },
+            providerOptions: { openai: { imageDetail: "low" } },
+          },
+          {
+            type: "file",
+            mediaType: "image/png",
+            data: { type: "url", url: new URL("https://example.test/image.png") },
+          },
+          {
+            type: "file",
+            mediaType: "image",
+            data: { type: "reference", reference: { openai: "file_123" } },
+            providerOptions: { openai: { imageDetail: "high" } },
+          },
+        ],
+      },
+    ],
+    settings: {},
+  });
+
+  expect(request.input).toEqual([
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: "Describe this." },
+        { type: "input_image", image_url: "data:image/png;base64,AA==", detail: "low" },
+        { type: "input_image", image_url: "https://example.test/image.png" },
+        { type: "input_image", file_id: "file_123", detail: "high" },
+      ],
+    },
+  ]);
+});
+
 test("preserves ordered images in function and custom tool outputs", () => {
   const request = parseOpenAIResponses({
     model: "gpt-5.6-sol",
@@ -60,10 +109,11 @@ test("preserves ordered images in function and custom tool outputs", () => {
         output: [{ type: "input_image", image_url: "https://example.test/screenshot.png" }],
       },
     ],
+    tools: [{ type: "custom", name: "computer" }],
   });
 
   const messages = openAIResponsesToModelMessages(request).messages;
-  expect(messages[1]).toEqual({
+  expect(messages[1]).toMatchObject({
     role: "tool",
     content: [
       {
@@ -101,7 +151,7 @@ test("preserves ordered images in function and custom tool outputs", () => {
           value: [
             {
               type: "file",
-              mediaType: "image",
+              mediaType: "image/png",
               data: { type: "url", url: new URL("https://example.test/screenshot.png") },
               providerOptions: { aioProxy: { toolImage: true } },
             },

@@ -9,4 +9,5 @@ export {
   isHttpUrl,
   isImageMediaType,
   isValidBase64,
+  openAIImageDetail,
 } from "./image-input";

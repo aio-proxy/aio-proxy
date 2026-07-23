@@ -1,3 +1,4 @@
+import { ProviderProtocol } from "@aio-proxy/types";
 import { describe, expect, test } from "bun:test";
 
 import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../index";
@@ -33,24 +34,53 @@ describe("openAIResponsesAdapter", () => {
     expect(openAIResponsesAdapter.modelSse).toBe(writeOpenAIResponsesSSE);
   });
 
-  test("wraps custom tools as metadata-carrying function tools", async () => {
-    const parsed = await openAIResponsesAdapter.parse(
-      new Request("https://proxy.test/v1/responses", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "alias", input: "hello", tools: [{ type: "custom", name: "emit_raw" }] }),
-      }),
-      {},
-    );
+  test("keeps custom tools portable outside the OpenAI Responses target", async () => {
+    const base = await customInvocation();
+    const portableMessage = base.messages[0];
+    const portableTool = base.tools?.emit_raw;
 
-    const customTool = Object.entries(openAIResponsesAdapter.modelInvocation(parsed, {}).tools ?? {}).find(
-      ([name]) => name === "emit_raw",
-    )?.[1];
-    expect(customTool).toMatchObject({
-      type: "function",
-      metadata: {
-        aioProxy: { openaiResponses: { protocol: "openai-responses", wireToolType: "custom" } },
-      },
+    expect(base.messages[0]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: "call_1", toolName: "emit_raw", input: { input: "pwd" } }],
+    });
+    expect(portableTool).toMatchObject({ type: "function" });
+    expect(openAIResponsesAdapter.modelInvocationForTarget(base, ProviderProtocol.Anthropic)).toBe(base);
+
+    const specialized = openAIResponsesAdapter.modelInvocationForTarget(base, ProviderProtocol.OpenAIResponse);
+
+    expect(specialized).not.toBe(base);
+    expect(specialized.messages[0]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: "call_1", toolName: "emit_raw", input: "pwd" }],
+    });
+    expect(base.messages[0]).toBe(portableMessage);
+    expect(base.tools?.emit_raw).toBe(portableTool);
+  });
+
+  test("leaves noncanonical custom input portable during target materialization", async () => {
+    const base = await customInvocation();
+    const assistant = base.messages[0];
+    if (assistant?.role !== "assistant" || typeof assistant.content === "string") {
+      throw new TypeError("Expected custom tool-call history");
+    }
+    const malformed = {
+      ...base,
+      messages: [
+        {
+          ...assistant,
+          content: assistant.content.map((part) =>
+            part.type === "tool-call" ? { ...part, input: { input: 42 } } : part,
+          ),
+        },
+        ...base.messages.slice(1),
+      ],
+    };
+
+    const specialized = openAIResponsesAdapter.modelInvocationForTarget(malformed, ProviderProtocol.OpenAIResponse);
+
+    expect(specialized.messages[0]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "tool-call", input: { input: 42 } }],
     });
   });
 
@@ -79,3 +109,22 @@ describe("openAIResponsesAdapter", () => {
     expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(body);
   });
 });
+
+async function customInvocation() {
+  const parsed = await openAIResponsesAdapter.parse(
+    new Request("https://proxy.test/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "alias",
+        input: [
+          { type: "custom_tool_call", call_id: "call_1", name: "emit_raw", input: "pwd" },
+          { type: "custom_tool_call_output", call_id: "call_1", output: "done" },
+        ],
+        tools: [{ type: "custom", name: "emit_raw" }],
+      }),
+    }),
+    {},
+  );
+  return openAIResponsesAdapter.modelInvocation(parsed, {});
+}

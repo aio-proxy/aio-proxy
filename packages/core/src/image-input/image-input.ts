@@ -1,3 +1,4 @@
+import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
 import { ProviderProtocol } from "@aio-proxy/types";
 
 import type { FilePart, ModelMessage } from "../ai-sdk-bridge";
@@ -49,6 +50,13 @@ export function isImageMediaType(value: string): boolean {
   return value === "image" || fullImageMediaType.test(value);
 }
 
+export function openAIImageDetail(part: FilePart): ImageInputDetail | undefined {
+  const options = part.providerOptions?.["openai"];
+  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
+  const detail = Reflect.get(options, "imageDetail");
+  return detail === "auto" || detail === "low" || detail === "high" ? detail : undefined;
+}
+
 export function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -63,7 +71,7 @@ export function imageFilePart(source: ImageFileSource, options: ImageFilePartOpt
   if (normalized === undefined) return undefined;
   const providerOptions = {
     ...(options.detail === undefined ? {} : { openai: { imageDetail: options.detail } }),
-    ...(options.toolResult === true ? { aioProxy: { toolImage: true as const } } : {}),
+    ...(options.toolResult === true ? { aioProxy: createToolImageMarker() } : {}),
   };
   return {
     type: "file",
@@ -93,9 +101,12 @@ function normalizeSource(source: ImageFileSource): { readonly data: FileData; re
     if (mediaType === undefined || data === undefined || !isValidBase64(data)) return undefined;
     return { mediaType, data: { type: "data", data } };
   }
-  const mediaType = source.mediaType ?? "image";
-  if (!isHttpUrl(source.url) || !isImageMediaType(mediaType)) return undefined;
-  return { mediaType, data: { type: "url", url: new URL(source.url) } };
+  if (!isHttpUrl(source.url)) return undefined;
+  const url = new URL(source.url);
+  const inferredMediaType = Bun.file(url.pathname).type;
+  const mediaType = source.mediaType ?? (fullImageMediaType.test(inferredMediaType) ? inferredMediaType : "image");
+  if (!isImageMediaType(mediaType)) return undefined;
+  return { mediaType, data: { type: "url", url } };
 }
 
 export function imageTargetProtocolForPackage(packageName: string): ProviderProtocol | undefined {
@@ -122,12 +133,12 @@ export function assertImageInputSupported(
     for (const [partIndex, part] of message.content.entries()) {
       const path = `messages.${messageIndex}.content.${partIndex}`;
       if (part.type === "file" && isImageMediaType(part.mediaType)) {
-        assertFileSupported(part, targetProtocol, path, false);
+        assertFileSupported(part, targetProtocol, path, message.role === "assistant" ? "assistant" : "user");
       }
       if (part.type === "tool-result" && part.output.type === "content") {
         for (const [outputIndex, outputPart] of part.output.value.entries()) {
           if (outputPart.type === "file" && isImageMediaType(outputPart.mediaType)) {
-            assertFileSupported(outputPart, targetProtocol, `${path}.output.value.${outputIndex}`, true);
+            assertFileSupported(outputPart, targetProtocol, `${path}.output.value.${outputIndex}`, "tool-result");
           }
         }
       }
@@ -139,21 +150,38 @@ function assertFileSupported(
   part: FilePart,
   targetProtocol: ProviderProtocol | undefined,
   path: string,
-  toolResult: boolean,
+  context: "assistant" | "tool-result" | "user",
 ): void {
+  if (openAIImageDetail(part) !== undefined && targetProtocol !== ProviderProtocol.OpenAIResponse) {
+    throw new ImageInputUnsupportedError("image-detail", path);
+  }
+  if (context === "assistant" && targetProtocol !== ProviderProtocol.Gemini) {
+    throw new ImageInputUnsupportedError("assistant-image", path);
+  }
   const data = part.data;
   if (typeof data !== "object" || data === null || !("type" in data)) return;
+  if (context === "assistant" && data.type === "url") {
+    throw new ImageInputUnsupportedError("gemini-assistant-url", path);
+  }
   if (data.type === "reference") {
-    const openAIReference =
-      targetProtocol === ProviderProtocol.OpenAIResponse &&
-      typeof data.reference["openai"] === "string" &&
-      data.reference["openai"].length > 0;
-    if (!openAIReference || toolResult) throw new ImageInputUnsupportedError("provider-reference", path);
+    const providerReference =
+      context !== "tool-result" &&
+      ((targetProtocol === ProviderProtocol.OpenAIResponse &&
+        typeof data.reference["openai"] === "string" &&
+        data.reference["openai"].length > 0) ||
+        (targetProtocol === ProviderProtocol.Gemini &&
+          typeof data.reference["google"] === "string" &&
+          data.reference["google"].length > 0));
+    if (!providerReference) throw new ImageInputUnsupportedError("provider-reference", path);
     return;
   }
-  if (!toolResult) return;
-  if (targetProtocol === undefined) throw new ImageInputUnsupportedError("unknown-target", path);
-  if (targetProtocol === ProviderProtocol.Gemini && data.type === "url") {
+  if (context === "tool-result" && targetProtocol === undefined && data.type === "url") {
+    throw new ImageInputUnsupportedError("unknown-target", path);
+  }
+  if (context === "tool-result" && targetProtocol === ProviderProtocol.Gemini && data.type === "url") {
     throw new ImageInputUnsupportedError("gemini-tool-url", path);
+  }
+  if (targetProtocol === ProviderProtocol.Gemini && data.type === "url" && part.mediaType === "image") {
+    throw new ImageInputUnsupportedError("gemini-url-mime", path);
   }
 }

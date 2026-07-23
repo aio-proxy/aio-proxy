@@ -133,13 +133,19 @@ test("skips a Gemini candidate for a remote tool-result image and invokes the ne
     role: "tool",
     content: [
       {
+        type: "tool-result",
+        toolCallId: "call_1",
+        toolName: "inspect",
         output: {
           type: "content",
           value: [
             {
               type: "file",
-              mediaType: "image",
+              mediaType: "image/png",
               data: { type: "url", url: new URL("https://example.test/image.png") },
+              providerOptions: {
+                aioProxy: { toolImage: true, trust: expect.any(String) },
+              },
             },
           ],
         },
@@ -151,6 +157,58 @@ test("skips a Gemini candidate for a remote tool-result image and invokes the ne
   ).toEqual([
     { errorCode: "unsupported_feature", outcome: "failure", providerId: "gemini" },
     { errorCode: undefined, outcome: "success", providerId: "anthropic" },
+  ]);
+});
+
+test("skips a Gemini candidate when a user image URL has no MIME subtype", async () => {
+  const gemini = modelProvider({
+    id: "gemini",
+    targetProtocol: ProviderProtocol.Gemini,
+    invoke: () => textStream("must not run"),
+  });
+  const anthropic = modelProvider({
+    id: "anthropic",
+    targetProtocol: ProviderProtocol.Anthropic,
+    invoke: () => textStream("fallback response"),
+  });
+  const route = defineProviderRouteSource([gemini, anthropic]);
+  const rawRequest = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: REQUESTED_MODEL,
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "https://example.test/media?id=123" }],
+        },
+      ],
+    }),
+  });
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest,
+    source: route.source,
+  });
+  await settleRecording();
+
+  expect(response.status).toBe(200);
+  expect(gemini.calls.model).toHaveLength(0);
+  expect(anthropic.calls.model).toHaveLength(1);
+  expect(anthropic.calls.model[0]?.messages).toMatchObject([
+    {
+      role: "user",
+      content: [
+        {
+          type: "file",
+          mediaType: "image",
+          data: { type: "url", url: new URL("https://example.test/media?id=123") },
+        },
+      ],
+    },
   ]);
 });
 

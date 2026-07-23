@@ -7,19 +7,13 @@ const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
 
 function base64ByteLength(data: string): number {
-  const padding = (data.endsWith("==") ? 2 : 0) + (data.endsWith("=") ? 1 : 0);
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
-}
-
-function isValidInlineDataBase64(data: string): boolean {
-  // Oversized payloads must reach the dedicated 413 gate even when padding/charset is invalid.
-  if (base64ByteLength(data) > inlineDataLimitBytes) return true;
-  return isValidBase64(data);
 }
 
 const inlineDataSchema = z.object({
   mimeType: idSchema,
-  data: z.string().min(1).refine(isValidInlineDataBase64),
+  data: z.string().min(1).refine(isValidBase64),
 });
 
 const fileDataSchema = z.object({
@@ -38,11 +32,13 @@ const functionResponsePartSchema = z
   .strict();
 
 const functionCallSchema = z.object({
+  id: idSchema.optional(),
   name: idSchema,
   args: z.unknown().optional(),
 });
 
 const functionResponseSchema = z.object({
+  id: idSchema.optional(),
   name: idSchema,
   response: z.unknown(),
   parts: z.array(functionResponsePartSchema).min(1).optional(),

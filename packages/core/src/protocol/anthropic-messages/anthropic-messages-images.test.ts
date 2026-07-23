@@ -180,9 +180,9 @@ describe("anthropicMessagesAdapter image boundaries", () => {
                 { type: "text", text: "result" },
                 {
                   type: "file",
-                  mediaType: "image",
+                  mediaType: "image/png",
                   data: { type: "url", url: new URL("https://example.test/result.png") },
-                  providerOptions: { aioProxy: { toolImage: true } },
+                  providerOptions: { aioProxy: { toolImage: true, trust: expect.any(String) } },
                 },
               ],
             },

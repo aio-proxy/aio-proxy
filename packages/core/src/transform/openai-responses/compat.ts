@@ -9,6 +9,7 @@ import {
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
   wireProviderOptions,
+  wireToolCallProviderOptions,
 } from "./tools";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
@@ -115,7 +116,7 @@ export function openAIResponsesInputMessages(items: readonly OpenAIResponsesInpu
           toolCallId: item.call_id,
           toolName: flattenedName,
           input: parseArguments(item.arguments, `input.${index}.arguments`),
-          ...(metadata === undefined ? {} : { providerOptions: wireProviderOptions(metadata) }),
+          ...(metadata === undefined ? {} : { providerOptions: wireToolCallProviderOptions(metadata) }),
         });
         previous = "call";
         break;
@@ -136,7 +137,7 @@ export function openAIResponsesInputMessages(items: readonly OpenAIResponsesInpu
           toolCallId: item.call_id,
           toolName: item.name,
           input: { input: item.input },
-          providerOptions: wireProviderOptions(metadata),
+          providerOptions: wireToolCallProviderOptions(metadata),
         });
         previous = "call";
         break;

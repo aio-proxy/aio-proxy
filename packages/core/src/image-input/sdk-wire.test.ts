@@ -5,6 +5,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { expect, test } from "bun:test";
 
+import { imageFilePart } from ".";
+
 const prompt = [
   {
     role: "assistant" as const,
@@ -126,9 +128,29 @@ test("Gemini 3 emits inlineData inside functionResponse.parts", async () => {
   });
 });
 
+test("Gemini sends an ordinary remote image URL without downloading it", async () => {
+  const capture = requestCapture();
+  const model = createGoogleGenerativeAI({ apiKey: "test", fetch: capture.fetch }).languageModel(
+    "gemini-3-flash-preview",
+  );
+  const image = imageFilePart({ type: "url", url: "https://example.test/photo.png" });
+  if (image === undefined) throw new Error("image fixture was rejected");
+
+  const body = await capture.generate(model, [{ role: "user", content: [image] }]);
+
+  expect(body).toMatchObject({
+    contents: [
+      {
+        role: "user",
+        parts: [{ fileData: { mimeType: "image/png", fileUri: "https://example.test/photo.png" } }],
+      },
+    ],
+  });
+});
+
 function requestCapture(): {
   readonly fetch: typeof globalThis.fetch;
-  readonly generate: (model: LanguageModelV4) => Promise<unknown>;
+  readonly generate: (model: LanguageModelV4, input?: LanguageModelV4CallOptions["prompt"]) => Promise<unknown>;
 } {
   let body: unknown;
   const captureError = new Error("request captured");
@@ -138,9 +160,9 @@ function requestCapture(): {
   };
   return {
     fetch: fetcher as typeof globalThis.fetch,
-    async generate(model) {
+    async generate(model, input = prompt) {
       try {
-        await model.doGenerate({ prompt });
+        await model.doGenerate({ prompt: input });
       } catch (error) {
         if (!hasCause(error, captureError)) throw error;
       }

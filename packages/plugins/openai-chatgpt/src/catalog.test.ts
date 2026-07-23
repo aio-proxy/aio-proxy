@@ -19,8 +19,8 @@ test("keeps supported visible and hidden Codex models in priority order", async 
     });
 
   await expect(discoverOpenAIChatGPTModels(new AbortController().signal)).resolves.toEqual([
-    { id: "visible", displayName: "Visible" },
-    { id: "hidden", displayName: "Hidden" },
+    { id: "visible", displayName: "Visible", metadata: { protocol: "openai-response" } },
+    { id: "hidden", displayName: "Hidden", metadata: { protocol: "openai-response" } },
   ]);
   expect(CHATGPT_CATALOG_TTL_MS).toBe(6 * 60 * 60_000);
 });

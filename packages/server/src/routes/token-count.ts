@@ -1,6 +1,7 @@
 import type { LogicalRequestContext, TokenCountInput } from "@aio-proxy/plugin-sdk";
 
 import {
+  assertImageInputSupported,
   type ModelInvocation,
   type ProtocolAdapter,
   RequestBodyTooLargeError,
@@ -112,7 +113,16 @@ async function countCandidates<TRequest, TContext>({
   for (const candidate of candidates) {
     const provider = candidate.provider;
     const count = provider.tokenCount;
-    if (count === undefined || lacksProviderTool(provider, invocation)) continue;
+    if (count === undefined) continue;
+    const targetProtocol = provider.model?.targetProtocol?.(candidate.modelId);
+    const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol);
+    try {
+      assertImageInputSupported(candidateInvocation.messages, targetProtocol);
+    } catch (error) {
+      if (adapter.errors.modelUnsupported?.(error) === undefined) throw error;
+      continue;
+    }
+    if (lacksProviderTool(provider, candidateInvocation)) continue;
     throwIfCountAborted(session, rawRequest.signal);
     const startedAt = performance.now();
     try {
@@ -121,7 +131,7 @@ async function countCandidates<TRequest, TContext>({
         modelId: candidate.modelId,
         request: rawRequest.clone(),
         context,
-        invocation,
+        invocation: candidateInvocation,
       } satisfies TokenCountInput);
       rawRequest.signal.throwIfAborted();
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {

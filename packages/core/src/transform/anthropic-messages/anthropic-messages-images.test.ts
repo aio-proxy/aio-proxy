@@ -62,9 +62,9 @@ test("preserves ordered user and tool-result images as canonical file parts", ()
             { type: "text", text: "tool-before" },
             {
               type: "file",
-              mediaType: "image",
+              mediaType: "image/png",
               data: { type: "url", url: new URL("https://example.test/result.png") },
-              providerOptions: { aioProxy: { toolImage: true } },
+              providerOptions: { aioProxy: { toolImage: true, trust: expect.any(String) } },
             },
             { type: "text", text: "tool-after" },
           ],

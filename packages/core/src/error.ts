@@ -150,7 +150,14 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
-export type ImageInputUnsupportedReason = "gemini-tool-url" | "provider-reference" | "unknown-target";
+export type ImageInputUnsupportedReason =
+  | "assistant-image"
+  | "gemini-assistant-url"
+  | "gemini-tool-url"
+  | "gemini-url-mime"
+  | "image-detail"
+  | "provider-reference"
+  | "unknown-target";
 
 export class ImageInputUnsupportedError extends AioProxyError {
   readonly code = "UNSUPPORTED_IMAGE_INPUT";

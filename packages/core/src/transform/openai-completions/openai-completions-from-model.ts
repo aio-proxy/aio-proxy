@@ -1,9 +1,9 @@
 import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
-import type { ImageInputDetail } from "../../image-input";
 import type { OpenAICompletionsRequest } from "../../ingress/openai-completions";
 import type { OpenAICompletionsFromModelMessages } from "./openai-completions";
 
 import { OpenAICompletionsTransformError } from "../../error";
+import { openAIImageDetail, type ImageInputDetail } from "../../image-input";
 
 export function modelMessagesToOpenAICompletions({
   model,
@@ -13,7 +13,7 @@ export function modelMessagesToOpenAICompletions({
 }: OpenAICompletionsFromModelMessages): OpenAICompletionsRequest {
   return {
     model,
-    messages: messages.map((message, messageIndex) => {
+    messages: messages.flatMap<OpenAICompletionsRequest["messages"][number]>((message, messageIndex) => {
       switch (message.role) {
         case "system":
           return { role: "system", content: message.content };
@@ -29,15 +29,17 @@ export function modelMessagesToOpenAICompletions({
             ...(tool_calls.length > 0 ? { tool_calls } : {}),
           };
         }
-        case "tool": {
-          const part = message.content[0];
-          return {
-            role: "tool",
-            tool_call_id: part?.type === "tool-result" ? part.toolCallId : "",
-            content:
-              part?.type === "tool-result" ? toolContent(part, `messages.${messageIndex}.content.0.output.value`) : "",
-          };
-        }
+        case "tool":
+          return message.content.map((part, partIndex) => {
+            if (part.type !== "tool-result") {
+              throw new OpenAICompletionsTransformError(`messages.${messageIndex}.content.${partIndex}.type`);
+            }
+            return {
+              role: "tool",
+              tool_call_id: part.toolCallId,
+              content: toolContent(part, `messages.${messageIndex}.content.${partIndex}.output.value`),
+            };
+          });
       }
       throw new OpenAICompletionsTransformError(`messages.${messageIndex}.role`);
     }),
@@ -103,13 +105,6 @@ function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
     type: "image_url",
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
-}
-
-function openAIImageDetail(part: FilePart): ImageInputDetail | undefined {
-  const options = part.providerOptions?.["openai"];
-  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
-  const detail = Reflect.get(options, "imageDetail");
-  return detail === "auto" || detail === "low" || detail === "high" ? detail : undefined;
 }
 
 function toolContent(
