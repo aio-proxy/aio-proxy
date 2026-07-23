@@ -13,13 +13,19 @@ export type OpenAIStreamFetchOptions = {
 
 export function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
+  fetcher?: typeof globalThis.fetch,
+  options?: OpenAIStreamFetchOptions,
+): typeof globalThis.fetch;
+export function createOpenAIStreamFetch(
+  protocol: OpenAIStreamProtocol,
   fetcher: typeof globalThis.fetch = globalThis.fetch,
-  options: OpenAIStreamFetchOptions = {},
+  options?: OpenAIStreamFetchOptions,
 ): typeof globalThis.fetch {
+  const resolvedOptions = options ?? {};
   const streamFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const initialRequest = new Request(input, init);
     const request =
-      protocol === "openai-compatible" && options.rewriteToolImages === true
+      protocol === "openai-compatible" && resolvedOptions.rewriteToolImages === true
         ? await rewriteCompatibleToolImages(initialRequest)
         : initialRequest;
     const headers = new Headers(request.headers);
