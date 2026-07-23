@@ -147,33 +147,40 @@ export async function acquireNpmInstallLock(
   let failedGeneration: string | null = null;
   let attempts = 0;
   while (attempts < RETRIES && Date.now() < deadline) {
-    const acquired = await withRecoveryFence(
-      lockPath,
-      async (assertFence) => {
-        try {
-          const handle = await open(lockPath, "wx", 0o600);
-          let identity: Stats | undefined;
-          try {
-            await handle.writeFile(content);
-            await handle.sync();
-            identity = await handle.stat();
-            await assertFence();
-            return { handle, identity };
-          } catch (error) {
-            await handle.close().catch(() => {});
-            if (identity !== undefined) {
-              await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
-            }
-            throw error;
-          }
-        } catch (error) {
-          if (!isNodeError(error, "EEXIST")) throw error;
-          return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
+    let acquired: { handle: Awaited<ReturnType<typeof open>>; identity: Stats } | null | false;
+    try {
+      const handle = await open(lockPath, "wx", 0o600);
+      let identity: Stats | undefined;
+      try {
+        await handle.writeFile(content);
+        await handle.sync();
+        identity = await handle.stat();
+        const currentText = await readFile(lockPath, "utf8");
+        if (currentText !== content) {
+          await removeIfUnchanged(lockPath, content, identity, async () => {}).catch(() => {});
+          await handle.close().catch(() => {});
+          acquired = null;
+        } else {
+          acquired = { handle, identity };
         }
-      },
-      deadline,
-      timeoutError,
-    );
+      } catch (error) {
+        await handle.close().catch(() => {});
+        if (identity !== undefined) {
+          await removeIfUnchanged(lockPath, content, identity, async () => {}).catch(() => {});
+        }
+        throw error;
+      }
+    } catch (error) {
+      if (!isNodeError(error, "EEXIST")) throw error;
+      // Only serialize the stale-unlink mutation; live owners must not block on recovery fences.
+      const recovered = await withRecoveryFence(
+        lockPath,
+        (assertFence) => recoverStaleLock(lockPath, assertFence),
+        deadline,
+        timeoutError,
+      );
+      acquired = recovered ? null : false;
+    }
     if (acquired === null) continue;
     if (acquired === false) {
       const generation = await readFile(lockPath, "utf8").catch(() => null);
@@ -205,17 +212,9 @@ export async function acquireNpmInstallLock(
       }
     };
     const assertOwnership = async () => {
-      await withRecoveryFence(
-        lockPath,
-        async (assertFence) => {
-          await assertFence();
-          await verifyOwnership();
-          const now = new Date();
-          await handle.utimes(now, now);
-        },
-        Date.now() + waitMs,
-        timeoutError,
-      );
+      await verifyOwnership();
+      const now = new Date();
+      await handle.utimes(now, now);
     };
     return {
       async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
@@ -230,12 +229,7 @@ export async function acquireNpmInstallLock(
           heartbeat = undefined;
         }
         try {
-          await withRecoveryFence(
-            lockPath,
-            (assertFence) => removeIfUnchanged(lockPath, content, identity, assertFence),
-            Date.now() + waitMs,
-            timeoutError,
-          );
+          await removeIfUnchanged(lockPath, content, identity, async () => {});
         } finally {
           await handle.close().catch(() => {});
         }
