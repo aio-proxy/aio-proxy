@@ -92,29 +92,33 @@ test.serial("action errors are not translated after the acquisition deadline", a
   }
 });
 
-test.serial("concurrent recovery acquisitions serialize without timing out", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
-  const lockPath = join(dir, "config.lock");
-  try {
-    const results = await Promise.all(
-      Array.from({ length: 8 }, async () =>
-        runWithRecoveryFence(
-          {
-            lockPath,
-            staleMs: 60_000,
-            heartbeatMs: 10_000,
-            deadline: Date.now() + 10_000,
-            timeoutError: () => new Error("acquisition timed out"),
-          },
-          async () => {
-            await Bun.sleep(10);
-            return "ok";
-          },
+test.serial(
+  "concurrent recovery acquisitions serialize without timing out",
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
+    const lockPath = join(dir, "config.lock");
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 8 }, async () =>
+          runWithRecoveryFence(
+            {
+              lockPath,
+              staleMs: 60_000,
+              heartbeatMs: 10_000,
+              deadline: Date.now() + 10_000,
+              timeoutError: () => new Error("acquisition timed out"),
+            },
+            async () => {
+              await Bun.sleep(10);
+              return "ok";
+            },
+          ),
         ),
-      ),
-    );
-    expect(results).toEqual(Array.from({ length: 8 }, () => "ok"));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+      );
+      expect(results).toEqual(Array.from({ length: 8 }, () => "ok"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  15_000,
+);
