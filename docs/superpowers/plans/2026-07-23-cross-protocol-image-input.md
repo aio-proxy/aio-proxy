@@ -167,7 +167,7 @@ readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 - Consumes: the existing `PluginDescriptor.setup()` and registered `OAuthAdapter.createRuntime()` contracts.
 - Produces: a clean-build artifact whose `dist/plugin.js` imports `./runtime/index.js` and whose runtime exposes raw OpenAI Responses capability.
 
-- [ ] **Step 1: Add the artifact assertions**
+- [x] **Step 1: Add the artifact assertions**
 
 In `oauth.smoke.ts`, add the two type imports below the existing imports, then add this test and helper below the current client-ID test. Do not modify the current client-ID test. The code is complete and must be copied exactly:
 
@@ -243,7 +243,7 @@ async function registeredAdapter(
 
 Do not replace `ChatGPTCredential` with `never` or remove `logger.child()`: both make the helper fail strict type checking.
 
-- [ ] **Step 2: Run the artifact test and record the current artifact state**
+- [x] **Step 2: Run the artifact test and record the current artifact state**
 
 Run:
 
@@ -254,7 +254,7 @@ rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test:artifact
 
 Expected: record whether the artifact assertion currently passes or fails. This is not a red-test gate: `build` is clean and may already remove the stale `dist/runtime.js` that appears only after `rslib --watch --no-clean`. Continue to Step 3 either way. The post-fix clean-build assertion in Step 4 is the regression gate.
 
-- [ ] **Step 3: Make the source import unambiguous**
+- [x] **Step 3: Make the source import unambiguous**
 
 Replace the import in `src/plugin.ts`:
 
@@ -264,7 +264,7 @@ import { createOpenAIChatGPTRuntime } from "./runtime/index";
 
 Do not delete `dist/` manually. The package's ordinary `build` is clean; its `dev` script intentionally remains `--no-clean`.
 
-- [ ] **Step 4: Rebuild and verify the artifact**
+- [x] **Step 4: Rebuild and verify the artifact**
 
 Run:
 
@@ -275,7 +275,7 @@ rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test:artifact
 
 Expected: both commands exit 0; the artifact assertion sees `./runtime/index.js`, Responses raw resolution is defined, and incompatible raw resolution is undefined.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 rtk git add packages/plugins/openai-chatgpt/src/plugin.ts packages/plugins/openai-chatgpt/oauth.smoke.ts
