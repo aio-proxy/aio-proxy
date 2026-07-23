@@ -297,7 +297,7 @@ rtk git commit -m "fix(openai-chatgpt): resolve runtime entry explicitly" -m "Co
 - Consumes: AI SDK `FilePart` and `ModelMessage`, plus `ProviderProtocol`.
 - Produces: every interface in “Locked Cross-Task Interfaces”, `ImageInputUnsupportedError`, and a marker that Task 8 can recognize without guessing arbitrary JSON.
 
-- [ ] **Step 1: Write the failing constructor and preflight tests**
+- [x] **Step 1: Write the failing constructor and preflight tests**
 
 Create `image-input.test.ts` with these behavior checks:
 
@@ -425,7 +425,7 @@ describe("image compatibility preflight", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify the missing module failure**
+- [x] **Step 2: Run the test and verify the missing module failure**
 
 Run:
 
@@ -435,7 +435,7 @@ rtk bun test packages/core/src/image-input/image-input.test.ts
 
 Expected: FAIL because `packages/core/src/image-input/index.ts` and `ImageInputUnsupportedError` do not exist.
 
-- [ ] **Step 3: Add the typed, non-sensitive compatibility error**
+- [x] **Step 3: Add the typed, non-sensitive compatibility error**
 
 Add to `packages/core/src/error.ts` immediately before the protocol transform errors:
 
@@ -456,7 +456,7 @@ export class ImageInputUnsupportedError extends AioProxyError {
 
 The error must never accept the original source string or Provider file ID.
 
-- [ ] **Step 4: Implement the canonical constructors and marker**
+- [x] **Step 4: Implement the canonical constructors and marker**
 
 Create `image-input.ts` with the following implementation. Keep the regexes private and do not add alternative encodings:
 
@@ -604,7 +604,7 @@ function assertFileSupported(
 }
 ```
 
-- [ ] **Step 5: Add the barrel and root exports**
+- [x] **Step 5: Add the barrel and root exports**
 
 Create `packages/core/src/image-input/index.ts`:
 
@@ -641,7 +641,7 @@ export {
 
 Merge the error export into the existing `./error` export block instead of creating a duplicate block.
 
-- [ ] **Step 6: Run focused tests and type checking**
+- [x] **Step 6: Run focused tests and type checking**
 
 Run:
 
@@ -653,7 +653,7 @@ rtk bun run check
 
 Expected: all commands exit 0. The test must prove exact paths and must not log any source value.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 rtk git add packages/core/src/image-input packages/core/src/error.ts packages/core/src/index.ts

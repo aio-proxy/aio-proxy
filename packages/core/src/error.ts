@@ -150,6 +150,19 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
+export type ImageInputUnsupportedReason = "gemini-tool-url" | "provider-reference" | "unknown-target";
+
+export class ImageInputUnsupportedError extends AioProxyError {
+  readonly code = "UNSUPPORTED_IMAGE_INPUT";
+
+  constructor(
+    readonly reason: ImageInputUnsupportedReason,
+    readonly path: string,
+  ) {
+    super("ImageInputUnsupportedError", `Image input cannot be represented: ${reason} at ${path}`);
+  }
+}
+
 export class OpenAICompletionsTransformError extends AioProxyError {
   constructor(readonly path: string) {
     super("OpenAICompletionsTransformError", `Invalid OpenAI Completions request at ${path}`);

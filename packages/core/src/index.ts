@@ -35,6 +35,8 @@ export {
   DatabaseSchemaTooNewError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,
+  ImageInputUnsupportedError,
+  type ImageInputUnsupportedReason,
   MigrationHashMismatchError,
   NpmInstallError,
   NpmLockError,
@@ -48,6 +50,18 @@ export {
   RouterModelCollisionError,
   RouterModelNotFoundError,
 } from "./error";
+
+export {
+  assertImageInputSupported,
+  imageFilePart,
+  imageTargetProtocolForPackage,
+  type ImageFilePartOptions,
+  type ImageFileSource,
+  type ImageInputDetail,
+  isHttpUrl,
+  isImageMediaType,
+  isValidBase64,
+} from "./image-input";
 export {
   type AnthropicCacheControl,
   type AnthropicMessagesRequest,
