@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { discoverKimiCatalog } from "./catalog";
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies, refreshKimiCredential } from "./oauth";
 import { readKimiQuota } from "./quota";
-import { createKimiDynamicFetch } from "./runtime";
+import { createKimiDynamicFetch } from "./runtime/index";
 
 const credential: KimiCredential = {
   accessToken: "old-access",
