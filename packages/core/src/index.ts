@@ -180,9 +180,9 @@ export {
   type OpenAICompletionsModelMessages,
   type OpenAICompletionsTransformSettings,
   type OpenAICompletionsTransformTool,
+  modelMessagesToOpenAICompletions,
   openAICompletionsToModelMessages,
 } from "./transform/openai-completions";
-export { modelMessagesToOpenAICompletions } from "./transform/openai-completions-from-model";
 export {
   modelMessagesToOpenAIResponses,
   type OpenAIResponsesFromModelMessages,

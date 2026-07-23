@@ -1161,7 +1161,7 @@ Use `apply_patch` move directives for the three moves. Do not leave compatibilit
 - Consumes: Task 2 `imageFilePart()` and marker.
 - Produces: canonical Chat user images and `ToolResultPart.output.type === "content"` for array-valued tool images; reverse conversion emits the selected CPA-compatible Chat syntax.
 
-- [ ] **Step 1: Move the modules, repair exports, and add image preservation regressions**
+- [x] **Step 1: Move the modules, repair exports, and add image preservation regressions**
 
 First use `apply_patch` move directives for all three moves listed above. Then create `packages/core/src/transform/openai-completions/index.ts`:
 
@@ -1346,7 +1346,7 @@ test("rejects an OpenAI file reference that Chat cannot encode", () => {
 
 Add `OpenAICompletionsTransformError` to the test imports. This regression forbids converting a Provider reference to text, dropping it, or guessing a URL.
 
-- [ ] **Step 2: Run the moved test and observe image loss**
+- [x] **Step 2: Run the moved test and observe image loss**
 
 Run:
 
@@ -1356,7 +1356,7 @@ rtk bun test packages/core/src/transform/openai-completions/openai-completions.t
 
 Expected: FAIL because user images are filtered and tool arrays become text-only output.
 
-- [ ] **Step 3: Replace the Chat ingress content mappers**
+- [x] **Step 3: Replace the Chat ingress content mappers**
 
 In the moved `openai-completions.ts`, the imports are already complete from Step 1. Replace the aliases below `AssistantPart` with these aliases:
 
@@ -1509,7 +1509,7 @@ case "tool":
   };
 ```
 
-- [ ] **Step 4: Preserve images in the reverse Chat transform**
+- [x] **Step 4: Preserve images in the reverse Chat transform**
 
 In the moved `openai-completions-from-model.ts`, imports are already complete from Step 1. Replace `openAIContent()` and add all three helpers below it:
 
@@ -1584,7 +1584,7 @@ case "tool": {
 }
 ```
 
-- [ ] **Step 5: Run Chat tests, core tests, and checking**
+- [x] **Step 5: Run Chat tests, core tests, and checking**
 
 Run:
 
@@ -1596,7 +1596,7 @@ rtk bun run check
 
 Expected: all commands exit 0; `valid-content-parts.json` round-trips with its image, string/text-only tool results remain `output.type === "text"`, and array tool images become marked content output.
 
-- [ ] **Step 6: Confirm no stale module paths remain**
+- [x] **Step 6: Confirm no stale module paths remain**
 
 Run:
 
@@ -1606,7 +1606,7 @@ rtk rg -n 'transform/openai-completions-from-model|_test/transform/openai-comple
 
 Expected: no output.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```bash
 rtk git add -A -- packages/core/src/transform/openai-completions packages/core/src/transform/openai-completions.ts packages/core/src/transform/openai-completions-from-model.ts packages/core/_test/transform/openai-completions.test.ts packages/core/src/index.ts
