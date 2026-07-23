@@ -4208,7 +4208,7 @@ rtk git commit -m "feat(server): preflight candidate image compatibility" -m "Co
 
 ## Final Verification
 
-- [ ] **Step 1: Format only the files changed by these tasks**
+- [x] **Step 1: Format only the files changed by these tasks**
 
 Run the formatter only over the explicit implementation scopes in this plan:
 
@@ -4254,7 +4254,7 @@ rtk bunx oxfmt --write \
 
 Expected: formatter exits 0. Review `rtk git diff --stat` afterward; only paths listed in the command may change.
 
-- [ ] **Step 2: Run all focused image tests together**
+- [x] **Step 2: Run all focused image tests together**
 
 ```bash
 rtk bun test packages/core/src/image-input packages/core/src/ingress/openai-responses packages/core/src/transform/openai-responses packages/core/src/transform/openai-completions packages/core/src/ingress/anthropic-messages packages/core/src/transform/anthropic-messages packages/core/src/protocol/anthropic-messages packages/core/src/ingress/gemini-generate-content packages/core/src/transform/gemini-generate-content
@@ -4266,7 +4266,7 @@ rtk bun run --filter @aio-proxy/plugin-openai-chatgpt test:artifact
 
 Expected: every command exits 0.
 
-- [ ] **Step 3: Run the repository gate**
+- [x] **Step 3: Run the repository gate**
 
 ```bash
 rtk bun run preflight
@@ -4274,7 +4274,7 @@ rtk bun run preflight
 
 Expected: oxlint, oxfmt check, and every workspace unit test pass.
 
-- [ ] **Step 4: Audit the acceptance criteria against artifacts**
+- [x] **Step 4: Audit the acceptance criteria against artifacts**
 
 Run:
 
