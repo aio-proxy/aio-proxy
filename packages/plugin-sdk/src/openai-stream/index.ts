@@ -1,1 +1,5 @@
-export { createOpenAIStreamFetch, type OpenAIStreamProtocol } from "./openai-stream-fetch";
+export {
+  createOpenAIStreamFetch,
+  type OpenAIStreamFetchOptions,
+  type OpenAIStreamProtocol,
+} from "./openai-stream-fetch";

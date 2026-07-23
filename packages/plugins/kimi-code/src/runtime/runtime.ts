@@ -2,9 +2,10 @@ import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from "@aio-proxy/
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenAIStreamFetch } from "@aio-proxy/plugin-sdk/openai-stream";
 
-import { kimiIdentityHeaders } from "./headers";
-import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from "./oauth";
+import { kimiIdentityHeaders } from "../headers";
+import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from "../oauth";
 
 type KimiProtocol = Extract<ProtocolId, "openai-compatible" | "anthropic">;
 
@@ -15,11 +16,14 @@ export async function createKimiRuntime(
   dependencies: KimiOAuthDependencies = {},
 ): Promise<OAuthRuntimeResult> {
   const dynamicFetch = createKimiDynamicFetch(context.credentials, dependencies);
+  const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
+    rewriteToolImages: true,
+  });
   const openai = createOpenAICompatible({
     name: "kimi-code.openai-compatible",
     baseURL: "https://api.kimi.com/coding/v1",
     apiKey: PLACEHOLDER,
-    fetch: dynamicFetch,
+    fetch: compatibleFetch,
   });
   const anthropic = createAnthropic({
     name: "kimi-code.anthropic",

@@ -2947,7 +2947,7 @@ rtk git commit -m "test(core): lock native tool image encodings" -m "Co-authored
 - Consumes: Task 2 marker after `@ai-sdk/openai-compatible` JSON-stringifies a canonical tool content array.
 - Produces: CPA wire `role: "tool", content: [{ type: "image_url", image_url: { url, detail? } }]` for configured compatible providers, API bridges, GitHub Copilot, and Kimi Code. Raw requests remain byte-semantically unmodified.
 
-- [ ] **Step 1: Add focused fetch-wrapper regressions**
+- [x] **Step 1: Add focused fetch-wrapper regressions**
 
 Create `packages/plugin-sdk/src/openai-stream/tool-images.test.ts` with this header, followed by the three tests below, then one final `});` to close the wrapper:
 
@@ -3109,7 +3109,7 @@ test("fails a marked array containing an unsupported part", async () => {
 
 Both calls pass the wrapper's real JSON gate; the absence of a rewrite must come from the missing marker or opt-in, not from a missing header.
 
-- [ ] **Step 2: Run the wrapper tests and observe the missing option**
+- [x] **Step 2: Run the wrapper tests and observe the missing option**
 
 Run:
 
@@ -3119,7 +3119,7 @@ rtk bun test packages/plugin-sdk/src/openai-stream/tool-images.test.ts
 
 Expected: FAIL because the third argument and rewrite do not exist.
 
-- [ ] **Step 3: Add the opt-in model-path rewrite**
+- [x] **Step 3: Add the opt-in model-path rewrite**
 
 Add this exported option type and update the function signature:
 
@@ -3249,7 +3249,7 @@ The rewritten body is created from parsed JSON only after an internal marker is 
 
 If a marked array contains any part other than valid text or a valid marked image, `compatibleToolContent()` must keep throwing `TypeError`. Do not convert that error to `ImageInputUnsupportedError` or an inbound 4xx/501. It is a model-path/provider failure and must continue through the existing `AiSdkProviderError` handling so the candidate loop can try the next Provider.
 
-- [ ] **Step 4: Opt in only from AI SDK compatible package paths**
+- [x] **Step 4: Opt in only from AI SDK compatible package paths**
 
 In `packages/core/src/provider/openai-stream-fetch.ts`, change only the compatible package branch:
 
@@ -3312,7 +3312,7 @@ test("preserves marked tool content on compatible raw passthrough", async () => 
 });
 ```
 
-- [ ] **Step 5: Add configured-provider and API-bridge assertions**
+- [x] **Step 5: Add configured-provider and API-bridge assertions**
 
 Create `packages/core/src/provider/ai-sdk/ai-sdk-tool-images.test.ts` exactly. This keeps the existing 201-line general test focused and below the 300-line limit:
 
@@ -3467,7 +3467,7 @@ test("compatible API bridge rewrites marked tool images", async () => {
 });
 ```
 
-- [ ] **Step 6: Wrap only the GitHub Copilot compatible delegate**
+- [x] **Step 6: Wrap only the GitHub Copilot compatible delegate**
 
 Move the GitHub runtime source and legacy test to the paths in the Files list. Create `packages/plugins/github-copilot/src/runtime/index.ts`:
 
@@ -3592,7 +3592,7 @@ function validCredential(): GitHubCopilotCredential {
 
 The existing raw resolver test remains in moved `runtime.test.ts`; it proves marked or unmarked raw bodies do not enter this delegate.
 
-- [ ] **Step 7: Wrap only the Kimi compatible delegate**
+- [x] **Step 7: Wrap only the Kimi compatible delegate**
 
 Move the Kimi runtime source and test to the paths in the Files list. Create `packages/plugins/kimi-code/src/runtime/index.ts`:
 
@@ -3723,7 +3723,7 @@ function context(credential: KimiCredential, modelCatalog: ModelCatalog) {
 }
 ```
 
-- [ ] **Step 8: Run all compatible-path tests**
+- [x] **Step 8: Run all compatible-path tests**
 
 Run:
 
@@ -3736,7 +3736,7 @@ rtk bun run check
 
 Expected: all commands exit 0. The marked model body is rewritten in all four model-path seams; unmarked JSON and raw requests are unchanged.
 
-- [ ] **Step 9: Commit Task 8**
+- [x] **Step 9: Commit Task 8**
 
 ```bash
 rtk git add -A -- packages/plugin-sdk/src/openai-stream packages/core/src/provider/openai-stream-fetch.ts packages/core/src/provider/api/api-openai-stream.test.ts packages/core/src/provider/ai-sdk/ai-sdk-tool-images.test.ts packages/core/src/provider/api-bridge/api-bridge-tool-images.test.ts packages/plugins/github-copilot/src/runtime packages/plugins/github-copilot/src/runtime.ts packages/plugins/github-copilot/_test/runtime.test.ts packages/plugins/kimi-code/src/runtime packages/plugins/kimi-code/src/runtime.ts packages/plugins/kimi-code/src/runtime.test.ts

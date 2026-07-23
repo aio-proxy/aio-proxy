@@ -3,13 +3,14 @@ import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from "@aio-proxy/
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenAIStreamFetch } from "@aio-proxy/plugin-sdk/openai-stream";
 
 import {
   copilotHeaders,
   currentGitHubCopilotCredential,
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
-} from "./github-api";
+} from "../github-api";
 
 const PLACEHOLDER_BASE_URL = "https://api.githubcopilot.com";
 const PLACEHOLDER_CREDENTIAL = "dynamic-credential";
@@ -18,11 +19,14 @@ export async function createGitHubCopilotRuntime(
   context: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>,
 ): Promise<OAuthRuntimeResult> {
   const dynamicFetch = createDynamicFetch(context.credentials);
+  const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
+    rewriteToolImages: true,
+  });
   const openAICompatible = createOpenAICompatible({
     name: "github-copilot.openai-compatible",
     baseURL: PLACEHOLDER_BASE_URL,
     apiKey: PLACEHOLDER_CREDENTIAL,
-    fetch: dynamicFetch,
+    fetch: compatibleFetch,
   });
   const anthropic = createAnthropic({
     name: "github-copilot.anthropic",
