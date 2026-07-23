@@ -61,16 +61,29 @@ export function modelMessagesToOpenAICompletions({
   };
 }
 
-function openAIContent(content: ModelMessage["content"], path: string) {
+type OpenAITextContent = { readonly type: "text"; readonly text: string };
+type OpenAIImageUrlContent = {
+  readonly type: "image_url";
+  readonly image_url: { readonly url: string; readonly detail?: ImageInputDetail };
+};
+type OpenAIUserContentPart = OpenAITextContent | OpenAIImageUrlContent;
+
+function openAIContent(content: ModelMessage["content"], path: string): string | OpenAIUserContentPart[] {
   if (typeof content === "string") return content;
-  return content.flatMap((part, index) => {
-    if (part.type === "text") return [{ type: "text" as const, text: part.text }];
-    if (part.type === "file") return [imageUrlContent(part, `${path}.${index}`)];
-    return [];
-  });
+  const parts: OpenAIUserContentPart[] = [];
+  for (const [index, part] of content.entries()) {
+    if (part.type === "text") {
+      parts.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (part.type === "file") {
+      parts.push(imageUrlContent(part, `${path}.${index}`));
+    }
+  }
+  return parts;
 }
 
-function imageUrlContent(part: FilePart, path: string) {
+function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
   if (part.mediaType !== "image" && !part.mediaType.startsWith("image/")) {
     throw new OpenAICompletionsTransformError(`${path}.mediaType`);
   }
@@ -87,13 +100,13 @@ function imageUrlContent(part: FilePart, path: string) {
   if (url === undefined) throw new OpenAICompletionsTransformError(`${path}.data`);
   const detail = openAIImageDetail(part);
   return {
-    type: "image_url" as const,
+    type: "image_url",
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
 }
 
 function openAIImageDetail(part: FilePart): ImageInputDetail | undefined {
-  const options = part.providerOptions?.openai;
+  const options = part.providerOptions?.["openai"];
   if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
   const detail = Reflect.get(options, "imageDetail");
   return detail === "auto" || detail === "low" || detail === "high" ? detail : undefined;
@@ -102,11 +115,11 @@ function openAIImageDetail(part: FilePart): ImageInputDetail | undefined {
 function toolContent(
   part: Extract<Extract<ModelMessage, { role: "tool" }>["content"][number], { type: "tool-result" }>,
   path: string,
-) {
+): string | OpenAIUserContentPart[] {
   if (part.output.type === "text") return part.output.value;
   if (part.output.type === "content") {
-    return part.output.value.map((value, index) => {
-      if (value.type === "text") return { type: "text" as const, text: value.text };
+    return part.output.value.map((value, index): OpenAIUserContentPart => {
+      if (value.type === "text") return { type: "text", text: value.text };
       if (value.type === "file") return imageUrlContent(value, `${path}.${index}`);
       throw new OpenAICompletionsTransformError(`${path}.${index}.type`);
     });

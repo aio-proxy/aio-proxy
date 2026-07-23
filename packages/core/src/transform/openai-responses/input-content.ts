@@ -1,9 +1,9 @@
-import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
+import type { ModelMessage } from "../../ai-sdk-bridge";
 import type { OpenAIResponsesInputMessage, OpenAIResponsesToolOutputPart } from "../../ingress/openai-responses/index";
 import type { OpenAIResponsesWireMetadata } from "./types";
 
 import { OpenAIResponsesTransformError } from "../../error";
-import { imageFilePart } from "../../image-input";
+import { imageFilePart, type ImageFilePart } from "../../image-input";
 import { rejectOpenAIResponsesFeature, warnOpenAIResponsesDegradation, wireProviderOptions } from "./tools";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
@@ -15,7 +15,7 @@ type UserPart = Exclude<UserMessage["content"], string>[number];
 type MessagePart = Extract<UserPart | AssistantPart, { type: "file" | "text" }>;
 type InputImagePart = Extract<OpenAIResponsesToolOutputPart, { type: "input_image" }>;
 
-function openAIImagePart(part: InputImagePart, path: string, toolResult: boolean): FilePart {
+function openAIImagePart(part: InputImagePart, path: string, toolResult: boolean): ImageFilePart {
   const image =
     part.image_url !== undefined
       ? imageFilePart(

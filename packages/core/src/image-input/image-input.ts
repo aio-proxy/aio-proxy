@@ -4,6 +4,8 @@ import type { FilePart, ModelMessage } from "../ai-sdk-bridge";
 
 import { ImageInputUnsupportedError } from "../error";
 
+type FileData = Extract<FilePart["data"], { type: string }>;
+
 export type ImageInputDetail = "auto" | "low" | "high";
 
 export type ImageFileSource =
@@ -14,6 +16,14 @@ export type ImageFileSource =
 export type ImageFilePartOptions = {
   readonly detail?: ImageInputDetail;
   readonly toolResult?: boolean;
+};
+
+/** Tagged FilePart produced by image constructors; `data` is always FileData (not bare shorthand). */
+export type ImageFilePart = {
+  readonly type: "file";
+  readonly mediaType: string;
+  readonly data: FileData;
+  readonly providerOptions?: Exclude<FilePart["providerOptions"], undefined>;
 };
 
 const fullImageMediaType = /^image\/[A-Za-z0-9!#$&^_.+-]+$/u;
@@ -48,7 +58,7 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
-export function imageFilePart(source: ImageFileSource, options: ImageFilePartOptions = {}): FilePart | undefined {
+export function imageFilePart(source: ImageFileSource, options: ImageFilePartOptions = {}): ImageFilePart | undefined {
   const normalized = normalizeSource(source);
   if (normalized === undefined) return undefined;
   const providerOptions = {
@@ -63,7 +73,7 @@ export function imageFilePart(source: ImageFileSource, options: ImageFilePartOpt
   };
 }
 
-function normalizeSource(source: ImageFileSource): Pick<FilePart, "data" | "mediaType"> | undefined {
+function normalizeSource(source: ImageFileSource): { readonly data: FileData; readonly mediaType: string } | undefined {
   if (source.type === "base64") {
     if (!fullImageMediaType.test(source.mediaType) || !isValidBase64(source.data)) return undefined;
     return { mediaType: source.mediaType, data: { type: "data", data: source.data } };

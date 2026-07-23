@@ -2,13 +2,12 @@ import type { ModelMessage } from "../../ai-sdk-bridge";
 import type { OpenAICompletionsRequest } from "../../ingress/openai-completions";
 
 import { OpenAICompletionsTransformError } from "../../error";
-import { imageFilePart } from "../../image-input";
+import { imageFilePart, type ImageFilePart } from "../../image-input";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
-type UserMessage = Extract<ModelMessage, { role: "user" }>;
-type UserPart = Exclude<UserMessage["content"], string>[number];
-type ContentPart = Extract<UserPart, { type: "file" | "text" }>;
+type ContentTextPart = { readonly type: "text"; readonly text: string };
+type ContentPart = ContentTextPart | ImageFilePart;
 type TextPart = Extract<AssistantPart, { type: "text" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
 type ToolResultPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
@@ -149,11 +148,13 @@ function contentParts(
   if (!Array.isArray(content)) {
     return typeof content === "string" && content !== "" ? [{ type: "text", text: content }] : [];
   }
-  return content.flatMap((part, index) => {
+  const parts: ContentPart[] = [];
+  for (const [index, part] of content.entries()) {
     if (part.type === "text" && textKey in part && typeof part[textKey] === "string") {
-      return [{ type: "text" as const, text: part[textKey] }];
+      parts.push({ type: "text", text: part[textKey] });
+      continue;
     }
-    if (part.type !== "image_url") return [];
+    if (part.type !== "image_url") continue;
     const payload = Reflect.get(part, "image_url");
     const url =
       typeof payload === "object" && payload !== null && !Array.isArray(payload)
@@ -171,8 +172,9 @@ function contentParts(
     }
     const image = imageFilePart({ type: "url", url }, { ...(detail === undefined ? {} : { detail }), toolResult });
     if (image === undefined) throw new OpenAICompletionsTransformError(`${path}.${index}.image_url.url`);
-    return [image];
-  });
+    parts.push(image);
+  }
+  return parts;
 }
 
 function toolOutput(
@@ -181,7 +183,7 @@ function toolOutput(
 ): ToolResultPart["output"] {
   if (!Array.isArray(content)) return { type: "text", value: textContent(content, path) };
   const value = contentParts(content, path, true);
-  if (value.every((part): part is TextPart => part.type === "text")) {
+  if (value.every((part): part is ContentTextPart => part.type === "text")) {
     return { type: "text", value: value.map((part) => part.text).join("") };
   }
   return { type: "content", value };

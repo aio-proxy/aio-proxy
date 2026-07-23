@@ -1,4 +1,3 @@
-import type { FilePart } from "../../ai-sdk-bridge";
 import type {
   AnthropicCacheControl,
   AnthropicImageBlock,
@@ -22,7 +21,7 @@ import type {
 } from "./types";
 
 import { AnthropicMessagesTransformError } from "../../error";
-import { imageFilePart } from "../../image-input";
+import { imageFilePart, type ImageFilePart } from "../../image-input";
 import { anthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
 export function convertAnthropicMessagesToModelMessages(
@@ -86,7 +85,7 @@ function userContentToModelParts(
   content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
   toolNames: ReadonlyMap<string, string>,
   path: string,
-): string | readonly (TextPart | FilePart | ToolResultPart)[] {
+): string | readonly (TextPart | ImageFilePart | ToolResultPart)[] {
   return typeof content === "string"
     ? content
     : content.map((part, index) => {
@@ -170,7 +169,7 @@ function toolResultPart(
   };
 }
 
-function anthropicImagePart(part: AnthropicImageBlock, path: string, toolResult: boolean): FilePart {
+function anthropicImagePart(part: AnthropicImageBlock, path: string, toolResult: boolean): ImageFilePart {
   const image =
     part.source.type === "base64"
       ? imageFilePart({ type: "base64", mediaType: part.source.media_type, data: part.source.data }, { toolResult })

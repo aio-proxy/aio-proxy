@@ -1,9 +1,9 @@
-import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
+import type { ModelMessage } from "../../ai-sdk-bridge";
 import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content/index";
 import type { GeminiGenerateContentModelMessages } from "./gemini-generate-content-types";
 
 import { GeminiGenerateContentTransformError } from "../../error";
-import { imageFilePart, isImageMediaType } from "../../image-input";
+import { imageFilePart, isImageMediaType, type ImageFilePart } from "../../image-input";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
@@ -135,7 +135,7 @@ function toolResultPart(part: GeminiPart, contentIndex: number, partIndex: numbe
   };
 }
 
-function inlineDataFile(inlineData: InlineData, path: string, toolResult: boolean): FilePart {
+function inlineDataFile(inlineData: InlineData, path: string, toolResult: boolean): ImageFilePart {
   const image = imageFilePart(
     { type: "base64", mediaType: inlineData.mimeType, data: inlineData.data },
     { toolResult },
