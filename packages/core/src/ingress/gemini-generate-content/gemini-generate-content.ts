@@ -1,14 +1,30 @@
 import { z } from "zod";
 
-import { GeminiInlineDataTooLargeError } from "../error";
+import { GeminiInlineDataTooLargeError } from "../../error";
+import { isHttpUrl, isImageMediaType, isValidBase64 } from "../../image-input";
 
 const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
 
 const inlineDataSchema = z.object({
   mimeType: idSchema,
-  data: z.string().min(1),
+  data: z.string().min(1).refine(isValidBase64),
 });
+
+const fileDataSchema = z.object({
+  mimeType: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+  fileUri: z.string().refine(isHttpUrl),
+});
+
+const functionResponseInlineDataSchema = inlineDataSchema.extend({
+  mimeType: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+});
+
+const functionResponsePartSchema = z
+  .object({
+    inlineData: functionResponseInlineDataSchema,
+  })
+  .strict();
 
 const functionCallSchema = z.object({
   name: idSchema,
@@ -18,18 +34,20 @@ const functionCallSchema = z.object({
 const functionResponseSchema = z.object({
   name: idSchema,
   response: z.unknown(),
+  parts: z.array(functionResponsePartSchema).min(1).optional(),
 });
 
 const partSchema = z
   .object({
     text: z.string().optional(),
     inlineData: inlineDataSchema.optional(),
+    fileData: fileDataSchema.optional(),
     functionCall: functionCallSchema.optional(),
     functionResponse: functionResponseSchema.optional(),
   })
   .strict()
   .superRefine((part, ctx) => {
-    const count = [part.text, part.inlineData, part.functionCall, part.functionResponse].filter(
+    const count = [part.text, part.inlineData, part.fileData, part.functionCall, part.functionResponse].filter(
       (value) => value !== undefined,
     ).length;
 
@@ -138,19 +156,30 @@ function inlineDataTooLarge(request: GeminiGenerateContentRequest): GeminiInline
   for (const [contentIndex, content] of request.contents.entries()) {
     for (const [partIndex, part] of content.parts.entries()) {
       if (part.inlineData !== undefined) {
-        const actualBytes = base64ByteLength(part.inlineData.data);
-        if (actualBytes > inlineDataLimitBytes) {
-          return new GeminiInlineDataTooLargeError(
-            `contents.${contentIndex}.parts.${partIndex}.inlineData.data`,
-            inlineDataLimitBytes,
-            actualBytes,
-          );
-        }
+        const error = oversizedInlineData(
+          part.inlineData.data,
+          `contents.${contentIndex}.parts.${partIndex}.inlineData.data`,
+        );
+        if (error !== undefined) return error;
+      }
+      for (const [responsePartIndex, responsePart] of (part.functionResponse?.parts ?? []).entries()) {
+        const error = oversizedInlineData(
+          responsePart.inlineData.data,
+          `contents.${contentIndex}.parts.${partIndex}.functionResponse.parts.${responsePartIndex}.inlineData.data`,
+        );
+        if (error !== undefined) return error;
       }
     }
   }
 
   return undefined;
+}
+
+function oversizedInlineData(data: string, path: string): GeminiInlineDataTooLargeError | undefined {
+  const actualBytes = base64ByteLength(data);
+  return actualBytes > inlineDataLimitBytes
+    ? new GeminiInlineDataTooLargeError(path, inlineDataLimitBytes, actualBytes)
+    : undefined;
 }
 
 function base64ByteLength(data: string): number {

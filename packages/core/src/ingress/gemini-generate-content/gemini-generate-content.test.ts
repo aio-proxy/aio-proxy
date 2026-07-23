@@ -6,9 +6,9 @@ import {
   GeminiInlineDataTooLargeError,
   parseGeminiGenerateContent,
   safeParseGeminiGenerateContent,
-} from "../../src/index";
+} from "../../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/gemini-generate-content`;
+const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/gemini-generate-content`;
 const inlineLimitBytes = 20 * 1024 * 1024;
 
 const validFixtures = [
@@ -17,6 +17,7 @@ const validFixtures = [
   "inline-data-vision.json",
   "function-call.json",
   "function-response-tools-safety.json",
+  "file-data-vision.json",
 ] as const;
 
 async function readFixture(file: string): Promise<unknown> {
@@ -104,5 +105,33 @@ describe("GeminiGenerateContentRequestSchema", () => {
         contents: [{ role: "user", parts: [{ unknown: true }] }],
       }),
     ).toThrow(ZodError);
+  });
+
+  test("rejects oversize inlineData nested in functionResponse.parts", () => {
+    const data = "A".repeat(Math.ceil((inlineLimitBytes + 1) / 3) * 4);
+    const result = safeParseGeminiGenerateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "inspect",
+                response: { ok: true },
+                parts: [{ inlineData: { mimeType: "image/png", data } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(GeminiInlineDataTooLargeError);
+      expect(result.error.status).toBe(413);
+      expect(result.error.path).toBe("contents.0.parts.0.functionResponse.parts.0.inlineData.data");
+    }
   });
 });

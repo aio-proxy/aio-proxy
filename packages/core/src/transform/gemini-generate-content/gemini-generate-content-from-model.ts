@@ -1,11 +1,12 @@
-import type { FilePart, ModelMessage } from "../ai-sdk-bridge";
-import type { GeminiGenerateContentRequest } from "../ingress/gemini-generate-content";
+import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
+import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content";
 import type {
   GeminiGenerateContentFromModelMessages,
   GeminiGenerateContentTool,
 } from "./gemini-generate-content-types";
 
-import { GeminiGenerateContentTransformError } from "../error";
+import { GeminiGenerateContentTransformError } from "../../error";
+import { isImageMediaType } from "../../image-input";
 
 type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
 type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
@@ -13,6 +14,8 @@ type UserMessage = Extract<ModelMessage, { role: "user" }>;
 type ToolPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
 type GeminiPart = GeminiGenerateContentRequest["contents"][number]["parts"][number];
 type GeminiContent = GeminiGenerateContentRequest["contents"][number];
+type GeminiFunctionResponse = NonNullable<GeminiPart["functionResponse"]>;
+type NonContentToolOutput = Exclude<ToolPart["output"], { type: "content" }>;
 
 export function modelMessagesToGeminiGenerateContent({
   model,
@@ -64,7 +67,7 @@ function messageToContent(message: ModelMessage, index: number): GeminiContent {
       role: "user",
       parts: message.content.map((part, partIndex) => {
         if (part.type === "tool-result") {
-          return functionResponsePart(part);
+          return functionResponsePart(part, `messages.${index}.content.${partIndex}.output`);
         }
         throw new GeminiGenerateContentTransformError(`messages.${index}.content.${partIndex}.type`);
       }),
@@ -91,14 +94,7 @@ function userPartsToGemini(content: UserMessage["content"], path: string): Gemin
       return { text: part.text };
     }
 
-    if (part.type === "file") {
-      return {
-        inlineData: {
-          mimeType: part.mediaType,
-          data: fileData(part, `${path}.content.${index}.data`),
-        },
-      };
-    }
+    if (part.type === "file") return geminiFilePart(part, `${path}.content.${index}`);
 
     throw new GeminiGenerateContentTransformError(`${path}.content.${index}.type`);
   });
@@ -122,46 +118,80 @@ function assistantPartsToGemini(content: AssistantMessage["content"], path: stri
   });
 }
 
-function functionResponsePart(part: ToolPart): GeminiPart {
+function functionResponsePart(part: ToolPart, path: string): GeminiPart {
+  const output = functionResponseOutput(part.output, path);
   return {
     functionResponse: {
       name: part.toolName,
-      response: toolOutput(part),
+      response: output.response,
+      ...(output.parts === undefined ? {} : { parts: output.parts }),
     },
   };
 }
 
-function fileData(part: FilePart, path: string): string {
-  if (typeof part.data === "string") {
-    return part.data;
-  }
-
-  if ("type" in part.data && part.data.type === "data") {
-    const data = part.data.data;
-    if (typeof data === "string") {
-      return data;
+function functionResponseOutput(
+  output: ToolPart["output"],
+  path: string,
+): {
+  readonly response: unknown;
+  readonly parts?: GeminiFunctionResponse["parts"];
+} {
+  if (output.type !== "content") return { response: toolOutput(output) };
+  const text = output.value.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  const parts = output.value.flatMap((part, index) => {
+    if (part.type === "text") return [];
+    if (part.type !== "file") {
+      throw new GeminiGenerateContentTransformError(`${path}.value.${index}.type`);
     }
-  }
-
-  throw new GeminiGenerateContentTransformError(path);
+    if (part.mediaType === "image" || !isImageMediaType(part.mediaType)) {
+      throw new GeminiGenerateContentTransformError(`${path}.value.${index}.mediaType`);
+    }
+    const data = part.data;
+    if (
+      typeof data !== "object" ||
+      data === null ||
+      !("type" in data) ||
+      data.type !== "data" ||
+      typeof data.data !== "string"
+    ) {
+      throw new GeminiGenerateContentTransformError(`${path}.value.${index}.data`);
+    }
+    return [{ inlineData: { mimeType: part.mediaType, data: data.data } }];
+  });
+  return {
+    response: parseJson(text),
+    ...(parts.length === 0 ? {} : { parts }),
+  };
 }
 
-function toolOutput(part: ToolPart): unknown {
-  switch (part.output.type) {
+function geminiFilePart(part: FilePart, path: string): GeminiPart {
+  const data = part.data;
+  if (typeof data !== "object" || data === null || !("type" in data)) {
+    throw new GeminiGenerateContentTransformError(`${path}.data`);
+  }
+  if (data.type === "url") {
+    return { fileData: { mimeType: part.mediaType, fileUri: data.url.toString() } };
+  }
+  if (data.type === "data" && typeof data.data === "string") {
+    return { inlineData: { mimeType: part.mediaType, data: data.data } };
+  }
+  throw new GeminiGenerateContentTransformError(`${path}.data`);
+}
+
+function toolOutput(output: NonContentToolOutput): unknown {
+  switch (output.type) {
     case "text":
-      return parseJson(part.output.value);
+      return parseJson(output.value);
     case "json":
-      return part.output.value;
+      return output.value;
     case "execution-denied":
-      return { error: part.output.reason ?? "execution denied" };
+      return { error: output.reason ?? "execution denied" };
     case "error-text":
-      return { error: part.output.value };
+      return { error: output.value };
     case "error-json":
-      return part.output.value;
-    case "content":
-      return part.output.value;
+      return output.value;
     default:
-      return assertNever(part.output);
+      return assertNever(output);
   }
 }
 

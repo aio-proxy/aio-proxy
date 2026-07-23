@@ -2276,7 +2276,7 @@ In moved tests, import from `../../index` and use fixture root `../../../_test/f
 - Consumes: Task 2 `imageFilePart()`, `isHttpUrl()`, `isImageMediaType()`, and `isValidBase64()`.
 - Produces: canonical URL files for Gemini `fileData`, canonical marked tool images for `functionResponse.parts`, exact reverse wire mapping, and nested 20 MiB validation.
 
-- [ ] **Step 1: Add the fileData fixture and multimodal function response**
+- [x] **Step 1: Add the fileData fixture and multimodal function response**
 
 Create `file-data-vision.json` exactly:
 
@@ -2315,7 +2315,7 @@ Add this property beside `response` inside the existing function response fixtur
 
 Add `file-data-vision.json` to both moved test files' `validFixtures` arrays.
 
-- [ ] **Step 2: Add the failing Gemini transform assertions**
+- [x] **Step 2: Add the failing Gemini transform assertions**
 
 In the moved transform test, add:
 
@@ -2361,7 +2361,7 @@ output: {
 
 The existing round-trip loop must continue to cover the modified fixture exactly.
 
-- [ ] **Step 3: Add the nested inline-size regression**
+- [x] **Step 3: Add the nested inline-size regression**
 
 In the moved ingress test, add:
 
@@ -2395,7 +2395,7 @@ test("rejects oversize inlineData nested in functionResponse.parts", () => {
 });
 ```
 
-- [ ] **Step 4: Run the moved tests and observe schema failures**
+- [x] **Step 4: Run the moved tests and observe schema failures**
 
 Run:
 
@@ -2405,7 +2405,7 @@ rtk bun test packages/core/src/ingress/gemini-generate-content/gemini-generate-c
 
 Expected: FAIL because `fileData` and `functionResponse.parts` are rejected.
 
-- [ ] **Step 5: Extend and validate the Gemini part schemas**
+- [x] **Step 5: Extend and validate the Gemini part schemas**
 
 In the moved ingress implementation, import the Task 2 validators. Change `inlineDataSchema.data` to `z.string().min(1).refine(isValidBase64)`, then add:
 
@@ -2436,7 +2436,7 @@ const functionResponseSchema = z.object({
 
 Add `fileData: fileDataSchema.optional()` to `partSchema` and include `part.fileData` in its exact-one count. Do not count nested `functionResponse.parts` as a top-level variant.
 
-- [ ] **Step 6: Reuse the existing 20 MiB guard for nested data**
+- [x] **Step 6: Reuse the existing 20 MiB guard for nested data**
 
 Extract this private checker below `inlineDataTooLarge()`:
 
@@ -2470,7 +2470,7 @@ for (const [responsePartIndex, responsePart] of (part.functionResponse?.parts ??
 
 Do not change `inlineDataLimitBytes`.
 
-- [ ] **Step 7: Convert Gemini inbound fileData and function-response images**
+- [x] **Step 7: Convert Gemini inbound fileData and function-response images**
 
 In the moved transform implementation, import `FilePart` with `ModelMessage`, and import `imageFilePart` plus `isImageMediaType` from `../../image-input`. Add this alias:
 
@@ -2553,7 +2553,7 @@ return {
 
 This keeps the old text output contract when no image exists.
 
-- [ ] **Step 8: Reverse URL/data files and multimodal function responses**
+- [x] **Step 8: Reverse URL/data files and multimodal function responses**
 
 In the moved `gemini-generate-content-from-model.ts`, add this value import after the existing type imports:
 
@@ -2672,7 +2672,7 @@ return functionResponsePart(part, `messages.${index}.content.${partIndex}.output
 
 Remote tool-result URLs must throw here. They are handled as candidate-level incompatibility by Task 9, not downloaded or stringified.
 
-- [ ] **Step 9: Create export-only barrels**
+- [x] **Step 9: Create export-only barrels**
 
 Create ingress `index.ts`:
 
@@ -2695,7 +2695,7 @@ export type {
 
 Remove both old re-export blocks (`modelMessagesToGeminiGenerateContent` and the four public types) from inside the moved implementation so the barrel is the only public entry.
 
-- [ ] **Step 10: Run Gemini tests and checking**
+- [x] **Step 10: Run Gemini tests and checking**
 
 Run:
 
@@ -2707,7 +2707,7 @@ rtk bun run check
 
 Expected: all commands exit 0; both fixtures round-trip exactly, and nested oversized data returns the existing 413-capable error with the nested path.
 
-- [ ] **Step 11: Confirm legacy paths are gone and commit Task 6**
+- [x] **Step 11: Confirm legacy paths are gone and commit Task 6**
 
 Run:
 

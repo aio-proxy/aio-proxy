@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from "../../src/index";
+import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from "../../index";
 
 import {
   GeminiGenerateContentTransformError,
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
   parseGeminiGenerateContent,
-} from "../../src/index";
+} from "../../index";
 
-const fixtureRoot = `${import.meta.dir}/../fixtures/gemini-generate-content`;
+const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/gemini-generate-content`;
 
 const validFixtures = [
   "simple-text.json",
@@ -17,6 +17,7 @@ const validFixtures = [
   "inline-data-vision.json",
   "function-call.json",
   "function-response-tools-safety.json",
+  "file-data-vision.json",
 ] as const;
 
 type FixtureFile = (typeof validFixtures)[number];
@@ -89,11 +90,19 @@ describe("Gemini generateContent transform", () => {
           toolCallId: "gemini-response-get_weather-0-0",
           toolName: "get_weather",
           output: {
-            type: "text",
-            value: JSON.stringify({
-              temperature: "18C",
-              condition: "rain",
-            }),
+            type: "content",
+            value: [
+              {
+                type: "text",
+                text: JSON.stringify({ temperature: "18C", condition: "rain" }),
+              },
+              {
+                type: "file",
+                mediaType: "image/png",
+                data: { type: "data", data: "AA==" },
+                providerOptions: { aioProxy: { toolImage: true } },
+              },
+            ],
           },
         },
       ],
@@ -117,5 +126,23 @@ describe("Gemini generateContent transform", () => {
         model: "",
       }),
     ).toThrow(new GeminiGenerateContentTransformError("model"));
+  });
+
+  test("converts fileData URLs to canonical URL file parts", async () => {
+    const request = await readFixture("file-data-vision.json");
+    const converted = geminiGenerateContentToModelMessages(request);
+
+    expect(converted.messages[0]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "Describe this remote image." },
+        {
+          type: "file",
+          mediaType: "image/png",
+          data: { type: "url", url: new URL("https://example.test/image.png") },
+        },
+      ],
+    });
+    expect(modelMessagesToGeminiGenerateContent({ model: request.model, ...converted })).toEqual(request);
   });
 });
