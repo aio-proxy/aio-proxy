@@ -4,7 +4,7 @@ import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NpmLockError } from ".";
+import { NpmLockError } from "./error";
 import { acquireNpmInstallLock } from "./npm-lock";
 
 async function waitForFile(path: string): Promise<void> {
@@ -15,7 +15,7 @@ async function waitForFile(path: string): Promise<void> {
   }
 }
 
-describe("acquireNpmInstallLock", () => {
+describe.serial("acquireNpmInstallLock", () => {
   test("Given ps is unavailable When lock owner is alive Then lock is not recycled", async () => {
     // Given
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-live-lock-"));

@@ -109,6 +109,7 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
   let identity: Stats;
   try {
     const starttime = await processStarttime(process.pid);
+    await mkdir(dirname(pendingPath), { recursive: true, mode: 0o700 });
     const pending = await open(pendingPath, "wx", 0o600);
     try {
       await pending.writeFile(
@@ -139,9 +140,14 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
   heartbeat.unref?.();
   let closed = false;
   const assertOwned = async () => {
-    const [record, metadata] = await Promise.all([readFile(path, "utf8").then(parseMarker), stat(path)]);
-    if (record?.owner !== owner || metadata.dev !== identity.dev || metadata.ino !== identity.ino) {
-      throw new Error("Lock recovery ownership lost");
+    try {
+      const [record, metadata] = await Promise.all([readFile(path, "utf8").then(parseMarker), stat(path)]);
+      if (record?.owner !== owner || metadata.dev !== identity.dev || metadata.ino !== identity.ino) {
+        throw new Error("Lock recovery ownership lost");
+      }
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) throw new Error("Lock recovery ownership lost");
+      throw error;
     }
   };
   return {
@@ -187,10 +193,20 @@ export async function acquireRecoveryFence(input: {
       continue;
     }
     signal?.throwIfAborted();
-    const recovery = await createRecoveryFence(lockPath, heartbeatMs);
+    let recovery: RecoveryFence & { path: string };
+    try {
+      recovery = await createRecoveryFence(lockPath, heartbeatMs);
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) {
+        await abortableDelay(25 + Math.floor(Math.random() * 25), signal);
+        continue;
+      }
+      throw error;
+    }
     try {
       if (await recoveryActive(lockPath, staleMs, ownerIsAlive, recovery.path)) {
         await recovery.close().catch(() => {});
+        await abortableDelay(25 + Math.floor(Math.random() * 25), signal);
         continue;
       }
       signal?.throwIfAborted();
@@ -198,6 +214,13 @@ export async function acquireRecoveryFence(input: {
       return recovery;
     } catch (error) {
       await recovery.close().catch(() => {});
+      if (
+        (error instanceof Error && error.message === "Lock recovery ownership lost") ||
+        isNodeError(error, "ENOENT")
+      ) {
+        await abortableDelay(25 + Math.floor(Math.random() * 25), signal);
+        continue;
+      }
       throw error;
     }
   }
