@@ -2733,7 +2733,7 @@ rtk git commit -m "feat(core): preserve Gemini image inputs" -m "Co-authored-by:
 - Consumes: the marked canonical file shape from Tasks 2–6 and the pinned provider packages.
 - Produces: black-box evidence that the installed OpenAI Responses, Anthropic, and Gemini encoders retain images visually. No production API is added.
 
-- [ ] **Step 1: Add one captured request per native target**
+- [x] **Step 1: Add one captured request per native target**
 
 Create `sdk-wire.test.ts` exactly as follows:
 
@@ -2904,7 +2904,7 @@ function hasCause(error: unknown, target: Error): boolean {
 
 Do not mock the provider converter. The fake fetch is the boundary under test. The OpenAI Responses case is specifically the client-tool `role: "tool"` path that becomes `function_call_output`; do not replace it with a provider-executed assistant tool-result fixture, whose SDK encoding contract is different.
 
-- [ ] **Step 2: Run the black-box SDK test**
+- [x] **Step 2: Run the black-box SDK test**
 
 Run:
 
@@ -2914,7 +2914,7 @@ rtk bun test packages/core/src/image-input/sdk-wire.test.ts
 
 Expected: PASS. If a pinned SDK body differs, stop Task 7 and report the complete captured request body plus the exact differing fields. Do not modify the assertion, production code, design, or this plan until that difference has an explicit design decision; in particular, do not loosen an image assertion to `toBeDefined()`.
 
-- [ ] **Step 3: Run core tests and commit Task 7**
+- [x] **Step 3: Run core tests and commit Task 7**
 
 ```bash
 rtk bun run --filter @aio-proxy/core test:unit
