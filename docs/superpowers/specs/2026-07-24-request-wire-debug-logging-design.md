@@ -95,7 +95,7 @@ Every observed body emits zero or more chunk records:
 
 `sequence` starts at zero for each body and increases by one. Upstream attempt identity is included directly rather than inferred from ambient context after the stream escapes its initiating callback.
 
-Every observed body then emits exactly one terminal record:
+Every observed body that begins consumption then emits exactly one terminal record:
 
 ```ts
 {
@@ -114,7 +114,7 @@ Every observed body then emits exactly one terminal record:
 
 The terminal `sequence` is the next sequence after the last chunk. `byteLength` is the number of source bytes observed before termination. Error messages are excluded because SDK errors may embed secrets or payloads.
 
-An empty body emits only its terminal record. A cancelled or failed body keeps every part observed before termination and is never labeled complete.
+An empty consumed body emits only its terminal record. A cancelled or failed body keeps every part observed before termination and is never labeled complete. A `null` body or a response body that is never consumed emits no body event because no stream outcome has occurred.
 
 ## Framing and reconstruction
 
@@ -142,7 +142,7 @@ The fetch input's `decompress` option and all existing request metadata must be 
 
 In debug mode, the observed fetch boundary returns a response whose body is a tapped view of the original stream. The wrapper preserves status, status text, headers, URL/redirect metadata used by consumers, and cancellation semantics. Chunks are emitted only when downstream code consumes the response, so the logger does not drain ahead of the client or fallback pipeline.
 
-If the response body is never consumed, no body chunks are invented. Cancellation or failure emits the matching terminal outcome.
+If the response body is never consumed, no body or terminal events are invented. Once consumption starts, completion, cancellation, or failure emits the matching terminal outcome.
 
 At info or higher, the original `Response` is returned unchanged.
 
@@ -167,7 +167,7 @@ At info or higher, the original `Response` is returned unchanged.
 - Large JSON bodies produce multiple chunks without hashes, descriptors, redaction, or a logging-specific oversized result.
 - Multibyte UTF-8 split across source chunks reconstructs correctly.
 - SSE frames split across arbitrary source chunks emit one record per complete event and preserve a final unterminated frame.
-- Empty, completed, cancelled, and failed bodies emit exactly one correct terminal record.
+- Empty consumed, completed, cancelled, and failed bodies emit exactly one correct terminal record; null and never-consumed bodies emit none.
 - The application receives unchanged request/response bytes and unchanged errors while logging succeeds, throws, or encounters invalid text.
 - Debug response tapping preserves observable response metadata needed by current consumers.
 - URL query values and ordinary headers remain complete; `authorization` and `x-api-key` alone are redacted case-insensitively.
