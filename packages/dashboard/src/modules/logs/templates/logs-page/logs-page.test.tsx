@@ -17,16 +17,19 @@ rs.mock("../../hooks/use-logs-query", () => ({
             data: {
               page: 1,
               pageSize: 50,
-              total: 1,
+              total: 3,
               pageCount: 1,
               items: [
                 {
                   requestId: "request-1",
                   inboundProtocol: "openai-compatible",
                   requestedModelId: "mini",
+                  requestedModelDisplayName: "GPT Mini",
                   outcome: "success",
                   finalProviderId: "openrouter",
+                  finalProviderName: "OpenRouter",
                   finalModelId: "openai/gpt-5",
+                  finalModelDisplayName: "GPT-5",
                   finalStatusCode: 200,
                   attempts: [
                     {
@@ -52,6 +55,33 @@ rs.mock("../../hooks/use-logs-query", () => ({
                     estimatedCostUsd: 0.25,
                   },
                 },
+                {
+                  requestId: "request-2",
+                  inboundProtocol: "anthropic",
+                  requestedModelId: "claude-sonnet",
+                  outcome: "failure",
+                  finalProviderId: "backup",
+                  finalModelId: "claude-sonnet",
+                  finalStatusCode: 503,
+                  attempts: [],
+                  startedAt: "2026-07-12T08:00:00.900Z",
+                  completedAt: "2026-07-12T08:00:01.000Z",
+                  durationMs: 100,
+                },
+                {
+                  requestId: "request-3",
+                  inboundProtocol: "openai-compatible",
+                  requestedModelId: "legacy-model",
+                  outcome: "cancelled",
+                  finalProviderId: "openrouter",
+                  finalModelId: "openai/gpt-5",
+                  finalModelDisplayName: "GPT-5",
+                  finalStatusCode: 200,
+                  attempts: [],
+                  startedAt: "2026-07-12T08:00:01.900Z",
+                  completedAt: "2026-07-12T08:00:02.000Z",
+                  durationMs: 100,
+                },
               ],
             },
             isLoading: false,
@@ -68,12 +98,34 @@ describe("logs page", () => {
       <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
     );
 
-    expect(screen.getByText("openrouter")).toBeTruthy();
+    expect(screen.getByText("OpenRouter")).toBeTruthy();
     expect(screen.getByText("150")).toBeTruthy();
     const row = screen.getByRole("button", { name: /request-1/u });
     fireEvent.keyDown(row, { key: "Enter" });
     expect(screen.getByText("request-1")).toBeTruthy();
     expect(screen.getByText(/#1 · openrouter \/ openai\/gpt-5/u)).toBeTruthy();
+  });
+
+  test("renders display names and a redirected model in one column", () => {
+    render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByText("OpenRouter")).toBeTruthy();
+    expect(screen.getByText("GPT Mini")).toBeTruthy();
+    expect(screen.getAllByText("GPT-5")).toHaveLength(2);
+    expect(screen.getByText("claude-sonnet")).toBeTruthy();
+    expect(screen.getByText("legacy-model")).toBeTruthy();
+    expect(screen.getAllByRole("columnheader", { name: /Model|模型/u })).toHaveLength(1);
+  });
+
+  test("uses distinct badge colors for successful and failed requests", () => {
+    render(
+      <LogsPage search={createDefaultLogsSearch(new Date("2026-07-12T08:00:00.000Z"))} onSearchChange={rs.fn()} />,
+    );
+
+    expect(screen.getByText(/Success|成功/u)).toHaveClass("bg-primary");
+    expect(screen.getByText(/Failure|失败/u)).toHaveClass("bg-destructive/10");
   });
 
   test("manually refreshes without changing the search", () => {

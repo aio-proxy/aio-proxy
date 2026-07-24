@@ -514,6 +514,7 @@
       "request_id": "Request ID",
       "outcome": "Outcome",
       "protocol": "Protocol",
+      "model": "Model",
       "requested_model": "Requested model",
       "final_provider": "Final provider",
       "final_model": "Final model",

@@ -9,6 +9,10 @@ reference_source="$CODEX_SOURCE_TREE_PATH/.reference"
 if [ -d "$reference_source" ] && [ ! -e .reference ] && [ ! -L .reference ]; then
   ln -s "$reference_source" .reference
 fi
+config_dir_source="$CODEX_SOURCE_TREE_PATH/.aio-proxy-dev"
+if [ -d "$config_dir_source" ] && [ ! -e .aio-proxy-dev ] && [ ! -L .aio-proxy-dev ]; then
+  ln -s "$config_dir_source" .aio-proxy-dev
+fi
 bun install
 bun run build
 codegraph init
