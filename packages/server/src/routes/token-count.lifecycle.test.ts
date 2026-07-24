@@ -22,7 +22,8 @@ test("releases the retained body when count request validation fails", async () 
 
   expect(response.status).toBe(400);
   expect(request.bodyUsed).toBe(true);
-  expect(fixture.recording.begins).toEqual([]);
+  expect(fixture.recording.begins).toEqual([{ inboundProtocol: anthropicMessagesAdapter.protocol }]);
+  expect(fixture.recording.finals).toEqual([]);
   expect(fixture.releases()).toBe(0);
 });
 
@@ -152,6 +153,7 @@ function countSource(providers: readonly RuntimeProviderInstance[]) {
       },
     }),
     currentProviderSnapshot: () => ({ providers, router }),
+    logger() {},
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
     usageCapture: {

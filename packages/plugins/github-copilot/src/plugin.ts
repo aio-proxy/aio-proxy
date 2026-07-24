@@ -15,7 +15,7 @@ import {
   loginToGitHubCopilot,
   normalizeEnterpriseURL,
 } from "./github-api";
-import { createGitHubCopilotRuntime } from "./runtime";
+import { createGitHubCopilotRuntime } from "./runtime/index";
 
 export type GitHubCopilotPresentationText = {
   readonly pluginLabel?: LocalizedText;

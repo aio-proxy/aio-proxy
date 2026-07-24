@@ -6,7 +6,7 @@ export * from "./headers";
 export * from "./oauth";
 export { createKimiCodePlugin, englishPresentationText, type KimiCodePresentationText } from "./plugin";
 export * from "./quota";
-export * from "./runtime";
+export * from "./runtime/index";
 
 export const KIMI_CODE_PLUGIN_VERSION = packageJson.version;
 

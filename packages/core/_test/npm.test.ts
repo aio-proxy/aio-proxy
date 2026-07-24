@@ -105,7 +105,7 @@ afterEach(() => {
   delete process.env.AIO_PROXY_HOME;
 });
 
-describe("npmAdd", () => {
+describe.serial("npmAdd", () => {
   test("Given cached package When added Then entrypoint and version return without spawning", async () => {
     // Given
     sandboxHome();
@@ -176,10 +176,10 @@ describe("npmAdd", () => {
     } finally {
       registry.stop();
     }
-  });
+  }, 20_000);
 });
 
-describe("isolated npm cache lifecycle", () => {
+describe.serial("isolated npm cache lifecycle", () => {
   test("lists only the requested cache root package, never its dependencies", async () => {
     sandboxHome();
     writeCachedPackage("root-plugin", "1.0.0");

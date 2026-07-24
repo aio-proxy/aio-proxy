@@ -8,19 +8,28 @@ import { getGitHubCopilotBaseURL, githubApiBase } from "./urls";
 
 export async function currentGitHubCopilotCredential(
   credentials: CredentialPort<GitHubCopilotCredential>,
+  fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<GitHubCopilotCredential> {
   const current = await credentials.read();
   if (current.value.expiresAt > Date.now()) return current.value;
 
-  const result = await credentials.refresh(current.revision, refreshGitHubCopilotCredential);
+  const result = await credentials.refresh(current.revision, (snapshot, signal) =>
+    refreshGitHubCopilotCredential(snapshot, signal, fetcher),
+  );
   return result.snapshot.value;
 }
 
-export async function fetchCopilotToken(apiBase: string, githubToken: string, signal: AbortSignal) {
+export async function fetchCopilotToken(
+  apiBase: string,
+  githubToken: string,
+  signal: AbortSignal,
+  fetcher: typeof globalThis.fetch = globalThis.fetch,
+) {
   const body = await fetchJson(
     `${apiBase}/copilot_internal/v2/token`,
     { headers: authHeaders(githubToken), signal },
     copilotTokenResponseSchema,
+    fetcher,
   );
   return {
     access: body.token,
@@ -31,6 +40,7 @@ export async function fetchCopilotToken(apiBase: string, githubToken: string, si
 async function refreshGitHubCopilotCredential(
   current: CredentialSnapshot<GitHubCopilotCredential>,
   signal: AbortSignal,
+  fetcher: typeof globalThis.fetch,
 ): Promise<{
   readonly value: GitHubCopilotCredential;
   readonly metadata: { readonly expiresAt: number };
@@ -42,6 +52,7 @@ async function refreshGitHubCopilotCredential(
     githubApiBase(current.value.enterpriseURL),
     current.value.githubToken,
     signal,
+    fetcher,
   );
   const value = {
     ...current.value,

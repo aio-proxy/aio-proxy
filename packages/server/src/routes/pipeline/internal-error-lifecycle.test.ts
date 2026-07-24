@@ -53,6 +53,21 @@ describe("shared protocol pipeline internal-error lifecycle", () => {
     expect(harness.recording.finals).toEqual([{ outcome: "failure", errorCode: "internal_error" }]);
     expect(harness.logs).toEqual([
       {
+        event: "request.provider_attempt_failed",
+        requestId: "request-1",
+        inboundProtocol: ProviderProtocol.OpenAICompatible,
+        requestedModelId: REQUESTED_MODEL,
+        path: "/v1/test",
+        attemptIndex: 0,
+        providerId: "raw",
+        providerKind: "api",
+        modelId: "raw-model",
+        durationMs: expect.any(Number),
+        failureKind: "exception",
+        fallback: false,
+        errorType: "Object",
+      },
+      {
         event: "request.failed",
         requestId: "request-1",
         inboundProtocol: ProviderProtocol.OpenAICompatible,

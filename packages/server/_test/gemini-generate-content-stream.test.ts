@@ -37,7 +37,7 @@ describe("POST /v1beta/models/:model::streamGenerateContent", () => {
       return new Response('data: {"upstream":true}\n\n', { status: 200 });
     });
     const app = await appWith(provider);
-    const data = `${"A".repeat(27_962_028)}====`;
+    const data = "A".repeat(27_962_028);
 
     // When
     const response = await app.request("/v1beta/models/gemini-2.5-flash:streamGenerateContent", {

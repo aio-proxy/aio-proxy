@@ -10,7 +10,15 @@
             "response": {
               "temperature": "18C",
               "condition": "rain"
-            }
+            },
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/png",
+                  "data": "AA=="
+                }
+              }
+            ]
           }
         }
       ]

@@ -6,10 +6,22 @@ import { join } from "node:path";
 /** Self-contained public types for the Node-only openai-stream subpath export. */
 export const OPENAI_STREAM_DTS = `export type OpenAIStreamProtocol = "openai-response" | "openai-compatible";
 
+export type OpenAIStreamFetchOptions = {
+  readonly rewriteToolImages?: boolean;
+};
+
+export type ToolImageMarker = {
+  readonly toolImage: true;
+  readonly trust: string;
+};
+
 export declare function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
   fetcher?: typeof globalThis.fetch,
+  options?: OpenAIStreamFetchOptions,
 ): typeof globalThis.fetch;
+
+export declare function createToolImageMarker(): ToolImageMarker;
 `;
 
 export function createOpenAIStreamDtsPlugin(): RsbuildPlugin {

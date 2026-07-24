@@ -28,7 +28,8 @@ test("rejects oversized Content-Length and cancels the count request body before
   expect(response.status).toBe(413);
   expect(cancelled).toBe(true);
   expect(request.bodyUsed).toBe(true);
-  expect(fixture.recording.begins).toEqual([]);
+  expect(fixture.recording.begins).toHaveLength(1);
+  expect(fixture.recording.finals).toEqual([]);
   expect(fixture.releases()).toBe(0);
 });
 
@@ -50,7 +51,8 @@ test("rejects unsupported content encoding before counting tokens", async () => 
       type: "error",
       error: { type: "invalid_request_error", message: "Unsupported Content-Encoding" },
     });
-    expect(fixture.recording.begins).toEqual([]);
+    expect(fixture.recording.begins).toHaveLength(1);
+    expect(fixture.recording.finals).toEqual([]);
     expect(fixture.releases()).toBe(0);
   } finally {
     warn.mockRestore();
@@ -102,6 +104,7 @@ function countFixture(providers: readonly RuntimeProviderInstance[]) {
       },
     }),
     currentProviderSnapshot: () => ({ providers, router }),
+    logger() {},
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
     usageCapture: {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { parseAnthropicMessages } from "../ingress/anthropic-messages";
+import { parseAnthropicMessages } from "../ingress/anthropic-messages/index";
 import { anthropicMessagesAdapter } from "./anthropic-messages";
 
 const webSearchTypes = ["web_search_20250305", "web_search_20260209", "web_search_20260318"] as const;

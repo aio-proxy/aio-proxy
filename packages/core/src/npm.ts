@@ -196,7 +196,7 @@ export async function withNpmPackageLifecycle<T>(
   use: (assertOwnership: () => Promise<void>) => Promise<T>,
 ): Promise<T> {
   const lockDir = join(packagesDir(), ".locks", encodeURIComponent(pkg));
-  const lock = await acquireNpmInstallLock(pkg, lockDir);
+  const lock = await acquireNpmInstallLock(pkg, lockDir, { waitMs: INSTALL_TIMEOUT_MS });
   try {
     return await lock.withOwnership(use);
   } finally {

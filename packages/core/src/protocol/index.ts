@@ -1,5 +1,5 @@
 export * from "./adapter";
-export * from "./anthropic-messages";
+export * from "./anthropic-messages/index";
 export * from "./anthropic-thinking";
 export * from "./errors";
 export * from "./gemini-generate-content";

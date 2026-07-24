@@ -25,6 +25,12 @@ export async function discoverOpenAIChatGPTModels(signal: AbortSignal): Promise<
     models,
     filter((model) => model.supported_in_api),
     sortBy([(model) => model.priority]),
-    map((model) => ({ id: model.slug, displayName: model.display_name })),
+    map(
+      (model): ModelDescriptor => ({
+        id: model.slug,
+        displayName: model.display_name,
+        metadata: { protocol: "openai-response" },
+      }),
+    ),
   );
 }

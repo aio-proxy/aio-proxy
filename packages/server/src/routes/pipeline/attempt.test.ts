@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { handleProtocolRequest } from ".";
 import {
   defineProviderRouteSource,
+  errorStream,
   modelProvider,
   REQUESTED_MODEL,
   rawProvider,
@@ -87,6 +88,173 @@ test("rejects an item reference before invoking a model", async () => {
   expect(route.recording.finals[0]).toEqual(
     expect.objectContaining({ errorCode: "unsupported_feature", outcome: "failure" }),
   );
+});
+
+test("skips a Gemini candidate for a remote tool-result image and invokes the next target", async () => {
+  const gemini = modelProvider({
+    id: "gemini",
+    targetProtocol: ProviderProtocol.Gemini,
+    invoke: () => textStream("must not run"),
+  });
+  const anthropic = modelProvider({
+    id: "anthropic",
+    targetProtocol: ProviderProtocol.Anthropic,
+    invoke: () => textStream("fallback response"),
+  });
+  const route = defineProviderRouteSource([gemini, anthropic]);
+  const rawRequest = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: REQUESTED_MODEL,
+      input: [
+        { type: "function_call", call_id: "call_1", name: "inspect", arguments: "{}" },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: [{ type: "input_image", image_url: "https://example.test/image.png" }],
+        },
+      ],
+    }),
+  });
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest,
+    source: route.source,
+  });
+  await settleRecording();
+
+  expect(response.status).toBe(200);
+  expect(gemini.calls.model).toHaveLength(0);
+  expect(anthropic.calls.model).toHaveLength(1);
+  expect(anthropic.calls.model[0]?.messages[1]).toMatchObject({
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: "call_1",
+        toolName: "inspect",
+        output: {
+          type: "content",
+          value: [
+            {
+              type: "file",
+              mediaType: "image/png",
+              data: { type: "url", url: new URL("https://example.test/image.png") },
+              providerOptions: {
+                aioProxy: { toolImage: true, trust: expect.any(String) },
+              },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  expect(
+    route.recording.attempts.map(({ errorCode, outcome, providerId }) => ({ errorCode, outcome, providerId })),
+  ).toEqual([
+    { errorCode: "unsupported_feature", outcome: "failure", providerId: "gemini" },
+    { errorCode: undefined, outcome: "success", providerId: "anthropic" },
+  ]);
+});
+
+test("skips a Gemini candidate when a user image URL has no MIME subtype", async () => {
+  const gemini = modelProvider({
+    id: "gemini",
+    targetProtocol: ProviderProtocol.Gemini,
+    invoke: () => textStream("must not run"),
+  });
+  const anthropic = modelProvider({
+    id: "anthropic",
+    targetProtocol: ProviderProtocol.Anthropic,
+    invoke: () => textStream("fallback response"),
+  });
+  const route = defineProviderRouteSource([gemini, anthropic]);
+  const rawRequest = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: REQUESTED_MODEL,
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "https://example.test/media?id=123" }],
+        },
+      ],
+    }),
+  });
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest,
+    source: route.source,
+  });
+  await settleRecording();
+
+  expect(response.status).toBe(200);
+  expect(gemini.calls.model).toHaveLength(0);
+  expect(anthropic.calls.model).toHaveLength(1);
+  expect(anthropic.calls.model[0]?.messages).toMatchObject([
+    {
+      role: "user",
+      content: [
+        {
+          type: "file",
+          mediaType: "image",
+          data: { type: "url", url: new URL("https://example.test/media?id=123") },
+        },
+      ],
+    },
+  ]);
+});
+
+test("falls back after an OpenAI-compatible endpoint rejects the CPA extension", async () => {
+  const compatible = modelProvider({
+    id: "compatible",
+    targetProtocol: ProviderProtocol.OpenAICompatible,
+    invoke: () => errorStream(new Error("compatible endpoint rejected tool image content")),
+  });
+  const responses = modelProvider({
+    id: "responses",
+    targetProtocol: ProviderProtocol.OpenAIResponse,
+    invoke: () => textStream("fallback response"),
+  });
+  const route = defineProviderRouteSource([compatible, responses]);
+  const rawRequest = new Request("https://proxy.test/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: REQUESTED_MODEL,
+      input: [
+        { type: "function_call", call_id: "call_1", name: "inspect", arguments: "{}" },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: [{ type: "input_image", image_url: "data:image/png;base64,AA==" }],
+        },
+      ],
+    }),
+  });
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest,
+    source: route.source,
+  });
+  await settleRecording();
+
+  expect(response.status).toBe(200);
+  expect(compatible.calls.model).toHaveLength(1);
+  expect(responses.calls.model).toHaveLength(1);
+  expect(route.recording.attempts.map(({ outcome, providerId }) => ({ outcome, providerId }))).toEqual([
+    { outcome: "failure", providerId: "compatible" },
+    { outcome: "success", providerId: "responses" },
+  ]);
 });
 
 test("fails fast on invalid function arguments without trying raw", async () => {

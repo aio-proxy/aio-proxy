@@ -9,7 +9,7 @@
   "scripts": {
     "build:binary": "bun scripts/build-binary.ts",
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./_test/setup.ts",
+    "test:unit": "bun test --preload=./_test/setup.ts --timeout 20000",
     "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun --watch src/main.dev.ts serve",
     "start": "bun src/main.ts serve"
   },

@@ -1,5 +1,6 @@
 import { createContentDecodedReader, type ContentDecodedReader } from "./content-decoding";
 import { createOpenAISseBody, type OpenAIStreamProtocol } from "./sse-terminal";
+import { isTrustedToolImageMarker } from "./tool-image-trust";
 
 export type { OpenAIStreamProtocol } from "./sse-terminal";
 
@@ -7,12 +8,27 @@ const OPENAI_ACCEPT_ENCODING = "gzip, deflate, br, zstd" as const;
 
 type BunFetchInit = RequestInit & { decompress?: boolean };
 
+export type OpenAIStreamFetchOptions = {
+  readonly rewriteToolImages?: boolean;
+};
+
+export function createOpenAIStreamFetch(
+  protocol: OpenAIStreamProtocol,
+  fetcher?: typeof globalThis.fetch,
+  options?: OpenAIStreamFetchOptions,
+): typeof globalThis.fetch;
 export function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
   fetcher: typeof globalThis.fetch = globalThis.fetch,
+  options?: OpenAIStreamFetchOptions,
 ): typeof globalThis.fetch {
+  const resolvedOptions = options ?? {};
   const streamFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const request = new Request(input, init);
+    const initialRequest = new Request(input, init);
+    const request =
+      protocol === "openai-compatible" && resolvedOptions.rewriteToolImages === true
+        ? await rewriteCompatibleToolImages(initialRequest)
+        : initialRequest;
     const headers = new Headers(request.headers);
     headers.set("accept-encoding", OPENAI_ACCEPT_ENCODING);
 
@@ -30,6 +46,88 @@ export function createOpenAIStreamFetch(
   return Object.assign(streamFetch, {
     preconnect: platformFetch.preconnect?.bind(platformFetch),
   }) as typeof globalThis.fetch;
+}
+
+async function rewriteCompatibleToolImages(request: Request): Promise<Request> {
+  const url = new URL(request.url);
+  if (
+    request.method !== "POST" ||
+    !url.pathname.endsWith("/chat/completions") ||
+    !request.headers.get("content-type")?.toLowerCase().includes("application/json")
+  ) {
+    return request;
+  }
+  let body: unknown;
+  try {
+    body = await request.clone().json();
+  } catch {
+    return request;
+  }
+  if (!isRecord(body) || !Array.isArray(body["messages"])) return request;
+  let changed = false;
+  const messages = body["messages"].map((message: unknown) => {
+    if (!isRecord(message) || message["role"] !== "tool" || typeof message["content"] !== "string") return message;
+    const content = compatibleToolContent(message["content"]);
+    if (content === undefined) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  if (!changed) return request;
+  const headers = new Headers(request.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  return new Request(request, { method: "POST", headers, body: JSON.stringify({ ...body, messages }) });
+}
+
+function compatibleToolContent(content: string): readonly unknown[] | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(value) || !value.some(isMarkedToolImage)) return undefined;
+  return value.map((part) => {
+    if (isRecord(part) && part["type"] === "text" && typeof part["text"] === "string") {
+      return { type: "text", text: part["text"] };
+    }
+    if (isMarkedToolImage(part)) return compatibleImagePart(part);
+    throw new TypeError("Marked tool image content contains an unsupported part");
+  });
+}
+
+function isMarkedToolImage(value: unknown): value is Readonly<Record<string, unknown>> {
+  if (!isRecord(value) || value["type"] !== "file" || !isRecord(value["providerOptions"])) return false;
+  return isTrustedToolImageMarker(value["providerOptions"]["aioProxy"]);
+}
+
+function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
+  const mediaType = part["mediaType"];
+  const data = part["data"];
+  if (typeof mediaType !== "string" || (mediaType !== "image" && !mediaType.startsWith("image/")) || !isRecord(data)) {
+    throw new TypeError("Marked tool image is invalid");
+  }
+  const url =
+    data["type"] === "data" && typeof data["data"] === "string"
+      ? `data:${mediaType};base64,${data["data"]}`
+      : data["type"] === "url" && typeof data["url"] === "string"
+        ? data["url"]
+        : undefined;
+  if (url === undefined) throw new TypeError("Marked tool image source is unsupported");
+  const providerOptions = part["providerOptions"];
+  const openAI = isRecord(providerOptions) ? providerOptions["openai"] : undefined;
+  const detail = isRecord(openAI) ? openAI["imageDetail"] : undefined;
+  if (detail !== undefined && detail !== "auto" && detail !== "low" && detail !== "high") {
+    throw new TypeError("Marked tool image detail is invalid");
+  }
+  return {
+    type: "image_url" as const,
+    image_url: { url, ...(detail === undefined ? {} : { detail }) },
+  };
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isEventStream(contentType: string | null): boolean {

@@ -180,6 +180,8 @@ export async function materializePluginProvider(
           credentials: credentials as never,
           options: accountOptions,
           catalog: storedCatalog.catalog,
+          ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
+          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
         }),
       ),
     );

@@ -45,6 +45,10 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   modelInvocation: (request: TRequest, context: TContext) => ModelInvocation;
+  modelInvocationForTarget: (
+    invocation: ModelInvocation,
+    targetProtocol: ProviderProtocol | undefined,
+  ) => ModelInvocation;
   modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
   modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ReadableStream<Uint8Array>;
   errors: ProtocolErrorMapper;
@@ -52,20 +56,23 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
 
 export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
   ProtocolAdapter<TRequest, TContext>,
-  "requestDiagnostics" | "variant"
+  "modelInvocationForTarget" | "requestDiagnostics" | "variant"
 > & {
+  readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>["modelInvocationForTarget"];
   readonly variant?: ProtocolAdapter<TRequest, TContext>["variant"];
   readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>["requestDiagnostics"];
 };
 
 const noVariant = (): undefined => undefined;
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
+const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
 
 export function defineProtocolAdapter<TRequest, TContext>(
   definition: ProtocolAdapterDefinition<TRequest, TContext>,
 ): ProtocolAdapter<TRequest, TContext> {
   return Object.freeze({
     ...definition,
+    modelInvocationForTarget: definition.modelInvocationForTarget ?? sameModelInvocation,
     variant: definition.variant ?? noVariant,
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
   });

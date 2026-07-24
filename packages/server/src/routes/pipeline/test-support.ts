@@ -16,12 +16,13 @@ export function pipeline(
   fixtures: readonly FakeProvider[],
   options: {
     readonly adapter?: ReturnType<typeof defineProtocolAdapter>;
+    readonly debugLogging?: boolean;
     readonly immediateStreamCompletion?: UsageCompletion;
   } = {},
 ) {
   const adapter = options.adapter ?? defineProtocolAdapter();
   const context = createProtocolContext();
-  const route = defineProviderRouteSource(fixtures, options.immediateStreamCompletion);
+  const route = defineProviderRouteSource(fixtures, options.immediateStreamCompletion, options.debugLogging);
   return {
     ...route,
     adapter,

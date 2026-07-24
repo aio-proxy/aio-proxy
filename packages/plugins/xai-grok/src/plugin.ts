@@ -10,7 +10,7 @@ import {
 import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from "./catalog";
 import { loginXAIGrok, type XAIGrokOAuthOptions } from "./oauth";
 import { readXAIGrokQuota } from "./quota";
-import { createXAIGrokRuntime } from "./runtime";
+import { createXAIGrokRuntime } from "./runtime/index";
 import { credentialSchema, type XAIGrokCredential } from "./schema";
 
 export type XAIGrokPresentationText = {

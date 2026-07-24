@@ -1,4 +1,4 @@
-import type { AnthropicMessagesRequest } from "../ingress/anthropic-messages";
+import type { AnthropicMessagesRequest } from "../ingress/anthropic-messages/index";
 
 import { AnthropicMessagesTransformError } from "../error";
 

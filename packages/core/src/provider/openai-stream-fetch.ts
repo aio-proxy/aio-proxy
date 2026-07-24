@@ -20,7 +20,9 @@ export function wrapOpenAIPackageFetch(packageName: string, fetcher?: ProviderFe
     return createOpenAIStreamFetch("openai-response", fetcher ?? globalThis.fetch);
   }
   if (packageName === "@ai-sdk/openai-compatible") {
-    return createOpenAIStreamFetch("openai-compatible", fetcher ?? globalThis.fetch);
+    return createOpenAIStreamFetch("openai-compatible", fetcher ?? globalThis.fetch, {
+      rewriteToolImages: true,
+    });
   }
   return fetcher;
 }

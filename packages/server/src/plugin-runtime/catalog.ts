@@ -6,10 +6,11 @@ import {
   type Diagnostic,
   type OAuthProvider,
   ProviderKind,
+  ProviderProtocol,
   type ProviderState,
 } from "@aio-proxy/types";
 
-import type { RuntimeProviderInstance } from "../runtime";
+import type { RuntimeModelMetadata, RuntimeProviderInstance } from "../runtime";
 import type { MaterializePluginProviderOptions, PluginProviderMaterialization } from "./types";
 
 export function diagnosticState(diagnostic: Diagnostic): ProviderState {
@@ -80,11 +81,31 @@ export function catalogFreshness(
   return policy.kind === "ttl" && stored.refreshedAt + policy.ttlMs <= Date.now() ? "stale" : "fresh";
 }
 
-export function modelMetadata(catalog: ModelCatalog): Readonly<Record<string, { readonly displayName?: string }>> {
+export function modelMetadata(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   return Object.fromEntries(
-    catalog.language.map((descriptor) => [
-      descriptor.id,
-      descriptor.displayName === undefined ? {} : { displayName: descriptor.displayName },
-    ]),
+    catalog.language.map((descriptor) => {
+      const protocol = metadataProtocol(descriptor.metadata);
+      return [
+        descriptor.id,
+        {
+          ...(descriptor.displayName === undefined ? {} : { displayName: descriptor.displayName }),
+          ...(protocol === undefined ? {} : { protocol }),
+        },
+      ];
+    }),
   );
+}
+
+function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return undefined;
+  const protocol = Reflect.get(metadata, "protocol");
+  switch (protocol) {
+    case ProviderProtocol.OpenAICompatible:
+    case ProviderProtocol.OpenAIResponse:
+    case ProviderProtocol.Anthropic:
+    case ProviderProtocol.Gemini:
+      return protocol;
+    default:
+      return undefined;
+  }
 }

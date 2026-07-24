@@ -89,7 +89,11 @@ describe("OpenAI ChatGPT runtime", () => {
     const body = JSON.stringify({ input: "hello", model: "gpt-5.5", stream: true });
     await dynamicFetch("https://api.openai.com/v1/responses?foo=bar&foo=baz", {
       body,
-      headers: { authorization: "Bearer caller-token", "x-keep": "1" },
+      headers: {
+        authorization: "Bearer caller-token",
+        host: "127.0.0.1:22078",
+        "x-keep": "1",
+      },
       method: "POST",
       signal: controller.signal,
     });
@@ -107,6 +111,7 @@ describe("OpenAI ChatGPT runtime", () => {
       "codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)",
     );
     expect(first.headers.get("session-id")).toBeString();
+    expect(first.headers.get("host")).toBeNull();
     expect(first.headers.get("x-keep")).toBe("1");
     expect(first.headers.get("accept-encoding")).toBe("gzip, deflate, br, zstd");
     expect(first.decompress).toBe(false);

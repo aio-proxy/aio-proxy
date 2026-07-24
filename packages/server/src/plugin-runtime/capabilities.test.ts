@@ -80,7 +80,10 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
   const fixture = runtimeFixture(
     { kind: "static" },
     {
-      catalog: { ...catalog, language: [{ id: "model", displayName: "Model", metadata: { region: "us" } }] },
+      catalog: {
+        ...catalog,
+        language: [{ id: "model", displayName: "Model", metadata: { region: "us", protocol: "anthropic" } }],
+      },
       createRuntime: async () =>
         ({
           provider: providerV4(),
@@ -98,7 +101,7 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
     {
       ...catalog,
       language: [
-        { id: "model", displayName: "Model", metadata: { region: "us" } },
+        { id: "model", displayName: "Model", metadata: { region: "us", protocol: "anthropic" } },
         { id: "bad-resolver" },
         { id: "bad-response" },
       ],
@@ -123,8 +126,16 @@ test("plugin raw capability receives catalog metadata and rejects malformed tran
 
   const transport = result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "model" });
   expect(await transport?.invoke(new Request("https://example.test"))).toBeInstanceOf(Response);
-  expect(observed[0]).toEqual({ protocol: "openai-compatible", modelId: "model", metadata: { region: "us" } });
-  expect(result.provider?.modelMetadata?.[modelId]).toEqual({ displayName: "Model" });
+  expect(observed[0]).toEqual({
+    protocol: "openai-compatible",
+    modelId: "model",
+    metadata: { region: "us", protocol: "anthropic" },
+  });
+  expect(result.provider?.modelMetadata?.[modelId]).toEqual({
+    displayName: "Model",
+    protocol: ProviderProtocol.Anthropic,
+  });
+  expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.Anthropic);
   expect(result.summary.clientModels).toEqual(["client", "bad-resolver", "bad-response"]);
   expect(() =>
     result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: "bad-resolver" }),

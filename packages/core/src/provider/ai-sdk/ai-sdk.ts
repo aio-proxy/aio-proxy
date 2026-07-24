@@ -1,5 +1,5 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
-import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind } from "@aio-proxy/types";
+import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
 
 import type {
   AiSdkLanguageModel,
@@ -14,6 +14,7 @@ import type { ProviderFetch } from "../proxy-fetch";
 
 import { streamAiSdkText } from "../../ai-sdk-bridge";
 import { AiSdkProviderError, ProviderNotInstalledError } from "../../error";
+import { imageTargetProtocolForPackage } from "../../image-input";
 import { loadAiSdkProvider } from "../ai-sdk-loader/index";
 import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "../ai-sdk-reasoning";
 import { wrapOpenAIPackageFetch } from "../openai-stream-fetch";
@@ -54,6 +55,7 @@ export type AiSdkProviderInstance = {
   readonly alias?: Readonly<Record<string, AliasConfig>>;
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (request: AiSdkProviderInvokeRequest) => ReadableStream<TextStreamPart<ToolSet>>;
+  readonly targetProtocol?: ProviderProtocol;
 };
 
 type LanguageModelShape = {
@@ -68,6 +70,7 @@ export function createAiSdkProvider(
 ): AiSdkProviderInstance {
   const loadProvider = options.loadProvider ?? loadAiSdkProvider;
   const providerFetch = wrapOpenAIPackageFetch(config.packageName, options.fetch);
+  const targetProtocol = imageTargetProtocolForPackage(config.packageName);
   let loadedProviderTask: Promise<LoadedAiSdkRuntimeProvider | null> | undefined;
 
   function providerTask(): Promise<LoadedAiSdkRuntimeProvider | null> {
@@ -79,6 +82,7 @@ export function createAiSdkProvider(
     enabled: config.enabled,
     id: config.id,
     kind: config.kind,
+    ...(targetProtocol === undefined ? {} : { targetProtocol }),
     ...(config.models === undefined ? {} : { models: config.models }),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     async ensureAvailable() {
