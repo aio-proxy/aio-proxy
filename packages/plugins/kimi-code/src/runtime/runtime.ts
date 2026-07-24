@@ -15,7 +15,11 @@ export async function createKimiRuntime(
   context: RuntimeContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createKimiDynamicFetch(context.credentials, dependencies);
+  const fetcher = dependencies.fetch ?? context.fetch;
+  const dynamicFetch = createKimiDynamicFetch(context.credentials, {
+    ...dependencies,
+    ...(fetcher === undefined ? {} : { fetch: fetcher }),
+  });
   const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
     rewriteToolImages: true,
   });

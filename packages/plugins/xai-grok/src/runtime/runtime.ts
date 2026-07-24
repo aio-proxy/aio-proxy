@@ -2,20 +2,24 @@ import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-pr
 
 import { createOpenAI } from "@ai-sdk/openai";
 
-import type { XAIGrokCredential } from "./schema";
+import type { XAIGrokCredential } from "../schema";
 
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "./cli-headers";
-import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from "./oauth";
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "../cli-headers";
+import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from "../oauth";
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
   options: XAIGrokOAuthOptions = {},
 ): Promise<OAuthRuntimeResult> {
+  const fetcher = options.fetch ?? context.fetch;
   const openai = createOpenAI({
     name: "xai-grok-oauth",
     baseURL: XAI_GROK_CLI_BASE_URL,
     apiKey: "dynamic-credential",
-    fetch: createXAIGrokDynamicFetch(context.credentials, options) as typeof globalThis.fetch,
+    fetch: createXAIGrokDynamicFetch(context.credentials, {
+      ...options,
+      ...(fetcher === undefined ? {} : { fetch: fetcher }),
+    }) as typeof globalThis.fetch,
   });
   return {
     provider: {

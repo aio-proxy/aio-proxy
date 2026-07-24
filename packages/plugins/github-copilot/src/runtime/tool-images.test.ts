@@ -46,6 +46,7 @@ test("compatible delegate emits CPA tool image content", async () => {
     credentials: credentials.port,
     options: { deploymentType: "github.com" },
     catalog: catalog(),
+    fetch: (input, init) => globalThis.fetch(input, init),
   });
   let captured: Request | undefined;
 

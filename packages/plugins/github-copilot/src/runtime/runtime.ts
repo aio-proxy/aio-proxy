@@ -18,7 +18,8 @@ const PLACEHOLDER_CREDENTIAL = "dynamic-credential";
 export async function createGitHubCopilotRuntime(
   context: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createDynamicFetch(context.credentials);
+  const fetcher = context.fetch ?? globalThis.fetch;
+  const dynamicFetch = createDynamicFetch(context.credentials, fetcher);
   const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
     rewriteToolImages: true,
   });
@@ -77,7 +78,7 @@ export async function createGitHubCopilotRuntime(
       return {
         invoke: async (request) => {
           const credential = await currentGitHubCopilotCredential(context.credentials);
-          return await fetchWithCredential(request, undefined, credential);
+          return await fetchWithCredential(request, undefined, credential, fetcher);
         },
       };
     },
@@ -86,10 +87,11 @@ export async function createGitHubCopilotRuntime(
 
 function createDynamicFetch(
   credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>["credentials"],
+  fetcher: typeof fetch,
 ): typeof fetch {
   return async (input, init) => {
     const credential = await currentGitHubCopilotCredential(credentials);
-    return await fetchWithCredential(input, init, credential);
+    return await fetchWithCredential(input, init, credential, fetcher);
   };
 }
 
@@ -97,6 +99,7 @@ async function fetchWithCredential(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   credential: GitHubCopilotCredential,
+  fetcher: typeof fetch,
 ): Promise<Response> {
   const request = new Request(input, init);
   const target = new URL(request.url);
@@ -107,7 +110,7 @@ async function fetchWithCredential(
   headers.delete("x-api-key");
   for (const [key, value] of Object.entries(copilotHeaders(credential.copilotToken))) headers.set(key, value);
 
-  return await fetch(target, {
+  return await fetcher(target, {
     method: request.method,
     headers,
     ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body }),

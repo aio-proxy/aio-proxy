@@ -38,6 +38,7 @@ describe("GitHub Copilot runtime", () => {
       credentials: credentials.port,
       options: { deploymentType: "github.com" },
       catalog: catalog(),
+      fetch: forwardFetch,
     });
     const calls: { url: URL; authorization: string | null; signal: AbortSignal | null }[] = [];
 
@@ -157,6 +158,7 @@ describe("GitHub Copilot runtime", () => {
         credentials: credentials.port,
         options: { deploymentType: "github.com" },
         catalog: catalog(),
+        fetch: forwardFetch,
       });
       const controller = new AbortController();
       let captured: Request | undefined;
@@ -191,6 +193,7 @@ describe("GitHub Copilot runtime", () => {
       credentials: credentials.port,
       options: { deploymentType: "github.com" },
       catalog: catalog(),
+      fetch: forwardFetch,
     });
 
     expect(runtime.raw?.({ protocol: "anthropic", modelId: "gpt-chat" })).toBeUndefined();
@@ -254,3 +257,5 @@ function validCredential(copilotToken: string): GitHubCopilotCredential {
 
 const _optionsCompile: GitHubAccountOptions = { deploymentType: "github.com" };
 void _optionsCompile;
+
+const forwardFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
