@@ -1,232 +1,186 @@
-# Request Wire Debug Logging Design
+# Request Wire Debug Logging and Full Payload Tap Design
 
 Date: 2026-07-24
-Status: Implemented
+Status: Existing foundation implemented; full-payload revision approved
 
 ## Background
 
 Request `3f7b45b5-80c0-40b1-937b-55f6d06ff3c9` exposed two observability gaps:
 
-1. `request.provider_attempt_failed` recorded only `errorType: "Error"`, so the useful Bun error code `ConnectionRefused` was lost.
-2. The process log could not compare the inbound request with the final HTTP request sent by a provider transport.
+1. provider-attempt failures did not retain useful transport error codes;
+2. the process log could not compare an inbound model request with the final HTTP request sent by a provider transport.
 
-The concrete failure was caused by the OpenAI ChatGPT OAuth raw transport copying the inbound `Host` header to a different origin. A minimal request without `Host` reached ChatGPT successfully; adding only a loopback `Host` reproduced the same local `Error` and `ConnectionRefused` result. The current log mapped that local exception to a synthetic 500 even though no upstream HTTP response existed.
+The request-scoped logging context, observed fetch boundary, transport error details, and OpenAI ChatGPT OAuth `Host` fix have already been implemented. The first debug snapshot implementation deliberately replaced model payloads with hashes and descriptors and bounded diagnostic body reads.
 
-The existing logger already supports `server.logging.level: "debug"`, but the request pipeline emits no debug payload events.
+That payload policy no longer matches the product goal. aio-proxy is a local proxy whose logs should let users inspect their own model inputs and outputs. Model traffic therefore needs complete, replayable text rather than redacted summaries. Unbounded bodies must be logged incrementally so observability does not require accumulating a full request or response in memory.
 
 ## Goals
 
-- Give every log emitted inside a proxy request's asynchronous chain the same internal request ID.
-- Correlate each provider attempt with its request ID, attempt index, Provider ID, and model.
-- At debug level, record a safe snapshot of:
-  - the inbound HTTP request;
-  - the final HTTP request sent to an upstream provider;
-  - the upstream HTTP response metadata or transport exception.
-- Capture the final application-level `Request` passed to fetch by API providers, AI SDK providers, and built-in OAuth providers rather than only the intermediate model invocation. Network-added headers remain outside the observable boundary.
-- Preserve enough structure, byte counts, and hashes to compare inbound and upstream requests without writing credentials or user payloads in clear text.
-- Expose safe exception codes such as `ConnectionRefused` on the existing provider-attempt warning.
-- Fix the OpenAI ChatGPT OAuth `Host` forwarding regression.
+- At debug level, record the complete application-level text body for:
+  - the inbound model request;
+  - every final HTTP request sent to an upstream provider;
+  - every upstream HTTP response, including successful streams.
+- Preserve model payload values exactly as decoded text. Do not redact fields, replace strings with descriptors, hash values, or impose a logging-specific body limit.
+- Keep complete URL query parameters and header values, except for the two explicit credential headers `authorization` and `x-api-key`.
+- Correlate every body part with the existing request ID and, for upstream traffic, attempt index, Provider ID, and model ID.
+- Keep memory bounded by the current decoded chunk or SSE event instead of the total body size.
+- Ensure debug observation does not alter body bytes, stream order, backpressure, cancellation, fallback, or provider behavior.
+- Preserve OAuth control-plane token and secret redaction.
 
 ## Non-goals
 
-- Do not emit clear-text credentials, cookies, user prompts, tool outputs, images, files, or encrypted reasoning state.
-- Do not add a switch that disables redaction.
-- Do not buffer or log successful streaming response bodies.
-- Do not assign fake request IDs to startup, config reload, catalog refresh, quota polling, or other background work.
-- Do not guarantee final-wire observation for third-party OAuth plugins that ignore the host-provided fetch function.
-- Do not persist payload snapshots in SQLite or expose them in the Dashboard.
-- Do not add remote log shipping, sampling, or Provider ID filters in this change.
+- Do not remove the protocol parser's existing encoded and decoded request-size limits. Those are request validation rules, not log truncation.
+- Do not expose `authorization` or `x-api-key` values.
+- Do not remove redaction from OAuth login, token exchange, or token refresh diagnostics.
+- Do not capture dashboard, catalog refresh, quota polling, or unrelated background HTTP traffic.
+- Do not add remote shipping, sampling, sidecar payload files, Provider ID filters, or new logging configuration.
+- Do not aggregate a complete JSON body or complete stream into one log record.
+- Do not promise byte-for-byte reconstruction for invalid non-UTF-8 bodies. Supported model protocols use UTF-8 JSON or SSE; embedded binary model data remains complete inside that text representation.
 
 ## Selected approach
 
-Use a request-scoped `AsyncLocalStorage` context and a host-provided observed fetch boundary.
+Extend the existing request-scoped observed transport with backpressure-aware body taps. Metadata remains in the existing snapshot/result events. Body content is emitted as ordered part events followed by one terminal event.
 
 Rejected alternatives:
 
-1. Pipeline-only snapshots cannot see headers and bodies generated later by an AI SDK or OAuth plugin.
-2. Monkey-patching `globalThis.fetch` would capture unrelated login, catalog, quota, and dashboard traffic and would make concurrent attribution fragile.
+1. A complete body in one log record requires memory proportional to the body and cannot support unbounded streams.
+2. Draining `Request.clone()` or `Response.clone()` independently can make `ReadableStream.tee()` buffer the slower branch without a limit.
+3. Sidecar payload files keep the main JSONL small but make model inputs and outputs harder to inspect and correlate.
+4. LogTape sinks solve structured JSONL and file rotation, but they do not capture HTTP bodies or define SSE aggregation. The application must perform the tap before emitting LogTape events.
 
-## Request log context
+## Existing request context
 
-The server owns one `AsyncLocalStorage<RequestLogContext>` instance:
+`RequestRecorder.begin()` remains the source of the internal request ID. The shared protocol pipeline runs inside one request `AsyncLocalStorage` scope. Each provider candidate nests an attempt scope containing its zero-based attempt index, Provider ID, and resolved model ID.
 
-```ts
-type RequestLogContext = {
-  readonly requestId: string;
-  readonly attemptIndex?: number;
-  readonly providerId?: string;
-  readonly modelId?: string;
-};
-```
+The server and plugin logging bridges merge that active context at emission time. Logs outside a model request remain unchanged. Concurrent requests must remain isolated.
 
-`RequestRecorder.begin()` remains the source of the internal request ID. Immediately after beginning a proxy request, the shared protocol pipeline runs the remaining asynchronous work inside that request context. Token-count routes do the same.
+No new context or logging abstraction is needed.
 
-Each candidate iteration nests an attempt context containing its zero-based attempt index, Provider ID, and resolved model ID. Promise continuations and `ReadableStream` callbacks created within the scope retain the context under the supported Bun runtime.
+## Metadata events
 
-The server and plugin logging bridges merge the active context at emission time. Ambient `requestId`, `attemptIndex`, `providerId`, and `modelId` values take precedence over same-named plugin bindings so a plugin cannot break correlation. Logs outside a proxy request context remain unchanged and do not receive a request ID.
+The existing events remain the start records for each observed message:
 
-Concurrent requests must remain isolated; an event may never inherit another request's context.
+- `request.inbound_snapshot` contains inbound protocol, method, URL, and headers;
+- `request.upstream_snapshot` contains attempt identity, method, URL, and headers;
+- `request.upstream_result` contains attempt identity, duration, outcome, status, response headers, or transport exception.
 
-## Observed HTTP transport
+Snapshot/result events no longer contain a sanitized or aggregated body. Their request/attempt identity is the join key for body events.
 
-The host provides a fetch wrapper that observes the final application-level `Request` immediately before delegating to the real fetch implementation.
+### URL policy
 
-- API and AI SDK providers receive the observed wrapper around their existing proxy-aware fetch.
-- OAuth `RuntimeContext` gains an optional host fetch function. All built-in OAuth runtimes use it as the final network boundary, falling back to `globalThis.fetch` only when an older host does not provide it.
-- Provider-specific URL/header rewriting and credential injection happen before observation. The observer delegates unchanged to the existing proxy-aware fetch; lower-level proxy routing and network-added headers remain outside the observable boundary.
-- Third-party OAuth plugins remain runtime-compatible. They receive the additive context field but must adopt it to expose final-wire debug snapshots.
+- Preserve scheme, host, port, pathname, and every query parameter value.
+- Continue removing URL user info because it is a credential location, not a model parameter.
 
-The wrapper reads and captures the active request/attempt context before starting diagnostic work. Without an active context, or when the configured level is not debug, it delegates without cloning or reading the body. At debug level it starts bounded request-clone diagnostics and the real fetch concurrently; diagnostic reading never gates the actual fetch.
+### Header policy
 
-## Debug events
+- Replace the values of `authorization` and `x-api-key`, case-insensitively, with `[REDACTED]`.
+- Preserve every other header value without the current allowlist or 512-character truncation.
 
-All events below are mapped explicitly to `debug` in the existing exhaustive server-log level table.
+## Body events
 
-### Inbound request snapshot
-
-Emitted once per proxy request after the request session has started:
+Every observed body emits zero or more chunk records:
 
 ```ts
 {
-  event: "request.inbound_snapshot",
+  event: "request.body_chunk",
   requestId,
-  inboundProtocol,
-  method,
-  url,
-  headers,
-  body
+  direction: "inbound" | "upstream_request" | "upstream_response",
+  attemptIndex?,
+  providerId?,
+  modelId?,
+  sequence,
+  text
 }
 ```
 
-### Upstream request snapshot
+`sequence` starts at zero for each body and increases by one. Upstream attempt identity is included directly rather than inferred from ambient context after the stream escapes its initiating callback.
 
-Emitted for each actual provider HTTP call:
+Every observed body then emits exactly one terminal record:
 
 ```ts
 {
-  event: "request.upstream_snapshot",
+  event: "request.body_terminal",
   requestId,
-  attemptIndex,
-  providerId,
-  modelId,
-  method,
-  url,
-  headers,
-  body
+  direction,
+  attemptIndex?,
+  providerId?,
+  modelId?,
+  sequence,
+  byteLength,
+  outcome: "complete" | "cancelled" | "error",
+  errorType?
 }
 ```
 
-### Upstream result
+The terminal `sequence` is the next sequence after the last chunk. `byteLength` is the number of source bytes observed before termination. Error messages are excluded because SDK errors may embed secrets or payloads.
 
-Every observed fetch emits exactly one result event:
+An empty body emits only its terminal record. A cancelled or failed body keeps every part observed before termination and is never labeled complete.
 
-```ts
-{
-  event: "request.upstream_result",
-  requestId,
-  attemptIndex,
-  providerId,
-  modelId,
-  durationMs,
-  outcome: "response" | "exception",
-  statusCode?,
-  headers?,
-  body?,
-  error?
-}
-```
+## Framing and reconstruction
 
-Response bodies are snapshotted only for non-2xx responses. Successful response bodies, including SSE streams, are never cloned or buffered. A non-2xx response is cloned immediately, then returned to the pipeline while the clone is read and the result event is completed in the background. Snapshot and result events are therefore eventual and may arrive after the provider response or in a different order, but they retain the request and attempt identity captured when the work began. Failure to read a debug clone must not affect the response returned to the pipeline.
+For JSON and other UTF-8 text bodies, use one streaming `TextDecoder`. Each non-empty decoded segment becomes one `request.body_chunk`. Concatenating `text` by `sequence` reconstructs the complete decoded body, including whitespace and JSON field order.
 
-## Snapshot and redaction rules
+For `text/event-stream`, retain decoded text until a complete SSE event boundary is available. Emit the complete original SSE frame, including its field lines and delimiter, as one chunk. A final unterminated frame is emitted when the source closes. Only the current event may be buffered; there is no event-size limit.
 
-Snapshots are diagnostic representations, not replayable requests.
+The tap observes application-level bytes exposed by the Fetch API. It does not attempt to reconstruct network transfer encoding, HTTP/2 frames, or bytes already decompressed by the runtime.
 
-### URL
+## Data flow
 
-- Keep scheme, host, port, and pathname.
-- Keep query parameter names but replace every query value with `[REDACTED]`.
-- Never log URL user info.
+### Inbound request
 
-### Headers
+When debug logging is enabled, the pipeline creates an observed inbound `Request` before protocol parsing and uses that request for all later parsing and clones. The observed body stream emits chunks only as the protocol parser consumes the request. The metadata event is emitted immediately.
 
-- Keep header names so routing mistakes such as forwarding `Host` remain visible.
-- Replace values for `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, API-key variants, and names containing token, secret, or credential markers with `[REDACTED]`.
-- Keep bounded values only for the explicit transport allowlist: `host`, `content-type`, `content-length`, `accept`, `accept-encoding`, and `user-agent`.
-- Replace every other header value with `[REDACTED]`. Header names remain visible so unknown forwarded headers can still be compared without trusting their contents.
+At info or higher, the original `Request` is used directly with no wrapper or decoder.
 
-### Body
+### Upstream request
 
-Every fully captured request body snapshot includes its total byte length and SHA-256 digest of the original bytes. A credential field has no standalone digest; the whole-body digest remains available only for comparing the inbound and upstream byte sequences.
+The observed fetch boundary builds the final application-level `Request` after provider URL, header, credential, and body rewriting. In debug mode it replaces only the body stream with a tap and passes the resulting request to the existing proxy-aware fetch. The tap emits as fetch consumes the body.
 
-For JSON bodies no larger than 1 MiB, include a recursively sanitized JSON structure:
+The fetch input's `decompress` option and all existing request metadata must be preserved.
 
-- keep object keys, array order, booleans, numbers, and nulls;
-- keep string values for `model`, `stream`, `role`, `type`, and `effort` only at allowlisted protocol-control paths such as the root model, message/content discriminators, `reasoning.effort`, `output_config.effort`, and Gemini content roles;
-- treat nested tool inputs/results and other payload containers as payload context, including Gemini `functionCall.args` and `functionResponse.response`, so control-named keys inside them remain descriptors rather than clear text;
-- replace credential fields without a digest;
-- replace free-form text, instructions, prompts, tool arguments/results, image/file data, data URLs, base64 blobs, and `encrypted_content` with a descriptor containing byte length and SHA-256;
-- summarize every other string value.
+### Upstream response
 
-For complete request bodies at or below the proxy's existing 64 MiB encoded-body limit, retain the exact total byte length and SHA-256; JSON structure is still parsed only at or below 1 MiB. A declared `Content-Length` above the proxy limit is metadata-only and is not cloned or read. Chunked or unknown-length bodies stop at the 64 MiB ceiling plus overflow detection, cancel the diagnostic branch, and emit only `mediaType`, fixed `atLeastByteLength: 67_108_865`, and `omitted: "oversized"` without an exact length, digest, JSON, or value bytes. Never emit a raw preview.
+In debug mode, the observed fetch boundary returns a response whose body is a tapped view of the original stream. The wrapper preserves status, status text, headers, URL/redirect metadata used by consumers, and cancellation semantics. Chunks are emitted only when downstream code consumes the response, so the logger does not drain ahead of the client or fallback pipeline.
 
-Observed non-2xx response diagnostics may retain, copy, hash, or parse at most 1 MiB, with one additional byte used only to detect overflow. Bun may atomically deliver a larger non-BYOB chunk; on overflow, do not retain or process that chunk, request cancellation of the clone, and emit only `mediaType`, the fixed `atLeastByteLength: 1_048_577`, and `omitted: "oversized"`. Do not emit an exact length, digest, JSON, or value bytes.
+If the response body is never consumed, no body chunks are invented. Cancellation or failure emits the matching terminal outcome.
 
-All request and non-2xx response clone reads share a one-second diagnostic deadline. Expiry cancels the owned reader and emits one metadata-only `omitted: "unreadable"` result. The deadline bounds clone ownership and tee buffering; it is internal and not user-configurable.
+At info or higher, the original `Response` is returned unchanged.
 
-Snapshot failures produce a safe metadata-only event and never fall back to logging the original value.
+## Failure and security behavior
 
-## Exception diagnostics
+- A tap must enqueue the original source chunk unchanged before or independently of diagnostic decoding.
+- Logging, decoding, or framing failures must not error or cancel the application stream. They stop diagnostic emission for that body and attempt one `error` terminal record.
+- Source stream failures and cancellations retain their real behavior after the terminal record is attempted.
+- Model-body keys named `token`, `secret`, `password`, `cookie`, or similar are not special and are recorded unchanged. Only the explicit HTTP credential headers are redacted in model traffic.
+- OAuth control-plane requests stay outside the model request tap and retain their existing secret redaction.
 
-`request.provider_attempt_failed` keeps its current warn-level identity and status fields. For exceptions it additionally records data-only, bounded properties when present:
+## Performance
 
-- `exceptionCode`;
-- `causeType` and `causeCode`;
-- `errno` and `syscall`.
-
-Property access must use own data descriptors and must not invoke arbitrary getters. Exception messages remain excluded because provider and SDK errors may embed credentials, prompts, or upstream response bodies.
-
-This is sufficient for the diagnosed case to report `exceptionCode: "ConnectionRefused"` instead of only `errorType: "Error"`.
-
-## OpenAI ChatGPT OAuth fix
-
-The dynamic fetch must delete the inbound `Host` header before changing the destination URL and invoking fetch. It continues replacing caller authorization with the OAuth credential.
-
-The regression test must invoke the raw OpenAI Responses capability with a POST request carrying a loopback `Host`, then assert that:
-
-- the captured upstream request targets `chatgpt.com`;
-- the loopback `Host` was not forwarded;
-- the request body and non-sensitive caller headers are preserved;
-- OAuth identity headers are still injected.
-
-No broader header abstraction is required for this fix; existing provider-specific credential sanitation remains in place.
-
-## Performance and failure behavior
-
-- Non-debug levels perform no request/response body clone, hash, parse, or serialization.
-- Debug mode constructs diagnostic clones and reads them concurrently, but never waits for those reads before inbound parsing, the actual upstream fetch, response return, or provider fallback. Diagnostic bytes retained, copied, hashed, or parsed are bounded and isolated from the provider result.
-- Logging and snapshot exceptions are swallowed after emitting the smallest safe fallback event.
-- Debug logging must not change fallback decisions, status mapping, cancellation, stream ownership, usage capture, or SQLite request attempts.
+- Non-debug levels add no clone, stream wrapper, decoding, or body log event.
+- Debug mode performs one streaming UTF-8 decode and one structured log emission per decoded chunk or SSE event.
+- Memory is proportional to the current source chunk plus the current incomplete UTF-8 sequence or SSE event, not total body length.
+- Log volume is intentionally unbounded while debug capture is enabled. Existing file/rotating-file sink configuration remains responsible for storage retention.
 
 ## Tests
 
-- Async context survives promises and `ReadableStream` callbacks and remains isolated across concurrent requests.
-- Server and plugin logs inside a request automatically contain the correct request ID; background logs do not.
-- Candidate logs contain the correct attempt index and Provider ID during fallback.
-- Non-debug transport delegates without cloning or reading bodies.
-- API, AI SDK, and each built-in OAuth runtime use the observed final fetch boundary.
-- Header, URL, JSON, text, secret, image/base64, encrypted-content, cross-protocol nested control-key, and oversized-body redaction cannot expose sentinel values.
-- Known oversized requests are not read; unknown-length request clones cancel at the proxy ceiling; stalled clone reads cancel at the diagnostic deadline.
-- Non-2xx response snapshots do not consume or delay the returned response body or fallback; successful streams are not cloned; eventual result events keep exact request/attempt correlation.
-- Exception code extraction records `ConnectionRefused` without reading getters or logging messages.
-- The ChatGPT raw POST `Host` regression is covered.
+- Inbound, upstream-request, and upstream-response text can each be reconstructed by sorting chunks on their identity and sequence.
+- Large JSON bodies produce multiple chunks without hashes, descriptors, redaction, or a logging-specific oversized result.
+- Multibyte UTF-8 split across source chunks reconstructs correctly.
+- SSE frames split across arbitrary source chunks emit one record per complete event and preserve a final unterminated frame.
+- Empty, completed, cancelled, and failed bodies emit exactly one correct terminal record.
+- The application receives unchanged request/response bytes and unchanged errors while logging succeeds, throws, or encounters invalid text.
+- Debug response tapping preserves observable response metadata needed by current consumers.
+- URL query values and ordinary headers remain complete; `authorization` and `x-api-key` alone are redacted case-insensitively.
+- OAuth control-plane token/secret tests remain redacted.
+- Info and higher levels return the original request/response path without tap work.
+- Concurrent request and fallback attempts never mix body identity or sequence.
+- Existing OpenAI ChatGPT OAuth `Host` regression coverage continues to pass.
 - `bun run preflight` passes.
 
 ## Success criteria
 
-1. Given one proxy request with fallback, all request-scoped server/plugin/debug events share one request ID and have distinct attempt indexes.
-2. At debug level, operators can compare inbound and final upstream URL, header names/allowed values, sanitized body structure, byte length, and SHA-256.
-3. At info or higher, payload capture adds no body-processing work.
-4. Credentials and user payload sentinels never appear in serialized logs.
-5. The diagnosed ChatGPT OAuth request no longer forwards the loopback `Host` and reaches the intended upstream.
-6. Provider routing, response streaming, request recording, and usage accounting remain unchanged.
+1. A user can reconstruct and compare the complete decoded inbound request, final upstream request, and consumed upstream response from JSONL logs.
+2. No model payload value is sanitized, hashed, summarized, or truncated by logging.
+3. Only `authorization` and `x-api-key` header values are redacted in model traffic; OAuth control-plane secrets remain protected.
+4. Debug logging does not accumulate an entire body and does not change routing, fallback, status mapping, cancellation, usage capture, or client-visible bytes.
+5. At info or higher, payload capture adds no body-processing work.
