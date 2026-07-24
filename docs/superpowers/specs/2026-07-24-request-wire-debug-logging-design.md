@@ -16,7 +16,7 @@ That payload policy no longer matches the product goal. aio-proxy is a local pro
 
 ## Goals
 
-- At debug level, record the complete application-level text body for:
+- At debug level, record the complete application-level text body actually consumed for:
   - the inbound model request;
   - every final HTTP request sent to an upstream provider;
   - every upstream HTTP response, including successful streams.
@@ -116,6 +116,8 @@ The terminal `sequence` is the next sequence after the last chunk. `byteLength` 
 
 An empty consumed body emits only its terminal record. A cancelled or failed body keeps every part observed before termination and is never labeled complete. A `null` body or a response body that is never consumed emits no body event because no stream outcome has occurred.
 
+A failed candidate response that the fallback pipeline cancels without reading has no observed body text and emits `terminal: cancelled`. Debug logging must not clone it in the background or delay fallback to drain it.
+
 ## Framing and reconstruction
 
 For JSON and other UTF-8 text bodies, use one streaming `TextDecoder`. Each non-empty decoded segment becomes one `request.body_chunk`. Concatenating `text` by `sequence` reconstructs the complete decoded body, including whitespace and JSON field order.
@@ -179,7 +181,7 @@ At info or higher, the original `Response` is returned unchanged.
 
 ## Success criteria
 
-1. A user can reconstruct and compare the complete decoded inbound request, final upstream request, and consumed upstream response from JSONL logs.
+1. A user can reconstruct and compare the complete decoded inbound request, final upstream request, and every byte of the upstream response consumed before completion or cancellation from JSONL logs.
 2. No model payload value is sanitized, hashed, summarized, or truncated by logging.
 3. Only `authorization` and `x-api-key` header values are redacted in model traffic; OAuth control-plane secrets remain protected.
 4. Debug logging does not accumulate an entire body and does not change routing, fallback, status mapping, cancellation, usage capture, or client-visible bytes.

@@ -17,6 +17,7 @@
 - OAuth login, token exchange, and refresh secret redaction remains unchanged.
 - Do not remove `REQUEST_BODY_LIMITS`; those are protocol validation limits, not logging limits.
 - A body that starts consumption emits ordered chunks and exactly one terminal event. Null and never-consumed bodies emit no body event.
+- A failed candidate body cancelled without consumption emits only `cancelled`; never clone it in the background or delay fallback to drain it.
 - Logging must not change source bytes, backpressure, cancellation, errors, fallback, or usage capture.
 - At non-debug levels, preserve the original request/response path without wrapping or decoding.
 - Use `Provider ID` exactly as the repository domain language requires.
@@ -1018,8 +1019,11 @@ Update `pipeline/debug-logging.test.ts` after the existing `response.json()` ass
 expect(reconstructed(harness.logs, "inbound")).toContain(inboundPrompt);
 expect(reconstructed(harness.logs, "upstream_request", 0)).toContain(inboundPrompt);
 expect(reconstructed(harness.logs, "upstream_request", 1)).toContain(inboundPrompt);
-expect(reconstructed(harness.logs, "upstream_response", 0)).toContain(primaryBody);
+expect(reconstructed(harness.logs, "upstream_response", 0)).toBe("");
 expect(reconstructed(harness.logs, "upstream_response", 1)).toContain(backupBody);
+expect(terminals(harness.logs, "upstream_response")).toContainEqual(
+  expect.objectContaining({ attemptIndex: 0, outcome: "cancelled" }),
+);
 expect(harness.logs.filter((entry) => entry.event === "request.body_terminal")).toHaveLength(5);
 ```
 
