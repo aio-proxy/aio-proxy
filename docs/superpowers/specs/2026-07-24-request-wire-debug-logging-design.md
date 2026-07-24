@@ -168,7 +168,7 @@ For JSON bodies no larger than 1 MiB, include a recursively sanitized JSON struc
 
 For larger, non-JSON, multipart, or unreadable request bodies, log only media type, total byte length, SHA-256, and an omission reason. Never emit a raw preview. Request-body reads remain bounded by the proxy's existing request limits.
 
-Observed non-2xx response clones are read to at most 1 MiB. If that limit is exceeded, cancel the clone and log the media type, the captured lower bound, and an `oversized` omission reason without an exact length or digest.
+Observed non-2xx response diagnostics may retain, copy, hash, or parse at most 1 MiB, with one additional byte used only to detect overflow. Bun may atomically deliver a larger non-BYOB chunk; on overflow, do not retain or process that chunk, request cancellation of the clone, and emit only `mediaType`, the fixed `atLeastByteLength: 1_048_577`, and `omitted: "oversized"`. Do not emit an exact length, digest, JSON, or value bytes.
 
 Snapshot failures produce a safe metadata-only event and never fall back to logging the original value.
 
@@ -200,7 +200,7 @@ No broader header abstraction is required for this fix; existing provider-specif
 ## Performance and failure behavior
 
 - Non-debug levels perform no request/response body clone, hash, parse, or serialization.
-- Debug mode may add latency and body reads by design, but all snapshot work is bounded and isolated from the provider result.
+- Debug mode may add latency and body reads by design, but diagnostic bytes retained, copied, hashed, or parsed are bounded and isolated from the provider result.
 - Logging and snapshot exceptions are swallowed after emitting the smallest safe fallback event.
 - Debug logging must not change fallback decisions, status mapping, cancellation, stream ownership, usage capture, or SQLite request attempts.
 

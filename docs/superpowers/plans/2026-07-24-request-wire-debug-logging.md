@@ -14,7 +14,7 @@
 - Never emit clear-text credentials, cookies, prompts, tool data, images, files, or encrypted reasoning.
 - Keep header names; retain values only for `host`, `content-type`, `content-length`, `accept`, `accept-encoding`, and `user-agent`.
 - At non-debug levels, do not construct replacement requests, clone bodies, hash, parse, or serialize payload snapshots.
-- Never clone or buffer successful upstream response bodies; read non-2xx response clones to at most 1 MiB.
+- Never clone or buffer successful upstream response bodies. For non-2xx clones, the 1 MiB budget, plus one byte for overflow detection, governs diagnostic bytes retained, copied, hashed, or parsed; Bun may atomically deliver a larger non-BYOB chunk, which must not be retained or processed.
 - Keep request routing, fallback, cancellation, streaming, usage capture, and persisted request-attempt behavior unchanged.
 - Keep third-party OAuth plugins source-compatible: `RuntimeContext.fetch` is optional.
 - Add no clear-text escape hatch, sampling, remote shipping, Dashboard storage, or unrelated refactor.
@@ -251,7 +251,7 @@ expect(baseCalls[0]?.input).toBe(originalRequest);
 // Debug success: emit request + result metadata, but never call response.clone().
 expect(responseCloneCalls).toBe(0);
 
-// Debug non-2xx: sanitize at most 1 MiB from a clone and leave the returned body readable.
+// Debug non-2xx: retain/sanitize at most 1 MiB, use one byte to detect overflow, and leave the returned body readable.
 expect(await returned.text()).toBe(upstreamFailureBody);
 
 // Debug exception: emit the bounded code without the message.
@@ -324,7 +324,7 @@ Implementation rules:
 - replace credential branches with `{ kind: "redacted", byteLength }` and no branch digest;
 - replace free-form strings and sensitive payload branches with length/digest descriptors;
 - catch all snapshot failures and return `{ omitted: "unreadable" }`, never raw data;
-- stream-read non-2xx clones only until 1 MiB + 1 byte, cancel oversized clones, and omit exact digest/length in that case.
+- for non-2xx clones, limit diagnostic bytes retained, copied, hashed, or parsed to 1 MiB plus one byte for overflow detection; Bun may atomically deliver a larger non-BYOB chunk, so on overflow do not retain or process that chunk, request clone cancellation, and emit only `mediaType`, fixed `atLeastByteLength: 1_048_577`, and `omitted: "oversized"`, without exact length, digest, JSON, or value bytes.
 
 - [x] **Step 5: Add safe exception extraction and debug event types**
 
