@@ -16,9 +16,13 @@ import { handleTokenCount } from "./token-count";
 
 export const requestedModel = "count-model";
 
-export function countFixture(providers: readonly RuntimeProviderInstance[]) {
+export function countFixture(
+  providers: readonly RuntimeProviderInstance[],
+  options: { readonly debugLogging?: boolean } = {},
+) {
   const router = new Router(providers);
   const recording = createRecording();
+  const logs: unknown[] = [];
   let releaseCount = 0;
   const source = {
     acquireProviderSnapshot: () => ({
@@ -28,6 +32,8 @@ export function countFixture(providers: readonly RuntimeProviderInstance[]) {
       },
     }),
     currentProviderSnapshot: () => ({ providers, router }),
+    ...(options.debugLogging === undefined ? {} : { debugLogging: options.debugLogging }),
+    logger: (entry) => logs.push(entry),
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
     usageCapture: {
@@ -40,6 +46,7 @@ export function countFixture(providers: readonly RuntimeProviderInstance[]) {
     },
   } satisfies ProviderRouteSource;
   return {
+    logs,
     recording,
     releases: () => releaseCount,
     source,

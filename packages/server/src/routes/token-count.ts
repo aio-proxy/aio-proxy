@@ -13,6 +13,7 @@ import {
 import type { RequestAttemptInput, RequestSession } from "../request-recorder";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
+import { logInboundRequest, withAttemptLogContext, withRequestLogContext } from "../request-logging";
 import { hasInvalidOrOversizedContentLength } from "./pipeline";
 import { cancelRetainedRequestBody } from "./pipeline/request";
 
@@ -24,13 +25,28 @@ export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly source: ProviderRouteSource;
 };
 
-export async function handleTokenCount<TRequest, TContext>({
-  adapter,
-  context,
-  format,
-  rawRequest,
-  source,
-}: HandleTokenCountOptions<TRequest, TContext>): Promise<Response> {
+export async function handleTokenCount<TRequest, TContext>(
+  options: HandleTokenCountOptions<TRequest, TContext>,
+): Promise<Response> {
+  const { adapter, rawRequest, source } = options;
+  const session = source.requestRecorder.begin({ inboundProtocol: adapter.protocol });
+  return await withRequestLogContext(
+    {
+      requestId: session.requestId,
+      debug: source.debugLogging === true,
+      logger: source.logger,
+    },
+    async () => {
+      await logInboundRequest(rawRequest, adapter.protocol);
+      return await handleTokenCountInContext(options, session);
+    },
+  );
+}
+
+async function handleTokenCountInContext<TRequest, TContext>(
+  { adapter, context, format, rawRequest, source }: HandleTokenCountOptions<TRequest, TContext>,
+  session: RequestSession,
+): Promise<Response> {
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError("Request body too large"));
     return adapter.errors.tooLarge();
@@ -52,6 +68,7 @@ export async function handleTokenCount<TRequest, TContext>({
 
   try {
     const requestedModel = adapter.model(request, context);
+    session.identify({ requestedModelId: requestedModel });
     const logicalRequest = source.logicalSessionStore.begin({
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
@@ -66,9 +83,8 @@ export async function handleTokenCount<TRequest, TContext>({
         format,
         invocation,
         rawRequest,
-        requestedModel,
         request,
-        source,
+        session,
       });
     } catch (error) {
       if (error instanceof RouterModelNotFoundError) return adapter.errors.modelNotFound(error.message);
@@ -88,9 +104,8 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly format: (inputTokens: number) => unknown;
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
-  readonly requestedModel: string;
   readonly request: TRequest;
-  readonly source: ProviderRouteSource;
+  readonly session: RequestSession;
 };
 
 async function countCandidates<TRequest, TContext>({
@@ -100,17 +115,12 @@ async function countCandidates<TRequest, TContext>({
   format,
   invocation,
   rawRequest,
-  requestedModel,
   request,
-  source,
+  session,
 }: CountCandidatesOptions<TRequest, TContext>): Promise<Response> {
-  const session = source.requestRecorder.begin({
-    inboundProtocol: adapter.protocol,
-    requestedModelId: requestedModel,
-  });
   throwIfCountAborted(session, rawRequest.signal);
 
-  for (const candidate of candidates) {
+  for (const [attemptIndex, candidate] of candidates.entries()) {
     const provider = candidate.provider;
     const count = provider.tokenCount;
     if (count === undefined) continue;
@@ -126,13 +136,17 @@ async function countCandidates<TRequest, TContext>({
     throwIfCountAborted(session, rawRequest.signal);
     const startedAt = performance.now();
     try {
-      const result = await count.countTokens({
-        protocol: adapter.protocol,
-        modelId: candidate.modelId,
-        request: rawRequest.clone(),
-        context,
-        invocation: candidateInvocation,
-      } satisfies TokenCountInput);
+      const result = await withAttemptLogContext(
+        { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
+        () =>
+          count.countTokens({
+            protocol: adapter.protocol,
+            modelId: candidate.modelId,
+            request: rawRequest.clone(),
+            context,
+            invocation: candidateInvocation,
+          } satisfies TokenCountInput),
+      );
       rawRequest.signal.throwIfAborted();
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
         throw new TypeError("Provider token count must be a non-negative integer");

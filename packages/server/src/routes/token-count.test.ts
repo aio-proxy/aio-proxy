@@ -145,7 +145,8 @@ test("maps model-not-found and releases the snapshot lease", async () => {
   const response = await fixture.anthropic();
 
   expect(response.status).toBe(404);
-  expect(fixture.recording.begins).toEqual([]);
+  expect(fixture.recording.begins).toHaveLength(1);
+  expect(fixture.recording.finals).toEqual([]);
   expect(fixture.releases()).toBe(1);
 });
 
