@@ -3,6 +3,8 @@ import type { Logger, LogLevel } from "@aio-proxy/plugin-sdk";
 
 import type { ServerLog, ServerLogSink } from "../../server-log";
 
+import { currentRequestLogContext } from "../../request-logging";
+
 export const SERVER_LOG_LEVEL = {
   "config.reload_failed": "error",
   "dashboard.auth_unavailable": "error",
@@ -19,13 +21,18 @@ type SinkFallbackOptions<Entry> = {
   readonly fallback: (entry: Entry) => void;
 };
 
+const contextual = <Entry extends object>(entry: Entry) => ({
+  ...entry,
+  ...currentRequestLogContext(),
+});
+
 export function createServerLogSink(logger: Logger, options?: SinkFallbackOptions<ServerLog>): ServerLogSink {
   return (entry) => {
     if (options !== undefined && !options.isConfigured()) {
-      options.fallback(entry);
+      options.fallback(contextual(entry));
       return;
     }
-    logger[SERVER_LOG_LEVEL[entry.event]](entry);
+    logger[SERVER_LOG_LEVEL[entry.event]](contextual(entry));
   };
 }
 
@@ -37,9 +44,9 @@ export function createPluginLogSink(
 ): PluginLogSink {
   return (entry) => {
     if (options !== undefined && !options.isConfigured()) {
-      options.fallback(entry);
+      options.fallback(contextual(entry));
       return;
     }
-    createLogger(entry.context).error(entry);
+    createLogger(entry.context).error(contextual(entry));
   };
 }

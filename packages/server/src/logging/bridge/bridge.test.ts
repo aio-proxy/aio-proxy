@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import type { ServerLog } from "../../server-log";
 
 import { createPluginLogSink, createServerLogSink, SERVER_LOG_LEVEL } from ".";
+import { withAttemptLogContext, withRequestLogContext } from "../../request-logging";
 
 type LogCall = {
   readonly level: LogLevel;
@@ -117,6 +118,55 @@ test("createPluginLogSink preserves the structured redacted entry", () => {
   expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
 });
 
+test("logging bridges overwrite spoofed correlation with the active attempt", () => {
+  const serverCalls: LogCall[] = [];
+  const pluginCalls: LogCall[] = [];
+  const serverSink = createServerLogSink(fakeLogger(serverCalls));
+  const pluginContext = { plugin: "@example/plugin", providerId: "spoofed-context" } as const;
+  const pluginSink = createPluginLogSink((context) => {
+    expect(context).toBe(pluginContext);
+    return fakeLogger(pluginCalls);
+  });
+  const correlation = {
+    requestId: "trusted-request",
+    attemptIndex: 3,
+    providerId: "trusted-provider",
+    modelId: "trusted-model",
+  } as const;
+
+  withRequestLogContext({ requestId: correlation.requestId, debug: false, logger: () => {} }, () =>
+    withAttemptLogContext(correlation, () => {
+      serverSink({
+        event: "request.provider_attempt_failed",
+        requestId: "spoofed-request",
+        inboundProtocol: "openai-response",
+        requestedModelId: "requested-model",
+        path: "/v1/responses",
+        providerId: "spoofed-provider",
+        providerKind: "api",
+        modelId: "spoofed-model",
+        durationMs: 42,
+        failureKind: "response",
+        fallback: false,
+      });
+      pluginSink({
+        event: "plugin.load_failed",
+        code: "PLUGIN_LOAD_FAILED",
+        context: pluginContext,
+        error: { name: "Error", message: "failed" },
+        requestId: "spoofed-request",
+        attemptIndex: 99,
+        providerId: "spoofed-provider",
+        modelId: "spoofed-model",
+      });
+    }),
+  );
+
+  for (const call of [...serverCalls, ...pluginCalls]) {
+    expect(call.messageOrProps).toMatchObject(correlation);
+  }
+});
+
 test("createServerLogSink falls back until logging is configured without duplicate output", () => {
   const calls: LogCall[] = [];
   const fallbacks: ServerLog[] = [];
@@ -131,11 +181,15 @@ test("createServerLogSink falls back until logging is configured without duplica
     error: "invalid config",
   } as const;
 
-  sink(entry);
+  withRequestLogContext({ requestId: "trusted", debug: false, logger: () => {} }, () =>
+    withAttemptLogContext({ attemptIndex: 1, providerId: "provider", modelId: "model" }, () => sink(entry)),
+  );
   configured = true;
   sink(entry);
 
-  expect(fallbacks).toEqual([entry]);
+  expect(fallbacks).toEqual([
+    { ...entry, requestId: "trusted", attemptIndex: 1, providerId: "provider", modelId: "model" },
+  ]);
   expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
 });
 
@@ -161,11 +215,15 @@ test("createPluginLogSink falls back until logging is configured without creatin
     error: { name: "Error", message: "token=[REDACTED]" },
   } as const;
 
-  sink(entry);
+  withRequestLogContext({ requestId: "trusted", debug: false, logger: () => {} }, () =>
+    withAttemptLogContext({ attemptIndex: 1, providerId: "provider", modelId: "model" }, () => sink(entry)),
+  );
   configured = true;
   sink(entry);
 
-  expect(fallbacks).toEqual([entry]);
+  expect(fallbacks).toEqual([
+    { ...entry, requestId: "trusted", attemptIndex: 1, providerId: "provider", modelId: "model" },
+  ]);
   expect(loggerCreations).toBe(1);
   expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
 });
