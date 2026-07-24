@@ -86,29 +86,26 @@ describe("shared protocol pipeline debug logging", () => {
   });
 
   test("stalled failure diagnostics cannot delay fallback", async () => {
-    let releasePull: (() => void) | undefined;
+    let cancelReason: unknown;
+    let resolveCancelled!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
     const primary = observedProvider(
       "primary",
-      () => {
-        const response = Response.json({ error: true }, { status: 503 });
-        Object.defineProperty(response, "clone", {
-          value: () =>
-            new Response(
-              new ReadableStream<Uint8Array>({
-                pull(controller) {
-                  return new Promise<void>((resolve) => {
-                    releasePull = () => {
-                      controller.close();
-                      resolve();
-                    };
-                  });
-                },
-              }),
-              { status: 503 },
-            ),
-        });
-        return response;
-      },
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull() {
+              return new Promise<void>(() => undefined);
+            },
+            cancel(reason) {
+              cancelReason = reason;
+              resolveCancelled();
+            },
+          }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        ),
       {},
     );
     const backup = observedProvider("backup", () => Response.json({ provider: "backup" }), {});
@@ -116,9 +113,15 @@ describe("shared protocol pipeline debug logging", () => {
     const pending = harness.run(jsonRequest({ model: REQUESTED_MODEL }));
 
     const response = await Promise.race([pending, Bun.sleep(50).then(() => undefined)]);
-    releasePull?.();
+    const cleanupSettled = await Promise.race([cancelled.then(() => true), Bun.sleep(1_500).then(() => false)]);
+    await waitFor(() =>
+      harness.logs.some(({ event, statusCode }) => event === "request.upstream_result" && statusCode === 503),
+    );
 
     expect(response).toBeInstanceOf(Response);
     expect(await response?.json()).toEqual({ provider: "backup" });
+    expect(cleanupSettled).toBeTrue();
+    expect(cancelReason).toEqual(expect.arrayContaining([undefined, "request snapshot deadline exceeded"]));
+    expect(harness.logs).toContainEqual(expect.objectContaining({ event: "request.upstream_result", statusCode: 503 }));
   });
 });

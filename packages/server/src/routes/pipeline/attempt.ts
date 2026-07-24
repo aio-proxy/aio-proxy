@@ -80,7 +80,7 @@ export async function attemptCandidates<TRequest, TContext>({
             session.attempt(attempt);
             lastFailure = response;
             try {
-              await response.body?.cancel();
+              void response.body?.cancel().catch(() => undefined);
             } catch {}
             continue;
           }
