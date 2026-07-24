@@ -19,7 +19,10 @@ test("routes the final ChatGPT request through the host fetch", async () => {
       credentials: credentialPort(),
       options: {},
       catalog: emptyCatalog(),
-      fetch: async (input, init) => {
+      fetch: async () => {
+        throw new Error("unexpected control fetch");
+      },
+      modelFetch: async (input, init) => {
         requests.push(new Request(input, init));
         return Response.json({ ok: true });
       },

@@ -11,15 +11,20 @@ export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
   options: XAIGrokOAuthOptions = {},
 ): Promise<OAuthRuntimeResult> {
-  const fetcher = options.fetch ?? context.fetch;
+  const controlFetch = options.fetch ?? context.fetch ?? globalThis.fetch;
+  const modelFetch = options.fetch ?? context.modelFetch ?? controlFetch;
   const openai = createOpenAI({
     name: "xai-grok-oauth",
     baseURL: XAI_GROK_CLI_BASE_URL,
     apiKey: "dynamic-credential",
-    fetch: createXAIGrokDynamicFetch(context.credentials, {
-      ...options,
-      ...(fetcher === undefined ? {} : { fetch: fetcher }),
-    }) as typeof globalThis.fetch,
+    fetch: createXAIGrokDynamicFetch(
+      context.credentials,
+      {
+        ...options,
+        fetch: modelFetch,
+      },
+      controlFetch,
+    ) as typeof globalThis.fetch,
   });
   return {
     provider: {
@@ -34,11 +39,13 @@ export async function createXAIGrokRuntime(
 export function createXAIGrokDynamicFetch(
   credentials: CredentialPort<XAIGrokCredential>,
   options: XAIGrokOAuthOptions = {},
+  credentialFetch: XAIGrokFetch = options.fetch ?? globalThis.fetch,
 ): XAIGrokFetch {
   return async (input, init) => {
     const signal = init?.signal ?? (input instanceof Request ? input.signal : options.signal);
     const credential = await currentXAIGrokCredential(credentials, {
       ...options,
+      fetch: credentialFetch,
       ...(signal === undefined ? {} : { signal }),
     });
     const request = new Request(input, init);

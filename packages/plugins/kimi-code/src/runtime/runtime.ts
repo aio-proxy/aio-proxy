@@ -15,11 +15,16 @@ export async function createKimiRuntime(
   context: RuntimeContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
 ): Promise<OAuthRuntimeResult> {
-  const fetcher = dependencies.fetch ?? context.fetch;
-  const dynamicFetch = createKimiDynamicFetch(context.credentials, {
-    ...dependencies,
-    ...(fetcher === undefined ? {} : { fetch: fetcher }),
-  });
+  const controlFetch = dependencies.fetch ?? context.fetch ?? globalThis.fetch;
+  const modelFetch = dependencies.fetch ?? context.modelFetch ?? controlFetch;
+  const dynamicFetch = createKimiDynamicFetch(
+    context.credentials,
+    {
+      ...dependencies,
+      fetch: modelFetch,
+    },
+    controlFetch,
+  );
   const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
     rewriteToolImages: true,
   });
@@ -95,10 +100,15 @@ export async function createKimiRuntime(
 export function createKimiDynamicFetch(
   credentials: RuntimeContext<KimiCredential, Record<string, never>>["credentials"],
   dependencies: KimiOAuthDependencies = {},
+  credentialFetch: typeof globalThis.fetch = dependencies.fetch ?? globalThis.fetch,
 ) {
   const fetchWithCredential = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
-    const credential = await currentKimiCredential(credentials, { ...dependencies, signal: request.signal });
+    const credential = await currentKimiCredential(credentials, {
+      ...dependencies,
+      fetch: credentialFetch,
+      signal: request.signal,
+    });
     const headers = new Headers(request.headers);
     for (const key of [
       "authorization",

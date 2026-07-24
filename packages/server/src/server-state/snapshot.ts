@@ -53,7 +53,8 @@ export async function buildSnapshot(
   onDiagnosticChanged: () => void,
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
-  const runtimeFetch = createObservedFetch(globalThis.fetch);
+  const runtimeFetch = globalThis.fetch;
+  const runtimeModelFetch = createObservedFetch(runtimeFetch);
   const builtIns = options.builtIns ?? createEmbeddedBuiltIns();
   const publicPluginOptions = new Map<string, unknown>(builtIns.map((plugin) => [plugin.packageName, undefined]));
   for (const enablement of config.plugins) publicPluginOptions.set(enablement.packageName, enablement.options);
@@ -118,6 +119,7 @@ export async function buildSnapshot(
         onDiagnosticChanged,
         pluginOptionsDigest,
         runtimeFetch,
+        runtimeModelFetch,
         ...(pluginOptionInput === undefined || "error" in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),

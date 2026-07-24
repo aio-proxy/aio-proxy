@@ -181,6 +181,7 @@ export async function materializePluginProvider(
           options: accountOptions,
           catalog: storedCatalog.catalog,
           ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
+          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
         }),
       ),
     );

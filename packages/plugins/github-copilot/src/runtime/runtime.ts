@@ -18,8 +18,9 @@ const PLACEHOLDER_CREDENTIAL = "dynamic-credential";
 export async function createGitHubCopilotRuntime(
   context: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>,
 ): Promise<OAuthRuntimeResult> {
-  const fetcher = context.fetch ?? globalThis.fetch;
-  const dynamicFetch = createDynamicFetch(context.credentials, fetcher);
+  const controlFetch = context.fetch ?? globalThis.fetch;
+  const modelFetch = context.modelFetch ?? controlFetch;
+  const dynamicFetch = createDynamicFetch(context.credentials, modelFetch, controlFetch);
   const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
     rewriteToolImages: true,
   });
@@ -77,8 +78,8 @@ export async function createGitHubCopilotRuntime(
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
       return {
         invoke: async (request) => {
-          const credential = await currentGitHubCopilotCredential(context.credentials, fetcher);
-          return await fetchWithCredential(request, undefined, credential, fetcher);
+          const credential = await currentGitHubCopilotCredential(context.credentials, controlFetch);
+          return await fetchWithCredential(request, undefined, credential, modelFetch);
         },
       };
     },
@@ -87,11 +88,12 @@ export async function createGitHubCopilotRuntime(
 
 function createDynamicFetch(
   credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>["credentials"],
-  fetcher: typeof fetch,
+  modelFetch: typeof fetch,
+  controlFetch: typeof fetch,
 ): typeof fetch {
   return async (input, init) => {
-    const credential = await currentGitHubCopilotCredential(credentials, fetcher);
-    return await fetchWithCredential(input, init, credential, fetcher);
+    const credential = await currentGitHubCopilotCredential(credentials, controlFetch);
+    return await fetchWithCredential(input, init, credential, modelFetch);
   };
 }
 

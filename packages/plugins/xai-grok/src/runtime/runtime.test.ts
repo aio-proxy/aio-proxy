@@ -19,7 +19,10 @@ describe("xAI Grok runtime", () => {
         credentials: port(),
         options: {},
         catalog: emptyCatalog(),
-        fetch: async (input, init) => {
+        fetch: async () => {
+          throw new Error("unexpected control fetch");
+        },
+        modelFetch: async (input, init) => {
           requests.push(new Request(input, init));
           return Response.json(openAIResponse());
         },

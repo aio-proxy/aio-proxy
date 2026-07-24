@@ -15,7 +15,11 @@ const PLACEHOLDER_CREDENTIAL = "dynamic-credential" as const;
 export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch);
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(
+    context.credentials,
+    context.modelFetch ?? context.fetch,
+    context.fetch,
+  );
   const openAI = createOpenAI({
     name: "openai-chatgpt",
     baseURL: CHATGPT_CODEX_BASE_URL,
@@ -38,10 +42,11 @@ export async function createOpenAIChatGPTRuntime(
 export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   fetcher: typeof fetch = globalThis.fetch,
+  credentialFetcher: typeof fetch = fetcher,
 ): typeof fetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch("openai-response", fetcher);
   return async (input, init) => {
-    const credential = await currentCredential(credentials, fetcher);
+    const credential = await currentCredential(credentials, credentialFetcher);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete("authorization");

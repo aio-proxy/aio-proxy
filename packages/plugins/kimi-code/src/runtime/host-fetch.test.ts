@@ -18,7 +18,10 @@ test("routes the final Kimi Code request through the host fetch", async () => {
       credentials: credentialPort(),
       options: {},
       catalog: catalog(),
-      fetch: async (input, init) => {
+      fetch: async () => {
+        throw new Error("unexpected control fetch");
+      },
+      modelFetch: async (input, init) => {
         requests.push(new Request(input, init));
         return Response.json({ ok: true });
       },

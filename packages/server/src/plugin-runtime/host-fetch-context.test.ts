@@ -9,23 +9,25 @@ import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from 
 
 afterEach(cleanup);
 
-test("OAuth runtimes receive the observed host fetch", async () => {
+test("OAuth runtimes keep control traffic outside observed model fetches", async () => {
   const logs: ServerLog[] = [];
   const baseFetchCalls: Request[] = [];
   const baseFetchBodies: string[] = [];
-  const baseFetch = (async (input) => {
-    if (!(input instanceof Request)) throw new TypeError("expected OAuth Request");
-    baseFetchCalls.push(input);
-    baseFetchBodies.push(await input.text());
+  const baseFetch = (async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    baseFetchCalls.push(request);
+    baseFetchBodies.push(await request.text());
     return new Response(null, { status: 204 });
   }) as typeof globalThis.fetch;
   let capturedFetch: typeof globalThis.fetch | undefined;
+  let capturedModelFetch: typeof globalThis.fetch | undefined;
   const fixture = runtimeFixture(
     { kind: "static" },
     {
       providerId: "oauth",
       async createRuntime(context) {
         capturedFetch = context.fetch;
+        capturedModelFetch = context.modelFetch;
         return {
           provider: {
             specificationVersion: "v4",
@@ -57,20 +59,27 @@ test("OAuth runtimes receive the observed host fetch", async () => {
     diagnostics,
     logger: () => {},
     onDiagnosticChanged: () => {},
-    runtimeFetch: createObservedFetch(baseFetch),
+    runtimeFetch: baseFetch,
+    runtimeModelFetch: createObservedFetch(baseFetch),
   });
 
   expect(capturedFetch).toBeFunction();
+  expect(capturedModelFetch).toBeFunction();
 
   await withRequestLogContext({ requestId: "request-1", debug: true, logger: (entry) => logs.push(entry) }, () =>
-    withAttemptLogContext({ attemptIndex: 0, providerId: "oauth", modelId: "model" }, () =>
-      capturedFetch?.("https://oauth-upstream.test/v1", { method: "POST", body: "wire-secret" }),
-    ),
+    withAttemptLogContext({ attemptIndex: 0, providerId: "oauth", modelId: "model" }, async () => {
+      await capturedFetch?.("https://oauth-upstream.test/token", {
+        method: "POST",
+        body: "refresh-token-secret",
+      });
+      await capturedModelFetch?.("https://oauth-upstream.test/v1", { method: "POST", body: "wire-secret" });
+    }),
   );
 
   await waitFor(() => logs.some(({ event }) => event === "request.upstream_snapshot"));
   expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_snapshot", providerId: "oauth" }));
-  expect(baseFetchCalls).toHaveLength(1);
-  expect(baseFetchBodies).toEqual(["wire-secret"]);
+  expect(baseFetchCalls).toHaveLength(2);
+  expect(baseFetchBodies).toEqual(["refresh-token-secret", "wire-secret"]);
   expect(reconstructed(logs, "upstream_request")).toBe("wire-secret");
+  expect(JSON.stringify(logs)).not.toContain("refresh-token-secret");
 });

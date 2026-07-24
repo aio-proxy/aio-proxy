@@ -21,7 +21,10 @@ test("routes the final GitHub Copilot request through the host fetch", async () 
       credentials: credentialPort(),
       options: { deploymentType: "github.com" },
       catalog: catalog(),
-      fetch: async (input, init) => {
+      fetch: async () => {
+        throw new Error("unexpected control fetch");
+      },
+      modelFetch: async (input, init) => {
         requests.push(new Request(input, init));
         return Response.json({ ok: true });
       },
@@ -54,7 +57,8 @@ test("routes the final GitHub Copilot request through the host fetch", async () 
 test("routes an expired credential refresh and final request through the host fetch", async () => {
   const originalFetch = globalThis.fetch;
   const clientId = Reflect.get(globalThis, "__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__");
-  const urls: string[] = [];
+  const controlUrls: string[] = [];
+  const modelUrls: string[] = [];
   Reflect.set(globalThis, "__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__", clientId ?? "test-client-id");
   globalThis.fetch = async () => {
     throw new Error("unexpected global fetch");
@@ -74,11 +78,14 @@ test("routes an expired credential refresh and final request through the host fe
       catalog: catalog(),
       fetch: async (input, init) => {
         const request = new Request(input, init);
-        urls.push(request.url);
-        if (request.url === "https://api.github.com/copilot_internal/v2/token") {
-          expect(request.headers.get("authorization")).toBe("Bearer github-token");
-          return Response.json({ token: "refreshed-copilot-token", expires_at: 9_999_999_999 });
-        }
+        controlUrls.push(request.url);
+        expect(request.url).toBe("https://api.github.com/copilot_internal/v2/token");
+        expect(request.headers.get("authorization")).toBe("Bearer github-token");
+        return Response.json({ token: "refreshed-copilot-token", expires_at: 9_999_999_999 });
+      },
+      modelFetch: async (input, init) => {
+        const request = new Request(input, init);
+        modelUrls.push(request.url);
         expect(request.headers.get("authorization")).toBe("Bearer refreshed-copilot-token");
         return Response.json({ ok: true });
       },
@@ -100,10 +107,8 @@ test("routes an expired credential refresh and final request through the host fe
     restoreGlobal("__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__", clientId);
   }
 
-  expect(urls).toEqual([
-    "https://api.github.com/copilot_internal/v2/token",
-    "https://api.githubcopilot.com/v1/chat/completions",
-  ]);
+  expect(controlUrls).toEqual(["https://api.github.com/copilot_internal/v2/token"]);
+  expect(modelUrls).toEqual(["https://api.githubcopilot.com/v1/chat/completions"]);
 });
 
 function credentialPort(): CredentialPort<GitHubCopilotCredential> {
