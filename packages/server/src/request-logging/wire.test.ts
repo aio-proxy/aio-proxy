@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 
 import type { ServerLog } from "../server-log";
 
-import { serverErrorDetails } from "../server-log";
 import { withAttemptLogContext, withRequestLogContext } from "./context";
 import { createObservedFetch, logInboundRequest } from "./wire";
 
@@ -95,6 +94,25 @@ test("debug success snapshots the delegated request without cloning the response
   expect(JSON.stringify(logs)).not.toContain(responseSentinel);
 });
 
+test("hostile response status cannot change fetch behavior", async () => {
+  const logs: ServerLog[] = [];
+  const response = new Response(null, { status: 204 });
+  Object.defineProperty(response, "status", {
+    get() {
+      throw new Error("status-accessor-sentinel");
+    },
+  });
+
+  const returned = await inDebugAttempt(logs, () =>
+    createObservedFetch(captureFetch([], () => response))("https://upstream.test/v1/responses"),
+  );
+
+  expect(returned).toBe(response);
+  expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_result", outcome: "response" }));
+  expect(logs.filter(({ event }) => event === "request.upstream_result")).toHaveLength(1);
+  expect(JSON.stringify(logs)).not.toContain("status-accessor-sentinel");
+});
+
 test("debug non-2xx bounds the cloned snapshot and leaves the returned body readable", async () => {
   const calls: FetchCall[] = [];
   const logs: ServerLog[] = [];
@@ -130,6 +148,42 @@ test("debug non-2xx bounds the cloned snapshot and leaves the returned body read
     }),
   );
   expect(JSON.stringify(logs)).not.toContain(sentinel);
+});
+
+test("debug non-2xx retains no diagnostic bytes beyond the limit", async () => {
+  const logs: ServerLog[] = [];
+  const sentinel = "oversized-chunk-sentinel";
+  const oversized = new TextEncoder().encode(JSON.stringify({ message: `${sentinel}${"x".repeat(ONE_MIB)}` }));
+  let cancelled = false;
+  const cloneBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(oversized);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = new Response("returned-body", { status: 502 });
+  Object.defineProperty(response, "clone", {
+    value: () =>
+      ({ status: 502, headers: new Headers({ "content-type": "application/json" }), body: cloneBody }) as Response,
+  });
+
+  const returned = await inDebugAttempt(logs, () =>
+    createObservedFetch(captureFetch([], () => response))("https://upstream.test/v1/responses"),
+  );
+
+  expect(cancelled).toBeTrue();
+  expect(await returned.text()).toBe("returned-body");
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      event: "request.upstream_result",
+      outcome: "response",
+      body: { mediaType: "application/json", atLeastByteLength: ONE_MIB + 1, omitted: "oversized" },
+    }),
+  );
+  expect(JSON.stringify(logs)).not.toContain(sentinel);
+  expect(JSON.stringify(logs)).not.toContain(String(oversized.byteLength));
 });
 
 test("debug exceptions log only bounded own data properties", async () => {
@@ -172,9 +226,20 @@ test("debug exceptions log only bounded own data properties", async () => {
   expect(JSON.stringify(logs)).not.toContain(causeMessageSentinel);
 });
 
-test("safe exception extraction never invokes accessors", () => {
+test("safe exception extraction never invokes constructor or metadata accessors", async () => {
+  const logs: ServerLog[] = [];
   let getterCalls = 0;
-  const error = new Error("accessor-message-sentinel");
+  const constructor = function HostileError() {};
+  Object.defineProperty(constructor, "name", {
+    configurable: true,
+    get() {
+      getterCalls += 1;
+      return null;
+    },
+  });
+  const prototype = Object.create(Error.prototype) as object;
+  Object.defineProperty(prototype, "constructor", { value: constructor });
+  const error = Object.create(prototype) as Error;
   Object.defineProperty(error, "code", {
     get() {
       getterCalls += 1;
@@ -182,8 +247,25 @@ test("safe exception extraction never invokes accessors", () => {
     },
   });
 
-  expect(serverErrorDetails(error)).toEqual({ errorType: "Error" });
+  await expect(
+    inDebugAttempt(logs, () =>
+      createObservedFetch(
+        captureFetch([], () => {
+          throw error;
+        }),
+      )("https://upstream.test/v1/responses"),
+    ),
+  ).rejects.toBe(error);
+
   expect(getterCalls).toBe(0);
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      event: "request.upstream_result",
+      outcome: "exception",
+      errorType: "Error",
+    }),
+  );
+  expect(logs.filter(({ event }) => event === "request.upstream_result")).toHaveLength(1);
 });
 
 test("inbound snapshots use only the active debug request scope", async () => {

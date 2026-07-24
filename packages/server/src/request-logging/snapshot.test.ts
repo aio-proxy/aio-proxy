@@ -123,6 +123,19 @@ test("response snapshots sanitize JSON strings", async () => {
   expect(JSON.stringify(snapshot)).not.toContain(sentinel);
 });
 
+test("response body media types obey the retained header value cap", async () => {
+  const sentinel = "media-type-sentinel";
+  const contentType = `application/${"x".repeat(512)}${sentinel}`;
+
+  const snapshot = await snapshotResponse(
+    new Response("failure", { status: 400, headers: { "content-type": contentType } }),
+  );
+
+  expect(snapshot.headers["content-type"]).toHaveLength(512);
+  expect(snapshot.body?.mediaType).toHaveLength(512);
+  expect(JSON.stringify(snapshot)).not.toContain(sentinel);
+});
+
 test("snapshot entry points contain hostile metadata access", async () => {
   const sentinel = "metadata-accessor-sentinel";
   const hostile = (keys: readonly string[]) =>

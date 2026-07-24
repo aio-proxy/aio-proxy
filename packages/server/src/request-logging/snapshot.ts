@@ -126,7 +126,12 @@ function safeHeaders(headers: Headers): Readonly<Record<string, string>> {
 
 function mediaType(headers: Headers): string | undefined {
   try {
-    const value = headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+    const value = headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase()
+      .slice(0, MAX_HEADER_VALUE_CHARACTERS);
     return value === "" ? undefined : value;
   } catch {
     return undefined;

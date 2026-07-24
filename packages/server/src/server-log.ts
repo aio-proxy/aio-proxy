@@ -150,7 +150,8 @@ export function serverErrorType(error: unknown): string {
       const prototype = Object.getPrototypeOf(error);
       const errorConstructor =
         prototype === null ? undefined : Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
-      return typeof errorConstructor === "function" && errorConstructor.name !== "" ? errorConstructor.name : "Error";
+      const errorType = typeof errorConstructor === "function" ? ownString(errorConstructor, "name") : undefined;
+      return errorType === undefined || errorType === "" ? "Error" : errorType;
     }
   } catch {}
   return "Object";

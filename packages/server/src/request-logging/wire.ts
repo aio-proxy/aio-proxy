@@ -85,6 +85,6 @@ async function safeResponseSnapshot(response: Response): Promise<HttpResponseSna
   try {
     return await snapshotResponse(response.status >= 200 && response.status < 300 ? response : response.clone());
   } catch {
-    return { statusCode: response.status, headers: {}, body: { omitted: "unreadable" } };
+    return { statusCode: 0, headers: {}, body: { omitted: "unreadable" } };
   }
 }
