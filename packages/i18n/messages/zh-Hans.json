@@ -514,6 +514,7 @@
       "request_id": "请求 ID",
       "outcome": "结果",
       "protocol": "协议",
+      "model": "模型",
       "requested_model": "请求模型",
       "final_provider": "最终提供商",
       "final_model": "最终模型",

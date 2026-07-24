@@ -17,7 +17,29 @@ afterEach(() => {
 async function seededApp() {
   const home = mkdtempSync(join(tmpdir(), "aio-proxy-dashboard-logs-"));
   homes.push(home);
-  const app = await createServer({ config: { providers: {} }, dbHome: home });
+  const app = await createServer({
+    config: {
+      providers: {
+        openrouter: {
+          kind: "api",
+          name: "OpenRouter",
+          protocol: "openai-compatible",
+          baseURL: "https://openrouter.example.com",
+          models: ["openai/gpt-5"],
+        },
+      },
+    },
+    dbHome: home,
+    modelsDevCatalogTask: async () => ({
+      displayName: () => undefined,
+      find: () => undefined,
+      metadata: (modelId) =>
+        ({
+          mini: { displayName: "GPT Mini" },
+          "openai/gpt-5": { displayName: "GPT-5" },
+        })[modelId],
+    }),
+  });
   const handle = openDb({ home });
   const store = createRequestLogStore(handle.db);
   const completedAt = new Date("2026-07-12T08:00:00.000Z");
@@ -92,6 +114,23 @@ describe("GET /dashboard/api/logs", () => {
         },
       ],
     });
+  });
+
+  test("returns current display names while preserving stored ids", async () => {
+    const response = await (await seededApp()).request("/dashboard/api/logs", undefined, loopbackServer);
+    const body = await response.json();
+
+    expect(body.items).toContainEqual(
+      expect.objectContaining({
+        requestId: "request-success",
+        requestedModelId: "mini",
+        requestedModelDisplayName: "GPT Mini",
+        finalProviderId: "openrouter",
+        finalProviderName: "OpenRouter",
+        finalModelId: "openai/gpt-5",
+        finalModelDisplayName: "GPT-5",
+      }),
+    );
   });
 
   test("applies combined terminal filters", async () => {

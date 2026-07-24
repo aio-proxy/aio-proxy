@@ -1,5 +1,3 @@
-import type { RequestLogsQuery } from "@aio-proxy/core/db";
-
 import {
   AccountCleanupPendingError,
   NpmInstallError,
@@ -10,13 +8,7 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from "@aio-proxy/core";
-import {
-  DashboardRequestLogsPageSizeSchema,
-  RequestOutcomeSchema,
-  UsageOverviewGroupBySchema,
-  UsageOverviewMetricSchema,
-  UsageOverviewRangeSchema,
-} from "@aio-proxy/types";
+import { UsageOverviewGroupBySchema, UsageOverviewMetricSchema, UsageOverviewRangeSchema } from "@aio-proxy/types";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { ZodError, z } from "zod";
@@ -39,6 +31,7 @@ import {
 } from "./provider-mutation";
 import { providerPackageQueryValidator, providerPackageStatus } from "./provider-package-metadata";
 import { redactSecrets } from "./provider-secrets";
+import { createDashboardRequestLogsRoute } from "./request-logs";
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
@@ -69,49 +62,6 @@ const usageOverviewValidator = validator("query", (raw, context) => {
   const parsed = UsageOverviewQuerySchema.safeParse(raw);
   return parsed.success ? parsed.data : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
 });
-
-const RequestLogsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().pipe(DashboardRequestLogsPageSizeSchema).default(50),
-  startedAfter: z.iso
-    .datetime()
-    .transform((value) => new Date(value))
-    .optional(),
-  completedBefore: z.iso
-    .datetime()
-    .transform((value) => new Date(value))
-    .optional(),
-  requestId: z.string().trim().min(1).optional(),
-  outcome: RequestOutcomeSchema.optional(),
-  inboundProtocol: z.string().trim().min(1).optional(),
-  requestedModelId: z.string().trim().min(1).optional(),
-  finalProviderId: z.string().trim().min(1).optional(),
-  finalModelId: z.string().trim().min(1).optional(),
-  finalStatusCode: z.coerce.number().int().min(100).max(599).optional(),
-});
-
-const requestLogsValidator = validator("query", (raw, context) => {
-  const parsed = RequestLogsQuerySchema.safeParse(raw);
-  return parsed.success
-    ? toRequestLogsQuery(parsed.data)
-    : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
-});
-
-function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): RequestLogsQuery {
-  return {
-    page: query.page,
-    pageSize: query.pageSize,
-    ...(query.startedAfter === undefined ? {} : { startedAfter: query.startedAfter }),
-    ...(query.completedBefore === undefined ? {} : { completedBefore: query.completedBefore }),
-    ...(query.requestId === undefined ? {} : { requestId: query.requestId }),
-    ...(query.outcome === undefined ? {} : { outcome: query.outcome }),
-    ...(query.inboundProtocol === undefined ? {} : { inboundProtocol: query.inboundProtocol }),
-    ...(query.requestedModelId === undefined ? {} : { requestedModelId: query.requestedModelId }),
-    ...(query.finalProviderId === undefined ? {} : { finalProviderId: query.finalProviderId }),
-    ...(query.finalModelId === undefined ? {} : { finalModelId: query.finalModelId }),
-    ...(query.finalStatusCode === undefined ? {} : { finalStatusCode: query.finalStatusCode }),
-  };
-}
 
 export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication) =>
   new Hono()
@@ -237,7 +187,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       const query = context.req.valid("query");
       return context.json(state.requestLog.overview(query));
     })
-    .get("/logs", requestLogsValidator, (context) => context.json(state.requestLog.list(context.req.valid("query"))))
+    .route("/logs", createDashboardRequestLogsRoute(state))
     .post("/providers/install", async (context) => {
       try {
         const request = ProviderInstallRequestSchema.parse(await context.req.json());

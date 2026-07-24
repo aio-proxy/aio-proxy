@@ -2,6 +2,7 @@ import type { DashboardRequestLog, DashboardRequestLogsResponse, RequestOutcome 
 
 import { m } from "@aio-proxy/i18n";
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { ArrowRight } from "lucide-react";
 
 import { DataTablePagination } from "@/components/data-table-pagination";
 import { ProtocolLabel } from "@/components/protocol-label";
@@ -13,14 +14,19 @@ import type { LogsSearch } from "../logs-search";
 
 import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
 
-type Props = {
+interface LogsTableProps {
   readonly data: DashboardRequestLogsResponse;
   readonly search: LogsSearch;
   readonly onSearchChange: (search: LogsSearch) => void;
   readonly onSelect: (log: DashboardRequestLog) => void;
-};
+}
 
 const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
+const outcomeBadgeVariants = {
+  success: "default",
+  failure: "destructive",
+  cancelled: "secondary",
+} as const satisfies Record<RequestOutcome, "default" | "destructive" | "secondary">;
 const columns: ColumnDef<DashboardRequestLog>[] = [
   {
     accessorKey: "completedAt",
@@ -31,7 +37,7 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
     accessorKey: "outcome",
     header: () => m["dashboard.logs.outcome"](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => (
-      <Badge variant="outline">{outcomeLabel(row.original.outcome)}</Badge>
+      <Badge variant={outcomeBadgeVariants[row.original.outcome]}>{outcomeLabel(row.original.outcome)}</Badge>
     ),
   },
   {
@@ -41,18 +47,34 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
       <ProtocolLabel protocol={row.original.inboundProtocol} />
     ),
   },
-  { accessorKey: "requestedModelId", header: () => m["dashboard.logs.requested_model"]() },
   {
     accessorKey: "finalProviderId",
     header: () => m["dashboard.logs.final_provider"](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) =>
-      row.original.finalProviderId ?? m["dashboard.logs.not_available"](),
+      row.original.finalProviderName ?? row.original.finalProviderId ?? m["dashboard.logs.not_available"](),
   },
   {
-    accessorKey: "finalModelId",
-    header: () => m["dashboard.logs.final_model"](),
-    cell: ({ row }: CellContext<DashboardRequestLog, unknown>) =>
-      row.original.finalModelId ?? m["dashboard.logs.not_available"](),
+    id: "model",
+    header: () => m["dashboard.logs.model"](),
+    cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => {
+      const log = row.original;
+      const requestedModel =
+        log.requestedModelDisplayName ??
+        (log.finalModelId === log.requestedModelId ? log.finalModelDisplayName : undefined) ??
+        log.requestedModelId;
+      const finalModel = log.finalModelDisplayName ?? log.finalModelId;
+      return (
+        <div className="min-w-32">
+          <div>{requestedModel}</div>
+          {log.finalModelId !== undefined && log.finalModelId !== log.requestedModelId ? (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <ArrowRight className="size-3" aria-hidden="true" />
+              <span>{finalModel}</span>
+            </div>
+          ) : null}
+        </div>
+      );
+    },
   },
   {
     accessorKey: "finalStatusCode",
@@ -80,7 +102,7 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
   },
 ];
 
-export const LogsTable: React.FC<Props> = ({ data, search, onSearchChange, onSelect }) => {
+export const LogsTable: React.FC<LogsTableProps> = ({ data, search, onSearchChange, onSelect }) => {
   const table = useReactTable({
     data: data.items as DashboardRequestLog[],
     columns,
