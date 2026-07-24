@@ -13,7 +13,7 @@ import {
 import type { RequestAttemptInput, RequestSession } from "../request-recorder";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
 
-import { logInboundRequest, withAttemptLogContext, withRequestLogContext } from "../request-logging";
+import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from "../request-logging";
 import { hasInvalidOrOversizedContentLength } from "./pipeline";
 import { cancelRetainedRequestBody } from "./pipeline/request";
 
@@ -37,8 +37,8 @@ export async function handleTokenCount<TRequest, TContext>(
       logger: source.logger,
     },
     async () => {
-      await logInboundRequest(rawRequest, adapter.protocol);
-      return await handleTokenCountInContext(options, session);
+      const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
+      return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
     },
   );
 }

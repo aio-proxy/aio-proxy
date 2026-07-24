@@ -1,1 +1,1 @@
-export { createObservedFetch, logInboundRequest } from "./wire";
+export { createObservedFetch, observeInboundRequest } from "./wire";

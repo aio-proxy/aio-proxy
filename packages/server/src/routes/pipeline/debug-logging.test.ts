@@ -62,6 +62,7 @@ describe("shared protocol pipeline debug logging", () => {
     );
     expect(reconstructed(harness.logs, "upstream_request", 0)).toContain(inboundPrompt);
     expect(reconstructed(harness.logs, "upstream_request", 1)).toContain(inboundPrompt);
+    expect(reconstructed(harness.logs, "inbound")).toContain(inboundPrompt);
     expect(reconstructed(harness.logs, "upstream_response", 0)).toBe("");
     expect(reconstructed(harness.logs, "upstream_response", 1)).toContain(backupBody);
     expect(terminals(harness.logs, "upstream_response")).toContainEqual(

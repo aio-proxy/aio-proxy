@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { currentRequestLogContext } from "../request-logging";
-import { waitFor } from "../request-logging/test-support";
+import { reconstructed, waitFor } from "../request-logging/test-support";
 import { anthropicRequest, countFixture, provider } from "./token-count.test-support";
 
 test("correlates a token-count provider attempt with its inbound request", async () => {
@@ -31,6 +31,7 @@ test("correlates a token-count provider attempt with its inbound request", async
   expect(fixture.logs).toContainEqual(
     expect.objectContaining({ event: "request.inbound_snapshot", requestId: "request-1" }),
   );
+  expect(reconstructed(fixture.logs, "inbound")).toContain('"content":"hello"');
 });
 
 test("keeps concurrent token-count request contexts isolated", async () => {

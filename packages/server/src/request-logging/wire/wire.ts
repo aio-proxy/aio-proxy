@@ -61,15 +61,16 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
   }) as typeof globalThis.fetch;
 }
 
-export async function logInboundRequest(request: Request, inboundProtocol: string): Promise<void> {
+export function observeInboundRequest(request: Request, inboundProtocol: string): Request {
   const scope = currentDebugRequestLogScope();
-  if (scope === undefined) return;
+  if (scope === undefined) return request;
   logServerEvent(scope.logger, {
     event: "request.inbound_snapshot",
     requestId: scope.requestId,
     inboundProtocol,
     ...requestMetadata(request),
   });
+  return requestWithObservedBody(request, { requestId: scope.requestId, direction: "inbound" }, scope.logger);
 }
 
 function observedBody(

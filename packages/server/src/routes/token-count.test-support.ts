@@ -9,6 +9,7 @@ import {
 import { ConfigSchema, ProviderKind, type ProviderProtocol } from "@aio-proxy/types";
 
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
+import type { ServerLog } from "../server-log";
 
 import { createRecording } from "../../_test/pipeline-helpers/recording";
 import { LogicalSessionStore } from "../logical-session-store";
@@ -22,7 +23,7 @@ export function countFixture(
 ) {
   const router = new Router(providers);
   const recording = createRecording();
-  const logs: unknown[] = [];
+  const logs: ServerLog[] = [];
   let releaseCount = 0;
   const source = {
     acquireProviderSnapshot: () => ({

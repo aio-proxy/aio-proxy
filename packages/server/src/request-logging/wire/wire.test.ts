@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 
 import type { ServerLog } from "../../server-log";
 
-import { createObservedFetch } from ".";
+import { createObservedFetch, observeInboundRequest } from ".";
+import { withRequestLogContext } from "../context";
 import { captureFetch, type FetchCall, inDebugAttempt, reconstructed, terminals } from "../test-support";
 
 test("non-debug fetch preserves the original input and init", async () => {
@@ -13,6 +14,41 @@ test("non-debug fetch preserves the original input and init", async () => {
   await createObservedFetch(captureFetch(calls, () => new Response(null, { status: 204 })))(originalRequest, init);
 
   expect(calls).toEqual([{ input: originalRequest, init }]);
+});
+
+test("non-debug inbound observation preserves Request identity", () => {
+  const request = new Request("https://proxy.test/v1/responses");
+
+  expect(observeInboundRequest(request, "openai-response")).toBe(request);
+  expect(
+    withRequestLogContext({ requestId: "quiet", debug: false, logger() {} }, () =>
+      observeInboundRequest(request, "openai-response"),
+    ),
+  ).toBe(request);
+});
+
+test("debug inbound observation logs complete consumed input", async () => {
+  const logs: ServerLog[] = [];
+  const request = new Request("https://proxy.test/v1/responses?api_key=visible-query", {
+    method: "POST",
+    headers: { authorization: "hidden", "content-type": "application/json", "x-client": "visible" },
+    body: '{"input":"visible-input","token":"visible-body-token"}',
+  });
+
+  const observed = withRequestLogContext(
+    { requestId: "request-1", debug: true, logger: (entry) => logs.push(entry) },
+    () => observeInboundRequest(request, "openai-response"),
+  );
+
+  expect(await observed.text()).toBe('{"input":"visible-input","token":"visible-body-token"}');
+  expect(reconstructed(logs, "inbound")).toBe('{"input":"visible-input","token":"visible-body-token"}');
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      event: "request.inbound_snapshot",
+      url: "https://proxy.test/v1/responses?api_key=visible-query",
+      headers: expect.objectContaining({ authorization: "[REDACTED]", "x-client": "visible" }),
+    }),
+  );
 });
 
 test("debug fetch logs complete delegated request and consumed response", async () => {

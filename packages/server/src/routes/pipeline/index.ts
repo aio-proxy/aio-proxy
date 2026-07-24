@@ -8,7 +8,7 @@ import {
 import type { RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 
-import { logInboundRequest, withRequestLogContext } from "../../request-logging";
+import { observeInboundRequest, withRequestLogContext } from "../../request-logging";
 import { attemptCandidates } from "./attempt";
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from "./logging";
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from "./request";
@@ -31,8 +31,8 @@ export async function handleProtocolRequest<TRequest, TContext>(
       logger: options.source.logger,
     },
     async () => {
-      await logInboundRequest(options.rawRequest, options.adapter.protocol);
-      return await handleProtocolRequestInContext(options, session);
+      const rawRequest = observeInboundRequest(options.rawRequest, options.adapter.protocol);
+      return await handleProtocolRequestInContext({ ...options, rawRequest }, session);
     },
   );
 }
