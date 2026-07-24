@@ -32,7 +32,7 @@
 - Consumes: `createOpenAIChatGPTDynamicFetch(credentials, fetcher)`.
 - Produces: the existing dynamic fetch with caller `authorization` and `host` removed before ChatGPT identity headers are injected.
 
-- [ ] **Step 1: Write the failing regression assertion**
+- [x] **Step 1: Write the failing regression assertion**
 
 Extend the existing “replaces caller auth” test input and assertions:
 
@@ -47,13 +47,13 @@ expect(first.headers.get("host")).toBeNull();
 expect(first.headers.get("x-keep")).toBe("1");
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `rtk bun test packages/plugins/openai-chatgpt/src/runtime/runtime.test.ts`
 
 Expected: FAIL because the captured request still contains `host: 127.0.0.1:22078`.
 
-- [ ] **Step 3: Apply the minimal root-cause fix**
+- [x] **Step 3: Apply the minimal root-cause fix**
 
 Immediately after cloning caller headers:
 
@@ -63,7 +63,7 @@ headers.delete("authorization");
 headers.delete("host");
 ```
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `rtk bun test packages/plugins/openai-chatgpt/src/runtime/runtime.test.ts`
 
@@ -93,7 +93,7 @@ rtk git commit -m "fix(openai-chatgpt): drop inbound host header" -m "Co-authore
 - `RequestLogContext` contains `requestId`, optional `attemptIndex`, optional `providerId`, and optional `modelId`.
 - Internal `RequestLogScope` additionally contains `debug: boolean` and `logger: ServerLogSink`.
 
-- [ ] **Step 1: Write failing async-context tests**
+- [x] **Step 1: Write failing async-context tests**
 
 Cover nested attempt restoration, concurrent isolation, promise continuations, and stream callbacks:
 
@@ -127,13 +127,13 @@ expect(seen).toEqual([
 expect(currentRequestLogContext()).toBeUndefined();
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `rtk bun test packages/server/src/request-logging/context.test.ts`
 
 Expected: FAIL because the request-logging module does not exist.
 
-- [ ] **Step 3: Implement the `AsyncLocalStorage` scope**
+- [x] **Step 3: Implement the `AsyncLocalStorage` scope**
 
 Use one module-owned store and immutable nested values:
 
@@ -170,7 +170,7 @@ export function withAttemptLogContext<T>(input: AttemptLogContext, operation: ()
 
 `currentRequestLogContext()` must return only correlation fields. `currentDebugRequestLogScope()` must return `undefined` unless an active scope has `debug: true`.
 
-- [ ] **Step 4: Merge ambient correlation in both logging bridges**
+- [x] **Step 4: Merge ambient correlation in both logging bridges**
 
 At emission time, spread ambient fields last so plugins cannot spoof them:
 
@@ -185,7 +185,7 @@ Use `contextual(entry)` for configured logger calls and fallback calls in both `
 
 Extend `bridge.test.ts` to run both sinks inside an attempt scope and assert ambient `requestId`, `attemptIndex`, Provider ID, and model overwrite same-named caller fields. Also assert a background call remains byte-for-byte unchanged.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -222,7 +222,7 @@ rtk git commit -m "feat(server): correlate request-scoped logs" -m "Co-authored-
 - Produces: `logInboundRequest(request: Request, inboundProtocol: string): Promise<void>`.
 - Produces debug events `request.inbound_snapshot`, `request.upstream_snapshot`, and `request.upstream_result`.
 
-- [ ] **Step 1: Write failing redaction tests**
+- [x] **Step 1: Write failing redaction tests**
 
 Use unique sentinels in query values, credentials, prompts, tool arguments, image data, encrypted content, and unknown headers. Assert serialized snapshots never contain them while retaining safe structure:
 
@@ -240,7 +240,7 @@ expect(JSON.stringify(snapshot)).not.toContain(secretSentinel);
 
 Test JSON protocol controls retain only string values under exact keys `model`, `stream`, `role`, `type`, and `effort`. Test bodies over 1 MiB omit JSON structure but keep request byte length and digest.
 
-- [ ] **Step 2: Write failing transport tests**
+- [x] **Step 2: Write failing transport tests**
 
 Cover these contracts:
 
@@ -261,7 +261,7 @@ expect(JSON.stringify(logs)).not.toContain("exception-message-sentinel");
 
 Also assert Bun's existing `decompress: false` init extension reaches the delegated fetch after request materialization.
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
@@ -272,7 +272,7 @@ rtk bun test packages/server/src/request-logging/wire.test.ts
 
 Expected: FAIL because snapshot and wire modules do not exist.
 
-- [ ] **Step 4: Implement bounded snapshot types and helpers**
+- [x] **Step 4: Implement bounded snapshot types and helpers**
 
 Use these diagnostic shapes:
 
@@ -326,7 +326,7 @@ Implementation rules:
 - catch all snapshot failures and return `{ omitted: "unreadable" }`, never raw data;
 - stream-read non-2xx clones only until 1 MiB + 1 byte, cancel oversized clones, and omit exact digest/length in that case.
 
-- [ ] **Step 5: Add safe exception extraction and debug event types**
+- [x] **Step 5: Add safe exception extraction and debug event types**
 
 Extend `RequestProviderAttemptFailedLog` and add upstream result fields with only own data properties:
 
@@ -345,7 +345,7 @@ export type SafeExceptionLog = {
 
 Add all three debug events to `ServerLog` and map them to `debug` in `SERVER_LOG_LEVEL`.
 
-- [ ] **Step 6: Implement `createObservedFetch()`**
+- [x] **Step 6: Implement `createObservedFetch()`**
 
 Fast path first:
 
@@ -360,7 +360,7 @@ On debug attempts, materialize one `Request`, snapshot a clone, emit `request.up
 
 `logInboundRequest()` uses the active debug scope, calls `snapshotRequest()`, and emits one inbound event with the active request ID.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 Run:
 
@@ -397,7 +397,7 @@ rtk git commit -m "feat(server): add safe wire debug snapshots" -m "Co-authored-
 - The real `ServerState` sets it from the boot config's `server.logging.level === "debug"`.
 - `request.provider_attempt_failed` gains required `attemptIndex` and optional safe exception fields.
 
-- [ ] **Step 1: Write failing end-to-end pipeline assertions**
+- [x] **Step 1: Write failing end-to-end pipeline assertions**
 
 Create a two-provider fallback test whose raw transports call `createObservedFetch()` around a local capture fetch. Run with `debugLogging: true` and assert:
 
@@ -423,7 +423,7 @@ expect(harness.logs).toEqual(
 
 Assert the inbound prompt and upstream body sentinels do not occur in serialized logs. Add an info-level control case asserting only the existing warn event is present and the observed fetch receives the original `Request` identity.
 
-- [ ] **Step 2: Extend the network failure regression**
+- [x] **Step 2: Extend the network failure regression**
 
 Throw an error with own data properties:
 
@@ -439,7 +439,7 @@ const failure = Object.assign(new Error("exception-message-sentinel"), {
 
 Assert the warning contains `attemptIndex: 0`, `exceptionCode`, `causeCode`, `errno`, and `syscall`, while neither message sentinel appears. Add a getter-backed `code` case and assert the getter is never invoked.
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
@@ -450,7 +450,7 @@ rtk bun test packages/server/src/routes/pipeline/raw-fallback.test.ts
 
 Expected: FAIL because the pipeline does not install request/attempt scopes or emit snapshots and the warning lacks safe codes.
 
-- [ ] **Step 4: Install the request scope without changing the candidate loop**
+- [x] **Step 4: Install the request scope without changing the candidate loop**
 
 Keep `RequestRecorder.begin()` as the ID source and move the existing body into a private helper:
 
@@ -473,7 +473,7 @@ export async function handleProtocolRequest<TRequest, TContext>(options: HandleP
 
 `handleProtocolRequestInContext()` receives the already-created `RequestSession`; its routing, error mapping, body cancellation, and lease logic remain unchanged.
 
-- [ ] **Step 5: Nest attempt identity only around real provider work**
+- [x] **Step 5: Nest attempt identity only around real provider work**
 
 Change the loop to `for (const [index, candidate] of candidates.entries())` and define:
 
@@ -489,13 +489,13 @@ Use `inAttempt()` for `raw.invoke()`, `model.ensureAvailable()`, and `model.invo
 
 Move `attemptBase()` unchanged into `attempt-base.ts` before adding these calls so `attempt.ts` ends below 300 lines.
 
-- [ ] **Step 6: Emit attempt index and safe error fields**
+- [x] **Step 6: Emit attempt index and safe error fields**
 
 Pass `index` into `logProviderAttemptFailed()`, add `attemptIndex` to the event, and spread `serverErrorDetails(options.error)` only for `failureKind: "exception"`. Keep exception messages excluded.
 
 Extend pipeline helpers with an optional debug flag; do not enable it by default because existing tests assert only warn/info events.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 Run:
 
@@ -524,7 +524,7 @@ rtk git commit -m "feat(server): trace protocol pipeline attempts" -m "Co-author
 - Consumes: `createObservedFetch(fetcher)` from Task 3.
 - Produces: API raw, API-to-AI-SDK bridge, and configured AI SDK providers sharing the observed wrapper around their effective proxy fetch.
 
-- [ ] **Step 1: Write the failing materialization test**
+- [x] **Step 1: Write the failing materialization test**
 
 Inject `createProxyFetch`, `createApiProvider`, `bridgeApiProvider`, and `createAiSdkProvider` spies. Capture each factory's `options.fetch`, call it inside a debug request+attempt scope, and assert each call emits an upstream snapshot with the final URL, generated header names, and sanitized body.
 
@@ -537,13 +537,13 @@ expect(logs.filter((entry) => entry.event === "request.upstream_snapshot")).toHa
 
 Use a separate AI SDK provider fixture for the second event. Assert probes called outside a request scope delegate without emitting.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `rtk bun test packages/server/src/provider-runtime/observed-fetch.test.ts`
 
 Expected: FAIL because materialization passes the proxy fetch directly.
 
-- [ ] **Step 3: Wrap the existing fetch seam once per provider**
+- [x] **Step 3: Wrap the existing fetch seam once per provider**
 
 For both configured provider kinds:
 
@@ -553,7 +553,7 @@ const providerFetch = createObservedFetch(createFetch(effectiveProxy(config.prox
 
 Pass the same `providerFetch` to `createApiProvider()` and `bridgeApiProviderToAiSdk()` for an API provider. Pass it to `createAiSdkProvider()` for an AI SDK provider. Do not modify core provider implementations.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
@@ -586,7 +586,7 @@ rtk git commit -m "feat(server): observe api provider fetches" -m "Co-authored-b
 - The server snapshot builder passes one `createObservedFetch(globalThis.fetch)` as `runtimeFetch` when creating OAuth runtimes.
 - Existing third-party runtimes that ignore the field or construct contexts without it remain valid.
 
-- [ ] **Step 1: Write the failing host-context test**
+- [x] **Step 1: Write the failing host-context test**
 
 Register a test OAuth adapter whose `createRuntime(context)` captures `context.fetch`. Supply `runtimeFetch: createObservedFetch(baseFetch)` to materialization and assert:
 
@@ -606,13 +606,13 @@ expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_s
 expect(baseFetchCalls).toHaveLength(1);
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `rtk bun test packages/server/src/plugin-runtime/host-fetch-context.test.ts`
 
 Expected: FAIL because `RuntimeContext` and runtime materialization do not provide fetch.
 
-- [ ] **Step 3: Add the optional SDK field and server injection**
+- [x] **Step 3: Add the optional SDK field and server injection**
 
 ```ts
 export type RuntimeContext<Credential, AccountOptions> = {
@@ -625,7 +625,7 @@ export type RuntimeContext<Credential, AccountOptions> = {
 
 Pass `options.runtimeFetch` in the existing `adapter.createRuntime({...})` object only when defined. In `buildSnapshot()`, construct one observed wrapper and pass it to every OAuth materialization. Do not pass it to catalog discovery, login, quota, startup jobs, or background jobs.
 
-- [ ] **Step 4: Verify SDK compatibility and commit**
+- [x] **Step 4: Verify SDK compatibility and commit**
 
 Run:
 
@@ -663,7 +663,7 @@ rtk git commit -m "feat(plugin-sdk): expose host runtime fetch" -m "Co-authored-
 - Explicit dependency injection remains highest priority for existing unit tests.
 - ChatGPT credential refresh uses the same selected fetch as its model transport.
 
-- [ ] **Step 1: Write one failing final-request test per built-in**
+- [x] **Step 1: Write one failing final-request test per built-in**
 
 For each runtime, provide a valid non-expired credential and a `context.fetch` capture function, invoke its raw transport or one language-model request, and assert exactly one final provider request reached that function. Install and restore a throwing `globalThis.fetch` guard so RED fails deterministically without network access.
 
@@ -679,7 +679,7 @@ expect(grokRequest.url).toBe("https://cli-chat-proxy.grok.com/v1/responses");
 
 Each test must also assert provider identity headers were added before the host fetch saw the request. The ChatGPT raw test must include a loopback `Host` and assert the host fetch sees no `host` header.
 
-- [ ] **Step 2: Verify RED in all five packages**
+- [x] **Step 2: Verify RED in all five packages**
 
 Run:
 
@@ -693,7 +693,7 @@ rtk bun test packages/plugins/xai-grok/src/runtime/runtime.test.ts
 
 Expected: FAIL because runtime traffic still reaches injected dependencies or `globalThis.fetch`, not `context.fetch`.
 
-- [ ] **Step 3: Thread the selected fetch through each runtime**
+- [x] **Step 3: Thread the selected fetch through each runtime**
 
 Apply these exact precedence patterns:
 
@@ -712,10 +712,10 @@ const fetcher = context.fetch ?? globalThis.fetch;
 
 Extend `currentCredential()` in ChatGPT to pass the selected fetch to `refreshAccessToken()`. Keep GitHub catalog/login fetch behavior unchanged; only runtime credential/model calls are in scope.
 
-Move xAI runtime source and test into the required `runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts` layout; keep `plugin.ts` importing `./runtime`.
+Move xAI runtime source and test into the required `runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts` layout; keep `plugin.ts` importing `./runtime/index` for built-artifact resolution.
 Update moved xAI source imports from `./schema`, `./cli-headers`, and `./oauth` to their `../` forms, and update the moved test imports the same way.
 
-- [ ] **Step 4: Verify all built-ins and commit**
+- [x] **Step 4: Verify all built-ins and commit**
 
 Run:
 
@@ -749,7 +749,7 @@ rtk git commit -m "feat(plugins): observe oauth runtime requests" -m "Co-authore
 - `RequestRecorder.begin()` remains the request-ID source.
 - Early validation failures create a transient session for correlation but do not call `finish()`, preserving the existing absence of persisted rows.
 
-- [ ] **Step 1: Write the failing token-count debug test**
+- [x] **Step 1: Write the failing token-count debug test**
 
 Enable debug logging on a token-count fixture, have the provider inspect `currentRequestLogContext()`, and assert:
 
@@ -767,7 +767,7 @@ expect(logs).toContainEqual(
 
 Add two concurrent count calls and assert their request IDs do not cross. Extend the validation lifecycle assertion to expect one `begin()` and zero `finish()` calls.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -778,7 +778,7 @@ rtk bun test packages/server/src/routes/token-count.lifecycle.test.ts
 
 Expected: FAIL because token count creates its session after parsing and never enters request/attempt context.
 
-- [ ] **Step 3: Wrap the route and provider calls**
+- [x] **Step 3: Wrap the route and provider calls**
 
 Create the session at `handleTokenCount()` entry and run the existing logic inside:
 
@@ -800,7 +800,7 @@ Pass the session into `countCandidates()` instead of creating a second one. Iter
 
 Do not finish early parse/model-not-found sessions. Keep all existing success, failure, cancellation, fallback, estimate, lease, and body-cancellation logic unchanged.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
@@ -828,7 +828,7 @@ rtk git commit -m "feat(server): correlate token count requests" -m "Co-authored
 **Interfaces:**
 - Produces: a fully verified branch ready to push to draft PR #65.
 
-- [ ] **Step 1: Run focused security regressions**
+- [x] **Step 1: Run focused security regressions**
 
 Run:
 
@@ -842,7 +842,7 @@ rtk bun test packages/plugins/openai-chatgpt/src/runtime
 
 Expected: PASS; no serialized log contains any test sentinel.
 
-- [ ] **Step 2: Run package and repository checks**
+- [x] **Step 2: Run package and repository checks**
 
 Run:
 
@@ -853,7 +853,7 @@ rtk bun run preflight
 
 Expected: PASS with no lint, format, unit, type, artifact, or task-graph failures.
 
-- [ ] **Step 3: Verify file sizes and diff scope**
+- [x] **Step 3: Verify file sizes and diff scope**
 
 Run:
 
@@ -865,7 +865,7 @@ rtk git status --short
 
 Expected: every handwritten file is at or below 300 lines, diff check is empty, and only intended plan-status edits remain uncommitted.
 
-- [ ] **Step 4: Mark the approved spec and plan complete**
+- [x] **Step 4: Mark the approved spec and plan complete**
 
 Set the design status to `Implemented` and check completed task boxes only after every command above passes.
 
@@ -874,7 +874,7 @@ rtk git add docs/superpowers/specs/2026-07-24-request-wire-debug-logging-design.
 rtk git commit -m "docs: complete request wire debug logging" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
-- [ ] **Step 5: Inspect the final branch before push**
+- [x] **Step 5: Inspect the final branch before push**
 
 Run:
 
