@@ -131,6 +131,7 @@ export type RuntimeContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
   readonly catalog: ModelCatalog;
+  readonly fetch?: typeof globalThis.fetch;
 };
 
 export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
