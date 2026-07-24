@@ -45,6 +45,7 @@ export function createOpenAIChatGPTDynamicFetch(
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete("authorization");
+    headers.delete("host");
     headers.set("authorization", `Bearer ${credential.accessToken}`);
     headers.set("ChatGPT-Account-Id", credential.accountId);
     headers.set("Originator", "codex-tui");
