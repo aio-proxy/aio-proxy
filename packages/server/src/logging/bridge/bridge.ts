@@ -10,10 +10,13 @@ export const SERVER_LOG_LEVEL = {
   "dashboard.auth_unavailable": "error",
   "request.failed": "error",
   "request.feature_downgraded": "info",
+  "request.inbound_snapshot": "debug",
   "request.provider_attempt_failed": "warn",
   "request.recorder_invariant": "warn",
   "request.recorder_persistence_failed": "error",
   "request.rejected": "warn",
+  "request.upstream_result": "debug",
+  "request.upstream_snapshot": "debug",
 } as const satisfies Readonly<Record<ServerLog["event"], LogLevel>>;
 
 type SinkFallbackOptions<Entry> = {
