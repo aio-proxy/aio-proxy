@@ -71,6 +71,27 @@ test("createServerLogSink forwards the complete entry at the mapped level", () =
       headers: { "content-type": "application/json" },
     },
     {
+      event: "request.body_chunk",
+      requestId: "body",
+      direction: "upstream_response",
+      attemptIndex: 1,
+      providerId: "provider",
+      modelId: "model",
+      sequence: 0,
+      text: '{"visible":true}',
+    },
+    {
+      event: "request.body_terminal",
+      requestId: "body",
+      direction: "upstream_response",
+      attemptIndex: 1,
+      providerId: "provider",
+      modelId: "model",
+      sequence: 1,
+      byteLength: 16,
+      outcome: "complete",
+    },
+    {
       event: "request.provider_attempt_failed",
       requestId: "attempt",
       inboundProtocol: "openai-response",
@@ -123,6 +144,8 @@ test("createServerLogSink forwards the complete entry at the mapped level", () =
       propsOrMessage: undefined,
     })),
   );
+  expect(SERVER_LOG_LEVEL["request.body_chunk"]).toBe("debug");
+  expect(SERVER_LOG_LEVEL["request.body_terminal"]).toBe("debug");
 });
 
 test("createPluginLogSink preserves the structured redacted entry", () => {

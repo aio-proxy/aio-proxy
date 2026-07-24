@@ -8,6 +8,8 @@ import { currentRequestLogContext } from "../../request-logging";
 export const SERVER_LOG_LEVEL = {
   "config.reload_failed": "error",
   "dashboard.auth_unavailable": "error",
+  "request.body_chunk": "debug",
+  "request.body_terminal": "debug",
   "request.failed": "error",
   "request.feature_downgraded": "info",
   "request.inbound_snapshot": "debug",

@@ -123,9 +123,35 @@ export type RequestRecorderPersistenceFailedLog = {
   readonly errorType: string;
 };
 
+export type RequestBodyDirection = "inbound" | "upstream_request" | "upstream_response";
+
+type RequestBodyIdentity = {
+  readonly requestId: string;
+  readonly direction: RequestBodyDirection;
+  readonly attemptIndex?: number;
+  readonly providerId?: string;
+  readonly modelId?: string;
+};
+
+export type RequestBodyChunkLog = RequestBodyIdentity & {
+  readonly event: "request.body_chunk";
+  readonly sequence: number;
+  readonly text: string;
+};
+
+export type RequestBodyTerminalLog = RequestBodyIdentity & {
+  readonly event: "request.body_terminal";
+  readonly sequence: number;
+  readonly byteLength: number;
+  readonly outcome: "complete" | "cancelled" | "error";
+  readonly errorType?: string;
+};
+
 export type ServerLog =
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
+  | RequestBodyChunkLog
+  | RequestBodyTerminalLog
   | RequestFailedLog
   | RequestFeatureDowngradedLog
   | RequestInboundSnapshotLog
