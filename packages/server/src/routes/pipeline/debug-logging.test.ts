@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { jsonRequest, rawProvider, REQUESTED_MODEL } from "../../../_test/pipeline-helpers";
 import { createObservedFetch } from "../../request-logging";
+import { waitFor } from "../../request-logging/wire.test-support";
 import { pipeline } from "./test-support";
 
 type ObservedCall = {
@@ -39,6 +40,7 @@ describe("shared protocol pipeline debug logging", () => {
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, prompt: inboundPrompt }));
 
     expect(await response.json()).toEqual({ provider: "backup", message: backupBody });
+    await waitFor(() => harness.logs.filter(({ event }) => event.endsWith("_snapshot")).length === 3);
     expect(harness.logs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ event: "request.inbound_snapshot", requestId: "request-1" }),
@@ -81,5 +83,42 @@ describe("shared protocol pipeline debug logging", () => {
         fallback: true,
       }),
     ]);
+  });
+
+  test("stalled failure diagnostics cannot delay fallback", async () => {
+    let releasePull: (() => void) | undefined;
+    const primary = observedProvider(
+      "primary",
+      () => {
+        const response = Response.json({ error: true }, { status: 503 });
+        Object.defineProperty(response, "clone", {
+          value: () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  return new Promise<void>((resolve) => {
+                    releasePull = () => {
+                      controller.close();
+                      resolve();
+                    };
+                  });
+                },
+              }),
+              { status: 503 },
+            ),
+        });
+        return response;
+      },
+      {},
+    );
+    const backup = observedProvider("backup", () => Response.json({ provider: "backup" }), {});
+    const harness = pipeline([primary, backup], { debugLogging: true });
+    const pending = harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+
+    const response = await Promise.race([pending, Bun.sleep(50).then(() => undefined)]);
+    releasePull?.();
+
+    expect(response).toBeInstanceOf(Response);
+    expect(await response?.json()).toEqual({ provider: "backup" });
   });
 });

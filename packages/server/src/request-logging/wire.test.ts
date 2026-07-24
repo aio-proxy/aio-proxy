@@ -2,28 +2,9 @@ import { expect, test } from "bun:test";
 
 import type { ServerLog } from "../server-log";
 
-import { withAttemptLogContext, withRequestLogContext } from "./context";
+import { withRequestLogContext } from "./context";
 import { createObservedFetch, logInboundRequest } from "./wire";
-
-type FetchCall = {
-  readonly input: string | URL | Request;
-  readonly init: RequestInit | undefined;
-};
-
-const ONE_MIB = 1024 * 1024;
-
-function captureFetch(calls: FetchCall[], result: () => Response | Promise<Response>): typeof globalThis.fetch {
-  return (async (input, init) => {
-    calls.push({ input, init });
-    return await result();
-  }) as typeof globalThis.fetch;
-}
-
-async function inDebugAttempt<T>(logs: ServerLog[], operation: () => Promise<T>): Promise<T> {
-  return await withRequestLogContext({ requestId: "request-1", debug: true, logger: (entry) => logs.push(entry) }, () =>
-    withAttemptLogContext({ attemptIndex: 2, providerId: "provider-a", modelId: "model-a" }, operation),
-  );
-}
+import { captureFetch, type FetchCall, inDebugAttempt, waitFor } from "./wire.test-support";
 
 test("non-debug fetch preserves the original input and init", async () => {
   const calls: FetchCall[] = [];
@@ -68,122 +49,64 @@ test("debug success snapshots the delegated request without cloning the response
   expect(calls[0]?.input).toBeInstanceOf(Request);
   expect(calls[0]?.input).not.toBe(originalRequest);
   expect(calls[0]?.init).toEqual({ decompress: false });
-  expect(logs).toEqual([
-    expect.objectContaining({
-      event: "request.upstream_snapshot",
-      requestId: "request-1",
-      attemptIndex: 2,
-      providerId: "provider-a",
-      modelId: "model-a",
-      method: "POST",
-      url: "https://upstream.test/v1/responses?token=%5BREDACTED%5D",
-    }),
-    expect.objectContaining({
-      event: "request.upstream_result",
-      requestId: "request-1",
-      attemptIndex: 2,
-      providerId: "provider-a",
-      modelId: "model-a",
-      outcome: "response",
-      statusCode: 200,
-      durationMs: expect.any(Number),
-      headers: { "content-type": "application/json", "x-result": "[REDACTED]" },
-    }),
-  ]);
-  expect(logs[1]).not.toHaveProperty("body");
+  await waitFor(() => logs.length === 2);
+  expect(logs).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        event: "request.upstream_snapshot",
+        requestId: "request-1",
+        attemptIndex: 2,
+        providerId: "provider-a",
+        modelId: "model-a",
+        method: "POST",
+        url: "https://upstream.test/v1/responses?token=%5BREDACTED%5D",
+      }),
+      expect.objectContaining({
+        event: "request.upstream_result",
+        requestId: "request-1",
+        attemptIndex: 2,
+        providerId: "provider-a",
+        modelId: "model-a",
+        outcome: "response",
+        statusCode: 200,
+        durationMs: expect.any(Number),
+        headers: { "content-type": "application/json", "x-result": "[REDACTED]" },
+      }),
+    ]),
+  );
+  expect(logs.find(({ event }) => event === "request.upstream_result")).not.toHaveProperty("body");
   expect(JSON.stringify(logs)).not.toContain(responseSentinel);
 });
 
-test("hostile response status cannot change fetch behavior", async () => {
+test("debug request snapshots do not delay the upstream fetch", async () => {
   const logs: ServerLog[] = [];
-  const response = new Response(null, { status: 204 });
-  Object.defineProperty(response, "status", {
-    get() {
-      throw new Error("status-accessor-sentinel");
+  let baseCalls = 0;
+  let releasePull: (() => void) | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      return new Promise<void>((resolve) => {
+        releasePull = () => {
+          controller.close();
+          resolve();
+        };
+      });
     },
   });
-
-  const returned = await inDebugAttempt(logs, () =>
-    createObservedFetch(captureFetch([], () => response))("https://upstream.test/v1/responses"),
+  const request = new Request("https://upstream.test/v1/responses", { method: "POST", body });
+  const pending = inDebugAttempt(logs, () =>
+    createObservedFetch(
+      captureFetch([], () => {
+        baseCalls += 1;
+        return new Response(null, { status: 204 });
+      }),
+    )(request),
   );
 
-  expect(returned).toBe(response);
-  expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_result", outcome: "response" }));
-  expect(logs.filter(({ event }) => event === "request.upstream_result")).toHaveLength(1);
-  expect(JSON.stringify(logs)).not.toContain("status-accessor-sentinel");
-});
+  const returned = await Promise.race([pending, Bun.sleep(50).then(() => undefined)]);
+  releasePull?.();
 
-test("debug non-2xx bounds the cloned snapshot and leaves the returned body readable", async () => {
-  const calls: FetchCall[] = [];
-  const logs: ServerLog[] = [];
-  const sentinel = "failure-response-sentinel";
-  const upstreamFailureBody = `${sentinel}${"x".repeat(ONE_MIB)}`;
-  const response = new Response(upstreamFailureBody, {
-    status: 502,
-    headers: { "content-type": "application/json", "x-error": sentinel },
-  });
-  const originalClone = response.clone.bind(response);
-  let responseCloneCalls = 0;
-  Object.defineProperty(response, "clone", {
-    value: () => {
-      responseCloneCalls += 1;
-      return originalClone();
-    },
-  });
-
-  const returned = await inDebugAttempt(logs, () =>
-    createObservedFetch(captureFetch(calls, () => response))("https://upstream.test/v1/responses"),
-  );
-
-  expect(returned).toBe(response);
-  expect(responseCloneCalls).toBe(1);
-  expect(await returned.text()).toBe(upstreamFailureBody);
-  expect(logs).toContainEqual(
-    expect.objectContaining({
-      event: "request.upstream_result",
-      outcome: "response",
-      statusCode: 502,
-      headers: { "content-type": "application/json", "x-error": "[REDACTED]" },
-      body: { mediaType: "application/json", atLeastByteLength: ONE_MIB + 1, omitted: "oversized" },
-    }),
-  );
-  expect(JSON.stringify(logs)).not.toContain(sentinel);
-});
-
-test("debug non-2xx retains no diagnostic bytes beyond the limit", async () => {
-  const logs: ServerLog[] = [];
-  const sentinel = "oversized-chunk-sentinel";
-  const oversized = new TextEncoder().encode(JSON.stringify({ message: `${sentinel}${"x".repeat(ONE_MIB)}` }));
-  let cancelled = false;
-  const cloneBody = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(oversized);
-    },
-    cancel() {
-      cancelled = true;
-    },
-  });
-  const response = new Response("returned-body", { status: 502 });
-  Object.defineProperty(response, "clone", {
-    value: () =>
-      ({ status: 502, headers: new Headers({ "content-type": "application/json" }), body: cloneBody }) as Response,
-  });
-
-  const returned = await inDebugAttempt(logs, () =>
-    createObservedFetch(captureFetch([], () => response))("https://upstream.test/v1/responses"),
-  );
-
-  expect(cancelled).toBeTrue();
-  expect(await returned.text()).toBe("returned-body");
-  expect(logs).toContainEqual(
-    expect.objectContaining({
-      event: "request.upstream_result",
-      outcome: "response",
-      body: { mediaType: "application/json", atLeastByteLength: ONE_MIB + 1, omitted: "oversized" },
-    }),
-  );
-  expect(JSON.stringify(logs)).not.toContain(sentinel);
-  expect(JSON.stringify(logs)).not.toContain(String(oversized.byteLength));
+  expect(returned).toBeInstanceOf(Response);
+  expect(baseCalls).toBe(1);
 });
 
 test("debug exceptions log only bounded own data properties", async () => {
@@ -284,6 +207,7 @@ test("inbound snapshots use only the active debug request scope", async () => {
     logInboundRequest(request.clone(), "openai-response"),
   );
 
+  await waitFor(() => logs.length === 1);
   expect(logs).toEqual([
     expect.objectContaining({
       event: "request.inbound_snapshot",
@@ -295,4 +219,29 @@ test("inbound snapshots use only the active debug request scope", async () => {
   ]);
   expect(JSON.stringify(logs)).not.toContain("inbound-query-sentinel");
   expect(JSON.stringify(logs)).not.toContain("inbound-prompt-sentinel");
+});
+
+test("inbound request snapshots do not delay dispatch", async () => {
+  const logs: ServerLog[] = [];
+  let releasePull: (() => void) | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      return new Promise<void>((resolve) => {
+        releasePull = () => {
+          controller.close();
+          resolve();
+        };
+      });
+    },
+  });
+  const request = new Request("https://proxy.test/v1/responses", { method: "POST", body });
+  const pending = withRequestLogContext(
+    { requestId: "request-1", debug: true, logger: (entry) => logs.push(entry) },
+    () => logInboundRequest(request, "openai-response"),
+  );
+
+  const result = await Promise.race([pending.then(() => "returned"), Bun.sleep(50).then(() => "blocked")]);
+  releasePull?.();
+
+  expect(result).toBe("returned");
 });

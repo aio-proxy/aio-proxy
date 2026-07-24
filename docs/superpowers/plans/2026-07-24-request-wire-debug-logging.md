@@ -15,6 +15,9 @@
 - Keep header names; retain values only for `host`, `content-type`, `content-length`, `accept`, `accept-encoding`, and `user-agent`.
 - At non-debug levels, do not construct replacement requests, clone bodies, hash, parse, or serialize payload snapshots.
 - Never clone or buffer successful upstream response bodies. For non-2xx clones, the 1 MiB budget, plus one byte for overflow detection, governs diagnostic bytes retained, copied, hashed, or parsed; Bun may atomically deliver a larger non-BYOB chunk, which must not be retained or processed.
+- Retain control strings only at allowlisted protocol paths; a control-named key nested in a prompt, tool input/result, or payload container remains a descriptor.
+- Reuse the 64 MiB encoded request-body limit for request diagnostics. Do not read a declared oversized body; cancel unknown-length clones on overflow without emitting exact oversized length, digest, JSON, or value bytes.
+- Apply one internal one-second deadline to request and non-2xx response clone reads. Diagnostic work is eventual and must not gate inbound parsing, the actual fetch, response return, or fallback.
 - Keep request routing, fallback, cancellation, streaming, usage capture, and persisted request-attempt behavior unchanged.
 - Keep third-party OAuth plugins source-compatible: `RuntimeContext.fetch` is optional.
 - Add no clear-text escape hatch, sampling, remote shipping, Dashboard storage, or unrelated refactor.
@@ -238,7 +241,7 @@ expect(snapshot.body).toMatchObject({ byteLength: expect.any(Number), sha256: ex
 expect(JSON.stringify(snapshot)).not.toContain(secretSentinel);
 ```
 
-Test JSON protocol controls retain only string values under exact keys `model`, `stream`, `role`, `type`, and `effort`. Test bodies over 1 MiB omit JSON structure but keep request byte length and digest.
+Test JSON protocol controls retain strings only at genuine protocol-control paths for OpenAI, Anthropic, and Gemini. Put control-named sentinels inside tool inputs/results, including Gemini `functionCall.args` and `functionResponse.response`, and assert they remain descriptors. Test complete request bodies over 1 MiB but within the request ceiling omit JSON structure while keeping exact byte length and digest.
 
 - [x] **Step 2: Write failing transport tests**
 
@@ -251,8 +254,14 @@ expect(baseCalls[0]?.input).toBe(originalRequest);
 // Debug success: emit request + result metadata, but never call response.clone().
 expect(responseCloneCalls).toBe(0);
 
+// Debug request diagnostics: start the actual fetch without awaiting the request clone.
+expect(baseFetchCalls).toBe(1);
+
 // Debug non-2xx: retain/sanitize at most 1 MiB, use one byte to detect overflow, and leave the returned body readable.
 expect(await returned.text()).toBe(upstreamFailureBody);
+
+// Slow or stalled non-2xx diagnostics: return immediately, then emit one correlated metadata-only result and cancel.
+expect(returned).toBe(response);
 
 // Debug exception: emit the bounded code without the message.
 expect(logs).toContainEqual(expect.objectContaining({ outcome: "exception", exceptionCode: "ConnectionRefused" }));
@@ -321,10 +330,14 @@ Implementation rules:
 - cap retained header values at 512 characters;
 - use `crypto.subtle.digest("SHA-256", bytes)` and lowercase hex;
 - parse structured JSON only at or below 1 MiB;
+- retain control strings only at explicit root/message/content/reasoning protocol paths, never by property name alone;
+- enter payload context for nested prompts, tool inputs/results, `args`, `response`, and `output` containers;
 - replace credential branches with `{ kind: "redacted", byteLength }` and no branch digest;
 - replace free-form strings and sensitive payload branches with length/digest descriptors;
 - catch all snapshot failures and return `{ omitted: "unreadable" }`, never raw data;
 - for non-2xx clones, limit diagnostic bytes retained, copied, hashed, or parsed to 1 MiB plus one byte for overflow detection; Bun may atomically deliver a larger non-BYOB chunk, so on overflow do not retain or process that chunk, request clone cancellation, and emit only `mediaType`, fixed `atLeastByteLength: 1_048_577`, and `omitted: "oversized"`, without exact length, digest, JSON, or value bytes.
+- for request clones, reuse `REQUEST_BODY_LIMITS.encoded`: skip declared oversized bodies without cloning/reading, and cancel unknown-length clones at the ceiling with fixed at-least metadata only;
+- apply the same internal one-second deadline to request and non-2xx response clone readers, cancel on expiry, and return metadata-only unreadable snapshots.
 
 - [x] **Step 5: Add safe exception extraction and debug event types**
 
@@ -356,7 +369,7 @@ if (scope === undefined || scope.attemptIndex === undefined || scope.providerId 
 }
 ```
 
-On debug attempts, materialize one `Request`, snapshot a clone, emit `request.upstream_snapshot`, then delegate that same `Request`. Preserve only the known Bun transport extension `decompress` in the second argument. Emit exactly one `request.upstream_result` for a response or exception. Do not clone 2xx responses.
+On debug attempts, materialize one `Request`, capture the request/attempt scope, and start a bounded clone snapshot without awaiting it before delegating that same `Request`. Preserve only the known Bun transport extension `decompress` in the second argument. Clone a non-2xx response immediately but complete its bounded snapshot and exactly one `request.upstream_result` event off the returned-response critical path. Do not clone 2xx responses. Because events are eventual, tests wait for them and assert captured correlation rather than synchronous event ordering.
 
 `logInboundRequest()` uses the active debug scope, calls `snapshotRequest()`, and emits one inbound event with the active request ID.
 

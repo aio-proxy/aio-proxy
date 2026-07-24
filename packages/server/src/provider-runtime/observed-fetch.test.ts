@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 import type { ServerLog } from "../server-log";
 
 import { withAttemptLogContext, withRequestLogContext } from "../request-logging";
+import { waitFor } from "../request-logging/wire.test-support";
 import { materializeProviders } from "./materialize";
 
 test("materialized provider fetches observe final upstream requests only inside debug attempts", async () => {
@@ -106,7 +107,10 @@ test("materialized provider fetches observe final upstream requests only inside 
     },
   );
 
-  const snapshots = logs.filter((entry) => entry.event === "request.upstream_snapshot");
+  await waitFor(() => logs.filter((entry) => entry.event === "request.upstream_snapshot").length === 2);
+  const snapshots = logs
+    .filter((entry) => entry.event === "request.upstream_snapshot")
+    .sort((left, right) => left.attemptIndex - right.attemptIndex);
   expect(snapshots).toHaveLength(2);
   expect(snapshots).toEqual([
     expect.objectContaining({

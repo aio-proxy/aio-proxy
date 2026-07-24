@@ -21,9 +21,8 @@ test("request snapshots retain protocol controls without exposing credentials or
   const bodyText = JSON.stringify({
     model: "gpt-safe-control",
     stream: true,
-    role: "user",
-    type: "message",
-    effort: "high",
+    reasoning: { effort: "high" },
+    messages: [{ role: "user", content: [{ type: "input_text", text: sentinels.prompt }] }],
     prompt: sentinels.prompt,
     tool: { arguments: sentinels.toolArguments },
     image_data: sentinels.image,
@@ -63,9 +62,13 @@ test("request snapshots retain protocol controls without exposing credentials or
     json: {
       model: "gpt-safe-control",
       stream: true,
-      role: "user",
-      type: "message",
-      effort: "high",
+      reasoning: { effort: "high" },
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "input_text", text: { kind: "payload", sha256: expect.stringMatching(SHA256) } }],
+        },
+      ],
       prompt: { kind: "payload", sha256: expect.stringMatching(SHA256) },
       tool: { arguments: { kind: "payload", sha256: expect.stringMatching(SHA256) } },
       image_data: { kind: "payload", sha256: expect.stringMatching(SHA256) },
@@ -79,6 +82,75 @@ test("request snapshots retain protocol controls without exposing credentials or
   expect((json as Record<string, Record<string, unknown>>).credentials.sha256).toBeUndefined();
   const serialized = JSON.stringify(snapshot);
   for (const sentinel of Object.values(sentinels)) expect(serialized).not.toContain(sentinel);
+});
+
+test("protocol controls are retained only at structural paths across request protocols", async () => {
+  const sentinels = [
+    "openai-tool-model-sentinel",
+    "anthropic-input-type-sentinel",
+    "gemini-args-role-sentinel",
+    "gemini-response-effort-sentinel",
+  ];
+  const bodies = [
+    {
+      model: "openai-model",
+      stream: true,
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "protected-text" }],
+          tool_calls: [{ type: "function", function: { arguments: { model: sentinels[0] } } }],
+        },
+      ],
+    },
+    {
+      model: "anthropic-model",
+      stream: false,
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", input: { type: sentinels[1] } }],
+        },
+      ],
+    },
+    {
+      model: "gemini-model",
+      contents: [
+        {
+          role: "model",
+          parts: [
+            { functionCall: { name: "lookup", args: { role: sentinels[2] } } },
+            { functionResponse: { name: "lookup", response: { effort: sentinels[3] } } },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const snapshots = await Promise.all(
+    bodies.map((body) =>
+      snapshotRequest(
+        new Request("https://upstream.test/v1/model", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      ),
+    ),
+  );
+
+  const serialized = JSON.stringify(snapshots);
+  for (const sentinel of sentinels) expect(serialized).not.toContain(sentinel);
+  expect(serialized).not.toContain("protected-text");
+  expect(snapshots[0]?.body?.json).toMatchObject({
+    model: "openai-model",
+    messages: [{ role: "assistant", content: [{ type: "text" }], tool_calls: [{ type: "function" }] }],
+  });
+  expect(snapshots[1]?.body?.json).toMatchObject({
+    model: "anthropic-model",
+    messages: [{ role: "assistant", content: [{ type: "tool_use" }] }],
+  });
+  expect(snapshots[2]?.body?.json).toMatchObject({ model: "gemini-model", contents: [{ role: "model" }] });
 });
 
 test("oversized request JSON keeps only exact byte metadata", async () => {

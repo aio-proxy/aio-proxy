@@ -76,7 +76,7 @@ The host provides a fetch wrapper that observes the final application-level `Req
 - Provider-specific URL/header rewriting and credential injection happen before observation. The observer delegates unchanged to the existing proxy-aware fetch; lower-level proxy routing and network-added headers remain outside the observable boundary.
 - Third-party OAuth plugins remain runtime-compatible. They receive the additive context field but must adopt it to expose final-wire debug snapshots.
 
-The wrapper reads the active request/attempt context. Without an active context, or when the configured level is not debug, it delegates without cloning or reading the body.
+The wrapper reads and captures the active request/attempt context before starting diagnostic work. Without an active context, or when the configured level is not debug, it delegates without cloning or reading the body. At debug level it starts bounded request-clone diagnostics and the real fetch concurrently; diagnostic reading never gates the actual fetch.
 
 ## Debug events
 
@@ -136,7 +136,7 @@ Every observed fetch emits exactly one result event:
 }
 ```
 
-Response bodies are snapshotted only for non-2xx responses. Successful response bodies, including SSE streams, are never cloned or buffered. Failure to read a debug clone must not affect the response returned to the pipeline.
+Response bodies are snapshotted only for non-2xx responses. Successful response bodies, including SSE streams, are never cloned or buffered. A non-2xx response is cloned immediately, then returned to the pipeline while the clone is read and the result event is completed in the background. Snapshot and result events are therefore eventual and may arrive after the provider response or in a different order, but they retain the request and attempt identity captured when the work began. Failure to read a debug clone must not affect the response returned to the pipeline.
 
 ## Snapshot and redaction rules
 
@@ -161,14 +161,18 @@ Every fully captured request body snapshot includes its total byte length and SH
 
 For JSON bodies no larger than 1 MiB, include a recursively sanitized JSON structure:
 
-- keep object keys, array order, booleans, numbers, nulls, and string values only for the exact protocol-control field names `model`, `stream`, `role`, `type`, and `effort`;
+- keep object keys, array order, booleans, numbers, and nulls;
+- keep string values for `model`, `stream`, `role`, `type`, and `effort` only at allowlisted protocol-control paths such as the root model, message/content discriminators, `reasoning.effort`, `output_config.effort`, and Gemini content roles;
+- treat nested tool inputs/results and other payload containers as payload context, including Gemini `functionCall.args` and `functionResponse.response`, so control-named keys inside them remain descriptors rather than clear text;
 - replace credential fields without a digest;
 - replace free-form text, instructions, prompts, tool arguments/results, image/file data, data URLs, base64 blobs, and `encrypted_content` with a descriptor containing byte length and SHA-256;
 - summarize every other string value.
 
-For larger, non-JSON, multipart, or unreadable request bodies, log only media type, total byte length, SHA-256, and an omission reason. Never emit a raw preview. Request-body reads remain bounded by the proxy's existing request limits.
+For complete request bodies at or below the proxy's existing 64 MiB encoded-body limit, retain the exact total byte length and SHA-256; JSON structure is still parsed only at or below 1 MiB. A declared `Content-Length` above the proxy limit is metadata-only and is not cloned or read. Chunked or unknown-length bodies stop at the 64 MiB ceiling plus overflow detection, cancel the diagnostic branch, and emit only `mediaType`, fixed `atLeastByteLength: 67_108_865`, and `omitted: "oversized"` without an exact length, digest, JSON, or value bytes. Never emit a raw preview.
 
 Observed non-2xx response diagnostics may retain, copy, hash, or parse at most 1 MiB, with one additional byte used only to detect overflow. Bun may atomically deliver a larger non-BYOB chunk; on overflow, do not retain or process that chunk, request cancellation of the clone, and emit only `mediaType`, the fixed `atLeastByteLength: 1_048_577`, and `omitted: "oversized"`. Do not emit an exact length, digest, JSON, or value bytes.
+
+All request and non-2xx response clone reads share a one-second diagnostic deadline. Expiry cancels the owned reader and emits one metadata-only `omitted: "unreadable"` result. The deadline bounds clone ownership and tee buffering; it is internal and not user-configurable.
 
 Snapshot failures produce a safe metadata-only event and never fall back to logging the original value.
 
@@ -200,7 +204,7 @@ No broader header abstraction is required for this fix; existing provider-specif
 ## Performance and failure behavior
 
 - Non-debug levels perform no request/response body clone, hash, parse, or serialization.
-- Debug mode may add latency and body reads by design, but diagnostic bytes retained, copied, hashed, or parsed are bounded and isolated from the provider result.
+- Debug mode constructs diagnostic clones and reads them concurrently, but never waits for those reads before inbound parsing, the actual upstream fetch, response return, or provider fallback. Diagnostic bytes retained, copied, hashed, or parsed are bounded and isolated from the provider result.
 - Logging and snapshot exceptions are swallowed after emitting the smallest safe fallback event.
 - Debug logging must not change fallback decisions, status mapping, cancellation, stream ownership, usage capture, or SQLite request attempts.
 
@@ -211,8 +215,9 @@ No broader header abstraction is required for this fix; existing provider-specif
 - Candidate logs contain the correct attempt index and Provider ID during fallback.
 - Non-debug transport delegates without cloning or reading bodies.
 - API, AI SDK, and each built-in OAuth runtime use the observed final fetch boundary.
-- Header, URL, JSON, text, secret, image/base64, encrypted-content, and oversized-body redaction cannot expose sentinel values.
-- Non-2xx response snapshots do not consume the returned response body; successful streams are not cloned.
+- Header, URL, JSON, text, secret, image/base64, encrypted-content, cross-protocol nested control-key, and oversized-body redaction cannot expose sentinel values.
+- Known oversized requests are not read; unknown-length request clones cancel at the proxy ceiling; stalled clone reads cancel at the diagnostic deadline.
+- Non-2xx response snapshots do not consume or delay the returned response body or fallback; successful streams are not cloned; eventual result events keep exact request/attempt correlation.
 - Exception code extraction records `ConnectionRefused` without reading getters or logging messages.
 - The ChatGPT raw POST `Host` regression is covered.
 - `bun run preflight` passes.

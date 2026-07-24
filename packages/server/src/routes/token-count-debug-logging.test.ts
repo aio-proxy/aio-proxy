@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { currentRequestLogContext } from "../request-logging";
+import { waitFor } from "../request-logging/wire.test-support";
 import { anthropicRequest, countFixture, provider } from "./token-count.test-support";
 
 test("correlates a token-count provider attempt with its inbound request", async () => {
@@ -26,6 +27,7 @@ test("correlates a token-count provider attempt with its inbound request", async
     providerId: "counter",
     modelId: "counter-wire",
   });
+  await waitFor(() => fixture.logs.some(({ event }) => event === "request.inbound_snapshot"));
   expect(fixture.logs).toContainEqual(
     expect.objectContaining({ event: "request.inbound_snapshot", requestId: "request-1" }),
   );

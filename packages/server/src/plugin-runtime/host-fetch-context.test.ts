@@ -4,6 +4,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { ServerLog } from "../server-log";
 
 import { createObservedFetch, withAttemptLogContext, withRequestLogContext } from "../request-logging";
+import { waitFor } from "../request-logging/wire.test-support";
 import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
@@ -64,6 +65,7 @@ test("OAuth runtimes receive the observed host fetch", async () => {
     ),
   );
 
+  await waitFor(() => logs.some(({ event }) => event === "request.upstream_snapshot"));
   expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_snapshot", providerId: "oauth" }));
   expect(baseFetchCalls).toHaveLength(1);
 });
