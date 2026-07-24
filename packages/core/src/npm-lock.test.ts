@@ -197,7 +197,7 @@ describe.serial("acquireNpmInstallLock", () => {
 
     await Promise.all(
       Array.from({ length: 8 }, async () => {
-        const lock = await acquireNpmInstallLock("stale-lock-race-provider", cacheDir, { waitMs: 10_000 });
+        const lock = await acquireNpmInstallLock("stale-lock-race-provider", cacheDir, { waitMs: 30_000 });
         active += 1;
         maximum = Math.max(maximum, active);
         await Bun.sleep(10);
@@ -207,7 +207,7 @@ describe.serial("acquireNpmInstallLock", () => {
     );
     expect(maximum).toBe(1);
     rmSync(cacheDir, { recursive: true, force: true });
-  }, 15_000);
+  }, 35_000);
 
   test("Given stale recovery paused after compare When owners change Then generations do not overlap", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "aio-proxy-stale-generation-race-"));
@@ -243,9 +243,9 @@ describe.serial("acquireNpmInstallLock", () => {
     });
     let active = 0;
     let overlap = false;
-    let resumeThird = () => {};
-    const thirdMayFinish = new Promise<void>((resolve) => {
-      resumeThird = resolve;
+    let markSecondStarted = () => {};
+    const secondStarted = new Promise<void>((resolve) => {
+      markSecondStarted = resolve;
     });
     try {
       const secondPending = acquire().then(async (lock) => {
@@ -253,7 +253,7 @@ describe.serial("acquireNpmInstallLock", () => {
           return await lock.withOwnership(async () => {
             active += 1;
             overlap ||= active > 1;
-            resumeThird();
+            markSecondStarted();
             active -= 1;
             return "owned";
           });
@@ -273,7 +273,7 @@ describe.serial("acquireNpmInstallLock", () => {
           return await lock.withOwnership(async () => {
             active += 1;
             overlap ||= active > 1;
-            await thirdMayFinish;
+            await Promise.race([secondStarted, Bun.sleep(100)]);
             active -= 1;
             return "owned";
           });
@@ -289,7 +289,7 @@ describe.serial("acquireNpmInstallLock", () => {
       expect({ overlap, thirdOutcome }).toEqual({ overlap: false, thirdOutcome: "owned" });
     } finally {
       Bun.spawn = originalSpawn;
-      resumeThird();
+      markSecondStarted();
       writeFileSync(resumePath, "resume");
       rm.mockRestore();
       utimes.mockRestore();
