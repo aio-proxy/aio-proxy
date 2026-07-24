@@ -27,6 +27,8 @@ test("build exposes exact Lobe icon keys without bundling them into runtime Java
   const openaiStreamDts = readFileSync(join(packagePath, "dist", "openai-stream", "index.d.ts"), "utf8");
   expect(openaiStreamDts).toContain("createOpenAIStreamFetch");
   expect(openaiStreamDts).toContain("OpenAIStreamProtocol");
+  expect(openaiStreamDts).toContain("createToolImageMarker");
+  expect(openaiStreamDts).toContain("ToolImageMarker");
 
   const fixtureDirectory = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-sdk-icon-types-"));
   const fixturePath = join(fixtureDirectory, "fixture.ts");

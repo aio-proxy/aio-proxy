@@ -254,6 +254,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configPath: options.configPath,
     configStore,
     currentProviderSnapshot: manager.current,
+    debugLogging: options.config.server.logging.level === "debug",
     events,
     logicalSessionStore,
     oauthCapabilities,

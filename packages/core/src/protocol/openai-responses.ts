@@ -1,11 +1,13 @@
+import { openai } from "@ai-sdk/openai";
 import { ProviderProtocol } from "@aio-proxy/types";
 import { z } from "zod";
 
+import type { ModelMessage, ToolSet } from "../ai-sdk-bridge";
 import type { SessionCandidate } from "./session";
 
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from "../egress/openai-responses/index";
-import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses";
-import { openAIResponsesToModelMessages } from "../transform/openai-responses";
+import { type OpenAIResponsesRequest, parseOpenAIResponses } from "../ingress/openai-responses/index";
+import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from "../transform/openai-responses/index";
 import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
 import { openAIResponsesErrors } from "./errors";
 import { readJsonRequest } from "./request";
@@ -47,10 +49,57 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
       ...(tools === undefined ? {} : { tools }),
     };
   },
+  modelInvocationForTarget(invocation, targetProtocol) {
+    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return invocation;
+    const tools = responsesToolSet(invocation.tools);
+    return {
+      ...invocation,
+      messages: openAIResponsesMessages(invocation.messages),
+      ...(tools === undefined ? {} : { tools }),
+    };
+  },
   modelJson: writeOpenAIResponsesResponse,
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
 });
+
+function responsesToolSet(tools: ToolSet | undefined): ToolSet | undefined {
+  if (tools === undefined) return undefined;
+  const result: ToolSet = Object.create(null);
+  for (const [name, tool] of Object.entries(tools)) {
+    const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
+    if (metadata?.wireToolType === "custom") {
+      result[name] = openai.tools.customTool({
+        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
+        ...(metadata.format === undefined ? {} : { format: metadata.format }),
+      });
+    } else {
+      result[name] = tool;
+    }
+  }
+  return result;
+}
+
+function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly ModelMessage[] {
+  return messages.map((message) => {
+    if (message.role !== "assistant" || typeof message.content === "string") return message;
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== "tool-call") return part;
+        const metadata = readOpenAIResponsesWireMetadata(part.providerOptions);
+        if (metadata?.wireToolType !== "custom") return part;
+        const input =
+          typeof part.input === "string"
+            ? part.input
+            : typeof part.input === "object" && part.input !== null
+              ? Reflect.get(part.input, "input")
+              : undefined;
+        return typeof input === "string" ? { ...part, input } : part;
+      }),
+    };
+  });
+}
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 

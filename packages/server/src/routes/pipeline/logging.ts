@@ -1,9 +1,12 @@
 import type { ProtocolRequestDiagnostic } from "@aio-proxy/core";
 
-import type { RequestSession } from "../../request-recorder";
+import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 
-import { logServerEvent, serverErrorType } from "../../server-log";
+import { logServerEvent, serverErrorDetails, serverErrorType } from "../../server-log";
+
+const UPSTREAM_REQUEST_ID_HEADERS = ["x-request-id", "request-id"] as const;
+const SAFE_UPSTREAM_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:/=-]{0,255}$/u;
 
 export function logRequestDiagnostics(options: {
   readonly source: ProviderRouteSource;
@@ -41,6 +44,41 @@ export function logRequestFailed(options: {
     path: new URL(options.rawRequest.url).pathname,
     errorCode: "internal_error",
     errorType: serverErrorType(options.error),
+  });
+}
+
+export function logProviderAttemptFailed(options: {
+  readonly source: ProviderRouteSource;
+  readonly session: RequestSession;
+  readonly rawRequest: Request;
+  readonly inboundProtocol: string;
+  readonly requestedModelId: string;
+  readonly attemptIndex: number;
+  readonly attempt: RequestAttemptInput;
+  readonly failureKind: "response" | "exception";
+  readonly fallback: boolean;
+  readonly response?: Response;
+  readonly error?: unknown;
+}): void {
+  const upstreamRequestId = options.response === undefined ? undefined : safeUpstreamRequestId(options.response);
+  logServerEvent(options.source.logger, {
+    event: "request.provider_attempt_failed",
+    requestId: options.session.requestId,
+    inboundProtocol: options.inboundProtocol,
+    requestedModelId: options.requestedModelId,
+    path: new URL(options.rawRequest.url).pathname,
+    attemptIndex: options.attemptIndex,
+    providerId: options.attempt.providerId,
+    providerKind: options.attempt.providerKind,
+    modelId: options.attempt.modelId,
+    ...(options.attempt.protocol === undefined ? {} : { protocol: options.attempt.protocol }),
+    durationMs: options.attempt.durationMs,
+    ...(options.attempt.statusCode === undefined ? {} : { statusCode: options.attempt.statusCode }),
+    ...(options.attempt.errorCode === undefined ? {} : { errorCode: options.attempt.errorCode }),
+    failureKind: options.failureKind,
+    fallback: options.fallback,
+    ...(options.failureKind === "exception" ? serverErrorDetails(options.error) : {}),
+    ...(upstreamRequestId === undefined ? {} : { upstreamRequestId }),
   });
 }
 
@@ -83,4 +121,12 @@ function safeIssues(
     return [{ code: issue.code, path }];
   });
   return issues.length === 0 ? undefined : issues;
+}
+
+function safeUpstreamRequestId(response: Response): string | undefined {
+  for (const header of UPSTREAM_REQUEST_ID_HEADERS) {
+    const value = response.headers.get(header)?.trim();
+    if (value !== undefined && SAFE_UPSTREAM_REQUEST_ID.test(value)) return value;
+  }
+  return undefined;
 }

@@ -229,7 +229,7 @@ describe("POST /v1beta/models/:model::generateContent", () => {
       return textStream([]);
     });
     const app = await appWith(provider);
-    const data = `${"A".repeat(27_962_028)}====`;
+    const data = "A".repeat(27_962_028);
 
     // When
     const response = await postGenerate(app, {

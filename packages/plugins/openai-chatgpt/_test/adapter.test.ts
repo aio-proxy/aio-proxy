@@ -107,7 +107,7 @@ describe("OpenAI ChatGPT plugin", () => {
     });
 
     expect(catalog).toEqual({
-      language: [{ id: "gpt-test", displayName: "GPT Test" }],
+      language: [{ id: "gpt-test", displayName: "GPT Test", metadata: { protocol: "openai-response" } }],
       image: [],
       embedding: [],
       speech: [],

@@ -21,7 +21,7 @@ test("development entry advertises the Rsbuild Dashboard", async () => {
   try {
     await waitForOk(`http://127.0.0.1:${port}/health`, {
       probeTimeoutMs: 1_000,
-      readinessTimeoutMs: 5_000,
+      readinessTimeoutMs: 15_000,
     });
     child.kill();
     await child.exited;

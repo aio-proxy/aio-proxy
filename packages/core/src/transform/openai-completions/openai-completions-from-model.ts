@@ -1,0 +1,153 @@
+import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
+import type { OpenAICompletionsRequest } from "../../ingress/openai-completions";
+import type { OpenAICompletionsFromModelMessages } from "./openai-completions";
+
+import { OpenAICompletionsTransformError } from "../../error";
+import { openAIImageDetail, type ImageInputDetail } from "../../image-input";
+
+export function modelMessagesToOpenAICompletions({
+  model,
+  messages,
+  tools,
+  settings,
+}: OpenAICompletionsFromModelMessages): OpenAICompletionsRequest {
+  return {
+    model,
+    messages: messages.flatMap<OpenAICompletionsRequest["messages"][number]>((message, messageIndex) => {
+      switch (message.role) {
+        case "system":
+          return { role: "system", content: message.content };
+        case "user":
+          return { role: "user", content: openAIContent(message.content, `messages.${messageIndex}.content`) };
+        case "assistant": {
+          const content = assistantOpenAIContent(message.content, `messages.${messageIndex}.content`);
+          const tool_calls = assistantToolCalls(message.content);
+
+          return {
+            role: "assistant",
+            content,
+            ...(tool_calls.length > 0 ? { tool_calls } : {}),
+          };
+        }
+        case "tool":
+          return message.content.map((part, partIndex) => {
+            if (part.type !== "tool-result") {
+              throw new OpenAICompletionsTransformError(`messages.${messageIndex}.content.${partIndex}.type`);
+            }
+            return {
+              role: "tool",
+              tool_call_id: part.toolCallId,
+              content: toolContent(part, `messages.${messageIndex}.content.${partIndex}.output.value`),
+            };
+          });
+      }
+      throw new OpenAICompletionsTransformError(`messages.${messageIndex}.role`);
+    }),
+    ...(tools === undefined
+      ? {}
+      : {
+          tools: tools.map((tool) => ({
+            type: "function",
+            function: {
+              name: tool.name,
+              ...(tool.description === undefined ? {} : { description: tool.description }),
+              ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),
+            },
+          })),
+        }),
+    ...(settings.stream === undefined ? {} : { stream: settings.stream }),
+    ...(settings.temperature === undefined ? {} : { temperature: settings.temperature }),
+    ...(settings.maxTokens === undefined ? {} : { max_completion_tokens: settings.maxTokens }),
+    ...(settings.responseFormat === undefined ? {} : { response_format: settings.responseFormat }),
+    ...(settings.reasoning === undefined ? {} : { reasoning_effort: settings.reasoning }),
+  };
+}
+
+type OpenAITextContent = { readonly type: "text"; readonly text: string };
+type OpenAIImageUrlContent = {
+  readonly type: "image_url";
+  readonly image_url: { readonly url: string; readonly detail?: ImageInputDetail };
+};
+type OpenAIUserContentPart = OpenAITextContent | OpenAIImageUrlContent;
+
+function openAIContent(content: ModelMessage["content"], path: string): string | OpenAIUserContentPart[] {
+  if (typeof content === "string") return content;
+  const parts: OpenAIUserContentPart[] = [];
+  for (const [index, part] of content.entries()) {
+    if (part.type === "text") {
+      parts.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (part.type === "file") {
+      parts.push(imageUrlContent(part, `${path}.${index}`));
+    }
+  }
+  return parts;
+}
+
+function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
+  if (part.mediaType !== "image" && !part.mediaType.startsWith("image/")) {
+    throw new OpenAICompletionsTransformError(`${path}.mediaType`);
+  }
+  const data = part.data;
+  if (typeof data !== "object" || data === null || !("type" in data)) {
+    throw new OpenAICompletionsTransformError(`${path}.data`);
+  }
+  const url =
+    data.type === "url"
+      ? data.url.toString()
+      : data.type === "data" && typeof data.data === "string"
+        ? `data:${part.mediaType};base64,${data.data}`
+        : undefined;
+  if (url === undefined) throw new OpenAICompletionsTransformError(`${path}.data`);
+  const detail = openAIImageDetail(part);
+  return {
+    type: "image_url",
+    image_url: { url, ...(detail === undefined ? {} : { detail }) },
+  };
+}
+
+function toolContent(
+  part: Extract<Extract<ModelMessage, { role: "tool" }>["content"][number], { type: "tool-result" }>,
+  path: string,
+): string | OpenAIUserContentPart[] {
+  if (part.output.type === "text") return part.output.value;
+  if (part.output.type === "content") {
+    return part.output.value.map((value, index): OpenAIUserContentPart => {
+      if (value.type === "text") return { type: "text", text: value.text };
+      if (value.type === "file") return imageUrlContent(value, `${path}.${index}`);
+      throw new OpenAICompletionsTransformError(`${path}.${index}.type`);
+    });
+  }
+  return "";
+}
+
+function assistantOpenAIContent(content: ModelMessage["content"], path: string) {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  const parts = openAIContent(content, path);
+  return parts.length === 0 ? null : parts;
+}
+
+function assistantToolCalls(content: ModelMessage["content"]) {
+  if (typeof content === "string") {
+    return [];
+  }
+
+  return content.flatMap((part) =>
+    part.type === "tool-call"
+      ? [
+          {
+            id: part.toolCallId,
+            type: "function" as const,
+            function: {
+              name: part.toolName,
+              arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
+            },
+          },
+        ]
+      : [],
+  );
+}

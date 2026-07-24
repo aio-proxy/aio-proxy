@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { parseAnthropicMessages } from "../ingress/anthropic-messages";
-import { anthropicMessagesToModelMessages } from "../transform/anthropic-messages";
+import { parseAnthropicMessages } from "../ingress/anthropic-messages/index";
+import { anthropicMessagesToModelMessages } from "../transform/anthropic-messages/index";
 import { anthropicThinkingOption } from "./anthropic-thinking";
 
 test.each([

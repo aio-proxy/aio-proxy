@@ -25,6 +25,7 @@ import {
   type ProviderProbe,
   providerSummary,
 } from "../provider-runtime";
+import { createObservedFetch } from "../request-logging";
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
@@ -52,6 +53,7 @@ export async function buildSnapshot(
   onDiagnosticChanged: () => void,
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
+  const runtimeFetch = createObservedFetch(globalThis.fetch);
   const builtIns = options.builtIns ?? createEmbeddedBuiltIns();
   const publicPluginOptions = new Map<string, unknown>(builtIns.map((plugin) => [plugin.packageName, undefined]));
   for (const enablement of config.plugins) publicPluginOptions.set(enablement.packageName, enablement.options);
@@ -115,6 +117,7 @@ export async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
+        runtimeFetch,
         ...(pluginOptionInput === undefined || "error" in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),

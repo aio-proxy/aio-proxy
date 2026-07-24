@@ -10,7 +10,7 @@ import {
 import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
 import { type KimiCredential, type KimiOAuthDependencies, loginKimi } from "./oauth";
 import { readKimiQuota } from "./quota";
-import { createKimiRuntime } from "./runtime";
+import { createKimiRuntime } from "./runtime/index";
 
 export type KimiCodePresentationText = {
   readonly pluginLabel?: LocalizedText;

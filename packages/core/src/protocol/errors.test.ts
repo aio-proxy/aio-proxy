@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import type { ProtocolErrorMapper } from "./adapter";
 
+import { ImageInputUnsupportedError } from "../error";
 import {
   anthropicMessagesErrors,
   geminiGenerateContentErrors,
@@ -65,4 +66,23 @@ test.each(cases)("maps invalid compressed bodies for %s", async (_name, mapper, 
   expect(response?.status).toBe(400);
   expect(await response?.json()).toEqual(expected);
   expect(JSON.stringify(expected)).not.toContain("native decoder detail");
+});
+
+test("maps image compatibility errors into every inbound protocol shape", async () => {
+  const error = new ImageInputUnsupportedError("gemini-tool-url", "messages.2.content.0.output.value.1");
+  const cases = [
+    [openAICompletionsErrors, 501, "unsupported_feature"],
+    [openAIResponsesErrors, 501, "unsupported_feature"],
+    [anthropicMessagesErrors, 501, "invalid_request_error"],
+    [geminiGenerateContentErrors, 501, "UNIMPLEMENTED"],
+  ] as const;
+
+  for (const [mapper, status, marker] of cases) {
+    const response = mapper.modelUnsupported?.(error);
+    expect(response?.status).toBe(status);
+    const body = await response?.text();
+    expect(body).toContain(marker);
+    expect(body).not.toContain("https://");
+    expect(body).not.toContain("file_");
+  }
 });

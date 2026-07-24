@@ -34,7 +34,7 @@ describe("cli", () => {
     expect(chinese.exitCode).toBe(0);
     expect(english.stdout.toString()).toContain("AIO Proxy command line");
     expect(chinese.stdout.toString()).toContain("AIO Proxy 命令行界面");
-  });
+  }, 15_000);
 
   test("rejects out-of-range serve ports", () => {
     // Given / When

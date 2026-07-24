@@ -8,6 +8,7 @@ import {
 import type { RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 
+import { logInboundRequest, withRequestLogContext } from "../../request-logging";
 import { attemptCandidates } from "./attempt";
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from "./logging";
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from "./request";
@@ -19,13 +20,27 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly source: ProviderRouteSource;
 };
 
-export async function handleProtocolRequest<TRequest, TContext>({
-  adapter,
-  context,
-  rawRequest,
-  source,
-}: HandleProtocolRequestOptions<TRequest, TContext>): Promise<Response> {
-  const session = source.requestRecorder.begin({ inboundProtocol: adapter.protocol });
+export async function handleProtocolRequest<TRequest, TContext>(
+  options: HandleProtocolRequestOptions<TRequest, TContext>,
+): Promise<Response> {
+  const session = options.source.requestRecorder.begin({ inboundProtocol: options.adapter.protocol });
+  return await withRequestLogContext(
+    {
+      requestId: session.requestId,
+      debug: options.source.debugLogging === true,
+      logger: options.source.logger,
+    },
+    async () => {
+      await logInboundRequest(options.rawRequest, options.adapter.protocol);
+      return await handleProtocolRequestInContext(options, session);
+    },
+  );
+}
+
+async function handleProtocolRequestInContext<TRequest, TContext>(
+  { adapter, context, rawRequest, source }: HandleProtocolRequestOptions<TRequest, TContext>,
+  session: RequestSession,
+): Promise<Response> {
   let requestedModelId: string | undefined;
   let releaseRetainedBody = false;
   try {

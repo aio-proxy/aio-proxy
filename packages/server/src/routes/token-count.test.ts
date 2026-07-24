@@ -1,17 +1,17 @@
-import type { TokenCountCapability } from "@aio-proxy/plugin-sdk";
-
-import { anthropicMessagesAdapter, geminiGenerateContentAdapter, Router } from "@aio-proxy/core";
-import { ConfigSchema, ProviderKind } from "@aio-proxy/types";
+import { geminiGenerateContentAdapter } from "@aio-proxy/core";
 import { expect, test } from "bun:test";
 
-import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
-
-import { createRecording } from "../../_test/pipeline-helpers/recording";
-import { LogicalSessionStore } from "../logical-session-store";
 import { createGeminiGenerateContentRoutes } from "./gemini-generate-content";
-import { handleTokenCount } from "./token-count";
-
-const requestedModel = "count-model";
+import {
+  anthropicRequest,
+  configOrderedProviders,
+  countFixture,
+  counter,
+  geminiContext,
+  geminiRequest,
+  provider,
+  requestedModel,
+} from "./token-count.test-support";
 
 test("uses routing order and falls through candidates without count support", async () => {
   const calls: string[] = [];
@@ -145,7 +145,8 @@ test("maps model-not-found and releases the snapshot lease", async () => {
   const response = await fixture.anthropic();
 
   expect(response.status).toBe(404);
-  expect(fixture.recording.begins).toEqual([]);
+  expect(fixture.recording.begins).toHaveLength(1);
+  expect(fixture.recording.finals).toEqual([]);
   expect(fixture.releases()).toBe(1);
 });
 
@@ -169,116 +170,3 @@ test("routes Gemini countTokens and preserves a provider-qualified model resourc
   expect(await response.json()).toEqual({ totalTokens: 17 });
   expect(modelIds).toEqual(["gemini-wire"]);
 });
-
-function countFixture(providers: readonly RuntimeProviderInstance[]) {
-  const router = new Router(providers);
-  const recording = createRecording();
-  let releaseCount = 0;
-  const source = {
-    acquireProviderSnapshot: () => ({
-      snapshot: { providers, router },
-      release: () => {
-        releaseCount += 1;
-      },
-    }),
-    currentProviderSnapshot: () => ({ providers, router }),
-    logicalSessionStore: new LogicalSessionStore(),
-    requestRecorder: recording.recorder,
-    usageCapture: {
-      passthrough(): never {
-        throw new Error("token counting must not capture generation usage");
-      },
-      stream(): never {
-        throw new Error("token counting must not capture generation usage");
-      },
-    },
-  } satisfies ProviderRouteSource;
-  return {
-    recording,
-    releases: () => releaseCount,
-    source,
-    anthropic: (request = anthropicRequest()) =>
-      handleTokenCount({
-        adapter: anthropicMessagesAdapter,
-        context: {},
-        format: (inputTokens) => ({ input_tokens: inputTokens }),
-        rawRequest: request,
-        source,
-      }),
-    gemini: (request = geminiRequest()) =>
-      handleTokenCount({
-        adapter: geminiGenerateContentAdapter,
-        context: geminiContext(),
-        format: (inputTokens) => ({ totalTokens: inputTokens }),
-        rawRequest: request,
-        source,
-      }),
-  };
-}
-
-function provider(options: {
-  readonly id: string;
-  readonly supportsProviderTool?: boolean;
-  readonly tokenCount?: TokenCountCapability["countTokens"];
-}): RuntimeProviderInstance {
-  return {
-    alias: { [requestedModel]: { model: `${options.id}-wire`, preserve: false } },
-    enabled: true,
-    id: options.id,
-    kind: ProviderKind.OAuth,
-    model: {
-      invoke() {
-        throw new Error("generation must not run during token counting");
-      },
-      supportsProviderTool: () => options.supportsProviderTool === true,
-    },
-    ...(options.tokenCount === undefined ? {} : { tokenCount: { countTokens: options.tokenCount } }),
-  };
-}
-
-function configOrderedProviders(
-  entries: readonly { readonly provider: RuntimeProviderInstance; readonly weight: number }[],
-): readonly RuntimeProviderInstance[] {
-  const config = ConfigSchema.parse({
-    providers: Object.fromEntries(
-      entries.map(({ provider, weight }) => [
-        provider.id,
-        { kind: "ai-sdk", models: [requestedModel], packageName: "@example/provider", weight },
-      ]),
-    ),
-  });
-  const byId = new Map(entries.map(({ provider }) => [provider.id, provider]));
-  return config.providers.map(({ id }) => byId.get(id) as RuntimeProviderInstance);
-}
-
-function counter(id: string, inputTokens: number, calls: string[]): TokenCountCapability["countTokens"] {
-  return async () => {
-    calls.push(id);
-    return { inputTokens };
-  };
-}
-
-function anthropicRequest(overrides: Readonly<Record<string, unknown>> = {}): Request {
-  return new Request("https://proxy.test/v1/messages/count_tokens", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: requestedModel,
-      max_tokens: 16,
-      messages: [{ role: "user", content: "hello" }],
-      ...overrides,
-    }),
-  });
-}
-
-function geminiRequest(): Request {
-  return new Request(`https://proxy.test/v1beta/models/${requestedModel}:countTokens`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "hello" }] }] }),
-  });
-}
-
-function geminiContext() {
-  return { model: requestedModel, stream: false };
-}

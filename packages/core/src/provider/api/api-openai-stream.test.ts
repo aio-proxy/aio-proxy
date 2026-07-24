@@ -73,4 +73,49 @@ describe("createApiProvider OpenAI stream protection", () => {
       });
     });
   }
+
+  test("preserves marked tool content on compatible raw passthrough", async () => {
+    let upstreamRequest: Request | undefined;
+    const provider = createApiProvider(
+      {
+        kind: "api",
+        id: "compatible-raw",
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseURL: "https://upstream.test/v1",
+      },
+      {
+        fetch: async (input, init) => {
+          upstreamRequest = new Request(input, init);
+          return Response.json({ ok: true });
+        },
+      },
+    );
+    const body = {
+      model: "gpt-test",
+      messages: [
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: JSON.stringify([
+            {
+              type: "file",
+              mediaType: "image/png",
+              data: { type: "data", data: "AA==" },
+              providerOptions: { aioProxy: { toolImage: true } },
+            },
+          ]),
+        },
+      ],
+    };
+
+    await provider.passthrough(
+      new Request("https://proxy.test/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+
+    expect(await upstreamRequest?.json()).toEqual(body);
+  });
 });

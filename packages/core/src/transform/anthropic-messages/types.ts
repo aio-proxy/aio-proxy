@@ -1,4 +1,5 @@
-import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages";
+import type { ImageFilePart } from "../../image-input";
+import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages/index";
 import type { AnthropicThinkingOption } from "../../protocol/anthropic-thinking";
 
 export type AnthropicProviderOptions = {
@@ -31,7 +32,7 @@ export type ToolResultPart = {
     | { readonly type: "text"; readonly value: string }
     | {
         readonly type: "content";
-        readonly value: readonly { readonly type: "text"; readonly text: string }[];
+        readonly value: readonly (TextPart | ImageFilePart)[];
       };
   readonly providerOptions?: AnthropicProviderOptions;
 };
@@ -50,7 +51,7 @@ export type AnthropicSystemMessage = {
 
 export type AnthropicUserMessage = {
   readonly role: "user";
-  readonly content: string | readonly (TextPart | ToolResultPart)[];
+  readonly content: string | readonly (TextPart | ImageFilePart | ToolResultPart)[];
 };
 
 export type AnthropicAssistantMessage = {

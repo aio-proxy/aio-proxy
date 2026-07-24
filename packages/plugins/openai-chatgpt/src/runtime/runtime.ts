@@ -15,7 +15,7 @@ const PLACEHOLDER_CREDENTIAL = "dynamic-credential" as const;
 export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials);
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch);
   const openAI = createOpenAI({
     name: "openai-chatgpt",
     baseURL: CHATGPT_CODEX_BASE_URL,
@@ -41,10 +41,11 @@ export function createOpenAIChatGPTDynamicFetch(
 ): typeof fetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch("openai-response", fetcher);
   return async (input, init) => {
-    const credential = await currentCredential(credentials);
+    const credential = await currentCredential(credentials, fetcher);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete("authorization");
+    headers.delete("host");
     headers.set("authorization", `Bearer ${credential.accessToken}`);
     headers.set("ChatGPT-Account-Id", credential.accountId);
     headers.set("Originator", "codex-tui");
@@ -61,13 +62,16 @@ export function createOpenAIChatGPTDynamicFetch(
   };
 }
 
-export async function currentCredential(port: CredentialPort<ChatGPTCredential>): Promise<ChatGPTCredential> {
+export async function currentCredential(
+  port: CredentialPort<ChatGPTCredential>,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<ChatGPTCredential> {
   const current = await port.read();
   if (current.value.expiresAt > Date.now() && current.value.accessToken.length > 0) return current.value;
 
   return (
     await port.refresh(current.revision, async ({ value }, signal) => {
-      const refreshed = await refreshAccessToken(value.refreshToken, { signal });
+      const refreshed = await refreshAccessToken(value.refreshToken, { fetch: fetcher, signal });
       return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
     })
   ).snapshot.value;

@@ -50,6 +50,7 @@ export function modelProvider(options: {
   readonly id: string;
   readonly invoke: ModelTransport["invoke"];
   readonly modelId?: string;
+  readonly targetProtocol?: ProviderProtocol;
 }): FakeProvider {
   const calls = providerCalls();
   const model = instrumentModel(options, calls);
@@ -68,6 +69,7 @@ export function modelProvider(options: {
 export function defineProviderRouteSource(
   fixtures: readonly FakeProvider[],
   immediateStreamCompletion?: UsageCompletion,
+  debugLogging?: boolean,
 ) {
   const providers = fixtures.map((fixture) => fixture.provider);
   const recording = createRecording();
@@ -102,6 +104,7 @@ export function defineProviderRouteSource(
       release() {},
     }),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
+    ...(debugLogging === undefined ? {} : { debugLogging }),
     logger: (entry) => logs.push(entry),
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
@@ -133,6 +136,7 @@ function instrumentModel(
   model: {
     readonly ensureAvailable?: () => Promise<void>;
     readonly invoke: ModelTransport["invoke"];
+    readonly targetProtocol?: ProviderProtocol;
   },
   calls: FakeProvider["calls"],
 ): ModelTransport {
@@ -145,6 +149,7 @@ function instrumentModel(
             await model.ensureAvailable?.();
           },
         }),
+    ...(model.targetProtocol === undefined ? {} : { targetProtocol: () => model.targetProtocol }),
     invoke(request) {
       calls.model.push(request);
       return model.invoke(request);

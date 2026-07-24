@@ -16,10 +16,16 @@ const textPartSchema = z
 const inputImagePartSchema = z
   .object({
     type: z.literal("input_image"),
-    image_url: z.string(),
+    image_url: z.string().optional(),
+    file_id: idSchema.optional(),
     detail: z.enum(["auto", "low", "high"]).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((part, context) => {
+    if ((part.image_url === undefined ? 0 : 1) + (part.file_id === undefined ? 0 : 1) !== 1) {
+      context.addIssue({ code: "custom", message: "Expected exactly one image source" });
+    }
+  });
 
 const inputFilePartSchema = z
   .object({

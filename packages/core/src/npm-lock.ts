@@ -14,7 +14,6 @@ const LOCK_FILE = ".aio-proxy-install.lock";
 const LOCK_VERSION = 1;
 const STALE_LOCK_MS = 5 * 60 * 1000;
 const LOCK_HEARTBEAT_MS = 10_000;
-const RETRIES = 8;
 const STARTTIME_UNAVAILABLE = "unavailable";
 const DEFAULT_WAIT_MS = 5_000;
 
@@ -27,6 +26,9 @@ const LockSchema = z.object({
 });
 
 type LockFile = z.infer<typeof LockSchema>;
+type LockInspection =
+  | { readonly stale: false }
+  | { readonly stale: true; readonly text?: string; readonly identity?: Stats };
 
 export type NpmInstallLock = {
   readonly withOwnership: <T>(action: (assertOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
@@ -95,12 +97,12 @@ async function withRecoveryFence<T>(
   );
 }
 
-async function recoverStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
+async function inspectLock(path: string): Promise<LockInspection> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return true;
+    if (isNodeError(error, "ENOENT")) return { stale: true };
     throw error;
   }
   const parsed = parseLock(text);
@@ -115,8 +117,14 @@ async function recoverStaleLock(path: string, assertFence: () => Promise<void>):
     lock === undefined
       ? staleByHeartbeat
       : !ownerAlive || (identityVerifiable ? ownerStarttime !== lock.starttime : staleByHeartbeat);
-  if (!stale || metadata === null) return false;
-  return removeIfUnchanged(path, text, metadata, assertFence, true);
+  return stale ? { stale: true, text, ...(metadata === null ? {} : { identity: metadata }) } : { stale: false };
+}
+
+async function recoverStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
+  const inspection = await inspectLock(path);
+  if (!inspection.stale) return false;
+  if (inspection.text === undefined || inspection.identity === undefined) return true;
+  return removeIfUnchanged(path, inspection.text, inspection.identity, assertFence, true);
 }
 
 function retryDelay(attempt: number): number {
@@ -146,34 +154,36 @@ export async function acquireNpmInstallLock(
   const content = JSON.stringify(lock);
   let failedGeneration: string | null = null;
   let attempts = 0;
-  while (attempts < RETRIES && Date.now() < deadline) {
-    const acquired = await withRecoveryFence(
-      lockPath,
-      async (assertFence) => {
-        try {
-          const handle = await open(lockPath, "wx", 0o600);
-          let identity: Stats | undefined;
-          try {
-            await handle.writeFile(content);
-            await handle.sync();
-            identity = await handle.stat();
-            await assertFence();
-            return { handle, identity };
-          } catch (error) {
-            await handle.close().catch(() => {});
-            if (identity !== undefined) {
-              await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
+  while (Date.now() < deadline) {
+    const acquired = (await inspectLock(lockPath)).stale
+      ? await withRecoveryFence(
+          lockPath,
+          async (assertFence) => {
+            try {
+              const handle = await open(lockPath, "wx", 0o600);
+              let identity: Stats | undefined;
+              try {
+                await handle.writeFile(content);
+                await handle.sync();
+                identity = await handle.stat();
+                await assertFence();
+                return { handle, identity };
+              } catch (error) {
+                await handle.close().catch(() => {});
+                if (identity !== undefined) {
+                  await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
+                }
+                throw error;
+              }
+            } catch (error) {
+              if (!isNodeError(error, "EEXIST")) throw error;
+              return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
             }
-            throw error;
-          }
-        } catch (error) {
-          if (!isNodeError(error, "EEXIST")) throw error;
-          return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
-        }
-      },
-      deadline,
-      timeoutError,
-    );
+          },
+          deadline,
+          timeoutError,
+        )
+      : false;
     if (acquired === null) continue;
     if (acquired === false) {
       const generation = await readFile(lockPath, "utf8").catch(() => null);
@@ -183,16 +193,11 @@ export async function acquireNpmInstallLock(
       } else {
         attempts += 1;
       }
-      if (attempts >= RETRIES || Date.now() >= deadline) break;
+      if (Date.now() >= deadline) break;
       await Bun.sleep(Math.min(retryDelay(attempts), Math.max(0, deadline - Date.now())));
       continue;
     }
     const { handle, identity } = acquired;
-    let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
-      const now = new Date();
-      void handle.utimes(now, now).catch(() => {});
-    }, LOCK_HEARTBEAT_MS);
-    heartbeat.unref?.();
     const verifyOwnership = async () => {
       try {
         const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, "utf8"), stat(lockPath)]);
@@ -217,6 +222,17 @@ export async function acquireNpmInstallLock(
         timeoutError,
       );
     };
+    let heartbeatRefreshing = false;
+    let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+      if (heartbeatRefreshing) return;
+      heartbeatRefreshing = true;
+      void assertOwnership()
+        .catch(() => {})
+        .finally(() => {
+          heartbeatRefreshing = false;
+        });
+    }, LOCK_HEARTBEAT_MS);
+    heartbeat.unref?.();
     return {
       async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
         await assertOwnership();
