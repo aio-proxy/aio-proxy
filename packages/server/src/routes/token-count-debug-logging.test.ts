@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { currentRequestLogContext } from "../request-logging";
-import { waitFor } from "../request-logging/wire.test-support";
+import { waitFor } from "../request-logging/test-support";
 import { anthropicRequest, countFixture, provider } from "./token-count.test-support";
 
 test("correlates a token-count provider attempt with its inbound request", async () => {

@@ -108,6 +108,18 @@ test("does not read or lock the source before a consumer requests bytes", async 
   expect(source.locked).toBeFalse();
 });
 
+test("supports Request.clone without reading ahead", async () => {
+  const original = new Request("https://upstream.test", { method: "POST", body: "visible" });
+  const source = new Request(original).body;
+  if (source === null) throw new Error("expected request body");
+  const tapped = tapTextBody(source, "application/json", { chunk() {}, terminal() {} });
+  const request = new Request("https://upstream.test", { method: "POST", body: tapped });
+
+  const result = await Promise.race([request.clone().text(), Bun.sleep(100).then(() => "TIMEOUT")]);
+
+  expect(result).toBe("visible");
+});
+
 function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {

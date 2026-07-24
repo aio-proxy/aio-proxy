@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import type { ServerLog } from "../server-log";
 
 import { withAttemptLogContext, withRequestLogContext } from "../request-logging";
-import { waitFor } from "../request-logging/wire.test-support";
+import { reconstructed, waitFor } from "../request-logging/test-support";
 import { materializeProviders } from "./materialize";
 
 test("materialized provider fetches observe final upstream requests only inside debug attempts", async () => {
@@ -29,7 +29,7 @@ test("materialized provider fetches observe final upstream requests only inside 
   });
   const logs: ServerLog[] = [];
   const proxies: (string | undefined)[] = [];
-  const delegated: { readonly proxy: string | undefined; readonly url: string }[] = [];
+  const delegated: { readonly body: string; readonly proxy: string | undefined; readonly url: string }[] = [];
   let apiFetch: ProviderFetch | undefined;
   let bridgeFetch: ProviderFetch | undefined;
   let aiSdkFetch: ProviderFetch | undefined;
@@ -38,7 +38,8 @@ test("materialized provider fetches observe final upstream requests only inside 
     createProxyFetch(proxy) {
       proxies.push(proxy);
       return (async (input, init) => {
-        delegated.push({ proxy, url: new Request(input, init).url });
+        const request = input instanceof Request ? input : new Request(input, init);
+        delegated.push({ body: await request.text(), proxy, url: request.url });
         return new Response(null, { status: 204 });
       }) as ProviderFetch;
     },
@@ -118,39 +119,34 @@ test("materialized provider fetches observe final upstream requests only inside 
       providerId: "api",
       modelId: "api-model",
       method: "POST",
-      url: "https://final-api.test/v1/responses?api_key=%5BREDACTED%5D",
+      url: "https://final-api.test/v1/responses?api_key=api-query-secret",
       headers: {
         "content-type": "application/json",
         "user-agent": "api-generated-agent",
         "x-api-key": "[REDACTED]",
       },
-      body: expect.objectContaining({
-        json: {
-          apiKey: expect.objectContaining({ kind: "redacted" }),
-          model: "api-model",
-          prompt: expect.objectContaining({ kind: "payload" }),
-        },
-      }),
     }),
     expect.objectContaining({
       attemptIndex: 1,
       providerId: "sdk",
       modelId: "sdk-model",
       method: "POST",
-      url: "https://final-sdk.test/v1/chat/completions?token=%5BREDACTED%5D",
+      url: "https://final-sdk.test/v1/chat/completions?token=sdk-query-secret",
       headers: {
         accept: "application/json",
         authorization: "[REDACTED]",
         "content-type": "application/json",
       },
-      body: expect.objectContaining({
-        json: {
-          messages: [{ content: expect.objectContaining({ kind: "payload" }), role: "user" }],
-          model: "sdk-model",
-        },
-      }),
     }),
   ]);
-  expect(JSON.stringify(logs)).not.toContain("secret");
+  expect(reconstructed(logs, "upstream_request", 0)).toContain("api-body-secret");
+  expect(reconstructed(logs, "upstream_request", 0)).toContain("api-prompt-secret");
+  expect(reconstructed(logs, "upstream_request", 1)).toContain("sdk-content-secret");
+  expect(JSON.stringify(logs)).not.toContain("api-header-secret");
+  expect(JSON.stringify(logs)).not.toContain("sdk-header-secret");
   expect(delegated).toHaveLength(4);
+  expect(delegated.slice(-2).map(({ body }) => body)).toEqual([
+    reconstructed(logs, "upstream_request", 0),
+    reconstructed(logs, "upstream_request", 1),
+  ]);
 });

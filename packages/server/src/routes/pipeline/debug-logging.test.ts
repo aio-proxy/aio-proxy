@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { jsonRequest, rawProvider, REQUESTED_MODEL } from "../../../_test/pipeline-helpers";
 import { createObservedFetch } from "../../request-logging";
-import { waitFor } from "../../request-logging/wire.test-support";
+import { reconstructed, terminals, waitFor } from "../../request-logging/test-support";
 import { pipeline } from "./test-support";
 
 type ObservedCall = {
+  body?: string;
   delegated?: string | URL | Request;
   upstream?: Request;
 };
@@ -13,6 +14,7 @@ type ObservedCall = {
 function observedProvider(id: string, response: () => Response, call: ObservedCall) {
   const observedFetch = createObservedFetch((async (input) => {
     call.delegated = input;
+    if (input instanceof Request) call.body = await input.text();
     return response();
   }) as typeof globalThis.fetch);
   return rawProvider({
@@ -25,7 +27,7 @@ function observedProvider(id: string, response: () => Response, call: ObservedCa
 }
 
 describe("shared protocol pipeline debug logging", () => {
-  test("scopes inbound and fallback upstream snapshots without logging payloads", async () => {
+  test("scopes fallback attempts and logs bodies according to real consumption", async () => {
     const inboundPrompt = "inbound-prompt-sentinel";
     const primaryBody = "primary-upstream-body-sentinel";
     const backupBody = "backup-upstream-body-sentinel";
@@ -58,10 +60,14 @@ describe("shared protocol pipeline debug logging", () => {
         }),
       ]),
     );
-    const serialized = JSON.stringify(harness.logs);
-    expect(serialized).not.toContain(inboundPrompt);
-    expect(serialized).not.toContain(primaryBody);
-    expect(serialized).not.toContain(backupBody);
+    expect(reconstructed(harness.logs, "upstream_request", 0)).toContain(inboundPrompt);
+    expect(reconstructed(harness.logs, "upstream_request", 1)).toContain(inboundPrompt);
+    expect(reconstructed(harness.logs, "upstream_response", 0)).toBe("");
+    expect(reconstructed(harness.logs, "upstream_response", 1)).toContain(backupBody);
+    expect(terminals(harness.logs, "upstream_response")).toContainEqual(
+      expect.objectContaining({ attemptIndex: 0, outcome: "cancelled" }),
+    );
+    expect(JSON.stringify(harness.logs)).not.toContain(primaryBody);
   });
 
   test("info logging preserves fetch input identity and emits only the fallback warning", async () => {
@@ -121,7 +127,10 @@ describe("shared protocol pipeline debug logging", () => {
     expect(response).toBeInstanceOf(Response);
     expect(await response?.json()).toEqual({ provider: "backup" });
     expect(cleanupSettled).toBeTrue();
-    expect(cancelReason).toEqual(expect.arrayContaining([undefined, "request snapshot deadline exceeded"]));
+    expect(cancelReason).toBeUndefined();
+    expect(terminals(harness.logs, "upstream_response")).toContainEqual(
+      expect.objectContaining({ attemptIndex: 0, outcome: "cancelled" }),
+    );
     expect(harness.logs).toContainEqual(expect.objectContaining({ event: "request.upstream_result", statusCode: 503 }));
   });
 });

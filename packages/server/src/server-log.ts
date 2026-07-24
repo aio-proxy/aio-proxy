@@ -1,4 +1,4 @@
-import type { HttpRequestSnapshot, SafeBodySnapshot } from "./request-logging/snapshot";
+import type { HttpRequestMetadata } from "./request-logging/request-metadata";
 
 export type ConfigReloadLog = {
   readonly error: string;
@@ -59,7 +59,7 @@ export type RequestInboundSnapshotLog = {
   readonly event: "request.inbound_snapshot";
   readonly requestId: string;
   readonly inboundProtocol: string;
-} & HttpRequestSnapshot;
+} & HttpRequestMetadata;
 
 export type RequestUpstreamSnapshotLog = {
   readonly event: "request.upstream_snapshot";
@@ -67,7 +67,7 @@ export type RequestUpstreamSnapshotLog = {
   readonly attemptIndex: number;
   readonly providerId: string;
   readonly modelId: string;
-} & HttpRequestSnapshot;
+} & HttpRequestMetadata;
 
 type RequestUpstreamResultBase = {
   readonly event: "request.upstream_result";
@@ -84,7 +84,6 @@ export type RequestUpstreamResultLog = RequestUpstreamResultBase &
         readonly outcome: "response";
         readonly statusCode: number;
         readonly headers: Readonly<Record<string, string>>;
-        readonly body?: SafeBodySnapshot;
       }
     | ({ readonly outcome: "exception" } & SafeExceptionLog)
   );

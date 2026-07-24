@@ -4,7 +4,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { ServerLog } from "../server-log";
 
 import { createObservedFetch, withAttemptLogContext, withRequestLogContext } from "../request-logging";
-import { waitFor } from "../request-logging/wire.test-support";
+import { reconstructed, waitFor } from "../request-logging/test-support";
 import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from "./test-support";
 
 afterEach(cleanup);
@@ -12,8 +12,11 @@ afterEach(cleanup);
 test("OAuth runtimes receive the observed host fetch", async () => {
   const logs: ServerLog[] = [];
   const baseFetchCalls: Request[] = [];
-  const baseFetch = (async (input, init) => {
-    baseFetchCalls.push(new Request(input, init));
+  const baseFetchBodies: string[] = [];
+  const baseFetch = (async (input) => {
+    if (!(input instanceof Request)) throw new TypeError("expected OAuth Request");
+    baseFetchCalls.push(input);
+    baseFetchBodies.push(await input.text());
     return new Response(null, { status: 204 });
   }) as typeof globalThis.fetch;
   let capturedFetch: typeof globalThis.fetch | undefined;
@@ -68,4 +71,6 @@ test("OAuth runtimes receive the observed host fetch", async () => {
   await waitFor(() => logs.some(({ event }) => event === "request.upstream_snapshot"));
   expect(logs).toContainEqual(expect.objectContaining({ event: "request.upstream_snapshot", providerId: "oauth" }));
   expect(baseFetchCalls).toHaveLength(1);
+  expect(baseFetchBodies).toEqual(["wire-secret"]);
+  expect(reconstructed(logs, "upstream_request")).toBe("wire-secret");
 });
