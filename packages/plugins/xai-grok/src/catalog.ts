@@ -7,6 +7,7 @@ import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from "./oauth";
 export const XAI_GROK_CATALOG_TTL_MS = 6 * 60 * 60_000;
 const MODELS_URL = "https://api.x.ai/v1/models";
 const NON_CHAT_PREFIXES = ["grok-imagine-", "grok-stt-", "grok-voice-"] as const;
+const MODEL_METADATA = { protocol: "openai-response" } as const;
 const CURATED = [
   ["grok-build", "Grok Build"],
   ["grok-build-0.1", "Grok Build 0.1"],
@@ -65,14 +66,14 @@ export async function discoverXAIGrokModels(
     if (!id.startsWith("grok-") || NON_CHAT_PREFIXES.some((prefix) => id.startsWith(prefix))) continue;
     const name = Reflect.get(value, "name");
     const displayName = curatedNames.get(id) ?? readDisplayName(name);
-    byId.set(id, { id, ...(displayName === undefined ? {} : { displayName }) });
+    byId.set(id, { id, ...(displayName === undefined ? {} : { displayName }), metadata: MODEL_METADATA });
   }
   return emptyCatalog([...byId.values()].sort((left, right) => left.id.localeCompare(right.id)));
 }
 
 export function initialXAIGrokCatalogFallback(error: unknown): ModelCatalog | undefined {
   return error instanceof XAIGrokCatalogError && error.retryable
-    ? emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName })))
+    ? emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, metadata: MODEL_METADATA })))
     : undefined;
 }
 
