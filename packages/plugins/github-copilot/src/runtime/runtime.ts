@@ -77,7 +77,7 @@ export async function createGitHubCopilotRuntime(
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
       return {
         invoke: async (request) => {
-          const credential = await currentGitHubCopilotCredential(context.credentials);
+          const credential = await currentGitHubCopilotCredential(context.credentials, fetcher);
           return await fetchWithCredential(request, undefined, credential, fetcher);
         },
       };
@@ -90,7 +90,7 @@ function createDynamicFetch(
   fetcher: typeof fetch,
 ): typeof fetch {
   return async (input, init) => {
-    const credential = await currentGitHubCopilotCredential(credentials);
+    const credential = await currentGitHubCopilotCredential(credentials, fetcher);
     return await fetchWithCredential(input, init, credential, fetcher);
   };
 }

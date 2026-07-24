@@ -1,7 +1,12 @@
 import type { ZodType } from "@aio-proxy/plugin-sdk";
 
-export async function fetchJson<Output>(url: string, init: RequestInit, schema: ZodType<Output>): Promise<Output> {
-  const response = await fetch(url, init);
+export async function fetchJson<Output>(
+  url: string,
+  init: RequestInit,
+  schema: ZodType<Output>,
+  fetcher: typeof globalThis.fetch = globalThis.fetch,
+): Promise<Output> {
+  const response = await fetcher(url, init);
   if (!response.ok) throw new Error(`GitHub Copilot request failed (${response.status})`);
   return await schema.parseAsync(await response.json());
 }
