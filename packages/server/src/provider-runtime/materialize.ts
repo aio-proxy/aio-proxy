@@ -12,6 +12,7 @@ import { ProviderKind } from "@aio-proxy/types";
 
 import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "../runtime";
 
+import { createObservedFetch } from "../request-logging";
 import { probeAiSdk, probeApi, type ProviderProbe } from "./probe";
 
 export type MaterializeProvidersOptions = {
@@ -137,7 +138,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
 
     switch (provider.kind) {
       case ProviderKind.Api: {
-        const providerFetch = createFetch(effectiveProxy(config.proxy, provider.proxy));
+        const providerFetch = createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy)));
         const api = createApi(provider, { fetch: providerFetch });
         const instance = materializeRuntimeProvider(api, {
           apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
@@ -148,7 +149,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         break;
       }
       case ProviderKind.AiSdk: {
-        const providerFetch = createFetch(effectiveProxy(config.proxy, provider.proxy));
+        const providerFetch = createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy)));
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = materializeRuntimeProvider(aiSdk);
         probes.set(id, () => probeAiSdk(aiSdk));
