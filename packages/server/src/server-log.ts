@@ -39,6 +39,7 @@ export type SafeExceptionLog = {
 export type RequestProviderAttemptFailedLog = {
   readonly event: "request.provider_attempt_failed";
   readonly requestId: string;
+  readonly attemptIndex: number;
   readonly inboundProtocol: string;
   readonly requestedModelId: string;
   readonly path: string;

@@ -72,6 +72,7 @@ export type RetiredProviderSnapshot = {
 export type ProviderRouteSource = {
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
+  readonly debugLogging?: boolean;
   readonly logger: ServerLogSink;
   readonly logicalSessionStore: LogicalSessionStore;
   readonly requestRecorder: RequestRecorder;

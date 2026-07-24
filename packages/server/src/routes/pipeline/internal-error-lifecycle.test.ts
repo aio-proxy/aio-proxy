@@ -58,6 +58,7 @@ describe("shared protocol pipeline internal-error lifecycle", () => {
         inboundProtocol: ProviderProtocol.OpenAICompatible,
         requestedModelId: REQUESTED_MODEL,
         path: "/v1/test",
+        attemptIndex: 0,
         providerId: "raw",
         providerKind: "api",
         modelId: "raw-model",

@@ -69,6 +69,7 @@ export function modelProvider(options: {
 export function defineProviderRouteSource(
   fixtures: readonly FakeProvider[],
   immediateStreamCompletion?: UsageCompletion,
+  debugLogging?: boolean,
 ) {
   const providers = fixtures.map((fixture) => fixture.provider);
   const recording = createRecording();
@@ -103,6 +104,7 @@ export function defineProviderRouteSource(
       release() {},
     }),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
+    ...(debugLogging === undefined ? {} : { debugLogging }),
     logger: (entry) => logs.push(entry),
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,

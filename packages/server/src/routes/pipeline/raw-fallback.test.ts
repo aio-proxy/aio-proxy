@@ -103,10 +103,17 @@ describe("shared protocol routing pipeline", () => {
   });
 
   test("falls back after a raw network throw", async () => {
+    const cause = Object.assign(new Error("cause-message-sentinel"), { code: "ECONNREFUSED" });
+    const failure = Object.assign(new Error("exception-message-sentinel"), {
+      code: "ConnectionRefused",
+      cause,
+      errno: -61,
+      syscall: "connect",
+    });
     const primary = rawProvider({
       id: "primary",
       invoke: async () => {
-        throw new Error("network down");
+        throw failure;
       },
     });
     const backup = rawProvider({ id: "backup" });
@@ -125,13 +132,53 @@ describe("shared protocol routing pipeline", () => {
     expect(harness.logs).toContainEqual(
       expect.objectContaining({
         event: "request.provider_attempt_failed",
+        attemptIndex: 0,
         providerId: "primary",
         statusCode: 502,
         failureKind: "exception",
         fallback: true,
         errorType: "Error",
+        exceptionCode: "ConnectionRefused",
+        causeCode: "ECONNREFUSED",
+        errno: -61,
+        syscall: "connect",
       }),
     );
-    expect(JSON.stringify(harness.logs)).not.toContain("network down");
+    expect(JSON.stringify(harness.logs)).not.toContain("exception-message-sentinel");
+    expect(JSON.stringify(harness.logs)).not.toContain("cause-message-sentinel");
+  });
+
+  test("safe exception logging never invokes code accessors", async () => {
+    let getterCalls = 0;
+    const failure = new Error("exception-message-sentinel");
+    Object.defineProperty(failure, "code", {
+      get() {
+        getterCalls += 1;
+        return "accessor-code-sentinel";
+      },
+    });
+    const primary = rawProvider({
+      id: "primary",
+      invoke: async () => {
+        throw failure;
+      },
+    });
+    const harness = pipeline([primary, rawProvider({ id: "backup" })]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+    await settleRecording();
+
+    expect(await response.json()).toEqual({ provider: "backup" });
+    expect(getterCalls).toBe(0);
+    expect(harness.logs).toContainEqual(
+      expect.objectContaining({
+        event: "request.provider_attempt_failed",
+        attemptIndex: 0,
+        providerId: "primary",
+        failureKind: "exception",
+      }),
+    );
+    expect(JSON.stringify(harness.logs)).not.toContain("exception-message-sentinel");
+    expect(JSON.stringify(harness.logs)).not.toContain("accessor-code-sentinel");
   });
 });

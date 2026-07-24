@@ -1,5 +1,4 @@
 import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
-import type { ProviderProtocol } from "@aio-proxy/types";
 
 import {
   assertImageInputSupported,
@@ -12,7 +11,9 @@ import {
 import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource, RuntimeProviderInstance } from "../../runtime";
 
+import { withAttemptLogContext } from "../../request-logging";
 import { isInboundAbort, terminalCompletion } from "../../route-observation";
+import { attemptBase } from "./attempt-base";
 import { failedAttempt, finalFailure, shouldFallbackStatus } from "./failure";
 import { logProviderAttemptFailed, logRequestRejected } from "./logging";
 import { createSseResponse, preflightStream, retainResponseBody } from "./stream";
@@ -49,21 +50,24 @@ export async function attemptCandidates<TRequest, TContext>({
   let lastFailure: Response | undefined;
   const failureLogContext = { source, session, rawRequest, inboundProtocol: adapter.protocol, requestedModelId };
   const logFailure = (
+    attemptIndex: number,
     attempt: RequestAttemptInput,
     failureKind: "response" | "exception",
     fallback: boolean,
     detail: { readonly response?: Response; readonly error?: unknown } = {},
-  ) => logProviderAttemptFailed({ ...failureLogContext, attempt, failureKind, fallback, ...detail });
+  ) => logProviderAttemptFailed({ ...failureLogContext, attemptIndex, attempt, failureKind, fallback, ...detail });
 
   for (const [index, candidate] of candidates.entries()) {
     const provider = candidate.provider;
+    const inAttempt = <T>(operation: () => T): T =>
+      withAttemptLogContext({ attemptIndex: index, providerId: provider.id, modelId: candidate.modelId }, operation);
     const startedAt = performance.now();
     const hasNext = index < candidates.length - 1;
     try {
       const raw = provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
       if (raw !== undefined) {
         const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
-        const response = await raw.invoke(upstream, logicalRequest);
+        const response = await inAttempt(() => raw.invoke(upstream, logicalRequest));
         if (!(response instanceof Response)) throw new TypeError("Provider raw transport must return a Response");
         const fallback = hasNext && shouldFallbackStatus(response.status);
         if (fallback || response.status < 200 || response.status >= 400) {
@@ -71,7 +75,7 @@ export async function attemptCandidates<TRequest, TContext>({
             attemptBase(provider, candidate.modelId, startedAt, adapter.protocol),
             response.status,
           );
-          logFailure(attempt, "response", fallback, { response });
+          logFailure(index, attempt, "response", fallback, { response });
           if (fallback) {
             session.attempt(attempt);
             lastFailure = response;
@@ -181,21 +185,23 @@ export async function attemptCandidates<TRequest, TContext>({
           session.finish(finalFailure(attemptBase(provider, candidate.modelId, startedAt), unsupported.status));
           return unsupported;
         }
-        await model.ensureAvailable?.();
+        await inAttempt(() => model.ensureAvailable?.());
         const captured = source.usageCapture.stream({
           providerId: provider.id,
           modelId: candidate.modelId,
-          stream: model.invoke({
-            context: logicalRequest,
-            messages: candidateInvocation.messages,
-            modelId: candidate.modelId,
-            signal: rawRequest.signal,
-            ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
-            ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
-            ...(candidateInvocation.providerTools === undefined
-              ? {}
-              : { providerTools: candidateInvocation.providerTools }),
-          }),
+          stream: inAttempt(() =>
+            model.invoke({
+              context: logicalRequest,
+              messages: candidateInvocation.messages,
+              modelId: candidate.modelId,
+              signal: rawRequest.signal,
+              ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
+              ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),
+              ...(candidateInvocation.providerTools === undefined
+                ? {}
+                : { providerTools: candidateInvocation.providerTools }),
+            }),
+          ),
         });
         const egressContext = {
           modelId: candidate.modelId,
@@ -248,7 +254,7 @@ export async function attemptCandidates<TRequest, TContext>({
       if (mapped === undefined) {
         const attempt = { ...attemptBase(provider, candidate.modelId, startedAt), outcome: "failure" as const };
         session.attempt(attempt);
-        logFailure(attempt, "exception", false, { error });
+        logFailure(index, attempt, "exception", false, { error });
         throw error;
       }
 
@@ -262,7 +268,7 @@ export async function attemptCandidates<TRequest, TContext>({
       const fallback = !cancelled && hasNext;
 
       if (!cancelled) {
-        logFailure(attempt, "exception", fallback, { error });
+        logFailure(index, attempt, "exception", fallback, { error });
       }
 
       if (fallback) {
@@ -284,19 +290,4 @@ export async function attemptCandidates<TRequest, TContext>({
 
   session.finish({ outcome: "failure" });
   return lastFailure ?? adapter.errors.unsupported("transform_dispatch");
-}
-
-function attemptBase(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  startedAt: number,
-  protocol?: ProviderProtocol,
-): Omit<RequestAttemptInput, "outcome" | "statusCode" | "errorCode"> {
-  return {
-    providerId: provider.id,
-    modelId,
-    providerKind: provider.kind,
-    ...(protocol === undefined ? {} : { protocol }),
-    durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-  };
 }

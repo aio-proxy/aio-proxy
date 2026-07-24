@@ -3,7 +3,7 @@ import type { ProtocolRequestDiagnostic } from "@aio-proxy/core";
 import type { RequestAttemptInput, RequestSession } from "../../request-recorder";
 import type { ProviderRouteSource } from "../../runtime";
 
-import { logServerEvent, serverErrorType } from "../../server-log";
+import { logServerEvent, serverErrorDetails, serverErrorType } from "../../server-log";
 
 const UPSTREAM_REQUEST_ID_HEADERS = ["x-request-id", "request-id"] as const;
 const SAFE_UPSTREAM_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:/=-]{0,255}$/u;
@@ -53,6 +53,7 @@ export function logProviderAttemptFailed(options: {
   readonly rawRequest: Request;
   readonly inboundProtocol: string;
   readonly requestedModelId: string;
+  readonly attemptIndex: number;
   readonly attempt: RequestAttemptInput;
   readonly failureKind: "response" | "exception";
   readonly fallback: boolean;
@@ -66,6 +67,7 @@ export function logProviderAttemptFailed(options: {
     inboundProtocol: options.inboundProtocol,
     requestedModelId: options.requestedModelId,
     path: new URL(options.rawRequest.url).pathname,
+    attemptIndex: options.attemptIndex,
     providerId: options.attempt.providerId,
     providerKind: options.attempt.providerKind,
     modelId: options.attempt.modelId,
@@ -75,7 +77,7 @@ export function logProviderAttemptFailed(options: {
     ...(options.attempt.errorCode === undefined ? {} : { errorCode: options.attempt.errorCode }),
     failureKind: options.failureKind,
     fallback: options.fallback,
-    ...(options.failureKind === "exception" ? { errorType: serverErrorType(options.error) } : {}),
+    ...(options.failureKind === "exception" ? serverErrorDetails(options.error) : {}),
     ...(upstreamRequestId === undefined ? {} : { upstreamRequestId }),
   });
 }
