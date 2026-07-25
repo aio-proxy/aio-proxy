@@ -3,6 +3,7 @@ import type {
   DashboardTraceSpan,
   DashboardTraceSummary,
   DashboardTracesResponse,
+  TraceTerminationReason,
 } from '@aio-proxy/types';
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
@@ -40,7 +41,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
   const usage =
     row.inputTokens === null && row.estimatedCostUsd === null
       ? undefined
-      : {
+      : ({
           ...(row.finalProviderId !== null ? { providerId: row.finalProviderId } : {}),
           ...(row.finalModelId !== null ? { modelId: row.finalModelId } : {}),
           ...(row.priceModelId !== null ? { priceModelId: row.priceModelId } : {}),
@@ -51,7 +52,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
           ...(row.cacheWriteTokens !== null ? { cacheWriteTokens: row.cacheWriteTokens } : {}),
           ...(row.reasoningTokens !== null ? { reasoningTokens: row.reasoningTokens } : {}),
           ...(row.estimatedCostUsd !== null ? { estimatedCostUsd: row.estimatedCostUsd } : {}),
-        };
+        } as DashboardTraceSummary['usage']);
 
   return {
     traceId: row.traceId,
@@ -61,7 +62,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
     endedAt: toIso(row.endedAt),
     durationMs: durationMs(row.startedAt, row.endedAt),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
-    ...(row.terminationReason !== null ? { terminationReason: row.terminationReason } : {}),
+    ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),
     ...(row.errorType !== null ? { errorType: row.errorType } : {}),
     ...(row.errorCode !== null ? { errorCode: row.errorCode } : {}),
     ...(row.sessionSource !== null && row.sessionId !== null
@@ -78,40 +79,43 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
 }
 
 function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean): DashboardTraceSpan {
-  const attributes = mergeAttributes(
-    {
-      requestId: row.requestId ?? undefined,
-      sessionSource: row.sessionSource ?? undefined,
-      sessionId: row.sessionId ?? undefined,
-      sessionResolvedBy: row.sessionResolvedBy ?? undefined,
-      inboundProtocol: row.inboundProtocol ?? undefined,
-      requestedModelId: row.requestedModelId ?? undefined,
-      finalProviderId: row.finalProviderId ?? undefined,
-      finalModelId: row.finalModelId ?? undefined,
-      priceModelId: row.priceModelId ?? undefined,
-      inputTokens: row.inputTokens ?? undefined,
-      outputTokens: row.outputTokens ?? undefined,
-      totalTokens: row.totalTokens ?? undefined,
-      cacheReadTokens: row.cacheReadTokens ?? undefined,
-      cacheWriteTokens: row.cacheWriteTokens ?? undefined,
-      reasoningTokens: row.reasoningTokens ?? undefined,
-      estimatedCostUsd: row.estimatedCostUsd ?? undefined,
-      attemptIndex: row.attemptIndex ?? undefined,
-      providerId: row.providerId ?? undefined,
-      providerKind: row.providerKind ?? undefined,
-      providerWeight: row.providerWeight ?? undefined,
-      modelId: row.modelId ?? undefined,
-      transport: row.transport ?? undefined,
-      sourceProtocol: row.sourceProtocol ?? undefined,
-      targetProtocol: row.targetProtocol ?? undefined,
-      selectionReason: row.selectionReason ?? undefined,
-      terminationReason: row.terminationReason ?? undefined,
-      errorType: row.errorType ?? undefined,
-      errorCode: row.errorCode ?? undefined,
-    },
-    row.attributes,
-    isRoot,
-  );
+  const columns: Record<string, string | number> = {};
+  const setStr = (key: string, value: string | null): void => {
+    if (value !== null) columns[key] = value;
+  };
+  const setNum = (key: string, value: number | null): void => {
+    if (value !== null) columns[key] = value;
+  };
+  setStr('requestId', row.requestId);
+  setStr('sessionSource', row.sessionSource);
+  setStr('sessionId', row.sessionId);
+  setStr('sessionResolvedBy', row.sessionResolvedBy);
+  setStr('inboundProtocol', row.inboundProtocol);
+  setStr('requestedModelId', row.requestedModelId);
+  setStr('finalProviderId', row.finalProviderId);
+  setStr('finalModelId', row.finalModelId);
+  setStr('priceModelId', row.priceModelId);
+  setNum('inputTokens', row.inputTokens);
+  setNum('outputTokens', row.outputTokens);
+  setNum('totalTokens', row.totalTokens);
+  setNum('cacheReadTokens', row.cacheReadTokens);
+  setNum('cacheWriteTokens', row.cacheWriteTokens);
+  setNum('reasoningTokens', row.reasoningTokens);
+  setNum('estimatedCostUsd', row.estimatedCostUsd);
+  setNum('attemptIndex', row.attemptIndex);
+  setStr('providerId', row.providerId);
+  setStr('providerKind', row.providerKind);
+  setNum('providerWeight', row.providerWeight);
+  setStr('modelId', row.modelId);
+  setStr('transport', row.transport);
+  setStr('sourceProtocol', row.sourceProtocol);
+  setStr('targetProtocol', row.targetProtocol);
+  setStr('selectionReason', row.selectionReason);
+  setStr('terminationReason', row.terminationReason);
+  setStr('errorType', row.errorType);
+  setStr('errorCode', row.errorCode);
+
+  const attributes = mergeAttributes(columns as Parameters<typeof mergeAttributes>[0], row.attributes, isRoot);
 
   return {
     traceId: row.traceId,
@@ -123,19 +127,19 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean): Dashboa
     endedAt: toIso(row.endedAt),
     durationMs: durationMs(row.startedAt, row.endedAt),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
-    ...(row.terminationReason !== null ? { terminationReason: row.terminationReason } : {}),
+    ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),
     ...(row.errorType !== null ? { errorType: row.errorType } : {}),
     ...(row.errorCode !== null ? { errorCode: row.errorCode } : {}),
-    attributes,
+    attributes: attributes as DashboardTraceSpan['attributes'],
     events: row.events.map((event) => ({
       name: event.name,
       timestamp: new Date(event.timeMs).toISOString(),
-      attributes: event.attributes ?? {},
+      attributes: (event.attributes ?? {}) as DashboardTraceSpan['events'][number]['attributes'],
     })),
     links: row.links.map((link) => ({
       traceId: link.traceId,
       spanId: link.spanId,
-      attributes: link.attributes ?? {},
+      attributes: (link.attributes ?? {}) as DashboardTraceSpan['links'][number]['attributes'],
     })),
   };
 }

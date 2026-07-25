@@ -1,3 +1,5 @@
+import { dirname } from 'node:path';
+
 import {
   AtomicConfigFile,
   createPluginDiagnosticFactory,
@@ -8,34 +10,32 @@ import {
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
-} from "@aio-proxy/core";
-import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import { type Config, type DashboardOAuthCapability, DashboardOAuthProviderEditSchema } from "@aio-proxy/types";
-import { dirname } from "node:path";
+} from '@aio-proxy/core';
+import { createRequestLogStore, createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
+import { type Config, type DashboardOAuthCapability, DashboardOAuthProviderEditSchema } from '@aio-proxy/types';
 
-import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
-import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from "./types";
-
-import { createAccountRemovalCoordinator } from "../account-removal";
-import { CatalogScheduler } from "../catalog-scheduler";
-import { createConfigStore } from "../config-store";
-import { watchConfigFile } from "../config-watcher";
-import { createDashboardEventHub } from "../dashboard-events";
-import { dashboardOAuthCapabilities, dashboardOAuthForm } from "../dashboard-routes/oauth-capabilities";
-import { createFifoQueue } from "../fifo-queue";
-import { LogicalSessionStore } from "../logical-session-store";
-import { createOAuthLoginSessionManager } from "../oauth-login-session/manager";
-import { createOAuthQuotaOperations } from "../plugin-quota";
-import { createSnapshotManager } from "../plugin-snapshot";
-import { providerDiff } from "../provider-runtime";
-import { createRequestRecorder } from "../request-recorder";
-import { createUsageCapture } from "../usage-capture";
-import { defaultLogger, defaultPluginLogger } from "./logging";
-import { createModelsDevCatalogTask } from "./models-dev-catalog-task";
-import { createProviderSummaries } from "./probe";
-import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
-import { reloadSnapshot } from "./reload";
-import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
+import { createAccountRemovalCoordinator } from '../account-removal';
+import { CatalogScheduler } from '../catalog-scheduler';
+import { createConfigStore } from '../config-store';
+import { watchConfigFile } from '../config-watcher';
+import { createDashboardEventHub } from '../dashboard-events';
+import { dashboardOAuthCapabilities, dashboardOAuthForm } from '../dashboard-routes/oauth-capabilities';
+import { createFifoQueue } from '../fifo-queue';
+import { LogicalSessionStore } from '../logical-session-store';
+import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
+import { createOAuthQuotaOperations } from '../plugin-quota';
+import { createSnapshotManager } from '../plugin-snapshot';
+import { providerDiff } from '../provider-runtime';
+import { createRequestRecorder } from '../request-recorder';
+import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
+import { createUsageCapture } from '../usage-capture';
+import { defaultLogger, defaultPluginLogger } from './logging';
+import { createModelsDevCatalogTask } from './models-dev-catalog-task';
+import { createProviderSummaries } from './probe';
+import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
+import { reloadSnapshot } from './reload';
+import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from './snapshot';
+import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from './types';
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
@@ -78,7 +78,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
       return;
     }
     void queue(async () => {
-      if (!closed) await commitConfig((manager.current() as Snapshot).config, "credential-diagnostic");
+      if (!closed) await commitConfig((manager.current() as Snapshot).config, 'credential-diagnostic');
     }).catch(() => {});
   };
   const initial =
@@ -114,23 +114,24 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const scheduler = new CatalogScheduler({
     repository,
     diagnostics,
-    rebuild: () => queue(() => commitConfig((manager.current() as Snapshot).config, "catalog")),
+    rebuild: () => queue(() => commitConfig((manager.current() as Snapshot).config, 'catalog')),
   });
-  const replaceCatalogJobs = (jobs: Snapshot["catalogJobs"]): void => {
+  const replaceCatalogJobs = (jobs: Snapshot['catalogJobs']): void => {
     scheduler.replaceJobs(jobs);
     testHooks?.onCatalogJobsReplaced?.(jobs);
   };
   if (startupDiagnosticRebuildPending) {
     startupDiagnosticRebuildPending = false;
-    await queue(() => commitConfig((manager.current() as Snapshot).config, "credential-diagnostic"));
+    await queue(() => commitConfig((manager.current() as Snapshot).config, 'credential-diagnostic'));
   } else replaceCatalogJobs(initial.catalogJobs);
 
   const requestLog = createRequestLogStore(dbHandle.db);
+  const traceStore = createTraceStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
   const logger = options.logger ?? defaultLogger;
   const requestRecorder = createRequestRecorder({ store: requestLog, logger });
-  const logicalSessionStore = new LogicalSessionStore();
+  const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
 
   async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {
     const previous = manager.current() as Snapshot;
@@ -147,7 +148,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     const before = (manager.current() as Snapshot).summaries;
     const retired = manager.swap(candidate);
     replaceCatalogJobs(candidate.catalogJobs);
-    events.publish({ event: "config.changed", data: providerDiff(before, candidate.summaries) });
+    events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
     accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
     return retired;
   }
@@ -183,7 +184,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     enqueue: queue,
     onReconciliationNeeded: recovery.scheduleReconciliation,
     repository,
-    verify: (candidate) => commitConfig(parseRuntimeConfig(candidate), "config-store"),
+    verify: (candidate) => commitConfig(parseRuntimeConfig(candidate), 'config-store'),
   });
 
   function oauthCapabilities(): readonly DashboardOAuthCapability[] {
@@ -200,7 +201,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     try {
       const snapshot = lease.snapshot as Snapshot;
       const provider = snapshot.config.providers.find((candidate) => candidate.id === providerId);
-      if (provider?.kind !== "oauth") return undefined;
+      if (provider?.kind !== 'oauth') return undefined;
       const adapter = snapshot.plugins.registry.resolveOAuth(provider.plugin, provider.capability);
       const account = repository.readAccount(providerId);
       const configuredSecrets = new Set(Object.keys(account?.secrets ?? {}));
@@ -254,7 +255,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configPath: options.configPath,
     configStore,
     currentProviderSnapshot: manager.current,
-    debugLogging: options.config.server.logging.level === "debug",
+    debugLogging: options.config.server.logging.level === 'debug',
     events,
     logicalSessionStore,
     oauthCapabilities,
@@ -266,6 +267,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     oauthQuota,
     reload,
     requestLog,
+    traceStore,
     logger,
     requestRecorder,
     usageCapture,
@@ -277,7 +279,7 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
-export { createModelsDevCatalogTask } from "./models-dev-catalog-task";
+export { createModelsDevCatalogTask } from './models-dev-catalog-task';
 
 export type {
   ConfigReloadLog,
@@ -285,4 +287,4 @@ export type {
   ProviderSummaryOptions,
   ServerState,
   ServerStateOptions,
-} from "./types";
+} from './types';

@@ -38,34 +38,34 @@ const ATTR = {
 
 /** Columns that receive projected values. `operation`/`prepareMode`/`egressMode` stay in JSON. */
 export type ProjectedColumns = {
-  readonly requestId?: string;
-  readonly sessionSource?: string;
-  readonly sessionId?: string;
-  readonly sessionResolvedBy?: string;
-  readonly inboundProtocol?: string;
-  readonly requestedModelId?: string;
-  readonly finalProviderId?: string;
-  readonly finalModelId?: string;
-  readonly priceModelId?: string;
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly totalTokens?: number;
-  readonly cacheReadTokens?: number;
-  readonly cacheWriteTokens?: number;
-  readonly reasoningTokens?: number;
-  readonly estimatedCostUsd?: number;
-  readonly attemptIndex?: number;
-  readonly providerId?: string;
-  readonly providerKind?: string;
-  readonly providerWeight?: number;
-  readonly modelId?: string;
-  readonly transport?: string;
-  readonly sourceProtocol?: string;
-  readonly targetProtocol?: string;
-  readonly selectionReason?: string;
-  readonly terminationReason?: string;
-  readonly errorType?: string;
-  readonly errorCode?: string;
+  requestId?: string;
+  sessionSource?: string;
+  sessionId?: string;
+  sessionResolvedBy?: string;
+  inboundProtocol?: string;
+  requestedModelId?: string;
+  finalProviderId?: string;
+  finalModelId?: string;
+  priceModelId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  estimatedCostUsd?: number;
+  attemptIndex?: number;
+  providerId?: string;
+  providerKind?: string;
+  providerWeight?: number;
+  modelId?: string;
+  transport?: string;
+  sourceProtocol?: string;
+  targetProtocol?: string;
+  selectionReason?: string;
+  terminationReason?: string;
+  errorType?: string;
+  errorCode?: string;
 };
 
 function asString(value: unknown): string | undefined {
@@ -89,87 +89,95 @@ export function projectAttributes(
 ): { readonly columns: ProjectedColumns; readonly remaining: SpanAttributesJson } {
   const columns: ProjectedColumns = {};
   const remaining: SpanAttributesJson = {};
+  const setStr = (key: keyof ProjectedColumns, value: unknown): void => {
+    const str = asString(value);
+    if (str !== undefined) (columns as Record<string, unknown>)[key] = str;
+  };
+  const setNum = (key: keyof ProjectedColumns, value: unknown): void => {
+    const num = asNumber(value);
+    if (num !== undefined) (columns as Record<string, unknown>)[key] = num;
+  };
 
   for (const [key, value] of Object.entries(attributes)) {
     switch (key) {
       case ATTR.requestId:
-        columns.requestId = asString(value);
+        setStr('requestId', value);
         break;
       case ATTR.inboundProtocol:
-        columns.inboundProtocol = asString(value);
+        setStr('inboundProtocol', value);
         break;
       case ATTR.sessionSource:
-        columns.sessionSource = asString(value);
+        setStr('sessionSource', value);
         break;
       case ATTR.sessionId:
-        columns.sessionId = asString(value);
+        setStr('sessionId', value);
         break;
       case ATTR.sessionResolvedBy:
-        columns.sessionResolvedBy = asString(value);
+        setStr('sessionResolvedBy', value);
         break;
       case ATTR.finalProviderId:
-        columns.finalProviderId = asString(value);
+        setStr('finalProviderId', value);
         break;
       case ATTR.attemptIndex:
-        columns.attemptIndex = asNumber(value);
+        setNum('attemptIndex', value);
         break;
       case ATTR.providerId:
-        columns.providerId = asString(value);
+        setStr('providerId', value);
         break;
       case ATTR.providerKind:
-        columns.providerKind = asString(value);
+        setStr('providerKind', value);
         break;
       case ATTR.providerWeight:
-        columns.providerWeight = asNumber(value);
+        setNum('providerWeight', value);
         break;
       case ATTR.transport:
-        columns.transport = asString(value);
+        setStr('transport', value);
         break;
       case ATTR.sourceProtocol:
-        columns.sourceProtocol = asString(value);
+        setStr('sourceProtocol', value);
         break;
       case ATTR.targetProtocol:
-        columns.targetProtocol = asString(value);
+        setStr('targetProtocol', value);
         break;
       case ATTR.selectionReason:
-        columns.selectionReason = asString(value);
+        setStr('selectionReason', value);
         break;
       case ATTR.errorCode:
-        columns.errorCode = asString(value);
+        setStr('errorCode', value);
         break;
       case ATTR.terminationReason:
-        columns.terminationReason = asString(value);
+        setStr('terminationReason', value);
         break;
       case ATTR.genAiRequestModel:
         if (isRoot) {
-          columns.requestedModelId = asString(value);
+          setStr('requestedModelId', value);
         } else {
-          columns.modelId = asString(value);
+          setStr('modelId', value);
         }
         break;
       case ATTR.genAiResponseModel:
-        columns.finalModelId = asString(value);
+        setStr('finalModelId', value);
         break;
       case ATTR.genAiUsageInputTokens:
-        columns.inputTokens = asNumber(value);
+        setNum('inputTokens', value);
         break;
       case ATTR.genAiUsageOutputTokens:
-        columns.outputTokens = asNumber(value);
+        setNum('outputTokens', value);
         break;
       case ATTR.genAiUsageTotalTokens:
-        columns.totalTokens = asNumber(value);
+        setNum('totalTokens', value);
         break;
       case ATTR.genAiUsageCacheReadTokens:
-        columns.cacheReadTokens = asNumber(value);
+        setNum('cacheReadTokens', value);
         break;
       case ATTR.genAiUsageCacheWriteTokens:
-        columns.cacheWriteTokens = asNumber(value);
+        setNum('cacheWriteTokens', value);
         break;
       case ATTR.genAiUsageReasoningTokens:
-        columns.reasoningTokens = asNumber(value);
+        setNum('reasoningTokens', value);
         break;
       case ATTR.errorType:
-        columns.errorType = asString(value);
+        setStr('errorType', value);
         break;
       default:
         remaining[key] = value;

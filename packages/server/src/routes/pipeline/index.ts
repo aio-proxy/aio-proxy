@@ -3,15 +3,14 @@ import {
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
 
-import type { RequestSession } from "../../request-recorder";
-import type { ProviderRouteSource } from "../../runtime";
-
-import { observeInboundRequest, withRequestLogContext } from "../../request-logging";
-import { attemptCandidates } from "./attempt";
-import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from "./logging";
-import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from "./request";
+import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
+import type { RequestSession } from '../../request-recorder';
+import type { ProviderRouteSource } from '../../runtime';
+import { attemptCandidates } from './attempt';
+import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
+import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -45,7 +44,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
   let releaseRetainedBody = false;
   try {
     if (hasInvalidOrOversizedContentLength(rawRequest)) {
-      const error = new RequestBodyTooLargeError("Request body too large");
+      const error = new RequestBodyTooLargeError('Request body too large');
       await cancelRetainedRequestBody(rawRequest, error);
       return rejectRequest({
         source,
@@ -53,7 +52,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         rawRequest,
         inboundProtocol: adapter.protocol,
         response: adapter.errors.tooLarge(),
-        errorCode: "request_too_large",
+        errorCode: 'request_too_large',
         error,
       });
     }
@@ -70,7 +69,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           rawRequest,
           inboundProtocol: adapter.protocol,
           response: adapter.errors.tooLarge(),
-          errorCode: "request_too_large",
+          errorCode: 'request_too_large',
           error,
         });
       }
@@ -81,13 +80,13 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           rawRequest,
           inboundProtocol: adapter.protocol,
           response: adapter.errors.unsupportedContentEncoding(),
-          errorCode: "unsupported_content_encoding",
+          errorCode: 'unsupported_content_encoding',
           error,
         });
       }
       const mapped = adapter.errors.requestError(error);
       if (mapped !== undefined) {
-        const errorCode = mapped.status === 501 ? "unsupported_feature" : "invalid_request";
+        const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
         return rejectRequest({
           source,
           session,
@@ -102,12 +101,13 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     }
     releaseRetainedBody = true;
 
-    const logicalRequest = source.logicalSessionStore.begin({
-      hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
-      headers: rawRequest.headers,
-    });
     const requestedModel = adapter.model(request, context);
     requestedModelId = requestedModel;
+    const logicalRequest = source.logicalSessionStore.begin({
+      requestedModelId: requestedModel,
+      hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
+      headers: rawRequest.headers,
+    }).context;
     session.identify({ requestedModelId: requestedModel });
     logRequestDiagnostics({
       source,
@@ -148,7 +148,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           inboundProtocol: adapter.protocol,
           requestedModelId: requestedModel,
           response,
-          errorCode: "model_not_found",
+          errorCode: 'model_not_found',
           error,
         });
       }
@@ -157,7 +157,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       if (!deferred) lease.release();
     }
   } catch (error) {
-    if (session.finish({ outcome: "failure", errorCode: "internal_error" })) {
+    if (session.finish({ outcome: 'failure', errorCode: 'internal_error' })) {
       logRequestFailed({
         source,
         session,
@@ -170,7 +170,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     throw error;
   } finally {
     if (releaseRetainedBody) {
-      void cancelRetainedRequestBody(rawRequest, "request body no longer needed");
+      void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
     }
   }
 }
@@ -187,7 +187,7 @@ function rejectRequest(options: {
 }): Response {
   const { response, ...rejection } = options;
   rejection.session.finish({
-    outcome: "failure",
+    outcome: 'failure',
     finalStatusCode: response.status,
     errorCode: rejection.errorCode,
   });
@@ -195,4 +195,4 @@ function rejectRequest(options: {
   return response;
 }
 
-export { hasInvalidOrOversizedContentLength } from "./request";
+export { hasInvalidOrOversizedContentLength } from './request';

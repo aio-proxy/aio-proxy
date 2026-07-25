@@ -27,7 +27,7 @@ export function resolveResponse(db: BunSQLiteDatabase, responseId: string, now: 
   db.transaction((tx) => {
     tx.update(sessionResponse).set({ expiresAt: newExpiry }).where(eq(sessionResponse.responseIdSha256, hash)).run();
   });
-  return { source: row.sessionSource, id: row.sessionId };
+  return { source: row.sessionSource as SessionIdentity['source'], id: row.sessionId };
 }
 
 export function upsertResponse(tx: BunSQLiteDatabase, responseId: string, identity: SessionIdentity, now: Date): void {
