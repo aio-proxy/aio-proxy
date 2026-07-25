@@ -37,12 +37,15 @@
   },
   "type": "module",
   "scripts": {
-    "check": "oxlint . && oxfmt --check .",
+    "check": "bun run lint && bun run format:check",
+    "lint": "oxlint .",
+    "lint:types": "oxlint --type-aware --type-check .",
     "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "test:unit": "turbo run test:unit",
     "test:artifact": "turbo run test:artifact",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
-    "test": "turbo run test",
+    "test": "turbo run test test:artifact",
     "e2e": "turbo run e2e",
     "build:migrations": "bun run --filter @aio-proxy/core build:migrations",
     "i18n:compile": "bun run --filter @aio-proxy/i18n build",
@@ -50,7 +53,7 @@
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "dev:prepare": "turbo run build --filter=@aio-proxy/core",
     "dev": "bun run dev:prepare && turbo run dev serve:dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run check && turbo run test:unit && bun run --filter @aio-proxy/plugin-sdk test:types && bun run test:artifact && bun test dev-task-graph.test.ts",
+    "preflight": "bun run lint:types && bun run format:check && bun run test",
     "changeset": "changeset"
   },
   "devDependencies": {
@@ -62,6 +65,7 @@
     "lefthook": "^2.1.9",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "turbo": "^2.10.1",
     "typescript": "^7.0.2"
   },
