@@ -30,7 +30,7 @@
 - `packages/core/src/paths/paths.ts` (modify) — add `codexModelsCachePath()`.
 - `packages/server/src/server/model-resolution/` — shared resolution layer.
   - `index.ts` — exports.
-  - `model-resolution.ts` — `resolveEnabledModels`, `resolveDisplayName`, `ResolvedModel`.
+  - `model-resolution.ts` — `resolveEnabledModels`, `ResolvedModel` (with a private `resolveDisplayName` helper).
   - `model-resolution.test.ts`.
 - `packages/server/src/server/codex-client-models/` — the endpoint logic.
   - `index.ts` — exports `codexClientModels`.
@@ -326,9 +326,9 @@ git commit -m "feat(core): add codex models cache path" -m "Co-authored-by: Code
 **Interfaces:**
 - Consumes: `ServerState` (`acquireProviderSnapshot()`, `modelsDevCatalog()`), `modelRoutes` from `@aio-proxy/core`, `ModelsDevModelMetadata` from `@aio-proxy/core`, `RuntimeProviderInstance` from `../../runtime`.
 - Produces:
-  - `type ResolvedModel = { readonly slug: string; readonly modelId: string; readonly provider: RuntimeProviderInstance; readonly metadata: ModelsDevModelMetadata | undefined }`.
+  - `type ResolvedModel = { readonly slug: string; readonly modelId: string; readonly provider: RuntimeProviderInstance; readonly metadata: ModelsDevModelMetadata | undefined; readonly displayName: string }`.
   - `resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]>`.
-  - `resolveDisplayName(provider: RuntimeProviderInstance, modelId: string, slug: string, metadata: ModelsDevModelMetadata | undefined): string`.
+  - Note: an alias is a fully self-contained public view. `metadata` and `displayName` come only from the alias slug's own catalog entry (plus OAuth provider self-reported name); the upstream `modelId` is never consulted for catalog metadata.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -341,9 +341,9 @@ import { ProviderKind } from "@aio-proxy/types";
 import type { RuntimeProviderInstance } from "../../runtime";
 import type { ServerState } from "../../server-state";
 
-import { resolveDisplayName, resolveEnabledModels } from "./model-resolution";
+import { resolveEnabledModels } from "./model-resolution";
 
-const provider = {
+const oauthProvider = {
   id: "p1",
   kind: ProviderKind.OAuth,
   enabled: true,
@@ -352,28 +352,62 @@ const provider = {
   model: { invoke: async function* () {} },
 } as unknown as RuntimeProviderInstance;
 
-function fakeState(catalog: unknown): ServerState {
+const aliasOnlyProvider = {
+  id: "p2",
+  kind: ProviderKind.Api,
+  enabled: true,
+  alias: { "my-alias": { model: "gpt-5.6-sol", preserve: false } },
+  model: { invoke: async function* () {} },
+} as unknown as RuntimeProviderInstance;
+
+function fakeState(providers: readonly RuntimeProviderInstance[], catalog: unknown): ServerState {
   return {
     acquireProviderSnapshot: () => ({
-      snapshot: { providers: [provider] },
+      snapshot: { providers },
       release() {},
     }),
     modelsDevCatalog: async () => catalog,
   } as unknown as ServerState;
 }
 
-test("resolveEnabledModels de-dupes by slug and attaches alias-first metadata", async () => {
+test("resolveEnabledModels reads metadata only from the alias slug, never the upstream modelId", async () => {
+  // alias "my-alias" has no catalog entry; upstream "gpt-5.6-sol" does. The upstream
+  // entry must NOT leak into the alias's public view.
   const catalog = {
-    metadata: (id: string) => (id === "gpt-5" ? { maxTokens: 100 } : { maxTokens: 999 }),
+    metadata: (id: string) =>
+      id === "gpt-5.6-sol" ? { displayName: "Upstream Name", maxTokens: 999 } : undefined,
   };
-  const resolved = await resolveEnabledModels(fakeState(catalog));
+  const resolved = await resolveEnabledModels(fakeState([aliasOnlyProvider], catalog));
   expect(resolved).toEqual([
-    { slug: "gpt-5", modelId: "gpt-5.6-sol", provider, metadata: { maxTokens: 100 } },
+    {
+      slug: "my-alias",
+      modelId: "gpt-5.6-sol",
+      provider: aliasOnlyProvider,
+      metadata: undefined,
+      displayName: "my-alias",
+    },
   ]);
 });
 
-test("resolveDisplayName prefers OAuth vendor name for the upstream modelId", () => {
-  expect(resolveDisplayName(provider, "gpt-5.6-sol", "gpt-5", undefined)).toBe("Vendor Name");
+test("resolveEnabledModels de-dupes by slug and uses alias-slug catalog metadata", async () => {
+  const catalog = {
+    metadata: (id: string) => (id === "gpt-5" ? { maxTokens: 100 } : { maxTokens: 999 }),
+  };
+  const resolved = await resolveEnabledModels(fakeState([oauthProvider], catalog));
+  expect(resolved).toEqual([
+    {
+      slug: "gpt-5",
+      modelId: "gpt-5.6-sol",
+      provider: oauthProvider,
+      metadata: { maxTokens: 100 },
+      displayName: "Vendor Name",
+    },
+  ]);
+});
+
+test("displayName prefers the OAuth provider self-reported name for the upstream modelId", async () => {
+  const resolved = await resolveEnabledModels(fakeState([oauthProvider], { metadata: () => undefined }));
+  expect(resolved[0]?.displayName).toBe("Vendor Name");
 });
 ```
 
@@ -387,7 +421,6 @@ Expected: FAIL — module not found.
 ```ts
 // packages/server/src/server/model-resolution/model-resolution.ts
 import { type ModelsDevModelMetadata, modelRoutes } from "@aio-proxy/core";
-import { ProviderKind } from "@aio-proxy/types";
 import { filter, flatMap, map, pipe, uniqBy } from "es-toolkit/fp";
 
 import type { RuntimeProviderInstance } from "../../runtime";
@@ -398,7 +431,20 @@ export type ResolvedModel = {
   readonly modelId: string;
   readonly provider: RuntimeProviderInstance;
   readonly metadata: ModelsDevModelMetadata | undefined;
+  readonly displayName: string;
 };
+
+// An alias is a fully self-contained public view: metadata is read only from the
+// alias slug's own catalog entry, never from the upstream modelId. The upstream
+// model's catalog name/capabilities/token limits must not leak to clients.
+function resolveDisplayName(
+  provider: RuntimeProviderInstance,
+  modelId: string,
+  slug: string,
+  metadata: ModelsDevModelMetadata | undefined,
+): string {
+  return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? slug;
+}
 
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {
   const lease = state.acquireProviderSnapshot();
@@ -415,34 +461,24 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
     const catalog = routes.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
 
     return map((route: { slug: string; modelId: string; provider: RuntimeProviderInstance }): ResolvedModel => {
-      const aliasMetadata = catalog?.metadata(route.slug);
-      const upstreamMetadata =
-        route.slug === route.modelId || aliasMetadata?.displayName !== undefined
-          ? undefined
-          : catalog?.metadata(route.modelId);
-      return { slug: route.slug, modelId: route.modelId, provider: route.provider, metadata: aliasMetadata ?? upstreamMetadata };
+      const metadata = catalog?.metadata(route.slug);
+      return {
+        slug: route.slug,
+        modelId: route.modelId,
+        provider: route.provider,
+        metadata,
+        displayName: resolveDisplayName(route.provider, route.modelId, route.slug, metadata),
+      };
     })(routes);
   } finally {
     lease.release();
   }
 }
-
-export function resolveDisplayName(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  slug: string,
-  metadata: ModelsDevModelMetadata | undefined,
-): string {
-  if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? slug;
-  }
-  return metadata?.displayName ?? slug;
-}
 ```
 
 ```ts
 // packages/server/src/server/model-resolution/index.ts
-export { type ResolvedModel, resolveDisplayName, resolveEnabledModels } from "./model-resolution";
+export { type ResolvedModel, resolveEnabledModels } from "./model-resolution";
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -466,7 +502,7 @@ git commit -m "feat(server): add shared model resolution layer" -m "Co-authored-
 - Test: reuse existing server route tests; add one if none asserts the list shape (see Step 1).
 
 **Interfaces:**
-- Consumes: `resolveEnabledModels`, `resolveDisplayName` from `./model-resolution/index`.
+- Consumes: `resolveEnabledModels` from `./model-resolution/index`.
 - Produces: `listModels(state)` returns the identical OpenAI/Anthropic superset shape as before.
 
 - [ ] **Step 1: Write/confirm the failing test (regression guard)**
@@ -494,19 +530,19 @@ Expected: PASS (baseline before refactor).
 - [ ] **Step 3: Refactor implementation**
 
 In `packages/server/src/server/server.ts`:
-- Import `resolveDisplayName, resolveEnabledModels` from `./model-resolution/index`.
+- Import `resolveEnabledModels` from `./model-resolution/index`.
 - Replace the body of `listModels` so it maps over `await resolveEnabledModels(state)`:
 
 ```ts
 async function listModels(state: ServerState) {
   const resolved = await resolveEnabledModels(state);
-  const data = resolved.map(({ slug, modelId, provider, metadata }): ModelListItem => {
+  const data = resolved.map(({ slug, provider, metadata, displayName }): ModelListItem => {
     const timestamps = modelTimestamps(metadata?.releaseDate);
     return {
       capabilities: metadata?.capabilities ?? null,
       created: timestamps.created,
       created_at: timestamps.createdAt,
-      display_name: resolveDisplayName(provider, modelId, slug, metadata),
+      display_name: displayName,
       id: slug,
       max_input_tokens: metadata?.maxInputTokens ?? null,
       max_tokens: metadata?.maxTokens ?? null,
@@ -873,9 +909,9 @@ git commit -m "feat(server): add codex case B assembly" -m "Co-authored-by: Code
 - Test: `packages/server/src/server/codex-client-models/codex-client-models.test.ts`
 
 **Interfaces:**
-- Consumes: `resolveEnabledModels`, `resolveDisplayName` from `../model-resolution/index`; `readCodexModelsCache` from `./codex-cache`; `assembleCodexModel` from `./codex-assembly`; `ServerState`.
+- Consumes: `resolveEnabledModels` from `../model-resolution/index`; `readCodexModelsCache` from `./codex-cache`; `assembleCodexModel` from `./codex-assembly`; `ServerState`.
 - Produces: `codexClientModels(state: ServerState, options?: { fetchImpl?: typeof fetch; cachePath?: string; now?: number }): Promise<{ models: readonly Record<string, unknown>[] }>`.
-- Behavior: for each `ResolvedModel`, if the cache snapshot has an item whose `slug === resolved.modelId`, return that item verbatim with `slug` and `id` overwritten to `resolved.slug` (Case A). Otherwise `assembleCodexModel({ slug, displayName: resolveDisplayName(...), metadata })` (Case B). Sort: Case A entries first, then ascending `priority` (Case B has no upstream priority → sort after, preserving resolution order).
+- Behavior: for each `ResolvedModel`, if the cache snapshot has an item whose `slug === resolved.modelId`, return that item verbatim with `slug` and `id` overwritten to `resolved.slug` (Case A). Otherwise `assembleCodexModel({ slug, displayName: resolved.displayName, metadata })` (Case B). Sort: Case A entries first, then ascending `priority` (Case B has no upstream priority → sort after, preserving resolution order).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -950,7 +986,7 @@ Expected: FAIL — module not found.
 // packages/server/src/server/codex-client-models/codex-client-models.ts
 import type { ServerState } from "../../server-state";
 
-import { resolveDisplayName, resolveEnabledModels } from "../model-resolution/index";
+import { resolveEnabledModels } from "../model-resolution/index";
 import { assembleCodexModel } from "./codex-assembly";
 import { readCodexModelsCache } from "./codex-cache";
 
@@ -978,7 +1014,7 @@ export async function codexClientModels(
     synthesized.push(
       assembleCodexModel({
         slug: model.slug,
-        displayName: resolveDisplayName(model.provider, model.modelId, model.slug, model.metadata),
+        displayName: model.displayName,
         metadata: model.metadata,
       }),
     );
@@ -1099,7 +1135,7 @@ git commit -m "chore: preflight fixups for codex client models" -m "Co-authored-
 - Trigger (`client_version` key) → Task 10.
 - Codex response shape `{"models":[...]}` → Task 9/10.
 - Standard list unchanged → Task 5 (regression) + Task 10 branch.
-- Shared resolution layer (`ResolvedModel`, `resolveEnabledModels`, `resolveDisplayName`) → Task 4; `listModels` refactor → Task 5.
+- Shared resolution layer (`ResolvedModel`, `resolveEnabledModels`) → Task 4; `listModels` refactor → Task 5.
 - File cache at `~/.aio-proxy/codex_models_cache.json` with `{ ...resp, fetched_at }` → Task 3 (path) + Task 7 (read/refresh).
 - Shared zod schema in types + plugin `.pick` → Task 1 + Task 2.
 - Case A verbatim passthrough incl. `availability_nux` → Task 9.
@@ -1110,4 +1146,4 @@ git commit -m "chore: preflight fixups for codex client models" -m "Co-authored-
 
 **2. Placeholder scan:** No TBD/TODO, no vague steps; every code step ships real code. All commit footers use `Co-authored-by: Codex <noreply@openai.com>`.
 
-**3. Type consistency:** `ResolvedModel` fields (`slug`, `modelId`, `provider`, `metadata`) are used identically in Tasks 4/5/9. `assembleCodexModel` input `{ slug, displayName, metadata }` matches its callers in Task 9. `readCodexModelsCache` option/return shapes match Task 9 usage. `resolveDisplayName(provider, modelId, slug, metadata)` argument order is consistent across Tasks 4/5/9.
+**3. Type consistency:** `ResolvedModel` fields (`slug`, `modelId`, `provider`, `metadata`, `displayName`) are used identically in Tasks 4/5/9. Tasks 5/9 read the precomputed `resolved.displayName` directly (no caller invokes `resolveDisplayName`, which is a private helper inside `model-resolution.ts`). `assembleCodexModel` input `{ slug, displayName, metadata }` matches its callers in Task 9. `readCodexModelsCache` option/return shapes match Task 9 usage.
