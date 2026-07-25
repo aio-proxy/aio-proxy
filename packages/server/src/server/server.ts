@@ -25,6 +25,7 @@ import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions } from '../server-state/types';
+import { codexClientModels } from './codex-client-models/index';
 import { resolveEnabledModels } from './model-resolution/index';
 
 export const serverDefaults = {
@@ -64,7 +65,13 @@ const createRoutes = (
       version: '0.0.0',
     }),
   );
-  app.get('/v1/models', async (context) => context.json(await listModels(state)));
+  app.get('/v1/models', async (context) => {
+    const url = new URL(context.req.url);
+    if (url.searchParams.has('client_version')) {
+      return context.json(await codexClientModels(state));
+    }
+    return context.json(await listModels(state));
+  });
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
