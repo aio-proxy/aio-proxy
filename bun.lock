@@ -272,6 +272,7 @@
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
         "es-toolkit": "catalog:",
         "jose": "catalog:",
       },
