@@ -98,16 +98,63 @@ database and never from an in-memory-only cache:
 displayName, maxInputTokens, maxTokens, releaseDate}`. This is our structural
 fallback for models with no upstream Codex row.
 
+## Shared Model Resolution
+
+`listModels()` and `codexClientModels()` share the same *resolution* work and differ
+only in the *projection* they emit. Today that resolution is inlined in `listModels`;
+we extract it so both endpoints reuse one implementation and neither reimplements the
+subtle metadata fallback.
+
+New module `packages/server/src/server/model-resolution/`:
+
+- `resolveEnabledModels(state): Promise<readonly ResolvedModel[]>` — enumerate enabled
+  providers, expand `modelRoutes(provider)`, de-duplicate by `slug`, fetch the
+  `models-dev` catalog once (swallowing failure like `listModels` does today), and
+  attach each route's alias-first metadata.
+- `resolveDisplayName(provider, modelId, slug, metadata): string` — the
+  provider-aware display-name resolution currently in `modelDisplayName()` (OAuth
+  prefers `provider.modelMetadata[modelId].displayName`, else the catalog display
+  name, else the slug).
+
+```ts
+type ResolvedModel = {
+  readonly slug: string;      // client-facing alias (= route.alias); also the codex slug/id
+  readonly modelId: string;   // upstream routing target (= route.modelId)
+  readonly provider: RuntimeProviderInstance;
+  readonly metadata: ModelsDevModelMetadata | undefined; // alias-first fallback applied
+};
+```
+
+`metadata` is the raw `ModelsDevModelMetadata` block (from
+`packages/core/src/models-dev-catalog.ts`), carried whole rather than flattened, so
+each projection reads exactly the fields it needs (`capabilities.effort`,
+`maxInputTokens`, `maxTokens`, `releaseDate`, `displayName`). The alias-first fallback
+matches the current logic: prefer `catalog.metadata(slug)`; only when that has no
+`displayName` and `slug !== modelId`, fall back to `catalog.metadata(modelId)`.
+
+Display name stays out of the struct: it is a projection-time derived value, so both
+endpoints call `resolveDisplayName(...)` rather than reading a precomputed field. This
+avoids duplicating `ModelsDevModelMetadata.displayName` with a second resolved name.
+
+Both endpoints consume `ResolvedModel[]`:
+
+- `listModels()` is refactored to project the OpenAI/Anthropic superset from it
+  (timestamps, token limits, capabilities). `modelDisplayName()` and the inline
+  enumeration are removed in favor of the shared helpers.
+- `codexClientModels()` projects the Codex shape from the same array.
+
 ## Entry Construction
 
-For each enabled alias, resolve the route (`alias` -> `modelId`) exactly as
-`listModels()` does via `modelRoutes(provider)`.
+`codexClientModels()` starts from `resolveEnabledModels(state)` (see Shared Model
+Resolution). For each `ResolvedModel`, `slug` is the client-facing alias and `modelId`
+is the upstream routing target; the branch below keys on whether the file-cache
+snapshot has an upstream row for `modelId`.
 
 ### Case A — upstream row exists
 
-If the resolved `route.modelId` matches an upstream Codex `slug`, **return the
-upstream item verbatim**, except `slug` and `id` are set to the client-facing
-alias. No field is added, removed, or rewritten. In particular, if the upstream
+If the `ResolvedModel`'s `modelId` matches an upstream Codex `slug` in the file-cache
+snapshot, **return the upstream item verbatim**, except its `slug` and `id` are set to
+the `ResolvedModel.slug` (the client-facing alias). No field is added, removed, or rewritten. In particular, if the upstream
 item carries `availability_nux`, it is passed through unchanged; we never strip
 or inject it. This is the "template" group for ordering.
 
@@ -124,7 +171,7 @@ fields on a partial source pass through untouched. Defaults are taken from the
 `models-dev` values when available:
 
 - `slug` / `id`: the client-facing alias (required, no default).
-- `display_name`: `models-dev` `displayName` -> default `slug`.
+- `display_name`: `resolveDisplayName(...)` (shared resolver) -> default `slug`.
 - `context_window` / `max_context_window`: `models-dev` `maxInputTokens` -> default.
 - `input_modalities`: derived from `models-dev` `capabilities.image_input`/`pdf_input`
   (always includes `"text"`) -> default `["text","image"]`.
@@ -178,12 +225,19 @@ directory (a declarative fixture, exempt from the 300-line limit).
 4. `packages/server/src/server/codex-client-models/**` — new module: file-cache
    read/refresh, entry assembly (Case A / Case B), the `default-instructions.md`
    snapshot, and colocated tests.
-5. `packages/server/src/server/server.ts` — `/v1/models` query-key branch delegating
-   to `codexClientModels(state)`.
+5. `packages/server/src/server/model-resolution/**` — new shared module:
+   `resolveEnabledModels(state)` and `resolveDisplayName(...)`, plus colocated tests.
+6. `packages/server/src/server/server.ts` — refactor `listModels()` to project from
+   `resolveEnabledModels(...)` and drop the inline enumeration + `modelDisplayName()`;
+   add the `/v1/models` query-key branch delegating to `codexClientModels(state)`.
 
 `packages/server/src/runtime.ts` and `packages/server/src/plugin-runtime/catalog.ts`
 are **no longer touched**; the earlier `RuntimeModelMetadata.codex` passthrough is
 dropped in favor of the file cache.
+
+Refactoring `listModels()` is in scope specifically to remove real duplication (alias
+enumeration, catalog fetch, metadata fallback, display-name resolution). Its emitted
+OpenAI/Anthropic response shape must not change; test 2 guards that.
 
 ## Error Handling
 
