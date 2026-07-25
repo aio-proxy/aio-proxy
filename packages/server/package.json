@@ -20,7 +20,10 @@
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:",
     "hono": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/sdk-trace-node": "2.10.0",
+    "@opentelemetry/semantic-conventions": "1.43.0"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
