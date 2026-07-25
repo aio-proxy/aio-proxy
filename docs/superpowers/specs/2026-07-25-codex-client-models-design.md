@@ -30,8 +30,8 @@ everyone else.
   `availability_nux` from synthesized entries.
 
 We reuse the *shape* and *trigger* but not CPA's snapshot-merge mechanics. Our
-data comes from the upstream Codex `models.json` (already fetched by the
-`openai-chatgpt` plugin) plus our own `models-dev` catalog.
+data comes from the upstream Codex `models.json` (downloaded and cached to a file by
+the endpoint, see File Cache) plus our own `models-dev` catalog.
 
 ## Desired Behavior
 
@@ -65,10 +65,31 @@ Verified fields on a representative item (`gpt-5.6-sol`) include: `slug`,
 5.6 family), and `availability_nux`.
 
 The `openai-chatgpt` plugin already fetches this file in
-`packages/plugins/openai-chatgpt/src/catalog.ts` but currently discards everything
-except `slug`/`display_name`/`priority`/`supported_in_api`/`visibility`. We will
-widen that plugin to preserve the **entire** upstream item as opaque JSON on the
-model descriptor's metadata, so the server can pass it through verbatim.
+`packages/plugins/openai-chatgpt/src/catalog.ts`, keeping only
+`slug`/`display_name`/`priority`/`supported_in_api`/`visibility`. It stays that way.
+The plugin's persisted catalog abstraction must remain lean; we do **not** stuff the
+~17.7KB `base_instructions` text into it.
+
+Instead, the full upstream item (including the large text fields) is obtained from a
+shared file cache the Codex endpoint owns (see File Cache below). The upstream item
+shape is described by a single shared zod schema in `@aio-proxy/types`; the plugin
+consumes it via `.pick(...)` for its lean fields, and the endpoint consumes the full
+schema for assembly. One schema, two consumers, no duplicated field lists.
+
+### File Cache
+
+The Codex endpoint reads the upstream data from a plain file cache, never from the
+database and never from an in-memory-only cache:
+
+- Path: `~/.aio-proxy/codex_models_cache.json`, added to
+  `packages/core/src/paths/paths.ts` alongside `dbPath()` / `packagesDir()` (honoring
+  the `AIO_PROXY_HOME` override).
+- Content: the entire downloaded response plus a fetch timestamp, i.e.
+  `{ ...resp, fetched_at: <ISO string> }`.
+- Refresh: on request, if the file is missing or its `fetched_at` is older than the
+  catalog TTL, download `models.json` and rewrite the file; otherwise read it. The
+  large text lives only in this file, so the plugin catalog and `oauth_catalog` table
+  are untouched.
 
 ### models-dev Catalog
 
@@ -90,9 +111,9 @@ alias. No field is added, removed, or rewritten. In particular, if the upstream
 item carries `availability_nux`, it is passed through unchanged; we never strip
 or inject it. This is the "template" group for ordering.
 
-Data path: plugin preserves the full item -> `RuntimeModelMetadata.codex`
-(opaque `JsonValue`) -> `modelMetadata()` passes it through -> the Codex-catalog
-module reads it back.
+Data path: the endpoint reads the full item from the file cache
+(`~/.aio-proxy/codex_models_cache.json`), matches on `slug`, and returns it verbatim
+(only `slug`/`id` rewritten to the alias). The plugin catalog is not involved.
 
 ### Case B — no upstream row (synthesized)
 
@@ -135,9 +156,9 @@ directory (a declarative fixture, exempt from the 300-line limit).
 
 - New module `packages/server/src/server/codex-client-models/`:
   - `index.ts` — exports only.
-  - `codex-client-models.ts` — `codexClientModels(state)`; enumerates aliases,
-    branches Case A / Case B, applies zod schemas + defaults, substitutes the md
-    placeholder, sorts, returns `{ models: [...] }`.
+  - `codex-client-models.ts` — `codexClientModels(state)`; reads/refreshes the file
+    cache, enumerates aliases, branches Case A / Case B, applies zod schemas +
+    defaults, substitutes the md placeholder, sorts, returns `{ models: [...] }`.
   - `default-instructions.md` — the 5.6 snapshot with `{{model_name}}`.
   - `codex-client-models.test.ts` — colocated behavior tests.
 - The endpoint stays in `server.ts`. `app.get("/v1/models", ...)` inspects the
@@ -147,22 +168,32 @@ directory (a declarative fixture, exempt from the 300-line limit).
 
 ### Touched files
 
-1. `packages/plugins/openai-chatgpt/src/catalog.ts` — widen `CodexModelsSchema`
-   (loose per-item) and keep the full upstream item in `metadata.codex`; update
-   `catalog.test.ts`.
-2. `packages/server/src/runtime.ts` — add `codex?: JsonValue` to
-   `RuntimeModelMetadata`.
-3. `packages/server/src/plugin-runtime/catalog.ts` — `modelMetadata()` passes the
-   `codex` field through.
-4. `packages/server/src/server/codex-client-models/**` — new module + md + tests.
-5. `packages/server/src/server/server.ts` — `/v1/models` query-key branch.
+1. `packages/types/src/**` — new shared zod schema for the upstream Codex model item
+   (full shape). Exported so both the plugin and the endpoint import it.
+2. `packages/plugins/openai-chatgpt/src/catalog.ts` — consume the shared schema via
+   `.pick(...)` for the lean fields it already keeps; behavior unchanged. Update
+   `catalog.test.ts` if the schema source moves.
+3. `packages/core/src/paths/paths.ts` — add `codexModelsCachePath()` returning
+   `~/.aio-proxy/codex_models_cache.json`.
+4. `packages/server/src/server/codex-client-models/**` — new module: file-cache
+   read/refresh, entry assembly (Case A / Case B), the `default-instructions.md`
+   snapshot, and colocated tests.
+5. `packages/server/src/server/server.ts` — `/v1/models` query-key branch delegating
+   to `codexClientModels(state)`.
+
+`packages/server/src/runtime.ts` and `packages/server/src/plugin-runtime/catalog.ts`
+are **no longer touched**; the earlier `RuntimeModelMetadata.codex` passthrough is
+dropped in favor of the file cache.
 
 ## Error Handling
 
 - `models-dev` fetch failures degrade gracefully: Case B falls back entirely to
   schema defaults (same tolerance as `listModels()`, which catches and ignores
   catalog errors).
-- Missing/partial upstream `codex` metadata routes an alias to Case B rather than
+- If the file cache is missing and the download fails, prefer a stale cache file when
+  present; if there is none, every alias falls back to Case B assembly so discovery
+  still returns a usable list.
+- Missing/partial upstream data for an alias routes it to Case B rather than
   failing the request.
 - A malformed upstream item that fails the loose per-item schema is skipped, not
   fatal, so one bad row cannot break Codex discovery.
@@ -183,7 +214,9 @@ directory (a declarative fixture, exempt from the 300-line limit).
 
 - Bun + Turborepo monorepo. Run `bun run preflight` (or `bun run check` + affected
   package tests) before completion.
-- `zod` is imported via `@aio-proxy/plugin-sdk`'s `zod` export.
+- `zod`: server/plugin code imports it via `@aio-proxy/plugin-sdk`'s `zod` export;
+  the shared schema in `@aio-proxy/types` uses that package's own `"zod": "catalog:"`
+  dependency, matching the existing zod schemas already in `packages/types/src`.
 - Prefer `es-toolkit` with narrow imports (`es-toolkit/fp`, etc.).
 - Colocated test layout: `foo/index.ts` + `foo/foo.ts` + `foo/foo.test.ts`.
 - Handwritten files <= 300 lines; the md snapshot is a declarative fixture (exempt).
