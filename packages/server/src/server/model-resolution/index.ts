@@ -1,1 +1,1 @@
-export { type ResolvedModel, resolveDisplayName, resolveEnabledModels } from './model-resolution';
+export { type ResolvedModel, resolveEnabledModels } from './model-resolution';

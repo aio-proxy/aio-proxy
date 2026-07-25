@@ -1,5 +1,4 @@
 import { type ModelsDevModelMetadata, modelRoutes } from '@aio-proxy/core';
-import { ProviderKind } from '@aio-proxy/types';
 import { filter, flatMap, map, pipe, uniqBy } from 'es-toolkit/fp';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -10,6 +9,7 @@ export type ResolvedModel = {
   readonly modelId: string;
   readonly provider: RuntimeProviderInstance;
   readonly metadata: ModelsDevModelMetadata | undefined;
+  readonly displayName: string;
 };
 
 type ModelRouteCandidate = {
@@ -17,6 +17,18 @@ type ModelRouteCandidate = {
   readonly modelId: string;
   readonly provider: RuntimeProviderInstance;
 };
+
+// An alias is a fully self-contained public view: metadata is read only from the
+// alias slug's own catalog entry, never from the upstream modelId. The upstream
+// model's catalog name/capabilities/token limits must not leak to clients.
+function resolveDisplayName(
+  provider: RuntimeProviderInstance,
+  modelId: string,
+  slug: string,
+  metadata: ModelsDevModelMetadata | undefined,
+): string {
+  return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? slug;
+}
 
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {
   const lease = state.acquireProviderSnapshot();
@@ -33,31 +45,16 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
     const catalog = routes.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
 
     return map((route: ModelRouteCandidate): ResolvedModel => {
-      const aliasMetadata = catalog?.metadata(route.slug);
-      const upstreamMetadata =
-        route.slug === route.modelId || aliasMetadata?.displayName !== undefined
-          ? undefined
-          : catalog?.metadata(route.modelId);
+      const metadata = catalog?.metadata(route.slug);
       return {
         slug: route.slug,
         modelId: route.modelId,
         provider: route.provider,
-        metadata: aliasMetadata ?? upstreamMetadata,
+        metadata,
+        displayName: resolveDisplayName(route.provider, route.modelId, route.slug, metadata),
       };
     })(routes);
   } finally {
     lease.release();
   }
-}
-
-export function resolveDisplayName(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  slug: string,
-  metadata: ModelsDevModelMetadata | undefined,
-): string {
-  if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? slug;
-  }
-  return metadata?.displayName ?? slug;
 }
