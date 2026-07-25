@@ -1,8 +1,6 @@
-import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes, parseRuntimeConfig } from '@aio-proxy/core';
-import { ProviderKind } from '@aio-proxy/types';
+import { type ModelsDevCapabilities, type ModelsDevCatalog, parseRuntimeConfig } from '@aio-proxy/core';
 import type { ModelInfo as AnthropicModelInfo } from '@anthropic-ai/sdk/resources/models';
 import { getUnixTime, isValid, parseISO } from 'date-fns';
-import { filter, flatMap, map, pipe, uniqBy } from 'es-toolkit/fp';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { Model as OpenAIModel } from 'openai/resources/models';
@@ -21,12 +19,13 @@ import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
-import type { RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import type { RuntimeProviderInput } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions } from '../server-state/types';
+import { resolveEnabledModels } from './model-resolution/index';
 
 export const serverDefaults = {
   host: '127.0.0.1',
@@ -139,68 +138,29 @@ type ModelListItem = OpenAIModel &
   };
 
 async function listModels(state: ServerState) {
-  const lease = state.acquireProviderSnapshot();
-  try {
-    const selected = pipe(
-      lease.snapshot.providers,
-      filter((provider) => provider.enabled),
-      flatMap((provider) =>
-        modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
-      ),
-      uniqBy(({ id }) => id),
-    );
-
-    const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
-
-    return pipe(
-      selected,
-      map(({ id, modelId, provider }): ModelListItem => {
-        const aliasMetadata = catalog?.metadata(id);
-        const upstreamMetadata =
-          id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
-        const metadata = aliasMetadata ?? upstreamMetadata;
-        const timestamps = modelTimestamps(metadata?.releaseDate);
-        return {
-          capabilities: metadata?.capabilities ?? null,
-          created: timestamps.created,
-          created_at: timestamps.createdAt,
-          display_name: modelDisplayName(
-            id,
-            modelId,
-            provider,
-            aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
-          ),
-          id,
-          max_input_tokens: metadata?.maxInputTokens ?? null,
-          max_tokens: metadata?.maxTokens ?? null,
-          object: 'model',
-          owned_by: provider.id,
-          type: 'model',
-        };
-      }),
-      (data) => ({
-        data,
-        first_id: data[0]?.id ?? null,
-        has_more: false,
-        last_id: data.at(-1)?.id ?? null,
-        object: 'list' as const,
-      }),
-    );
-  } finally {
-    lease.release();
-  }
-}
-
-function modelDisplayName(
-  id: string,
-  modelId: string,
-  provider: RuntimeProviderInstance,
-  catalogDisplayName: string | undefined,
-): string {
-  if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? catalogDisplayName ?? id;
-  }
-  return catalogDisplayName ?? id;
+  const resolved = await resolveEnabledModels(state);
+  const data = resolved.map(({ slug, provider, metadata, displayName }): ModelListItem => {
+    const timestamps = modelTimestamps(metadata?.releaseDate);
+    return {
+      capabilities: metadata?.capabilities ?? null,
+      created: timestamps.created,
+      created_at: timestamps.createdAt,
+      display_name: displayName,
+      id: slug,
+      max_input_tokens: metadata?.maxInputTokens ?? null,
+      max_tokens: metadata?.maxTokens ?? null,
+      object: 'model',
+      owned_by: provider.id,
+      type: 'model',
+    };
+  });
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false,
+    last_id: data.at(-1)?.id ?? null,
+    object: 'list' as const,
+  };
 }
 
 function modelTimestamps(releaseDate: string | undefined): { readonly created: number; readonly createdAt: string } {
