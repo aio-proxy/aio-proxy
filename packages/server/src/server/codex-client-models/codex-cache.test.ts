@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -48,4 +48,24 @@ test('returns [] when no file and download fails', async () => {
   }) as unknown as typeof fetch;
   const models = await readCodexModelsCache({ cachePath, fetchImpl });
   expect(models).toEqual([]);
+});
+
+test('skips a malformed upstream row instead of dropping the whole catalog', async () => {
+  const cachePath = tmpFile();
+  const fetchImpl = (async () =>
+    Response.json({ models: [upstreamItem, { slug: '', display_name: 42 }] })) as unknown as typeof fetch;
+
+  const models = await readCodexModelsCache({ cachePath, fetchImpl, now: 1000 });
+  expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
+});
+
+test('returns the stale cache when it is expired and the download fails', async () => {
+  const cachePath = tmpFile();
+  writeFileSync(cachePath, JSON.stringify({ models: [upstreamItem], fetched_at: new Date(0).toISOString() }), 'utf8');
+  const fetchImpl = (async () => {
+    throw new Error('network down');
+  }) as unknown as typeof fetch;
+
+  const models = await readCodexModelsCache({ cachePath, fetchImpl, now: 10 * 60 * 60_000 });
+  expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
 });

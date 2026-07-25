@@ -18,6 +18,8 @@ export async function codexClientModels(
   for (const model of resolved) {
     const row = bySlug.get(model.modelId);
     if (row !== undefined) {
+      // Case A is verbatim: display_name comes from the upstream row, so it may
+      // differ from the alias-only name that listModels/Case B derive. Intentional.
       templated.push({ entry: { ...row, slug: model.slug, id: model.slug }, priority: row.priority });
       continue;
     }
