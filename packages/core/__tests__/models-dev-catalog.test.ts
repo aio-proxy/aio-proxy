@@ -96,27 +96,14 @@ describe('models.dev catalog', () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
     expect(catalog.metadata('gpt-5.5')).toEqual({
-      capabilities: {
-        effort: {
-          high: { supported: true },
-          low: { supported: true },
-          max: { supported: false },
-          medium: { supported: true },
-          supported: true,
-          xhigh: { supported: false },
-        },
-        image_input: { supported: true },
-        pdf_input: { supported: true },
-        structured_outputs: { supported: true },
-        thinking: {
-          supported: true,
-          types: { adaptive: { supported: true }, enabled: { supported: false } },
-        },
-      },
       displayName: 'GPT-5.5',
       maxInputTokens: 120_000,
       maxTokens: 8_000,
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      reasoning: true,
+      reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
       releaseDate: '2026-01-15',
+      structured_output: true,
     });
     expect(catalog.metadata('claude-sonnet-4-6')).toMatchObject({
       displayName: 'Claude Sonnet 4.6',

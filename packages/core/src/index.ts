@@ -108,7 +108,6 @@ export {
   createOpenRouterPriceCatalog,
   type FetchModelsDevProviders,
   type FetchOpenRouterPrices,
-  type ModelsDevCapabilities,
   type ModelsDevCatalog,
   type ModelsDevModelMetadata,
   type OpenRouterPriceCatalog,

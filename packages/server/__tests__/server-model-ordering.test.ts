@@ -7,7 +7,13 @@ import type { ModelsDevCatalog } from '@aio-proxy/core';
 import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { expectedModel, expectedModelList, noModelsDevCatalog, testCapabilities } from './server.test-support';
+import {
+  expectedModel,
+  expectedModelList,
+  noModelsDevCatalog,
+  testCapabilities,
+  testCapabilityMetadata,
+} from './server.test-support';
 
 describe('server routes', () => {
   let dir: string;
@@ -37,7 +43,7 @@ describe('server routes', () => {
       metadata(modelId) {
         return {
           'claude-sonnet-4-6': {
-            capabilities: testCapabilities,
+            ...testCapabilityMetadata,
             displayName: 'Claude Sonnet 4.6',
             maxInputTokens: 1_000_000,
             maxTokens: 128_000,

@@ -1,4 +1,4 @@
-import { type ModelsDevCapabilities, type ModelsDevCatalog, parseRuntimeConfig } from '@aio-proxy/core';
+import { type ModelsDevCatalog, parseRuntimeConfig } from '@aio-proxy/core';
 import type { ModelInfo as AnthropicModelInfo } from '@anthropic-ai/sdk/resources/models';
 import { getUnixTime, isValid, parseISO } from 'date-fns';
 import type { Context } from 'hono';
@@ -26,6 +26,7 @@ import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions } from '../server-state/types';
 import { codexClientModels } from './codex-client-models/index';
+import { type ModelCapabilitiesSubset, toAnthropicCapabilities } from './model-capabilities';
 import { resolveEnabledModels } from './model-resolution/index';
 
 export const serverDefaults = {
@@ -68,7 +69,7 @@ const createRoutes = (
   app.get('/v1/models', async (context) => {
     const url = new URL(context.req.url);
     if (url.searchParams.has('client_version')) {
-      return context.json(await codexClientModels(state));
+      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
     }
     return context.json(await listModels(state));
   });
@@ -141,7 +142,7 @@ const createRoutes = (
 const unknownCreatedAt = '1970-01-01T00:00:00Z';
 type ModelListItem = OpenAIModel &
   Omit<AnthropicModelInfo, 'capabilities'> & {
-    readonly capabilities: ModelsDevCapabilities | null;
+    readonly capabilities: ModelCapabilitiesSubset | null;
   };
 
 async function listModels(state: ServerState) {
@@ -149,7 +150,7 @@ async function listModels(state: ServerState) {
   const data = resolved.map(({ slug, provider, metadata, displayName }): ModelListItem => {
     const timestamps = modelTimestamps(metadata?.releaseDate);
     return {
-      capabilities: metadata?.capabilities ?? null,
+      capabilities: metadata === undefined ? null : toAnthropicCapabilities(metadata),
       created: timestamps.created,
       created_at: timestamps.createdAt,
       display_name: displayName,

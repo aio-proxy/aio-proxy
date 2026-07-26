@@ -5,6 +5,7 @@ import { type CodexUpstreamModel, CodexUpstreamModelSchema } from '@aio-proxy/ty
 const CODEX_MODELS_URL = 'https://github.com/openai/codex/raw/refs/heads/main/codex-rs/models-manager/models.json';
 const CACHE_KEY = 'codex-models';
 const DEFAULT_TTL_MS = 6 * 60 * 60_000;
+const FETCH_TIMEOUT_MS = 3_000;
 
 // The stored value is a JSON string (fileCacheStorage.setItem only accepts a
 // string); its inner shape is just the models array we downloaded.
@@ -13,6 +14,7 @@ const CacheEnvelopeSchema = zod.object({ models: zod.array(zod.unknown()) });
 type ReadOptions = {
   readonly fetchImpl?: typeof fetch;
   readonly ttlMs?: number;
+  readonly signal?: AbortSignal;
 };
 
 // A malformed row is skipped, not fatal: one bad sibling must not drop the
@@ -34,6 +36,29 @@ function readEnvelope(raw: string | null): readonly CodexUpstreamModel[] | undef
   }
 }
 
+// Undefined signals a failed download (network error, non-200, malformed body);
+// callers then fall back to a stale copy. A bounded signal keeps a stalled
+// GitHub connection from pinning the client_version request open.
+async function downloadValidModels(
+  fetchImpl: typeof fetch,
+  signal: AbortSignal | undefined,
+): Promise<readonly CodexUpstreamModel[] | undefined> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const bounded = signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+  try {
+    const response = await fetchImpl(CODEX_MODELS_URL, { signal: bounded });
+    if (!response.ok) throw new Error(`codex models request failed with ${response.status}`);
+    const { models } = CacheEnvelopeSchema.parse(await response.json());
+    return keepValidModels(models);
+  } catch {
+    return undefined;
+  }
+}
+
+async function staleFallback(): Promise<readonly CodexUpstreamModel[]> {
+  return readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY)) ?? [];
+}
+
 export async function readCodexModelsCache(options: ReadOptions = {}): Promise<readonly CodexUpstreamModel[]> {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -41,19 +66,19 @@ export async function readCodexModelsCache(options: ReadOptions = {}): Promise<r
   const fresh = readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY, { ttl: ttlMs }));
   if (fresh !== undefined) return fresh;
 
+  const valid = await downloadValidModels(fetchImpl, options.signal);
+  // Download failed: fall back to the stale copy, else [] so callers synthesize.
+  if (valid === undefined) return staleFallback();
+  // Don't cache an empty result: it would read back as a fresh hit and block
+  // refetching a real catalog until the TTL expires.
+  if (valid.length === 0) return staleFallback();
+
+  // Persisting is best-effort. A read-only dir or full disk must not discard a
+  // good download and downgrade every route to synthesized Case B.
   try {
-    const response = await fetchImpl(CODEX_MODELS_URL);
-    if (!response.ok) throw new Error(`codex models request failed with ${response.status}`);
-    const { models } = zod.object({ models: zod.array(zod.unknown()) }).parse(await response.json());
-    const valid = keepValidModels(models);
-    // Don't cache an empty result: it would read back as a fresh hit and block
-    // refetching a real catalog until the TTL expires. Fall through to any stale
-    // copy, else return [] so callers synthesize (Case B).
-    if (valid.length === 0) return readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY)) ?? [];
     await fileCacheStorage.setItem(CACHE_KEY, JSON.stringify({ models: valid }));
-    return valid;
   } catch {
-    // Download failed: fall back to the stale copy (read again without a ttl).
-    return readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY)) ?? [];
+    /* keep serving the fresh download even when the cache write fails */
   }
+  return valid;
 }

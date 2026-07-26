@@ -89,18 +89,26 @@ database and never from an in-memory-only cache:
 - Content: `value` is the JSON string `{ models: [...] }` (the validated rows);
   `updatedAt` is written by `fileCacheStorage`.
 - Refresh: on request, read with the catalog TTL. On a fresh hit, return it. On a
-  miss/expiry, download `models.json`, and on success store the validated rows. An
-  empty validated result is **not** cached (it would mask a later real catalog until
-  the TTL expires); on download failure, fall back to the stale entry (a second,
-  ttl-less read), else `[]`. The large text lives only in this cache file, so the
-  plugin catalog and `oauth_catalog` table are untouched.
+  miss/expiry, download `models.json` under a bounded abort signal (a fetch timeout
+  combined with the inbound request signal, so a stalled GitHub connection promptly
+  falls through instead of pinning the request open), and on success store the
+  validated rows. An empty validated result is **not** cached (it would mask a later
+  real catalog until the TTL expires); on download failure, fall back to the stale
+  entry (a second, ttl-less read), else `[]`. Persisting is best-effort: if `setItem`
+  rejects (read-only dir, full disk), the freshly downloaded rows are still returned
+  rather than discarded. The large text lives only in this cache file, so the plugin
+  catalog and `oauth_catalog` table are untouched.
 
 ### models-dev Catalog
 
-`packages/core/src/models-dev-catalog.ts` exposes `metadata(modelId)` returning
-`{capabilities:{effort:{low,medium,high,xhigh,max,supported},image_input,pdf_input,...},
-displayName, maxInputTokens, maxTokens, releaseDate}`. This is our structural
-fallback for models with no upstream Codex row.
+`packages/core/src/models-dev-catalog.ts` exposes `metadata(modelId)` returning the
+raw models.dev signals passed through untouched:
+`{reasoning?, reasoning_options?, modalities?, structured_output?, displayName?,
+maxInputTokens?, maxTokens?, releaseDate?}`. The catalog does not reshape these into a
+provider-specific capability matrix; each consumer derives the shape it needs at its
+own boundary (e.g. `/v1/models` builds the Anthropic capabilities superset, Codex reads
+the `effort` reasoning option directly). This is our structural fallback for models
+with no upstream Codex row.
 
 ## Shared Model Resolution
 
@@ -131,7 +139,7 @@ type ResolvedModel = {
 
 `metadata` is the raw `ModelsDevModelMetadata` block (from
 `packages/core/src/models-dev-catalog.ts`), carried whole rather than flattened, so
-each projection reads exactly the fields it needs (`capabilities.effort`,
+each projection reads exactly the fields it needs (`reasoning_options`, `modalities`,
 `maxInputTokens`, `maxTokens`, `releaseDate`, `displayName`). The alias-first fallback
 matches the current logic: prefer `catalog.metadata(slug)`; only when that has no
 `displayName` and `slug !== modelId`, fall back to `catalog.metadata(modelId)`.
@@ -143,7 +151,8 @@ avoids duplicating `ModelsDevModelMetadata.displayName` with a second resolved n
 Both endpoints consume `ResolvedModel[]`:
 
 - `listModels()` is refactored to project the OpenAI/Anthropic superset from it
-  (timestamps, token limits, capabilities). `modelDisplayName()` and the inline
+  (timestamps, token limits, and the Anthropic capabilities matrix derived at the
+  assembly boundary from the raw signals). `modelDisplayName()` and the inline
   enumeration are removed in favor of the shared helpers.
 - `codexClientModels()` projects the Codex shape from the same array.
 
@@ -177,11 +186,16 @@ fields on a partial source pass through untouched. Defaults are taken from the
 - `slug` / `id`: the client-facing alias (required, no default).
 - `display_name`: `resolveDisplayName(...)` (shared resolver) -> default `slug`.
 - `context_window` / `max_context_window`: `models-dev` `maxInputTokens` -> default.
-- `input_modalities`: derived from `models-dev` `capabilities.image_input`/`pdf_input`
-  (always includes `"text"`) -> default `["text","image"]`.
-- `supported_reasoning_levels`: derived from `models-dev` `capabilities.effort`
-  (one `{effort, description}` per supported level) -> default 5.6 level list.
-- `default_reasoning_level`: default `"low"`.
+- `input_modalities`: derived from `models-dev` `modalities.input` (always includes
+  `"text"`, adds `"image"`/`"pdf"` when present) -> default `["text","image"]` when no
+  metadata is available.
+- `supported_reasoning_levels`: derived from the `models-dev` `effort` reasoning option
+  (`reasoning_options.find(o => o.type === 'effort').values`), one `{effort, description}`
+  per advertised level. No metadata at all falls back to the full 5.6 level list
+  (unknown, assume all); an explicit non-reasoning model (metadata present, no `effort`
+  option) yields `[]`.
+- `default_reasoning_level`: `"low"` when it is a supported level, else the first
+  supported level, else `""` (non-reasoning models advertise no default).
 - `base_instructions` and `model_messages.instructions_template`: both filled from
   a single static **markdown file** (see below).
 - All other Codex fields: schema defaults copied from `gpt-5.6-sol`.
@@ -259,8 +273,8 @@ OpenAI/Anthropic response shape must not change; test 2 guards that.
 ## Testing (behavior-level)
 
 1. With `?client_version=...`, the response is `{"models":[...]}` and a
-   synthesized entry exposes `supported_reasoning_levels` populated from
-   `models-dev` effort capabilities.
+   synthesized entry exposes `supported_reasoning_levels` populated from the
+   `models-dev` `effort` reasoning option values.
 2. Without the query key, the response is still the standard `{object:"list", ...}`
    shape (regression guard on the existing endpoint).
 3. For an alias with no upstream row (Case B), the entry is assembled, its

@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { fileCacheStorage } from '@aio-proxy/core';
 
 import { readCodexModelsCache } from './codex-cache';
 
@@ -90,6 +92,26 @@ test('does not cache an empty upstream result, so it refetches next time', async
   const second = await readCodexModelsCache({ fetchImpl });
   expect(second.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
   expect(calls).toBe(2);
+});
+
+test('still serves a fresh download when persisting to the cache fails', async () => {
+  const setItem = spyOn(fileCacheStorage, 'setItem').mockRejectedValue(new Error('read-only fs'));
+  const fetchImpl = (async () => Response.json({ models: [upstreamItem] })) as unknown as typeof fetch;
+
+  const models = await readCodexModelsCache({ fetchImpl });
+  expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
+  setItem.mockRestore();
+});
+
+test('passes a bounded abort signal to the upstream fetch', async () => {
+  let seen: AbortSignal | undefined;
+  const fetchImpl = (async (_url: string, init?: RequestInit) => {
+    seen = init?.signal ?? undefined;
+    return Response.json({ models: [upstreamItem] });
+  }) as unknown as typeof fetch;
+
+  await readCodexModelsCache({ fetchImpl });
+  expect(seen).toBeInstanceOf(AbortSignal);
 });
 
 test('returns the stale cache when it is expired and the download fails', async () => {

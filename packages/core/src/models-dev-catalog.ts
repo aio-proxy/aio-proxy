@@ -1,5 +1,11 @@
-import type { ModelCapabilities } from '@anthropic-ai/sdk/resources/models';
-import { type Model, Models, type ProviderMap, type RequestOptions } from '@opencode-ai/models';
+import {
+  type Modalities,
+  type Model,
+  Models,
+  type ProviderMap,
+  type ReasoningOption,
+  type RequestOptions,
+} from '@opencode-ai/models';
 
 import type { OpenRouterModelPrice } from './usage-pricing';
 
@@ -12,13 +18,14 @@ export type ModelsDevCatalog = OpenRouterPriceCatalog & {
   readonly metadata: (modelId: string) => ModelsDevModelMetadata | undefined;
 };
 
-export type ModelsDevCapabilities = Pick<
-  ModelCapabilities,
-  'effort' | 'image_input' | 'pdf_input' | 'structured_outputs' | 'thinking'
->;
-
+// Raw models.dev signals are passed through untouched; consumers that need a
+// provider-specific shape (e.g. the Anthropic capabilities superset on
+// /v1/models) derive it at their own boundary.
 export type ModelsDevModelMetadata = {
-  readonly capabilities?: ModelsDevCapabilities;
+  readonly reasoning?: boolean;
+  readonly reasoning_options?: readonly ReasoningOption[];
+  readonly modalities?: Modalities;
+  readonly structured_output?: boolean;
   readonly displayName?: string;
   readonly maxInputTokens?: number;
   readonly maxTokens?: number;
@@ -172,42 +179,15 @@ function canonicalProviderId(modelId: string): 'anthropic' | 'openai' | undefine
 
 function metadataFromProvider(model: Model): ModelsDevModelMetadata {
   return {
-    capabilities: modelCapabilities(model),
     ...(model.name === model.id ? {} : { displayName: model.name }),
+    ...(model.reasoning_options === undefined ? {} : { reasoning_options: model.reasoning_options }),
+    modalities: model.modalities,
     maxInputTokens: model.limit.input ?? model.limit.context,
     maxTokens: model.limit.output,
+    reasoning: model.reasoning,
     releaseDate: model.release_date,
+    ...(model.structured_output === undefined ? {} : { structured_output: model.structured_output }),
   };
-}
-
-function modelCapabilities(model: Model): ModelsDevCapabilities {
-  const options = model.reasoning_options ?? [];
-  const effort = options.find((option) => option.type === 'effort');
-  const values = effort?.values ?? [];
-  return {
-    effort: {
-      high: support(values.includes('high')),
-      low: support(values.includes('low')),
-      max: support(values.includes('max')),
-      medium: support(values.includes('medium')),
-      supported: effort !== undefined,
-      xhigh: support(values.includes('xhigh')),
-    },
-    image_input: support(model.modalities.input.includes('image')),
-    pdf_input: support(model.modalities.input.includes('pdf')),
-    structured_outputs: support(model.structured_output === true),
-    thinking: {
-      supported: model.reasoning,
-      types: {
-        adaptive: support(effort !== undefined),
-        enabled: support(options.some((option) => option.type === 'budget_tokens' || option.type === 'toggle')),
-      },
-    },
-  };
-}
-
-function support(supported: boolean): { readonly supported: boolean } {
-  return { supported };
 }
 
 function addMetadataCandidate(

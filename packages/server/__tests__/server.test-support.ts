@@ -1,4 +1,4 @@
-import type { ModelsDevCapabilities } from '@aio-proxy/core';
+import type { ModelsDevModelMetadata } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 export const config = {
@@ -35,7 +35,23 @@ export const config = {
 
 export const noModelsDevCatalog = async () => undefined;
 
-export const testCapabilities: ModelsDevCapabilities = {
+// Raw models.dev signals injected into a catalog metadata row. The server
+// derives the Anthropic capabilities shape from these at the /v1/models boundary.
+export const testCapabilityMetadata: Pick<
+  ModelsDevModelMetadata,
+  'reasoning' | 'reasoning_options' | 'modalities' | 'structured_output'
+> = {
+  reasoning: true,
+  reasoning_options: [
+    { type: 'effort', values: ['low', 'medium', 'high'] },
+    { type: 'budget_tokens', min: 1_024 },
+  ],
+  modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+  structured_output: true,
+};
+
+// The Anthropic capabilities shape the server is expected to emit for the row above.
+export const testCapabilities = {
   effort: {
     high: { supported: true },
     low: { supported: true },
@@ -54,7 +70,7 @@ export const testCapabilities: ModelsDevCapabilities = {
 };
 
 type ExpectedModelMetadata = {
-  readonly capabilities?: ModelsDevCapabilities;
+  readonly capabilities?: typeof testCapabilities;
   readonly created?: number;
   readonly createdAt?: string;
   readonly maxInputTokens?: number;

@@ -26,7 +26,6 @@ const ScaffoldSchema = zod.object({
   supported_in_api: zod.boolean().default(true),
   visibility: zod.string().default('list'),
   description: zod.string().default(''),
-  default_reasoning_level: zod.string().default('low'),
   supports_search_tool: zod.boolean().default(false),
   instructions_variables: zod.record(zod.string(), zod.unknown()).default({}),
   approvals: zod.null().default(null),
@@ -42,28 +41,34 @@ function reasoningLevel(effort: ReasoningLevel) {
   return { effort, description: REASONING_DESCRIPTIONS[effort] };
 }
 
+// Codex is told exactly which effort levels the model accepts, read straight
+// from the models.dev `effort` reasoning option. No metadata at all falls back
+// to the full list (unknown, assume all); an explicit non-reasoning model
+// yields an empty list, so we advertise no reasoning and no default level.
+function reasoningLevelsFor(metadata: ModelsDevModelMetadata | undefined): readonly ReasoningLevel[] {
+  if (metadata === undefined) return REASONING_LEVELS;
+  const effort = metadata.reasoning_options?.find((option) => option.type === 'effort');
+  if (effort === undefined) return [];
+  const values = new Set(effort.values);
+  return REASONING_LEVELS.filter((level) => values.has(level));
+}
+
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
   const text = instructions.replaceAll('{{model_name}}', input.slug);
   const contextWindow = input.metadata?.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW;
-  const capabilities = input.metadata?.capabilities;
 
-  const inputModalities = capabilities
+  const modalityInputs = input.metadata?.modalities?.input;
+  const inputModalities = modalityInputs
     ? [
         'text',
-        ...(capabilities.image_input?.supported ? ['image'] : []),
-        ...(capabilities.pdf_input?.supported ? ['pdf'] : []),
+        ...(modalityInputs.includes('image') ? ['image'] : []),
+        ...(modalityInputs.includes('pdf') ? ['pdf'] : []),
       ]
     : ['text', 'image'];
 
-  const effort = capabilities?.effort;
-  const derivedReasoningLevels =
-    !effort || !effort.supported
-      ? REASONING_LEVELS.map(reasoningLevel)
-      : REASONING_LEVELS.filter((level) => effort[level]?.supported).map(reasoningLevel);
-  // effort.supported can be true with no per-level flag set; never emit an empty
-  // list, or default_reasoning_level would not be among the supported levels.
-  const supportedReasoningLevels =
-    derivedReasoningLevels.length > 0 ? derivedReasoningLevels : REASONING_LEVELS.map(reasoningLevel);
+  const levels = reasoningLevelsFor(input.metadata);
+  const supportedReasoningLevels = levels.map(reasoningLevel);
+  const defaultReasoningLevel = levels.includes('low') ? 'low' : (levels[0] ?? '');
 
   const scaffold = ScaffoldSchema.parse({});
 
@@ -79,7 +84,7 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     max_context_window: contextWindow,
     input_modalities: inputModalities,
     supported_reasoning_levels: supportedReasoningLevels,
-    default_reasoning_level: scaffold.default_reasoning_level,
+    default_reasoning_level: defaultReasoningLevel,
     supports_search_tool: scaffold.supports_search_tool,
     base_instructions: text,
     model_messages: {
