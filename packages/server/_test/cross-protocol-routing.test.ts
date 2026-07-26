@@ -1,14 +1,14 @@
-import type { ApiProviderInstance, TextStreamPart, ToolSet } from "@aio-proxy/core";
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { openDb, requestLog } from "@aio-proxy/core/db";
-import { createServer } from "@aio-proxy/server";
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { ApiProviderInstance, TextStreamPart, ToolSet } from '@aio-proxy/core';
+import { createServer } from '@aio-proxy/server';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import type { RuntimeProviderInstance } from "../src/runtime";
+import type { RuntimeProviderInstance } from '../src/runtime';
+import { recorded } from './trace-recording.test-support';
 
 const protocols = [
   ProviderProtocol.OpenAICompatible,
@@ -20,23 +20,23 @@ const protocols = [
 const inboundCases = [
   {
     protocol: ProviderProtocol.OpenAICompatible,
-    path: "/v1/chat/completions",
-    body: { model: "m", messages: [{ role: "user", content: "hello" }] },
+    path: '/v1/chat/completions',
+    body: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
   },
   {
     protocol: ProviderProtocol.OpenAIResponse,
-    path: "/v1/responses",
-    body: { model: "m", input: "hello" },
+    path: '/v1/responses',
+    body: { model: 'm', input: 'hello' },
   },
   {
     protocol: ProviderProtocol.Anthropic,
-    path: "/v1/messages",
-    body: { model: "m", max_tokens: 16, messages: [{ role: "user", content: "hello" }] },
+    path: '/v1/messages',
+    body: { model: 'm', max_tokens: 16, messages: [{ role: 'user', content: 'hello' }] },
   },
   {
     protocol: ProviderProtocol.Gemini,
-    path: "/v1beta/models/m:generateContent",
-    body: { contents: [{ role: "user", parts: [{ text: "hello" }] }] },
+    path: '/v1beta/models/m:generateContent',
+    body: { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
   },
 ] as const;
 
@@ -46,21 +46,21 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
 });
 
-describe("cross-protocol HTTP routing", () => {
+describe('cross-protocol HTTP routing', () => {
   test.each([
-    [ProviderProtocol.Gemini, "same protocol", "raw"],
-    [ProviderProtocol.OpenAIResponse, "cross protocol", "model"],
-    [ProviderProtocol.OpenAICompatible, "cross protocol", "model"],
-    [ProviderProtocol.Anthropic, "cross protocol", "model"],
-    [ProviderProtocol.Gemini, "raw unavailable", "model"],
-  ] as const)("routes Antigravity %s %s through %s", async (protocol, condition, expectedCapability) => {
+    [ProviderProtocol.Gemini, 'same protocol', 'raw'],
+    [ProviderProtocol.OpenAIResponse, 'cross protocol', 'model'],
+    [ProviderProtocol.OpenAICompatible, 'cross protocol', 'model'],
+    [ProviderProtocol.Anthropic, 'cross protocol', 'model'],
+    [ProviderProtocol.Gemini, 'raw unavailable', 'model'],
+  ] as const)('routes Antigravity %s %s through %s', async (protocol, condition, expectedCapability) => {
     expect(await runAntigravityMatrixCase(protocol, condition)).toBe(expectedCapability);
   });
 
   for (const inbound of inboundCases) {
     for (const providerProtocol of protocols) {
       test(`${inbound.protocol} inbound uses ${providerProtocol} raw only when protocols match`, async () => {
-        const fixture = provider(providerProtocol, "only");
+        const fixture = provider(providerProtocol, 'only');
         const response = await request(inbound, [fixture.value]);
 
         expect(response.status).toBe(200);
@@ -75,12 +75,12 @@ describe("cross-protocol HTTP routing", () => {
     }
   }
 
-  test("falls back from model preflight failure to matching raw and stops", async () => {
-    const first = provider(ProviderProtocol.Anthropic, "first", {
-      model: () => new ReadableStream({ start: (controller) => controller.error(new Error("model unavailable")) }),
+  test('falls back from model preflight failure to matching raw and stops', async () => {
+    const first = provider(ProviderProtocol.Anthropic, 'first', {
+      model: () => new ReadableStream({ start: (controller) => controller.error(new Error('model unavailable')) }),
     });
-    const second = provider(ProviderProtocol.OpenAICompatible, "second");
-    const third = provider(ProviderProtocol.OpenAICompatible, "third");
+    const second = provider(ProviderProtocol.OpenAICompatible, 'second');
+    const third = provider(ProviderProtocol.OpenAICompatible, 'third');
     const home = tempHome();
     const response = await request(inboundCases[0], [first.value, second.value, third.value], home);
 
@@ -89,35 +89,35 @@ describe("cross-protocol HTTP routing", () => {
     expect(second.calls).toEqual({ model: 0, raw: 1 });
     expect(third.calls).toEqual({ model: 0, raw: 0 });
     expect(await recordedAttempts(home)).toEqual([
-      expect.objectContaining({ outcome: "failure", providerId: "first" }),
-      expect.objectContaining({ outcome: "success", providerId: "second" }),
+      expect.objectContaining({ outcome: 'failure', providerId: 'first' }),
+      expect.objectContaining({ outcome: 'success', providerId: 'second' }),
     ]);
   });
 
-  test("falls back on proxy failure without direct retry of the failed Provider ID", async () => {
+  test('falls back on proxy failure without direct retry of the failed Provider ID', async () => {
     // Bun may bypass proxy for literal 127.0.0.1; localtest.me still binds locally.
     let firstHits = 0;
     let secondHits = 0;
     const serve = (onHit: () => number, body: Response) =>
-      Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => (onHit(), body) });
-    const firstUpstream = serve(() => (firstHits += 1), Response.json({ error: "unreachable" }, { status: 500 }));
+      Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => (onHit(), body) });
+    const firstUpstream = serve(() => (firstHits += 1), Response.json({ error: 'unreachable' }, { status: 500 }));
     const secondUpstream = serve(
       () => (secondHits += 1),
-      Response.json({ choices: [{ message: { role: "assistant", content: "fallback ok" } }] }),
+      Response.json({ choices: [{ message: { role: 'assistant', content: 'fallback ok' } }] }),
     );
-    const reserved = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    const reserved = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
     const deadProxy = `http://proxy-user:proxy-pass-secret@127.0.0.1:${reserved.port}`;
     await reserved.stop(true);
-    const headerSecret = "hdr-secret-proxy-fallback";
+    const headerSecret = 'hdr-secret-proxy-fallback';
     const home = tempHome();
     const api = (baseURL: string, weight: number, proxy: string | false) => ({
-      kind: "api" as const,
+      kind: 'api' as const,
       protocol: ProviderProtocol.OpenAICompatible,
       baseURL,
-      models: ["m"],
+      models: ['m'],
       weight,
       proxy,
-      ...(typeof proxy === "string" ? { headers: { "X-Secret": headerSecret } } : {}),
+      ...(typeof proxy === 'string' ? { headers: { 'X-Secret': headerSecret } } : {}),
     });
     try {
       const app = await createServer({
@@ -129,22 +129,22 @@ describe("cross-protocol HTTP routing", () => {
         },
         dbHome: home,
       });
-      const response = await app.request("/v1/chat/completions", {
-        body: JSON.stringify({ model: "m", messages: [{ role: "user", content: "hello" }] }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
+      const response = await app.request('/v1/chat/completions', {
+        body: JSON.stringify({ model: 'm', messages: [{ role: 'user', content: 'hello' }] }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
       });
       const body = await response.text();
       expect(response.status).toBe(200);
-      expect(body).toContain("fallback ok");
+      expect(body).toContain('fallback ok');
       expect([firstHits, secondHits]).toEqual([0, 1]);
       const attempts = await recordedAttempts(home);
       expect(attempts).toEqual([
-        expect.objectContaining({ outcome: "failure", providerId: "proxied" }),
-        expect.objectContaining({ outcome: "success", providerId: "direct" }),
+        expect.objectContaining({ outcome: 'failure', providerId: 'proxied' }),
+        expect.objectContaining({ outcome: 'success', providerId: 'direct' }),
       ]);
       const diagnostic = JSON.stringify({ attempts, body });
-      for (const secret of [headerSecret, "proxy-pass-secret", deadProxy]) expect(diagnostic).not.toContain(secret);
+      for (const secret of [headerSecret, 'proxy-pass-secret', deadProxy]) expect(diagnostic).not.toContain(secret);
     } finally {
       await Promise.all([firstUpstream.stop(true), secondUpstream.stop(true)]);
     }
@@ -156,20 +156,20 @@ type Calls = { model: number; raw: number };
 
 async function runAntigravityMatrixCase(
   protocol: ProviderProtocol,
-  condition: "same protocol" | "cross protocol" | "raw unavailable",
-): Promise<"model" | "raw"> {
+  condition: 'same protocol' | 'cross protocol' | 'raw unavailable',
+): Promise<'model' | 'raw'> {
   const inbound = inboundCases.find((candidate) => candidate.protocol === protocol);
   if (inbound === undefined) throw new Error(`Missing inbound fixture for ${protocol}`);
-  const fixture = antigravityProvider(condition !== "raw unavailable");
+  const fixture = antigravityProvider(condition !== 'raw unavailable');
   const response = await request(inbound, [fixture.value]);
 
   expect(response.status).toBe(200);
   if (fixture.calls.raw === 1) {
-    expect(await response.text()).toBe("raw:antigravity");
-    return "raw";
+    expect(await response.text()).toBe('raw:antigravity');
+    return 'raw';
   }
-  expectModelResponse(protocol, await response.json(), "model:antigravity");
-  return "model";
+  expectModelResponse(protocol, await response.json(), 'model:antigravity');
+  return 'model';
 }
 
 function antigravityProvider(rawAvailable: boolean): {
@@ -180,18 +180,18 @@ function antigravityProvider(rawAvailable: boolean): {
   return {
     calls,
     value: {
-      alias: { m: { model: "m", preserve: false } },
-      capability: "default",
+      alias: { m: { model: 'm', preserve: false } },
+      capability: 'default',
       enabled: true,
-      id: "antigravity",
+      id: 'antigravity',
       kind: ProviderKind.OAuth,
-      model: { invoke: () => ((calls.model += 1), modelStream("model:antigravity")) },
-      models: ["m"],
-      plugin: "@aio-proxy/plugin-google-antigravity",
+      model: { invoke: () => ((calls.model += 1), modelStream('model:antigravity')) },
+      models: ['m'],
+      plugin: '@aio-proxy/plugin-google-antigravity',
       raw: {
         resolve: ({ protocol }: { readonly protocol: ProviderProtocol }) =>
           rawAvailable && protocol === ProviderProtocol.Gemini
-            ? { invoke: async () => ((calls.raw += 1), new Response("raw:antigravity")) }
+            ? { invoke: async () => ((calls.raw += 1), new Response('raw:antigravity')) }
             : undefined,
       },
     } satisfies RuntimeProviderInstance,
@@ -209,13 +209,13 @@ function provider(
   return {
     calls,
     value: {
-      alias: { m: { model: "m", preserve: false } },
+      alias: { m: { model: 'm', preserve: false } },
       baseURL: `https://${id}.example.test`,
       enabled: true,
       id,
       kind: ProviderKind.Api,
       model: { invoke },
-      models: ["m"],
+      models: ['m'],
       passthrough: raw,
       protocol,
       raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: raw } : undefined) },
@@ -227,11 +227,11 @@ function modelStream(text: string): ReadableStream<TextStreamPart<ToolSet>> {
   const empty = { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 };
   return new ReadableStream({
     start(controller) {
-      controller.enqueue({ type: "text-delta", id: "text-1", text });
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text });
       controller.enqueue({
-        type: "finish",
-        finishReason: "stop",
-        rawFinishReason: "stop",
+        type: 'finish',
+        finishReason: 'stop',
+        rawFinishReason: 'stop',
         totalUsage: {
           inputTokenDetails: empty,
           inputTokens: 0,
@@ -253,37 +253,31 @@ async function request(inbound: InboundCase, providers: readonly RuntimeProvider
   });
   return app.request(inbound.path, {
     body: JSON.stringify(inbound.body),
-    headers: { "content-type": "application/json" },
-    method: "POST",
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
   });
 }
 
 function tempHome(): string {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-cross-protocol-"));
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cross-protocol-'));
   homes.push(home);
   return home;
 }
 
 async function recordedAttempts(home: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const handle = openDb({ home });
-    const rows = handle.db.select().from(requestLog).all();
-    handle.close();
-    if (rows[0] !== undefined) return rows[0].attempts;
-    await Bun.sleep(1);
-  }
-  throw new Error("request row was not recorded");
+  const { requests } = await recorded(home);
+  return requests[0]?.attempts ?? [];
 }
 
 function expectModelResponse(protocol: ProviderProtocol, body: unknown, text: string): void {
   const shapes = {
-    [ProviderProtocol.OpenAICompatible]: { choices: [{ message: { role: "assistant", content: text } }] },
+    [ProviderProtocol.OpenAICompatible]: { choices: [{ message: { role: 'assistant', content: text } }] },
     [ProviderProtocol.OpenAIResponse]: {
-      object: "response",
-      output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
+      object: 'response',
+      output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }],
     },
-    [ProviderProtocol.Anthropic]: { type: "message", role: "assistant", content: [{ type: "text", text }] },
-    [ProviderProtocol.Gemini]: { candidates: [{ content: { role: "model", parts: [{ text }] } }] },
+    [ProviderProtocol.Anthropic]: { type: 'message', role: 'assistant', content: [{ type: 'text', text }] },
+    [ProviderProtocol.Gemini]: { candidates: [{ content: { role: 'model', parts: [{ text }] } }] },
   } as const;
   expect(body).toMatchObject(shapes[protocol]);
 }

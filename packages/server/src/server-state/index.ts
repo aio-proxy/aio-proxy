@@ -26,7 +26,7 @@ import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthQuotaOperations } from '../plugin-quota';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
-import { createRequestRecorder } from '../request-recorder';
+import { createRequestTraceRecorder } from '../request-tracing';
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
 import { createUsageCapture } from '../usage-capture';
 import { defaultLogger, defaultPluginLogger } from './logging';
@@ -130,7 +130,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
   const logger = options.logger ?? defaultLogger;
-  const requestRecorder = createRequestRecorder({ store: requestLog, logger });
+  const requestRecorder = createRequestTraceRecorder({ store: traceStore, logger });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
 
   async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {

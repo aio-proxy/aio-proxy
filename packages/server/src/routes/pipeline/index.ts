@@ -4,9 +4,10 @@ import {
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
+import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
-import type { RequestSession } from '../../request-recorder';
+import type { RequestTraceSession } from '../../request-tracing';
 import type { ProviderRouteSource } from '../../runtime';
 import { attemptCandidates } from './attempt';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
@@ -22,23 +23,28 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
 export async function handleProtocolRequest<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
 ): Promise<Response> {
-  const session = options.source.requestRecorder.begin({ inboundProtocol: options.adapter.protocol });
-  return await withRequestLogContext(
-    {
-      requestId: session.requestId,
-      debug: options.source.debugLogging === true,
-      logger: options.source.logger,
-    },
-    async () => {
-      const rawRequest = observeInboundRequest(options.rawRequest, options.adapter.protocol);
-      return await handleProtocolRequestInContext({ ...options, rawRequest }, session);
-    },
+  const session = options.source.requestRecorder.begin({
+    headers: options.rawRequest.headers,
+    inboundProtocol: options.adapter.protocol,
+  });
+  return await context.with(session.rootContext, () =>
+    withRequestLogContext(
+      {
+        requestId: session.requestId,
+        debug: options.source.debugLogging === true,
+        logger: options.source.logger,
+      },
+      async () => {
+        const rawRequest = observeInboundRequest(options.rawRequest, options.adapter.protocol);
+        return await handleProtocolRequestInContext({ ...options, rawRequest }, session);
+      },
+    ),
   );
 }
 
 async function handleProtocolRequestInContext<TRequest, TContext>(
   { adapter, context, rawRequest, source }: HandleProtocolRequestOptions<TRequest, TContext>,
-  session: RequestSession,
+  session: RequestTraceSession,
 ): Promise<Response> {
   let requestedModelId: string | undefined;
   let releaseRetainedBody = false;
@@ -103,15 +109,15 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
 
     const requestedModel = adapter.model(request, context);
     requestedModelId = requestedModel;
-    const logicalRequest = source.logicalSessionStore.begin({
+    const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
-    }).context;
-    session.identify({ requestedModelId: requestedModel });
+    });
+    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: true });
     logRequestDiagnostics({
       source,
-      session,
+      requestId: session.requestId,
       rawRequest,
       inboundProtocol: adapter.protocol,
       requestedModelId: requestedModel,
@@ -130,11 +136,11 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         candidates,
         context,
         deferRelease,
-        logicalRequest,
         rawRequest,
         release: lease.release,
         request,
         requestedModelId: requestedModel,
+        resolution,
         session,
         source,
       });
@@ -160,7 +166,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     if (session.finish({ outcome: 'failure', errorCode: 'internal_error' })) {
       logRequestFailed({
         source,
-        session,
+        requestId: session.requestId,
         rawRequest,
         inboundProtocol: adapter.protocol,
         ...(requestedModelId === undefined ? {} : { requestedModelId }),
@@ -177,7 +183,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
 
 function rejectRequest(options: {
   readonly source: ProviderRouteSource;
-  readonly session: RequestSession;
+  readonly session: RequestTraceSession;
   readonly rawRequest: Request;
   readonly inboundProtocol: string;
   readonly requestedModelId?: string;
@@ -185,13 +191,13 @@ function rejectRequest(options: {
   readonly errorCode: string;
   readonly error: unknown;
 }): Response {
-  const { response, ...rejection } = options;
-  rejection.session.finish({
+  const { response, session, ...rejection } = options;
+  session.finish({
     outcome: 'failure',
-    finalStatusCode: response.status,
+    finalHttpStatus: response.status,
     errorCode: rejection.errorCode,
   });
-  logRequestRejected({ ...rejection, statusCode: response.status });
+  logRequestRejected({ ...rejection, requestId: session.requestId, statusCode: response.status });
   return response;
 }
 

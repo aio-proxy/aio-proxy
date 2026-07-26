@@ -1,23 +1,22 @@
-import type { createServer } from "@aio-proxy/server";
-import type { TextStreamPart, ToolSet } from "ai";
+import { expect } from 'bun:test';
 
-import { openDb, requestLog, usage } from "@aio-proxy/core/db";
-import { expect } from "bun:test";
+import type { createServer } from '@aio-proxy/server';
+import type { TextStreamPart, ToolSet } from 'ai';
 
-import { loopbackServer } from "../src/dashboard-auth/test-support";
+import { loopbackServer } from '../src/dashboard-auth/test-support';
 
-export { createTempHomes } from "./temporary-homes.test-support";
+export { createTempHomes } from './temporary-homes.test-support';
 
 export const chatRequest = {
-  model: "gpt-4o-mini",
-  messages: [{ role: "user", content: "Hello proxy" }],
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Hello proxy' }],
   stream: true,
 };
 const nativeFetch = globalThis.fetch;
 
 export function mockModelsDevCatalog(): void {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
-    String(input) === "https://models.dev/api.json"
+    String(input) === 'https://models.dev/api.json'
       ? Promise.resolve(Response.json({ openrouter: { models: {} } }))
       : nativeFetch(input, init)) as typeof fetch;
 }
@@ -56,12 +55,12 @@ export class UpstreamStatusError extends Error {
 }
 
 export class AbortStreamError extends Error {
-  override readonly name = "AbortError";
+  override readonly name = 'AbortError';
 }
 
 async function usageJson(app: ReturnType<typeof createServer>): Promise<unknown> {
   const usageResponse = await app.request(
-    "/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider",
+    '/dashboard/api/usage?range=24h&metric=tokens&groupBy=provider',
     undefined,
     loopbackServer,
   );
@@ -73,12 +72,12 @@ export async function waitForUsageRow(app: ReturnType<typeof createServer>): Pro
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const body = await usageJson(app);
     if (
-      typeof body === "object" &&
+      typeof body === 'object' &&
       body !== null &&
-      "summary" in body &&
-      typeof body.summary === "object" &&
+      'summary' in body &&
+      typeof body.summary === 'object' &&
       body.summary !== null &&
-      "requestCount" in body.summary &&
+      'requestCount' in body.summary &&
       body.summary.requestCount === 1
     ) {
       return body;
@@ -88,14 +87,4 @@ export async function waitForUsageRow(app: ReturnType<typeof createServer>): Pro
   return usageJson(app);
 }
 
-export async function recorded(home: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const handle = openDb({ home });
-    const requests = handle.db.select().from(requestLog).all();
-    const usages = handle.db.select().from(usage).all();
-    handle.close();
-    if (requests.length > 0) return { requests, usages };
-    await new Promise((resolve) => setTimeout(resolve, 1));
-  }
-  throw new Error("request row was not recorded");
-}
+export { recorded } from './trace-recording.test-support';

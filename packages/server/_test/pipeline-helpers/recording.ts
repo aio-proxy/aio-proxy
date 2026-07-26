@@ -1,82 +1,114 @@
-import type {
-  RequestAttemptInput,
-  RequestFinishInput,
-  RequestRecorder,
-  RequestSession,
-} from "../../src/request-recorder";
-import type { UsageCompletion } from "../../src/usage-capture";
-import type { Recording } from "./types";
+import type { StoredSpan, TraceCompletion } from '@aio-proxy/core/db';
+import type { ProviderProtocol } from '@aio-proxy/types';
 
-export function createRecording(): Recording & { readonly recorder: RequestRecorder } {
-  const begins: Recording["begins"] = [];
-  const identities: Recording["identities"] = [];
-  const attempts: RequestAttemptInput[] = [];
-  const finals: RequestFinishInput[] = [];
-  const recorder: RequestRecorder = {
+import {
+  attributeName,
+  createRequestTraceRecorder,
+  type RequestTraceRecorder,
+  type RequestTraceWriteStore,
+  spanName,
+} from '../../src/request-tracing';
+import type { Recording, RecordedAttempt, RecordedFinal } from './types';
+
+// Wraps the real RequestTraceRecorder with an in-memory trace store, then
+// projects each completed trace back into the legacy {begins, identities,
+// attempts, finals} shapes the pipeline tests assert against. This keeps the
+// tests behavior-level while exercising the production recorder + span buffer.
+export function createRecording(): Recording & { readonly recorder: RequestTraceRecorder } {
+  const begins: Recording['begins'] = [];
+  const identities: Recording['identities'] = [];
+  const attempts: RecordedAttempt[] = [];
+  const finals: RecordedFinal[] = [];
+
+  const store: RequestTraceWriteStore = {
+    startRoot() {},
+    prune() {},
+    complete(completion) {
+      const projected = projectAttempts(completion.spans);
+      for (const attempt of projected) attempts.push(attempt);
+      finals.push(projectFinal(completion, projected));
+      return true;
+    },
+  };
+  const real = createRequestTraceRecorder({ store });
+
+  const recorder: RequestTraceRecorder = {
     begin(input) {
-      begins.push(input);
-      let state: "pending" | "async-owned" | "finished" = "pending";
-      const complete = (finish: RequestFinishInput) => {
-        state = "finished";
-        if (finish.attempt !== undefined) attempts.push(finish.attempt);
-        finals.push(finish);
-      };
-      const session: RequestSession = {
+      const session = real.begin(input);
+      begins.push({ inboundProtocol: input.inboundProtocol });
+      return {
+        ...session,
         requestId: `request-${begins.length}`,
         identify(identity) {
-          if (state === "pending") identities.push(identity);
-        },
-        attempt(attempt) {
-          if (state === "pending") attempts.push(attempt);
-        },
-        finish(finish) {
-          if (state !== "pending") return false;
-          complete(finish);
-          return true;
-        },
-        finishFrom(attempt, completion) {
-          if (state !== "pending") return;
-          state = "async-owned";
-          void completion.then(
-            (terminal) => {
-              if (state === "async-owned") complete(finishFromTerminal(attempt, terminal));
-            },
-            () => {
-              if (state !== "async-owned") return;
-              complete({
-                attempt: { ...attempt, outcome: "failure" },
-                finalModelId: attempt.modelId,
-                finalProviderId: attempt.providerId,
-                outcome: "failure",
-              });
-            },
-          );
+          identities.push({ requestedModelId: identity.requestedModelId });
+          session.identify(identity);
         },
       };
-      return session;
     },
   };
   return { attempts, begins, finals, identities, recorder };
 }
 
-function finishFromTerminal(
-  attempt: Omit<RequestAttemptInput, "errorCode" | "outcome" | "statusCode">,
-  terminal: UsageCompletion,
-): RequestFinishInput {
-  const statusCode = "statusCode" in terminal ? terminal.statusCode : undefined;
-  const errorCode = terminal.outcome === "failure" ? terminal.errorCode : undefined;
+function projectAttempts(spans: readonly StoredSpan[]): RecordedAttempt[] {
+  return spans.filter((span) => span.name === spanName.attempt).map(projectAttempt);
+}
+
+function projectAttempt(span: StoredSpan): RecordedAttempt {
+  const attrs = span.attributes;
+  const protocol = str(attrs, attributeName.targetProtocol) as ProviderProtocol | undefined;
+  const statusCode = num(attrs, attributeName.httpStatusCode);
+  const errorCode = str(attrs, attributeName.errorCode);
+  const stream = bool(attrs, attributeName.stream);
+  const ttftMs = num(attrs, attributeName.ttftMs);
   return {
-    attempt: {
-      ...attempt,
-      outcome: terminal.outcome,
-      ...(statusCode === undefined ? {} : { statusCode }),
-      ...(errorCode === undefined ? {} : { errorCode }),
-    },
-    finalModelId: attempt.modelId,
-    finalProviderId: attempt.providerId,
-    ...(statusCode === undefined ? {} : { finalStatusCode: statusCode }),
+    providerId: str(attrs, attributeName.providerId) ?? '',
+    modelId: str(attrs, attributeName.genAiResponseModel) ?? '',
+    providerKind: (str(attrs, attributeName.providerKind) ?? '') as RecordedAttempt['providerKind'],
+    durationMs: Math.max(0, span.endedAt.getTime() - span.startedAt.getTime()),
+    outcome: (str(attrs, attributeName.terminationReason) ?? 'success') as RecordedAttempt['outcome'],
+    ...(protocol === undefined ? {} : { protocol }),
+    ...(statusCode === undefined ? {} : { statusCode }),
     ...(errorCode === undefined ? {} : { errorCode }),
-    outcome: terminal.outcome,
-    ...(terminal.outcome === "success" && terminal.usage !== undefined ? { usage: terminal.usage } : {}),
+    ...(stream === undefined ? {} : { stream }),
+    ...(ttftMs === undefined ? {} : { ttftMs }),
   };
+}
+
+function projectFinal(completion: TraceCompletion, projected: readonly RecordedAttempt[]): RecordedFinal {
+  const { summary } = completion;
+  const outcome: RecordedFinal['outcome'] =
+    summary.terminationReason === 'failure' || summary.errorCode !== undefined
+      ? 'failure'
+      : summary.terminationReason === 'cancelled'
+        ? 'cancelled'
+        : 'success';
+  const last = projected.at(-1);
+  const attachAttempt =
+    summary.finalProviderId !== undefined &&
+    summary.finalHttpStatus !== undefined &&
+    last?.providerId === summary.finalProviderId;
+  return {
+    outcome,
+    ...(summary.finalProviderId === undefined ? {} : { finalProviderId: summary.finalProviderId }),
+    ...(summary.finalModelId === undefined ? {} : { finalModelId: summary.finalModelId }),
+    ...(summary.finalHttpStatus === undefined ? {} : { finalStatusCode: summary.finalHttpStatus }),
+    ...(summary.errorCode === undefined ? {} : { errorCode: summary.errorCode }),
+    ...(summary.usage === undefined ? {} : { usage: summary.usage }),
+    ...(attachAttempt && last !== undefined ? { attempt: last } : {}),
+  };
+}
+
+function str(attrs: Record<string, unknown>, key: string): string | undefined {
+  const value = attrs[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function num(attrs: Record<string, unknown>, key: string): number | undefined {
+  const value = attrs[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function bool(attrs: Record<string, unknown>, key: string): boolean | undefined {
+  const value = attrs[key];
+  return typeof value === 'boolean' ? value : undefined;
 }

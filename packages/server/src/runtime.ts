@@ -1,11 +1,11 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from "@aio-proxy/core";
-import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from "@aio-proxy/plugin-sdk";
-import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from "@aio-proxy/types";
+import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from '@aio-proxy/core';
+import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from '@aio-proxy/plugin-sdk';
+import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from '@aio-proxy/types';
 
-import type { LogicalSessionStore } from "./logical-session-store";
-import type { RequestRecorder } from "./request-recorder";
-import type { ServerLogSink } from "./server-log";
-import type { UsageCapture } from "./usage-capture";
+import type { LogicalSessionStore } from './logical-session-store';
+import type { RequestTraceRecorder } from './request-tracing';
+import type { ServerLogSink } from './server-log';
+import type { UsageCapture } from './usage-capture';
 
 export type RuntimeModelMetadata = {
   readonly displayName?: string;
@@ -25,8 +25,8 @@ export type RuntimeRawCapability = {
 
 export type ModelTransport = {
   readonly ensureAvailable?: () => Promise<void>;
-  readonly invoke: AiSdkProviderInstance["invoke"];
-  readonly supportsProviderTool?: (type: ProviderExecutedTool["type"]) => boolean;
+  readonly invoke: AiSdkProviderInstance['invoke'];
+  readonly supportsProviderTool?: (type: ProviderExecutedTool['type']) => boolean;
   readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 };
 
@@ -75,6 +75,6 @@ export type ProviderRouteSource = {
   readonly debugLogging?: boolean;
   readonly logger: ServerLogSink;
   readonly logicalSessionStore: LogicalSessionStore;
-  readonly requestRecorder: RequestRecorder;
+  readonly requestRecorder: RequestTraceRecorder;
   readonly usageCapture: UsageCapture;
 };

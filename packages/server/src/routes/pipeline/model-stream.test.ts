@@ -1,5 +1,6 @@
-import { openAICompletionsAdapter } from "@aio-proxy/core";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
+
+import { openAICompletionsAdapter } from '@aio-proxy/core';
 
 import {
   cancellableTextStream,
@@ -13,18 +14,18 @@ import {
   settleRecording,
   textStream,
   textThenErrorStream,
-} from "../../../_test/pipeline-helpers";
-import { handleProtocolRequest } from "./index";
-import { attemptsOf, pipeline } from "./test-support";
+} from '../../../_test/pipeline-helpers';
+import { handleProtocolRequest } from './index';
+import { attemptsOf, pipeline } from './test-support';
 
-describe("shared protocol routing pipeline", () => {
-  test.each(["ensure", "invoke", "first-event", "json"] as const)(
-    "falls back when model %s fails before the response is committed",
+describe('shared protocol routing pipeline', () => {
+  test.each(['ensure', 'invoke', 'first-event', 'json'] as const)(
+    'falls back when model %s fails before the response is committed',
     async (stage) => {
       const error = new Error(`${stage} failed`);
       const primary = modelProvider({
-        id: "primary",
-        ...(stage === "ensure"
+        id: 'primary',
+        ...(stage === 'ensure'
           ? {
               ensureAvailable: async () => {
                 throw error;
@@ -32,39 +33,39 @@ describe("shared protocol routing pipeline", () => {
             }
           : {}),
         invoke: () => {
-          if (stage === "invoke") throw error;
-          if (stage === "first-event") return errorStream(error);
-          if (stage === "json") return textThenErrorStream("partial", error);
-          return textStream("unused");
+          if (stage === 'invoke') throw error;
+          if (stage === 'first-event') return errorStream(error);
+          if (stage === 'json') return textThenErrorStream('partial', error);
+          return textStream('unused');
         },
       });
-      const backup = modelProvider({ id: "backup", invoke: () => textStream("fallback") });
+      const backup = modelProvider({ id: 'backup', invoke: () => textStream('fallback') });
       const harness = pipeline([primary, backup]);
-      const stream = stage === "first-event";
+      const stream = stage === 'first-event';
 
       const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
       await settleRecording();
 
       if (stream) {
-        expect(await response.text()).toContain("fallback");
+        expect(await response.text()).toContain('fallback');
       } else {
-        expect(await response.json()).toEqual({ output: "fallback" });
+        expect(await response.json()).toEqual({ output: 'fallback' });
       }
-      expect(primary.calls.model).toHaveLength(stage === "ensure" ? 0 : 1);
+      expect(primary.calls.model).toHaveLength(stage === 'ensure' ? 0 : 1);
       expect(backup.calls.model).toHaveLength(1);
       expect(harness.context.modelInvocationCalls).toBe(1);
       expect(attemptsOf(harness.recording)).toEqual([
-        { outcome: "failure", providerId: "primary", statusCode: 502 },
-        { outcome: "success", providerId: "backup", statusCode: undefined },
+        { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+        { outcome: 'success', providerId: 'backup', statusCode: undefined },
       ]);
-      if (stage === "first-event") {
+      if (stage === 'first-event') {
         expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
       }
     },
   );
 
-  test("does not let immediate completion win when the SSE writer throws before commit", async () => {
-    const writerError = new Error("writer failed");
+  test('does not let immediate completion win when the SSE writer throws before commit', async () => {
+    const writerError = new Error('writer failed');
     const base = defineProtocolAdapter();
     let writerCalls = 0;
     const adapter = {
@@ -75,29 +76,29 @@ describe("shared protocol routing pipeline", () => {
         return base.modelSse(stream);
       },
     } satisfies typeof base;
-    const primary = modelProvider({ id: "primary", invoke: () => textStream("primary") });
-    const backup = modelProvider({ id: "backup", invoke: () => textStream("backup") });
+    const primary = modelProvider({ id: 'primary', invoke: () => textStream('primary') });
+    const backup = modelProvider({ id: 'backup', invoke: () => textStream('backup') });
     const harness = pipeline([primary, backup], {
       adapter,
-      immediateStreamCompletion: { outcome: "success" },
+      immediateStreamCompletion: { outcome: 'success' },
     });
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
-    expect(await response.text()).toContain("backup");
+    expect(await response.text()).toContain('backup');
     await settleRecording();
 
     expect(writerCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: "failure", providerId: "primary", statusCode: 502 },
-      { outcome: "success", providerId: "backup", statusCode: undefined },
+      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "backup", outcome: "success" }),
+      expect.objectContaining({ finalProviderId: 'backup', outcome: 'success' }),
     );
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
   });
 
-  test("does not let immediate completion win when JSON serialization throws before commit", async () => {
+  test('does not let immediate completion win when JSON serialization throws before commit', async () => {
     const base = defineProtocolAdapter();
     let jsonCalls = 0;
     const adapter = {
@@ -108,91 +109,118 @@ describe("shared protocol routing pipeline", () => {
         return base.modelJson(stream);
       },
     } satisfies typeof base;
-    const primary = modelProvider({ id: "primary", invoke: () => textStream("primary") });
-    const backup = modelProvider({ id: "backup", invoke: () => textStream("backup") });
+    const primary = modelProvider({ id: 'primary', invoke: () => textStream('primary') });
+    const backup = modelProvider({ id: 'backup', invoke: () => textStream('backup') });
     const harness = pipeline([primary, backup], {
       adapter,
-      immediateStreamCompletion: { outcome: "success" },
+      immediateStreamCompletion: { outcome: 'success' },
     });
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    expect(await response.json()).toEqual({ output: "backup" });
+    expect(await response.json()).toEqual({ output: 'backup' });
     await settleRecording();
 
     expect(jsonCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: "failure", providerId: "primary", statusCode: 502 },
-      { outcome: "success", providerId: "backup", statusCode: undefined },
+      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "backup", outcome: "success" }),
+      expect.objectContaining({ finalProviderId: 'backup', outcome: 'success' }),
     );
   });
 
-  test("treats an empty model stream as pre-commit failure and releases both readers", async () => {
-    const primary = modelProvider({ id: "primary", invoke: emptyStream });
-    const backup = modelProvider({ id: "backup", invoke: () => textStream("backup") });
+  test('records stream=true and a numeric ttft for a streamed model attempt', async () => {
+    const provider = modelProvider({ id: 'provider', invoke: () => textStream('hello') });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+    expect(await response.text()).toContain('hello');
+    await settleRecording();
+
+    const attempt = harness.recording.attempts[0];
+    expect(attempt?.stream).toBe(true);
+    expect(typeof attempt?.ttftMs).toBe('number');
+    expect(attempt?.ttftMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test('records stream=false and no ttft for a buffered JSON attempt', async () => {
+    const provider = modelProvider({ id: 'provider', invoke: () => textStream('hello') });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+    expect(await response.json()).toEqual({ output: 'hello' });
+    await settleRecording();
+
+    const attempt = harness.recording.attempts[0];
+    expect(attempt?.stream).toBe(false);
+    expect(attempt?.ttftMs).toBeUndefined();
+  });
+
+  test('treats an empty model stream as pre-commit failure and releases both readers', async () => {
+    const primary = modelProvider({ id: 'primary', invoke: emptyStream });
+    const backup = modelProvider({ id: 'backup', invoke: () => textStream('backup') });
     const harness = pipeline([primary, backup]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
-    expect(await response.text()).toContain("backup");
+    expect(await response.text()).toContain('backup');
     await settleRecording();
 
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: "failure", providerId: "primary", statusCode: 502 },
-      { outcome: "success", providerId: "backup", statusCode: undefined },
+      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'success', providerId: 'backup', statusCode: undefined },
     ]);
     expect(harness.usage.capturedStreams.every((stream) => !stream.locked)).toBe(true);
   });
 
-  test("exposes a model stream error after the first event without trying the next candidate", async () => {
-    const streamError = new Error("after first event");
+  test('exposes a model stream error after the first event without trying the next candidate', async () => {
+    const streamError = new Error('after first event');
     const primary = modelProvider({
-      id: "primary",
-      invoke: () => textThenErrorStream("partial", streamError),
+      id: 'primary',
+      invoke: () => textThenErrorStream('partial', streamError),
     });
-    const backup = modelProvider({ id: "backup", invoke: () => textStream("fallback") });
+    const backup = modelProvider({ id: 'backup', invoke: () => textStream('fallback') });
     const harness = pipeline([primary, backup]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
 
-    expect(response.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
-    await expect(response.text()).rejects.toThrow("after first event");
+    expect(response.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+    await expect(response.text()).rejects.toThrow('after first event');
     await settleRecording();
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(0);
     expect(harness.context.modelInvocationCalls).toBe(1);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "primary", outcome: "failure" }),
+      expect.objectContaining({ finalProviderId: 'primary', outcome: 'failure' }),
     );
     expect(attemptsOf(harness.recording)).toEqual([
-      { outcome: "failure", providerId: "primary", statusCode: undefined },
+      { outcome: 'failure', providerId: 'primary', statusCode: undefined },
     ]);
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
   });
 
-  test("releases the preflight reader after a successful stream reaches EOF", async () => {
-    const provider = modelProvider({ id: "provider", invoke: () => textStream("done") });
+  test('releases the preflight reader after a successful stream reaches EOF', async () => {
+    const provider = modelProvider({ id: 'provider', invoke: () => textStream('done') });
     const harness = pipeline([provider]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
-    expect(await response.text()).toContain("done");
+    expect(await response.text()).toContain('done');
     await settleRecording();
 
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "provider", outcome: "success" }),
+      expect.objectContaining({ finalProviderId: 'provider', outcome: 'success' }),
     );
   });
 
-  test("releases the preflight reader when the client cancels", async () => {
+  test('releases the preflight reader when the client cancels', async () => {
     let cancelCalls = 0;
     const provider = modelProvider({
-      id: "provider",
+      id: 'provider',
       invoke: () =>
-        cancellableTextStream("partial", () => {
+        cancellableTextStream('partial', () => {
           cancelCalls += 1;
         }),
     });
@@ -202,22 +230,22 @@ describe("shared protocol routing pipeline", () => {
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
     expect((await reader?.read())?.done).toBe(false);
-    await reader?.cancel("client stopped");
+    await reader?.cancel('client stopped');
     await settleRecording();
 
     expect(cancelCalls).toBe(1);
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
     expect(harness.recording.finals[0]).toEqual(
-      expect.objectContaining({ finalProviderId: "provider", outcome: "failure" }),
+      expect.objectContaining({ finalProviderId: 'provider', outcome: 'failure' }),
     );
   });
 
-  test("cancels the provider model stream through the real protocol egress", async () => {
+  test('cancels the provider model stream through the real protocol egress', async () => {
     let cancelCalls = 0;
     const provider = modelProvider({
-      id: "provider",
+      id: 'provider',
       invoke: () =>
-        cancellableTextStream("partial", () => {
+        cancellableTextStream('partial', () => {
           cancelCalls += 1;
         }),
     });
@@ -225,17 +253,17 @@ describe("shared protocol routing pipeline", () => {
     const response = await handleProtocolRequest({
       adapter: openAICompletionsAdapter,
       context: {},
-      rawRequest: new Request("http://localhost/v1/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: REQUESTED_MODEL, messages: [{ role: "user", content: "ping" }], stream: true }),
+      rawRequest: new Request('http://localhost/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: REQUESTED_MODEL, messages: [{ role: 'user', content: 'ping' }], stream: true }),
       }),
       source: route.source,
     });
 
     const reader = response.body?.getReader();
     expect((await reader?.read())?.done).toBe(false);
-    await reader?.cancel("client stopped");
+    await reader?.cancel('client stopped');
     await settleRecording();
 
     expect(cancelCalls).toBe(1);

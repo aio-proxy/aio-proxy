@@ -8,12 +8,15 @@ import {
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
-import type { RequestAttemptInput, RequestSession } from '../request-recorder';
+import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { hasInvalidOrOversizedContentLength } from './pipeline';
+import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
+import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -27,23 +30,29 @@ export async function handleTokenCount<TRequest, TContext>(
   options: HandleTokenCountOptions<TRequest, TContext>,
 ): Promise<Response> {
   const { adapter, rawRequest, source } = options;
-  const session = source.requestRecorder.begin({ inboundProtocol: adapter.protocol });
-  return await withRequestLogContext(
-    {
-      requestId: session.requestId,
-      debug: source.debugLogging === true,
-      logger: source.logger,
-    },
-    async () => {
-      const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
-      return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
-    },
+  const session = source.requestRecorder.begin({
+    headers: rawRequest.headers,
+    inboundProtocol: adapter.protocol,
+    operation: 'token_count',
+  });
+  return await context.with(session.rootContext, () =>
+    withRequestLogContext(
+      {
+        requestId: session.requestId,
+        debug: source.debugLogging === true,
+        logger: source.logger,
+      },
+      async () => {
+        const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
+        return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
+      },
+    ),
   );
 }
 
 async function handleTokenCountInContext<TRequest, TContext>(
   { adapter, context, format, rawRequest, source }: HandleTokenCountOptions<TRequest, TContext>,
-  session: RequestSession,
+  session: RequestTraceSession,
 ): Promise<Response> {
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
@@ -66,19 +75,19 @@ async function handleTokenCountInContext<TRequest, TContext>(
 
   try {
     const requestedModel = adapter.model(request, context);
-    session.identify({ requestedModelId: requestedModel });
-    const logicalRequest = source.logicalSessionStore.begin({
+    const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
-    }).context;
+    });
+    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: false });
     const lease = source.acquireProviderSnapshot();
     try {
       const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
       return await countCandidates({
         adapter,
         candidates,
-        context: logicalRequest,
+        context: resolution.context,
         format,
         invocation,
         rawRequest,
@@ -104,7 +113,13 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
   readonly request: TRequest;
-  readonly session: RequestSession;
+  readonly session: RequestTraceSession;
+};
+
+type CountAttempt = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly providerKind: RuntimeProviderInstance['kind'];
 };
 
 async function countCandidates<TRequest, TContext>({
@@ -133,7 +148,7 @@ async function countCandidates<TRequest, TContext>({
     }
     if (lacksProviderTool(provider, candidateInvocation)) continue;
     throwIfCountAborted(session, rawRequest.signal);
-    const startedAt = performance.now();
+    const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
     try {
       const result = await withAttemptLogContext(
         { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
@@ -150,28 +165,28 @@ async function countCandidates<TRequest, TContext>({
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
         throw new TypeError('Provider token count must be a non-negative integer');
       }
+      startAttemptSpan(session, attempt, attemptIndex, 200).end();
       session.finish({
         outcome: 'success',
         finalProviderId: provider.id,
         finalModelId: candidate.modelId,
-        finalStatusCode: 200,
-        attempt: { ...attemptBase(provider, candidate.modelId, startedAt), outcome: 'success', statusCode: 200 },
+        finalHttpStatus: 200,
       });
       return Response.json(format(result.inputTokens));
     } catch (error) {
       if (rawRequest.signal.aborted) {
-        finishCancelled(session, failedCountAttempt(provider, candidate.modelId, startedAt, undefined));
+        startAttemptSpan(session, attempt, attemptIndex).end({ outcome: 'cancelled' });
+        session.finish({ outcome: 'cancelled', finalProviderId: provider.id, finalModelId: candidate.modelId });
         throw rawRequest.signal.reason;
       }
       const mapped = adapter.errors.provider(error);
-      const attempt = failedCountAttempt(provider, candidate.modelId, startedAt, mapped?.status);
-      session.attempt(attempt);
+      startAttemptSpan(session, attempt, attemptIndex).end(failureTerminal(mapped?.status));
     }
   }
 
   throwIfCountAborted(session, rawRequest.signal);
   const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
-  session.finish({ outcome: 'success', finalStatusCode: 200 });
+  session.finish({ outcome: 'success', finalHttpStatus: 200 });
   return Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
 }
 
@@ -179,42 +194,28 @@ function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelI
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
 }
 
-function failedCountAttempt(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  startedAt: number,
-  statusCode: number | undefined,
-): RequestAttemptInput {
-  return {
-    ...attemptBase(provider, modelId, startedAt),
-    outcome: 'failure',
-    ...(statusCode === undefined ? {} : { statusCode }),
-  };
-}
-
-function finishCancelled(session: RequestSession, attempt: RequestAttemptInput): void {
-  session.finish({
-    outcome: 'cancelled',
-    finalProviderId: attempt.providerId,
-    finalModelId: attempt.modelId,
-    attempt: { ...attempt, outcome: 'cancelled' },
+function startAttemptSpan(
+  session: RequestTraceSession,
+  attempt: CountAttempt,
+  index: number,
+  httpStatus?: number,
+): OpenSpan {
+  return startPipelineSpan(session.rootContext, spanName.attempt, {
+    attributes: {
+      [attributeName.attemptIndex]: index,
+      [attributeName.providerId]: attempt.providerId,
+      [attributeName.providerKind]: attempt.providerKind,
+      [attributeName.genAiResponseModel]: attempt.modelId,
+      ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
+    },
   });
 }
 
-function throwIfCountAborted(session: RequestSession, signal: AbortSignal): void {
+function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
   try {
     signal.throwIfAborted();
   } catch (error) {
     session.finish({ outcome: 'cancelled' });
     throw error;
   }
-}
-
-function attemptBase(provider: RuntimeProviderInstance, modelId: string, startedAt: number) {
-  return {
-    providerId: provider.id,
-    modelId,
-    providerKind: provider.kind,
-    durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-  };
 }

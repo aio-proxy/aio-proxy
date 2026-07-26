@@ -60,7 +60,7 @@ type SelectedSession = LogicalRequestContext['session'];
 
 export class LogicalSessionStore {
   readonly #repository: LogicalSessionRepository;
-  readonly #logger?: ServerLogSink;
+  readonly #logger: ServerLogSink | undefined;
   readonly #now: () => Date;
   readonly #ttlMs: number;
   readonly #maxEntries: number;
@@ -86,7 +86,13 @@ export class LogicalSessionStore {
         ? undefined
         : this.#safeFindAffinity(selected.identity, requestedModelId, now, requestId);
 
-    return { ...context, context, identity: selected.identity, resolvedBy: selected.resolvedBy, affinity };
+    return {
+      ...context,
+      context,
+      identity: selected.identity,
+      resolvedBy: selected.resolvedBy,
+      ...(affinity === undefined ? {} : { affinity }),
+    };
   }
 
   /**
@@ -250,7 +256,7 @@ export class LogicalSessionStore {
     logServerEvent(this.#logger, {
       event: 'trace.persistence_failed',
       operation,
-      requestId,
+      ...(requestId === undefined ? {} : { requestId }),
       errorType: error instanceof Error ? error.name : typeof error,
     });
   }

@@ -1,22 +1,21 @@
-import type { ProviderProtocol, UsageRow } from "@aio-proxy/types";
-
-import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from "@aio-proxy/core";
+import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import {
   createPassthroughSseUsageObserver,
   extractPassthroughObservation,
   type PassthroughObservation,
   type PassthroughSseUsageObserver,
-} from "../passthrough-usage";
-import { isAbortError } from "../route-observation";
-import { normalizeAiSdkUsage, priceUsage } from "./pricing";
+} from '../passthrough-usage';
+import { isAbortError } from '../route-observation';
+import { normalizeAiSdkUsage, priceUsage } from './pricing';
 
 const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
 export type UsageCompletion =
-  | { readonly outcome: "success"; readonly usage?: UsageRow; readonly statusCode?: number }
-  | { readonly outcome: "failure"; readonly statusCode?: number; readonly errorCode?: string }
-  | { readonly outcome: "cancelled"; readonly statusCode?: number };
+  | { readonly outcome: 'success'; readonly usage?: UsageRow; readonly statusCode?: number; readonly ttftMs?: number }
+  | { readonly outcome: 'failure'; readonly statusCode?: number; readonly errorCode?: string; readonly ttftMs?: number }
+  | { readonly outcome: 'cancelled'; readonly statusCode?: number };
 
 export type Captured<T> = {
   readonly value: T;
@@ -27,6 +26,9 @@ export type StreamUsageOptions = {
   readonly stream: ReadableStream<TextStreamPart<ToolSet>>;
   readonly providerId: string;
   readonly modelId: string;
+  // performance.now() at attempt dispatch; present only when streaming, so
+  // ttft is recorded for streamed responses and skipped for buffered JSON.
+  readonly startedAt?: number;
 };
 
 export type PassthroughUsageOptions = {
@@ -35,6 +37,8 @@ export type PassthroughUsageOptions = {
   readonly providerId: string;
   readonly modelId: string;
   readonly onResponseId?: (responseId: string) => void;
+  // performance.now() at attempt dispatch; ttft is recorded only for SSE bodies.
+  readonly startedAt?: number;
 };
 
 export type UsageCapture = {
@@ -46,13 +50,14 @@ export function createUsageCapture(options: {
   readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
 }): UsageCapture {
   return {
-    stream({ stream, providerId, modelId }) {
+    stream({ stream, providerId, modelId, startedAt }) {
       const terminal = deferred<UsageCompletion>();
       const reader = stream.getReader();
       let cancelled = false;
       let aborted = false;
       let finished = false;
       let finishUsage: UsageRow | undefined;
+      let firstTokenAt: number | undefined;
       let released = false;
       const releaseReader = () => {
         if (!released) {
@@ -71,29 +76,36 @@ export function createUsageCapture(options: {
               controller.close();
               terminal.resolve(
                 aborted
-                  ? { outcome: "cancelled" }
+                  ? { outcome: 'cancelled' }
                   : finished
                     ? {
-                        outcome: "success",
-                        ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask, { source: "ai-sdk" })),
+                        outcome: 'success',
+                        ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask, { source: 'ai-sdk' })),
+                        ...ttftProperty(startedAt, firstTokenAt),
                       }
-                    : { outcome: "failure" },
+                    : { outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) },
               );
               return;
             }
-            if (next.value.type === "finish") {
+            if (next.value.type === 'finish') {
               finished = true;
               finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
-            } else if (next.value.type === "abort") {
+            } else if (next.value.type === 'abort') {
               aborted = true;
+            } else if (
+              firstTokenAt === undefined &&
+              startedAt !== undefined &&
+              (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta')
+            ) {
+              firstTokenAt = performance.now();
             }
             controller.enqueue(next.value);
           } catch (error) {
             releaseReader();
             if (cancelled || isAbortError(error)) {
-              terminal.resolve({ outcome: "cancelled" });
+              terminal.resolve({ outcome: 'cancelled' });
             } else {
-              terminal.resolve({ outcome: "failure" });
+              terminal.resolve({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
             }
             if (!cancelled) {
               controller.error(error);
@@ -102,7 +114,7 @@ export function createUsageCapture(options: {
         },
         async cancel(reason) {
           cancelled = true;
-          terminal.resolve({ outcome: "cancelled" });
+          terminal.resolve({ outcome: 'cancelled' });
           try {
             await reader.cancel(reason);
           } finally {
@@ -114,23 +126,24 @@ export function createUsageCapture(options: {
       return { value, completion: terminal.promise };
     },
 
-    passthrough({ response, protocol, providerId, modelId, onResponseId }) {
+    passthrough({ response, protocol, providerId, modelId, onResponseId, startedAt }) {
       if (response.status < 200 || response.status >= 400) {
-        return { value: response, completion: Promise.resolve({ outcome: "failure", statusCode: response.status }) };
+        return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
       }
       if (response.body === null) {
-        return { value: response, completion: Promise.resolve({ outcome: "success", statusCode: response.status }) };
+        return { value: response, completion: Promise.resolve({ outcome: 'success', statusCode: response.status }) };
       }
 
       const statusCode = response.status;
       const terminal = deferred<UsageCompletion>();
       const reader = response.body.getReader();
-      const isSse = response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true;
+      const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
       const sseObserver = isSse ? createPassthroughSseUsageObserver(protocol) : undefined;
       const decoder = isSse ? new TextDecoder() : undefined;
       const chunks: Uint8Array[] = [];
       let byteLength = 0;
       let captureJson = !isSse;
+      let firstTokenAt: number | undefined;
       let released = false;
       const releaseReader = () => {
         if (!released) {
@@ -145,6 +158,7 @@ export function createUsageCapture(options: {
             const next = await reader.read();
             if (!next.done) {
               if (sseObserver !== undefined && decoder !== undefined) {
+                if (firstTokenAt === undefined && startedAt !== undefined) firstTokenAt = performance.now();
                 sseObserver.feed(decoder.decode(next.value, { stream: true }));
               } else if (captureJson) {
                 const nextByteLength = byteLength + next.value.byteLength;
@@ -172,13 +186,18 @@ export function createUsageCapture(options: {
             const usage = await priceUsage(
               observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
               options.priceCatalogTask,
-              { source: "passthrough", protocol },
+              { source: 'passthrough', protocol },
             );
             if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
-            terminal.resolve({ outcome: "success", statusCode, ...usageProperty(usage) });
+            terminal.resolve({
+              outcome: 'success',
+              statusCode,
+              ...usageProperty(usage),
+              ...ttftProperty(startedAt, firstTokenAt),
+            });
           } catch (error) {
             done = true;
-            terminal.resolve({ outcome: isAbortError(error) ? "cancelled" : "failure", statusCode });
+            terminal.resolve({ outcome: isAbortError(error) ? 'cancelled' : 'failure', statusCode });
             controller.error(error);
           } finally {
             if (done) {
@@ -187,7 +206,7 @@ export function createUsageCapture(options: {
           }
         },
         async cancel(reason) {
-          terminal.resolve({ outcome: "cancelled", statusCode });
+          terminal.resolve({ outcome: 'cancelled', statusCode });
           try {
             await reader.cancel(reason);
           } finally {
@@ -225,6 +244,11 @@ function decodeChunks(chunks: readonly Uint8Array[], byteLength: number): string
 
 function usageProperty(usage: UsageRow | undefined): { readonly usage?: UsageRow } {
   return usage === undefined ? {} : { usage };
+}
+
+function ttftProperty(startedAt: number | undefined, firstTokenAt: number | undefined): { readonly ttftMs?: number } {
+  if (startedAt === undefined || firstTokenAt === undefined) return {};
+  return { ttftMs: Math.max(0, Math.round(firstTokenAt - startedAt)) };
 }
 
 function deferred<T>() {

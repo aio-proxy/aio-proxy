@@ -23,6 +23,8 @@ export const eventName = {
 export const attributeName = {
   requestId: 'aio_proxy.request.id',
   operation: 'aio_proxy.operation',
+  stream: 'aio_proxy.request.stream',
+  ttftMs: 'aio_proxy.response.ttft_ms',
   inboundProtocol: 'aio_proxy.protocol.inbound',
   sessionSource: 'aio_proxy.session.source',
   sessionId: 'aio_proxy.session.id',
