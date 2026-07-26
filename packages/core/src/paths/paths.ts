@@ -36,3 +36,7 @@ export function pidPath(): string {
 export function logPath(): string {
   return join(aioHome(), 'aio-proxy.log');
 }
+
+export function tmpDir(): string {
+  return join(aioHome(), 'tmp');
+}
