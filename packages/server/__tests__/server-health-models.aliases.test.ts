@@ -7,10 +7,12 @@ import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import {
+  clearModelsDevCatalog,
   expectedModel,
   expectedModelList,
   modelsDevModel,
-  noModelsDevCatalog,
+  seedEmptyModelsDevCatalog,
+  seedModelsDevCatalog,
   textOnlyCapabilities,
 } from './server.test-support';
 
@@ -25,11 +27,12 @@ describe('server routes', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    clearModelsDevCatalog();
   });
 
   test('Given added Anthropic aliases When models are requested Then upstream targets are hidden', async () => {
+    await seedEmptyModelsDevCatalog();
     const app = await createServer({
-      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           'anthropic-aliases': {
@@ -60,22 +63,15 @@ describe('server routes', () => {
   });
 
   test('Given alias metadata without a name When models are requested Then the alias slug is used', async () => {
-    const app = await createServer({
-      modelsDevCatalogTask: async () => ({
-        displayName: () => undefined,
-        find: () => undefined,
-        metadata(modelId) {
-          return {
-            // name === id: the alias carries no human-readable name, so the slug is used.
-            'friendly-alias': modelsDevModel('friendly-alias', 'friendly-alias', {
-              limit: { context: 128_000, input: 100, output: 10 },
-            }),
-            'upstream-model': modelsDevModel('upstream-model', 'Upstream Model', {
-              limit: { context: 128_000, input: 200, output: 20 },
-            }),
-          }[modelId];
-        },
+    // Metadata is read from the alias slug's own entry. name === id, so the
+    // alias carries no human-readable name and the slug is used as the display
+    // name; the upstream modelId's own entry is never consulted.
+    await seedModelsDevCatalog({
+      'friendly-alias': modelsDevModel('friendly-alias', 'friendly-alias', {
+        limit: { context: 128_000, input: 100, output: 10 },
       }),
+    });
+    const app = await createServer({
       config: {
         providers: {
           api: {

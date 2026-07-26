@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import type { Model, Provider, ProviderMap } from '@opencode-ai/models';
 
-import { getModels } from '.';
+import { clearModelsCache, getModels } from '.';
 import { fileCacheStorage } from '../cache';
 
 const model = (id: string, name = id): Model => ({
@@ -48,6 +48,7 @@ beforeEach(async () => {
   home = mkdtempSync(join(tmpdir(), 'aio-proxy-models-dev-'));
   process.env.AIO_PROXY_HOME = home;
   await fileCacheStorage.setItem('models-dev-providers', providerMap);
+  clearModelsCache();
 });
 
 afterEach(() => {
@@ -84,5 +85,20 @@ describe('getModels', () => {
     const result = await getModels(['no-such-model']);
     expect(result).toHaveProperty('no-such-model');
     expect(result['no-such-model']).toBeUndefined();
+  });
+
+  test('re-querying an unknown id stays undefined (misses are not cached)', async () => {
+    await getModels(['no-such-model']);
+    const result = await getModels(['no-such-model']);
+    expect(result['no-such-model']).toBeUndefined();
+  });
+
+  test('clearModelsCache lets a re-seeded provider map take effect for the same id', async () => {
+    expect((await getModels(['gpt-5']))['gpt-5']?.name).toBe('gpt-5');
+    await fileCacheStorage.setItem('models-dev-providers', {
+      openai: provider('openai', { 'gpt-5': model('gpt-5', 'GPT-5 Renamed') }),
+    });
+    clearModelsCache();
+    expect((await getModels(['gpt-5']))['gpt-5']?.name).toBe('GPT-5 Renamed');
   });
 });

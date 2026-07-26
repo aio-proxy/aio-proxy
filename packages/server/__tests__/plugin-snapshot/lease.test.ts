@@ -63,7 +63,7 @@ test('an in-flight protocol response retains its old provider snapshot until the
     ...base.source,
     acquireProviderSnapshot: manager.acquire,
     currentProviderSnapshot: manager.current,
-    usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }),
+    usageCapture: createUsageCapture(),
   };
   const response = await handleProtocolRequest({
     adapter: defineProtocolAdapter(),
@@ -115,7 +115,7 @@ test.each(['EOF', 'cancel'] as const)(
       ...base.source,
       acquireProviderSnapshot: manager.acquire,
       currentProviderSnapshot: manager.current,
-      usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }),
+      usageCapture: createUsageCapture(),
     };
     const response = await handleProtocolRequest({
       adapter: defineProtocolAdapter(),

@@ -1,4 +1,8 @@
-import type { ModelsDevModel } from '@aio-proxy/core';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 export const config = {
@@ -33,7 +37,64 @@ export const config = {
   },
 };
 
-export const noModelsDevCatalog = async () => undefined;
+// The models.dev catalog now resolves through fileCacheStorage (keyed off
+// AIO_PROXY_HOME) and a process-wide LRU rather than an injected task. Seed
+// helpers point that catalog at an isolated home so a test controls exactly
+// which model metadata /v1/models sees, and clean up the home plus caches
+// afterwards.
+const originalAioHome = process.env.AIO_PROXY_HOME;
+let seededHome: string | undefined;
+
+function useIsolatedCatalogHome(): void {
+  seededHome = mkdtempSync(join(tmpdir(), 'aio-proxy-catalog-'));
+  process.env.AIO_PROXY_HOME = seededHome;
+  clearModelsCache();
+}
+
+// Reset the catalog home and caches. Pair every seed call with this in afterEach.
+export function clearModelsDevCatalog(): void {
+  clearModelsCache();
+  if (seededHome !== undefined) {
+    rmSync(seededHome, { force: true, recursive: true });
+    seededHome = undefined;
+  }
+  if (originalAioHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalAioHome;
+}
+
+// Point the catalog at an empty OpenRouter map: every model resolves to no
+// metadata, the replacement for the old `noModelsDevCatalog` task.
+export async function seedEmptyModelsDevCatalog(): Promise<void> {
+  useIsolatedCatalogHome();
+  await fileCacheStorage.setItem('models-dev-providers', { openrouter: { models: {} } });
+}
+
+// Seed catalog metadata keyed by the alias slug callers query. Each record is
+// placed under both OpenRouter and, for prefixed slugs, its pinned provider, so
+// getModels resolves it regardless of which lookup branch the slug takes.
+export async function seedModelsDevCatalog(models: Record<string, ModelsDevModel>): Promise<void> {
+  useIsolatedCatalogHome();
+  const providerModels: Record<string, Record<string, ModelsDevModel>> = {
+    anthropic: {},
+    google: {},
+    openai: {},
+    openrouter: {},
+  };
+  const prefixProvider = (slug: string): string =>
+    slug.startsWith('claude-')
+      ? 'anthropic'
+      : slug.startsWith('gemini-')
+        ? 'google'
+        : slug.startsWith('gpt-')
+          ? 'openai'
+          : 'openrouter';
+  for (const [slug, model] of Object.entries(models)) {
+    providerModels.openrouter[slug] = model;
+    providerModels[prefixProvider(slug)][slug] = model;
+  }
+  const providers = Object.fromEntries(Object.entries(providerModels).map(([id, models]) => [id, { models }]));
+  await fileCacheStorage.setItem('models-dev-providers', providers);
+}
 
 // A models.dev record double. Overrides let each test tweak just the fields it
 // exercises; the server derives the Anthropic capabilities shape from this raw

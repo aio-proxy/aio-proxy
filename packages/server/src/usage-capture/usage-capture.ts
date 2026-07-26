@@ -1,4 +1,4 @@
-import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import {
@@ -41,19 +41,18 @@ export type UsageCapture = {
   readonly passthrough: (options: PassthroughUsageOptions) => Captured<Response>;
 };
 
-export function createUsageCapture(options: {
-  readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
-}): UsageCapture {
+export function createUsageCapture(): UsageCapture {
   return {
-    stream: (streamOptions) => streamCapture(streamOptions, options.priceCatalogTask),
-    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.priceCatalogTask),
+    stream: (streamOptions) => streamCapture(streamOptions),
+    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions),
   };
 }
 
-function streamCapture(
-  { stream, providerId, modelId }: StreamUsageOptions,
-  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
-): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
+function streamCapture({
+  stream,
+  providerId,
+  modelId,
+}: StreamUsageOptions): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
   const reader = stream.getReader();
   let cancelled = false;
@@ -82,7 +81,7 @@ function streamCapture(
               : finished
                 ? {
                     outcome: 'success',
-                    ...usageProperty(await priceUsage(finishUsage, priceCatalogTask, { source: 'ai-sdk' })),
+                    ...usageProperty(await priceUsage(finishUsage, { source: 'ai-sdk' })),
                   }
                 : { outcome: 'failure' },
           );
@@ -121,10 +120,13 @@ function streamCapture(
   return { value, completion: terminal.promise };
 }
 
-function passthroughCapture(
-  { response, protocol, providerId, modelId, onResponseId }: PassthroughUsageOptions,
-  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
-): Captured<Response> {
+function passthroughCapture({
+  response,
+  protocol,
+  providerId,
+  modelId,
+  onResponseId,
+}: PassthroughUsageOptions): Captured<Response> {
   if (response.status < 200 || response.status >= 400) {
     return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
   }
@@ -181,7 +183,6 @@ function passthroughCapture(
               : {};
         const usage = await priceUsage(
           observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
-          priceCatalogTask,
           { source: 'passthrough', protocol },
         );
         if (observation.responseId !== undefined) onResponseId?.(observation.responseId);

@@ -8,16 +8,24 @@ import { createServer } from '@aio-proxy/server';
 import { DashboardRequestLogsResponseSchema, ProviderKind } from '@aio-proxy/types';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from './server.test-support';
 
 const homes: string[] = [];
 
 afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
+  clearModelsDevCatalog();
 });
 
 async function seededApp() {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-logs-'));
   homes.push(home);
+  // Display names now come from the models.dev catalog keyed by the id shown.
+  // name !== id, so each record supplies the human-readable name directly.
+  await seedModelsDevCatalog({
+    mini: modelsDevModel('mini', 'GPT Mini'),
+    'openai/gpt-5': modelsDevModel('openai/gpt-5', 'GPT-5'),
+  });
   const app = await createServer({
     config: {
       providers: {
@@ -31,11 +39,6 @@ async function seededApp() {
       },
     },
     dbHome: home,
-    modelsDevCatalogTask: async () => ({
-      displayName: (modelId) => ({ mini: 'GPT Mini', 'openai/gpt-5': 'GPT-5' })[modelId],
-      find: () => undefined,
-      metadata: () => undefined,
-    }),
   });
   const handle = openDb({ home });
   const store = createRequestLogStore(handle.db);

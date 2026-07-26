@@ -1,4 +1,4 @@
-import { type ModelsDevCatalog, parseRuntimeConfig } from '@aio-proxy/core';
+import { parseRuntimeConfig } from '@aio-proxy/core';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 
@@ -39,7 +39,6 @@ export type CreateServerOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
-  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly port?: number;
   readonly host?: string;
@@ -154,7 +153,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
     ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
     ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
-    ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
     ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),

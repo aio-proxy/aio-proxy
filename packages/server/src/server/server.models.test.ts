@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { createServer as createBaseServer } from '@aio-proxy/server';
 
-import { config, noModelsDevCatalog } from '../../__tests__/server.test-support';
+import { config } from '../../__tests__/server.test-support';
 import { loopbackServer } from '../dashboard-auth/test-support';
 
 describe('GET /v1/models client_version routing', () => {
@@ -14,7 +14,7 @@ describe('GET /v1/models client_version routing', () => {
   let originalAioHome: string | undefined;
 
   const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
-    createBaseServer({ ...options, dbHome: dir, modelsDevCatalogTask: noModelsDevCatalog });
+    createBaseServer({ ...options, dbHome: dir });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-server-'));
@@ -31,6 +31,14 @@ describe('GET /v1/models client_version routing', () => {
     writeFileSync(
       join(cacheDir, 'codex-models.json'),
       JSON.stringify({ value: JSON.stringify({ models: [] }), updatedAt: new Date().toISOString() }),
+      'utf8',
+    );
+    // The models.dev catalog now resolves through the same fileCacheStorage
+    // home. Seed an empty provider map so slug metadata lookups resolve to
+    // nothing without hitting the network.
+    writeFileSync(
+      join(cacheDir, 'models-dev-providers.json'),
+      JSON.stringify({ value: { openrouter: { models: {} } }, updatedAt: new Date().toISOString() }),
       'utf8',
     );
   });

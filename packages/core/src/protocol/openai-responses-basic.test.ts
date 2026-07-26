@@ -35,6 +35,22 @@ describe('openAIResponsesAdapter', () => {
     expect(openAIResponsesAdapter.modelSse).toBe(writeOpenAIResponsesSSE);
   });
 
+  test('routes an unknown effort as a variant but omits it from AI SDK settings', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'alias', input: 'hi', reasoning: { effort: 'ultra' } }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+    // Ingress keeps the raw level so raw passthrough and routing can use it,
+    // but the AI SDK call drops a level it does not know and defers to the
+    // provider default instead of forwarding an invalid enum.
+    expect(openAIResponsesAdapter.variant(parsed, {})).toBe('ultra');
+    const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
+    expect('reasoning' in invocation.settings).toBe(false);
+  });
+
   test('keeps custom tools portable outside the OpenAI Responses target', async () => {
     const base = await customInvocation();
     const portableMessage = base.messages[0];

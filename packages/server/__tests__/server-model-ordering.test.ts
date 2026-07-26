@@ -3,15 +3,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { ModelsDevCatalog } from '@aio-proxy/core';
 import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import {
+  clearModelsDevCatalog,
   expectedModel,
   expectedModelList,
   modelsDevModel,
-  noModelsDevCatalog,
+  seedEmptyModelsDevCatalog,
+  seedModelsDevCatalog,
   testCapabilities,
   testCapabilitySignals,
   textOnlyCapabilities,
@@ -28,34 +29,22 @@ describe('server routes', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    clearModelsDevCatalog();
   });
 
   test('Given duplicate models When models are requested Then the highest-weight provider owns each id', async () => {
-    const catalog: ModelsDevCatalog = {
-      displayName(modelId) {
-        return {
-          'claude-sonnet-4-6': 'Claude Sonnet 4.6',
-          'gpt-only': 'GPT Only',
-          shared: 'Shared Model',
-        }[modelId];
-      },
-      find() {
-        return undefined;
-      },
-      metadata(modelId) {
-        return {
-          'claude-sonnet-4-6': modelsDevModel('claude-sonnet-4-6', 'Claude Sonnet 4.6', {
-            ...testCapabilitySignals,
-            limit: { context: 1_000_000, input: 1_000_000, output: 128_000 },
-            release_date: '2026-01-15',
-          }),
-          'gpt-only': modelsDevModel('gpt-only', 'GPT Only', { release_date: '2026-02-30' }),
-          shared: modelsDevModel('shared', 'Shared Model'),
-        }[modelId];
-      },
-    };
+    // Metadata is keyed by the alias slug each provider exposes. displayName is
+    // derived from name !== id, so no separate display map is needed.
+    await seedModelsDevCatalog({
+      'claude-sonnet-4-6': modelsDevModel('claude-sonnet-4-6', 'Claude Sonnet 4.6', {
+        ...testCapabilitySignals,
+        limit: { context: 1_000_000, input: 1_000_000, output: 128_000 },
+        release_date: '2026-01-15',
+      }),
+      'gpt-only': modelsDevModel('gpt-only', 'GPT Only', { release_date: '2026-02-30' }),
+      shared: modelsDevModel('shared', 'Shared Model'),
+    });
     const app = await createServer({
-      modelsDevCatalogTask: async () => catalog,
       config: {
         providers: {
           low: {
@@ -107,8 +96,8 @@ describe('server routes', () => {
   });
 
   test('Given equal provider weights When models are requested Then configuration order breaks ties', async () => {
+    await seedEmptyModelsDevCatalog();
     const app = await createServer({
-      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           first: {

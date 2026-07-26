@@ -24,7 +24,6 @@ const provider = {
 function fakeState(): ServerState {
   return {
     acquireProviderSnapshot: () => ({ snapshot: { providers: [provider] }, release() {} }),
-    modelsDevCatalog: async () => undefined,
   } as unknown as ServerState;
 }
 

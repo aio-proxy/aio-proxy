@@ -1,4 +1,4 @@
-import { type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
+import { getModels, type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
 import { filter, flatMap, map, pipe, uniqBy } from 'es-toolkit/fp';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -43,10 +43,13 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
       uniqBy(({ slug }) => slug),
     );
 
-    const catalog = routes.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
+    // metadata is read from the alias slug's own catalog entry, never the
+    // upstream modelId, so a single batched lookup keyed by slug suffices.
+    const metadataBySlug =
+      routes.length === 0 ? {} : await getModels(routes.map((route) => route.slug)).catch(() => ({}));
 
     return map((route: ModelRouteCandidate): ResolvedModel => {
-      const metadata = catalog?.metadata(route.slug);
+      const metadata = metadataBySlug[route.slug];
       return {
         slug: route.slug,
         modelId: route.modelId,
