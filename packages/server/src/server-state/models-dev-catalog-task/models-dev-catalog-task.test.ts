@@ -57,10 +57,10 @@ test('model listing and usage pricing share one cached models.dev fetch', async 
 
   try {
     expect((await state.modelsDevCatalog())?.metadata('gpt-5.5')).toMatchObject({
-      displayName: 'GPT-5.5',
-      maxInputTokens: 120_000,
-      maxTokens: 8_000,
-      releaseDate: '2026-01-15',
+      id: 'openai/gpt-5.5',
+      name: 'GPT-5.5',
+      limit: { context: 128_000, input: 120_000, output: 8_000 },
+      release_date: '2026-01-15',
     });
     const captured = state.usageCapture.stream({
       providerId: 'provider',

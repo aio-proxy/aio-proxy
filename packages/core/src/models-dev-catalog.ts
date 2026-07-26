@@ -1,11 +1,4 @@
-import {
-  type Modalities,
-  type Model,
-  Models,
-  type ProviderMap,
-  type ReasoningOption,
-  type RequestOptions,
-} from '@opencode-ai/models';
+import { type Model, Models, type ProviderMap, type RequestOptions } from '@opencode-ai/models';
 
 import type { OpenRouterModelPrice } from './usage-pricing';
 
@@ -15,31 +8,20 @@ export type OpenRouterPriceCatalog = {
 
 export type ModelsDevCatalog = OpenRouterPriceCatalog & {
   readonly displayName: (modelId: string) => string | undefined;
-  readonly metadata: (modelId: string) => ModelsDevModelMetadata | undefined;
-};
-
-// Raw models.dev signals are passed through untouched; consumers that need a
-// provider-specific shape (e.g. the Anthropic capabilities superset on
-// /v1/models) derive it at their own boundary.
-export type ModelsDevModelMetadata = {
-  readonly reasoning?: boolean;
-  readonly reasoning_options?: readonly ReasoningOption[];
-  readonly modalities?: Modalities;
-  readonly structured_output?: boolean;
-  readonly displayName?: string;
-  readonly maxInputTokens?: number;
-  readonly maxTokens?: number;
-  readonly releaseDate?: string;
+  // The raw models.dev record. Consumers derive whatever provider-specific shape
+  // they need (Anthropic capabilities, Codex catalog rows, token limits) at their
+  // own boundary; the catalog itself passes the upstream Model through untouched.
+  readonly metadata: (modelId: string) => Model | undefined;
 };
 
 export type FetchModelsDevProviders = (options?: RequestOptions) => Promise<ProviderMap>;
 export type FetchOpenRouterPrices = FetchModelsDevProviders;
 
 type MetadataCatalog = {
-  readonly byModelId: ReadonlyMap<string, ModelsDevModelMetadata>;
-  readonly byOpenRouterBareId: ReadonlyMap<string, ModelsDevModelMetadata>;
-  readonly byOpenRouterId: ReadonlyMap<string, ModelsDevModelMetadata>;
-  readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, ModelsDevModelMetadata>>;
+  readonly byModelId: ReadonlyMap<string, Model>;
+  readonly byOpenRouterBareId: ReadonlyMap<string, Model>;
+  readonly byOpenRouterId: ReadonlyMap<string, Model>;
+  readonly byProvider: ReadonlyMap<string, ReadonlyMap<string, Model>>;
 };
 
 const modelsDev = Models.make();
@@ -58,7 +40,10 @@ export async function createModelsDevCatalog(
 
   return {
     displayName(modelId) {
-      return resolveMetadata(metadata, modelId)?.displayName;
+      const model = resolveMetadata(metadata, modelId);
+      // A record whose human name equals its id carries no real display name;
+      // report undefined so callers fall back to their own alias/slug.
+      return model === undefined || model.name === model.id ? undefined : model.name;
     },
     find(modelId) {
       return byId.get(modelId) ?? byBareId.get(modelId);
@@ -117,27 +102,26 @@ function parsePrice(model: Model): readonly OpenRouterModelPrice[] {
 }
 
 function parseMetadata(providers: ProviderMap): MetadataCatalog {
-  const candidates = new Map<string, Map<string, ModelsDevModelMetadata>>();
-  const byOpenRouterId = new Map<string, ModelsDevModelMetadata>();
-  const byProvider = new Map<string, ReadonlyMap<string, ModelsDevModelMetadata>>();
+  const candidates = new Map<string, Map<string, Model>>();
+  const byOpenRouterId = new Map<string, Model>();
+  const byProvider = new Map<string, ReadonlyMap<string, Model>>();
 
   for (const [providerId, provider] of Object.entries(providers)) {
-    const providerMetadata = new Map<string, ModelsDevModelMetadata>();
+    const providerMetadata = new Map<string, Model>();
     for (const model of Object.values(provider.models)) {
       const bareId = model.id.split('/').at(-1) ?? model.id;
-      const metadata = metadataFromProvider(model);
-      providerMetadata.set(model.id, metadata);
-      providerMetadata.set(bareId, metadata);
-      addMetadataCandidate(candidates, model.id, metadata);
-      addMetadataCandidate(candidates, bareId, metadata);
+      providerMetadata.set(model.id, model);
+      providerMetadata.set(bareId, model);
+      addMetadataCandidate(candidates, model.id, model);
+      addMetadataCandidate(candidates, bareId, model);
       if (providerId === openRouterProviderId) {
-        byOpenRouterId.set(model.id, metadata);
+        byOpenRouterId.set(model.id, model);
       }
     }
     byProvider.set(providerId, providerMetadata);
   }
 
-  const byModelId = new Map<string, ModelsDevModelMetadata>();
+  const byModelId = new Map<string, Model>();
   for (const [modelId, values] of candidates) {
     if (values.size === 1) {
       const metadata = values.values().next().value;
@@ -152,7 +136,7 @@ function parseMetadata(providers: ProviderMap): MetadataCatalog {
   };
 }
 
-function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevModelMetadata | undefined {
+function resolveMetadata(catalog: MetadataCatalog, modelId: string): Model | undefined {
   const slashIndex = modelId.indexOf('/');
   const bareId = modelId.split('/').at(-1) ?? modelId;
   const providerId = slashIndex > 0 ? modelId.slice(0, slashIndex) : canonicalProviderId(bareId);
@@ -177,25 +161,11 @@ function canonicalProviderId(modelId: string): 'anthropic' | 'openai' | undefine
   return undefined;
 }
 
-function metadataFromProvider(model: Model): ModelsDevModelMetadata {
-  return {
-    ...(model.name === model.id ? {} : { displayName: model.name }),
-    ...(model.reasoning_options === undefined ? {} : { reasoning_options: model.reasoning_options }),
-    modalities: model.modalities,
-    maxInputTokens: model.limit.input ?? model.limit.context,
-    maxTokens: model.limit.output,
-    reasoning: model.reasoning,
-    releaseDate: model.release_date,
-    ...(model.structured_output === undefined ? {} : { structured_output: model.structured_output }),
-  };
-}
-
-function addMetadataCandidate(
-  candidates: Map<string, Map<string, ModelsDevModelMetadata>>,
-  modelId: string,
-  metadata: ModelsDevModelMetadata,
-): void {
-  const values = candidates.get(modelId) ?? new Map<string, ModelsDevModelMetadata>();
-  values.set(JSON.stringify(metadata), metadata);
+function addMetadataCandidate(candidates: Map<string, Map<string, Model>>, modelId: string, model: Model): void {
+  const values = candidates.get(modelId) ?? new Map<string, Model>();
+  // Dedup by full content: two providers exposing the same id with identical
+  // records collapse to one, but differing records stay in conflict and are
+  // dropped by parseMetadata (size > 1).
+  values.set(JSON.stringify(model), model);
   candidates.set(modelId, values);
 }

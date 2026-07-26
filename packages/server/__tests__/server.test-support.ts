@@ -1,4 +1,4 @@
-import type { ModelsDevModelMetadata } from '@aio-proxy/core';
+import type { ModelsDevModel } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 export const config = {
@@ -35,12 +35,26 @@ export const config = {
 
 export const noModelsDevCatalog = async () => undefined;
 
-// Raw models.dev signals injected into a catalog metadata row. The server
-// derives the Anthropic capabilities shape from these at the /v1/models boundary.
-export const testCapabilityMetadata: Pick<
-  ModelsDevModelMetadata,
-  'reasoning' | 'reasoning_options' | 'modalities' | 'structured_output'
-> = {
+// A models.dev record double. Overrides let each test tweak just the fields it
+// exercises; the server derives the Anthropic capabilities shape from this raw
+// Model at the /v1/models boundary.
+export const modelsDevModel = (id: string, name: string, overrides: Partial<ModelsDevModel> = {}): ModelsDevModel => ({
+  attachment: false,
+  description: '',
+  id,
+  last_updated: '2026-01-15',
+  limit: { context: 128_000, output: 8_000 },
+  modalities: { input: ['text'], output: ['text'] },
+  name,
+  open_weights: false,
+  reasoning: false,
+  release_date: '2026-01-15',
+  tool_call: false,
+  ...overrides,
+});
+
+// The capability signals shared by the /v1/models capabilities test.
+export const testCapabilitySignals: Partial<ModelsDevModel> = {
   reasoning: true,
   reasoning_options: [
     { type: 'effort', values: ['low', 'medium', 'high'] },
@@ -51,6 +65,26 @@ export const testCapabilityMetadata: Pick<
 };
 
 // The Anthropic capabilities shape the server is expected to emit for the row above.
+// The capabilities shape derived from a default text-only, non-reasoning Model
+// (modelsDevModel with no overrides). Every capability is unsupported.
+export const textOnlyCapabilities = {
+  effort: {
+    high: { supported: false },
+    low: { supported: false },
+    max: { supported: false },
+    medium: { supported: false },
+    supported: false,
+    xhigh: { supported: false },
+  },
+  image_input: { supported: false },
+  pdf_input: { supported: false },
+  structured_outputs: { supported: false },
+  thinking: {
+    supported: false,
+    types: { adaptive: { supported: false }, enabled: { supported: false } },
+  },
+};
+
 export const testCapabilities = {
   effort: {
     high: { supported: true },
@@ -70,7 +104,7 @@ export const testCapabilities = {
 };
 
 type ExpectedModelMetadata = {
-  readonly capabilities?: typeof testCapabilities;
+  readonly capabilities?: typeof testCapabilities | typeof textOnlyCapabilities;
   readonly created?: number;
   readonly createdAt?: string;
   readonly maxInputTokens?: number;

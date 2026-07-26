@@ -10,9 +10,11 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import {
   expectedModel,
   expectedModelList,
+  modelsDevModel,
   noModelsDevCatalog,
   testCapabilities,
-  testCapabilityMetadata,
+  testCapabilitySignals,
+  textOnlyCapabilities,
 } from './server.test-support';
 
 describe('server routes', () => {
@@ -42,15 +44,13 @@ describe('server routes', () => {
       },
       metadata(modelId) {
         return {
-          'claude-sonnet-4-6': {
-            ...testCapabilityMetadata,
-            displayName: 'Claude Sonnet 4.6',
-            maxInputTokens: 1_000_000,
-            maxTokens: 128_000,
-            releaseDate: '2026-01-15',
-          },
-          'gpt-only': { displayName: 'GPT Only', releaseDate: '2026-02-30' },
-          shared: { displayName: 'Shared Model' },
+          'claude-sonnet-4-6': modelsDevModel('claude-sonnet-4-6', 'Claude Sonnet 4.6', {
+            ...testCapabilitySignals,
+            limit: { context: 1_000_000, input: 1_000_000, output: 128_000 },
+            release_date: '2026-01-15',
+          }),
+          'gpt-only': modelsDevModel('gpt-only', 'GPT Only', { release_date: '2026-02-30' }),
+          shared: modelsDevModel('shared', 'Shared Model'),
         }[modelId];
       },
     };
@@ -88,8 +88,20 @@ describe('server routes', () => {
           maxInputTokens: 1_000_000,
           maxTokens: 128_000,
         }),
-        expectedModel('shared', 'high', 'Shared Model'),
-        expectedModel('gpt-only', 'low', 'GPT Only'),
+        expectedModel('shared', 'high', 'Shared Model', {
+          capabilities: textOnlyCapabilities,
+          created: 1_768_435_200,
+          createdAt: '2026-01-15T00:00:00.000Z',
+          maxInputTokens: 128_000,
+          maxTokens: 8_000,
+        }),
+        expectedModel('gpt-only', 'low', 'GPT Only', {
+          capabilities: textOnlyCapabilities,
+          created: 0,
+          createdAt: '1970-01-01T00:00:00Z',
+          maxInputTokens: 128_000,
+          maxTokens: 8_000,
+        }),
       ]),
     );
   });

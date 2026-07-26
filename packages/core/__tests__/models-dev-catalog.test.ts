@@ -95,21 +95,19 @@ describe('models.dev catalog', () => {
   test('prefers complete OpenRouter metadata and keeps provider fallbacks', async () => {
     const catalog = await createModelsDevCatalog(async () => api);
 
-    expect(catalog.metadata('gpt-5.5')).toEqual({
-      displayName: 'GPT-5.5',
-      maxInputTokens: 120_000,
-      maxTokens: 8_000,
+    expect(catalog.metadata('gpt-5.5')).toMatchObject({
+      id: 'openai/gpt-5.5',
+      name: 'GPT-5.5',
+      limit: { context: 128_000, input: 120_000, output: 8_000 },
       modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
       reasoning: true,
       reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
-      releaseDate: '2026-01-15',
       structured_output: true,
     });
     expect(catalog.metadata('claude-sonnet-4-6')).toMatchObject({
-      displayName: 'Claude Sonnet 4.6',
-      maxInputTokens: 1_000_000,
-      maxTokens: 128_000,
-      releaseDate: '2026-02-17',
+      name: 'Claude Sonnet 4.6',
+      limit: { context: 1_000_000, output: 128_000 },
+      release_date: '2026-02-17',
     });
     expect(catalog.metadata('proxy/gpt-5.5')).toEqual(catalog.metadata('gpt-5.5'));
     expect(catalog.metadata('openai/gpt-5.5')).toEqual(catalog.metadata('gpt-5.5'));

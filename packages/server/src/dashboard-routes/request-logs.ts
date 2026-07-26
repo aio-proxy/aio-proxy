@@ -70,15 +70,15 @@ export const createDashboardRequestLogsRoute = (state: ServerState) =>
               item.requestedModelId);
         const requestedModelDisplayName =
           finalProvider?.modelMetadata?.[requestedModelId]?.displayName ??
-          catalog?.metadata(item.requestedModelId)?.displayName ??
-          catalog?.metadata(requestedModelId)?.displayName;
+          catalog?.displayName(item.requestedModelId) ??
+          catalog?.displayName(requestedModelId);
         const finalProviderName =
           item.finalProviderId === undefined ? undefined : providerNames.get(item.finalProviderId);
         const finalModelDisplayName =
           item.finalModelId === undefined
             ? undefined
             : (finalProvider?.modelMetadata?.[item.finalModelId]?.displayName ??
-              catalog?.metadata(item.finalModelId)?.displayName);
+              catalog?.displayName(item.finalModelId));
         return {
           ...item,
           ...(requestedModelDisplayName === undefined ? {} : { requestedModelDisplayName }),

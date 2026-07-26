@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { expectedModel, expectedModelList, noModelsDevCatalog } from './server.test-support';
+import {
+  expectedModel,
+  expectedModelList,
+  modelsDevModel,
+  noModelsDevCatalog,
+  textOnlyCapabilities,
+} from './server.test-support';
 
 describe('server routes', () => {
   let dir: string;
@@ -60,8 +66,13 @@ describe('server routes', () => {
         find: () => undefined,
         metadata(modelId) {
           return {
-            'friendly-alias': { maxInputTokens: 100, maxTokens: 10 },
-            'upstream-model': { displayName: 'Upstream Model', maxInputTokens: 200, maxTokens: 20 },
+            // name === id: the alias carries no human-readable name, so the slug is used.
+            'friendly-alias': modelsDevModel('friendly-alias', 'friendly-alias', {
+              limit: { context: 128_000, input: 100, output: 10 },
+            }),
+            'upstream-model': modelsDevModel('upstream-model', 'Upstream Model', {
+              limit: { context: 128_000, input: 200, output: 20 },
+            }),
           }[modelId];
         },
       }),
@@ -83,6 +94,9 @@ describe('server routes', () => {
     expect(await response.json()).toEqual(
       expectedModelList([
         expectedModel('friendly-alias', 'api', 'friendly-alias', {
+          capabilities: textOnlyCapabilities,
+          created: 1_768_435_200,
+          createdAt: '2026-01-15T00:00:00.000Z',
           maxInputTokens: 100,
           maxTokens: 10,
         }),

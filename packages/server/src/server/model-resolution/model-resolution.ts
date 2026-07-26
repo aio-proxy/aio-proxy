@@ -1,4 +1,4 @@
-import { type ModelsDevModelMetadata, modelRoutes } from '@aio-proxy/core';
+import { type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
 import { filter, flatMap, map, pipe, uniqBy } from 'es-toolkit/fp';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -8,7 +8,7 @@ export type ResolvedModel = {
   readonly slug: string;
   readonly modelId: string;
   readonly provider: RuntimeProviderInstance;
-  readonly metadata: ModelsDevModelMetadata | undefined;
+  readonly metadata: ModelsDevModel | undefined;
   readonly displayName: string;
 };
 
@@ -25,9 +25,10 @@ function resolveDisplayName(
   provider: RuntimeProviderInstance,
   modelId: string,
   slug: string,
-  metadata: ModelsDevModelMetadata | undefined,
+  metadata: ModelsDevModel | undefined,
 ): string {
-  return provider.modelMetadata?.[modelId]?.displayName ?? metadata?.displayName ?? slug;
+  const catalogName = metadata !== undefined && metadata.name !== metadata.id ? metadata.name : undefined;
+  return provider.modelMetadata?.[modelId]?.displayName ?? catalogName ?? slug;
 }
 
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {

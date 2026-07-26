@@ -32,13 +32,9 @@ async function seededApp() {
     },
     dbHome: home,
     modelsDevCatalogTask: async () => ({
-      displayName: () => undefined,
+      displayName: (modelId) => ({ mini: 'GPT Mini', 'openai/gpt-5': 'GPT-5' })[modelId],
       find: () => undefined,
-      metadata: (modelId) =>
-        ({
-          mini: { displayName: 'GPT Mini' },
-          'openai/gpt-5': { displayName: 'GPT-5' },
-        })[modelId],
+      metadata: () => undefined,
     }),
   });
   const handle = openDb({ home });

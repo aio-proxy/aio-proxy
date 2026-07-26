@@ -1,4 +1,4 @@
-import type { ModelsDevModelMetadata } from '@aio-proxy/core';
+import type { ModelsDevModel } from '@aio-proxy/core';
 import { zod } from '@aio-proxy/plugin-sdk';
 
 import instructions from './default-instructions.md' with { type: 'text' };
@@ -34,7 +34,7 @@ const ScaffoldSchema = zod.object({
 type AssembleInput = {
   slug: string;
   displayName: string;
-  metadata: ModelsDevModelMetadata | undefined;
+  metadata: ModelsDevModel | undefined;
 };
 
 function reasoningLevel(effort: ReasoningLevel) {
@@ -45,7 +45,7 @@ function reasoningLevel(effort: ReasoningLevel) {
 // from the models.dev `effort` reasoning option. No metadata at all falls back
 // to the full list (unknown, assume all); an explicit non-reasoning model
 // yields an empty list, so we advertise no reasoning and no default level.
-function reasoningLevelsFor(metadata: ModelsDevModelMetadata | undefined): readonly ReasoningLevel[] {
+function reasoningLevelsFor(metadata: ModelsDevModel | undefined): readonly ReasoningLevel[] {
   if (metadata === undefined) return REASONING_LEVELS;
   const effort = metadata.reasoning_options?.find((option) => option.type === 'effort');
   if (effort === undefined) return [];
@@ -55,13 +55,13 @@ function reasoningLevelsFor(metadata: ModelsDevModelMetadata | undefined): reado
 
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
   const text = instructions.replaceAll('{{model_name}}', input.slug);
-  const contextWindow = input.metadata?.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW;
+  const contextWindow = input.metadata?.limit.input ?? input.metadata?.limit.context ?? DEFAULT_CONTEXT_WINDOW;
 
   // Codex's InputModality enum accepts only 'text' and 'image'; emitting 'pdf'
   // (a common models.dev signal, e.g. Claude) makes the client reject the whole
   // catalog. Case A passes the upstream codex row through verbatim, so this only
   // constrains synthesized (Case B) entries.
-  const modalityInputs = input.metadata?.modalities?.input;
+  const modalityInputs = input.metadata?.modalities.input;
   const inputModalities = modalityInputs
     ? ['text', ...(modalityInputs.includes('image') ? ['image'] : [])]
     : ['text', 'image'];
@@ -76,7 +76,7 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     slug: input.slug,
     id: input.slug,
     display_name: input.displayName,
-    description: scaffold.description,
+    description: input.metadata?.description || scaffold.description,
     priority: scaffold.priority,
     supported_in_api: scaffold.supported_in_api,
     visibility: scaffold.visibility,

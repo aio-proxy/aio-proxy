@@ -148,15 +148,15 @@ type ModelListItem = OpenAIModel &
 async function listModels(state: ServerState) {
   const resolved = await resolveEnabledModels(state);
   const data = resolved.map(({ slug, provider, metadata, displayName }): ModelListItem => {
-    const timestamps = modelTimestamps(metadata?.releaseDate);
+    const timestamps = modelTimestamps(metadata?.release_date);
     return {
       capabilities: metadata === undefined ? null : toAnthropicCapabilities(metadata),
       created: timestamps.created,
       created_at: timestamps.createdAt,
       display_name: displayName,
       id: slug,
-      max_input_tokens: metadata?.maxInputTokens ?? null,
-      max_tokens: metadata?.maxTokens ?? null,
+      max_input_tokens: metadata === undefined ? null : (metadata.limit.input ?? metadata.limit.context),
+      max_tokens: metadata?.limit.output ?? null,
       object: 'model',
       owned_by: provider.id,
       type: 'model',
