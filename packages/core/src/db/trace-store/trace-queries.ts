@@ -11,6 +11,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { traceSpan } from '../schema';
 import { mergeAttributes } from './span-projection';
 import type { TracesQuery } from './types';
+import { hasAnyUsage } from './usage-fields';
 
 const STATUS_CODE_TO_OTEL: Record<number, 'UNSET' | 'OK' | 'ERROR'> = {
   0: 'UNSET',
@@ -38,21 +39,20 @@ function durationMs(startedAt: Date, endedAt: Date | null): number {
 }
 
 function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary {
-  const usage =
-    row.inputTokens === null && row.estimatedCostUsd === null
-      ? undefined
-      : ({
-          ...(row.finalProviderId !== null ? { providerId: row.finalProviderId } : {}),
-          ...(row.finalModelId !== null ? { modelId: row.finalModelId } : {}),
-          ...(row.priceModelId !== null ? { priceModelId: row.priceModelId } : {}),
-          ...(row.inputTokens !== null ? { inputTokens: row.inputTokens } : {}),
-          ...(row.outputTokens !== null ? { outputTokens: row.outputTokens } : {}),
-          ...(row.totalTokens !== null ? { totalTokens: row.totalTokens } : {}),
-          ...(row.cacheReadTokens !== null ? { cacheReadTokens: row.cacheReadTokens } : {}),
-          ...(row.cacheWriteTokens !== null ? { cacheWriteTokens: row.cacheWriteTokens } : {}),
-          ...(row.reasoningTokens !== null ? { reasoningTokens: row.reasoningTokens } : {}),
-          ...(row.estimatedCostUsd !== null ? { estimatedCostUsd: row.estimatedCostUsd } : {}),
-        } as DashboardTraceSummary['usage']);
+  const usage = !hasAnyUsage(row)
+    ? undefined
+    : ({
+        ...(row.finalProviderId !== null ? { providerId: row.finalProviderId } : {}),
+        ...(row.finalModelId !== null ? { modelId: row.finalModelId } : {}),
+        ...(row.priceModelId !== null ? { priceModelId: row.priceModelId } : {}),
+        ...(row.inputTokens !== null ? { inputTokens: row.inputTokens } : {}),
+        ...(row.outputTokens !== null ? { outputTokens: row.outputTokens } : {}),
+        ...(row.totalTokens !== null ? { totalTokens: row.totalTokens } : {}),
+        ...(row.cacheReadTokens !== null ? { cacheReadTokens: row.cacheReadTokens } : {}),
+        ...(row.cacheWriteTokens !== null ? { cacheWriteTokens: row.cacheWriteTokens } : {}),
+        ...(row.reasoningTokens !== null ? { reasoningTokens: row.reasoningTokens } : {}),
+        ...(row.estimatedCostUsd !== null ? { estimatedCostUsd: row.estimatedCostUsd } : {}),
+      } as DashboardTraceSummary['usage']);
 
   return {
     traceId: row.traceId,

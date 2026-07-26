@@ -1,5 +1,6 @@
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { listRequestLogs } from './request-logs';
 import { findAffinity, resolveResponse } from './session-state';
 import { complete, prune, recover, startRoot } from './trace-lifecycle';
 import { find, list } from './trace-queries';
@@ -11,6 +12,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     startRoot: (input) => startRoot(db, input),
     complete: (input) => complete(db, input),
     list: (query) => list(db, query),
+    listRequestLogs: (query) => listRequestLogs(db, query),
     find: (traceId) => find(db, traceId),
     overview: (query) => overview(db, query),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),

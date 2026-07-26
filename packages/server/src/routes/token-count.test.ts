@@ -38,6 +38,23 @@ test('uses routing order and falls through candidates without count support', as
   expect(fixture.releases()).toBe(1);
 });
 
+test('opens the attempt span before the counter runs so the provider attempt gets real duration', async () => {
+  const fixture = countFixture([
+    provider({
+      id: 'slow',
+      tokenCount: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { inputTokens: 7 };
+      },
+    }),
+  ]);
+
+  expect(await (await fixture.anthropic()).json()).toEqual({ input_tokens: 7 });
+  // The span must cover the ~20ms counter; a near-zero span would mean it was
+  // opened only after countTokens resolved.
+  expect(fixture.recording.attempts[0]?.durationMs).toBeGreaterThanOrEqual(10);
+});
+
 test('uses descending Provider weight before lower configured candidates', async () => {
   const calls: string[] = [];
   const fixture = countFixture(

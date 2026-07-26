@@ -9,6 +9,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { traceSpan } from '../../schema';
 import type { UsageOverviewQuery } from '../types';
+import { usageColumns } from '../usage-fields';
 
 type ChartRow = {
   readonly bucket: string | number;
@@ -27,6 +28,11 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
   const { start, end, bucketUnit } = resolveRange(query.range, now);
   const rangeFilter = and(gte(traceSpan.endedAt, start), lte(traceSpan.endedAt, end));
 
+  const anyUsageColumn = sql.join(
+    usageColumns.map((column) => sql`${column} is not null`),
+    sql` or `,
+  );
+
   const summaryRow = db
     .select({
       estimatedCostUsd: sql<number>`coalesce(sum(${traceSpan.estimatedCostUsd}), 0)`.mapWith(Number),
@@ -34,8 +40,7 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
         sql<number>`coalesce(sum(case when ${traceSpan.estimatedCostUsd} is not null then 1 else 0 end), 0)`.mapWith(
           Number,
         ),
-      usageRequestCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.inputTokens} is not null then 1 else 0 end), 0)`.mapWith(Number),
+      usageRequestCount: sql<number>`coalesce(sum(case when ${anyUsageColumn} then 1 else 0 end), 0)`.mapWith(Number),
       requestCount: sql<number>`count(*)`.mapWith(Number),
       successCount:
         sql<number>`coalesce(sum(case when ${traceSpan.terminationReason} is null then 1 else 0 end), 0)`.mapWith(

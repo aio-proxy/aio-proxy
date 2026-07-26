@@ -161,6 +161,7 @@ async function countCandidates<TRequest, TContext>({
     if (lacksProviderTool(provider, candidateInvocation)) continue;
     throwIfCountAborted(session, rawRequest.signal);
     const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
+    const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
     try {
       const result = await withAttemptLogContext(
         { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
@@ -177,7 +178,8 @@ async function countCandidates<TRequest, TContext>({
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
         throw new TypeError('Provider token count must be a non-negative integer');
       }
-      startAttemptSpan(session, attempt, attemptIndex, 200).end();
+      attemptSpan.span.setAttribute(attributeName.httpStatusCode, 200);
+      attemptSpan.end();
       session.finish({
         outcome: 'success',
         finalProviderId: provider.id,
@@ -187,12 +189,12 @@ async function countCandidates<TRequest, TContext>({
       return Response.json(format(result.inputTokens));
     } catch (error) {
       if (rawRequest.signal.aborted) {
-        startAttemptSpan(session, attempt, attemptIndex).end({ outcome: 'cancelled' });
+        attemptSpan.end({ outcome: 'cancelled' });
         session.finish({ outcome: 'cancelled', finalProviderId: provider.id, finalModelId: candidate.modelId });
         throw rawRequest.signal.reason;
       }
       const mapped = adapter.errors.provider(error);
-      startAttemptSpan(session, attempt, attemptIndex).end(failureTerminal(mapped?.status));
+      attemptSpan.end(failureTerminal(mapped?.status));
     }
   }
 
@@ -206,19 +208,13 @@ function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelI
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
 }
 
-function startAttemptSpan(
-  session: RequestTraceSession,
-  attempt: CountAttempt,
-  index: number,
-  httpStatus?: number,
-): OpenSpan {
+function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
   return startPipelineSpan(session.rootContext, spanName.attempt, {
     attributes: {
       [attributeName.attemptIndex]: index,
       [attributeName.providerId]: attempt.providerId,
       [attributeName.providerKind]: attempt.providerKind,
       [attributeName.genAiResponseModel]: attempt.modelId,
-      ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
     },
   });
 }

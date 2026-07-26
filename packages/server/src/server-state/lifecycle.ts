@@ -116,7 +116,6 @@ export type ServerStateParts = Pick<
   | 'oauthLoginSessions'
   | 'providerSummaries'
   | 'reload'
-  | 'requestLog'
   | 'traceStore'
   | 'requestRecorder'
   | 'usageCapture'
@@ -158,7 +157,6 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     modelsDevCatalog: parts.modelsDevCatalog,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
-    requestLog: parts.requestLog,
     traceStore: parts.traceStore,
     logger,
     requestRecorder: parts.requestRecorder,

@@ -5,11 +5,11 @@ export {
   type RequestLogFinal,
   type RequestLogInsert,
   type RequestLogStore,
-  type RequestLogsQuery,
   type UsageOverviewQuery,
 } from './request-log';
 export { createTraceStore } from './trace-store';
 export type {
+  RequestLogsQuery,
   SessionAffinityObservation,
   SessionIdentity,
   StoredSpan,

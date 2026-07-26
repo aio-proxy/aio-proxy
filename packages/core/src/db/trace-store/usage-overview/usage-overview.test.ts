@@ -112,6 +112,23 @@ describe('usage overview from trace roots', () => {
     }
   });
 
+  test('counts usage from any persisted token field, not only inputTokens', () => {
+    const { handle, store } = makeStore();
+    try {
+      complete(store, 'a'.repeat(32), new Date(NOW.getTime() - 1000), NOW, {
+        finalProviderId: 'openrouter',
+        finalModelId: 'openai/gpt-5',
+        finalHttpStatus: 200,
+        usage: { providerId: 'openrouter', modelId: 'openai/gpt-5', outputTokens: 50 },
+      });
+
+      const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
+      expect(overview.summary.usageRequestCount).toBe(1);
+    } finally {
+      handle.close();
+    }
+  });
+
   test('keeps reserved and path-like model ids separate with chart-safe keys', () => {
     const { handle, store } = makeStore();
     try {

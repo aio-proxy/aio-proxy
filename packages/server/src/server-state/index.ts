@@ -9,7 +9,7 @@ import {
   Router,
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
-import { createRequestLogStore, createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
+import { createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import { createAccountRemovalCoordinator } from '../account-removal';
@@ -131,7 +131,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
   } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
-  const requestLog = createRequestLogStore(dbHandle.db);
   const traceStore = createTraceStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
@@ -163,7 +162,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     oauthLoginSessions,
     providerSummaries,
     reload,
-    requestLog,
     traceStore,
     requestRecorder,
     usageCapture,
