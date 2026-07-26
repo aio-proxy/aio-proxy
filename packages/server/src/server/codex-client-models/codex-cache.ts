@@ -55,15 +55,26 @@ async function downloadValidModels(
   }
 }
 
+// getItem rethrows non-ENOENT/SyntaxError failures (e.g. EACCES in a read-only
+// container). Treat any read failure as a cache miss so the endpoint downloads
+// or synthesizes instead of 500ing.
+async function readCache(ttlMs?: number): Promise<string | null> {
+  try {
+    return await fileCacheStorage.getItem<string>(CACHE_KEY, ttlMs === undefined ? undefined : { ttl: ttlMs });
+  } catch {
+    return null;
+  }
+}
+
 async function staleFallback(): Promise<readonly CodexUpstreamModel[]> {
-  return readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY)) ?? [];
+  return readEnvelope(await readCache()) ?? [];
 }
 
 export async function readCodexModelsCache(options: ReadOptions = {}): Promise<readonly CodexUpstreamModel[]> {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  const fresh = readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY, { ttl: ttlMs }));
+  const fresh = readEnvelope(await readCache(ttlMs));
   if (fresh !== undefined) return fresh;
 
   const valid = await downloadValidModels(fetchImpl, options.signal);

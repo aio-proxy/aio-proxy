@@ -114,6 +114,17 @@ test('passes a bounded abort signal to the upstream fetch', async () => {
   expect(seen).toBeInstanceOf(AbortSignal);
 });
 
+test('treats a cache read failure as a miss and downloads instead of throwing', async () => {
+  const getItem = spyOn(fileCacheStorage, 'getItem').mockRejectedValue(
+    Object.assign(new Error('permission denied'), { code: 'EACCES' }),
+  );
+  const fetchImpl = (async () => Response.json({ models: [upstreamItem] })) as unknown as typeof fetch;
+
+  const models = await readCodexModelsCache({ fetchImpl });
+  expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
+  getItem.mockRestore();
+});
+
 test('returns the stale cache when it is expired and the download fails', async () => {
   seedCache([upstreamItem], new Date(0).toISOString());
   const fetchImpl = (async () => {

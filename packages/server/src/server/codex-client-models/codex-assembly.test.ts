@@ -58,5 +58,21 @@ test('a non-reasoning model advertises no reasoning levels and no default', () =
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
   expect(entry.default_reasoning_level).toBe('');
-  expect(entry.input_modalities).toEqual(['text', 'image', 'pdf']);
+  // Codex's InputModality enum has no 'pdf'; a pdf-capable model must not leak it.
+  expect(entry.input_modalities).toEqual(['text', 'image']);
+});
+
+test('an effort option missing its values does not crash and yields no levels', () => {
+  const entry = assembleCodexModel({
+    slug: 'm',
+    displayName: 'M',
+    metadata: {
+      reasoning: true,
+      // Upstream JSON can omit `values` even though the type marks it required.
+      reasoning_options: [{ type: 'effort' } as unknown as { type: 'effort'; values: [] }],
+      modalities: { input: ['text'], output: ['text'] },
+    },
+  });
+  expect(entry.supported_reasoning_levels).toEqual([]);
+  expect(entry.default_reasoning_level).toBe('');
 });

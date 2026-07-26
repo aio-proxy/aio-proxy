@@ -49,7 +49,7 @@ function reasoningLevelsFor(metadata: ModelsDevModelMetadata | undefined): reado
   if (metadata === undefined) return REASONING_LEVELS;
   const effort = metadata.reasoning_options?.find((option) => option.type === 'effort');
   if (effort === undefined) return [];
-  const values = new Set(effort.values);
+  const values = new Set(effort.values ?? []);
   return REASONING_LEVELS.filter((level) => values.has(level));
 }
 
@@ -57,13 +57,13 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
   const text = instructions.replaceAll('{{model_name}}', input.slug);
   const contextWindow = input.metadata?.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW;
 
+  // Codex's InputModality enum accepts only 'text' and 'image'; emitting 'pdf'
+  // (a common models.dev signal, e.g. Claude) makes the client reject the whole
+  // catalog. Case A passes the upstream codex row through verbatim, so this only
+  // constrains synthesized (Case B) entries.
   const modalityInputs = input.metadata?.modalities?.input;
   const inputModalities = modalityInputs
-    ? [
-        'text',
-        ...(modalityInputs.includes('image') ? ['image'] : []),
-        ...(modalityInputs.includes('pdf') ? ['pdf'] : []),
-      ]
+    ? ['text', ...(modalityInputs.includes('image') ? ['image'] : [])]
     : ['text', 'image'];
 
   const levels = reasoningLevelsFor(input.metadata);
