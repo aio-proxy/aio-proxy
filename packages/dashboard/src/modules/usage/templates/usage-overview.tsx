@@ -44,7 +44,7 @@ export const UsageOverview: React.FC = () => {
         </EmptyHeader>
       </Empty>
     );
-  } else if (usage.data.summary.requestCount === 0) {
+  } else if (usage.data.summary.requestCount === 0n) {
     content = (
       <Empty className="min-h-80 bg-card">
         <EmptyHeader>
