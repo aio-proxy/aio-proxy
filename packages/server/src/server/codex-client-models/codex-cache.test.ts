@@ -74,6 +74,24 @@ test('skips a malformed upstream row instead of dropping the whole catalog', asy
   expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
 });
 
+test('does not cache an empty upstream result, so it refetches next time', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    // First response has no schema-valid rows; second one does.
+    return calls === 1
+      ? Response.json({ models: [{ slug: '', display_name: 42 }] })
+      : Response.json({ models: [upstreamItem] });
+  }) as unknown as typeof fetch;
+
+  const first = await readCodexModelsCache({ fetchImpl });
+  expect(first).toEqual([]);
+
+  const second = await readCodexModelsCache({ fetchImpl });
+  expect(second.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
+  expect(calls).toBe(2);
+});
+
 test('returns the stale cache when it is expired and the download fails', async () => {
   seedCache([upstreamItem], new Date(0).toISOString());
   const fetchImpl = (async () => {

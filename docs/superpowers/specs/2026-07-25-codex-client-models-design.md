@@ -81,15 +81,19 @@ schema for assembly. One schema, two consumers, no duplicated field lists.
 The Codex endpoint reads the upstream data from a plain file cache, never from the
 database and never from an in-memory-only cache:
 
-- Path: `~/.aio-proxy/codex_models_cache.json`, added to
-  `packages/core/src/paths/paths.ts` alongside `dbPath()` / `packagesDir()` (honoring
-  the `AIO_PROXY_HOME` override).
-- Content: the entire downloaded response plus a fetch timestamp, i.e.
-  `{ ...resp, fetched_at: <ISO string> }`.
-- Refresh: on request, if the file is missing or its `fetched_at` is older than the
-  catalog TTL, download `models.json` and rewrite the file; otherwise read it. The
-  large text lives only in this file, so the plugin catalog and `oauth_catalog` table
-  are untouched.
+- Storage: the shared `fileCacheStorage` (`packages/core/src/cache/file.ts`), keyed
+  `codex-models`, which resolves to
+  `~/.aio-proxy/tmp/cache-storage/codex-models.json` (honoring the `AIO_PROXY_HOME`
+  override). `fileCacheStorage` owns the `{ value, updatedAt }` envelope and the TTL
+  check, so the endpoint no longer manages its own path or `fetched_at`.
+- Content: `value` is the JSON string `{ models: [...] }` (the validated rows);
+  `updatedAt` is written by `fileCacheStorage`.
+- Refresh: on request, read with the catalog TTL. On a fresh hit, return it. On a
+  miss/expiry, download `models.json`, and on success store the validated rows. An
+  empty validated result is **not** cached (it would mask a later real catalog until
+  the TTL expires); on download failure, fall back to the stale entry (a second,
+  ttl-less read), else `[]`. The large text lives only in this cache file, so the
+  plugin catalog and `oauth_catalog` table are untouched.
 
 ### models-dev Catalog
 
@@ -159,7 +163,7 @@ item carries `availability_nux`, it is passed through unchanged; we never strip
 or inject it. This is the "template" group for ordering.
 
 Data path: the endpoint reads the full item from the file cache
-(`~/.aio-proxy/codex_models_cache.json`), matches on `slug`, and returns it verbatim
+(the `codex-models` `fileCacheStorage` entry), matches on `slug`, and returns it verbatim
 (only `slug`/`id` rewritten to the alias). The plugin catalog is not involved.
 
 ### Case B — no upstream row (synthesized)
@@ -220,8 +224,8 @@ directory (a declarative fixture, exempt from the 300-line limit).
 2. `packages/plugins/openai-chatgpt/src/catalog.ts` — consume the shared schema via
    `.pick(...)` for the lean fields it already keeps; behavior unchanged. Update
    `catalog.test.ts` if the schema source moves.
-3. `packages/core/src/paths/paths.ts` — add `codexModelsCachePath()` returning
-   `~/.aio-proxy/codex_models_cache.json`.
+3. `packages/core/src/cache/` — reuse the shared `fileCacheStorage` (keyed
+   `codex-models`) for the snapshot; the endpoint owns no bespoke path helper.
 4. `packages/server/src/server/codex-client-models/**` — new module: file-cache
    read/refresh, entry assembly (Case A / Case B), the `default-instructions.md`
    snapshot, and colocated tests.

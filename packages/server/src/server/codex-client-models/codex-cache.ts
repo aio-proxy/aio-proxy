@@ -46,6 +46,10 @@ export async function readCodexModelsCache(options: ReadOptions = {}): Promise<r
     if (!response.ok) throw new Error(`codex models request failed with ${response.status}`);
     const { models } = zod.object({ models: zod.array(zod.unknown()) }).parse(await response.json());
     const valid = keepValidModels(models);
+    // Don't cache an empty result: it would read back as a fresh hit and block
+    // refetching a real catalog until the TTL expires. Fall through to any stale
+    // copy, else return [] so callers synthesize (Case B).
+    if (valid.length === 0) return readEnvelope(await fileCacheStorage.getItem<string>(CACHE_KEY)) ?? [];
     await fileCacheStorage.setItem(CACHE_KEY, JSON.stringify({ models: valid }));
     return valid;
   } catch {

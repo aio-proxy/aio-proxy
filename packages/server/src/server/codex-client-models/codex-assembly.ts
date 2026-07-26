@@ -18,6 +18,14 @@ type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
 // Constant scaffold fields are materialized from zod defaults per the design decision.
 const ScaffoldSchema = zod.object({
+  // CodexModelBaseSchema requires priority/supported_in_api/visibility; a
+  // synthesized entry that omits them is rejected by the Codex client. Synthesized
+  // entries already sort after the template group, so priority only needs a stable
+  // large default rather than gpt-5.6-sol's 1.
+  priority: zod.number().default(999),
+  supported_in_api: zod.boolean().default(true),
+  visibility: zod.string().default('list'),
+  description: zod.string().default(''),
   default_reasoning_level: zod.string().default('low'),
   supports_search_tool: zod.boolean().default(false),
   instructions_variables: zod.record(zod.string(), zod.unknown()).default({}),
@@ -39,15 +47,23 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
   const contextWindow = input.metadata?.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW;
   const capabilities = input.metadata?.capabilities;
 
-  const inputModalities = ['text'];
-  if (capabilities?.image_input?.supported) inputModalities.push('image');
-  if (capabilities?.pdf_input?.supported) inputModalities.push('pdf');
+  const inputModalities = capabilities
+    ? [
+        'text',
+        ...(capabilities.image_input?.supported ? ['image'] : []),
+        ...(capabilities.pdf_input?.supported ? ['pdf'] : []),
+      ]
+    : ['text', 'image'];
 
   const effort = capabilities?.effort;
-  const supportedReasoningLevels =
+  const derivedReasoningLevels =
     !effort || !effort.supported
       ? REASONING_LEVELS.map(reasoningLevel)
       : REASONING_LEVELS.filter((level) => effort[level]?.supported).map(reasoningLevel);
+  // effort.supported can be true with no per-level flag set; never emit an empty
+  // list, or default_reasoning_level would not be among the supported levels.
+  const supportedReasoningLevels =
+    derivedReasoningLevels.length > 0 ? derivedReasoningLevels : REASONING_LEVELS.map(reasoningLevel);
 
   const scaffold = ScaffoldSchema.parse({});
 
@@ -55,6 +71,10 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     slug: input.slug,
     id: input.slug,
     display_name: input.displayName,
+    description: scaffold.description,
+    priority: scaffold.priority,
+    supported_in_api: scaffold.supported_in_api,
+    visibility: scaffold.visibility,
     context_window: contextWindow,
     max_context_window: contextWindow,
     input_modalities: inputModalities,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,9 +21,16 @@ describe('GET /v1/models client_version routing', () => {
     tmpAioHome = mkdtempSync(join(tmpdir(), 'aio-proxy-home-'));
     originalAioHome = process.env.AIO_PROXY_HOME;
     process.env.AIO_PROXY_HOME = tmpAioHome;
+    // Seed the fileCacheStorage entry the endpoint actually reads
+    // (AIO_PROXY_HOME/tmp/cache-storage/<key>.json) so the request never touches
+    // the network. The config's aliases route to non-Codex modelIds, so every
+    // entry is synthesized (Case B); the fresh, empty cache just suppresses the
+    // upstream fetch.
+    const cacheDir = join(tmpAioHome, 'tmp', 'cache-storage');
+    mkdirSync(cacheDir, { recursive: true });
     writeFileSync(
-      join(tmpAioHome, 'codex_models_cache.json'),
-      JSON.stringify({ models: [], fetched_at: new Date().toISOString() }),
+      join(cacheDir, 'codex-models.json'),
+      JSON.stringify({ value: JSON.stringify({ models: [] }), updatedAt: new Date().toISOString() }),
       'utf8',
     );
   });
