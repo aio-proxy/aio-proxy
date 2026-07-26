@@ -1,18 +1,16 @@
-import type { JsonValue, LogicalRequestContext, TokenCountCapability, TokenCountInput } from "@aio-proxy/plugin-sdk";
+import { createGoogleGenerativeAI, type GoogleProviderSettings } from '@ai-sdk/google';
+import type { JsonValue, LogicalRequestContext, TokenCountCapability, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import { generateText } from 'ai';
 
-import { createGoogleGenerativeAI, type GoogleProviderSettings } from "@ai-sdk/google";
-import { generateText } from "ai";
+import { createAntigravityGoogleFetch } from './google-fetch';
+import { takeAioProxyOptions } from './private-options';
+import type { CcaTransport } from './transport';
 
-import type { CcaTransport } from "./transport";
-
-import { createAntigravityGoogleFetch } from "./google-fetch";
-import { takeAioProxyOptions } from "./private-options";
-
-const placeholderCredential = "dynamic-oauth-credential";
+const placeholderCredential = 'dynamic-oauth-credential';
 
 type CountFetchOptions = {
   readonly context: LogicalRequestContext;
-  readonly invocation: TokenCountInput["invocation"];
+  readonly invocation: TokenCountInput['invocation'];
   readonly modelId: string;
   readonly modelMetadata?: JsonValue;
   readonly transport: CcaTransport;
@@ -48,7 +46,7 @@ export function createAntigravityTokenCount(
   };
 }
 
-export function createCountFetch(options: CountFetchOptions): NonNullable<GoogleProviderSettings["fetch"]> {
+export function createCountFetch(options: CountFetchOptions): NonNullable<GoogleProviderSettings['fetch']> {
   const split = splitInvocation(options.context, options.invocation);
   return createAntigravityGoogleFetch(
     {
@@ -65,17 +63,17 @@ export function createCountFetch(options: CountFetchOptions): NonNullable<Google
 function countTransport(transport: CcaTransport): CcaTransport {
   return {
     async execute(input) {
-      const response = await transport.execute({ ...input, operation: "countTokens", stream: false });
+      const response = await transport.execute({ ...input, operation: 'countTokens', stream: false });
       if (!response.ok) return response;
       const payload: unknown = await response.json();
       const totalTokens = tokenCount(payload);
       const headers = new Headers(response.headers);
-      headers.delete("content-length");
-      headers.set("content-type", "application/json");
+      headers.delete('content-length');
+      headers.set('content-type', 'application/json');
       return Response.json(
         {
           response: {
-            candidates: [{ content: { role: "model", parts: [{ text: "" }] }, finishReason: "STOP" }],
+            candidates: [{ content: { role: 'model', parts: [{ text: '' }] }, finishReason: 'STOP' }],
             usageMetadata: {
               promptTokenCount: totalTokens,
               candidatesTokenCount: 0,
@@ -91,23 +89,23 @@ function countTransport(transport: CcaTransport): CcaTransport {
 
 function tokenCount(payload: unknown): number {
   const value =
-    typeof payload === "object" && payload !== null && !Array.isArray(payload)
-      ? Reflect.get(payload, "totalTokens")
+    typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+      ? Reflect.get(payload, 'totalTokens')
       : undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new TypeError("Google Antigravity returned an invalid token count");
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new TypeError('Google Antigravity returned an invalid token count');
   }
   return value;
 }
 
-function splitInvocation(context: LogicalRequestContext, invocation: TokenCountInput["invocation"]) {
+function splitInvocation(context: LogicalRequestContext, invocation: TokenCountInput['invocation']) {
   const settings = invocation.settings as
-    | (NonNullable<TokenCountInput["invocation"]["settings"]> & {
+    | (NonNullable<TokenCountInput['invocation']['settings']> & {
         readonly providerOptions?: Parameters<typeof takeAioProxyOptions>[0];
       })
     | undefined;
   const providerOptions = settings?.providerOptions;
-  const aioProxy = record(Reflect.get(providerOptions ?? {}, "aioProxy"));
+  const aioProxy = record(Reflect.get(providerOptions ?? {}, 'aioProxy'));
   const split = takeAioProxyOptions({
     ...providerOptions,
     aioProxy: {
@@ -122,7 +120,7 @@ function splitInvocation(context: LogicalRequestContext, invocation: TokenCountI
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Readonly<Record<string, unknown>>)
     : {};
 }

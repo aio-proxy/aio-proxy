@@ -1,9 +1,9 @@
-import type { DashboardProviderProbe, DashboardProviderSummary } from "@aio-proxy/types";
+import type { DashboardProviderProbe, DashboardProviderSummary } from '@aio-proxy/types';
 
-import type { SnapshotManager } from "../plugin-snapshot";
-import type { ProviderProbe } from "../provider-runtime";
-import type { Snapshot } from "./snapshot";
-import type { ProviderSummaryOptions } from "./types";
+import type { SnapshotManager } from '../plugin-snapshot';
+import type { ProviderProbe } from '../provider-runtime';
+import type { Snapshot } from './snapshot';
+import type { ProviderSummaryOptions } from './types';
 
 type ProviderStatus = { readonly last_latency: number | null; readonly last_status: string };
 
@@ -40,5 +40,5 @@ async function runProbe(
   providerId: string,
   probes: ReadonlyMap<string, ProviderProbe>,
 ): Promise<DashboardProviderProbe> {
-  return (await probes.get(providerId)?.()) ?? "OK";
+  return (await probes.get(providerId)?.()) ?? 'OK';
 }

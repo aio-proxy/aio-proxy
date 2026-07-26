@@ -1,6 +1,6 @@
 const MAX_INSPECTION_BYTES = 64 * 1_024;
 const MAX_INSPECTION_MS = 100;
-const inspectionTimedOut = Symbol("inspection-timed-out");
+const inspectionTimedOut = Symbol('inspection-timed-out');
 
 type ReadState = {
   done: boolean;
@@ -26,7 +26,7 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
     timeout = setTimeout(() => resolve(inspectionTimedOut), MAX_INSPECTION_MS);
     if (signal === undefined) return;
     abort = () => reject(abortReason(signal));
-    signal.addEventListener("abort", abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true });
   });
 
   try {
@@ -39,7 +39,7 @@ export async function hasExplicitNoCapacity(response: Response, signal?: AbortSi
     return false;
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
+    signal?.removeEventListener('abort', abort);
     if (!state.done) {
       void reader.cancel().catch(() => undefined);
       await reading.catch(() => undefined);
@@ -81,14 +81,14 @@ function explicitNoCapacity(bytes: Uint8Array): boolean {
     const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
     const error = (record(payload) as ErrorEnvelope | undefined)?.error;
     const message = (record(error) as ErrorPayload | undefined)?.message;
-    return typeof message === "string" && message.toLowerCase().includes("no capacity");
+    return typeof message === 'string' && message.toLowerCase().includes('no capacity');
   } catch {
     return false;
   }
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
@@ -100,5 +100,5 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 function abortReason(signal: AbortSignal): unknown {
   const reason: unknown = signal.reason;
-  return reason ?? new DOMException("The operation was aborted", "AbortError");
+  return reason ?? new DOMException('The operation was aborted', 'AbortError');
 }

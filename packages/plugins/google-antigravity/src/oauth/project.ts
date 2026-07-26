@@ -1,14 +1,13 @@
-import type { GoogleAntigravityAccountOptions } from "../schema";
-
-import { antigravityEndpoints } from "../runtime/endpoints";
+import { antigravityEndpoints } from '../runtime/endpoints';
 import {
   ANTIGRAVITY_GOOGLE_API_CLIENT,
   antigravityOnboardingUserAgent,
   antigravityUserAgent,
   hubVersion,
-} from "../runtime/hub-version";
+} from '../runtime/hub-version';
+import type { GoogleAntigravityAccountOptions } from '../schema';
 
-const API_VERSION = "v1internal";
+const API_VERSION = 'v1internal';
 const ONBOARD_ATTEMPTS = 5;
 const ONBOARD_INTERVAL_MS = 2_000;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -24,17 +23,17 @@ export async function initializeAntigravityProject(
   options: GoogleAntigravityAccountOptions,
   dependencies: ProjectInitializationDependencies = {},
 ): Promise<string> {
-  if (accessToken.trim() === "") throw new Error("Google Antigravity project initialization requires an access token");
+  if (accessToken.trim() === '') throw new Error('Google Antigravity project initialization requires an access token');
   const fetchImpl = dependencies.fetch ?? globalThis.fetch;
   const loadResponse = await requestJson(
     fetchImpl,
-    `${antigravityEndpoints(options, "project-load")[0]}/${API_VERSION}:loadCodeAssist`,
+    `${antigravityEndpoints(options, 'project-load')[0]}/${API_VERSION}:loadCodeAssist`,
     {
       accessToken,
-      body: { metadata: { ideType: "ANTIGRAVITY" } },
+      body: { metadata: { ideType: 'ANTIGRAVITY' } },
       signal: combinedTimeoutSignal(dependencies.signal),
       userAgent: antigravityUserAgent(),
-      operation: "project load",
+      operation: 'project load',
     },
   );
   const existingProject = extractProjectId(loadResponse);
@@ -45,26 +44,26 @@ export async function initializeAntigravityProject(
   for (let attempt = 0; attempt < ONBOARD_ATTEMPTS; attempt += 1) {
     const onboardResponse = await requestJson(
       fetchImpl,
-      `${antigravityEndpoints(options, "onboarding")[0]}/${API_VERSION}:onboardUser`,
+      `${antigravityEndpoints(options, 'onboarding')[0]}/${API_VERSION}:onboardUser`,
       {
         accessToken,
         body: {
           tier_id: tierId,
-          metadata: { ide_type: "ANTIGRAVITY", ide_version: hubVersion(), ide_name: "antigravity" },
+          metadata: { ide_type: 'ANTIGRAVITY', ide_version: hubVersion(), ide_name: 'antigravity' },
         },
         signal: combinedTimeoutSignal(dependencies.signal),
         userAgent: antigravityOnboardingUserAgent(),
         googleApiClient: ANTIGRAVITY_GOOGLE_API_CLIENT,
-        operation: "project onboarding",
+        operation: 'project onboarding',
       },
     );
-    if (Reflect.get(onboardResponse, "done") === true) {
-      const projectId = extractProjectId(Reflect.get(onboardResponse, "response"));
+    if (Reflect.get(onboardResponse, 'done') === true) {
+      const projectId = extractProjectId(Reflect.get(onboardResponse, 'response'));
       if (projectId !== undefined) return projectId;
     }
     if (attempt + 1 < ONBOARD_ATTEMPTS) await sleep(ONBOARD_INTERVAL_MS);
   }
-  throw new Error("Google Antigravity project onboarding did not complete after five attempts");
+  throw new Error('Google Antigravity project onboarding did not complete after five attempts');
 }
 
 async function requestJson(
@@ -82,13 +81,13 @@ async function requestJson(
   let response: Response;
   try {
     response = await fetchImpl(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        Accept: "*/*",
+        Accept: '*/*',
         Authorization: `Bearer ${input.accessToken}`,
-        "Content-Type": "application/json",
-        "User-Agent": input.userAgent,
-        ...(input.googleApiClient === undefined ? {} : { "X-Goog-Api-Client": input.googleApiClient }),
+        'Content-Type': 'application/json',
+        'User-Agent': input.userAgent,
+        ...(input.googleApiClient === undefined ? {} : { 'X-Goog-Api-Client': input.googleApiClient }),
       },
       body: JSON.stringify(input.body),
       ...(input.signal === undefined ? {} : { signal: input.signal }),
@@ -99,7 +98,7 @@ async function requestJson(
   if (!response.ok) throw new Error(`Google Antigravity ${input.operation} failed (HTTP ${response.status})`);
   try {
     const payload: unknown = await response.json();
-    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new Error();
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) throw new Error();
     return payload as Record<string, unknown>;
   } catch {
     throw new Error(`Google Antigravity ${input.operation} returned an invalid response`);
@@ -107,13 +106,13 @@ async function requestJson(
 }
 
 function extractProjectId(payload: unknown): string | undefined {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
-  for (const key of ["cloudaicompanionProject", "projectId", "project"] as const) {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined;
+  for (const key of ['cloudaicompanionProject', 'projectId', 'project'] as const) {
     const value = Reflect.get(payload, key);
     const direct = trimmedString(value);
     if (direct !== undefined) return direct;
-    if (typeof value === "object" && value !== null) {
-      const nested = trimmedString(Reflect.get(value, "id"));
+    if (typeof value === 'object' && value !== null) {
+      const nested = trimmedString(Reflect.get(value, 'id'));
       if (nested !== undefined) return nested;
     }
   }
@@ -121,25 +120,25 @@ function extractProjectId(payload: unknown): string | undefined {
 }
 
 function selectTier(payload: Record<string, unknown>): string {
-  const tiers = payload["allowedTiers"];
+  const tiers = payload['allowedTiers'];
   if (Array.isArray(tiers)) {
     for (const tier of tiers) {
-      if (typeof tier === "object" && tier !== null && Reflect.get(tier, "isDefault") === true) {
-        const id = trimmedString(Reflect.get(tier, "id"));
+      if (typeof tier === 'object' && tier !== null && Reflect.get(tier, 'isDefault') === true) {
+        const id = trimmedString(Reflect.get(tier, 'id'));
         if (id !== undefined) return id;
       }
     }
   }
-  const currentTier = payload["currentTier"];
-  if (typeof currentTier === "object" && currentTier !== null) {
-    const id = trimmedString(Reflect.get(currentTier, "id"));
+  const currentTier = payload['currentTier'];
+  if (typeof currentTier === 'object' && currentTier !== null) {
+    const id = trimmedString(Reflect.get(currentTier, 'id'));
     if (id !== undefined) return id;
   }
-  return "free-tier";
+  return 'free-tier';
 }
 
 function trimmedString(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.trim() === "") return undefined;
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
   return value.trim();
 }
 

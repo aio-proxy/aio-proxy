@@ -3,4 +3,4 @@ export {
   type AiSdkProviderInstance,
   type AiSdkProviderInvokeRequest,
   createAiSdkProvider,
-} from "./ai-sdk";
+} from './ai-sdk';

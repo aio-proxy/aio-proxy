@@ -1,12 +1,11 @@
-import type { UsageCompletion } from "../../usage-capture";
-
 import {
   createProtocolContext,
   defineProtocolAdapter,
   defineProviderRouteSource,
   type FakeProvider,
-} from "../../../_test/pipeline-helpers";
-import { handleProtocolRequest } from "./index";
+} from '../../../__tests__/pipeline-helpers';
+import type { UsageCompletion } from '../../usage-capture';
+import { handleProtocolRequest } from './index';
 
 export function pipeline(
   fixtures: readonly FakeProvider[],
@@ -26,6 +25,6 @@ export function pipeline(
   };
 }
 
-export function attemptsOf(recording: ReturnType<typeof defineProviderRouteSource>["recording"]) {
+export function attemptsOf(recording: ReturnType<typeof defineProviderRouteSource>['recording']) {
   return recording.attempts.map(({ outcome, providerId, statusCode }) => ({ outcome, providerId, statusCode }));
 }

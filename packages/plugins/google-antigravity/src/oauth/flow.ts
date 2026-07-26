@@ -4,7 +4,7 @@ import {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   GOOGLE_TOKEN_ENDPOINT,
-} from "./constants";
+} from './constants';
 
 export type GoogleToken = {
   readonly accessToken: string;
@@ -22,13 +22,13 @@ export type OAuthHttpOptions = {
 
 export function buildGoogleAuthorizationUrl(state: string, redirectUri: string): string {
   const url = new URL(GOOGLE_AUTH_ENDPOINT);
-  url.searchParams.set("access_type", "offline");
-  url.searchParams.set("client_id", GOOGLE_CLIENT_ID);
-  url.searchParams.set("prompt", "consent");
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_ANTIGRAVITY_SCOPES.join(" "));
-  url.searchParams.set("state", state);
+  url.searchParams.set('access_type', 'offline');
+  url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+  url.searchParams.set('prompt', 'consent');
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', GOOGLE_ANTIGRAVITY_SCOPES.join(' '));
+  url.searchParams.set('state', state);
   return url.toString();
 }
 
@@ -37,24 +37,24 @@ export async function exchangeAuthorizationCode(
   redirectUri: string,
   options: OAuthHttpOptions = {},
 ): Promise<GoogleToken> {
-  if (code.trim() === "") throw new Error("Google authorization code is missing");
+  if (code.trim() === '') throw new Error('Google authorization code is missing');
   const response = await requestToken(
     new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       client_secret: GOOGLE_CLIENT_SECRET,
       code,
-      grant_type: "authorization_code",
+      grant_type: 'authorization_code',
       redirect_uri: redirectUri,
     }),
     options,
   );
   if (!response.ok) throw new Error(`Google authorization code exchange failed (HTTP ${response.status})`);
   const payload = await readTokenPayload(response);
-  const accessToken = requiredString(payload, "access_token", "access token");
-  const refreshToken = requiredString(payload, "refresh_token", "refresh token");
-  const expiresIn = requiredNumber(payload, "expires_in");
-  const tokenType = optionalString(payload, "token_type");
-  const scope = optionalString(payload, "scope");
+  const accessToken = requiredString(payload, 'access_token', 'access token');
+  const refreshToken = requiredString(payload, 'refresh_token', 'refresh token');
+  const expiresIn = requiredNumber(payload, 'expires_in');
+  const tokenType = optionalString(payload, 'token_type');
+  const scope = optionalString(payload, 'scope');
   return {
     accessToken,
     refreshToken,
@@ -67,23 +67,23 @@ export async function exchangeAuthorizationCode(
 async function requestToken(body: URLSearchParams, options: OAuthHttpOptions): Promise<Response> {
   try {
     return await (options.fetch ?? globalThis.fetch)(GOOGLE_TOKEN_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch {
-    throw new Error("Google authorization code exchange failed");
+    throw new Error('Google authorization code exchange failed');
   }
 }
 
 async function readTokenPayload(response: Response): Promise<Record<string, unknown>> {
   try {
     const payload: unknown = await response.json();
-    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new Error();
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) throw new Error();
     return payload as Record<string, unknown>;
   } catch {
-    throw new Error("Google authorization code exchange failed: invalid token response");
+    throw new Error('Google authorization code exchange failed: invalid token response');
   }
 }
 
@@ -95,14 +95,14 @@ function requiredString(payload: Record<string, unknown>, key: string, label: st
 
 function optionalString(payload: Record<string, unknown>, key: string): string | undefined {
   const value = payload[key];
-  if (typeof value !== "string" || value.trim() === "") return undefined;
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
   return value.trim();
 }
 
 function requiredNumber(payload: Record<string, unknown>, key: string): number {
   const value = payload[key];
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new Error("Google authorization code exchange failed: invalid token response");
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('Google authorization code exchange failed: invalid token response');
   }
   return value;
 }

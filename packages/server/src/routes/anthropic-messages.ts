@@ -1,14 +1,13 @@
-import { anthropicMessagesAdapter } from "@aio-proxy/core";
-import { Hono } from "hono";
+import { anthropicMessagesAdapter } from '@aio-proxy/core';
+import { Hono } from 'hono';
 
-import type { ProviderRouteSource } from "../runtime";
-
-import { handleProtocolRequest } from "./pipeline";
-import { handleTokenCount } from "./token-count";
+import type { ProviderRouteSource } from '../runtime';
+import { handleProtocolRequest } from './pipeline';
+import { handleTokenCount } from './token-count';
 
 export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
   return new Hono()
-    .post("/v1/messages", (context) =>
+    .post('/v1/messages', (context) =>
       handleProtocolRequest({
         adapter: anthropicMessagesAdapter,
         context: {},
@@ -16,7 +15,7 @@ export function createAnthropicMessagesRoutes(source: ProviderRouteSource) {
         source,
       }),
     )
-    .post("/v1/messages/count_tokens", (context) =>
+    .post('/v1/messages/count_tokens', (context) =>
       handleTokenCount({
         adapter: anthropicMessagesAdapter,
         context: {},

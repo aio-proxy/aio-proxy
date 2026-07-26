@@ -1,24 +1,23 @@
-import { normalizeVariantKey, ProviderProtocol } from "@aio-proxy/types";
-import { z } from "zod";
+import { normalizeVariantKey, ProviderProtocol } from '@aio-proxy/types';
+import { z } from 'zod';
 
-import type { CallSettings, JSONValue } from "../ai-sdk-bridge";
-import type { SessionCandidate } from "./session";
-
-import { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from "../egress/gemini-generate-content";
+import type { AiSdkCallSettings, JSONValue } from '../ai-sdk-bridge';
+import { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from '../egress/gemini-generate-content';
 import {
   type GeminiGenerateContentRequest,
   parseGeminiGenerateContent,
-} from "../ingress/gemini-generate-content/index";
+} from '../ingress/gemini-generate-content/index';
 import {
   type GeminiGenerateContentSettings,
   geminiGenerateContentToModelMessages,
-} from "../transform/gemini-generate-content/index";
-import { defineProtocolAdapter } from "./adapter";
-import { geminiGenerateContentErrors } from "./errors";
-import { readJsonRequest } from "./request";
-import { functionToolSet } from "./tools";
+} from '../transform/gemini-generate-content/index';
+import { defineProtocolAdapter } from './adapter';
+import { geminiGenerateContentErrors } from './errors';
+import { readJsonRequest } from './request';
+import type { SessionCandidate } from './session';
+import { functionToolSet } from './tools';
 
-type GeminiAiSdkSettings = CallSettings & {
+type GeminiAiSdkSettings = AiSdkCallSettings & {
   readonly providerOptions?: {
     readonly google: {
       readonly safetySettings: JSONValue;
@@ -37,7 +36,7 @@ const aiSdkGenerationConfigSchema = z
   })
   .strip();
 const jsonValueSchema = z.json();
-const reasoningSchema = z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]);
+const reasoningSchema = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 
 export type GeminiRouteContext = {
   readonly model: string;
@@ -49,15 +48,15 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
   async parse(raw, context) {
     const body = await readJsonRequest(raw);
     return parseGeminiGenerateContent(
-      body !== null && typeof body === "object" && !Array.isArray(body) ? { ...body, model: context.model } : body,
+      body !== null && typeof body === 'object' && !Array.isArray(body) ? { ...body, model: context.model } : body,
     );
   },
   model: (_request, context) => context.model,
   variant: (request) => request.generationConfig?.thinkingConfig?.thinkingLevel,
   session: (request) => ({
     candidates: [
-      candidate("body-session", request.session_id),
-      candidate("body-conversation", request.conversation_id),
+      candidate('body-session', request.session_id),
+      candidate('body-conversation', request.conversation_id),
     ].filter(isCandidate),
     transcript: request.contents,
   }),
@@ -66,7 +65,7 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
     if (context.model === resolvedModel) return raw.clone();
     const url = new URL(raw.url);
     url.pathname = `/v1beta/models/${encodeURIComponent(resolvedModel)}${
-      context.stream ? ":streamGenerateContent" : ":generateContent"
+      context.stream ? ':streamGenerateContent' : ':generateContent'
     }`;
     return new Request(url, raw.clone());
   },
@@ -84,7 +83,7 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
   errors: geminiGenerateContentErrors,
 });
 
-function candidate(source: SessionCandidate["source"], value: string | undefined): SessionCandidate | undefined {
+function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {
   return value === undefined ? undefined : { source, value };
 }
 
@@ -115,7 +114,7 @@ function aiSdkSettings(settings: GeminiGenerateContentSettings): GeminiAiSdkSett
   };
 }
 
-function geminiReasoning(settings: GeminiGenerateContentSettings): CallSettings["reasoning"] {
+function geminiReasoning(settings: GeminiGenerateContentSettings): AiSdkCallSettings['reasoning'] {
   const level = settings.generationConfig?.thinkingConfig?.thinkingLevel;
   if (level === undefined) {
     return undefined;

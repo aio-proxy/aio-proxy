@@ -1,7 +1,7 @@
-import { getLocale, m } from "@aio-proxy/i18n";
-import { type AuthorizationPort, LocalizedTextSchema, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from '@aio-proxy/i18n';
+import { type AuthorizationPort, LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 
-import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from "./loopback";
+import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from './loopback';
 
 export type CliAuthorizationDeps = {
   readonly copy: {
@@ -23,7 +23,7 @@ export type CliAuthorizationDeps = {
   readonly locale?: string;
 };
 
-export function createDefaultCliAuthorizationCopy(): CliAuthorizationDeps["copy"] {
+export function createDefaultCliAuthorizationCopy(): CliAuthorizationDeps['copy'] {
   return {
     copiedDeviceCode: m.cli_oauth_copied_device_code(),
     deviceCode: (code) => m.cli_oauth_device_code({ code }),
@@ -42,7 +42,7 @@ function requireHttpUrl(value: string): URL {
   } catch {
     throw new AuthorizationUrlInvalidError();
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new AuthorizationUrlInvalidError();
   }
   return url;

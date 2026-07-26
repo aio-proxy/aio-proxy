@@ -1,1 +1,1 @@
-export { createXAIGrokDynamicFetch, createXAIGrokRuntime } from "./runtime";
+export { createXAIGrokDynamicFetch, createXAIGrokRuntime } from './runtime';

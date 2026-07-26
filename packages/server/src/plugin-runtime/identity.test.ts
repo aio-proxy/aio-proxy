@@ -1,8 +1,9 @@
-import { zod } from "@aio-proxy/plugin-sdk";
-import { ProviderKind } from "@aio-proxy/types";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, test } from 'bun:test';
 
-import { pluginOptionsIdentityDigest } from "./index";
+import { zod } from '@aio-proxy/plugin-sdk';
+import { ProviderKind } from '@aio-proxy/types';
+
+import { pluginOptionsIdentityDigest } from './index';
 import {
   catalog,
   cleanup,
@@ -10,19 +11,19 @@ import {
   materializePluginProvider,
   refreshCredential,
   runtimeFixture,
-} from "./test-support";
+} from './test-support';
 
 afterEach(cleanup);
 
-test("an identity change creates a new credential port with the new plugin generation", async () => {
-  const fixture = runtimeFixture({ kind: "static" });
+test('an identity change creates a new credential port with the new plugin generation', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
   const options = {
     config: {
-      id: "person",
+      id: 'person',
       kind: ProviderKind.OAuth,
       enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -35,8 +36,8 @@ test("an identity change creates a new credential port with the new plugin gener
     ...fixture.plugins,
     plugins: new Map([
       [
-        "@example/oauth",
-        { packageName: "@example/oauth", version: "2.0.0", builtIn: false, state: { status: "ready" as const } },
+        '@example/oauth',
+        { packageName: '@example/oauth', version: '2.0.0', builtIn: false, state: { status: 'ready' as const } },
       ],
     ]),
   };
@@ -46,15 +47,15 @@ test("an identity change creates a new credential port with the new plugin gener
   expect(second.cacheEntry?.credentials).not.toBe(first.cacheEntry?.credentials);
 });
 
-test("plugin options, account re-login revision, and catalog refresh each rebuild the affected runtime", async () => {
-  const fixture = runtimeFixture({ kind: "static" });
+test('plugin options, account re-login revision, and catalog refresh each rebuild the affected runtime', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
   const base = {
     config: {
-      id: "person",
+      id: 'person',
       kind: ProviderKind.OAuth,
       enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -64,29 +65,29 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
   } as const;
   const first = await materializePluginProvider({
     ...base,
-    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "one" }, secret: undefined }),
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: 'one' }, secret: undefined }),
   });
   const pluginOptionsChanged = await materializePluginProvider({
     ...base,
-    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: 'two' }, secret: undefined }),
     previous: first.cacheEntry,
   });
-  const account = fixture.repository.readAccount("person");
+  const account = fixture.repository.readAccount('person');
   expect(account).not.toBeNull();
   const relogin = fixture.repository.stageAccountOperation({
-    kind: "update",
-    targetDigest: "relogin",
+    kind: 'update',
+    targetDigest: 'relogin',
     expectedRuntimeRevision: account?.runtimeRevision ?? -1,
     account: {
-      providerId: "person",
-      plugin: "@example/oauth",
-      capability: "default",
-      fingerprint: "person@example.com",
+      providerId: 'person',
+      plugin: '@example/oauth',
+      capability: 'default',
+      fingerprint: 'person@example.com',
       options: {},
       secrets: {},
-      credential: { token: "relogin-secret" },
+      credential: { token: 'relogin-secret' },
       catalog: {
-        kind: "replace",
+        kind: 'replace',
         value: { catalog, refreshedAt: 1_000 },
       },
     },
@@ -94,13 +95,13 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
   fixture.repository.completeAccountOperation(relogin.operationId);
   const relogged = await materializePluginProvider({
     ...base,
-    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: 'two' }, secret: undefined }),
     previous: pluginOptionsChanged.cacheEntry,
   });
-  fixture.repository.writeCatalog("person", catalog, 2_000);
+  fixture.repository.writeCatalog('person', catalog, 2_000);
   const refreshed = await materializePluginProvider({
     ...base,
-    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: "two" }, secret: undefined }),
+    pluginOptionsDigest: pluginOptionsIdentityDigest({ public: { mode: 'two' }, secret: undefined }),
     previous: relogged.cacheEntry,
   });
 
@@ -111,14 +112,14 @@ test("plugin options, account re-login revision, and catalog refresh each rebuil
 });
 
 test.each([
-  ["URL", URL, (value: string) => new URL(value), "https://one.example.test", "https://two.example.test"],
-  ["Date", Date, (value: string) => new Date(value), "2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"],
+  ['URL', URL, (value: string) => new URL(value), 'https://one.example.test', 'https://two.example.test'],
+  ['Date', Date, (value: string) => new Date(value), '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'],
 ] as const)(
-  "%s account-option transforms reuse unchanged JSON inputs and rebuild changed inputs",
+  '%s account-option transforms reuse unchanged JSON inputs and rebuild changed inputs',
   async (_label, transformedType, transform, firstValue, secondValue) => {
     const observed: unknown[] = [];
     const fixture = runtimeFixture(
-      { kind: "static" },
+      { kind: 'static' },
       {
         accountOptionsSchema: zod
           .object({ value: zod.string() })
@@ -127,15 +128,15 @@ test.each([
           observed.push(options);
           return {
             provider: {
-              specificationVersion: "v4",
+              specificationVersion: 'v4',
               languageModel() {
-                throw new Error("not called");
+                throw new Error('not called');
               },
               imageModel() {
-                throw new Error("not called");
+                throw new Error('not called');
               },
               embeddingModel() {
-                throw new Error("not called");
+                throw new Error('not called');
               },
             },
           } as never;
@@ -150,11 +151,11 @@ test.each([
       onDiagnosticChanged: () => {},
     } as const;
     const config = {
-      id: "person",
+      id: 'person',
       kind: ProviderKind.OAuth,
       enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
       options: { value: firstValue },
     } as const;
 
@@ -174,9 +175,9 @@ test.each([
   },
 );
 
-test("an in-place nested account-option transform cannot change the pre-transform runtime identity input", async () => {
+test('an in-place nested account-option transform cannot change the pre-transform runtime identity input', async () => {
   const fixture = runtimeFixture(
-    { kind: "static" },
+    { kind: 'static' },
     {
       accountOptionsSchema: zod.object({ nested: zod.any() }).transform(({ nested }) => {
         nested.value = new URL(nested.value as string);
@@ -192,40 +193,40 @@ test("an in-place nested account-option transform cannot change the pre-transfor
     onDiagnosticChanged: () => {},
   } as const;
   const config = {
-    id: "person",
+    id: 'person',
     kind: ProviderKind.OAuth,
     enabled: true,
-    plugin: "@example/oauth",
-    capability: "default",
+    plugin: '@example/oauth',
+    capability: 'default',
   } as const;
 
   const first = await materializePluginProvider({
     ...base,
-    config: { ...config, options: { nested: { value: "https://one.example.test" } } },
+    config: { ...config, options: { nested: { value: 'https://one.example.test' } } },
   });
   const unchanged = await materializePluginProvider({
     ...base,
-    config: { ...config, options: { nested: { value: "https://one.example.test" } } },
+    config: { ...config, options: { nested: { value: 'https://one.example.test' } } },
     previous: first.cacheEntry,
   });
   await materializePluginProvider({
     ...base,
-    config: { ...config, options: { nested: { value: "https://two.example.test" } } },
+    config: { ...config, options: { nested: { value: 'https://two.example.test' } } },
     previous: unchanged.cacheEntry,
   });
 
   expect(fixture.createCalls()).toBe(2);
 });
 
-test("diagnostic-only rebuild reuses the runtime and credential port", async () => {
-  const fixture = runtimeFixture({ kind: "static" });
+test('diagnostic-only rebuild reuses the runtime and credential port', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
   const options = {
     config: {
-      id: "person",
+      id: 'person',
       kind: ProviderKind.OAuth,
       enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -235,8 +236,8 @@ test("diagnostic-only rebuild reuses the runtime and credential port", async () 
   } as const;
   const first = await materializePluginProvider(options);
   fixture.repository.writeDiagnostic(
-    "person",
-    diagnostics("CATALOG_UNAVAILABLE", { providerId: "person", retryable: true }),
+    'person',
+    diagnostics('CATALOG_UNAVAILABLE', { providerId: 'person', retryable: true }),
   );
   const second = await materializePluginProvider({ ...options, previous: first.cacheEntry });
 
@@ -244,21 +245,21 @@ test("diagnostic-only rebuild reuses the runtime and credential port", async () 
   expect(second.cacheEntry?.credentials).toBe(first.cacheEntry?.credentials);
   expect(second.provider?.model).toBe(first.provider?.model);
   expect(second.state).toMatchObject({
-    status: "ready",
-    catalog: "stale",
-    diagnostic: { code: "CATALOG_UNAVAILABLE" },
+    status: 'ready',
+    catalog: 'stale',
+    diagnostic: { code: 'CATALOG_UNAVAILABLE' },
   });
 });
 
-test("credential revision refresh stays visible without rebuilding the runtime", async () => {
-  const fixture = runtimeFixture({ kind: "static" });
+test('credential revision refresh stays visible without rebuilding the runtime', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
   const options = {
     config: {
-      id: "person",
+      id: 'person',
       kind: ProviderKind.OAuth,
       enabled: true,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -269,10 +270,10 @@ test("credential revision refresh stays visible without rebuilding the runtime",
   const first = await materializePluginProvider(options);
   const before = await first.cacheEntry?.credentials.read();
   expect(before).toBeDefined();
-  refreshCredential(fixture.repository, before?.revision ?? -1, { token: "new-secret" });
+  refreshCredential(fixture.repository, before?.revision ?? -1, { token: 'new-secret' });
   const second = await materializePluginProvider({ ...options, previous: first.cacheEntry });
 
   expect(fixture.createCalls()).toBe(1);
   expect(second.cacheEntry?.credentials).toBe(first.cacheEntry?.credentials);
-  expect(await second.cacheEntry?.credentials.read()).toMatchObject({ value: { token: "new-secret" } });
+  expect(await second.cacheEntry?.credentials.read()).toMatchObject({ value: { token: 'new-secret' } });
 });

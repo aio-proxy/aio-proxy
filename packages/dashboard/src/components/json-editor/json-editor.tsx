@@ -1,8 +1,7 @@
-import type { Monaco, OnMount } from "@monaco-editor/react";
+import type { Monaco, OnMount } from '@monaco-editor/react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-
-import { CodeEditor } from "@/components/code-editor";
+import { CodeEditor } from '@/components/code-editor';
 
 import {
   beginJsonValidation,
@@ -14,8 +13,8 @@ import {
   type JsonValue,
   mergeJsonValidation,
   parseJsonDraft,
-} from "./json-editor-state";
-import { registerJsonSchema, validateJsonModel } from "./json-schema-registry";
+} from './json-editor-state';
+import { registerJsonSchema, validateJsonModel } from './json-schema-registry';
 
 export type JsonEditorProps = {
   readonly value: JsonValue | undefined;
@@ -29,7 +28,7 @@ export type JsonEditorProps = {
   readonly height?: string | number;
 };
 
-const formatJsonValue = (value: JsonValue | undefined) => (value === undefined ? "" : JSON.stringify(value, null, 2));
+const formatJsonValue = (value: JsonValue | undefined) => (value === undefined ? '' : JSON.stringify(value, null, 2));
 
 export const JsonEditor: React.FC<JsonEditorProps> = ({
   value,
@@ -120,7 +119,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
   const handleChange = useCallback(
     (nextDraft: string | undefined) => {
-      const nextValue = nextDraft ?? "";
+      const nextValue = nextDraft ?? '';
       setDraft(nextValue);
       setValidationState((current) => beginJsonValidation(current, nextValue, schema));
       const parsed = parseJsonDraft(nextValue);

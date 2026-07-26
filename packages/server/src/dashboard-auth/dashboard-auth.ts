@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from 'node:crypto';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const FAILURE_WINDOW_MS = 60_000;
@@ -7,9 +7,9 @@ const MAX_FAILURES = 5;
 type FailureWindow = { readonly startedAt: number; failures: number };
 
 type LoginResult =
-  | { readonly status: "authenticated"; readonly expiresAt: number; readonly token: string }
-  | { readonly status: "disabled" | "invalid" | "unavailable" }
-  | { readonly status: "rate-limited"; readonly retryAfterSeconds: number };
+  | { readonly status: 'authenticated'; readonly expiresAt: number; readonly token: string }
+  | { readonly status: 'disabled' | 'invalid' | 'unavailable' }
+  | { readonly status: 'rate-limited'; readonly retryAfterSeconds: number };
 
 export type DashboardAuthentication = {
   readonly available: () => boolean;
@@ -30,34 +30,34 @@ export function createDashboardAuthentication(
   }
 
   async function login(password: string, clientId: string): Promise<LoginResult> {
-    if (!available()) return { status: "unavailable" };
+    if (!available()) return { status: 'unavailable' };
     const hash = passwordHash();
-    if (hash === undefined) return { status: "disabled" };
+    if (hash === undefined) return { status: 'disabled' };
 
     const retryAfterSeconds = retryAfter(clientId, now());
-    if (retryAfterSeconds !== undefined) return { status: "rate-limited", retryAfterSeconds };
+    if (retryAfterSeconds !== undefined) return { status: 'rate-limited', retryAfterSeconds };
 
     if (!(await Bun.password.verify(password, hash))) {
       recordFailure(clientId, now());
-      return { status: "invalid" };
+      return { status: 'invalid' };
     }
 
     failures.delete(clientId);
     const expiresAt = now() + SESSION_TTL_MS;
     const payload = `v1.${expiresAt}.${crypto.randomUUID()}`;
-    return { status: "authenticated", expiresAt, token: `${payload}.${sign(hash, payload)}` };
+    return { status: 'authenticated', expiresAt, token: `${payload}.${sign(hash, payload)}` };
   }
 
   function verify(token: string | undefined): boolean {
     const hash = passwordHash();
     if (hash === undefined || token === undefined) return false;
-    const parts = token.split(".");
-    if (parts.length !== 4 || parts[0] !== "v1") return false;
+    const parts = token.split('.');
+    if (parts.length !== 4 || parts[0] !== 'v1') return false;
     const expiresAt = Number(parts[1]);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= now()) return false;
     const signature = parts[3];
     if (signature === undefined) return false;
-    const payload = parts.slice(0, 3).join(".");
+    const payload = parts.slice(0, 3).join('.');
     return signaturesEqual(signature, sign(hash, payload));
   }
 
@@ -85,16 +85,16 @@ export function createDashboardAuthentication(
 }
 
 function sign(key: string, payload: string): string {
-  return new Bun.CryptoHasher("sha256", key)
+  return new Bun.CryptoHasher('sha256', key)
     .update(payload)
-    .digest("base64")
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/u, "");
+    .digest('base64')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/u, '');
 }
 
 function signaturesEqual(left: string, right: string): boolean {
-  const leftBytes = Buffer.from(left, "base64url");
-  const rightBytes = Buffer.from(right, "base64url");
+  const leftBytes = Buffer.from(left, 'base64url');
+  const rightBytes = Buffer.from(right, 'base64url');
   return leftBytes.byteLength === rightBytes.byteLength && timingSafeEqual(leftBytes, rightBytes);
 }

@@ -1,17 +1,17 @@
-import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
-import type { Diagnostic } from "@aio-proxy/types";
-import type { Database } from "bun:sqlite";
+import type { Database } from 'bun:sqlite';
 
-import type { AccountWrite, PluginRepository, StoredCatalog } from "./types";
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { Diagnostic } from '@aio-proxy/types';
 
-import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from "./rows";
+import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from './rows';
+import type { AccountWrite, PluginRepository, StoredCatalog } from './types';
 
 export function createPluginStateRows(sqlite: Database) {
   const selectCatalog = sqlite.query<CatalogRow, [string]>(
-    "SELECT catalog_json, refreshed_at FROM oauth_catalog WHERE provider_id = ?",
+    'SELECT catalog_json, refreshed_at FROM oauth_catalog WHERE provider_id = ?',
   );
   const selectDiagnostics = sqlite.query<DiagnosticRow, [string]>(
-    "SELECT diagnostic_json FROM oauth_account_diagnostic WHERE provider_id = ? ORDER BY code",
+    'SELECT diagnostic_json FROM oauth_account_diagnostic WHERE provider_id = ? ORDER BY code',
   );
   function readCatalog(providerId: string): StoredCatalog | null {
     const row = selectCatalog.get(providerId);
@@ -41,15 +41,15 @@ export function createPluginStateRows(sqlite: Database) {
         .run(providerId, value.code, encodeJson(value), providerId).changes > 0
     );
   }
-  function applyCatalog(providerId: string, value: AccountWrite["catalog"]): void {
-    if (value.kind === "replace") {
+  function applyCatalog(providerId: string, value: AccountWrite['catalog']): void {
+    if (value.kind === 'replace') {
       replaceCatalog(providerId, value.value);
       sqlite
         .query("DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = 'CATALOG_UNAVAILABLE'")
         .run(providerId);
       return;
     }
-    if (value.kind === "missing") sqlite.query("DELETE FROM oauth_catalog WHERE provider_id = ?").run(providerId);
+    if (value.kind === 'missing') sqlite.query('DELETE FROM oauth_catalog WHERE provider_id = ?').run(providerId);
     upsertDiagnostic(providerId, value.diagnostic);
   }
   return { readCatalog, readDiagnostics, replaceCatalog, upsertDiagnostic, applyCatalog };
@@ -59,23 +59,23 @@ export function createPluginStateRepository(
   sqlite: Database,
 ): Pick<
   PluginRepository,
-  | "readPluginSecret"
-  | "writePluginSecret"
-  | "deletePluginSecret"
-  | "readCatalog"
-  | "writeCatalog"
-  | "readDiagnostics"
-  | "writeDiagnostic"
-  | "clearDiagnostic"
-  | "tryAcquireRefreshLease"
-  | "renewRefreshLease"
-  | "releaseRefreshLease"
+  | 'readPluginSecret'
+  | 'writePluginSecret'
+  | 'deletePluginSecret'
+  | 'readCatalog'
+  | 'writeCatalog'
+  | 'readDiagnostics'
+  | 'writeDiagnostic'
+  | 'clearDiagnostic'
+  | 'tryAcquireRefreshLease'
+  | 'renewRefreshLease'
+  | 'releaseRefreshLease'
 > {
   const rows = createPluginStateRows(sqlite);
   return {
     readPluginSecret(plugin) {
       const row = sqlite
-        .query<PluginSecretRow, [string]>("SELECT value_json, revision FROM plugin_secret WHERE plugin = ?")
+        .query<PluginSecretRow, [string]>('SELECT value_json, revision FROM plugin_secret WHERE plugin = ?')
         .get(plugin);
       return row === null ? null : { value: decodeJson(row.value_json), revision: row.revision };
     },
@@ -86,16 +86,16 @@ export function createPluginStateRepository(
           const updatedAt = Date.now();
           if (expectedRevision === null) {
             sqlite
-              .query("INSERT INTO plugin_secret (plugin, value_json, revision, updated_at) VALUES (?, ?, 1, ?)")
+              .query('INSERT INTO plugin_secret (plugin, value_json, revision, updated_at) VALUES (?, ?, 1, ?)')
               .run(plugin, encoded, updatedAt);
             return { value, revision: 1 };
           }
           const result = sqlite
             .query(
-              "UPDATE plugin_secret SET value_json = ?, revision = revision + 1, updated_at = ? WHERE plugin = ? AND revision = ?",
+              'UPDATE plugin_secret SET value_json = ?, revision = revision + 1, updated_at = ? WHERE plugin = ? AND revision = ?',
             )
             .run(encoded, updatedAt, plugin, expectedRevision);
-          if (result.changes === 0) throw new Error("Plugin secret revision mismatch");
+          if (result.changes === 0) throw new Error('Plugin secret revision mismatch');
           return { value, revision: expectedRevision + 1 };
         })
         .immediate();
@@ -104,7 +104,7 @@ export function createPluginStateRepository(
       return sqlite
         .transaction(
           () =>
-            sqlite.query("DELETE FROM plugin_secret WHERE plugin = ? AND revision = ?").run(plugin, expectedRevision)
+            sqlite.query('DELETE FROM plugin_secret WHERE plugin = ? AND revision = ?').run(plugin, expectedRevision)
               .changes > 0,
         )
         .immediate();
@@ -124,7 +124,7 @@ export function createPluginStateRepository(
     writeDiagnostic: rows.upsertDiagnostic,
     clearDiagnostic(providerId, code) {
       return (
-        sqlite.query("DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = ?").run(providerId, code)
+        sqlite.query('DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = ?').run(providerId, code)
           .changes > 0
       );
     },
@@ -145,12 +145,12 @@ export function createPluginStateRepository(
     renewRefreshLease(providerId, owner, expiresAt) {
       return (
         sqlite
-          .query("UPDATE oauth_refresh_lease SET expires_at = ? WHERE provider_id = ? AND owner = ?")
+          .query('UPDATE oauth_refresh_lease SET expires_at = ? WHERE provider_id = ? AND owner = ?')
           .run(expiresAt, providerId, owner).changes > 0
       );
     },
     releaseRefreshLease(providerId, owner) {
-      sqlite.query("DELETE FROM oauth_refresh_lease WHERE provider_id = ? AND owner = ?").run(providerId, owner);
+      sqlite.query('DELETE FROM oauth_refresh_lease WHERE provider_id = ? AND owner = ?').run(providerId, owner);
     },
   };
 }

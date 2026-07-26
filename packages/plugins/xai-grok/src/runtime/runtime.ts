@@ -1,11 +1,9 @@
-import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+import { createOpenAI } from '@ai-sdk/openai';
+import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
-import { createOpenAI } from "@ai-sdk/openai";
-
-import type { XAIGrokCredential } from "../schema";
-
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "../cli-headers";
-import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from "../oauth";
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers';
+import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from '../oauth';
+import type { XAIGrokCredential } from '../schema';
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
@@ -14,9 +12,9 @@ export async function createXAIGrokRuntime(
   const controlFetch = options.fetch ?? context.fetch ?? globalThis.fetch;
   const modelFetch = options.fetch ?? context.modelFetch ?? controlFetch;
   const openai = createOpenAI({
-    name: "xai-grok-oauth",
+    name: 'xai-grok-oauth',
     baseURL: XAI_GROK_CLI_BASE_URL,
-    apiKey: "dynamic-credential",
+    apiKey: 'dynamic-credential',
     fetch: createXAIGrokDynamicFetch(
       context.credentials,
       {
@@ -28,10 +26,10 @@ export async function createXAIGrokRuntime(
   });
   return {
     provider: {
-      specificationVersion: "v4",
+      specificationVersion: 'v4',
       languageModel: (modelId) => openai.responses(modelId),
-      embeddingModel: () => unsupported("embedding"),
-      imageModel: () => unsupported("image generation"),
+      embeddingModel: () => unsupported('embedding'),
+      imageModel: () => unsupported('image generation'),
     },
   };
 }
@@ -50,7 +48,7 @@ export function createXAIGrokDynamicFetch(
     });
     const request = new Request(input, init);
     const headers = createXAIGrokCLIHeaders(credential, request.headers);
-    headers.delete("content-length");
+    headers.delete('content-length');
     const body = await outgoingBody(request);
     return await (options.fetch ?? globalThis.fetch)(request.url, {
       method: request.method,
@@ -67,15 +65,15 @@ function unsupported(surface: string): never {
 }
 
 async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
-  if (request.method === "GET" || request.method === "HEAD") return undefined;
+  if (request.method === 'GET' || request.method === 'HEAD') return undefined;
   const original = new Uint8Array(await request.arrayBuffer());
-  if (!new URL(request.url).pathname.endsWith("/responses")) return original;
+  if (!new URL(request.url).pathname.endsWith('/responses')) return original;
   try {
-    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(original));
-    if (typeof value !== "object" || value === null) return original;
-    const reasoning = Reflect.get(value, "reasoning");
-    if (typeof reasoning !== "object" || reasoning === null || !Reflect.has(reasoning, "summary")) return original;
-    Reflect.deleteProperty(reasoning, "summary");
+    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original));
+    if (typeof value !== 'object' || value === null) return original;
+    const reasoning = Reflect.get(value, 'reasoning');
+    if (typeof reasoning !== 'object' || reasoning === null || !Reflect.has(reasoning, 'summary')) return original;
+    Reflect.deleteProperty(reasoning, 'summary');
     return JSON.stringify(value);
   } catch {
     return original;

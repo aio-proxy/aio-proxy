@@ -1,14 +1,13 @@
-import type { UsageRow } from "@aio-proxy/types";
-
 import {
   calculateEstimatedCost,
   type OpenRouterPriceCatalog,
   type TextStreamPart,
   type ToolSet,
   type UsageAccounting,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
+import type { UsageRow } from '@aio-proxy/types';
 
-type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: "finish" }>;
+type FinishPart = Extract<TextStreamPart<ToolSet>, { readonly type: 'finish' }>;
 
 export function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelId: string): UsageRow | undefined {
   const usage = part.totalUsage;

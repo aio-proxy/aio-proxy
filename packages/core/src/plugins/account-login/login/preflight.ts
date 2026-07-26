@@ -1,13 +1,12 @@
-import type { StoredAccount } from "../../repository/index";
-import type { LoginOAuthAccountOptions } from "../login";
-
+import type { StoredAccount } from '../../repository/index';
 import {
   AccountCleanupPendingError,
   type OAuthCapabilityReference,
   OAuthCapabilityRequiredError,
   ProviderCapabilityTargetMismatchError,
-} from "../errors";
-import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability, structuredEntry } from "../validation";
+} from '../errors';
+import type { LoginOAuthAccountOptions } from '../login';
+import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability, structuredEntry } from '../validation';
 
 export type Preflight = {
   readonly capability: OAuthCapabilityReference;
@@ -38,7 +37,7 @@ export async function preflight(options: LoginOAuthAccountOptions, signal: Abort
       }
       const pendingDelete = options.repository
         .listPendingAccountOperations()
-        .find((operation) => operation.providerId === providerId && operation.kind === "delete");
+        .find((operation) => operation.providerId === providerId && operation.kind === 'delete');
       signal.throwIfAborted();
       if (pendingDelete !== undefined) options.repository.completeAccountOperation(pendingDelete.operationId);
       return {
@@ -48,7 +47,7 @@ export async function preflight(options: LoginOAuthAccountOptions, signal: Abort
           account,
           runtimeRevision: account.runtimeRevision,
           fingerprint: account.fingerprint,
-          publicOptions: isRecord(entry["options"]) ? entry["options"] : {},
+          publicOptions: isRecord(entry['options']) ? entry['options'] : {},
           secrets: isRecord(account.secrets) ? account.secrets : {},
         },
       };

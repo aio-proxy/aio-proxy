@@ -1,6 +1,5 @@
-import type { DashboardOAuthSessionStart, OAuthProviderMutationBody, ProviderAlias } from "@aio-proxy/types";
-
-import { isEqual } from "es-toolkit";
+import type { DashboardOAuthSessionStart, OAuthProviderMutationBody, ProviderAlias } from '@aio-proxy/types';
+import { isEqual } from 'es-toolkit';
 
 export interface OAuthProviderEditValues {
   readonly id: string;
@@ -8,18 +7,18 @@ export interface OAuthProviderEditValues {
   readonly enabled: boolean;
   readonly weight?: number;
   readonly alias?: ProviderAlias;
-  readonly publicValues: DashboardOAuthSessionStart["publicValues"];
-  readonly secrets: DashboardOAuthSessionStart["secrets"];
+  readonly publicValues: DashboardOAuthSessionStart['publicValues'];
+  readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
 }
 
 type OAuthProviderEditAction =
-  | { readonly kind: "update"; readonly body: OAuthProviderMutationBody }
-  | { readonly kind: "reauthorize"; readonly input: DashboardOAuthSessionStart };
+  | { readonly kind: 'update'; readonly body: OAuthProviderMutationBody }
+  | { readonly kind: 'reauthorize'; readonly input: DashboardOAuthSessionStart };
 
 export const oauthProviderEditAction = (
   values: OAuthProviderEditValues,
-  initialPublicValues: DashboardOAuthSessionStart["publicValues"],
+  initialPublicValues: DashboardOAuthSessionStart['publicValues'],
   forceReauthorize = false,
 ): OAuthProviderEditAction => {
   const providerPatch = {
@@ -28,7 +27,7 @@ export const oauthProviderEditAction = (
     ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.alias === undefined ? {} : { alias: values.alias }),
   };
-  const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ""));
+  const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));
   const requiresReauthorization =
     forceReauthorize ||
     !isEqual(values.publicValues, initialPublicValues) ||
@@ -37,7 +36,7 @@ export const oauthProviderEditAction = (
 
   if (requiresReauthorization) {
     return {
-      kind: "reauthorize",
+      kind: 'reauthorize',
       input: {
         targetProviderId: values.id,
         publicValues: values.publicValues,
@@ -48,5 +47,5 @@ export const oauthProviderEditAction = (
     };
   }
 
-  return { kind: "update", body: { kind: "oauth", id: values.id, ...providerPatch } };
+  return { kind: 'update', body: { kind: 'oauth', id: values.id, ...providerPatch } };
 };

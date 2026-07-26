@@ -1,6 +1,5 @@
-import type { UsageOverviewGroupBy, UsageOverviewMetric, UsageOverviewRange } from "@aio-proxy/types";
-
-import { atom } from "jotai";
+import type { UsageOverviewGroupBy, UsageOverviewMetric, UsageOverviewRange } from '@aio-proxy/types';
+import { atom } from 'jotai';
 
 export type UsageOverviewFilters = {
   readonly range: UsageOverviewRange;
@@ -9,7 +8,7 @@ export type UsageOverviewFilters = {
 };
 
 export const usageOverviewFiltersAtom = atom<UsageOverviewFilters>({
-  range: "24h",
-  metric: "cost",
-  groupBy: "model",
+  range: '24h',
+  metric: 'cost',
+  groupBy: 'model',
 });

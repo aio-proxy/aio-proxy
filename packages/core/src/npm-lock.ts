@@ -1,20 +1,21 @@
-import type { Stats } from "node:fs";
+import { randomUUID } from 'node:crypto';
+import type { Stats } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
+import { mkdir, open, readFile, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { z } from "zod";
+import { z } from 'zod';
 
-import { NpmLockError } from "./error";
-import { isNodeError } from "./file-lock/fs";
-import { processIsAlive, processStarttime } from "./file-lock/process-identity";
-import { runWithRecoveryFence } from "./file-lock/recovery-fence";
+import { NpmLockError } from './error';
+import { isNodeError } from './file-lock/fs';
+import { processIsAlive, processStarttime } from './file-lock/process-identity';
+import { runWithRecoveryFence } from './file-lock/recovery-fence';
 
-const LOCK_FILE = ".aio-proxy-install.lock";
+const LOCK_FILE = '.aio-proxy-install.lock';
 const LOCK_VERSION = 1;
 const STALE_LOCK_MS = 5 * 60 * 1000;
 const LOCK_HEARTBEAT_MS = 10_000;
-const STARTTIME_UNAVAILABLE = "unavailable";
+const STARTTIME_UNAVAILABLE = 'unavailable';
 const DEFAULT_WAIT_MS = 5_000;
 
 const LockSchema = z.object({
@@ -35,6 +36,8 @@ export type NpmInstallLock = {
   readonly release: () => Promise<void>;
 };
 
+type AcquiredLock = { readonly handle: FileHandle; readonly identity: Stats };
+
 function parseLock(text: string): ReturnType<typeof LockSchema.safeParse> {
   try {
     return LockSchema.safeParse(JSON.parse(text));
@@ -52,7 +55,7 @@ async function removeIfUnchanged(
   matchMtime = false,
 ): Promise<boolean> {
   try {
-    const [text, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    const [text, metadata] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
     if (
       text !== expected ||
       metadata.dev !== identity.dev ||
@@ -62,7 +65,7 @@ async function removeIfUnchanged(
       return false;
     }
     await assertFence();
-    const [currentText, currentMetadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    const [currentText, currentMetadata] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
     if (
       currentText !== expected ||
       currentMetadata.dev !== identity.dev ||
@@ -74,7 +77,7 @@ async function removeIfUnchanged(
     await rm(path);
     return true;
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return false;
+    if (isNodeError(error, 'ENOENT')) return false;
     throw error;
   }
 }
@@ -100,9 +103,9 @@ async function withRecoveryFence<T>(
 async function inspectLock(path: string): Promise<LockInspection> {
   let text: string;
   try {
-    text = await readFile(path, "utf8");
+    text = await readFile(path, 'utf8');
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return { stale: true };
+    if (isNodeError(error, 'ENOENT')) return { stale: true };
     throw error;
   }
   const parsed = parseLock(text);
@@ -132,6 +135,104 @@ function retryDelay(attempt: number): number {
   return Math.floor(base * (0.5 + Math.random()));
 }
 
+type LockContext = {
+  readonly lockPath: string;
+  readonly content: string;
+  readonly waitMs: number;
+  readonly timeoutError: () => Error;
+};
+
+async function writeLockFile(
+  lockPath: string,
+  content: string,
+  assertFence: () => Promise<void>,
+): Promise<AcquiredLock | null | false> {
+  try {
+    const handle = await open(lockPath, 'wx', 0o600);
+    let identity: Stats | undefined;
+    try {
+      await handle.writeFile(content);
+      await handle.sync();
+      identity = await handle.stat();
+      await assertFence();
+      return { handle, identity };
+    } catch (error) {
+      await handle.close().catch(() => {});
+      if (identity !== undefined) {
+        await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
+      }
+      throw error;
+    }
+  } catch (error) {
+    if (!isNodeError(error, 'EEXIST')) throw error;
+    return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
+  }
+}
+
+function createLockHandle(acquired: AcquiredLock, ctx: LockContext): NpmInstallLock {
+  const { handle, identity } = acquired;
+  const { lockPath, content, waitMs, timeoutError } = ctx;
+  const verifyOwnership = async () => {
+    try {
+      const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, 'utf8'), stat(lockPath)]);
+      if (currentText !== content || currentMetadata.dev !== identity.dev || currentMetadata.ino !== identity.ino) {
+        throw new Error('Npm lock ownership lost');
+      }
+    } catch (error) {
+      if (isNodeError(error, 'ENOENT')) throw new Error('Npm lock ownership lost');
+      throw error;
+    }
+  };
+  const assertOwnership = async () => {
+    await withRecoveryFence(
+      lockPath,
+      async (assertFence) => {
+        await assertFence();
+        await verifyOwnership();
+        const now = new Date();
+        await handle.utimes(now, now);
+      },
+      Date.now() + waitMs,
+      timeoutError,
+    );
+  };
+  let heartbeatRefreshing = false;
+  let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+    if (heartbeatRefreshing) return;
+    heartbeatRefreshing = true;
+    void assertOwnership()
+      .catch(() => {})
+      .finally(() => {
+        heartbeatRefreshing = false;
+      });
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
+  return {
+    async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
+      await assertOwnership();
+      const result = await action(assertOwnership);
+      await assertOwnership();
+      return result;
+    },
+    async release() {
+      if (heartbeat !== undefined) {
+        clearInterval(heartbeat);
+        heartbeat = undefined;
+      }
+      try {
+        await withRecoveryFence(
+          lockPath,
+          (assertFence) => removeIfUnchanged(lockPath, content, identity, assertFence),
+          Date.now() + waitMs,
+          timeoutError,
+        );
+      } finally {
+        await handle.close().catch(() => {});
+      }
+    },
+  };
+}
+
 export async function acquireNpmInstallLock(
   pkg: string,
   cacheDir: string,
@@ -158,35 +259,14 @@ export async function acquireNpmInstallLock(
     const acquired = (await inspectLock(lockPath)).stale
       ? await withRecoveryFence(
           lockPath,
-          async (assertFence) => {
-            try {
-              const handle = await open(lockPath, "wx", 0o600);
-              let identity: Stats | undefined;
-              try {
-                await handle.writeFile(content);
-                await handle.sync();
-                identity = await handle.stat();
-                await assertFence();
-                return { handle, identity };
-              } catch (error) {
-                await handle.close().catch(() => {});
-                if (identity !== undefined) {
-                  await removeIfUnchanged(lockPath, content, identity, assertFence).catch(() => {});
-                }
-                throw error;
-              }
-            } catch (error) {
-              if (!isNodeError(error, "EEXIST")) throw error;
-              return (await recoverStaleLock(lockPath, assertFence)) ? null : false;
-            }
-          },
+          (assertFence) => writeLockFile(lockPath, content, assertFence),
           deadline,
           timeoutError,
         )
       : false;
     if (acquired === null) continue;
     if (acquired === false) {
-      const generation = await readFile(lockPath, "utf8").catch(() => null);
+      const generation = await readFile(lockPath, 'utf8').catch(() => null);
       if (generation !== failedGeneration) {
         failedGeneration = generation;
         attempts = 0;
@@ -197,66 +277,7 @@ export async function acquireNpmInstallLock(
       await Bun.sleep(Math.min(retryDelay(attempts), Math.max(0, deadline - Date.now())));
       continue;
     }
-    const { handle, identity } = acquired;
-    const verifyOwnership = async () => {
-      try {
-        const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, "utf8"), stat(lockPath)]);
-        if (currentText !== content || currentMetadata.dev !== identity.dev || currentMetadata.ino !== identity.ino) {
-          throw new Error("Npm lock ownership lost");
-        }
-      } catch (error) {
-        if (isNodeError(error, "ENOENT")) throw new Error("Npm lock ownership lost");
-        throw error;
-      }
-    };
-    const assertOwnership = async () => {
-      await withRecoveryFence(
-        lockPath,
-        async (assertFence) => {
-          await assertFence();
-          await verifyOwnership();
-          const now = new Date();
-          await handle.utimes(now, now);
-        },
-        Date.now() + waitMs,
-        timeoutError,
-      );
-    };
-    let heartbeatRefreshing = false;
-    let heartbeat: ReturnType<typeof setInterval> | undefined = setInterval(() => {
-      if (heartbeatRefreshing) return;
-      heartbeatRefreshing = true;
-      void assertOwnership()
-        .catch(() => {})
-        .finally(() => {
-          heartbeatRefreshing = false;
-        });
-    }, LOCK_HEARTBEAT_MS);
-    heartbeat.unref?.();
-    return {
-      async withOwnership<T>(action: (assertOwnership: () => Promise<void>) => Promise<T>): Promise<T> {
-        await assertOwnership();
-        const result = await action(assertOwnership);
-        await assertOwnership();
-        return result;
-      },
-      async release() {
-        if (heartbeat !== undefined) {
-          clearInterval(heartbeat);
-          heartbeat = undefined;
-        }
-        try {
-          await withRecoveryFence(
-            lockPath,
-            (assertFence) => removeIfUnchanged(lockPath, content, identity, assertFence),
-            Date.now() + waitMs,
-            timeoutError,
-          );
-        } finally {
-          await handle.close().catch(() => {});
-        }
-      },
-    };
+    return createLockHandle(acquired, { lockPath, content, waitMs, timeoutError });
   }
   throw new NpmLockError(pkg);
 }

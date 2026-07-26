@@ -1,30 +1,29 @@
-import type { ProviderV4 } from "@ai-sdk/provider";
+import type { ProviderV4 } from '@ai-sdk/provider';
 
-import type { AiSdkProviderInstance } from "./ai-sdk/index";
+import { streamAiSdkText } from '../ai-sdk-bridge';
+import { AiSdkProviderError } from '../error';
+import type { AiSdkProviderInstance } from './ai-sdk/index';
 
-import { streamAiSdkText } from "../ai-sdk-bridge";
-import { AiSdkProviderError } from "../error";
-
-const required = ["languageModel", "imageModel", "embeddingModel"] as const;
-const optional = ["speechModel", "transcriptionModel", "rerankingModel", "files", "skills"] as const;
+const required = ['languageModel', 'imageModel', 'embeddingModel'] as const;
+const optional = ['speechModel', 'transcriptionModel', 'rerankingModel', 'files', 'skills'] as const;
 
 export function validateProviderV4(value: unknown): value is ProviderV4 {
   const valueType = typeof value;
-  if ((valueType !== "object" && valueType !== "function") || value === null) {
+  if ((valueType !== 'object' && valueType !== 'function') || value === null) {
     return false;
   }
   const candidate = value as object;
-  if (Reflect.get(candidate, "specificationVersion") !== "v4") return false;
+  if (Reflect.get(candidate, 'specificationVersion') !== 'v4') return false;
   return (
-    required.every((name) => typeof Reflect.get(candidate, name) === "function") &&
+    required.every((name) => typeof Reflect.get(candidate, name) === 'function') &&
     optional.every((name) => {
       const method = Reflect.get(candidate, name);
-      return method === undefined || typeof method === "function";
+      return method === undefined || typeof method === 'function';
     })
   );
 }
 
-export function createProviderV4Invoke(providerId: string, provider: ProviderV4): AiSdkProviderInstance["invoke"] {
+export function createProviderV4Invoke(providerId: string, provider: ProviderV4): AiSdkProviderInstance['invoke'] {
   return (request) => {
     const settings = {
       ...request.settings,
@@ -50,7 +49,7 @@ export function createProviderV4Invoke(providerId: string, provider: ProviderV4)
             ...(request.signal === undefined ? {} : { signal: request.signal }),
           });
           for await (const part of result.fullStream) {
-            if (part.type === "error") throw part.error;
+            if (part.type === 'error') throw part.error;
             controller.enqueue(part);
           }
           controller.close();

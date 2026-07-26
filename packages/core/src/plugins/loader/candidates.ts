@@ -1,12 +1,11 @@
-import { type PluginState, pluginConfigCommand } from "@aio-proxy/types";
-import { isPlainObject } from "es-toolkit/predicate";
+import { type PluginState, pluginConfigCommand } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from "./index";
-
-import { validateConfigSpec } from "../config-spec";
-import { redactPluginError } from "../diagnostic/index";
-import { parsePluginSchema } from "../schema";
-import { type LoadablePluginDescriptor, PluginHostError } from "./descriptor/index";
+import { validateConfigSpec } from '../config-spec';
+import { redactPluginError } from '../diagnostic/index';
+import { parsePluginSchema } from '../schema';
+import { type LoadablePluginDescriptor, PluginHostError } from './descriptor/index';
+import type { BuiltInPluginDefinition, LoadPluginRegistryOptions } from './index';
 
 export type Candidate = {
   readonly packageName: string;
@@ -27,19 +26,19 @@ export async function prepareOptions(
   const optionsSpec = descriptor.metadata.options;
   if (optionsSpec === undefined) {
     if (!isEmptyRecord(publicOptions) || !isEmptyRecord(secretOptions))
-      throw new PluginHostError("PLUGIN_OPTIONS_INVALID");
+      throw new PluginHostError('PLUGIN_OPTIONS_INVALID');
     return undefined;
   }
   const { spec, secretKeys } = validateConfigSpec(optionsSpec);
-  if (publicOptions !== undefined && !isPlainRecord(publicOptions)) throw new PluginHostError("PLUGIN_OPTIONS_INVALID");
-  if (secretOptions !== undefined && !isPlainRecord(secretOptions)) throw new PluginHostError("PLUGIN_OPTIONS_INVALID");
+  if (publicOptions !== undefined && !isPlainRecord(publicOptions)) throw new PluginHostError('PLUGIN_OPTIONS_INVALID');
+  if (secretOptions !== undefined && !isPlainRecord(secretOptions)) throw new PluginHostError('PLUGIN_OPTIONS_INVALID');
   const publicRecord = publicOptions ?? {};
   const secretRecord = secretOptions ?? {};
   for (const secretKey of secretKeys) {
-    if (Object.hasOwn(publicRecord, secretKey)) throw new PluginHostError("PLUGIN_OPTIONS_INVALID");
+    if (Object.hasOwn(publicRecord, secretKey)) throw new PluginHostError('PLUGIN_OPTIONS_INVALID');
   }
   const parsed = await parsePluginSchema(spec.schema, { ...publicRecord, ...secretRecord });
-  if (!parsed.ok) throw new PluginHostError("PLUGIN_OPTIONS_INVALID");
+  if (!parsed.ok) throw new PluginHostError('PLUGIN_OPTIONS_INVALID');
   return parsed.value;
 }
 
@@ -69,19 +68,19 @@ export function failedState(
   secretValues: readonly string[],
   configured: boolean,
 ): PluginState {
-  const hostError = error instanceof PluginHostError ? error : new PluginHostError("PLUGIN_LOAD_FAILED");
+  const hostError = error instanceof PluginHostError ? error : new PluginHostError('PLUGIN_LOAD_FAILED');
   options.logger({
-    event: "plugin.load.failed",
+    event: 'plugin.load.failed',
     code: hostError.code,
     context: { plugin: packageName },
     error: redactPluginError(error, { secretValues }),
   });
   return {
-    status: "failed",
+    status: 'failed',
     diagnostic: options.diagnostics(hostError.code, {
       plugin: packageName,
       retryable: hostError.retryable,
-      ...(configured && (hostError.code === "PLUGIN_LOAD_FAILED" || hostError.code === "PLUGIN_OPTIONS_INVALID")
+      ...(configured && (hostError.code === 'PLUGIN_LOAD_FAILED' || hostError.code === 'PLUGIN_OPTIONS_INVALID')
         ? { suggestedCommand: pluginConfigCommand(packageName) }
         : {}),
     }),

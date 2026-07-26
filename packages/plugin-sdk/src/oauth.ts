@@ -1,8 +1,8 @@
-import type { ZodType } from "zod";
+import type { ZodType } from 'zod';
 
-import type { ConfigSpec } from "./config";
-import type { LocalizedText } from "./localized-text";
-import type { ModelCatalog, OAuthRuntimeResult } from "./runtime";
+import type { ConfigSpec } from './config';
+import type { LocalizedText } from './localized-text';
+import type { ModelCatalog, OAuthRuntimeResult } from './runtime';
 
 export const CATALOG_DISCOVERY_TIMEOUT_MS = 30_000;
 
@@ -18,7 +18,7 @@ export type DefaultAliasSuggestion = DefaultAliasTarget & {
 export type DefaultAliasSuggestions = Readonly<Record<string, DefaultAliasSuggestion>>;
 
 export class CredentialRefreshError extends Error {
-  override readonly name = "CredentialRefreshError";
+  override readonly name = 'CredentialRefreshError';
 
   constructor(
     message: string,
@@ -45,8 +45,8 @@ export type DeviceCodePresentation = {
 export type LoopbackRequest = {
   readonly state: string;
   readonly redirect: {
-    readonly hostname: "localhost" | "127.0.0.1";
-    readonly port: number | "dynamic";
+    readonly hostname: 'localhost' | '127.0.0.1';
+    readonly port: number | 'dynamic';
     readonly path: `/${string}`;
   };
   readonly authorizationUrl: (input: { readonly redirectUri: string }) => string;
@@ -89,8 +89,8 @@ export type CredentialPort<Credential> = {
       readonly metadata?: { readonly label?: string; readonly expiresAt?: number };
     }>,
   ) => Promise<
-    | { readonly status: "updated"; readonly snapshot: CredentialSnapshot<Credential> }
-    | { readonly status: "superseded"; readonly snapshot: CredentialSnapshot<Credential> }
+    | { readonly status: 'updated'; readonly snapshot: CredentialSnapshot<Credential> }
+    | { readonly status: 'superseded'; readonly snapshot: CredentialSnapshot<Credential> }
   >;
 };
 
@@ -144,7 +144,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;
   readonly catalog: {
-    readonly policy: { readonly kind: "static" } | { readonly kind: "ttl"; readonly ttlMs: number };
+    readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;
     readonly initialFallback?: (error: unknown) => ModelCatalog | undefined;
     readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;

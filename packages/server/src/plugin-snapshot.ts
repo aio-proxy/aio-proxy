@@ -1,4 +1,4 @@
-import type { ProviderRouteSnapshot, ProviderSnapshotLease, RetiredProviderSnapshot } from "./runtime";
+import type { ProviderRouteSnapshot, ProviderSnapshotLease, RetiredProviderSnapshot } from './runtime';
 
 type ManagedSnapshot = {
   readonly snapshot: ProviderRouteSnapshot;

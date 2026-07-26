@@ -1,7 +1,7 @@
-import { formatHex8, interpolate, rgb } from "culori";
+import { formatHex8, interpolate, rgb } from 'culori';
 
 export const mixHexColors = (from: string, to: string, toAmount: number, opacity = 1): string => {
-  const color = rgb(interpolate([from, to], "oklab")(toAmount));
+  const color = rgb(interpolate([from, to], 'oklab')(toAmount));
 
   if (color === undefined) {
     throw new TypeError(`Cannot mix invalid colors ${from} and ${to}`);

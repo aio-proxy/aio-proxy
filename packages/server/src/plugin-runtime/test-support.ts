@@ -1,20 +1,21 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   createPluginRegistryHost,
   createPluginRepository,
   type DiagnosticFactory,
   type PluginRepository,
-} from "@aio-proxy/core";
-import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import { type ModelCatalog, type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+} from '@aio-proxy/core';
+import { type OpenDbHandle, openDb } from '@aio-proxy/core/db';
+import { type ModelCatalog, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 
 import {
   type MaterializePluginProviderOptions,
   materializePluginProvider as materializePluginProviderWithDigest,
   pluginOptionsIdentityDigest,
-} from "./index";
+} from './index';
 
 export const homes: string[] = [];
 const handles: OpenDbHandle[] = [];
@@ -25,7 +26,7 @@ export function cleanup(): void {
 }
 
 export const catalog: ModelCatalog = {
-  language: [{ id: "model" }],
+  language: [{ id: 'model' }],
   image: [],
   embedding: [],
   speech: [],
@@ -46,18 +47,18 @@ export const emptyPluginOptionsDigest = pluginOptionsIdentityDigest({ public: un
 export function refreshCredential(repository: PluginRepository, expectedRevision: number, credential: unknown): void {
   const owner = crypto.randomUUID();
   const now = Date.now();
-  if (!repository.tryAcquireRefreshLease("person", owner, now, now + 60_000)) throw new Error("lease unavailable");
+  if (!repository.tryAcquireRefreshLease('person', owner, now, now + 60_000)) throw new Error('lease unavailable');
   try {
-    repository.compareAndSwapCredential("person", expectedRevision, owner, credential);
+    repository.compareAndSwapCredential('person', expectedRevision, owner, credential);
   } finally {
-    repository.releaseRefreshLease("person", owner);
+    repository.releaseRefreshLease('person', owner);
   }
 }
 
 export function materializePluginProvider(
-  options: Omit<MaterializePluginProviderOptions, "pluginOptionsDigest" | "previous"> & {
-    readonly pluginOptionsDigest?: MaterializePluginProviderOptions["pluginOptionsDigest"];
-    readonly previous?: MaterializePluginProviderOptions["previous"] | undefined;
+  options: Omit<MaterializePluginProviderOptions, 'pluginOptionsDigest' | 'previous'> & {
+    readonly pluginOptionsDigest?: MaterializePluginProviderOptions['pluginOptionsDigest'];
+    readonly previous?: MaterializePluginProviderOptions['previous'] | undefined;
   },
 ) {
   const { pluginOptionsDigest = emptyPluginOptionsDigest, previous, ...rest } = options;
@@ -69,57 +70,57 @@ export function materializePluginProvider(
 }
 
 export function runtimeFixture(
-  policy: OAuthAdapter["catalog"]["policy"],
+  policy: OAuthAdapter['catalog']['policy'],
   overrides: {
-    readonly accountOptionsSchema?: OAuthAdapter["account"]["options"]["schema"];
+    readonly accountOptionsSchema?: OAuthAdapter['account']['options']['schema'];
     readonly catalog?: ModelCatalog | null;
-    readonly createRuntime?: OAuthAdapter["createRuntime"];
+    readonly createRuntime?: OAuthAdapter['createRuntime'];
     readonly providerId?: string;
   } = {},
 ): {
   readonly repository: PluginRepository;
-  readonly plugins: Parameters<typeof materializePluginProvider>[0]["plugins"];
+  readonly plugins: Parameters<typeof materializePluginProvider>[0]['plugins'];
   readonly createCalls: () => number;
 } {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-runtime-"));
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-plugin-runtime-'));
   homes.push(home);
   const handle = openDb({ home });
   handles.push(handle);
   const repository = createPluginRepository(handle.sqlite);
   const fixtureCatalog = overrides.catalog === undefined ? catalog : overrides.catalog;
-  const providerId = overrides.providerId ?? "person";
+  const providerId = overrides.providerId ?? 'person';
   const operation = repository.stageAccountOperation({
-    kind: "create",
-    targetDigest: "create",
+    kind: 'create',
+    targetDigest: 'create',
     account: {
       providerId,
-      plugin: "@example/oauth",
-      capability: "default",
+      plugin: '@example/oauth',
+      capability: 'default',
       fingerprint: `${providerId}@example.com`,
       options: {},
       secrets: {},
-      credential: { token: "secret" },
+      credential: { token: 'secret' },
       catalog:
         fixtureCatalog === null
           ? {
-              kind: "missing",
-              diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId, retryable: true }),
+              kind: 'missing',
+              diagnostic: diagnostics('CATALOG_UNAVAILABLE', { providerId, retryable: true }),
             }
-          : { kind: "replace", value: { catalog: fixtureCatalog, refreshedAt: 1_000 } },
+          : { kind: 'replace', value: { catalog: fixtureCatalog, refreshedAt: 1_000 } },
     },
   });
   repository.completeAccountOperation(operation.operationId);
 
   const host = createPluginRegistryHost();
   let calls = 0;
-  const staging = host.stage("@example/oauth");
+  const staging = host.stage('@example/oauth');
   staging.api.oauth.register({
-    id: "default",
-    label: "Example",
+    id: 'default',
+    label: 'Example',
     account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
-      throw new Error("not called");
+      throw new Error('not called');
     },
     catalog: {
       policy,
@@ -132,15 +133,15 @@ export function runtimeFixture(
       if (overrides.createRuntime !== undefined) return overrides.createRuntime(context as never);
       return {
         provider: {
-          specificationVersion: "v4",
+          specificationVersion: 'v4',
           languageModel() {
-            throw new Error("not called");
+            throw new Error('not called');
           },
           imageModel() {
-            throw new Error("not called");
+            throw new Error('not called');
           },
           embeddingModel() {
-            throw new Error("not called");
+            throw new Error('not called');
           },
         },
       } as never;
@@ -155,8 +156,8 @@ export function runtimeFixture(
       registry: host.registry,
       plugins: new Map([
         [
-          "@example/oauth",
-          { packageName: "@example/oauth", version: "1.0.0", builtIn: false, state: { status: "ready" } },
+          '@example/oauth',
+          { packageName: '@example/oauth', version: '1.0.0', builtIn: false, state: { status: 'ready' } },
         ],
       ]),
     },

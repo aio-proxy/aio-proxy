@@ -1,26 +1,26 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { IdSchema } from "./common";
-import { UsageRowSchema } from "./usage";
+import { IdSchema } from './common';
+import { UsageRowSchema } from './usage';
 
-const AioContentPartSchema = z.discriminatedUnion("type", [
+const AioContentPartSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal("text"),
+    type: z.literal('text'),
     text: z.string(),
   }),
   z.object({
-    type: z.literal("image"),
+    type: z.literal('image'),
     image: z.string(),
     mediaType: z.string().optional(),
   }),
   z.object({
-    type: z.literal("tool-call"),
+    type: z.literal('tool-call'),
     toolCallId: IdSchema,
     toolName: IdSchema,
     input: z.unknown(),
   }),
   z.object({
-    type: z.literal("tool-result"),
+    type: z.literal('tool-result'),
     toolCallId: IdSchema,
     toolName: IdSchema,
     output: z.unknown(),
@@ -28,25 +28,25 @@ const AioContentPartSchema = z.discriminatedUnion("type", [
 ]);
 
 export const AioModelMessageSchema = z.object({
-  role: z.enum(["system", "user", "assistant", "tool"]),
+  role: z.enum(['system', 'user', 'assistant', 'tool']),
   content: z.union([z.string(), z.array(AioContentPartSchema)]),
 });
 
-export const AioStreamPartSchema = z.discriminatedUnion("type", [
+export const AioStreamPartSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal("start"),
+    type: z.literal('start'),
     messageId: IdSchema.optional(),
   }),
   z.object({
-    type: z.literal("text-delta"),
+    type: z.literal('text-delta'),
     textDelta: z.string(),
   }),
   z.object({
-    type: z.literal("finish"),
+    type: z.literal('finish'),
     usage: UsageRowSchema.optional(),
   }),
   z.object({
-    type: z.literal("error"),
+    type: z.literal('error'),
     error: z.object({
       message: z.string().min(1),
       code: z.string().optional(),

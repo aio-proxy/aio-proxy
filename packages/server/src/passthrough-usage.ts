@@ -1,7 +1,7 @@
-import { ProviderProtocol, type UsageRow } from "@aio-proxy/types";
-import { createParser } from "eventsource-parser";
+import { ProviderProtocol, type UsageRow } from '@aio-proxy/types';
+import { createParser } from 'eventsource-parser';
 
-type ExtractedUsage = Omit<UsageRow, "providerId" | "modelId">;
+type ExtractedUsage = Omit<UsageRow, 'providerId' | 'modelId'>;
 const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
 
 export type PassthroughObservation = {
@@ -36,7 +36,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
   const parser = createParser({
     maxBufferSize: MAX_SSE_BUFFER_CHARS,
     onError(error) {
-      if (error.type === "max-buffer-size-exceeded") {
+      if (error.type === 'max-buffer-size-exceeded') {
         active = false;
       }
     },
@@ -59,7 +59,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
 
   return {
     feed(chunk) {
-      if (!active || chunk === "") {
+      if (!active || chunk === '') {
         return;
       }
       try {
@@ -71,7 +71,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
     finish() {
       if (active) {
         try {
-          parser.feed("\n\n");
+          parser.feed('\n\n');
           parser.reset();
         } catch {
           active = false;
@@ -95,9 +95,9 @@ function observation(usage: ExtractedUsage | undefined, responseId: string | und
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
   if (protocol !== ProviderProtocol.OpenAIResponse || !isRecord(value)) return undefined;
-  const response = isRecord(value.response) ? value.response : value;
-  const completed = value.type === "response.completed" || response.status === "completed";
-  return completed && typeof response.id === "string" ? response.id : undefined;
+  const response = isRecord(value['response']) ? value['response'] : value;
+  const completed = value['type'] === 'response.completed' || response['status'] === 'completed';
+  return completed && typeof response['id'] === 'string' ? response['id'] : undefined;
 }
 
 function mergeObservedUsage(
@@ -140,16 +140,16 @@ function usageFromJson(protocol: ProviderProtocol, value: unknown): ExtractedUsa
 }
 
 function openAICompatibleUsage(value: unknown): ExtractedUsage | undefined {
-  if (!isRecord(value) || !isRecord(value["usage"])) {
+  if (!isRecord(value) || !isRecord(value['usage'])) {
     return undefined;
   }
-  const usage = value["usage"];
+  const usage = value['usage'];
   return tokenUsage({
-    inputTokens: numberField(usage, "prompt_tokens"),
-    outputTokens: numberField(usage, "completion_tokens"),
-    totalTokens: numberField(usage, "total_tokens"),
-    cacheReadTokens: nestedNumberField(usage, "prompt_tokens_details", "cached_tokens"),
-    reasoningTokens: nestedNumberField(usage, "completion_tokens_details", "reasoning_tokens"),
+    inputTokens: numberField(usage, 'prompt_tokens'),
+    outputTokens: numberField(usage, 'completion_tokens'),
+    totalTokens: numberField(usage, 'total_tokens'),
+    cacheReadTokens: nestedNumberField(usage, 'prompt_tokens_details', 'cached_tokens'),
+    reasoningTokens: nestedNumberField(usage, 'completion_tokens_details', 'reasoning_tokens'),
   });
 }
 
@@ -157,17 +157,17 @@ function openAIResponsesUsage(value: unknown): ExtractedUsage | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const response = isRecord(value["response"]) ? value["response"] : value;
-  if (!isRecord(response["usage"])) {
+  const response = isRecord(value['response']) ? value['response'] : value;
+  if (!isRecord(response['usage'])) {
     return undefined;
   }
-  const usage = response["usage"];
+  const usage = response['usage'];
   return tokenUsage({
-    inputTokens: numberField(usage, "input_tokens"),
-    outputTokens: numberField(usage, "output_tokens"),
-    totalTokens: numberField(usage, "total_tokens"),
-    cacheReadTokens: nestedNumberField(usage, "input_tokens_details", "cached_tokens"),
-    reasoningTokens: nestedNumberField(usage, "output_tokens_details", "reasoning_tokens"),
+    inputTokens: numberField(usage, 'input_tokens'),
+    outputTokens: numberField(usage, 'output_tokens'),
+    totalTokens: numberField(usage, 'total_tokens'),
+    cacheReadTokens: nestedNumberField(usage, 'input_tokens_details', 'cached_tokens'),
+    reasoningTokens: nestedNumberField(usage, 'output_tokens_details', 'reasoning_tokens'),
   });
 }
 
@@ -175,41 +175,41 @@ function anthropicUsage(value: unknown): ExtractedUsage | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const container = isRecord(value["message"]) ? value["message"] : value;
-  if (!isRecord(container["usage"])) {
+  const container = isRecord(value['message']) ? value['message'] : value;
+  if (!isRecord(container['usage'])) {
     return undefined;
   }
-  const usage = container["usage"];
-  const inputTokens = numberField(usage, "input_tokens");
-  const outputTokens = numberField(usage, "output_tokens");
+  const usage = container['usage'];
+  const inputTokens = numberField(usage, 'input_tokens');
+  const outputTokens = numberField(usage, 'output_tokens');
   return tokenUsage({
     inputTokens,
     outputTokens,
     totalTokens: totalTokens(inputTokens, outputTokens),
-    cacheReadTokens: numberField(usage, "cache_read_input_tokens"),
-    cacheWriteTokens: numberField(usage, "cache_creation_input_tokens"),
+    cacheReadTokens: numberField(usage, 'cache_read_input_tokens'),
+    cacheWriteTokens: numberField(usage, 'cache_creation_input_tokens'),
   });
 }
 
 function geminiUsage(value: unknown): ExtractedUsage | undefined {
   if (Array.isArray(value)) {
     for (let index = value.length - 1; index >= 0; index -= 1) {
-      if (isRecord(value[index]) && isRecord(value[index]["usageMetadata"])) {
+      if (isRecord(value[index]) && isRecord(value[index]['usageMetadata'])) {
         return geminiUsage(value[index]);
       }
     }
     return undefined;
   }
-  if (!isRecord(value) || !isRecord(value["usageMetadata"])) {
+  if (!isRecord(value) || !isRecord(value['usageMetadata'])) {
     return undefined;
   }
-  const usage = value["usageMetadata"];
+  const usage = value['usageMetadata'];
   return tokenUsage({
-    inputTokens: numberField(usage, "promptTokenCount"),
-    outputTokens: numberField(usage, "candidatesTokenCount"),
-    totalTokens: numberField(usage, "totalTokenCount"),
-    cacheReadTokens: numberField(usage, "cachedContentTokenCount"),
-    reasoningTokens: numberField(usage, "thoughtsTokenCount"),
+    inputTokens: numberField(usage, 'promptTokenCount'),
+    outputTokens: numberField(usage, 'candidatesTokenCount'),
+    totalTokens: numberField(usage, 'totalTokenCount'),
+    cacheReadTokens: numberField(usage, 'cachedContentTokenCount'),
+    reasoningTokens: numberField(usage, 'thoughtsTokenCount'),
   });
 }
 
@@ -227,7 +227,7 @@ function totalTokens(inputTokens: number | undefined, outputTokens: number | und
 
 function numberField(record: Record<string, unknown>, field: string): number | undefined {
   const value = record[field];
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function nestedNumberField(record: Record<string, unknown>, parent: string, field: string): number | undefined {
@@ -236,7 +236,7 @@ function nestedNumberField(record: Record<string, unknown>, parent: string, fiel
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function assertNever(value: never): never {

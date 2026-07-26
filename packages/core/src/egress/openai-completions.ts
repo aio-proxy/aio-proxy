@@ -2,13 +2,12 @@ import type {
   ChatCompletion,
   ChatCompletionChunk,
   ChatCompletionMessageToolCall,
-} from "openai/resources/chat/completions/completions";
-import type { CompletionUsage } from "openai/resources/completions";
+} from 'openai/resources/chat/completions/completions';
+import type { CompletionUsage } from 'openai/resources/completions';
 
-import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
-import type { ModelEgressContext } from "../protocol/adapter";
-
-import { createCancellableEgressStream } from "./cancellable-stream";
+import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
+import type { ModelEgressContext } from '../protocol/adapter';
+import { createCancellableEgressStream } from './cancellable-stream';
 
 const encoder = new TextEncoder();
 
@@ -20,10 +19,10 @@ type ToolState = {
 };
 
 type OpenAICompletionsStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
-type TextDeltaPart = Extract<OpenAICompletionsStreamPart, { type: "text-delta" }>;
-type FinishPart = Extract<OpenAICompletionsStreamPart, { type: "finish" }>;
-type FinishStepPart = Extract<OpenAICompletionsStreamPart, { type: "finish-step" }>;
-type FinishReason = FinishPart["finishReason"] | LanguageModelV2FinishReason;
+type TextDeltaPart = Extract<OpenAICompletionsStreamPart, { type: 'text-delta' }>;
+type FinishPart = Extract<OpenAICompletionsStreamPart, { type: 'finish' }>;
+type FinishStepPart = Extract<OpenAICompletionsStreamPart, { type: 'finish-step' }>;
+type FinishReason = FinishPart['finishReason'] | LanguageModelV2FinishReason;
 type TokenUsage = {
   readonly inputTokens?: number | undefined;
   readonly outputTokens?: number | undefined;
@@ -45,16 +44,16 @@ export function writeOpenAICompletionsSSE(
 
     for await (const part of parts) {
       switch (part.type) {
-        case "text-delta":
+        case 'text-delta':
           enqueue(frame(metadata, { content: textDelta(part) }));
           break;
-        case "tool-input-start": {
-          const tool = { index: tools.size, id: part.id, toolName: part.toolName, arguments: "" };
+        case 'tool-input-start': {
+          const tool = { index: tools.size, id: part.id, toolName: part.toolName, arguments: '' };
           tools.set(part.id, tool);
           enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
           break;
         }
-        case "tool-input-delta": {
+        case 'tool-input-delta': {
           const tool = tools.get(part.id);
           if (tool !== undefined) {
             tool.arguments += part.delta;
@@ -62,12 +61,12 @@ export function writeOpenAICompletionsSSE(
           }
           break;
         }
-        case "tool-input-end": {
+        case 'tool-input-end': {
           const tool = tools.get(part.id);
           if (tool !== undefined) enqueue(frame(metadata, { tool_calls: [toolDelta(tool)] }));
           break;
         }
-        case "finish":
+        case 'finish':
           enqueue(frame(metadata, {}, openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))));
           break;
         default:
@@ -75,7 +74,7 @@ export function writeOpenAICompletionsSSE(
       }
     }
 
-    enqueue(encoder.encode("data: [DONE]\n\n"));
+    enqueue(encoder.encode('data: [DONE]\n\n'));
   });
 }
 
@@ -85,27 +84,27 @@ export async function writeOpenAICompletionsResponse(
 ): Promise<ChatCompletion> {
   const text: string[] = [];
   const tools = new Map<string, ToolState>();
-  let finishReason: ChatCompletion.Choice["finish_reason"] = "stop";
+  let finishReason: ChatCompletion.Choice['finish_reason'] = 'stop';
   let usage: CompletionUsage | undefined;
   let metadata = fallbackMetadata(context.modelId);
 
   for await (const part of stream) {
     switch (part.type) {
-      case "text-delta":
+      case 'text-delta':
         text.push(textDelta(part));
         break;
-      case "tool-input-start":
-        tools.set(part.id, { index: tools.size, id: part.id, toolName: part.toolName, arguments: "" });
+      case 'tool-input-start':
+        tools.set(part.id, { index: tools.size, id: part.id, toolName: part.toolName, arguments: '' });
         break;
-      case "tool-input-delta": {
+      case 'tool-input-delta': {
         const tool = tools.get(part.id);
         if (tool !== undefined) tool.arguments += part.delta;
         break;
       }
-      case "finish-step":
+      case 'finish-step':
         metadata = upstreamMetadata(part, metadata);
         break;
-      case "finish":
+      case 'finish':
         finishReason = openAIFinishReason(part.finishReason);
         usage = openAIUsage(finishUsage(part));
         break;
@@ -116,7 +115,7 @@ export async function writeOpenAICompletionsResponse(
 
   return {
     id: metadata.id,
-    object: "chat.completion",
+    object: 'chat.completion',
     created: metadata.created,
     model: metadata.model,
     choices: [
@@ -125,8 +124,8 @@ export async function writeOpenAICompletionsResponse(
         index: 0,
         logprobs: null,
         message: {
-          role: "assistant",
-          content: text.length === 0 && tools.size > 0 ? null : text.join(""),
+          role: 'assistant',
+          content: text.length === 0 && tools.size > 0 ? null : text.join(''),
           refusal: null,
           ...(tools.size === 0 ? {} : { tool_calls: [...tools.values()].map(messageToolCall) }),
         },
@@ -141,7 +140,7 @@ function fallbackMetadata(model: string): ResponseMetadata {
 }
 
 function upstreamMetadata(part: FinishStepPart, fallback: ResponseMetadata): ResponseMetadata {
-  if (!("response" in part)) return fallback;
+  if (!('response' in part)) return fallback;
   return {
     id: part.response.id,
     model: part.response.modelId,
@@ -150,22 +149,22 @@ function upstreamMetadata(part: FinishStepPart, fallback: ResponseMetadata): Res
 }
 
 function textDelta(part: TextDeltaPart): string {
-  return "delta" in part ? part.delta : part.text;
+  return 'delta' in part ? part.delta : part.text;
 }
 
 function finishUsage(part: FinishPart): TokenUsage {
-  return "usage" in part ? part.usage : part.totalUsage;
+  return 'usage' in part ? part.usage : part.totalUsage;
 }
 
 function frame(
   metadata: ResponseMetadata,
   delta: ChatCompletionChunk.Choice.Delta,
-  finishReason: ChatCompletionChunk.Choice["finish_reason"] = null,
+  finishReason: ChatCompletionChunk.Choice['finish_reason'] = null,
   usage?: CompletionUsage,
 ): Uint8Array {
   const chunk: ChatCompletionChunk = {
     id: metadata.id,
-    object: "chat.completion.chunk",
+    object: 'chat.completion.chunk',
     created: metadata.created,
     model: metadata.model,
     choices: [{ delta, index: 0, finish_reason: finishReason }],
@@ -182,7 +181,7 @@ function toolDelta(tool: ToolState): ChatCompletionChunk.Choice.Delta.ToolCall {
   return {
     index: tool.index,
     id: tool.id,
-    type: "function",
+    type: 'function',
     function: { name: tool.toolName, arguments: tool.arguments },
   };
 }
@@ -190,24 +189,24 @@ function toolDelta(tool: ToolState): ChatCompletionChunk.Choice.Delta.ToolCall {
 function messageToolCall(tool: ToolState): ChatCompletionMessageToolCall {
   return {
     id: tool.id,
-    type: "function",
+    type: 'function',
     function: { name: tool.toolName, arguments: tool.arguments },
   };
 }
 
-function openAIFinishReason(finishReason: FinishReason): ChatCompletion.Choice["finish_reason"] {
+function openAIFinishReason(finishReason: FinishReason): ChatCompletion.Choice['finish_reason'] {
   switch (finishReason) {
-    case "content-filter":
-      return "content_filter";
-    case "tool-calls":
-      return "tool_calls";
-    case "length":
-      return "length";
-    case "stop":
-    case "error":
-    case "other":
-    case "unknown":
-      return "stop";
+    case 'content-filter':
+      return 'content_filter';
+    case 'tool-calls':
+      return 'tool_calls';
+    case 'length':
+      return 'length';
+    case 'stop':
+    case 'error':
+    case 'other':
+    case 'unknown':
+      return 'stop';
   }
 }
 

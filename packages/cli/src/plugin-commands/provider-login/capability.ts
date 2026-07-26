@@ -1,15 +1,14 @@
-import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from "@aio-proxy/core";
-
-import { getLocale, m } from "@aio-proxy/i18n";
-import { type LocalizedText, resolveLocalizedText } from "@aio-proxy/plugin-sdk";
-import { confirm, select } from "@inquirer/prompts";
+import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from '@aio-proxy/core';
+import { getLocale, m } from '@aio-proxy/i18n';
+import { type LocalizedText, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
+import { confirm, select } from '@inquirer/prompts';
 
 import {
   ProviderCapabilityAmbiguousError,
   ProviderCapabilityNotFoundError,
   ProviderTargetInvalidError,
   ProviderTargetNotFoundError,
-} from "./errors";
+} from './errors';
 
 type ConfigRecord = Record<string, unknown>;
 export type CapabilityChoice = { readonly reference: string; readonly label: LocalizedText };
@@ -23,7 +22,7 @@ export function canonical(reference: OAuthCapabilityReference): string {
 }
 
 function parseCanonical(value: string): OAuthCapabilityReference | null {
-  const separator = value.lastIndexOf("#");
+  const separator = value.lastIndexOf('#');
   if (separator <= 0 || separator === value.length - 1) return null;
   return { plugin: value.slice(0, separator), capability: value.slice(separator + 1) };
 }
@@ -78,7 +77,7 @@ export async function chooseCapability(
       return exact;
     }
     const packageCandidates = available.filter(({ plugin }) => plugin === inputValue);
-    const packageDefault = packageCandidates.find(({ capability }) => capability === "default");
+    const packageDefault = packageCandidates.find(({ capability }) => capability === 'default');
     if (packageDefault !== undefined) return packageDefault;
     candidates =
       packageCandidates.length === 0
@@ -90,7 +89,7 @@ export async function chooseCapability(
   const references = candidates.map(canonical);
   if (!deps.isTTY) {
     if (candidates.length === 1) return candidates[0] as OAuthCapabilityReference;
-    throw new ProviderCapabilityAmbiguousError(inputValue ?? "", references);
+    throw new ProviderCapabilityAmbiguousError(inputValue ?? '', references);
   }
   const selected = await deps.selectCapability(
     candidates.map((candidate) => ({ reference: canonical(candidate), label: candidate.label })),
@@ -108,7 +107,7 @@ export async function chooseCapability(
 }
 
 function isRecord(value: unknown): value is ConfigRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function targetCapability(
@@ -116,18 +115,18 @@ export async function targetCapability(
   config: AtomicConfigFile,
 ): Promise<OAuthCapabilityReference> {
   return config.transaction(async (current) => {
-    const providers = isRecord(current.providers) ? current.providers : {};
+    const providers = isRecord(current['providers']) ? current['providers'] : {};
     const entry = providers[providerId];
     if (entry === undefined) throw new ProviderTargetNotFoundError(providerId);
     if (
       !isRecord(entry) ||
-      entry.kind !== "oauth" ||
-      Object.hasOwn(entry, "vendor") ||
-      typeof entry.plugin !== "string" ||
-      typeof entry.capability !== "string"
+      entry['kind'] !== 'oauth' ||
+      Object.hasOwn(entry, 'vendor') ||
+      typeof entry['plugin'] !== 'string' ||
+      typeof entry['capability'] !== 'string'
     ) {
       throw new ProviderTargetInvalidError(providerId);
     }
-    return { next: current, result: { plugin: entry.plugin, capability: entry.capability } };
+    return { next: current, result: { plugin: entry['plugin'], capability: entry['capability'] } };
   });
 }

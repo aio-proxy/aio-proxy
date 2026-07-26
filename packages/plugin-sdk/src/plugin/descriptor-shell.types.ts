@@ -4,7 +4,7 @@ import {
   isPluginDescriptor,
   type PluginDescriptor,
   type PluginDescriptorShell,
-} from "..";
+} from '..';
 
 type MyOptions = {
   readonly baseURL: string;
@@ -15,8 +15,8 @@ const typedDescriptor = definePlugin<MyOptions>(
     void options.baseURL;
   },
   {
-    label: { default: "Example plugin", "zh-Hans": "示例插件" },
-    description: "Example description",
+    label: { default: 'Example plugin', 'zh-Hans': '示例插件' },
+    description: 'Example description',
   },
 );
 

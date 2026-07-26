@@ -1,9 +1,9 @@
-import type { LocalizedText, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+import type { LocalizedText, OAuthLoginContext } from '@aio-proxy/plugin-sdk';
 
-import { kimiIdentityHeaders } from "./headers";
-import { KIMI_OAUTH_BASE_URL } from "./oauth/constants";
+import { kimiIdentityHeaders } from './headers';
+import { KIMI_OAUTH_BASE_URL } from './oauth/constants';
 
-export { currentKimiCredential, refreshKimiCredential } from "./oauth/credential";
+export { currentKimiCredential, refreshKimiCredential } from './oauth/credential';
 
 declare const __AIO_PROXY_KIMI_CLIENT_ID__: string;
 
@@ -53,7 +53,7 @@ export async function loginKimi(
   const fetcher = dependencies.fetch ?? globalThis.fetch;
   const now = dependencies.now ?? Date.now;
   const sleep = dependencies.sleep ?? abortableSleep;
-  const deviceId = dependencies.deviceId?.() ?? crypto.randomUUID().replaceAll("-", "");
+  const deviceId = dependencies.deviceId?.() ?? crypto.randomUUID().replaceAll('-', '');
   const device = await requestDeviceAuthorization(fetcher, deviceId, context.signal);
   await context.authorization.presentDeviceCode({
     url: device.verificationUriComplete ?? device.verificationUri,
@@ -66,7 +66,7 @@ export async function loginKimi(
   while (now() <= deadline) {
     context.signal.throwIfAborted();
     const token = await requestToken(fetcher, deviceId, context.signal, {
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       device_code: device.deviceCode,
     });
     if (token.accessToken !== undefined) {
@@ -75,26 +75,26 @@ export async function loginKimi(
       return {
         fingerprint,
         suggestedKey: `kimi-${fingerprint.slice(0, 12)}`,
-        label: "Kimi Code",
+        label: 'Kimi Code',
         credentials: credential,
         expiresAt: credential.expiresAt,
       };
     }
-    if (token.error === "authorization_pending") {
+    if (token.error === 'authorization_pending') {
       context.progress(presentation.waiting);
       await sleep(intervalMs, context.signal);
       continue;
     }
-    if (token.error === "slow_down") {
+    if (token.error === 'slow_down') {
       intervalMs = Math.max(intervalMs + 5_000, (token.interval ?? 0) * 1_000);
       await sleep(intervalMs, context.signal);
       continue;
     }
-    if (token.error === "expired_token") throw new Error("Kimi device authorization expired");
-    if (token.error === "access_denied") throw new Error("Kimi device authorization denied");
-    throw new Error("Kimi device authorization failed");
+    if (token.error === 'expired_token') throw new Error('Kimi device authorization expired');
+    if (token.error === 'access_denied') throw new Error('Kimi device authorization denied');
+    throw new Error('Kimi device authorization failed');
   }
-  throw new Error("Kimi device authorization timed out");
+  throw new Error('Kimi device authorization timed out');
 }
 
 async function requestDeviceAuthorization(
@@ -103,14 +103,14 @@ async function requestDeviceAuthorization(
   signal: AbortSignal,
 ): Promise<DeviceAuthorization> {
   const value = await postForm(fetcher, `${KIMI_OAUTH_BASE_URL}/device_authorization`, deviceId, signal, {});
-  const deviceCode = optionalString(value, "device_code");
-  const userCode = optionalString(value, "user_code");
-  const verificationUri = optionalString(value, "verification_uri");
-  const verificationUriComplete = optionalString(value, "verification_uri_complete");
-  const expiresIn = optionalPositiveNumber(value, "expires_in") ?? 900;
-  const interval = optionalPositiveNumber(value, "interval") ?? 5;
+  const deviceCode = optionalString(value, 'device_code');
+  const userCode = optionalString(value, 'user_code');
+  const verificationUri = optionalString(value, 'verification_uri');
+  const verificationUriComplete = optionalString(value, 'verification_uri_complete');
+  const expiresIn = optionalPositiveNumber(value, 'expires_in') ?? 900;
+  const interval = optionalPositiveNumber(value, 'interval') ?? 5;
   if (deviceCode === undefined || userCode === undefined || verificationUri === undefined) {
-    throw new Error("Kimi device authorization response is invalid");
+    throw new Error('Kimi device authorization response is invalid');
   }
   return {
     deviceCode,
@@ -130,11 +130,11 @@ async function requestToken(
 ): Promise<TokenResponse> {
   const value = await postForm(fetcher, `${KIMI_OAUTH_BASE_URL}/token`, deviceId, signal, form, true);
   return {
-    accessToken: optionalString(value, "access_token"),
-    refreshToken: optionalString(value, "refresh_token"),
-    expiresIn: optionalPositiveNumber(value, "expires_in"),
-    error: optionalString(value, "error"),
-    interval: optionalPositiveNumber(value, "interval"),
+    accessToken: optionalString(value, 'access_token'),
+    refreshToken: optionalString(value, 'refresh_token'),
+    expiresIn: optionalPositiveNumber(value, 'expires_in'),
+    error: optionalString(value, 'error'),
+    interval: optionalPositiveNumber(value, 'interval'),
   };
 }
 
@@ -149,24 +149,24 @@ async function postForm(
   let response: Response;
   try {
     response = await fetcher(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", ...kimiIdentityHeaders(deviceId) },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...kimiIdentityHeaders(deviceId) },
       body: new URLSearchParams({ client_id: __AIO_PROXY_KIMI_CLIENT_ID__, ...form }),
       signal,
     });
   } catch {
     signal.throwIfAborted();
-    throw new Error("Kimi OAuth request failed");
+    throw new Error('Kimi OAuth request failed');
   }
-  if (acceptBadRequest && isRetryableStatus(response.status)) return { error: "authorization_pending" };
-  if (!response.ok && (!acceptBadRequest || response.status !== 400)) throw new Error("Kimi OAuth request failed");
-  return parseObject(response, "Kimi OAuth response is invalid");
+  if (acceptBadRequest && isRetryableStatus(response.status)) return { error: 'authorization_pending' };
+  if (!response.ok && (!acceptBadRequest || response.status !== 400)) throw new Error('Kimi OAuth request failed');
+  return parseObject(response, 'Kimi OAuth response is invalid');
 }
 
 async function parseObject(response: Response, message: string): Promise<Record<string, unknown>> {
   try {
     const value: unknown = await response.json();
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       return value as Record<string, unknown>;
     }
   } catch {}
@@ -175,7 +175,7 @@ async function parseObject(response: Response, message: string): Promise<Record<
 
 function completeCredential(token: TokenResponse, deviceId: string, now: number): KimiCredential {
   if (token.accessToken === undefined || token.refreshToken === undefined || token.expiresIn === undefined) {
-    throw new Error("Kimi OAuth token response is invalid");
+    throw new Error('Kimi OAuth token response is invalid');
   }
   return {
     accessToken: token.accessToken,
@@ -187,16 +187,16 @@ function completeCredential(token: TokenResponse, deviceId: string, now: number)
 
 function optionalString(value: Record<string, unknown>, key: string): string | undefined {
   const field = value[key];
-  return typeof field === "string" && field !== "" ? field : undefined;
+  return typeof field === 'string' && field !== '' ? field : undefined;
 }
 
 function optionalPositiveNumber(value: Record<string, unknown>, key: string): number | undefined {
   const field = value[key];
-  return typeof field === "number" && Number.isFinite(field) && field > 0 ? field : undefined;
+  return typeof field === 'number' && Number.isFinite(field) && field > 0 ? field : undefined;
 }
 
 function appendCode(text: LocalizedText, code: string): LocalizedText {
-  if (typeof text === "string") return `${text}\n\n${code}`;
+  if (typeof text === 'string') return `${text}\n\n${code}`;
   return Object.fromEntries(
     Object.entries(text).map(([locale, value]) => [locale, `${value}\n\n${code}`]),
   ) as LocalizedText;
@@ -207,18 +207,18 @@ function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void
   return new Promise((resolve, reject) => {
     const onAbort = () => {
       clearTimeout(timeout);
-      signal.removeEventListener("abort", onAbort);
+      signal.removeEventListener('abort', onAbort);
       reject(signal.reason);
     };
     const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
+      signal.removeEventListener('abort', onAbort);
       resolve();
     }, milliseconds);
-    signal.addEventListener("abort", onAbort, { once: true });
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
 async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

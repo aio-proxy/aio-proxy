@@ -5,18 +5,17 @@ import {
   type OAuthAdapter,
   type PluginDescriptor,
   zod,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import type { ChatGPTCredential } from "./schema";
+import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
+import { CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
+import { generatePKCE, generateState } from './pkce';
+import { createOpenAIChatGPTRuntime } from './runtime/index';
+import type { ChatGPTCredential } from './schema';
 
-import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from "./catalog";
-import { CHATGPT_CLIENT_ID, exchangeCodeForTokens } from "./oauth-flow";
-import { generatePKCE, generateState } from "./pkce";
-import { createOpenAIChatGPTRuntime } from "./runtime/index";
-
-const CHATGPT_AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/authorize" as const;
-const CHATGPT_SCOPE = "openid profile email offline_access" as const;
-const CHATGPT_ORIGINATOR = "codex_cli_rs" as const;
+const CHATGPT_AUTHORIZATION_ENDPOINT = 'https://auth.openai.com/oauth/authorize' as const;
+const CHATGPT_SCOPE = 'openid profile email offline_access' as const;
+const CHATGPT_ORIGINATOR = 'codex_cli_rs' as const;
 
 export type OpenAIChatGPTPresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -25,9 +24,9 @@ export type OpenAIChatGPTPresentationText = {
 };
 
 export const englishPresentationText: OpenAIChatGPTPresentationText = {
-  pluginLabel: "OpenAI ChatGPT",
-  pluginDescription: "Use a ChatGPT Plus or Pro account to access models",
-  adapterLabel: "Login with ChatGPT (Plus/Pro)",
+  pluginLabel: 'OpenAI ChatGPT',
+  pluginDescription: 'Use a ChatGPT Plus or Pro account to access models',
+  adapterLabel: 'Login with ChatGPT (Plus/Pro)',
 };
 
 export function createOpenAIChatGPTPlugin(
@@ -39,9 +38,9 @@ export function createOpenAIChatGPTPlugin(
   } as const satisfies ConfigSpec<Record<string, never>>;
 
   const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
-    id: "default",
+    id: 'default',
     label: presentationText.adapterLabel,
-    icon: "openai",
+    icon: 'openai',
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string(),
@@ -56,9 +55,9 @@ export function createOpenAIChatGPTPlugin(
       const { code, redirectUri } = await context.authorization.loopback({
         state,
         redirect: {
-          hostname: "localhost",
+          hostname: 'localhost',
           port: 1455,
-          path: "/auth/callback",
+          path: '/auth/callback',
         },
         authorizationUrl: ({ redirectUri: selectedRedirectUri }) =>
           buildAuthorizationUrl({ challenge: pkce.challenge, redirectUri: selectedRedirectUri, state }),
@@ -74,7 +73,7 @@ export function createOpenAIChatGPTPlugin(
       };
     },
     catalog: {
-      policy: { kind: "ttl", ttlMs: CHATGPT_CATALOG_TTL_MS },
+      policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
       discover: async ({ signal }) => ({
         language: await discoverOpenAIChatGPTModels(signal),
         image: [],
@@ -92,8 +91,8 @@ export function createOpenAIChatGPTPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? "OpenAI ChatGPT",
-      description: presentationText.pluginDescription ?? "Use a ChatGPT Plus or Pro account to access models",
+      label: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
+      description: presentationText.pluginDescription ?? 'Use a ChatGPT Plus or Pro account to access models',
     },
   );
 }
@@ -104,15 +103,15 @@ function buildAuthorizationUrl(input: {
   readonly state: string;
 }): string {
   const authUrl = new URL(CHATGPT_AUTHORIZATION_ENDPOINT);
-  authUrl.searchParams.set("client_id", CHATGPT_CLIENT_ID);
-  authUrl.searchParams.set("code_challenge", input.challenge);
-  authUrl.searchParams.set("code_challenge_method", "S256");
-  authUrl.searchParams.set("codex_cli_simplified_flow", "true");
-  authUrl.searchParams.set("id_token_add_organizations", "true");
-  authUrl.searchParams.set("originator", CHATGPT_ORIGINATOR);
-  authUrl.searchParams.set("redirect_uri", input.redirectUri);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", CHATGPT_SCOPE);
-  authUrl.searchParams.set("state", input.state);
+  authUrl.searchParams.set('client_id', CHATGPT_CLIENT_ID);
+  authUrl.searchParams.set('code_challenge', input.challenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
+  authUrl.searchParams.set('codex_cli_simplified_flow', 'true');
+  authUrl.searchParams.set('id_token_add_organizations', 'true');
+  authUrl.searchParams.set('originator', CHATGPT_ORIGINATOR);
+  authUrl.searchParams.set('redirect_uri', input.redirectUri);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', CHATGPT_SCOPE);
+  authUrl.searchParams.set('state', input.state);
   return authUrl.toString();
 }

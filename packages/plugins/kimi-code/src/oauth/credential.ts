@@ -1,9 +1,8 @@
-import { type CredentialPort, CredentialRefreshError } from "@aio-proxy/plugin-sdk";
+import { type CredentialPort, CredentialRefreshError } from '@aio-proxy/plugin-sdk';
 
-import type { KimiCredential, KimiOAuthDependencies } from "../oauth";
-
-import { kimiIdentityHeaders } from "../headers";
-import { KIMI_OAUTH_BASE_URL } from "./constants";
+import { kimiIdentityHeaders } from '../headers';
+import type { KimiCredential, KimiOAuthDependencies } from '../oauth';
+import { KIMI_OAUTH_BASE_URL } from './constants';
 
 declare const __AIO_PROXY_KIMI_CLIENT_ID__: string;
 
@@ -16,24 +15,24 @@ export async function refreshKimiCredential(
   let response: Response;
   try {
     response = await fetcher(`${KIMI_OAUTH_BASE_URL}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", ...kimiIdentityHeaders(current.deviceId) },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...kimiIdentityHeaders(current.deviceId) },
       body: new URLSearchParams({
         client_id: __AIO_PROXY_KIMI_CLIENT_ID__,
-        grant_type: "refresh_token",
+        grant_type: 'refresh_token',
         refresh_token: current.refreshToken,
       }),
       signal: options.signal ?? null,
     });
   } catch {
-    throw refreshError(true, "network");
+    throw refreshError(true, 'network');
   }
   if (!response.ok) {
     const oauthError = await readOAuthError(response);
-    const invalidGrant = oauthError === "invalid_grant";
+    const invalidGrant = oauthError === 'invalid_grant';
     throw refreshError(
       !invalidGrant && isRetryableStatus(response.status),
-      invalidGrant ? "invalid_grant" : response.status === 401 || response.status === 403 ? "rejected" : "http",
+      invalidGrant ? 'invalid_grant' : response.status === 401 || response.status === 403 ? 'rejected' : 'http',
       response.status,
     );
   }
@@ -69,22 +68,22 @@ async function parseSuccessfulToken(
   try {
     value = await response.json();
   } catch (error) {
-    throw error instanceof SyntaxError ? refreshError(false, "invalid") : refreshError(true, "network");
+    throw error instanceof SyntaxError ? refreshError(false, 'invalid') : refreshError(true, 'network');
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw refreshError(false, "invalid");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw refreshError(false, 'invalid');
   const record = value as Record<string, unknown>;
-  const accessToken = optionalString(record, "access_token");
-  const refreshToken = optionalString(record, "refresh_token");
-  const expiresIn = optionalPositiveNumber(record, "expires_in");
-  if (accessToken === undefined || expiresIn === undefined) throw refreshError(false, "invalid");
+  const accessToken = optionalString(record, 'access_token');
+  const refreshToken = optionalString(record, 'refresh_token');
+  const expiresIn = optionalPositiveNumber(record, 'expires_in');
+  if (accessToken === undefined || expiresIn === undefined) throw refreshError(false, 'invalid');
   return { accessToken, ...(refreshToken === undefined ? {} : { refreshToken }), expiresIn };
 }
 
 async function readOAuthError(response: Response): Promise<string | undefined> {
   try {
     const value: unknown = await response.json();
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? optionalString(value as Record<string, unknown>, "error")
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? optionalString(value as Record<string, unknown>, 'error')
       : undefined;
   } catch {
     return undefined;
@@ -92,7 +91,7 @@ async function readOAuthError(response: Response): Promise<string | undefined> {
 }
 
 function refreshError(retryable: boolean, reason: string, status?: number): CredentialRefreshError {
-  return new CredentialRefreshError("Kimi credential refresh failed", {
+  return new CredentialRefreshError('Kimi credential refresh failed', {
     retryable,
     reason,
     ...(status === undefined ? {} : { status }),
@@ -103,12 +102,12 @@ const isRetryableStatus = (status: number) => status === 408 || status === 429 |
 
 function optionalString(value: Record<string, unknown>, key: string): string | undefined {
   const field = value[key];
-  return typeof field === "string" && field !== "" ? field : undefined;
+  return typeof field === 'string' && field !== '' ? field : undefined;
 }
 
 function optionalPositiveNumber(value: Record<string, unknown>, key: string): number | undefined {
   const field = value[key];
-  return typeof field === "number" && Number.isFinite(field) && field > 0 ? field : undefined;
+  return typeof field === 'number' && Number.isFinite(field) && field > 0 ? field : undefined;
 }
 
 async function waitForCaller<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
@@ -117,12 +116,12 @@ async function waitForCaller<T>(operation: Promise<T>, signal: AbortSignal | und
   let onAbort = () => {};
   const aborted = new Promise<never>((_resolve, reject) => {
     onAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
+    signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) onAbort();
   });
   try {
     return await Promise.race([operation, aborted]);
   } finally {
-    signal.removeEventListener("abort", onAbort);
+    signal.removeEventListener('abort', onAbort);
   }
 }

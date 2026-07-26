@@ -1,15 +1,15 @@
-import { m } from "@aio-proxy/i18n";
-import { Link } from "@tanstack/react-router";
-import { ArrowLeftIcon } from "lucide-react";
+import { m } from '@aio-proxy/i18n';
+import { Link } from '@tanstack/react-router';
+import { ArrowLeftIcon } from 'lucide-react';
 
-import { buttonVariants } from "@/components/ui/button";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { buttonVariants } from '@/components/ui/button';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 interface PageContainerProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly extra?: React.ReactNode;
-  readonly backTo?: React.ComponentProps<typeof Link>["to"];
+  readonly backTo?: React.ComponentProps<typeof Link>['to'];
 }
 
 export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>> = ({
@@ -27,8 +27,8 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
             <Link
               to={backTo}
               preload="intent"
-              aria-label={m["dashboard.navigation.back"]()}
-              className={buttonVariants({ variant: "ghost", size: "icon" })}
+              aria-label={m['dashboard.navigation.back']()}
+              className={buttonVariants({ variant: 'ghost', size: 'icon' })}
             >
               <ArrowLeftIcon />
             </Link>

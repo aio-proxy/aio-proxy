@@ -1,4 +1,4 @@
-import { createModelsDevCatalog, type FetchModelsDevProviders, type ModelsDevCatalog } from "@aio-proxy/core";
+import { createModelsDevCatalog, type FetchModelsDevProviders, type ModelsDevCatalog } from '@aio-proxy/core';
 
 const PRICE_CATALOG_TTL_MS = 6 * 60 * 60 * 1_000;
 

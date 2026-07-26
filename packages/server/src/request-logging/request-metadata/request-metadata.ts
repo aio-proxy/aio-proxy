@@ -9,8 +9,8 @@ export type HttpResponseMetadata = {
   readonly headers: Readonly<Record<string, string>>;
 };
 
-const REDACTED = "[REDACTED]";
-const credentialHeaders = new Set(["authorization", "x-api-key"]);
+const REDACTED = '[REDACTED]';
+const credentialHeaders = new Set(['authorization', 'x-api-key']);
 
 export function requestMetadata(request: Request): HttpRequestMetadata {
   try {
@@ -20,7 +20,7 @@ export function requestMetadata(request: Request): HttpRequestMetadata {
       headers: visibleHeaders(request.headers),
     };
   } catch {
-    return { method: "[UNREADABLE]", url: "[UNREADABLE]", headers: {} };
+    return { method: '[UNREADABLE]', url: '[UNREADABLE]', headers: {} };
   }
 }
 
@@ -34,8 +34,8 @@ export function responseMetadata(response: Response): HttpResponseMetadata {
 
 function visibleUrl(value: string): string {
   const url = new URL(value);
-  url.username = "";
-  url.password = "";
+  url.username = '';
+  url.password = '';
   return url.toString();
 }
 

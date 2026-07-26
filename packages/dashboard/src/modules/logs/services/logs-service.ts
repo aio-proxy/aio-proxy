@@ -1,23 +1,22 @@
-import type { InferResponseType } from "hono/client";
+import { queryOptions } from '@tanstack/react-query';
+import type { InferResponseType } from 'hono/client';
 
-import { queryOptions } from "@tanstack/react-query";
+import { dashboardClient } from '@/lib/dashboard-client';
 
-import { dashboardClient } from "@/lib/dashboard-client";
-
-import type { LogsSearch } from "../logs-search";
+import type { LogsSearch } from '../logs-search';
 
 type DashboardLogsResponse = InferResponseType<typeof dashboardClient.dashboard.api.logs.$get, 200>;
 
 export class DashboardLogsRequestError extends Error {
   constructor(readonly status: number) {
     super(`Dashboard logs request failed with status ${status}`);
-    this.name = "DashboardLogsRequestError";
+    this.name = 'DashboardLogsRequestError';
   }
 }
 
 export const logsQueryOptions = (search: LogsSearch, autoRefresh: boolean) =>
   queryOptions({
-    queryKey: ["dashboard", "logs", search],
+    queryKey: ['dashboard', 'logs', search],
     queryFn: () => getLogs(search),
     refetchInterval: autoRefresh && search.page === 1 ? 5_000 : false,
     refetchIntervalInBackground: false,

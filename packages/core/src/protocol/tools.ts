@@ -1,10 +1,8 @@
-import type { JSONObject } from "@ai-sdk/provider";
+import type { JSONObject } from '@ai-sdk/provider';
+import { z } from 'zod';
 
-import { z } from "zod";
-
-import type { JSONValue, ToolSet } from "../ai-sdk-bridge";
-
-import { jsonSchema } from "../ai-sdk-bridge";
+import type { JSONValue, ToolSet } from '../ai-sdk-bridge';
+import { jsonSchema } from '../ai-sdk-bridge';
 
 const jsonValueSchema = z.json();
 
@@ -24,7 +22,7 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
   const result: ToolSet = Object.create(null);
   for (const tool of tools) {
     result[tool.name] = {
-      type: "function",
+      type: 'function',
       ...(tool.description === undefined ? {} : { description: tool.description }),
       inputSchema: jsonSchema(jsonSchemaObject(tool.inputSchema)),
       outputSchema: jsonSchema({}),
@@ -37,7 +35,7 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
 
 function jsonSchemaObject(value: unknown): Parameters<typeof jsonSchema>[0] {
   const parsed = jsonValue(value);
-  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
 }
 
 function jsonValue(value: unknown): JSONValue | undefined {

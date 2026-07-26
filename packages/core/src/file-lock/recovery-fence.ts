@@ -1,13 +1,13 @@
-import type { Stats } from "node:fs";
+import { randomUUID } from 'node:crypto';
+import type { Stats } from 'node:fs';
+import { mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 
-import { isPlainObject } from "es-toolkit/predicate";
-import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, stat, unlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import { abortableDelay } from "./delay";
-import { isNodeError, sameFileSnapshot } from "./fs";
-import { processIsAlive, processStarttime } from "./process-identity";
+import { abortableDelay } from './delay';
+import { isNodeError, sameFileSnapshot } from './fs';
+import { processIsAlive, processStarttime } from './process-identity';
 
 type RecoveryMarker = {
   readonly pid: number;
@@ -21,20 +21,20 @@ export type RecoveryFence = {
   readonly close: () => Promise<void>;
 };
 
-const STARTTIME_UNAVAILABLE = "unavailable";
+const STARTTIME_UNAVAILABLE = 'unavailable';
 const abandonedRecoveryMarkers = new Set<string>();
-const RECOVERY_TIMEOUT = Symbol("recovery-timeout");
+const RECOVERY_TIMEOUT = Symbol('recovery-timeout');
 
 function parseMarker(text: string): RecoveryMarker | null {
   try {
     const value: unknown = JSON.parse(text);
     if (!isPlainObject(value)) return null;
     const { pid, owner, createdAt, starttime } = value;
-    return typeof pid === "number" &&
+    return typeof pid === 'number' &&
       Number.isSafeInteger(pid) &&
-      typeof owner === "string" &&
-      typeof createdAt === "number" &&
-      (starttime === undefined || typeof starttime === "string")
+      typeof owner === 'string' &&
+      typeof createdAt === 'number' &&
+      (starttime === undefined || typeof starttime === 'string')
       ? { pid, owner, createdAt, ...(starttime === undefined ? {} : { starttime }) }
       : null;
   } catch {
@@ -45,9 +45,9 @@ function parseMarker(text: string): RecoveryMarker | null {
 async function markerActive(path: string, staleMs: number, ownerIsAlive: (pid: number) => boolean): Promise<boolean> {
   let text: string;
   try {
-    text = await readFile(path, "utf8");
+    text = await readFile(path, 'utf8');
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return false;
+    if (isNodeError(error, 'ENOENT')) return false;
     throw error;
   }
   const [record, metadata] = await Promise.all([Promise.resolve(parseMarker(text)), stat(path).catch(() => null)]);
@@ -66,13 +66,13 @@ async function markerActive(path: string, staleMs: number, ownerIsAlive: (pid: n
 
 async function removeIfUnchanged(path: string, text: string, metadata: Stats): Promise<boolean> {
   try {
-    if ((await readFile(path, "utf8")) !== text) return true;
+    if ((await readFile(path, 'utf8')) !== text) return true;
     const currentMetadata = await stat(path);
     if (!sameFileSnapshot(metadata, currentMetadata)) return true;
     await unlink(path);
     return false;
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return false;
+    if (isNodeError(error, 'ENOENT')) return false;
     throw error;
   }
 }
@@ -89,7 +89,7 @@ async function recoveryActive(
   try {
     names = await readdir(directory);
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return false;
+    if (isNodeError(error, 'ENOENT')) return false;
     throw error;
   }
   for (const name of names) {
@@ -110,7 +110,7 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
   try {
     const starttime = await processStarttime(process.pid);
     await mkdir(dirname(pendingPath), { recursive: true, mode: 0o700 });
-    const pending = await open(pendingPath, "wx", 0o600);
+    const pending = await open(pendingPath, 'wx', 0o600);
     try {
       await pending.writeFile(
         JSON.stringify({
@@ -125,7 +125,7 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
       await pending.close().catch(() => {});
     }
     await rename(pendingPath, path);
-    handle = await open(path, "r+");
+    handle = await open(path, 'r+');
     identity = await handle.stat();
   } catch (error) {
     await unlink(pendingPath).catch(() => {});
@@ -141,12 +141,12 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
   let closed = false;
   const assertOwned = async () => {
     try {
-      const [record, metadata] = await Promise.all([readFile(path, "utf8").then(parseMarker), stat(path)]);
+      const [record, metadata] = await Promise.all([readFile(path, 'utf8').then(parseMarker), stat(path)]);
       if (record?.owner !== owner || metadata.dev !== identity.dev || metadata.ino !== identity.ino) {
-        throw new Error("Lock recovery ownership lost");
+        throw new Error('Lock recovery ownership lost');
       }
     } catch (error) {
-      if (isNodeError(error, "ENOENT")) throw new Error("Lock recovery ownership lost");
+      if (isNodeError(error, 'ENOENT')) throw new Error('Lock recovery ownership lost');
       throw error;
     }
   };
@@ -161,12 +161,12 @@ async function createRecoveryFence(lockPath: string, heartbeatMs: number): Promi
         heartbeat = undefined;
       }
       try {
-        const [record, metadata] = await Promise.all([readFile(path, "utf8").then(parseMarker), stat(path)]);
+        const [record, metadata] = await Promise.all([readFile(path, 'utf8').then(parseMarker), stat(path)]);
         if (record?.owner === owner && metadata.dev === identity.dev && metadata.ino === identity.ino) {
           await unlink(path);
         }
       } catch (error) {
-        if (!isNodeError(error, "ENOENT")) {
+        if (!isNodeError(error, 'ENOENT')) {
           abandonedRecoveryMarkers.add(path);
           throw error;
         }
@@ -197,7 +197,7 @@ export async function acquireRecoveryFence(input: {
     try {
       recovery = await createRecoveryFence(lockPath, heartbeatMs);
     } catch (error) {
-      if (isNodeError(error, "ENOENT")) {
+      if (isNodeError(error, 'ENOENT')) {
         await abortableDelay(25 + Math.floor(Math.random() * 25), signal);
         continue;
       }
@@ -215,8 +215,8 @@ export async function acquireRecoveryFence(input: {
     } catch (error) {
       await recovery.close().catch(() => {});
       if (
-        (error instanceof Error && error.message === "Lock recovery ownership lost") ||
-        isNodeError(error, "ENOENT")
+        (error instanceof Error && error.message === 'Lock recovery ownership lost') ||
+        isNodeError(error, 'ENOENT')
       ) {
         await abortableDelay(25 + Math.floor(Math.random() * 25), signal);
         continue;
@@ -240,7 +240,7 @@ export async function runWithRecoveryFence<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(input.signal?.reason);
-  input.signal?.addEventListener("abort", abort, { once: true });
+  input.signal?.addEventListener('abort', abort, { once: true });
   const timeout = setTimeout(() => controller.abort(RECOVERY_TIMEOUT), Math.max(0, input.deadline - Date.now()));
   let fence: RecoveryFence;
   try {
@@ -251,7 +251,7 @@ export async function runWithRecoveryFence<T>(
     throw error;
   } finally {
     clearTimeout(timeout);
-    input.signal?.removeEventListener("abort", abort);
+    input.signal?.removeEventListener('abort', abort);
   }
   try {
     return await action(fence.assertOwned);

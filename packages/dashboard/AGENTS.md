@@ -95,7 +95,7 @@ Bad:
 
 ```tsx
 useEffect(() => {
-  void createDashboardClient("").dashboard.api.providers.$get().then(setProviders);
+  void createDashboardClient('').dashboard.api.providers.$get().then(setProviders);
 }, []);
 ```
 
@@ -151,7 +151,7 @@ return (
 Bad:
 
 ```tsx
-const response = await fetch("/dashboard/api/providers");
+const response = await fetch('/dashboard/api/providers');
 ```
 
 Good:
@@ -159,7 +159,7 @@ Good:
 ```ts
 export const providersQueryOptions = () =>
   queryOptions({
-    queryKey: ["providers"],
+    queryKey: ['providers'],
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers.$get();
       return response.json();
@@ -181,7 +181,7 @@ const byProvider = items.reduce<Record<string, Model[]>>((acc, item) => {
 Good:
 
 ```ts
-import { groupBy } from "es-toolkit/array";
+import { groupBy } from 'es-toolkit/array';
 
 const byProvider = groupBy(items, (item) => item.providerId);
 ```
@@ -197,7 +197,7 @@ Bad:
 Good:
 
 ```tsx
-import { m } from "@aio-proxy/i18n";
+import { m } from '@aio-proxy/i18n';
 
 <Button>{m.dashboard_providers_save()}</Button>;
 ```

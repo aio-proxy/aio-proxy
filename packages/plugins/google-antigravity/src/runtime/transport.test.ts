@@ -1,18 +1,17 @@
-import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { expect, test } from "bun:test";
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityCredential } from "../schema";
+import type { GoogleAntigravityCredential } from '../schema';
+import { AntigravityTransport, type AntigravityTransportDependencies } from './transport';
 
-import { AntigravityTransport, type AntigravityTransportDependencies } from "./transport";
-
-test("reuses identity across short retry, endpoint fallback, and one forced refresh", async () => {
+test('reuses identity across short retry, endpoint fallback, and one forced refresh', async () => {
   const seen: Request[] = [];
   const sleeps: number[] = [];
   const fixture = fixtureTransport(
     [
-      Response.json({}, { status: 429, headers: { "Retry-After": "1" } }),
-      Response.json({ error: { message: "no capacity" } }, { status: 503 }),
+      Response.json({}, { status: 429, headers: { 'Retry-After': '1' } }),
+      Response.json({ error: { message: 'no capacity' } }, { status: 503 }),
       Response.json({}, { status: 401 }),
       Response.json({ response: { candidates: [] } }),
     ],
@@ -27,14 +26,14 @@ test("reuses identity across short retry, endpoint fallback, and one forced refr
   expect(sleeps).toEqual([1_000]);
   expect(new Set(await Promise.all(seen.map(identityTuple))).size).toBe(1);
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
-    "https://daily-cloudcode-pa.googleapis.com",
-    "https://daily-cloudcode-pa.googleapis.com",
-    "https://cloudcode-pa.googleapis.com",
-    "https://cloudcode-pa.googleapis.com",
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://cloudcode-pa.googleapis.com',
+    'https://cloudcode-pa.googleapis.com',
   ]);
 });
 
-test("forces refresh once and returns a second authorization failure", async () => {
+test('forces refresh once and returns a second authorization failure', async () => {
   const fixture = fixtureTransport([Response.json({}, { status: 403 }), Response.json({}, { status: 401 })], []);
 
   const response = await fixture.transport.execute(executeInput());
@@ -43,7 +42,7 @@ test("forces refresh once and returns a second authorization failure", async () 
   expect(fixture.refreshes()).toBe(1);
 });
 
-test("uses only the outbound header whitelist", async () => {
+test('uses only the outbound header whitelist', async () => {
   let seen: Request | undefined;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
@@ -55,32 +54,32 @@ test("uses only the outbound header whitelist", async () => {
 
   await transport.execute(executeInput());
 
-  expect(seen?.headers.get("authorization")).toBe("Bearer access-1");
-  expect(seen?.headers.get("content-type")).toBe("application/json");
-  expect(seen?.headers.get("accept")).toBe("application/json");
-  expect(seen?.headers.get("user-agent")).toMatch(/^antigravity\/hub\//u);
-  for (const forbidden of ["cookie", "x-client-request-id", "x-stainless-runtime", "sec-ch-ua"]) {
+  expect(seen?.headers.get('authorization')).toBe('Bearer access-1');
+  expect(seen?.headers.get('content-type')).toBe('application/json');
+  expect(seen?.headers.get('accept')).toBe('application/json');
+  expect(seen?.headers.get('user-agent')).toMatch(/^antigravity\/hub\//u);
+  for (const forbidden of ['cookie', 'x-client-request-id', 'x-stainless-runtime', 'sec-ch-ua']) {
     expect(seen?.headers.has(forbidden)).toBe(false);
   }
 });
 
-test("shares replay across Antigravity transport instances without a Provider ID key", async () => {
+test('shares replay across Antigravity transport instances without a Provider ID key', async () => {
   const modelId = `claude-replay-${crypto.randomUUID()}`;
   const sessionKey = `sha256:${crypto.randomUUID()}` as const;
-  const signature = "shared-signature-".repeat(4);
+  const signature = 'shared-signature-'.repeat(4);
   const first = new AntigravityTransport({
     credentials: credentialSource(),
-    options: { baseURL: "https://first-provider.test" },
+    options: { baseURL: 'https://first-provider.test' },
     fetch: async () =>
       Response.json({
         response: {
           candidates: [
             {
               content: {
-                role: "model",
-                parts: [{ functionCall: { id: "call-1", name: "weather", args: {} }, thoughtSignature: signature }],
+                role: 'model',
+                parts: [{ functionCall: { id: 'call-1', name: 'weather', args: {} }, thoughtSignature: signature }],
               },
-              finishReason: "STOP",
+              finishReason: 'STOP',
             },
           ],
         },
@@ -90,10 +89,10 @@ test("shares replay across Antigravity transport instances without a Provider ID
     executeInput({ modelId, context: logicalContext({ requestId: crypto.randomUUID(), sessionKey }) }),
   );
 
-  let fallbackBody = "";
+  let fallbackBody = '';
   const fallback = new AntigravityTransport({
     credentials: credentialSource(),
-    options: { baseURL: "https://fallback-provider.test" },
+    options: { baseURL: 'https://fallback-provider.test' },
     fetch: async (_input, init) => {
       fallbackBody = String(init?.body);
       return Response.json({ response: { candidates: [] } });
@@ -102,7 +101,7 @@ test("shares replay across Antigravity transport instances without a Provider ID
   await fallback.execute(
     executeInput({
       body: {
-        contents: [{ role: "user", parts: [{ functionResponse: { id: "call-1", name: "weather", response: {} } }] }],
+        contents: [{ role: 'user', parts: [{ functionResponse: { id: 'call-1', name: 'weather', response: {} } }] }],
       },
       modelId,
       context: logicalContext({ requestId: crypto.randomUUID(), sessionKey }),
@@ -124,7 +123,7 @@ function fixtureTransport(
       current: async () => credentialFixture(),
       forceRefresh: async () => {
         refreshCount += 1;
-        return credentialFixture({ accessToken: "access-2" });
+        return credentialFixture({ accessToken: 'access-2' });
       },
     },
     fetch: async (input, init) => {
@@ -138,12 +137,12 @@ function fixtureTransport(
   return { transport, refreshes: () => refreshCount };
 }
 
-function executeInput(overrides: Partial<Parameters<AntigravityTransport["execute"]>[0]> = {}) {
+function executeInput(overrides: Partial<Parameters<AntigravityTransport['execute']>[0]> = {}) {
   return {
-    body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+    body: { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] },
     context: logicalContext(),
-    modelId: "gemini-3-flash-agent",
-    requestType: "agent" as const,
+    modelId: 'gemini-3-flash-agent',
+    requestType: 'agent' as const,
     stream: false,
     ...overrides,
   };
@@ -163,11 +162,11 @@ function credentialSource() {
 
 function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {}): GoogleAntigravityCredential {
   return {
-    accessToken: "access-1",
-    refreshToken: "refresh-1",
+    accessToken: 'access-1',
+    refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
-    email: "person@example.com",
-    projectId: "project-1",
+    email: 'person@example.com',
+    projectId: 'project-1',
     ...overrides,
   };
 }
@@ -176,7 +175,7 @@ function logicalContext(
   overrides: { readonly requestId?: string; readonly sessionKey?: `sha256:${string}` } = {},
 ): LogicalRequestContext {
   return {
-    requestId: overrides.requestId ?? "00000000-0000-4000-8000-000000000001",
-    session: { key: overrides.sessionKey ?? "sha256:abc", source: "transcript" },
+    requestId: overrides.requestId ?? '00000000-0000-4000-8000-000000000001',
+    session: { key: overrides.sessionKey ?? 'sha256:abc', source: 'transcript' },
   };
 }

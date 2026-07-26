@@ -1,69 +1,69 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { prepareReasoningReplay } from "./session-state";
+import { prepareReasoningReplay } from './session-state';
 
-const MODEL = "claude-opus-4-6-thinking";
-const SIGNATURE = "signature-".repeat(6);
-const THOUGHT_SIGNATURE = "thought-signature-".repeat(4);
+const MODEL = 'claude-opus-4-6-thinking';
+const SIGNATURE = 'signature-'.repeat(6);
+const THOUGHT_SIGNATURE = 'thought-signature-'.repeat(4);
 
-test("signs an existing unsigned model turn without duplicating its function call", () => {
+test('signs an existing unsigned model turn without duplicating its function call', () => {
   const body = {
     contents: [
       {
-        role: "model",
+        role: 'model',
         parts: [
-          { text: "reasoning", thought: true },
-          { functionCall: { id: "call-1", name: "weather", args: { city: "Shanghai" } } },
+          { text: 'reasoning', thought: true },
+          { functionCall: { id: 'call-1', name: 'weather', args: { city: 'Shanghai' } } },
         ],
       },
-      { role: "user", parts: [{ functionResponse: { id: "call-1", name: "weather", response: { ok: true } } }] },
+      { role: 'user', parts: [{ functionResponse: { id: 'call-1', name: 'weather', response: { ok: true } } }] },
     ],
   };
 
   const prepared = prepareReasoningReplay(body, MODEL, {
     parts: [
-      { type: "thought-signature", contentIndex: 8, partIndex: 2, signature: SIGNATURE },
+      { type: 'thought-signature', contentIndex: 8, partIndex: 2, signature: SIGNATURE },
       {
-        type: "function-call",
+        type: 'function-call',
         contentIndex: 8,
         partIndex: 5,
-        call: { args: { city: "Shanghai" }, name: "weather", id: "call-1" },
+        call: { args: { city: 'Shanghai' }, name: 'weather', id: 'call-1' },
         signature: SIGNATURE,
       },
     ],
   });
 
   expect(prepared.contents[0]).toEqual({
-    role: "model",
+    role: 'model',
     parts: [
-      { text: "reasoning", thought: true, thoughtSignature: SIGNATURE },
+      { text: 'reasoning', thought: true, thoughtSignature: SIGNATURE },
       {
-        functionCall: { id: "call-1", name: "weather", args: { city: "Shanghai" } },
+        functionCall: { id: 'call-1', name: 'weather', args: { city: 'Shanghai' } },
         thoughtSignature: SIGNATURE,
       },
     ],
   });
 });
 
-test("does not duplicate an equivalent signed model call", () => {
+test('does not duplicate an equivalent signed model call', () => {
   const modelTurn = {
-    role: "model",
-    parts: [{ functionCall: { id: "call-1", name: "weather", args: {} }, thoughtSignature: SIGNATURE }],
+    role: 'model',
+    parts: [{ functionCall: { id: 'call-1', name: 'weather', args: {} }, thoughtSignature: SIGNATURE }],
   };
   const body = {
     contents: [
       modelTurn,
-      { role: "user", parts: [{ functionResponse: { id: "call-1", name: "weather", response: {} } }] },
+      { role: 'user', parts: [{ functionResponse: { id: 'call-1', name: 'weather', response: {} } }] },
     ],
   };
 
   const prepared = prepareReasoningReplay(body, MODEL, {
     parts: [
       {
-        type: "function-call",
+        type: 'function-call',
         contentIndex: 0,
         partIndex: 0,
-        call: { id: "call-1", name: "weather", args: {} },
+        call: { id: 'call-1', name: 'weather', args: {} },
         signature: SIGNATURE,
       },
     ],
@@ -72,15 +72,15 @@ test("does not duplicate an equivalent signed model call", () => {
   expect(prepared.contents).toEqual(body.contents);
 });
 
-test("signs an unsigned thought even when the matching function call is already signed", () => {
-  const call = { id: "call-1", name: "weather", args: {} };
-  const response = { role: "user", parts: [{ functionResponse: { id: "call-1", name: "weather", response: {} } }] };
+test('signs an unsigned thought even when the matching function call is already signed', () => {
+  const call = { id: 'call-1', name: 'weather', args: {} };
+  const response = { role: 'user', parts: [{ functionResponse: { id: 'call-1', name: 'weather', response: {} } }] };
   const body = {
     contents: [
       {
-        role: "model",
+        role: 'model',
         parts: [
-          { text: "reasoning", thought: true },
+          { text: 'reasoning', thought: true },
           { functionCall: call, thoughtSignature: SIGNATURE },
         ],
       },
@@ -90,22 +90,22 @@ test("signs an unsigned thought even when the matching function call is already 
 
   const prepared = prepareReasoningReplay(body, MODEL, {
     parts: [
-      { type: "thought-signature", contentIndex: 0, partIndex: 0, signature: THOUGHT_SIGNATURE },
-      { type: "function-call", contentIndex: 0, partIndex: 1, call, signature: SIGNATURE },
+      { type: 'thought-signature', contentIndex: 0, partIndex: 0, signature: THOUGHT_SIGNATURE },
+      { type: 'function-call', contentIndex: 0, partIndex: 1, call, signature: SIGNATURE },
     ],
   });
 
   expect(prepared.contents[0]).toEqual({
-    role: "model",
+    role: 'model',
     parts: [
-      { text: "reasoning", thought: true, thoughtSignature: THOUGHT_SIGNATURE },
+      { text: 'reasoning', thought: true, thoughtSignature: THOUGHT_SIGNATURE },
       { functionCall: call, thoughtSignature: SIGNATURE },
     ],
   });
 });
 
-test("retains a valid signed duplicate when the replayed call is unsigned", () => {
-  const call = { id: "call-1", name: "weather", args: {} };
+test('retains a valid signed duplicate when the replayed call is unsigned', () => {
+  const call = { id: 'call-1', name: 'weather', args: {} };
   const signed = {
     functionCall: call,
     thoughtSignature: SIGNATURE,
@@ -117,16 +117,16 @@ test("retains a valid signed duplicate when the replayed call is unsigned", () =
   expect(model.parts).toEqual([signed]);
 });
 
-test("prefers the valid signed duplicate and its metadata among multiple matches", () => {
-  const call = { id: "call-1", name: "weather", args: {} };
+test('prefers the valid signed duplicate and its metadata among multiple matches', () => {
+  const call = { id: 'call-1', name: 'weather', args: {} };
   const signed = {
     functionCall: call,
     thoughtSignature: SIGNATURE,
-    providerMetadata: { google: { retained: "best-signed-match" } },
+    providerMetadata: { google: { retained: 'best-signed-match' } },
   };
   const prepared = prepareCallDuplicates(
     [
-      { functionCall: call, thoughtSignature: "invalid", providerMetadata: { google: { retained: false } } },
+      { functionCall: call, thoughtSignature: 'invalid', providerMetadata: { google: { retained: false } } },
       { functionCall: call },
       signed,
     ],
@@ -137,11 +137,11 @@ test("prefers the valid signed duplicate and its metadata among multiple matches
   expect(model.parts).toEqual([signed]);
 });
 
-test("does not prefer an invalid signature over an unsigned duplicate", () => {
-  const call = { id: "call-1", name: "weather", args: {} };
-  const unsigned = { functionCall: call, providerMetadata: { google: { retained: "unsigned" } } };
+test('does not prefer an invalid signature over an unsigned duplicate', () => {
+  const call = { id: 'call-1', name: 'weather', args: {} };
+  const unsigned = { functionCall: call, providerMetadata: { google: { retained: 'unsigned' } } };
   const prepared = prepareCallDuplicates(
-    [{ functionCall: call, thoughtSignature: "invalid", providerMetadata: { google: { retained: false } } }, unsigned],
+    [{ functionCall: call, thoughtSignature: 'invalid', providerMetadata: { google: { retained: false } } }, unsigned],
     call,
   );
   const model = prepared.contents[0] as { readonly parts: readonly unknown[] };
@@ -153,15 +153,15 @@ function prepareCallDuplicates(parts: readonly unknown[], call: { readonly id: s
   return prepareReasoningReplay(
     {
       contents: [
-        { role: "model", parts },
-        { role: "user", parts: [{ functionResponse: { id: call.id, name: call.name, response: {} } }] },
+        { role: 'model', parts },
+        { role: 'user', parts: [{ functionResponse: { id: call.id, name: call.name, response: {} } }] },
       ],
     },
     MODEL,
     {
       parts: [
         {
-          type: "function-call",
+          type: 'function-call',
           contentIndex: 0,
           partIndex: 0,
           call,

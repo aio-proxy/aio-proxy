@@ -1,10 +1,10 @@
-import type { JSONObject } from "@ai-sdk/provider";
+import type { JSONObject } from '@ai-sdk/provider';
 
-import type { ModelMessage } from "../../ai-sdk-bridge";
-import type { OpenAIResponsesRequest } from "../../ingress/openai-responses/index";
+import type { ModelMessage } from '../../ai-sdk-bridge';
+import type { OpenAIResponsesRequest } from '../../ingress/openai-responses/index';
 
 export type OpenAIResponsesTransformTool = {
-  readonly type: "function";
+  readonly type: 'function';
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
@@ -13,27 +13,27 @@ export type OpenAIResponsesTransformTool = {
 };
 
 export type OpenAIResponsesWireMetadata = {
-  readonly protocol: "openai-responses";
+  readonly protocol: 'openai-responses';
   readonly inputIndex?: number;
   readonly itemType?: string;
   readonly itemId?: string;
   readonly status?: string;
   readonly phase?: string;
-  readonly wireRole?: "system" | "developer" | "user" | "assistant";
+  readonly wireRole?: 'system' | 'developer' | 'user' | 'assistant';
   readonly author?: string;
   readonly recipient?: string;
-  readonly wireToolType?: "function" | "custom";
+  readonly wireToolType?: 'function' | 'custom';
   readonly wireToolName?: string;
   readonly namespace?: string;
   readonly namespaceDescription?: string;
-  readonly source?: "request" | "additional_tools";
-  readonly outputKind?: "string" | "content";
+  readonly source?: 'request' | 'additional_tools';
+  readonly outputKind?: 'string' | 'content';
   readonly format?: OpenAIResponsesCustomToolFormat;
 };
 
 export type OpenAIResponsesCustomToolFormat =
-  | { readonly type: "text" }
-  | { readonly type: "grammar"; readonly syntax: "regex" | "lark"; readonly definition: string };
+  | { readonly type: 'text' }
+  | { readonly type: 'grammar'; readonly syntax: 'regex' | 'lark'; readonly definition: string };
 
 export type OpenAIResponsesProviderOptions = {
   readonly openai: {
@@ -43,15 +43,15 @@ export type OpenAIResponsesProviderOptions = {
   };
 };
 
-export type OpenAIResponsesReasoningEffort = NonNullable<NonNullable<OpenAIResponsesRequest["reasoning"]>["effort"]>;
+export type OpenAIResponsesReasoningEffort = NonNullable<NonNullable<OpenAIResponsesRequest['reasoning']>['effort']>;
 
-export type OpenAIResponsesReasoningSummary = NonNullable<NonNullable<OpenAIResponsesRequest["reasoning"]>["summary"]>;
+export type OpenAIResponsesReasoningSummary = NonNullable<NonNullable<OpenAIResponsesRequest['reasoning']>['summary']>;
 
 export type OpenAIResponsesToolChoice =
-  | "none"
-  | "auto"
-  | "required"
-  | { readonly type: "tool"; readonly toolName: string };
+  | 'none'
+  | 'auto'
+  | 'required'
+  | { readonly type: 'tool'; readonly toolName: string };
 
 export type OpenAIResponsesTransformSettings = {
   readonly stream?: boolean;

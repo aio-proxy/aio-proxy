@@ -1,12 +1,12 @@
-import type { AiSdkProvider } from "@aio-proxy/types";
+import type { AiSdkProvider } from '@aio-proxy/types';
 
-import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
+import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
 
 type ReasoningContentShape = {
   readonly reasoning_content?: unknown;
 };
 
-type ReasoningDeltaPart = Extract<TextStreamPart<ToolSet>, { readonly type: "reasoning-delta" }>;
+type ReasoningDeltaPart = Extract<TextStreamPart<ToolSet>, { readonly type: 'reasoning-delta' }>;
 
 export type AiSdkReasoningAdapter = {
   readonly push: (part: TextStreamPart<ToolSet>) => readonly TextStreamPart<ToolSet>[];
@@ -25,7 +25,7 @@ export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: stri
     };
   }
 
-  let pendingReasoning = "";
+  let pendingReasoning = '';
   let pendingNative: ReasoningDeltaPart[] = [];
   const nativeReasoning = new Set<string>();
 
@@ -36,13 +36,13 @@ export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: stri
   }
 
   function flushRaw(): readonly TextStreamPart<ToolSet>[] {
-    if (pendingReasoning === "") {
+    if (pendingReasoning === '') {
       return [];
     }
 
     const text = pendingReasoning;
-    pendingReasoning = "";
-    return [{ type: "reasoning-delta", id: "reasoning-aio-proxy", text }];
+    pendingReasoning = '';
+    return [{ type: 'reasoning-delta', id: 'reasoning-aio-proxy', text }];
   }
 
   function flush(): readonly TextStreamPart<ToolSet>[] {
@@ -52,7 +52,7 @@ export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: stri
   return {
     push(part) {
       switch (part.type) {
-        case "raw": {
+        case 'raw': {
           const reasoning = reasoningContent(part.rawValue);
           if (reasoning === undefined || nativeReasoning.has(reasoning)) {
             return [part];
@@ -60,21 +60,21 @@ export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: stri
           pendingReasoning += reasoning;
           return [part];
         }
-        case "reasoning-start":
+        case 'reasoning-start':
           return [part];
-        case "reasoning-end":
+        case 'reasoning-end':
           return [...flush(), part];
-        case "reasoning-delta": {
+        case 'reasoning-delta': {
           nativeReasoning.add(part.text);
-          if (pendingReasoning === "") {
+          if (pendingReasoning === '') {
             return [part];
           }
 
           pendingNative = [...pendingNative, part];
-          const nativeText = pendingNative.map((item) => item.text).join("");
+          const nativeText = pendingNative.map((item) => item.text).join('');
 
           if (pendingReasoning === nativeText || nativeText.startsWith(pendingReasoning)) {
-            pendingReasoning = "";
+            pendingReasoning = '';
             return takeNative();
           }
 
@@ -94,8 +94,8 @@ export function createAiSdkReasoningAdapter(config: AiSdkProvider, modelId: stri
 
 export function parsesDeepSeekReasoning(config: AiSdkProvider, modelId: string): boolean {
   return (
-    config.packageName === "@ai-sdk/openai-compatible" &&
-    (config.parseReasoningContent === true || modelId === "deepseek-reasoner" || modelId.startsWith("deepseek-r1"))
+    config.packageName === '@ai-sdk/openai-compatible' &&
+    (config.parseReasoningContent === true || modelId === 'deepseek-reasoner' || modelId.startsWith('deepseek-r1'))
   );
 }
 
@@ -116,7 +116,7 @@ function reasoningContent(value: unknown): string | undefined {
 
   const candidate: ReasoningContentShape = value;
   const direct = candidate.reasoning_content;
-  if (typeof direct === "string" && direct !== "") {
+  if (typeof direct === 'string' && direct !== '') {
     return direct;
   }
 
@@ -131,5 +131,5 @@ function reasoningContent(value: unknown): string | undefined {
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

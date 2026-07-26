@@ -1,13 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { gzipSync } from "node:zlib";
+import { describe, expect, test } from 'bun:test';
+import { gzipSync } from 'node:zlib';
 
-import { createContentDecodedReader } from "./content-decoding";
+import { createContentDecodedReader } from './content-decoding';
 
 const compressionFormats = {
-  gzip: "gzip",
-  deflate: "deflate",
-  br: "brotli",
-  zstd: "zstd",
+  gzip: 'gzip',
+  deflate: 'deflate',
+  br: 'brotli',
+  zstd: 'zstd',
 } as const satisfies Record<string, Bun.CompressionFormat>;
 
 // lib.dom's constructor type omits Bun's runtime-supported brotli/zstd values.
@@ -23,10 +23,10 @@ async function compressGzip(payload: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream.readable).arrayBuffer());
 }
 
-describe("createContentDecodedReader control", () => {
-  test("does not request the next encoded chunk until read is called again", async () => {
+describe('createContentDecodedReader control', () => {
+  test('does not request the next encoded chunk until read is called again', async () => {
     let pulls = 0;
-    const plaintext = new TextEncoder().encode("chunk-one");
+    const plaintext = new TextEncoder().encode('chunk-one');
     const encoded = await compressGzip(plaintext);
     const source = new ReadableStream<Uint8Array>(
       {
@@ -43,13 +43,13 @@ describe("createContentDecodedReader control", () => {
       { highWaterMark: 0 },
     );
 
-    const decoded = createContentDecodedReader(source, "gzip");
+    const decoded = createContentDecodedReader(source, 'gzip');
     expect(pulls).toBe(0);
 
     const first = await decoded.read();
     expect(pulls).toBe(1);
     expect(first.done).toBe(false);
-    expect(new TextDecoder().decode(Buffer.concat(first.chunks.map((c) => Buffer.from(c))))).toBe("chunk-one");
+    expect(new TextDecoder().decode(Buffer.concat(first.chunks.map((c) => Buffer.from(c))))).toBe('chunk-one');
 
     await Bun.sleep(10);
     expect(pulls).toBe(1);
@@ -59,8 +59,8 @@ describe("createContentDecodedReader control", () => {
     expect(second.done).toBe(false);
   });
 
-  test("finalizes every decoder stage at encoded EOF", async () => {
-    const plaintext = new TextEncoder().encode("finalize-me");
+  test('finalizes every decoder stage at encoded EOF', async () => {
+    const plaintext = new TextEncoder().encode('finalize-me');
     const full = await compressGzip(plaintext);
     // Split before the final bytes so EOF finalization (stage end) is required for a clean close.
     const split = Math.max(1, full.byteLength - 8);
@@ -72,7 +72,7 @@ describe("createContentDecodedReader control", () => {
           controller.close();
         },
       }),
-      "gzip",
+      'gzip',
     );
 
     const first = await reader.read();
@@ -84,12 +84,12 @@ describe("createContentDecodedReader control", () => {
     const text = new TextDecoder().decode(
       Buffer.concat([...first.chunks, ...second.chunks, ...end.chunks].map((chunk) => Buffer.from(chunk))),
     );
-    expect(text).toBe("finalize-me");
+    expect(text).toBe('finalize-me');
     expect(end.error).toBeUndefined();
   });
 
-  test("returns final decoded chunks alongside a finalization error", async () => {
-    const plaintext = new TextEncoder().encode("VISIBLE");
+  test('returns final decoded chunks alongside a finalization error', async () => {
+    const plaintext = new TextEncoder().encode('VISIBLE');
     const full = gzipSync(Buffer.from(plaintext));
     const truncated = full.subarray(0, full.byteLength - 1);
     const reader = createContentDecodedReader(
@@ -99,7 +99,7 @@ describe("createContentDecodedReader control", () => {
           controller.close();
         },
       }),
-      "gzip",
+      'gzip',
     );
 
     const first = await reader.read();
@@ -109,12 +109,12 @@ describe("createContentDecodedReader control", () => {
     const text = new TextDecoder().decode(
       Buffer.concat([...first.chunks, ...end.chunks].map((chunk) => Buffer.from(chunk))),
     );
-    expect(text).toBe("VISIBLE");
+    expect(text).toBe('VISIBLE');
     expect(end.error).toBeDefined();
   });
 
-  test("cancels the encoded reader exactly once and preserves the first reason", async () => {
-    const plaintext = new TextEncoder().encode("cancel-me");
+  test('cancels the encoded reader exactly once and preserves the first reason', async () => {
+    const plaintext = new TextEncoder().encode('cancel-me');
     const encoded = await compressGzip(plaintext);
     let cancelCount = 0;
     let cancelReason: unknown;
@@ -129,9 +129,9 @@ describe("createContentDecodedReader control", () => {
     });
 
     const reader = createContentDecodedReader(source, null);
-    const reason = new Error("caller cancel");
+    const reason = new Error('caller cancel');
     await reader.cancel(reason);
-    await reader.cancel(new Error("second cancel"));
+    await reader.cancel(new Error('second cancel'));
     expect(cancelCount).toBe(1);
     expect(cancelReason).toBe(reason);
   });

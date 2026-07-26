@@ -1,18 +1,17 @@
-import type { PluginDescriptor } from "@aio-proxy/plugin-sdk";
+import { m } from '@aio-proxy/i18n';
+import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import { m } from "@aio-proxy/i18n";
-
-import { renderConfigSpec } from "../form";
-import { entries, packageNameOf, publicOptionsOf, requirePluginPackageName, secretRecord } from "./config-entry";
-import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps } from "./deps";
+import { renderConfigSpec } from '../form';
+import { entries, packageNameOf, publicOptionsOf, requirePluginPackageName, secretRecord } from './config-entry';
+import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps } from './deps';
 import {
   commitPluginConfig,
   descriptorForConfig,
   installedForConfig,
   loadDescriptor,
   stageDescriptor,
-} from "./descriptor";
-import { PluginNotConfiguredError } from "./errors";
+} from './descriptor';
+import { PluginNotConfiguredError } from './errors';
 
 export type PluginConfigOptions = { readonly clearSecret?: readonly string[] };
 

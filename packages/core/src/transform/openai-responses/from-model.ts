@@ -1,20 +1,19 @@
-import type { ModelMessage } from "../../ai-sdk-bridge";
+import type { ModelMessage } from '../../ai-sdk-bridge';
+import { OpenAIResponsesTransformError } from '../../error';
 import type {
   OpenAIResponsesExecutableTool,
   OpenAIResponsesInputItem,
   OpenAIResponsesInputMessage,
   OpenAIResponsesRequest,
-} from "../../ingress/openai-responses/index";
+} from '../../ingress/openai-responses/index';
+import { assistantResponsesContent, userResponsesContent } from './from-model-content';
+import { readOpenAIResponsesWireMetadata } from './tools';
 import type {
   OpenAIResponsesFromModelMessages,
   OpenAIResponsesToolChoice,
   OpenAIResponsesTransformTool,
   OpenAIResponsesWireMetadata,
-} from "./types";
-
-import { OpenAIResponsesTransformError } from "../../error";
-import { assistantResponsesContent, userResponsesContent } from "./from-model-content";
-import { readOpenAIResponsesWireMetadata } from "./tools";
+} from './types';
 
 export function modelMessagesToOpenAIResponses({
   model,
@@ -22,8 +21,8 @@ export function modelMessagesToOpenAIResponses({
   tools,
   settings,
 }: OpenAIResponsesFromModelMessages): OpenAIResponsesRequest {
-  if (model === "") {
-    throw new OpenAIResponsesTransformError("model");
+  if (model === '') {
+    throw new OpenAIResponsesTransformError('model');
   }
 
   const reasoningEffort = settings.reasoning ?? settings.providerOptions?.openai.reasoningEffort;
@@ -58,8 +57,8 @@ function responsesInput(
 ): OpenAIResponsesInputItem[] {
   return [
     ...additionalTools.map<OpenAIResponsesInputItem>((additional) => ({
-      type: "additional_tools",
-      role: "developer",
+      type: 'additional_tools',
+      role: 'developer',
       tools: additional.tools,
     })),
     ...messages.map((message, messageIndex) => responsesMessage(message, messageIndex)),
@@ -68,19 +67,19 @@ function responsesInput(
 
 function responsesMessage(message: ModelMessage, messageIndex: number): OpenAIResponsesInputMessage {
   switch (message.role) {
-    case "system":
-      return { role: "system", content: message.content };
-    case "user":
+    case 'system':
+      return { role: 'system', content: message.content };
+    case 'user':
       return {
-        role: "user",
+        role: 'user',
         content: userResponsesContent(message.content, `messages.${messageIndex}.content`),
       };
-    case "assistant":
+    case 'assistant':
       return {
-        role: "assistant",
+        role: 'assistant',
         content: assistantResponsesContent(message.content),
       };
-    case "tool":
+    case 'tool':
       throw new OpenAIResponsesTransformError(`messages.${messageIndex}.role`);
   }
 }
@@ -93,18 +92,18 @@ function responsesToolSources(tools: readonly OpenAIResponsesTransformTool[] | u
   const additional = new Map<number, OpenAIResponsesExecutableTool[]>();
   const namespaces = new Map<
     OpenAIResponsesExecutableTool[],
-    Map<string, Extract<OpenAIResponsesExecutableTool, { type: "namespace" }>>
+    Map<string, Extract<OpenAIResponsesExecutableTool, { type: 'namespace' }>>
   >();
   for (const tool of tools ?? []) {
     const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
     const target =
-      metadata?.source === "additional_tools" && metadata.inputIndex !== undefined
+      metadata?.source === 'additional_tools' && metadata.inputIndex !== undefined
         ? mapTools(additional, metadata.inputIndex)
         : request;
     if (metadata?.namespace !== undefined) {
       const sourceNamespaces = mapNamespaces(namespaces, target);
       const namespace = sourceNamespaces.get(metadata.namespace) ?? {
-        type: "namespace" as const,
+        type: 'namespace' as const,
         name: metadata.namespace,
         ...(metadata.namespaceDescription === undefined ? {} : { description: metadata.namespaceDescription }),
         tools: [],
@@ -116,9 +115,9 @@ function responsesToolSources(tools: readonly OpenAIResponsesTransformTool[] | u
       }
       continue;
     }
-    if (metadata?.wireToolType === "custom") {
+    if (metadata?.wireToolType === 'custom') {
       target.push({
-        type: "custom",
+        type: 'custom',
         name: metadata.wireToolName ?? tool.name,
         ...(tool.description === undefined ? {} : { description: tool.description }),
         ...(metadata.format === undefined ? {} : { format: metadata.format }),
@@ -142,7 +141,7 @@ function mapTools(map: Map<number, OpenAIResponsesExecutableTool[]>, inputIndex:
 }
 
 function mapNamespaces(
-  map: Map<OpenAIResponsesExecutableTool[], Map<string, Extract<OpenAIResponsesExecutableTool, { type: "namespace" }>>>,
+  map: Map<OpenAIResponsesExecutableTool[], Map<string, Extract<OpenAIResponsesExecutableTool, { type: 'namespace' }>>>,
   tools: OpenAIResponsesExecutableTool[],
 ) {
   const namespaces = map.get(tools) ?? new Map();
@@ -153,12 +152,12 @@ function mapNamespaces(
 function responsesToolChoice(
   choice: OpenAIResponsesToolChoice | undefined,
   tools: readonly OpenAIResponsesTransformTool[] | undefined,
-): OpenAIResponsesRequest["tool_choice"] {
-  if (choice === undefined || typeof choice === "string") return choice;
+): OpenAIResponsesRequest['tool_choice'] {
+  if (choice === undefined || typeof choice === 'string') return choice;
   const tool = tools?.find((candidate) => candidate.name === choice.toolName);
   const metadata: OpenAIResponsesWireMetadata | undefined = readOpenAIResponsesWireMetadata(tool?.metadata);
   return {
-    type: metadata?.wireToolType === "custom" ? "custom" : "function",
+    type: metadata?.wireToolType === 'custom' ? 'custom' : 'function',
     name: metadata?.wireToolName ?? choice.toolName,
   };
 }
@@ -166,9 +165,9 @@ function responsesToolChoice(
 function functionTool(
   tool: OpenAIResponsesTransformTool,
   name: string,
-): Extract<OpenAIResponsesExecutableTool, { type: "function" }> {
+): Extract<OpenAIResponsesExecutableTool, { type: 'function' }> {
   return {
-    type: "function",
+    type: 'function',
     name,
     ...(tool.description === undefined ? {} : { description: tool.description }),
     ...(tool.inputSchema === undefined ? {} : { parameters: tool.inputSchema }),

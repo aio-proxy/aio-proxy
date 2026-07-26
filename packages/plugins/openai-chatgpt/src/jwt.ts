@@ -1,5 +1,5 @@
-import { isPlainObject } from "es-toolkit/predicate";
-import { decodeJwt } from "jose";
+import { isPlainObject } from 'es-toolkit/predicate';
+import { decodeJwt } from 'jose';
 
 type JwtPayload = ReturnType<typeof decodeJwt>;
 
@@ -12,22 +12,22 @@ export function extractAccountId(token: string): string | undefined {
     throw error;
   }
 
-  const topLevel = Reflect.get(payload, "chatgpt_account_id");
-  if (typeof topLevel === "string") return topLevel;
+  const topLevel = Reflect.get(payload, 'chatgpt_account_id');
+  if (typeof topLevel === 'string') return topLevel;
 
-  const auth = payload["https://api.openai.com/auth"];
+  const auth = payload['https://api.openai.com/auth'];
   if (isPlainObject(auth)) {
-    const nested = Reflect.get(Object(auth), "chatgpt_account_id");
-    if (typeof nested === "string") return nested;
+    const nested = Reflect.get(Object(auth), 'chatgpt_account_id');
+    if (typeof nested === 'string') return nested;
   }
 
-  const organizations = Reflect.get(payload, "organizations");
+  const organizations = Reflect.get(payload, 'organizations');
   if (!Array.isArray(organizations) || organizations.length === 0) return undefined;
 
   const firstOrganization = organizations[0];
   if (isPlainObject(firstOrganization)) {
-    const id = Reflect.get(Object(firstOrganization), "id");
-    if (typeof id === "string") return id;
+    const id = Reflect.get(Object(firstOrganization), 'id');
+    if (typeof id === 'string') return id;
   }
 
   return undefined;

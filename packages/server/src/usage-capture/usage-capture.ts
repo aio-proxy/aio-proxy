@@ -1,22 +1,21 @@
-import type { ProviderProtocol, UsageRow } from "@aio-proxy/types";
-
-import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from "@aio-proxy/core";
+import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import {
   createPassthroughSseUsageObserver,
   extractPassthroughObservation,
   type PassthroughObservation,
   type PassthroughSseUsageObserver,
-} from "../passthrough-usage";
-import { isAbortError } from "../route-observation";
-import { normalizeAiSdkUsage, priceUsage } from "./pricing";
+} from '../passthrough-usage';
+import { isAbortError } from '../route-observation';
+import { normalizeAiSdkUsage, priceUsage } from './pricing';
 
 const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
 export type UsageCompletion =
-  | { readonly outcome: "success"; readonly usage?: UsageRow; readonly statusCode?: number }
-  | { readonly outcome: "failure"; readonly statusCode?: number; readonly errorCode?: string }
-  | { readonly outcome: "cancelled"; readonly statusCode?: number };
+  | { readonly outcome: 'success'; readonly usage?: UsageRow; readonly statusCode?: number }
+  | { readonly outcome: 'failure'; readonly statusCode?: number; readonly errorCode?: string }
+  | { readonly outcome: 'cancelled'; readonly statusCode?: number };
 
 export type Captured<T> = {
   readonly value: T;
@@ -46,165 +45,174 @@ export function createUsageCapture(options: {
   readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
 }): UsageCapture {
   return {
-    stream({ stream, providerId, modelId }) {
-      const terminal = deferred<UsageCompletion>();
-      const reader = stream.getReader();
-      let cancelled = false;
-      let aborted = false;
-      let finished = false;
-      let finishUsage: UsageRow | undefined;
-      let released = false;
-      const releaseReader = () => {
-        if (!released) {
-          released = true;
-          reader.releaseLock();
-        }
-      };
+    stream: (streamOptions) => streamCapture(streamOptions, options.priceCatalogTask),
+    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.priceCatalogTask),
+  };
+}
 
-      const value = new ReadableStream<TextStreamPart<ToolSet>>({
-        async pull(controller) {
-          try {
-            const next = await reader.read();
-            if (next.done) {
-              releaseReader();
-              if (cancelled) return;
-              controller.close();
-              terminal.resolve(
-                aborted
-                  ? { outcome: "cancelled" }
-                  : finished
-                    ? {
-                        outcome: "success",
-                        ...usageProperty(await priceUsage(finishUsage, options.priceCatalogTask, { source: "ai-sdk" })),
-                      }
-                    : { outcome: "failure" },
-              );
-              return;
-            }
-            if (next.value.type === "finish") {
-              finished = true;
-              finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
-            } else if (next.value.type === "abort") {
-              aborted = true;
-            }
-            controller.enqueue(next.value);
-          } catch (error) {
-            releaseReader();
-            if (cancelled || isAbortError(error)) {
-              terminal.resolve({ outcome: "cancelled" });
+function streamCapture(
+  { stream, providerId, modelId }: StreamUsageOptions,
+  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
+): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
+  const terminal = deferred<UsageCompletion>();
+  const reader = stream.getReader();
+  let cancelled = false;
+  let aborted = false;
+  let finished = false;
+  let finishUsage: UsageRow | undefined;
+  let released = false;
+  const releaseReader = () => {
+    if (!released) {
+      released = true;
+      reader.releaseLock();
+    }
+  };
+
+  const value = new ReadableStream<TextStreamPart<ToolSet>>({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          releaseReader();
+          if (cancelled) return;
+          controller.close();
+          terminal.resolve(
+            aborted
+              ? { outcome: 'cancelled' }
+              : finished
+                ? {
+                    outcome: 'success',
+                    ...usageProperty(await priceUsage(finishUsage, priceCatalogTask, { source: 'ai-sdk' })),
+                  }
+                : { outcome: 'failure' },
+          );
+          return;
+        }
+        if (next.value.type === 'finish') {
+          finished = true;
+          finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
+        } else if (next.value.type === 'abort') {
+          aborted = true;
+        }
+        controller.enqueue(next.value);
+      } catch (error) {
+        releaseReader();
+        if (cancelled || isAbortError(error)) {
+          terminal.resolve({ outcome: 'cancelled' });
+        } else {
+          terminal.resolve({ outcome: 'failure' });
+        }
+        if (!cancelled) {
+          controller.error(error);
+        }
+      }
+    },
+    async cancel(reason) {
+      cancelled = true;
+      terminal.resolve({ outcome: 'cancelled' });
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
+    },
+  });
+
+  return { value, completion: terminal.promise };
+}
+
+function passthroughCapture(
+  { response, protocol, providerId, modelId, onResponseId }: PassthroughUsageOptions,
+  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
+): Captured<Response> {
+  if (response.status < 200 || response.status >= 400) {
+    return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
+  }
+  if (response.body === null) {
+    return { value: response, completion: Promise.resolve({ outcome: 'success', statusCode: response.status }) };
+  }
+
+  const statusCode = response.status;
+  const terminal = deferred<UsageCompletion>();
+  const reader = response.body.getReader();
+  const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
+  const sseObserver = isSse ? createPassthroughSseUsageObserver(protocol) : undefined;
+  const decoder = isSse ? new TextDecoder() : undefined;
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let captureJson = !isSse;
+  let released = false;
+  const releaseReader = () => {
+    if (!released) {
+      released = true;
+      reader.releaseLock();
+    }
+  };
+  const returnedBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let done = false;
+      try {
+        const next = await reader.read();
+        if (!next.done) {
+          if (sseObserver !== undefined && decoder !== undefined) {
+            sseObserver.feed(decoder.decode(next.value, { stream: true }));
+          } else if (captureJson) {
+            const nextByteLength = byteLength + next.value.byteLength;
+            if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
+              chunks.push(next.value);
+              byteLength = nextByteLength;
             } else {
-              terminal.resolve({ outcome: "failure" });
-            }
-            if (!cancelled) {
-              controller.error(error);
+              chunks.length = 0;
+              byteLength = 0;
+              captureJson = false;
             }
           }
-        },
-        async cancel(reason) {
-          cancelled = true;
-          terminal.resolve({ outcome: "cancelled" });
-          try {
-            await reader.cancel(reason);
-          } finally {
-            releaseReader();
-          }
-        },
-      });
-
-      return { value, completion: terminal.promise };
-    },
-
-    passthrough({ response, protocol, providerId, modelId, onResponseId }) {
-      if (response.status < 200 || response.status >= 400) {
-        return { value: response, completion: Promise.resolve({ outcome: "failure", statusCode: response.status }) };
-      }
-      if (response.body === null) {
-        return { value: response, completion: Promise.resolve({ outcome: "success", statusCode: response.status }) };
-      }
-
-      const statusCode = response.status;
-      const terminal = deferred<UsageCompletion>();
-      const reader = response.body.getReader();
-      const isSse = response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true;
-      const sseObserver = isSse ? createPassthroughSseUsageObserver(protocol) : undefined;
-      const decoder = isSse ? new TextDecoder() : undefined;
-      const chunks: Uint8Array[] = [];
-      let byteLength = 0;
-      let captureJson = !isSse;
-      let released = false;
-      const releaseReader = () => {
-        if (!released) {
-          released = true;
-          reader.releaseLock();
+          controller.enqueue(next.value);
+          return;
         }
-      };
-      const returnedBody = new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          let done = false;
-          try {
-            const next = await reader.read();
-            if (!next.done) {
-              if (sseObserver !== undefined && decoder !== undefined) {
-                sseObserver.feed(decoder.decode(next.value, { stream: true }));
-              } else if (captureJson) {
-                const nextByteLength = byteLength + next.value.byteLength;
-                if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
-                  chunks.push(next.value);
-                  byteLength = nextByteLength;
-                } else {
-                  chunks.length = 0;
-                  byteLength = 0;
-                  captureJson = false;
-                }
-              }
-              controller.enqueue(next.value);
-              return;
-            }
 
-            done = true;
-            controller.close();
-            const observation =
-              sseObserver !== undefined && decoder !== undefined
-                ? finishSseObservation(sseObserver, decoder)
-                : captureJson
-                  ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
-                  : {};
-            const usage = await priceUsage(
-              observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
-              options.priceCatalogTask,
-              { source: "passthrough", protocol },
-            );
-            if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
-            terminal.resolve({ outcome: "success", statusCode, ...usageProperty(usage) });
-          } catch (error) {
-            done = true;
-            terminal.resolve({ outcome: isAbortError(error) ? "cancelled" : "failure", statusCode });
-            controller.error(error);
-          } finally {
-            if (done) {
-              releaseReader();
-            }
-          }
-        },
-        async cancel(reason) {
-          terminal.resolve({ outcome: "cancelled", statusCode });
-          try {
-            await reader.cancel(reason);
-          } finally {
-            releaseReader();
-          }
-        },
-      });
-
-      return {
-        value: new Response(returnedBody, {
-          headers: response.headers,
-          status: response.status,
-          statusText: response.statusText,
-        }),
-        completion: terminal.promise,
-      };
+        done = true;
+        controller.close();
+        const observation =
+          sseObserver !== undefined && decoder !== undefined
+            ? finishSseObservation(sseObserver, decoder)
+            : captureJson
+              ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
+              : {};
+        const usage = await priceUsage(
+          observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
+          priceCatalogTask,
+          { source: 'passthrough', protocol },
+        );
+        if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
+        terminal.resolve({ outcome: 'success', statusCode, ...usageProperty(usage) });
+      } catch (error) {
+        done = true;
+        terminal.resolve({ outcome: isAbortError(error) ? 'cancelled' : 'failure', statusCode });
+        controller.error(error);
+      } finally {
+        if (done) {
+          releaseReader();
+        }
+      }
     },
+    async cancel(reason) {
+      terminal.resolve({ outcome: 'cancelled', statusCode });
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
+    },
+  });
+
+  return {
+    value: new Response(returnedBody, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    }),
+    completion: terminal.promise,
   };
 }
 

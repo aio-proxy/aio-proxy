@@ -1,19 +1,18 @@
-import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
-import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content/index";
-import type { GeminiGenerateContentModelMessages } from "./gemini-generate-content-types";
+import type { FilePart, ModelMessage } from '../../ai-sdk-bridge';
+import { GeminiGenerateContentTransformError } from '../../error';
+import { imageFilePart, isImageMediaType, type ImageFilePart } from '../../image-input';
+import type { GeminiGenerateContentRequest } from '../../ingress/gemini-generate-content/index';
+import type { GeminiGenerateContentModelMessages } from './gemini-generate-content-types';
 
-import { GeminiGenerateContentTransformError } from "../../error";
-import { imageFilePart, isImageMediaType, type ImageFilePart } from "../../image-input";
-
-type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
-type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
-type UserMessage = Extract<ModelMessage, { role: "user" }>;
-type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
-type ToolPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
-type UserPart = Exclude<UserMessage["content"], string>[number];
-type GeminiPart = GeminiGenerateContentRequest["contents"][number]["parts"][number];
-type GeminiContent = GeminiGenerateContentRequest["contents"][number];
-type InlineData = NonNullable<GeminiPart["inlineData"]>;
+type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
+type ToolMessage = Extract<ModelMessage, { role: 'tool' }>;
+type UserMessage = Extract<ModelMessage, { role: 'user' }>;
+type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
+type ToolPart = Extract<ToolMessage['content'][number], { type: 'tool-result' }>;
+type UserPart = Exclude<UserMessage['content'], string>[number];
+type GeminiPart = GeminiGenerateContentRequest['contents'][number]['parts'][number];
+type GeminiContent = GeminiGenerateContentRequest['contents'][number];
+type InlineData = NonNullable<GeminiPart['inlineData']>;
 type PendingToolCallIds = Map<string, string[]>;
 
 export function geminiGenerateContentToModelMessages(
@@ -26,15 +25,15 @@ export function geminiGenerateContentToModelMessages(
         ? []
         : [
             {
-              role: "system",
-              content: request.systemInstruction.parts.map((part) => part.text).join(""),
+              role: 'system',
+              content: request.systemInstruction.parts.map((part) => part.text).join(''),
             } satisfies ModelMessage,
           ]),
       ...request.contents.map((content, index) => contentToMessage(content, index, pendingToolCallIds)),
     ],
     tools: request.tools?.flatMap((tool) =>
       tool.functionDeclarations.map((declaration) => ({
-        type: "function",
+        type: 'function',
         name: declaration.name,
         ...(declaration.description === undefined ? {} : { description: declaration.description }),
         ...(declaration.parameters === undefined ? {} : { inputSchema: declaration.parameters }),
@@ -54,16 +53,16 @@ function contentToMessage(
   contentIndex: number,
   pendingToolCallIds: PendingToolCallIds,
 ): ModelMessage {
-  if (content.role === "model") {
+  if (content.role === 'model') {
     return {
-      role: "assistant",
+      role: 'assistant',
       content: content.parts.map((part, partIndex) => assistantPart(part, contentIndex, partIndex, pendingToolCallIds)),
     };
   }
 
   if (content.parts.every((part) => part.functionResponse !== undefined)) {
     return {
-      role: "tool",
+      role: 'tool',
       content: content.parts.map((part, partIndex) =>
         toolResultPart(part, contentIndex, partIndex, pendingToolCallIds),
       ),
@@ -71,7 +70,7 @@ function contentToMessage(
   }
 
   return {
-    role: "user",
+    role: 'user',
     content: content.parts.map((part, partIndex) => userPart(part, contentIndex, partIndex)),
   };
 }
@@ -79,14 +78,14 @@ function contentToMessage(
 function userPart(part: GeminiPart, contentIndex: number, partIndex: number): UserPart {
   const path = `contents.${contentIndex}.parts.${partIndex}`;
   if (part.text !== undefined) {
-    return { type: "text", text: part.text };
+    return { type: 'text', text: part.text };
   }
   if (part.inlineData !== undefined) {
     return inlineDataPart(part.inlineData, `${path}.inlineData`);
   }
   if (part.fileData !== undefined) {
     const image = imageFilePart({
-      type: "url",
+      type: 'url',
       url: part.fileData.fileUri,
       mediaType: part.fileData.mimeType,
     });
@@ -104,7 +103,7 @@ function assistantPart(
 ): AssistantPart {
   const path = `contents.${contentIndex}.parts.${partIndex}`;
   if (part.text !== undefined) {
-    return { type: "text", text: part.text };
+    return { type: 'text', text: part.text };
   }
 
   if (part.inlineData !== undefined) {
@@ -113,8 +112,8 @@ function assistantPart(
 
   if (part.fileData !== undefined) {
     const image = imageFilePart({
-      type: "reference",
-      provider: "google",
+      type: 'reference',
+      provider: 'google',
       id: part.fileData.fileUri,
       mediaType: part.fileData.mimeType,
     });
@@ -128,7 +127,7 @@ function assistantPart(
     if (ids === undefined) pendingToolCallIds.set(part.functionCall.name, [toolCallId]);
     else ids.push(toolCallId);
     return {
-      type: "tool-call",
+      type: 'tool-call',
       toolCallId,
       toolName: part.functionCall.name,
       input: part.functionCall.args ?? {},
@@ -149,7 +148,7 @@ function toolResultPart(
     throw new GeminiGenerateContentTransformError(`contents.${contentIndex}.parts.${partIndex}`);
   }
 
-  const text = { type: "text" as const, text: JSON.stringify(response.response) ?? "" };
+  const text = { type: 'text' as const, text: JSON.stringify(response.response) ?? '' };
   const ids = pendingToolCallIds.get(response.name);
   const toolCallId = response.id ?? ids?.shift() ?? `gemini-response-${response.name}-${contentIndex}-${partIndex}`;
   if (response.id !== undefined) {
@@ -165,16 +164,16 @@ function toolResultPart(
   );
 
   return {
-    type: "tool-result",
+    type: 'tool-result',
     toolCallId,
     toolName: response.name,
-    output: images.length === 0 ? { type: "text", value: text.text } : { type: "content", value: [text, ...images] },
+    output: images.length === 0 ? { type: 'text', value: text.text } : { type: 'content', value: [text, ...images] },
   };
 }
 
 function inlineDataFile(inlineData: InlineData, path: string, toolResult: boolean): ImageFilePart {
   const image = imageFilePart(
-    { type: "base64", mediaType: inlineData.mimeType, data: inlineData.data },
+    { type: 'base64', mediaType: inlineData.mimeType, data: inlineData.data },
     { toolResult },
   );
   if (image === undefined) throw new GeminiGenerateContentTransformError(path);
@@ -184,8 +183,8 @@ function inlineDataFile(inlineData: InlineData, path: string, toolResult: boolea
 function inlineDataPart(inlineData: InlineData, path: string): FilePart {
   if (isImageMediaType(inlineData.mimeType)) return inlineDataFile(inlineData, path, false);
   return {
-    type: "file",
+    type: 'file',
     mediaType: inlineData.mimeType,
-    data: { type: "data", data: inlineData.data },
+    data: { type: 'data', data: inlineData.data },
   };
 }

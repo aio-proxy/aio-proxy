@@ -1,12 +1,11 @@
-import type { ReactNode } from "react";
+import { getLocale, m } from '@aio-proxy/i18n';
+import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-import { getLocale, m } from "@aio-proxy/i18n";
-import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from "lucide-react";
+import { formatCompactTokenCount, TokenCount } from '@/components/token-count';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { formatCompactTokenCount, TokenCount } from "@/components/token-count";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-import type { UsageOverviewSummary } from "../services/usage-service";
+import type { UsageOverviewSummary } from '../services/usage-service';
 
 interface UsageSummaryGridProps {
   readonly summary: UsageOverviewSummary;
@@ -23,30 +22,30 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
   const numberFormatter = new Intl.NumberFormat(getLocale());
   const decimalFormatter = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
   const costFormatter = new Intl.NumberFormat(getLocale(), {
-    currency: "USD",
+    currency: 'USD',
     maximumFractionDigits: 6,
-    style: "currency",
+    style: 'currency',
   });
   const percentFormatter = new Intl.NumberFormat(getLocale(), {
     maximumFractionDigits: 1,
-    style: "percent",
+    style: 'percent',
   });
-  const notAvailable = m["dashboard.usage.not_available"]();
+  const notAvailable = m['dashboard.usage.not_available']();
   const cards: readonly UsageSummaryCard[] = [
     {
       icon: CircleDollarSign,
-      label: m["dashboard.usage.summary_cost"](),
+      label: m['dashboard.usage.summary_cost'](),
       value: costFormatter.format(summary.estimatedCostUsd),
       detail:
         summary.pricingCoverage === null
-          ? m["dashboard.usage.pricing_coverage"]({ coverage: notAvailable })
-          : m["dashboard.usage.pricing_coverage"]({ coverage: percentFormatter.format(summary.pricingCoverage) }),
+          ? m['dashboard.usage.pricing_coverage']({ coverage: notAvailable })
+          : m['dashboard.usage.pricing_coverage']({ coverage: percentFormatter.format(summary.pricingCoverage) }),
     },
     {
       icon: Activity,
-      label: m["dashboard.usage.summary_requests"](),
+      label: m['dashboard.usage.summary_requests'](),
       value: numberFormatter.format(summary.requestCount),
-      detail: m["dashboard.usage.requests_description"]({
+      detail: m['dashboard.usage.requests_description']({
         success: numberFormatter.format(summary.successCount),
         failure: numberFormatter.format(summary.failureCount),
         cancelled: numberFormatter.format(summary.cancelledCount),
@@ -54,30 +53,30 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
     },
     {
       icon: Cpu,
-      label: m["dashboard.usage.summary_tokens"](),
+      label: m['dashboard.usage.summary_tokens'](),
       value: <TokenCount value={summary.totalTokens} />,
-      detail: m["dashboard.usage.tokens_description"]({
+      detail: m['dashboard.usage.tokens_description']({
         input: formatCompactTokenCount(summary.inputTokens),
         output: formatCompactTokenCount(summary.outputTokens),
       }),
     },
     {
       icon: Gauge,
-      label: m["dashboard.usage.summary_average_rpm"](),
+      label: m['dashboard.usage.summary_average_rpm'](),
       value: decimalFormatter.format(summary.averageRpm),
-      detail: m["dashboard.usage.average_rpm_description"](),
+      detail: m['dashboard.usage.average_rpm_description'](),
     },
     {
       icon: Zap,
-      label: m["dashboard.usage.summary_average_tpm"](),
+      label: m['dashboard.usage.summary_average_tpm'](),
       value: decimalFormatter.format(summary.averageTpm),
-      detail: m["dashboard.usage.average_tpm_description"](),
+      detail: m['dashboard.usage.average_tpm_description'](),
     },
     {
       icon: CircleCheckBig,
-      label: m["dashboard.usage.summary_success_rate"](),
+      label: m['dashboard.usage.summary_success_rate'](),
       value: summary.successRate === null ? notAvailable : percentFormatter.format(summary.successRate),
-      detail: m["dashboard.usage.success_rate_description"](),
+      detail: m['dashboard.usage.success_rate_description'](),
     },
   ];
 

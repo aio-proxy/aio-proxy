@@ -1,10 +1,9 @@
-import type { Logger } from "@aio-proxy/plugin-sdk";
+import { spyOn } from 'bun:test';
 
-import { configureLogging } from "@aio-proxy/logger";
-import { spyOn } from "bun:test";
+import { configureLogging } from '@aio-proxy/logger';
+import type { Logger } from '@aio-proxy/plugin-sdk';
 
-import type { PluginLoggerFactory } from "../registry";
-
+import type { PluginLoggerFactory } from '../registry';
 import {
   expect,
   install,
@@ -14,13 +13,13 @@ import {
   test,
   zod,
   type PluginDescriptor,
-} from "./test-support";
+} from './test-support';
 
-type CompatibleTestDescriptor<Options> = Omit<PluginDescriptor<Options>, "apiVersion"> & {
+type CompatibleTestDescriptor<Options> = Omit<PluginDescriptor<Options>, 'apiVersion'> & {
   readonly apiVersion: 1 | 2;
 };
 
-test("setup receives a redacting plugin logger for API v1 and v2", async () => {
+test('setup receives a redacting plugin logger for API v1 and v2', async () => {
   for (const apiVersion of [1, 2] as const) {
     const packageName = `@example/logger-v${apiVersion}`;
     const secret = `private-v${apiVersion}`;
@@ -29,12 +28,12 @@ test("setup receives a redacting plugin logger for API v1 and v2", async () => {
     const createPluginLogger: PluginLoggerFactory = (category, loggerOptions = {}) => {
       const secrets = loggerOptions.redactSecretValues;
       factoryOptions.push(secrets);
-      const capture: Logger["info"] = (messageOrProps, propsOrMessage) => {
+      const capture: Logger['info'] = (messageOrProps, propsOrMessage) => {
         const payload = JSON.stringify([messageOrProps, propsOrMessage]);
         records.push({
           category: [...category],
           payload: (secrets ?? []).reduce(
-            (redacted, value) => (value.length === 0 ? redacted : redacted.replaceAll(value, "[REDACTED]")),
+            (redacted, value) => (value.length === 0 ? redacted : redacted.replaceAll(value, '[REDACTED]')),
             payload,
           ),
         });
@@ -54,7 +53,7 @@ test("setup receives a redacting plugin logger for API v1 and v2", async () => {
       metadata: {
         options: {
           schema: zod.object({ token: zod.string() }),
-          form: [{ type: "secret", key: "token", label: "Token" }],
+          form: [{ type: 'secret', key: 'token', label: 'Token' }],
         },
       },
       setup(api, pluginOptions) {
@@ -74,26 +73,26 @@ test("setup receives a redacting plugin logger for API v1 and v2", async () => {
       }),
     );
 
-    expect(snapshot.plugins.get(packageName)?.state.status).toBe("ready");
+    expect(snapshot.plugins.get(packageName)?.state.status).toBe('ready');
     expect(factoryOptions).toEqual([[secret]]);
     expect(records).toEqual([
       {
-        category: ["aio-proxy", "plugin", packageName],
-        payload: JSON.stringify(["using [REDACTED]", { token: "[REDACTED]" }]),
+        category: ['aio-proxy', 'plugin', packageName],
+        payload: JSON.stringify(['using [REDACTED]', { token: '[REDACTED]' }]),
       },
     ]);
     expect(JSON.stringify(records)).not.toContain(secret);
   }
 });
 
-test("default plugin logger redacts setup logs for API v1 and v2", async () => {
+test('default plugin logger redacts setup logs for API v1 and v2', async () => {
   const calls: unknown[][] = [];
-  const info = spyOn(console, "info").mockImplementation((...args) => {
+  const info = spyOn(console, 'info').mockImplementation((...args) => {
     calls.push(args);
   });
 
   try {
-    await configureLogging({ dir: "/unused/when-disabled" });
+    await configureLogging({ dir: '/unused/when-disabled' });
     for (const apiVersion of [1, 2] as const) {
       const packageName = `@example/default-logger-v${apiVersion}`;
       const secret = `production-private-v${apiVersion}`;
@@ -103,7 +102,7 @@ test("default plugin logger redacts setup logs for API v1 and v2", async () => {
         metadata: {
           options: {
             schema: zod.object({ token: zod.string() }),
-            form: [{ type: "secret", key: "token", label: "Token" }],
+            form: [{ type: 'secret', key: 'token', label: 'Token' }],
           },
         },
         setup(api, pluginOptions) {
@@ -128,19 +127,19 @@ test("default plugin logger redacts setup logs for API v1 and v2", async () => {
         }),
       );
 
-      expect(snapshot.plugins.get(packageName)?.state.status).toBe("ready");
+      expect(snapshot.plugins.get(packageName)?.state.status).toBe('ready');
     }
 
-    const pluginCalls = calls.filter((call) => Bun.inspect(call).includes("@example/default-logger-v"));
+    const pluginCalls = calls.filter((call) => Bun.inspect(call).includes('@example/default-logger-v'));
     const captured = Bun.inspect(pluginCalls);
     expect(pluginCalls).toHaveLength(2);
-    expect(captured).toContain("aio-proxy");
-    expect(captured).toContain("plugin");
-    expect(captured).toContain("@example/default-logger-v1");
-    expect(captured).toContain("@example/default-logger-v2");
-    expect(captured).toContain("[REDACTED]");
-    expect(captured).not.toContain("production-private-v1");
-    expect(captured).not.toContain("production-private-v2");
+    expect(captured).toContain('aio-proxy');
+    expect(captured).toContain('plugin');
+    expect(captured).toContain('@example/default-logger-v1');
+    expect(captured).toContain('@example/default-logger-v2');
+    expect(captured).toContain('[REDACTED]');
+    expect(captured).not.toContain('production-private-v1');
+    expect(captured).not.toContain('production-private-v2');
   } finally {
     info.mockRestore();
   }

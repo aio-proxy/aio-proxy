@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const DashboardLocalizedTextValueSchema = z
   .string()
@@ -8,17 +8,17 @@ const DashboardLocalizedTextValueSchema = z
 export const DashboardLocalizedTextSchema = z.union([
   DashboardLocalizedTextValueSchema,
   z.record(z.string(), DashboardLocalizedTextValueSchema).superRefine((value, context) => {
-    if (!Object.hasOwn(value, "default")) {
-      context.addIssue({ code: "custom", message: "default localized text is required" });
+    if (!Object.hasOwn(value, 'default')) {
+      context.addIssue({ code: 'custom', message: 'default localized text is required' });
     }
     for (const key of Object.keys(value)) {
-      if (key === "default") continue;
+      if (key === 'default') continue;
       try {
         if (Intl.getCanonicalLocales(key)[0] !== key) {
-          context.addIssue({ code: "custom", message: "localized text keys must be canonical" });
+          context.addIssue({ code: 'custom', message: 'localized text keys must be canonical' });
         }
       } catch {
-        context.addIssue({ code: "custom", message: "localized text keys must be language tags" });
+        context.addIssue({ code: 'custom', message: 'localized text keys must be language tags' });
       }
     }
   }),

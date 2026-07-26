@@ -1,9 +1,8 @@
-import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from "@aio-proxy/plugin-sdk";
+import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
-import type { XAIGrokCredential } from "./schema";
-
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from "./cli-headers";
-import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from "./oauth";
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers';
+import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from './oauth';
+import type { XAIGrokCredential } from './schema';
 
 const WEEKLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing?format=credits`;
 const MONTHLY_BILLING_URL = `${XAI_GROK_CLI_BASE_URL}/billing`;
@@ -28,28 +27,28 @@ export async function readXAIGrokQuota(
 ): Promise<OAuthQuotaSnapshot> {
   const credential = await currentXAIGrokCredential(context.credentials, { ...options, signal: context.signal });
   const fetcher = options.fetch ?? globalThis.fetch;
-  const headers = createXAIGrokCLIHeaders(credential, { accept: "*/*" });
-  if (credential.subject !== undefined) headers.set("x-userid", credential.subject);
+  const headers = createXAIGrokCLIHeaders(credential, { accept: '*/*' });
+  if (credential.subject !== undefined) headers.set('x-userid', credential.subject);
   const results = await Promise.allSettled([
     requestBilling(fetcher, WEEKLY_BILLING_URL, headers, context.signal, weeklyItem),
     requestBilling(fetcher, MONTHLY_BILLING_URL, headers, context.signal, monthlyItem),
   ]);
   context.signal.throwIfAborted();
   const items = results.flatMap((result) =>
-    result.status === "fulfilled" && result.value !== undefined ? [result.value] : [],
+    result.status === 'fulfilled' && result.value !== undefined ? [result.value] : [],
   );
-  if (items.length === 0) throw new Error("xAI Grok billing request failed");
+  if (items.length === 0) throw new Error('xAI Grok billing request failed');
   return { items };
 }
 
 async function requestBilling(
-  fetcher: NonNullable<XAIGrokOAuthOptions["fetch"]>,
+  fetcher: NonNullable<XAIGrokOAuthOptions['fetch']>,
   url: string,
   headers: Headers,
   signal: AbortSignal,
   toItem: (config: BillingObject) => OAuthQuotaItem | undefined,
 ): Promise<OAuthQuotaItem | undefined> {
-  const response = await fetcher(url, { method: "GET", headers, signal });
+  const response = await fetcher(url, { method: 'GET', headers, signal });
   if (!response.ok) throw new Error(`xAI Grok billing request failed (${response.status})`);
   const payload = record(await response.json());
   return payload === undefined ? undefined : toItem(record(payload.config) ?? {});
@@ -61,8 +60,8 @@ function weeklyItem(config: BillingObject): OAuthQuotaItem | undefined {
   const resetsAt = timestamp(period?.end);
   if (remainingRatio === undefined && resetsAt === undefined) return undefined;
   return {
-    id: "weekly",
-    label: { default: "Weekly limit", "zh-Hans": "周额度" },
+    id: 'weekly',
+    label: { default: 'Weekly limit', 'zh-Hans': '周额度' },
     ...(remainingRatio === undefined ? {} : { remainingRatio }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
@@ -78,21 +77,21 @@ function monthlyItem(config: BillingObject): OAuthQuotaItem | undefined {
   const resetsAt = timestamp(config.billingPeriodEnd ?? config.billing_period_end);
   if (remainingRatio === undefined && resetsAt === undefined) return undefined;
   return {
-    id: "monthly-credits",
-    label: { default: "Monthly credits", "zh-Hans": "月度额度" },
+    id: 'monthly-credits',
+    label: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
     ...(remainingRatio === undefined ? {} : { remainingRatio }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
 }
 
 function record(value: unknown): BillingObject | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as BillingObject) : undefined;
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as BillingObject) : undefined;
 }
 
 function number(value: unknown): number | undefined {
-  const trimmed = typeof value === "string" ? value.trim() : undefined;
-  if (trimmed === "") return undefined;
-  const parsed = typeof value === "number" ? value : trimmed === undefined ? Number.NaN : Number(trimmed);
+  const trimmed = typeof value === 'string' ? value.trim() : undefined;
+  if (trimmed === '') return undefined;
+  const parsed = typeof value === 'number' ? value : trimmed === undefined ? Number.NaN : Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -106,7 +105,7 @@ function remainingFromPercent(value: unknown): number | undefined {
 }
 
 function timestamp(value: unknown): number | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== 'string') return undefined;
   const parsed = Date.parse(value);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

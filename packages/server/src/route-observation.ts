@@ -1,10 +1,10 @@
-import type { UsageCompletion } from "./usage-capture";
+import type { UsageCompletion } from './usage-capture';
 
 export function isAbortError(error: unknown, seen = new Set<Error>()): boolean {
   if (!(error instanceof Error) || seen.has(error)) {
     return false;
   }
-  if (error.name === "AbortError") {
+  if (error.name === 'AbortError') {
     return true;
   }
   seen.add(error);
@@ -20,6 +20,6 @@ export function terminalCompletion(
   signal: AbortSignal,
 ): Promise<UsageCompletion> {
   return completion.then((value) =>
-    value.outcome === "cancelled" && !signal.aborted ? { ...value, outcome: "failure" } : value,
+    value.outcome === 'cancelled' && !signal.aborted ? { ...value, outcome: 'failure' } : value,
   );
 }

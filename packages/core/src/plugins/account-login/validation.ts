@@ -1,14 +1,11 @@
-import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from "@aio-proxy/plugin-sdk";
+import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
+import { AliasConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import { z } from 'zod';
 
-import { AliasConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from "@aio-proxy/types";
-import { z } from "zod";
-
-import type { StoredAccount } from "../repository/index";
-import type { OAuthProviderPatch } from "./login";
-
-import { parseRuntimeConfig } from "../../config";
-import { parsePluginSchema } from "../schema";
-import { withAbort } from "./deadline";
+import { parseRuntimeConfig } from '../../config';
+import type { StoredAccount } from '../repository/index';
+import { parsePluginSchema } from '../schema';
+import { withAbort } from './deadline';
 import {
   AccountCleanupPendingError,
   AccountOptionsValidationError,
@@ -16,26 +13,27 @@ import {
   OAuthLoginResultValidationError,
   ProviderAccountAlreadyExistsError,
   ProviderConfigInvalidError,
-} from "./errors";
+} from './errors';
+import type { OAuthProviderPatch } from './login';
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
 export function isRecord(value: unknown): value is PlainRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 export function providerRecord(current: ConfigRecord): Record<string, unknown> {
-  const providers = current["providers"];
+  const providers = current['providers'];
   if (providers === undefined) return {};
   if (isRecord(providers)) return providers;
   parseRuntimeConfig(current);
   throw new ProviderConfigInvalidError();
 }
 export function structuredEntry(value: unknown): PlainRecord | null {
-  if (!isRecord(value) || value["kind"] !== "oauth" || Object.hasOwn(value, "vendor")) return null;
-  return OAuthPluginProviderSchema.safeParse({ ...value, id: "staged" }).success ? value : null;
+  if (!isRecord(value) || value['kind'] !== 'oauth' || Object.hasOwn(value, 'vendor')) return null;
+  return OAuthPluginProviderSchema.safeParse({ ...value, id: 'staged' }).success ? value : null;
 }
 export function capabilityOf(entry: PlainRecord): OAuthCapabilityReference {
-  return { plugin: entry["plugin"] as string, capability: entry["capability"] as string };
+  return { plugin: entry['plugin'] as string, capability: entry['capability'] as string };
 }
 export function sameCapability(left: OAuthCapabilityReference, right: OAuthCapabilityReference): boolean {
   return left.plugin === right.plugin && left.capability === right.capability;
@@ -44,14 +42,14 @@ export function accountMatches(account: StoredAccount, capability: OAuthCapabili
   return account.plugin === capability.plugin && account.capability === capability.capability;
 }
 export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
-  const providers = candidate["providers"];
+  const providers = candidate['providers'];
   if (!isRecord(providers)) {
     parseRuntimeConfig(candidate);
     return;
   }
   const legacyProviders: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(providers)) {
-    if (isRecord(value) && value["kind"] === "oauth" && !Object.hasOwn(value, "vendor")) {
+    if (isRecord(value) && value['kind'] === 'oauth' && !Object.hasOwn(value, 'vendor')) {
       OAuthPluginProviderSchema.parse({ ...value, id });
     } else {
       legacyProviders[id] = value;
@@ -80,12 +78,12 @@ export async function validatedLoginResult<Credential>(
   if (!isRecord(raw)) throw new OAuthLoginResultValidationError();
   const { fingerprint, suggestedKey, label, expiresAt, credentials } = raw;
   if (
-    typeof fingerprint !== "string" ||
+    typeof fingerprint !== 'string' ||
     fingerprint.trim().length === 0 ||
-    typeof suggestedKey !== "string" ||
-    (label !== undefined && typeof label !== "string") ||
+    typeof suggestedKey !== 'string' ||
+    (label !== undefined && typeof label !== 'string') ||
     (expiresAt !== undefined &&
-      (typeof expiresAt !== "number" || !Number.isFinite(expiresAt) || !Number.isInteger(expiresAt)))
+      (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || !Number.isInteger(expiresAt)))
   )
     throw new OAuthLoginResultValidationError();
   const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, credentials));
@@ -106,7 +104,7 @@ export function inMemoryCredentialPort<Credential>(
 ): { readonly port: CredentialPort<Credential>; readonly current: () => Credential } {
   let value = initial;
   let revision = 0;
-  type RefreshResult = Awaited<ReturnType<CredentialPort<Credential>["refresh"]>>;
+  type RefreshResult = Awaited<ReturnType<CredentialPort<Credential>['refresh']>>;
   let refreshFlight: Promise<RefreshResult> | undefined;
   return {
     port: {
@@ -116,7 +114,7 @@ export function inMemoryCredentialPort<Credential>(
       refresh(expectedRevision, exchange) {
         if (refreshFlight !== undefined) return refreshFlight;
         const flight = (async (): Promise<RefreshResult> => {
-          if (expectedRevision !== revision) return { status: "superseded", snapshot: { value, revision } };
+          if (expectedRevision !== revision) return { status: 'superseded', snapshot: { value, revision } };
           const exchanged = await exchange({ value, revision }, signal);
           const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, exchanged.value));
           if (!parsed.ok) throw new OAuthLoginResultValidationError();
@@ -129,7 +127,7 @@ export function inMemoryCredentialPort<Credential>(
           }
           value = parsed.value;
           revision += 1;
-          return { status: "updated", snapshot: { value, revision } };
+          return { status: 'updated', snapshot: { value, revision } };
         })();
         refreshFlight = flight;
         const cleanup = () => {
@@ -150,12 +148,12 @@ export function providerEntry(
   defaults?: ProviderAlias,
   patch?: OAuthProviderPatch,
 ): PlainRecord {
-  const enabled = patch?.enabled ?? existing?.["enabled"] ?? true;
-  const weight = patch === undefined ? existing?.["weight"] : patch.weight;
-  const name = patch === undefined ? existing?.["name"] : patch.name;
-  const alias = patch === undefined ? (existing?.["alias"] ?? defaults) : patch.alias;
+  const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
+  const weight = patch === undefined ? existing?.['weight'] : patch.weight;
+  const name = patch === undefined ? existing?.['name'] : patch.name;
+  const alias = patch === undefined ? (existing?.['alias'] ?? defaults) : patch.alias;
   return {
-    kind: "oauth",
+    kind: 'oauth',
     plugin,
     capability,
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),

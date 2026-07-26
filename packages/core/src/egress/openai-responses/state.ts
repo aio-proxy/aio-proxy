@@ -7,19 +7,24 @@ import type {
   ResponseReasoningItem,
   ResponseStatus,
   ResponseUsage,
-} from "openai/resources/responses/responses";
+} from 'openai/resources/responses/responses';
 
-import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from "../../ai-sdk-bridge";
-
-import { OpenAIResponsesTransformError } from "../../error";
-import { readOpenAIResponsesWireMetadata } from "../../transform/openai-responses/index";
+import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
+import { OpenAIResponsesTransformError } from '../../error';
+import { readOpenAIResponsesWireMetadata } from '../../transform/openai-responses/index';
 
 export type OpenAIResponsesStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
-export type TextDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "text-delta" }>;
-export type ReasoningDeltaPart = Extract<OpenAIResponsesStreamPart, { type: "reasoning-delta" }>;
-export type FinishPart = Extract<OpenAIResponsesStreamPart, { type: "finish" }>;
-export type FinishStepPart = Extract<OpenAIResponsesStreamPart, { type: "finish-step" }>;
-export type ToolStartPart = Extract<OpenAIResponsesStreamPart, { type: "tool-input-start" }>;
+export type TextDeltaPart = Extract<OpenAIResponsesStreamPart, { type: 'text-delta' }>;
+export type ReasoningDeltaPart = Extract<OpenAIResponsesStreamPart, { type: 'reasoning-delta' }>;
+export type FinishPart = Extract<OpenAIResponsesStreamPart, { type: 'finish' }>;
+export type FinishStepPart = Extract<OpenAIResponsesStreamPart, { type: 'finish-step' }>;
+export type ToolStartPart = Extract<OpenAIResponsesStreamPart, { type: 'tool-input-start' }>;
+
+export function assertSuccessfulFinish(part: FinishPart | FinishStepPart): void {
+  if (part.finishReason !== 'error') return;
+  const rawReason = 'rawFinishReason' in part ? part.rawFinishReason : undefined;
+  throw new Error(rawReason ?? 'Model stream finished with an error');
+}
 
 export type ResponseMetadata = {
   readonly id: string;
@@ -32,7 +37,7 @@ export type ResponseMetadata = {
 export type ToolState = {
   readonly id: string;
   readonly callId: string;
-  readonly wireType: "function" | "custom";
+  readonly wireType: 'function' | 'custom';
   readonly name: string;
   readonly namespace?: string;
   input: string;
@@ -40,9 +45,9 @@ export type ToolState = {
 };
 
 export type OutputItemRef =
-  | { readonly type: "message" }
-  | { readonly type: "reasoning" }
-  | { readonly type: "tool"; readonly callId: string };
+  | { readonly type: 'message' }
+  | { readonly type: 'reasoning' }
+  | { readonly type: 'tool'; readonly callId: string };
 
 export type ResponseState = {
   readonly text: string[];
@@ -58,21 +63,21 @@ export function responseState(modelId: string): ResponseState {
 }
 
 export function startTool(part: ToolStartPart): ToolState {
-  const metadata = readOpenAIResponsesWireMetadata("toolMetadata" in part ? part.toolMetadata : undefined);
-  const wireType = metadata?.wireToolType === "custom" ? "custom" : "function";
+  const metadata = readOpenAIResponsesWireMetadata('toolMetadata' in part ? part.toolMetadata : undefined);
+  const wireType = metadata?.wireToolType === 'custom' ? 'custom' : 'function';
   return {
-    id: `${wireType === "custom" ? "ctc" : "fc"}_${crypto.randomUUID()}`,
+    id: `${wireType === 'custom' ? 'ctc' : 'fc'}_${crypto.randomUUID()}`,
     callId: part.id,
     wireType,
     name: metadata?.wireToolName ?? part.toolName,
     ...(metadata?.namespace === undefined ? {} : { namespace: metadata.namespace }),
-    input: "",
+    input: '',
     completed: false,
   };
 }
 
 export function upstreamMetadata(part: FinishStepPart, fallback: ResponseMetadata): ResponseMetadata {
-  if (!("response" in part)) return fallback;
+  if (!('response' in part)) return fallback;
   const id = part.response.id;
   return {
     ...fallback,
@@ -88,21 +93,21 @@ export function responseObject(status: ResponseStatus, state: ResponseState): Re
   return {
     id: state.metadata.id,
     created_at: state.metadata.createdAt,
-    output_text: state.text.join(""),
+    output_text: state.text.join(''),
     error: null,
     incomplete_details: null,
     instructions: null,
     metadata: null,
     model: state.metadata.model,
-    object: "response",
+    object: 'response',
     output: outputItems(state),
     parallel_tool_calls: false,
     temperature: null,
-    tool_choice: "auto",
+    tool_choice: 'auto',
     tools: [],
     top_p: null,
     status,
-    ...(status === "completed" ? { completed_at: Math.floor(Date.now() / 1000) } : {}),
+    ...(status === 'completed' ? { completed_at: Math.floor(Date.now() / 1000) } : {}),
     ...(state.usage === undefined ? {} : { usage: state.usage }),
   };
 }
@@ -118,51 +123,51 @@ export function ensureOutput(
 }
 
 export function outputIndex(state: ResponseState, output: OutputItemRef): number {
-  return output.type === "tool"
-    ? state.output.findIndex((item) => item.type === "tool" && item.callId === output.callId)
+  return output.type === 'tool'
+    ? state.output.findIndex((item) => item.type === 'tool' && item.callId === output.callId)
     : state.output.findIndex((item) => item.type === output.type);
 }
 
-export function reasoningItem(state: ResponseState, status: "in_progress" | "completed"): ResponseReasoningItem {
+export function reasoningItem(state: ResponseState, status: 'in_progress' | 'completed'): ResponseReasoningItem {
   return {
     id: state.metadata.reasoningId,
-    type: "reasoning",
-    summary: state.reasoning.length === 0 ? [] : [{ type: "summary_text", text: state.reasoning.join("") }],
+    type: 'reasoning',
+    summary: state.reasoning.length === 0 ? [] : [{ type: 'summary_text', text: state.reasoning.join('') }],
     status,
   };
 }
 
-export function messageItem(state: ResponseState, status: "in_progress" | "completed"): ResponseOutputMessage {
+export function messageItem(state: ResponseState, status: 'in_progress' | 'completed'): ResponseOutputMessage {
   return {
     id: state.metadata.messageId,
-    type: "message",
-    role: "assistant",
+    type: 'message',
+    role: 'assistant',
     status,
     content:
       state.text.length === 0
         ? []
-        : [{ type: "output_text", text: state.text.join(""), annotations: [], logprobs: [] }],
+        : [{ type: 'output_text', text: state.text.join(''), annotations: [], logprobs: [] }],
   };
 }
 
 export function toolItem(
   tool: ToolState,
-  status: "in_progress" | "completed",
+  status: 'in_progress' | 'completed',
 ): ResponseFunctionToolCall | ResponseCustomToolCallItem {
-  if (tool.wireType === "custom") {
+  if (tool.wireType === 'custom') {
     return {
       id: tool.id,
-      type: "custom_tool_call",
+      type: 'custom_tool_call',
       call_id: tool.callId,
       name: tool.name,
-      input: status === "completed" ? customInput(tool.input) : "",
+      input: status === 'completed' ? customInput(tool.input) : '',
       status,
       ...(tool.namespace === undefined ? {} : { namespace: tool.namespace }),
     };
   }
   return {
     id: tool.id,
-    type: "function_call",
+    type: 'function_call',
     call_id: tool.callId,
     name: tool.name,
     arguments: tool.input,
@@ -172,11 +177,11 @@ export function toolItem(
 }
 
 export function textDelta(part: TextDeltaPart): string {
-  return "delta" in part ? part.delta : part.text;
+  return 'delta' in part ? part.delta : part.text;
 }
 
 export function reasoningDelta(part: ReasoningDeltaPart): string {
-  return "delta" in part ? part.delta : part.text;
+  return 'delta' in part ? part.delta : part.text;
 }
 
 export function finishUsage(part: FinishPart): {
@@ -184,7 +189,7 @@ export function finishUsage(part: FinishPart): {
   readonly outputTokens?: number | undefined;
   readonly totalTokens?: number | undefined;
 } {
-  return "usage" in part ? part.usage : part.totalUsage;
+  return 'usage' in part ? part.usage : part.totalUsage;
 }
 
 export function openAIUsage(usage: {
@@ -209,29 +214,29 @@ export function customInput(value: string): string {
   try {
     const parsed: unknown = JSON.parse(value);
     if (
-      typeof parsed === "object" &&
+      typeof parsed === 'object' &&
       parsed !== null &&
       !Array.isArray(parsed) &&
       Object.keys(parsed).length === 1 &&
-      "input" in parsed &&
-      typeof parsed.input === "string"
+      'input' in parsed &&
+      typeof parsed.input === 'string'
     ) {
       return parsed.input;
     }
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
   }
-  throw new OpenAIResponsesTransformError("output.custom_tool_call.input");
+  throw new OpenAIResponsesTransformError('output.custom_tool_call.input');
 }
 
 function outputItems(state: ResponseState): ResponseOutputItem[] {
   const items: ResponseOutputItem[] = [];
   for (const output of state.output) {
-    if (output.type === "reasoning") items.push(reasoningItem(state, "completed"));
-    if (output.type === "message") items.push(messageItem(state, "completed"));
-    if (output.type === "tool") {
+    if (output.type === 'reasoning') items.push(reasoningItem(state, 'completed'));
+    if (output.type === 'message') items.push(messageItem(state, 'completed'));
+    if (output.type === 'tool') {
       const tool = state.tools.get(output.callId);
-      if (tool !== undefined) items.push(toolItem(tool, "completed"));
+      if (tool !== undefined) items.push(toolItem(tool, 'completed'));
     }
   }
   return items;

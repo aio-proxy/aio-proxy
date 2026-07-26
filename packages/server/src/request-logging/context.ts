@@ -1,6 +1,6 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { AsyncLocalStorage } from 'node:async_hooks';
 
-import type { ServerLogSink } from "../server-log";
+import type { ServerLogSink } from '../server-log';
 
 export type RequestLogContext = {
   readonly requestId: string;
@@ -9,7 +9,7 @@ export type RequestLogContext = {
   readonly modelId?: string;
 };
 
-export type AttemptLogContext = Required<Omit<RequestLogContext, "requestId">>;
+export type AttemptLogContext = Required<Omit<RequestLogContext, 'requestId'>>;
 
 export type RequestLogScope = RequestLogContext & {
   readonly debug: boolean;

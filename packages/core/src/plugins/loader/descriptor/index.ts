@@ -1,1 +1,1 @@
-export * from "./descriptor";
+export * from './descriptor';

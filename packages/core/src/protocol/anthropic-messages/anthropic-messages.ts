@@ -1,29 +1,27 @@
-import type { ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
+import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import { ProviderProtocol } from '@aio-proxy/types';
 
-import { ProviderProtocol } from "@aio-proxy/types";
-
-import type { ModelMessage } from "../../ai-sdk-bridge";
-import type { SessionCandidate } from "../session";
-
-import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from "../../egress/anthropic-messages";
+import type { ModelMessage } from '../../ai-sdk-bridge';
+import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from '../../egress/anthropic-messages';
 import {
   type AnthropicFunctionTool,
   type AnthropicMessagesRequest,
   type AnthropicWebSearchTool,
   parseAnthropicMessages,
-} from "../../ingress/anthropic-messages/index";
-import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from "../../transform/anthropic-messages/index";
-import { defineProtocolAdapter, type EmptyProtocolContext } from "../adapter";
-import { anthropicThinkingOption } from "../anthropic-thinking";
-import { anthropicMessagesErrors } from "../errors";
-import { readJsonRequest, rewriteJsonRequestModel } from "../request";
-import { functionToolSet } from "../tools";
+} from '../../ingress/anthropic-messages/index';
+import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from '../../transform/anthropic-messages/index';
+import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
+import { anthropicThinkingOption } from '../anthropic-thinking';
+import { anthropicMessagesErrors } from '../errors';
+import { readJsonRequest, rewriteJsonRequestModel } from '../request';
+import type { SessionCandidate } from '../session';
+import { functionToolSet } from '../tools';
 
-type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: "assistant" }>["content"], string>[number];
-type AnthropicUserContent = Extract<AnthropicModelMessage, { role: "user" }>["content"];
+type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: 'assistant' }>['content'], string>[number];
+type AnthropicUserContent = Extract<AnthropicModelMessage, { role: 'user' }>['content'];
 type AnthropicUserPart = Exclude<AnthropicUserContent, string>[number];
-type AnthropicUserPromptPart = Extract<AnthropicUserPart, { type: "file" | "text" }>;
-type AnthropicToolResultPart = Extract<AnthropicAssistantPart | AnthropicUserPart, { type: "tool-result" }>;
+type AnthropicUserPromptPart = Extract<AnthropicUserPart, { type: 'file' | 'text' }>;
+type AnthropicToolResultPart = Extract<AnthropicAssistantPart | AnthropicUserPart, { type: 'tool-result' }>;
 
 export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesRequest, EmptyProtocolContext>({
   protocol: ProviderProtocol.Anthropic,
@@ -33,14 +31,14 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
     return request;
   },
   model: (request) => request.model,
-  variant: (request) => (request.thinking?.type === "adaptive" ? request.output_config?.effort : undefined),
+  variant: (request) => (request.thinking?.type === 'adaptive' ? request.output_config?.effort : undefined),
   session: (request) => ({
     candidates: [
-      candidate("claude-code", claudeCodeSession(request.metadata?.user_id)),
-      candidate("body-session", request.metadata?.session_id),
-      candidate("body-conversation", request.metadata?.conversation_id),
-      candidate("body-session", request.session_id),
-      candidate("body-conversation", request.conversation_id),
+      candidate('claude-code', claudeCodeSession(request.metadata?.user_id)),
+      candidate('body-session', request.metadata?.session_id),
+      candidate('body-conversation', request.metadata?.conversation_id),
+      candidate('body-session', request.session_id),
+      candidate('body-conversation', request.conversation_id),
     ].filter(isCandidate),
     transcript: request.messages,
   }),
@@ -75,7 +73,7 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
 
 export function anthropicWebSearchTool(tool: AnthropicWebSearchTool): ProviderExecutedTool {
   return {
-    type: "web-search",
+    type: 'web-search',
     name: tool.name,
     ...(tool.max_uses === undefined ? {} : { maxUses: tool.max_uses }),
     ...(tool.allowed_domains === undefined || tool.allowed_domains.length === 0
@@ -87,11 +85,11 @@ export function anthropicWebSearchTool(tool: AnthropicWebSearchTool): ProviderEx
   };
 }
 
-function isFunctionTool(tool: NonNullable<AnthropicMessagesRequest["tools"]>[number]): tool is AnthropicFunctionTool {
+function isFunctionTool(tool: NonNullable<AnthropicMessagesRequest['tools']>[number]): tool is AnthropicFunctionTool {
   return tool.type === undefined;
 }
 
-function isWebSearchTool(tool: NonNullable<AnthropicMessagesRequest["tools"]>[number]): tool is AnthropicWebSearchTool {
+function isWebSearchTool(tool: NonNullable<AnthropicMessagesRequest['tools']>[number]): tool is AnthropicWebSearchTool {
   return tool.type !== undefined;
 }
 
@@ -101,15 +99,15 @@ function claudeCodeSession(userId: string | undefined): string | undefined {
   if (legacy !== undefined) return legacy;
   try {
     const parsed = JSON.parse(userId) as unknown;
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const sessionId = (parsed as { readonly session_id?: unknown }).session_id;
-      return typeof sessionId === "string" ? sessionId : undefined;
+      return typeof sessionId === 'string' ? sessionId : undefined;
     }
   } catch {}
   return undefined;
 }
 
-function candidate(source: SessionCandidate["source"], value: string | undefined): SessionCandidate | undefined {
+function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {
   return value === undefined ? undefined : { source, value };
 }
 
@@ -120,24 +118,24 @@ function isCandidate(value: SessionCandidate | undefined): value is SessionCandi
 function aiSdkMessages(messages: readonly AnthropicModelMessage[]): readonly ModelMessage[] {
   return messages.flatMap((message): ModelMessage[] => {
     switch (message.role) {
-      case "system":
+      case 'system':
         return [
           {
-            role: "system",
+            role: 'system',
             content: message.content,
             ...(message.providerOptions === undefined ? {} : { providerOptions: message.providerOptions }),
           },
         ];
-      case "assistant":
+      case 'assistant':
         return [
           {
-            role: "assistant",
-            content: typeof message.content === "string" ? message.content : message.content.map(assistantPart),
+            role: 'assistant',
+            content: typeof message.content === 'string' ? message.content : message.content.map(assistantPart),
           },
         ];
-      case "tool":
-        return [{ role: "tool", content: message.content.map(toolResultPart) }];
-      case "user":
+      case 'tool':
+        return [{ role: 'tool', content: message.content.map(toolResultPart) }];
+      case 'user':
         return userMessages(message.content);
       default:
         return assertNever(message);
@@ -146,11 +144,11 @@ function aiSdkMessages(messages: readonly AnthropicModelMessage[]): readonly Mod
 }
 
 function userMessages(content: AnthropicUserContent): ModelMessage[] {
-  if (typeof content === "string") {
-    return [{ role: "user", content }];
+  if (typeof content === 'string') {
+    return [{ role: 'user', content }];
   }
   if (content.length === 0) {
-    return [{ role: "user", content: [] }];
+    return [{ role: 'user', content: [] }];
   }
 
   const messages: ModelMessage[] = [];
@@ -158,28 +156,28 @@ function userMessages(content: AnthropicUserContent): ModelMessage[] {
   let toolResultParts: ReturnType<typeof toolResultPart>[] = [];
 
   for (const part of content) {
-    if (part.type === "tool-result") {
+    if (part.type === 'tool-result') {
       if (userParts.length > 0) {
-        messages.push({ role: "user", content: userParts });
+        messages.push({ role: 'user', content: userParts });
         userParts = [];
       }
       toolResultParts.push(toolResultPart(part));
     } else {
       if (toolResultParts.length > 0) {
-        messages.push({ role: "tool", content: toolResultParts });
+        messages.push({ role: 'tool', content: toolResultParts });
         toolResultParts = [];
       }
       userParts.push(userPart(part));
     }
   }
 
-  if (userParts.length > 0) messages.push({ role: "user", content: userParts });
-  if (toolResultParts.length > 0) messages.push({ role: "tool", content: toolResultParts });
+  if (userParts.length > 0) messages.push({ role: 'user', content: userParts });
+  if (toolResultParts.length > 0) messages.push({ role: 'tool', content: toolResultParts });
   return messages;
 }
 
 function assistantPart(part: AnthropicAssistantPart) {
-  return part.type === "tool-result" ? toolResultPart(part) : { ...part };
+  return part.type === 'tool-result' ? toolResultPart(part) : { ...part };
 }
 
 function userPart(part: AnthropicUserPromptPart) {
@@ -190,7 +188,7 @@ function toolResultPart(part: AnthropicToolResultPart) {
   return {
     ...part,
     output:
-      part.output.type === "text"
+      part.output.type === 'text'
         ? { ...part.output }
         : { ...part.output, value: part.output.value.map((value) => ({ ...value })) },
   };

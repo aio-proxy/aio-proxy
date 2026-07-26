@@ -1,21 +1,20 @@
-import { geminiGenerateContentAdapter } from "@aio-proxy/core";
-import { Hono } from "hono";
+import { geminiGenerateContentAdapter } from '@aio-proxy/core';
+import { Hono } from 'hono';
 
-import type { ProviderRouteSource } from "../runtime";
+import type { ProviderRouteSource } from '../runtime';
+import { handleProtocolRequest } from './pipeline';
+import { handleTokenCount } from './token-count';
 
-import { handleProtocolRequest } from "./pipeline";
-import { handleTokenCount } from "./token-count";
-
-const routePrefix = "/v1beta/models/";
-const generateSuffix = ":generateContent";
-const streamSuffix = ":streamGenerateContent";
-const countSuffix = ":countTokens";
+const routePrefix = '/v1beta/models/';
+const generateSuffix = ':generateContent';
+const streamSuffix = ':streamGenerateContent';
+const countSuffix = ':countTokens';
 
 export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
-  return new Hono().post("/v1beta/models/*", (context) => {
+  return new Hono().post('/v1beta/models/*', (context) => {
     const target = routeTarget(new URL(context.req.url).pathname);
     if (target === undefined) {
-      return context.text("404 Not Found", 404);
+      return context.text('404 Not Found', 404);
     }
     if (target.count) {
       return handleTokenCount({
@@ -45,17 +44,17 @@ function routeTarget(
   const value = pathname.slice(routePrefix.length);
   if (value.endsWith(streamSuffix)) {
     const model = decodeURIComponent(value.slice(0, -streamSuffix.length));
-    return model === "" ? undefined : { count: false, model, stream: true };
+    return model === '' ? undefined : { count: false, model, stream: true };
   }
 
   if (value.endsWith(generateSuffix)) {
     const model = decodeURIComponent(value.slice(0, -generateSuffix.length));
-    return model === "" ? undefined : { count: false, model, stream: false };
+    return model === '' ? undefined : { count: false, model, stream: false };
   }
 
   if (value.endsWith(countSuffix)) {
     const model = decodeURIComponent(value.slice(0, -countSuffix.length));
-    return model === "" ? undefined : { count: true, model, stream: false };
+    return model === '' ? undefined : { count: true, model, stream: false };
   }
 
   return undefined;

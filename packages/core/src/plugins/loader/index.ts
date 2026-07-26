@@ -1,10 +1,10 @@
-import type { LocalizedText, PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import type { PluginEnablement, PluginState } from "@aio-proxy/types";
+import type { LocalizedText, PluginDescriptor } from '@aio-proxy/plugin-sdk';
+import type { PluginEnablement, PluginState } from '@aio-proxy/types';
 
-import { findInstalledNpmPackage } from "../../npm";
-import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from "../diagnostic/index";
-import { createPluginRegistryHost, type PluginLoggerFactory, type PluginRegistry } from "../registry";
-import { candidates, failedState, prepareOptions } from "./candidates";
+import { findInstalledNpmPackage } from '../../npm';
+import { collectSecretStrings, type DiagnosticFactory, type PluginLogSink } from '../diagnostic/index';
+import { createPluginRegistryHost, type PluginLoggerFactory, type PluginRegistry } from '../registry';
+import { candidates, failedState, prepareOptions } from './candidates';
 import {
   loadThirdPartyDescriptor,
   type LoadablePluginDescriptor,
@@ -12,10 +12,10 @@ import {
   PLUGIN_SETUP_TIMEOUT_MS,
   PluginHostError,
   validateDescriptor,
-} from "./descriptor/index";
+} from './descriptor/index';
 
-export type { ObservedPromiseDeadlineOptions } from "./descriptor/index";
-export { observedPromiseDeadline, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS } from "./descriptor/index";
+export type { ObservedPromiseDeadlineOptions } from './descriptor/index';
+export { observedPromiseDeadline, PLUGIN_IMPORT_TIMEOUT_MS, PLUGIN_SETUP_TIMEOUT_MS } from './descriptor/index';
 
 export type BuiltInPluginDefinition = {
   readonly packageName: string;
@@ -65,7 +65,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       let descriptor: LoadablePluginDescriptor<unknown>;
       if (candidate.builtIn === undefined) {
         const installed = await findInstalledNpmPackage(candidate.packageName);
-        if (installed === null) throw new PluginHostError("PLUGIN_NOT_INSTALLED");
+        if (installed === null) throw new PluginHostError('PLUGIN_NOT_INSTALLED');
         version = installed.version;
         descriptor = await loadThirdPartyDescriptor(candidate.packageName, installed, options.importPackage);
       } else {
@@ -82,7 +82,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       try {
         await observedPromiseDeadline(setup, {
           timeoutMs: PLUGIN_SETUP_TIMEOUT_MS,
-          timeoutError: () => new PluginHostError("PLUGIN_LOAD_FAILED", true),
+          timeoutError: () => new PluginHostError('PLUGIN_LOAD_FAILED', true),
           onTimeout: staging.seal,
         });
       } catch (error) {
@@ -97,7 +97,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         ...(description === undefined ? {} : { description }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
-        state: { status: "ready" },
+        state: { status: 'ready' },
       });
     } catch (error) {
       plugins.set(candidate.packageName, {

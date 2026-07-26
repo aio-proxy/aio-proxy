@@ -1,47 +1,48 @@
-import { type AccountContext, type CredentialPort, CredentialRefreshError } from "@aio-proxy/plugin-sdk";
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { discoverKimiCatalog } from "./catalog";
-import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies, refreshKimiCredential } from "./oauth";
-import { readKimiQuota } from "./quota";
-import { createKimiDynamicFetch } from "./runtime/index";
+import { type AccountContext, type CredentialPort, CredentialRefreshError } from '@aio-proxy/plugin-sdk';
+
+import { discoverKimiCatalog } from './catalog';
+import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies, refreshKimiCredential } from './oauth';
+import { readKimiQuota } from './quota';
+import { createKimiDynamicFetch } from './runtime/index';
 
 const credential: KimiCredential = {
-  accessToken: "old-access",
-  refreshToken: "old-refresh",
+  accessToken: 'old-access',
+  refreshToken: 'old-refresh',
   expiresAt: 0,
-  deviceId: "device-1",
+  deviceId: 'device-1',
 };
 
 const fetchResponse = (response: Response): typeof fetch => (async () => response) as typeof fetch;
 
-test("treats invalid_grant as terminal even on a retryable HTTP status", async () => {
+test('treats invalid_grant as terminal even on a retryable HTTP status', async () => {
   const error = await refreshKimiCredential(credential, {
-    fetch: fetchResponse(Response.json({ error: "invalid_grant" }, { status: 503 })),
+    fetch: fetchResponse(Response.json({ error: 'invalid_grant' }, { status: 503 })),
   }).catch((caught) => caught);
 
   expect(error).toBeInstanceOf(CredentialRefreshError);
-  expect(error).toMatchObject({ retryable: false, options: { reason: "invalid_grant", status: 503 } });
+  expect(error).toMatchObject({ retryable: false, options: { reason: 'invalid_grant', status: 503 } });
 });
 
-test("keeps successful-response body transport failures retryable", async () => {
+test('keeps successful-response body transport failures retryable', async () => {
   const response = new Response(
     new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.error(new Error("response interrupted"));
+        controller.error(new Error('response interrupted'));
       },
     }),
   );
   const error = await refreshKimiCredential(credential, { fetch: fetchResponse(response) }).catch((caught) => caught);
 
   expect(error).toBeInstanceOf(CredentialRefreshError);
-  expect(error).toMatchObject({ retryable: true, options: { reason: "network" } });
-  expect(String(error)).not.toContain("response interrupted");
+  expect(error).toMatchObject({ retryable: true, options: { reason: 'network' } });
+  expect(String(error)).not.toContain('response interrupted');
 });
 
-test("caller cancellation stops waiting for a shared credential refresh", async () => {
+test('caller cancellation stops waiting for a shared credential refresh', async () => {
   const controller = new AbortController();
-  const reason = new Error("caller stopped");
+  const reason = new Error('caller stopped');
   let started = () => {};
   const refreshStarted = new Promise<void>((resolve) => {
     started = resolve;
@@ -60,7 +61,7 @@ test("caller cancellation stops waiting for a shared credential refresh", async 
   } as KimiOAuthDependencies & { readonly signal: AbortSignal });
   await refreshStarted;
   controller.abort(reason);
-  const timeout = Symbol("timeout");
+  const timeout = Symbol('timeout');
   const outcome = await Promise.race([
     pending.catch((error) => error),
     new Promise<symbol>((resolve) => setTimeout(resolve, 20, timeout)),
@@ -69,8 +70,8 @@ test("caller cancellation stops waiting for a shared credential refresh", async 
   expect(outcome).toBe(reason);
 });
 
-test.each(["catalog", "quota", "runtime"] as const)(
-  "%s skips credential reads after caller cancellation",
+test.each(['catalog', 'quota', 'runtime'] as const)(
+  '%s skips credential reads after caller cancellation',
   async (kind) => {
     const controller = new AbortController();
     const reason = new Error(`${kind} stopped`);
@@ -87,15 +88,15 @@ test.each(["catalog", "quota", "runtime"] as const)(
       Record<string, never>
     >;
     const neverFetch = (async () => {
-      throw new Error("fetch should not run");
+      throw new Error('fetch should not run');
     }) as typeof fetch;
     const operation =
-      kind === "catalog"
+      kind === 'catalog'
         ? discoverKimiCatalog(context, { fetch: neverFetch })
-        : kind === "quota"
+        : kind === 'quota'
           ? readKimiQuota(context, { fetch: neverFetch })
           : createKimiDynamicFetch(port, { fetch: neverFetch })(
-              new Request("https://proxy.test/v1/messages", { signal: controller.signal }),
+              new Request('https://proxy.test/v1/messages', { signal: controller.signal }),
             );
 
     await expect(operation).rejects.toBe(reason);

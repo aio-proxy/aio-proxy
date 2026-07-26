@@ -1,9 +1,9 @@
-import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { findInstalledNpmPackage, type NpmPackageInfo } from "./npm";
-import { packagesDir } from "./paths/index";
+import { findInstalledNpmPackage, type NpmPackageInfo } from './npm';
+import { packagesDir } from './paths/index';
 
 export type InstalledNpmPackage = NpmPackageInfo & {
   readonly packageName: string;

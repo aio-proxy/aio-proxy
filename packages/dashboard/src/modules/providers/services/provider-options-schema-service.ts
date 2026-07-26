@@ -1,6 +1,6 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions } from '@tanstack/react-query';
 
-import { createDashboardClient } from "@/lib/dashboard-client";
+import { createDashboardClient } from '@/lib/dashboard-client';
 
 const dashboardClient = createDashboardClient();
 
@@ -10,7 +10,7 @@ export class ProviderPackageRequestError extends Error {
     readonly code: string,
   ) {
     super(`provider package request failed: ${status} ${code}`);
-    this.name = "ProviderPackageRequestError";
+    this.name = 'ProviderPackageRequestError';
   }
 }
 
@@ -22,9 +22,9 @@ export const throwRequestError = async (response: Response): Promise<never> => {
     payload = undefined;
   }
   const code =
-    typeof payload === "object" && payload !== null && "code" in payload && typeof payload.code === "string"
+    typeof payload === 'object' && payload !== null && 'code' in payload && typeof payload.code === 'string'
       ? payload.code
-      : "request_failed";
+      : 'request_failed';
   throw new ProviderPackageRequestError(response.status, code);
 };
 
@@ -33,9 +33,9 @@ export const providerInstallRequestBody = (packageName: string, confirmed: boole
 
 export const providerPackageStatusQueryOptions = (packageName: string) =>
   queryOptions({
-    queryKey: ["providers", "package-status", packageName],
+    queryKey: ['providers', 'package-status', packageName],
     queryFn: async () => {
-      const response = await dashboardClient.dashboard.api.providers["package-status"].$get({
+      const response = await dashboardClient.dashboard.api.providers['package-status'].$get({
         query: { npm: packageName },
       });
       if (!response.ok) {

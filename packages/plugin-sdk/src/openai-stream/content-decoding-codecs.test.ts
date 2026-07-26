@@ -1,19 +1,18 @@
-import type * as Zlib from "node:zlib";
-
-import { afterAll, describe, expect, mock, test } from "bun:test";
-import { createRequire } from "node:module";
-import { Transform } from "node:stream";
+import { afterAll, describe, expect, mock, test } from 'bun:test';
+import { createRequire } from 'node:module';
+import { Transform } from 'node:stream';
+import type * as Zlib from 'node:zlib';
 
 const require = createRequire(import.meta.url);
-const actualZlib = require("node:zlib") as typeof Zlib;
+const actualZlib = require('node:zlib') as typeof Zlib;
 const actualCreateGunzip = actualZlib.createGunzip.bind(actualZlib);
 
 /** Sentinel body for the same-batch error test; not valid gzip. */
 const SAME_BATCH_MARKER = Uint8Array.of(0x5b, 0xad, 0x01, 0x02);
-const SAME_BATCH_DECODED = new TextEncoder().encode("decoded-before-error");
-const SAME_BATCH_ERROR = new Error("same-batch decoder failure");
+const SAME_BATCH_DECODED = new TextEncoder().encode('decoded-before-error');
+const SAME_BATCH_ERROR = new Error('same-batch decoder failure');
 
-mock.module("node:zlib", () => {
+mock.module('node:zlib', () => {
   const createGunzip = (options?: Zlib.ZlibOptions) => {
     const real = actualCreateGunzip(options);
     let sawMarker = false;
@@ -40,30 +39,30 @@ mock.module("node:zlib", () => {
         }
         ending = true;
         // Wait for real close so error-before-close ordering matches node:zlib.
-        real.once("close", () => {
+        real.once('close', () => {
           callback();
         });
         if (!real.writableEnded) real.end();
       },
     });
-    real.on("data", (data: Buffer) => {
+    real.on('data', (data: Buffer) => {
       if (!wrapper.destroyed) wrapper.push(data);
     });
-    real.on("error", (error: Error) => {
+    real.on('error', (error: Error) => {
       if (!wrapper.destroyed) wrapper.destroy(error);
     });
-    real.on("close", () => {
+    real.on('close', () => {
       if (!wrapper.destroyed && !wrapper.readableEnded && !ending) {
         wrapper.push(null);
       }
     });
     wrapper.flush = ((kind?: unknown, cb?: (error?: Error | null) => void) => {
-      const callback = typeof kind === "function" ? (kind as (error?: Error | null) => void) : cb;
+      const callback = typeof kind === 'function' ? (kind as (error?: Error | null) => void) : cb;
       if (sawMarker || real.destroyed || real.writableEnded) {
         callback?.(null);
         return wrapper;
       }
-      if (typeof kind === "number") {
+      if (typeof kind === 'number') {
         real.flush(kind, callback ?? (() => undefined));
       } else {
         real.flush(callback ?? (() => undefined));
@@ -85,13 +84,13 @@ afterAll(() => {
   mock.restore();
 });
 
-const { createContentDecodedReader } = await import("./content-decoding");
+const { createContentDecodedReader } = await import('./content-decoding');
 
 const compressionFormats = {
-  gzip: "gzip",
-  deflate: "deflate",
-  br: "brotli",
-  zstd: "zstd",
+  gzip: 'gzip',
+  deflate: 'deflate',
+  br: 'brotli',
+  zstd: 'zstd',
 } as const satisfies Record<string, Bun.CompressionFormat>;
 
 // lib.dom's constructor type omits Bun's runtime-supported brotli/zstd values.
@@ -153,9 +152,9 @@ async function readAll(
   return { text: new TextDecoder().decode(merged), error };
 }
 
-describe("createContentDecodedReader codecs", () => {
-  test("decodes gzip, deflate, br, and zstd incrementally", async () => {
-    const plaintext = new TextEncoder().encode("incremental codec payload");
+describe('createContentDecodedReader codecs', () => {
+  test('decodes gzip, deflate, br, and zstd incrementally', async () => {
+    const plaintext = new TextEncoder().encode('incremental codec payload');
     for (const encoding of Object.keys(compressionFormats) as (keyof typeof compressionFormats)[]) {
       const encoded = await compress(encoding, plaintext);
       const mid = Math.max(1, Math.floor(encoded.byteLength / 2));
@@ -165,13 +164,13 @@ describe("createContentDecodedReader codecs", () => {
       );
       const { text, error } = await readAll(reader);
       expect(error).toBeUndefined();
-      expect(text).toBe("incremental codec payload");
+      expect(text).toBe('incremental codec payload');
     }
   });
 
-  test("passes absent and identity encodings through unchanged", async () => {
+  test('passes absent and identity encodings through unchanged', async () => {
     const payload = new Uint8Array([1, 2, 3, 4, 5]);
-    for (const header of [null, "identity", " identity ", "identity, identity"]) {
+    for (const header of [null, 'identity', ' identity ', 'identity, identity']) {
       const reader = createContentDecodedReader(bytesSource([payload]), header);
       const first = await reader.read();
       expect(first.done).toBe(false);
@@ -182,17 +181,17 @@ describe("createContentDecodedReader codecs", () => {
     }
   });
 
-  test("decodes stacked Content-Encoding values in reverse order", async () => {
-    const plaintext = new TextEncoder().encode("stacked encodings");
+  test('decodes stacked Content-Encoding values in reverse order', async () => {
+    const plaintext = new TextEncoder().encode('stacked encodings');
     // Content-Encoding lists application order; decoding reverses it.
-    const encoded = await compressStacked(["gzip", "deflate"], plaintext);
-    const reader = createContentDecodedReader(bytesSource([encoded]), "gzip, deflate");
+    const encoded = await compressStacked(['gzip', 'deflate'], plaintext);
+    const reader = createContentDecodedReader(bytesSource([encoded]), 'gzip, deflate');
     const { text, error } = await readAll(reader);
     expect(error).toBeUndefined();
-    expect(text).toBe("stacked encodings");
+    expect(text).toBe('stacked encodings');
   });
 
-  test("rejects an unsupported Content-Encoding before reading the source", async () => {
+  test('rejects an unsupported Content-Encoding before reading the source', async () => {
     let pulls = 0;
     const source = new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -201,16 +200,16 @@ describe("createContentDecodedReader codecs", () => {
         controller.close();
       },
     });
-    expect(() => createContentDecodedReader(source, "lzma")).toThrow(/lzma|unsupported|encoding/i);
+    expect(() => createContentDecodedReader(source, 'lzma')).toThrow(/lzma|unsupported|encoding/i);
     expect(pulls).toBe(0);
   });
 
-  test("returns decoded chunks before a decoder error from the same encoded batch", async () => {
-    const reader = createContentDecodedReader(bytesSource([SAME_BATCH_MARKER]), "gzip");
+  test('returns decoded chunks before a decoder error from the same encoded batch', async () => {
+    const reader = createContentDecodedReader(bytesSource([SAME_BATCH_MARKER]), 'gzip');
     const result = await reader.read();
     expect(result.done).toBe(false);
     expect(result.chunks.length).toBeGreaterThan(0);
-    expect(Buffer.concat(result.chunks.map((chunk) => Buffer.from(chunk))).toString()).toBe("decoded-before-error");
+    expect(Buffer.concat(result.chunks.map((chunk) => Buffer.from(chunk))).toString()).toBe('decoded-before-error');
     expect(result.error).toBe(SAME_BATCH_ERROR);
   });
 });

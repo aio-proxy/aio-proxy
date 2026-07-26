@@ -3,4 +3,4 @@ export {
   type HttpResponseMetadata,
   requestMetadata,
   responseMetadata,
-} from "./request-metadata";
+} from './request-metadata';

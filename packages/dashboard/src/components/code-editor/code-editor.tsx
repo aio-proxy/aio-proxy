@@ -1,23 +1,24 @@
-import { Editor, type OnMount } from "@monaco-editor/react";
-import { merge } from "es-toolkit/object";
-import { useTheme } from "next-themes";
-import { useEffect, useRef } from "react";
+import { Editor, type OnMount } from '@monaco-editor/react';
+import { merge } from 'es-toolkit/object';
+import { useTheme } from 'next-themes';
+import { useEffect, useRef } from 'react';
 
-import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
-import { setCodeEditorAriaInvalid } from "./code-editor-accessibility";
-import styles from "./code-editor.module.css";
-import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from "./themes";
+import { setCodeEditorAriaInvalid } from './code-editor-accessibility';
+import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from './themes';
+
+import styles from './code-editor.module.css';
 
 type MonacoEditorProps = React.ComponentProps<typeof Editor>;
 
-interface CodeEditorProps extends Omit<MonacoEditorProps, "beforeMount" | "loading" | "theme"> {
+interface CodeEditorProps extends Omit<MonacoEditorProps, 'beforeMount' | 'loading' | 'theme'> {
   readonly invalid?: boolean;
   readonly ariaDescribedBy?: string;
 }
 
-type MonacoOptions = NonNullable<CodeEditorProps["options"]>;
+type MonacoOptions = NonNullable<CodeEditorProps['options']>;
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
   className,
@@ -50,7 +51,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     <div
       aria-describedby={ariaDescribedBy}
       aria-invalid={invalid || undefined}
-      className={cn(styles["code-editor"], className)}
+      className={cn(styles['code-editor'], className)}
     >
       <Editor
         {...rest}
@@ -70,7 +71,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           },
           options ?? {},
         )}
-        theme={resolvedTheme === "dark" ? CODE_EDITOR_THEME_IDS.dark : CODE_EDITOR_THEME_IDS.light}
+        theme={resolvedTheme === 'dark' ? CODE_EDITOR_THEME_IDS.dark : CODE_EDITOR_THEME_IDS.light}
         beforeMount={defineCodeEditorThemes}
       />
     </div>

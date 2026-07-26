@@ -1,6 +1,6 @@
-import type { DefaultAliasSuggestions, ModelCatalog } from "@aio-proxy/plugin-sdk";
+import type { DefaultAliasSuggestions, ModelCatalog } from '@aio-proxy/plugin-sdk';
 
-import { ANTIGRAVITY_FAMILIES } from "./families";
+import { ANTIGRAVITY_FAMILIES } from './families';
 
 export function defaultAntigravityAliases(catalog: ModelCatalog): DefaultAliasSuggestions {
   const available = new Set(catalog.language.map(({ id }) => id));

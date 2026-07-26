@@ -1,1 +1,1 @@
-export { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from "./runtime";
+export { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from './runtime';

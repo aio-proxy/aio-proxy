@@ -1,1 +1,1 @@
-export { ProtocolLabel } from "./protocol-label";
+export { ProtocolLabel } from './protocol-label';

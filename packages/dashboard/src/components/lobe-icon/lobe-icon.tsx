@@ -27,5 +27,5 @@ export const LobeIcon: React.FC<LobeIconProps> = ({ slug, size, className }) => 
 };
 
 export const withLobeIcon =
-  (slug: string): React.FC<Omit<LobeIconProps, "slug">> =>
+  (slug: string): React.FC<Omit<LobeIconProps, 'slug'>> =>
   (props) => <LobeIcon slug={slug} {...props} />;

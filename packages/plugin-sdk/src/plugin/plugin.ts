@@ -1,11 +1,11 @@
-import type { ConfigSpec } from "../config";
-import type { LocalizedText } from "../localized-text";
-import type { Logger } from "../logger";
-import type { OAuthAdapter } from "../oauth";
+import type { ConfigSpec } from '../config';
+import type { LocalizedText } from '../localized-text';
+import type { Logger } from '../logger';
+import type { OAuthAdapter } from '../oauth';
 
 export const PLUGIN_API_VERSION = 2 as const;
 export const PLUGIN_API_VERSIONS_SUPPORTED = [1, 2] as const;
-export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for("@aio-proxy/plugin-sdk/descriptor/v1");
+export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v1');
 
 export type PluginApi = {
   readonly oauth: {
@@ -37,8 +37,8 @@ export type PluginDescriptorShell = {
 };
 
 export function definePlugin<Options = undefined>(
-  setup: PluginDescriptor<Options>["setup"],
-  metadata: PluginDescriptor<Options>["metadata"] = {},
+  setup: PluginDescriptor<Options>['setup'],
+  metadata: PluginDescriptor<Options>['metadata'] = {},
 ): PluginDescriptor<Options> {
   return Object.freeze({
     [PLUGIN_DESCRIPTOR_BRAND]: true as const,
@@ -49,7 +49,7 @@ export function definePlugin<Options = undefined>(
 }
 
 function isObject(value: unknown): value is object {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isPluginDescriptor(value: unknown): value is PluginDescriptorShell {
@@ -57,12 +57,12 @@ export function isPluginDescriptor(value: unknown): value is PluginDescriptorShe
     return false;
   }
 
-  const apiVersion = Reflect.get(value, "apiVersion");
-  const metadata = Reflect.get(value, "metadata");
+  const apiVersion = Reflect.get(value, 'apiVersion');
+  const metadata = Reflect.get(value, 'metadata');
   return (
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
     (apiVersion === 1 || apiVersion === 2) &&
     isObject(metadata) &&
-    typeof Reflect.get(value, "setup") === "function"
+    typeof Reflect.get(value, 'setup') === 'function'
   );
 }

@@ -1,8 +1,7 @@
-import { type ApiProvider, ProviderProtocol } from "@aio-proxy/types";
+import { type ApiProvider, ProviderProtocol } from '@aio-proxy/types';
 
-import type { ProviderFetch } from "../proxy-fetch";
-
-import { wrapOpenAIProtocolFetch } from "../openai-stream-fetch";
+import { wrapOpenAIProtocolFetch } from '../openai-stream-fetch';
+import type { ProviderFetch } from '../proxy-fetch';
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -10,7 +9,7 @@ declare const process: {
 
 export type ApiProviderTrace = {
   readonly bodySha256: string;
-  readonly category?: "rate_limit";
+  readonly category?: 'rate_limit';
   readonly status: number;
 };
 
@@ -21,11 +20,11 @@ export type ApiProviderTraceSink = {
 type ApiProviderTraceTarget = ApiProviderTraceSink | ApiProviderTrace[];
 
 const CLIENT_CREDENTIAL_HEADERS = [
-  "authorization",
-  "proxy-authorization",
-  "cookie",
-  "x-api-key",
-  "x-goog-api-key",
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'x-api-key',
+  'x-goog-api-key',
 ] as const;
 
 export type ApiProviderConfig = ApiProvider & {
@@ -84,16 +83,16 @@ export function createApiProvider(
 
 function upstreamHeaders(
   inbound: Headers,
-  config: Pick<ApiProviderConfig, "apiKey" | "headers" | "protocol">,
+  config: Pick<ApiProviderConfig, 'apiKey' | 'headers' | 'protocol'>,
 ): Headers {
   const headers = new Headers(inbound);
-  headers.delete("host");
+  headers.delete('host');
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
   const apiKey = resolveApiKey(config.apiKey);
   if (apiKey !== undefined) {
-    if (config.protocol === ProviderProtocol.Anthropic) headers.set("x-api-key", apiKey);
-    else if (config.protocol === ProviderProtocol.Gemini) headers.set("x-goog-api-key", apiKey);
-    else headers.set("authorization", `Bearer ${apiKey}`);
+    if (config.protocol === ProviderProtocol.Anthropic) headers.set('x-api-key', apiKey);
+    else if (config.protocol === ProviderProtocol.Gemini) headers.set('x-goog-api-key', apiKey);
+    else headers.set('authorization', `Bearer ${apiKey}`);
   }
   for (const [name, value] of Object.entries(config.headers ?? {})) headers.set(name, value);
   return headers;
@@ -101,8 +100,8 @@ function upstreamHeaders(
 
 function decodedBodyResponseInit(response: Response): ResponseInit {
   const headers = new Headers(response.headers);
-  headers.delete("content-encoding");
-  headers.delete("content-length");
+  headers.delete('content-encoding');
+  headers.delete('content-length');
   return {
     headers,
     status: response.status,
@@ -124,7 +123,7 @@ export function resolveApiKey(apiKey: string | undefined): string | undefined {
     return undefined;
   }
 
-  if (!apiKey.startsWith("$")) {
+  if (!apiKey.startsWith('$')) {
     return apiKey;
   }
 
@@ -137,10 +136,10 @@ async function recordTrace(
   body: ReadableStream<Uint8Array>,
 ): Promise<void> {
   const bytes = await new Response(body).arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
   const entry: ApiProviderTrace = {
     bodySha256: hex(digest),
-    ...(status === 429 ? { category: "rate_limit" } : {}),
+    ...(status === 429 ? { category: 'rate_limit' } : {}),
     status,
   };
 
@@ -153,5 +152,5 @@ async function recordTrace(
 }
 
 function hex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

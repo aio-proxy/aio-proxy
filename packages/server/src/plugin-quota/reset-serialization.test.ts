@@ -1,15 +1,15 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, test } from 'bun:test';
 
-import { OAuthQuotaReadError, OAuthQuotaResetError } from "./errors";
-import { createOAuthQuotaOperations } from "./index";
-import { createOAuthQuotaResetter } from "./reset";
+import { OAuthQuotaReadError, OAuthQuotaResetError } from './errors';
+import { createOAuthQuotaOperations } from './index';
+import { createOAuthQuotaResetter } from './reset';
 import {
   availableQuotaSnapshot,
   cleanupQuotaFixtures,
   createQuotaFixture,
   PROVIDER_ID,
   quotaSignal,
-} from "./test-support";
+} from './test-support';
 
 afterEach(cleanupQuotaFixtures);
 
@@ -17,13 +17,13 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 20; index++) await Promise.resolve();
 }
 
-test("serializes same-Provider-ID resets as read-reset-read-reset", async () => {
+test('serializes same-Provider-ID resets as read-reset-read-reset', async () => {
   const firstRead = Promise.withResolvers<void>();
   const releaseFirst = Promise.withResolvers<void>();
   const trace: string[] = [];
   const fixture = createQuotaFixture({
     read: async () => {
-      trace.push("read");
+      trace.push('read');
       if (fixture.readCalls() === 1) {
         firstRead.resolve();
         await releaseFirst.promise;
@@ -31,7 +31,7 @@ test("serializes same-Provider-ID resets as read-reset-read-reset", async () => 
       return availableQuotaSnapshot;
     },
     reset: async () => {
-      trace.push("reset");
+      trace.push('reset');
     },
   });
   const resetter = createOAuthQuotaResetter(fixture.dependencies);
@@ -40,23 +40,23 @@ test("serializes same-Provider-ID resets as read-reset-read-reset", async () => 
   await firstRead.promise;
   const second = resetter.reset(PROVIDER_ID, quotaSignal());
   await settle();
-  expect(trace).toEqual(["read"]);
+  expect(trace).toEqual(['read']);
 
   releaseFirst.resolve();
   await Promise.all([first, second]);
-  expect(trace).toEqual(["read", "reset", "read", "reset"]);
+  expect(trace).toEqual(['read', 'reset', 'read', 'reset']);
 });
 
-test("a failed reset does not poison the next same-ID queue entry", async () => {
+test('a failed reset does not poison the next same-ID queue entry', async () => {
   const trace: string[] = [];
   const fixture = createQuotaFixture({
     read: async () => {
-      trace.push("read");
+      trace.push('read');
       return availableQuotaSnapshot;
     },
     reset: async () => {
-      trace.push("reset");
-      if (fixture.resetCalls() === 1) throw new Error("first failed");
+      trace.push('reset');
+      if (fixture.resetCalls() === 1) throw new Error('first failed');
     },
   });
   const resetter = createOAuthQuotaResetter(fixture.dependencies);
@@ -66,11 +66,11 @@ test("a failed reset does not poison the next same-ID queue entry", async () => 
 
   await expect(first).rejects.toBeInstanceOf(OAuthQuotaResetError);
   await expect(second).resolves.toBeUndefined();
-  expect(trace).toEqual(["read", "reset", "read", "reset"]);
+  expect(trace).toEqual(['read', 'reset', 'read', 'reset']);
 });
 
-test("lets resets for different Provider IDs enter preflight concurrently", async () => {
-  const otherProviderId = "organization";
+test('lets resets for different Provider IDs enter preflight concurrently', async () => {
+  const otherProviderId = 'organization';
   const bothStarted = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const started = new Set<string>();
@@ -91,13 +91,13 @@ test("lets resets for different Provider IDs enter preflight concurrently", asyn
     resetter.reset(otherProviderId, quotaSignal()),
   ]);
   await bothStarted.promise;
-  expect(started).toEqual(new Set(["us-east", "organization-region"]));
+  expect(started).toEqual(new Set(['us-east', 'organization-region']));
 
   release.resolve();
   await pending;
 });
 
-test("a normal concurrent read never satisfies reset preflight", async () => {
+test('a normal concurrent read never satisfies reset preflight', async () => {
   const normalStarted = Promise.withResolvers<void>();
   const releaseNormal = Promise.withResolvers<void>();
   const fixture = createQuotaFixture({
@@ -123,28 +123,28 @@ test("a normal concurrent read never satisfies reset preflight", async () => {
   await Promise.all([normal, reset]);
 });
 
-test("acquires each queued lease only when its turn starts and never mixes snapshots", async () => {
+test('acquires each queued lease only when its turn starts and never mixes snapshots', async () => {
   const oldRead = Promise.withResolvers<void>();
   const releaseOld = Promise.withResolvers<void>();
   const trace: string[] = [];
   const old = createQuotaFixture({
     read: async () => {
-      trace.push("old-read");
+      trace.push('old-read');
       oldRead.resolve();
       await releaseOld.promise;
       return availableQuotaSnapshot;
     },
     reset: async () => {
-      trace.push("old-reset");
+      trace.push('old-reset');
     },
   });
   const next = createQuotaFixture({
     read: async () => {
-      trace.push("new-read");
+      trace.push('new-read');
       return availableQuotaSnapshot;
     },
     reset: async () => {
-      trace.push("new-reset");
+      trace.push('new-reset');
     },
   });
   const resetter = createOAuthQuotaResetter(old.dependencies);
@@ -157,13 +157,13 @@ test("acquires each queued lease only when its turn starts and never mixes snaps
 
   await Promise.all([first, second]);
   await retired.whenDrained;
-  expect(trace).toEqual(["old-read", "old-reset", "new-read", "new-reset"]);
+  expect(trace).toEqual(['old-read', 'old-reset', 'new-read', 'new-reset']);
 });
 
-test("keeps a reset preflight independent from a concurrent failed read", async () => {
+test('keeps a reset preflight independent from a concurrent failed read', async () => {
   const fixture = createQuotaFixture({
     read: async () => {
-      if (fixture.readCalls() === 1) throw new Error("normal read failed");
+      if (fixture.readCalls() === 1) throw new Error('normal read failed');
       return availableQuotaSnapshot;
     },
     reset: async () => {},

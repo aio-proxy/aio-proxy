@@ -1,5 +1,5 @@
-import type { Diagnostic } from "@aio-proxy/types";
-import type React from "react";
+import type { Diagnostic } from '@aio-proxy/types';
+import type React from 'react';
 
 type Props = {
   readonly diagnostic: Diagnostic;

@@ -1,20 +1,19 @@
-import type { ModelMessage } from "../../ai-sdk-bridge";
-import type { OpenAICompletionsRequest } from "../../ingress/openai-completions";
+import type { ModelMessage } from '../../ai-sdk-bridge';
+import { OpenAICompletionsTransformError } from '../../error';
+import { imageFilePart, type ImageFilePart } from '../../image-input';
+import type { OpenAICompletionsRequest } from '../../ingress/openai-completions';
 
-import { OpenAICompletionsTransformError } from "../../error";
-import { imageFilePart, type ImageFilePart } from "../../image-input";
-
-type AssistantMessage = Extract<ModelMessage, { role: "assistant" }>;
-type AssistantPart = Exclude<AssistantMessage["content"], string>[number];
-type ContentTextPart = { readonly type: "text"; readonly text: string };
+type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
+type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
+type ContentTextPart = { readonly type: 'text'; readonly text: string };
 type ContentPart = ContentTextPart | ImageFilePart;
-type TextPart = Extract<AssistantPart, { type: "text" }>;
-type ToolMessage = Extract<ModelMessage, { role: "tool" }>;
-type ToolResultPart = Extract<ToolMessage["content"][number], { type: "tool-result" }>;
-const textKey = "text";
+type TextPart = Extract<AssistantPart, { type: 'text' }>;
+type ToolMessage = Extract<ModelMessage, { role: 'tool' }>;
+type ToolResultPart = Extract<ToolMessage['content'][number], { type: 'tool-result' }>;
+const textKey = 'text';
 
 export type OpenAICompletionsTransformTool = {
-  readonly type: "function";
+  readonly type: 'function';
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
@@ -24,8 +23,8 @@ export type OpenAICompletionsTransformSettings = {
   readonly stream?: boolean;
   readonly temperature?: number;
   readonly maxTokens?: number;
-  readonly responseFormat?: OpenAICompletionsRequest["response_format"];
-  readonly reasoning?: OpenAICompletionsRequest["reasoning_effort"];
+  readonly responseFormat?: OpenAICompletionsRequest['response_format'];
+  readonly reasoning?: OpenAICompletionsRequest['reasoning_effort'];
 };
 
 export type OpenAICompletionsModelMessages = {
@@ -44,17 +43,17 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
   return {
     messages: req.messages.map((message, messageIndex) => {
       switch (message.role) {
-        case "developer":
-        case "system":
-          return { role: "system", content: textContent(message.content, `messages.${messageIndex}.content`) };
-        case "user":
-          return { role: "user", content: modelContent(message.content, `messages.${messageIndex}.content`) };
-        case "assistant": {
+        case 'developer':
+        case 'system':
+          return { role: 'system', content: textContent(message.content, `messages.${messageIndex}.content`) };
+        case 'user':
+          return { role: 'user', content: modelContent(message.content, `messages.${messageIndex}.content`) };
+        case 'assistant': {
           const contentPath = `messages.${messageIndex}.content`;
           const parts: AssistantPart[] = textParts(message.content, contentPath);
           for (const [toolIndex, toolCall] of (message.tool_calls ?? []).entries()) {
             const toolName = toolCall.function.name;
-            if (toolName === undefined || toolName === "") {
+            if (toolName === undefined || toolName === '') {
               throw new OpenAICompletionsTransformError(
                 `messages.${messageIndex}.tool_calls.${toolIndex}.function.name`,
               );
@@ -62,7 +61,7 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
 
             toolNames.set(toolCall.id, toolName);
             parts.push({
-              type: "tool-call",
+              type: 'tool-call',
               toolCallId: toolCall.id,
               toolName,
               input: parseToolInput(toolCall.function.arguments),
@@ -70,18 +69,18 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
           }
 
           return {
-            role: "assistant",
+            role: 'assistant',
             content: parts.length === 0 ? textContent(message.content, contentPath) : parts,
           };
         }
-        case "tool":
+        case 'tool':
           return {
-            role: "tool",
+            role: 'tool',
             content: [
               {
-                type: "tool-result",
+                type: 'tool-result',
                 toolCallId: message.tool_call_id,
-                toolName: toolNames.get(message.tool_call_id) ?? "",
+                toolName: toolNames.get(message.tool_call_id) ?? '',
                 output: toolOutput(message.content, `messages.${messageIndex}.content`),
               },
             ],
@@ -92,7 +91,7 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
     ...(req.tools !== undefined
       ? {
           tools: req.tools.map((tool) => ({
-            type: "function",
+            type: 'function',
             name: tool.function.name,
             ...(tool.function.description !== undefined ? { description: tool.function.description } : {}),
             ...(tool.function.parameters !== undefined ? { inputSchema: tool.function.parameters } : {}),
@@ -110,23 +109,23 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
   };
 }
 
-function textContent(content: OpenAICompletionsRequest["messages"][number]["content"], path: string): string {
-  if (typeof content === "string") return content;
-  if (content === null) return "";
+function textContent(content: OpenAICompletionsRequest['messages'][number]['content'], path: string): string {
+  if (typeof content === 'string') return content;
+  if (content === null) return '';
   return textParts(content, path)
     .map((part) => part.text)
-    .join("");
+    .join('');
 }
 
-function textParts(content: OpenAICompletionsRequest["messages"][number]["content"], path: string): TextPart[] {
+function textParts(content: OpenAICompletionsRequest['messages'][number]['content'], path: string): TextPart[] {
   if (!Array.isArray(content)) {
-    return typeof content === "string" && content !== "" ? [{ type: "text", text: content }] : [];
+    return typeof content === 'string' && content !== '' ? [{ type: 'text', text: content }] : [];
   }
   return content.flatMap((part, index) => {
-    if (part.type === "text" && textKey in part && typeof part[textKey] === "string") {
-      return [{ type: "text" as const, text: part[textKey] }];
+    if (part.type === 'text' && textKey in part && typeof part[textKey] === 'string') {
+      return [{ type: 'text' as const, text: part[textKey] }];
     }
-    if (part.type === "image_url") {
+    if (part.type === 'image_url') {
       throw new OpenAICompletionsTransformError(`${path}.${index}.type`);
     }
     return [];
@@ -134,43 +133,43 @@ function textParts(content: OpenAICompletionsRequest["messages"][number]["conten
 }
 
 function modelContent(
-  content: OpenAICompletionsRequest["messages"][number]["content"],
+  content: OpenAICompletionsRequest['messages'][number]['content'],
   path: string,
 ): string | ContentPart[] {
-  return typeof content === "string" ? content : contentParts(content, path, false);
+  return typeof content === 'string' ? content : contentParts(content, path, false);
 }
 
 function contentParts(
-  content: OpenAICompletionsRequest["messages"][number]["content"],
+  content: OpenAICompletionsRequest['messages'][number]['content'],
   path: string,
   toolResult: boolean,
 ): ContentPart[] {
   if (!Array.isArray(content)) {
-    return typeof content === "string" && content !== "" ? [{ type: "text", text: content }] : [];
+    return typeof content === 'string' && content !== '' ? [{ type: 'text', text: content }] : [];
   }
   const parts: ContentPart[] = [];
   for (const [index, part] of content.entries()) {
-    if (part.type === "text" && textKey in part && typeof part[textKey] === "string") {
-      parts.push({ type: "text", text: part[textKey] });
+    if (part.type === 'text' && textKey in part && typeof part[textKey] === 'string') {
+      parts.push({ type: 'text', text: part[textKey] });
       continue;
     }
-    if (part.type !== "image_url") continue;
-    const payload = Reflect.get(part, "image_url");
+    if (part.type !== 'image_url') continue;
+    const payload = Reflect.get(part, 'image_url');
     const url =
-      typeof payload === "object" && payload !== null && !Array.isArray(payload)
-        ? Reflect.get(payload, "url")
+      typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+        ? Reflect.get(payload, 'url')
         : undefined;
     const detail =
-      typeof payload === "object" && payload !== null && !Array.isArray(payload)
-        ? Reflect.get(payload, "detail")
+      typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+        ? Reflect.get(payload, 'detail')
         : undefined;
     if (
-      typeof url !== "string" ||
-      (detail !== undefined && detail !== "auto" && detail !== "low" && detail !== "high")
+      typeof url !== 'string' ||
+      (detail !== undefined && detail !== 'auto' && detail !== 'low' && detail !== 'high')
     ) {
       throw new OpenAICompletionsTransformError(`${path}.${index}.image_url.url`);
     }
-    const image = imageFilePart({ type: "url", url }, { ...(detail === undefined ? {} : { detail }), toolResult });
+    const image = imageFilePart({ type: 'url', url }, { ...(detail === undefined ? {} : { detail }), toolResult });
     if (image === undefined) throw new OpenAICompletionsTransformError(`${path}.${index}.image_url.url`);
     parts.push(image);
   }
@@ -178,15 +177,15 @@ function contentParts(
 }
 
 function toolOutput(
-  content: OpenAICompletionsRequest["messages"][number]["content"],
+  content: OpenAICompletionsRequest['messages'][number]['content'],
   path: string,
-): ToolResultPart["output"] {
-  if (!Array.isArray(content)) return { type: "text", value: textContent(content, path) };
+): ToolResultPart['output'] {
+  if (!Array.isArray(content)) return { type: 'text', value: textContent(content, path) };
   const value = contentParts(content, path, true);
-  if (value.every((part): part is ContentTextPart => part.type === "text")) {
-    return { type: "text", value: value.map((part) => part.text).join("") };
+  if (value.every((part): part is ContentTextPart => part.type === 'text')) {
+    return { type: 'text', value: value.map((part) => part.text).join('') };
   }
-  return { type: "content", value };
+  return { type: 'content', value };
 }
 
 function parseToolInput(input: string): unknown {

@@ -1,14 +1,13 @@
-import type { AliasConfig } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { AliasConfig } from '@aio-proxy/types';
+import { normalizeAliasName } from '@aio-proxy/types';
+import { useForm } from '@tanstack/react-form';
+import { type FC, useState } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { normalizeAliasName } from "@aio-proxy/types";
-import { useForm } from "@tanstack/react-form";
-import { type FC, useState } from "react";
-
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 import {
   type AliasDraft,
@@ -17,8 +16,8 @@ import {
   aliasControlId,
   type ProviderAlias,
   preserveReferenceCount,
-} from "../../alias-editor";
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from "../../alias-editor-copy";
+} from '../../alias-editor';
+import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../alias-editor-copy';
 
 type Props = {
   readonly alias: ProviderAlias;
@@ -46,12 +45,12 @@ export const ProviderAliasConfigFields: FC<Props> = ({
   const errorMessage =
     editError === null ? (issue ? aliasIssueMessage(issue) : null) : aliasEditErrorMessage(editError);
   const nameInvalid =
-    editError === "name-required" ||
-    editError === "name-duplicate" ||
-    issue?.code === "alias-name-required" ||
-    issue?.code === "alias-name-duplicate" ||
-    issue?.code === "preserved-route-conflict";
-  const targetInvalid = editError === "target-required" || issue?.code === "target-missing";
+    editError === 'name-required' ||
+    editError === 'name-duplicate' ||
+    issue?.code === 'alias-name-required' ||
+    issue?.code === 'alias-name-duplicate' ||
+    issue?.code === 'preserved-route-conflict';
+  const targetInvalid = editError === 'target-required' || issue?.code === 'target-missing';
   const preserveCount = preserveReferenceCount(alias, config.model) - (config.preserve ? 1 : 0);
   const nameId = aliasControlId(aliasName);
   const targetId = `${nameId}-target`;
@@ -61,8 +60,8 @@ export const ProviderAliasConfigFields: FC<Props> = ({
     const result = onRename(name);
     if (result.ok) {
       setEditError(null);
-      form.setFieldValue("name", normalizeAliasName(name));
-    } else if (result.code !== "alias-missing") {
+      form.setFieldValue('name', normalizeAliasName(name));
+    } else if (result.code !== 'alias-missing') {
       setEditError(result.code);
     }
   };
@@ -73,7 +72,7 @@ export const ProviderAliasConfigFields: FC<Props> = ({
         <form.Field name="name">
           {(field) => (
             <Field data-invalid={nameInvalid}>
-              <FieldLabel htmlFor={nameId}>{m["dashboard.providers.form.alias_name"]()}</FieldLabel>
+              <FieldLabel htmlFor={nameId}>{m['dashboard.providers.form.alias_name']()}</FieldLabel>
               <Input
                 id={nameId}
                 value={field.state.value}
@@ -87,7 +86,7 @@ export const ProviderAliasConfigFields: FC<Props> = ({
                   commitName(field.state.value);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
+                  if (event.key === 'Enter') {
                     event.preventDefault();
                     commitName(field.state.value);
                   }
@@ -99,7 +98,7 @@ export const ProviderAliasConfigFields: FC<Props> = ({
         <form.Field name="model">
           {(field) => (
             <Field data-invalid={targetInvalid}>
-              <FieldLabel htmlFor={targetId}>{m["dashboard.providers.form.alias_target"]()}</FieldLabel>
+              <FieldLabel htmlFor={targetId}>{m['dashboard.providers.form.alias_target']()}</FieldLabel>
               <Select
                 value={field.state.value}
                 onValueChange={(model) => {
@@ -137,13 +136,13 @@ export const ProviderAliasConfigFields: FC<Props> = ({
                   onAliasChange({ ...alias, [aliasName]: { ...config, preserve: checked } });
                 }}
               />
-              <FieldLabel htmlFor={preserveId}>{m["dashboard.providers.form.alias_preserve"]()}</FieldLabel>
+              <FieldLabel htmlFor={preserveId}>{m['dashboard.providers.form.alias_preserve']()}</FieldLabel>
             </Field>
           )}
         </form.Field>
-        <FieldDescription>{m["dashboard.providers.form.preserve_helper"]()}</FieldDescription>
+        <FieldDescription>{m['dashboard.providers.form.preserve_helper']()}</FieldDescription>
         {preserveCount > 0 && (
-          <FieldDescription>{m["dashboard.providers.form.preserve_shared"]({ count: preserveCount })}</FieldDescription>
+          <FieldDescription>{m['dashboard.providers.form.preserve_shared']({ count: preserveCount })}</FieldDescription>
         )}
       </FieldGroup>
       {errorMessage !== null && <FieldError>{errorMessage}</FieldError>}

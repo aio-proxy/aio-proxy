@@ -1,13 +1,13 @@
-import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
-import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
+import { expect, test } from 'bun:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { Diagnostic, DiagnosticCode } from '@aio-proxy/types';
 
-import { type AccountWrite, createPluginRepository, type PluginRepository } from ".";
-import { type OpenDbHandle, openDb } from "../../db";
+import { type AccountWrite, createPluginRepository, type PluginRepository } from '.';
+import { type OpenDbHandle, openDb } from '../../db';
 
 const homes: string[] = [];
 
@@ -16,13 +16,13 @@ function openRepository(): {
   readonly handle: OpenDbHandle;
   readonly repository: PluginRepository;
 } {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-repository-"));
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-plugin-repository-'));
   homes.push(home);
   const handle = openDb({ home });
   return { home, handle, repository: createPluginRepository(handle.sqlite) };
 }
 
-function catalog(id = "model-1"): ModelCatalog {
+function catalog(id = 'model-1'): ModelCatalog {
   return {
     language: [{ id }],
     image: [],
@@ -34,27 +34,27 @@ function catalog(id = "model-1"): ModelCatalog {
 }
 
 function diagnostic(code: DiagnosticCode, summary: string = code): Diagnostic {
-  return { code, summary, retryable: true, occurredAt: "2026-07-14T00:00:00.000Z" };
+  return { code, summary, retryable: true, occurredAt: '2026-07-14T00:00:00.000Z' };
 }
 
 function account(providerId: string, overrides: Partial<AccountWrite> = {}): AccountWrite {
   return {
     providerId,
-    plugin: "@aio-proxy/example",
-    capability: "oauth",
+    plugin: '@aio-proxy/example',
+    capability: 'oauth',
     fingerprint: `${providerId}-fingerprint`,
-    options: { tenant: "public", nested: [1, true, null] },
-    secrets: { clientSecret: "account-secret" },
-    credential: { accessToken: "credential-secret", refreshToken: "refresh-secret" },
-    label: "Example account",
+    options: { tenant: 'public', nested: [1, true, null] },
+    secrets: { clientSecret: 'account-secret' },
+    credential: { accessToken: 'credential-secret', refreshToken: 'refresh-secret' },
+    label: 'Example account',
     expiresAt: 123_456,
-    catalog: { kind: "replace", value: { catalog: catalog(), refreshedAt: 100 } },
+    catalog: { kind: 'replace', value: { catalog: catalog(), refreshedAt: 100 } },
     ...overrides,
   };
 }
 
-function createAccount(repository: PluginRepository, value: AccountWrite = account("provider-1")): void {
-  const pending = repository.stageAccountOperation({ kind: "create", targetDigest: "digest:create", account: value });
+function createAccount(repository: PluginRepository, value: AccountWrite = account('provider-1')): void {
+  const pending = repository.stageAccountOperation({ kind: 'create', targetDigest: 'digest:create', account: value });
   repository.completeAccountOperation(pending.operationId);
 }
 
@@ -67,7 +67,7 @@ function refreshCredential(
 ) {
   const owner = crypto.randomUUID();
   const now = Date.now();
-  if (!repository.tryAcquireRefreshLease(providerId, owner, now, now + 60_000)) throw new Error("lease unavailable");
+  if (!repository.tryAcquireRefreshLease(providerId, owner, now, now + 60_000)) throw new Error('lease unavailable');
   try {
     return repository.compareAndSwapCredential(providerId, expectedRevision, owner, credential, metadata);
   } finally {

@@ -1,6 +1,7 @@
-import { promisify } from "node:util";
-import { brotliDecompress, gunzip, inflate, inflateRaw, zstdDecompress } from "node:zlib";
-import { z } from "zod";
+import { promisify } from 'node:util';
+import { brotliDecompress, gunzip, inflate, inflateRaw, zstdDecompress } from 'node:zlib';
+
+import { z } from 'zod';
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 const brotliDecompressAsync = promisify(brotliDecompress);
@@ -20,14 +21,14 @@ export class RequestBodyTooLargeError extends Error {}
 export class InvalidCompressedRequestBodyError extends Error {}
 export class UnsupportedContentEncodingError extends Error {
   constructor(readonly encoding: string) {
-    super("Unsupported request Content-Encoding");
+    super('Unsupported request Content-Encoding');
   }
 }
 
 export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = REQUEST_BODY_LIMITS): Promise<unknown> {
   const branches = [raw];
   try {
-    const encoding = requestContentEncoding(raw.headers.get("content-encoding"));
+    const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
     const branch = raw.clone();
     branches.push(branch);
     const encoded = await readRequestBytes(branch.body, limits.encoded);
@@ -39,25 +40,25 @@ export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = 
   }
 }
 
-type ContentEncoding = "br" | "deflate" | "gzip" | "x-gzip" | "zstd";
+type ContentEncoding = 'br' | 'deflate' | 'gzip' | 'x-gzip' | 'zstd';
 
 function requestContentEncoding(header: string | null): ContentEncoding | undefined {
-  const encodings = (header ?? "")
-    .split(",")
+  const encodings = (header ?? '')
+    .split(',')
     .map((encoding) => encoding.trim().toLowerCase())
-    .filter((encoding) => encoding !== "" && encoding !== "identity");
+    .filter((encoding) => encoding !== '' && encoding !== 'identity');
   const [first] = encodings;
   if (first === undefined) return undefined;
-  const encoding = encodings.join(", ");
+  const encoding = encodings.join(', ');
   if (encodings.length > 1 || !isContentEncoding(first)) {
-    console.warn("request.content_encoding.unsupported", { encoding });
+    console.warn('request.content_encoding.unsupported', { encoding });
     throw new UnsupportedContentEncodingError(encoding);
   }
   return first;
 }
 
 function isContentEncoding(value: string): value is ContentEncoding {
-  return value === "br" || value === "deflate" || value === "gzip" || value === "x-gzip" || value === "zstd";
+  return value === 'br' || value === 'deflate' || value === 'gzip' || value === 'x-gzip' || value === 'zstd';
 }
 
 async function decodeRequestBytes(
@@ -67,22 +68,22 @@ async function decodeRequestBytes(
 ): Promise<Uint8Array> {
   try {
     switch (encoding) {
-      case "br":
+      case 'br':
         return await brotliDecompressAsync(encoded, { maxOutputLength });
-      case "deflate":
+      case 'deflate':
         return await inflateDeflate(encoded, maxOutputLength);
-      case "gzip":
-      case "x-gzip":
+      case 'gzip':
+      case 'x-gzip':
         return await gunzipAsync(encoded, { maxOutputLength });
-      case "zstd":
+      case 'zstd':
         return await zstdDecompressAsync(encoded, { maxOutputLength });
     }
   } catch (error) {
-    if (errorCode(error) === "ERR_BUFFER_TOO_LARGE") {
-      throw new RequestBodyTooLargeError("Request body too large");
+    if (errorCode(error) === 'ERR_BUFFER_TOO_LARGE') {
+      throw new RequestBodyTooLargeError('Request body too large');
     }
     if (isCompressedDataError(error)) {
-      throw new InvalidCompressedRequestBodyError("Invalid compressed request body");
+      throw new InvalidCompressedRequestBodyError('Invalid compressed request body');
     }
     throw error;
   }
@@ -92,7 +93,7 @@ async function inflateDeflate(encoded: Uint8Array, maxOutputLength: number): Pro
   try {
     return await inflateAsync(encoded, { maxOutputLength });
   } catch (error) {
-    if (errorCode(error) !== "Z_DATA_ERROR") throw error;
+    if (errorCode(error) !== 'Z_DATA_ERROR') throw error;
     return inflateRawAsync(encoded, { maxOutputLength });
   }
 }
@@ -100,15 +101,15 @@ async function inflateDeflate(encoded: Uint8Array, maxOutputLength: number): Pro
 function isCompressedDataError(error: unknown): boolean {
   const code = errorCode(error);
   return (
-    code === "Z_DATA_ERROR" ||
-    code === "Z_BUF_ERROR" ||
-    code?.startsWith("ERR_BROTLI_DECODER_") === true ||
-    code?.startsWith("ZSTD_error_") === true
+    code === 'Z_DATA_ERROR' ||
+    code === 'Z_BUF_ERROR' ||
+    code?.startsWith('ERR_BROTLI_DECODER_') === true ||
+    code?.startsWith('ZSTD_error_') === true
   );
 }
 
 function errorCode(error: unknown): string | undefined {
-  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+  return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
     ? error.code
     : undefined;
 }
@@ -127,7 +128,7 @@ async function readRequestBytes(
       if (next.done) break;
       total += next.value.byteLength;
       if (total > maxBytes) {
-        const error = new RequestBodyTooLargeError("Request body too large");
+        const error = new RequestBodyTooLargeError('Request body too large');
         void reader.cancel(error).catch(() => undefined);
         throw error;
       }
@@ -155,8 +156,8 @@ async function cancelRequestBody(request: Request, reason: unknown): Promise<voi
 export async function rewriteJsonRequestModel(raw: Request, modelId: string): Promise<Request> {
   const body = jsonObjectSchema.parse(await readJsonRequest(raw));
   const headers = new Headers(raw.headers);
-  headers.delete("content-encoding");
-  headers.delete("content-length");
+  headers.delete('content-encoding');
+  headers.delete('content-length');
   return new Request(raw, {
     method: raw.method,
     body: JSON.stringify({ ...body, model: modelId }),

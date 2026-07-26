@@ -1,23 +1,21 @@
-import type React from "react";
+import { m } from '@aio-proxy/i18n';
+import type React from 'react';
+import { useEffect, useRef } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { useEffect, useRef } from "react";
+import { TagsInput } from '@/components/tags-input';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
-import { TagsInput } from "@/components/tags-input";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import type { ProviderFormMode } from '../constants';
+import type { useProviderForm } from '../hooks/use-provider-form';
+import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
+import { ProviderAliasFields } from './provider-alias';
+import { ProviderCommonFields } from './provider-common-fields';
+import { ProviderOptionsEditor } from './provider-options-editor';
 
-import type { ProviderFormMode } from "../constants";
-import type { useProviderForm } from "../hooks/use-provider-form";
-
-import { useProviderOptionsSchema } from "../hooks/use-provider-options-schema";
-import { ProviderAliasFields } from "./provider-alias";
-import { ProviderCommonFields } from "./provider-common-fields";
-import { ProviderOptionsEditor } from "./provider-options-editor";
-
-const DEFAULT_AI_SDK_PACKAGE = "@ai-sdk/openai-compatible";
+const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
 
 type PackageCommitRef = { current: string | null };
 
@@ -49,7 +47,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
   onOptionsValidityChange,
 }) => {
   const schemaState = useProviderOptionsSchema();
-  const initialPackageName = useRef(form.getFieldValue("packageName") ?? DEFAULT_AI_SDK_PACKAGE).current;
+  const initialPackageName = useRef(form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE).current;
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>
@@ -67,7 +65,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
     <div className="space-y-8">
       <section className="space-y-4" aria-labelledby="provider-ai-sdk-basic-heading">
         <h2 id="provider-ai-sdk-basic-heading" className="text-base font-semibold">
-          {m["dashboard.providers.form.section_basic"]()}
+          {m['dashboard.providers.form.section_basic']()}
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
           <ProviderCommonFields form={form} mode={mode} />
@@ -75,14 +73,14 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
       </section>
       <section className="space-y-4" aria-labelledby="provider-ai-sdk-integration-heading">
         <h2 id="provider-ai-sdk-integration-heading" className="text-base font-semibold">
-          {m["dashboard.providers.form.section_integration"]()}
+          {m['dashboard.providers.form.section_integration']()}
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div data-testid="provider-form-field-packageName">
             <form.Field name="packageName">
               {(field) => (
                 <Field>
-                  <Label htmlFor={field.name}>{m["dashboard.providers.form.label_package_name"]()}</Label>
+                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
                   <Input
                     id={field.name}
                     value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
@@ -93,12 +91,12 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
                     }}
                     onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
+                      if (event.key === 'Enter') {
                         event.preventDefault();
                         commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
                       }
                     }}
-                    placeholder={m["dashboard.providers.form.placeholder_package_name"]()}
+                    placeholder={m['dashboard.providers.form.placeholder_package_name']()}
                   />
                 </Field>
               )}
@@ -125,7 +123,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
                       checked={field.state.value ?? false}
                       onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
                     />
-                    <Label htmlFor={field.name}>{m["dashboard.providers.form.label_parse_reasoning"]()}</Label>
+                    <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
                   </div>
                 </Field>
               )}
@@ -135,21 +133,21 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
       </section>
       <section className="space-y-4" aria-labelledby="provider-ai-sdk-models-heading">
         <h2 id="provider-ai-sdk-models-heading" className="text-base font-semibold">
-          {m["dashboard.providers.form.section_models_aliases"]()}
+          {m['dashboard.providers.form.section_models_aliases']()}
         </h2>
         <div data-testid="provider-form-field-models">
           <form.Field name="models">
             {(field) => (
               <Field>
-                <Label htmlFor={field.name}>{m["dashboard.providers.form.label_models"]()}</Label>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_models']()}</Label>
                 <TagsInput
                   id={field.name}
                   value={field.state.value ?? []}
                   onValueChange={(next) => field.handleChange(next)}
-                  placeholder={m["dashboard.providers.form.placeholder_models"]()}
-                  removeLabel={(model) => m["dashboard.providers.form.remove_model"]({ model })}
+                  placeholder={m['dashboard.providers.form.placeholder_models']()}
+                  removeLabel={(model) => m['dashboard.providers.form.remove_model']({ model })}
                 />
-                <p className="text-sm text-muted-foreground">{m["dashboard.providers.form.models_helper"]()}</p>
+                <p className="text-sm text-muted-foreground">{m['dashboard.providers.form.models_helper']()}</p>
               </Field>
             )}
           </form.Field>

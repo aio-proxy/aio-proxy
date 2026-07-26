@@ -3,15 +3,14 @@ import {
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
 
-import type { RequestSession } from "../../request-recorder";
-import type { ProviderRouteSource } from "../../runtime";
-
-import { observeInboundRequest, withRequestLogContext } from "../../request-logging";
-import { attemptCandidates } from "./attempt";
-import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from "./logging";
-import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from "./request";
+import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
+import type { RequestSession } from '../../request-recorder';
+import type { ProviderRouteSource } from '../../runtime';
+import { attemptCandidates } from './attempt';
+import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
+import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -37,58 +36,46 @@ export async function handleProtocolRequest<TRequest, TContext>(
   );
 }
 
-async function handleProtocolRequestInContext<TRequest, TContext>(
-  { adapter, context, rawRequest, source }: HandleProtocolRequestOptions<TRequest, TContext>,
+async function parseInboundRequest<TRequest, TContext>(
+  { adapter, context, source }: HandleProtocolRequestOptions<TRequest, TContext>,
   session: RequestSession,
-): Promise<Response> {
-  let requestedModelId: string | undefined;
-  let releaseRetainedBody = false;
+  rawRequest: Request,
+): Promise<{ readonly request: TRequest } | { readonly rejection: Response }> {
   try {
-    if (hasInvalidOrOversizedContentLength(rawRequest)) {
-      const error = new RequestBodyTooLargeError("Request body too large");
-      await cancelRetainedRequestBody(rawRequest, error);
-      return rejectRequest({
-        source,
-        session,
-        rawRequest,
-        inboundProtocol: adapter.protocol,
-        response: adapter.errors.tooLarge(),
-        errorCode: "request_too_large",
-        error,
-      });
-    }
-
-    let request: TRequest;
-    try {
-      request = await adapter.parse(rawRequest, context);
-    } catch (error) {
-      await cancelRetainedRequestBody(rawRequest, error);
-      if (error instanceof RequestBodyTooLargeError) {
-        return rejectRequest({
+    return { request: await adapter.parse(rawRequest, context) };
+  } catch (error) {
+    await cancelRetainedRequestBody(rawRequest, error);
+    if (error instanceof RequestBodyTooLargeError) {
+      return {
+        rejection: rejectRequest({
           source,
           session,
           rawRequest,
           inboundProtocol: adapter.protocol,
           response: adapter.errors.tooLarge(),
-          errorCode: "request_too_large",
+          errorCode: 'request_too_large',
           error,
-        });
-      }
-      if (error instanceof UnsupportedContentEncodingError) {
-        return rejectRequest({
+        }),
+      };
+    }
+    if (error instanceof UnsupportedContentEncodingError) {
+      return {
+        rejection: rejectRequest({
           source,
           session,
           rawRequest,
           inboundProtocol: adapter.protocol,
           response: adapter.errors.unsupportedContentEncoding(),
-          errorCode: "unsupported_content_encoding",
+          errorCode: 'unsupported_content_encoding',
           error,
-        });
-      }
-      const mapped = adapter.errors.requestError(error);
-      if (mapped !== undefined) {
-        const errorCode = mapped.status === 501 ? "unsupported_feature" : "invalid_request";
-        return rejectRequest({
+        }),
+      };
+    }
+    const mapped = adapter.errors.requestError(error);
+    if (mapped !== undefined) {
+      const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
+      return {
+        rejection: rejectRequest({
           source,
           session,
           rawRequest,
@@ -96,10 +83,38 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           response: mapped,
           errorCode,
           error,
-        });
-      }
-      throw error;
+        }),
+      };
     }
+    throw error;
+  }
+}
+
+async function handleProtocolRequestInContext<TRequest, TContext>(
+  options: HandleProtocolRequestOptions<TRequest, TContext>,
+  session: RequestSession,
+): Promise<Response> {
+  const { adapter, context, rawRequest, source } = options;
+  let requestedModelId: string | undefined;
+  let releaseRetainedBody = false;
+  try {
+    if (hasInvalidOrOversizedContentLength(rawRequest)) {
+      const error = new RequestBodyTooLargeError('Request body too large');
+      await cancelRetainedRequestBody(rawRequest, error);
+      return rejectRequest({
+        source,
+        session,
+        rawRequest,
+        inboundProtocol: adapter.protocol,
+        response: adapter.errors.tooLarge(),
+        errorCode: 'request_too_large',
+        error,
+      });
+    }
+
+    const parsed = await parseInboundRequest(options, session, rawRequest);
+    if ('rejection' in parsed) return parsed.rejection;
+    const request = parsed.request;
     releaseRetainedBody = true;
 
     const logicalRequest = source.logicalSessionStore.begin({
@@ -148,7 +163,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           inboundProtocol: adapter.protocol,
           requestedModelId: requestedModel,
           response,
-          errorCode: "model_not_found",
+          errorCode: 'model_not_found',
           error,
         });
       }
@@ -157,7 +172,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       if (!deferred) lease.release();
     }
   } catch (error) {
-    if (session.finish({ outcome: "failure", errorCode: "internal_error" })) {
+    if (session.finish({ outcome: 'failure', errorCode: 'internal_error' })) {
       logRequestFailed({
         source,
         session,
@@ -170,7 +185,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     throw error;
   } finally {
     if (releaseRetainedBody) {
-      void cancelRetainedRequestBody(rawRequest, "request body no longer needed");
+      void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
     }
   }
 }
@@ -187,7 +202,7 @@ function rejectRequest(options: {
 }): Response {
   const { response, ...rejection } = options;
   rejection.session.finish({
-    outcome: "failure",
+    outcome: 'failure',
     finalStatusCode: response.status,
     errorCode: rejection.errorCode,
   });
@@ -195,4 +210,4 @@ function rejectRequest(options: {
   return response;
 }
 
-export { hasInvalidOrOversizedContentLength } from "./request";
+export { hasInvalidOrOversizedContentLength } from './request';

@@ -1,7 +1,7 @@
-import type { RsbuildPlugin } from "@aio-proxy/infra/rslib";
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import type { RsbuildPlugin } from '@aio-proxy/infra/rslib';
 
 /** Self-contained public types for the Node-only openai-stream subpath export. */
 export const OPENAI_STREAM_DTS = `export type OpenAIStreamProtocol = "openai-response" | "openai-compatible";
@@ -26,13 +26,13 @@ export declare function createToolImageMarker(): ToolImageMarker;
 
 export function createOpenAIStreamDtsPlugin(): RsbuildPlugin {
   return {
-    name: "aio-proxy-openai-stream-dts",
-    apply: "build",
+    name: 'aio-proxy-openai-stream-dts',
+    apply: 'build',
     setup(api) {
       api.onAfterBuild(() => {
-        const outDir = join(api.context.rootPath, "dist", "openai-stream");
+        const outDir = join(api.context.rootPath, 'dist', 'openai-stream');
         mkdirSync(outDir, { recursive: true });
-        writeFileSync(join(outDir, "index.d.ts"), OPENAI_STREAM_DTS);
+        writeFileSync(join(outDir, 'index.d.ts'), OPENAI_STREAM_DTS);
       });
     },
   };

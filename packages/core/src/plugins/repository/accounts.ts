@@ -1,6 +1,4 @@
-import type { Database } from "bun:sqlite";
-
-import type { AccountWrite, PluginRepository } from "./types";
+import type { Database } from 'bun:sqlite';
 
 import {
   ACCOUNT_COLUMNS,
@@ -10,9 +8,10 @@ import {
   encodeJson,
   storedAccount,
   storedAccountSummary,
-} from "./rows";
+} from './rows';
+import type { AccountWrite, PluginRepository } from './types';
 
-type AccountRowWrite = Omit<AccountWrite, "catalog">;
+type AccountRowWrite = Omit<AccountWrite, 'catalog'>;
 
 export function createAccountRows(sqlite: Database) {
   const selectAccount = sqlite.query<AccountRow, [string]>(
@@ -70,7 +69,7 @@ export function createAccountRepository(
   sqlite: Database,
 ): Pick<
   PluginRepository,
-  "readAccount" | "findAccountByFingerprint" | "listAccounts" | "deleteAccount" | "compareAndSwapCredential"
+  'readAccount' | 'findAccountByFingerprint' | 'listAccounts' | 'deleteAccount' | 'compareAndSwapCredential'
 > {
   const { selectAccount } = createAccountRows(sqlite);
   return {
@@ -93,7 +92,7 @@ export function createAccountRepository(
         .map(storedAccountSummary);
     },
     deleteAccount(providerId) {
-      sqlite.query("DELETE FROM oauth_account WHERE provider_id = ?").run(providerId);
+      sqlite.query('DELETE FROM oauth_account WHERE provider_id = ?').run(providerId);
     },
     compareAndSwapCredential(providerId, expectedRevision, leaseOwner, credential, metadata) {
       const encoded = encodeJson(credential);

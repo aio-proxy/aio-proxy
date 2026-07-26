@@ -1,4 +1,4 @@
-import type { ZodType } from "@aio-proxy/plugin-sdk";
+import type { ZodType } from '@aio-proxy/plugin-sdk';
 
 export type PluginSchemaValidation<T> =
   | { readonly ok: true; readonly value: T }
@@ -10,25 +10,25 @@ export type PluginSchemaValidation<T> =
       }[];
     };
 
-const CONTRACT_ERROR_MESSAGE = "Plugin schema contract is invalid";
+const CONTRACT_ERROR_MESSAGE = 'Plugin schema contract is invalid';
 
 export class PluginSchemaContractError extends Error {
   constructor() {
     super(CONTRACT_ERROR_MESSAGE);
-    this.name = "PluginSchemaContractError";
+    this.name = 'PluginSchemaContractError';
   }
 }
 
 function isRecord(value: unknown): value is Readonly<Record<PropertyKey, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {
   try {
     return (
       isRecord(value) &&
-      typeof Reflect.get(value, "safeParse") === "function" &&
-      typeof Reflect.get(value, "safeParseAsync") === "function"
+      typeof Reflect.get(value, 'safeParse') === 'function' &&
+      typeof Reflect.get(value, 'safeParseAsync') === 'function'
     );
   } catch {
     return false;
@@ -40,7 +40,7 @@ function normalizePath(value: unknown): readonly (string | number)[] {
     throw new PluginSchemaContractError();
   }
   return value.map((segment) =>
-    typeof segment === "string" || (typeof segment === "number" && Number.isFinite(segment)) ? segment : "<unknown>",
+    typeof segment === 'string' || (typeof segment === 'number' && Number.isFinite(segment)) ? segment : '<unknown>',
   );
 }
 
@@ -51,9 +51,9 @@ export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): 
 
     if (!isRecord(result)) throw new PluginSchemaContractError();
     const { success } = result;
-    if (typeof success !== "boolean") throw new PluginSchemaContractError();
+    if (typeof success !== 'boolean') throw new PluginSchemaContractError();
     if (success) {
-      if (!("data" in result)) throw new PluginSchemaContractError();
+      if (!('data' in result)) throw new PluginSchemaContractError();
       const { data } = result;
       return { ok: true, value: data as T };
     }
@@ -65,7 +65,7 @@ export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): 
     const issues = rawIssues.map((issue) => {
       if (!isRecord(issue)) throw new PluginSchemaContractError();
       const { message, path } = issue;
-      if (typeof message !== "string") throw new PluginSchemaContractError();
+      if (typeof message !== 'string') throw new PluginSchemaContractError();
       return { message, path: normalizePath(path) };
     });
     return { ok: false, issues };

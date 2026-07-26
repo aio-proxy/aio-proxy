@@ -1,13 +1,13 @@
-import { randomUUID } from "node:crypto";
-import { constants, type Stats } from "node:fs";
-import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { randomUUID } from 'node:crypto';
+import { constants, type Stats } from 'node:fs';
+import { mkdir, open, readFile, stat, unlink } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
-import { abortableDelay } from "../../file-lock/delay";
-import { isNodeError, sameFileSnapshot } from "../../file-lock/fs";
-import { processIsAlive, processStarttime } from "../../file-lock/process-identity";
-import { runWithRecoveryFence } from "../../file-lock/recovery-fence";
-import { clearAbandonedLock, reclaimAbandonedLock, rememberAbandonedLock } from "./abandoned-owner";
+import { abortableDelay } from '../../file-lock/delay';
+import { isNodeError, sameFileSnapshot } from '../../file-lock/fs';
+import { processIsAlive, processStarttime } from '../../file-lock/process-identity';
+import { runWithRecoveryFence } from '../../file-lock/recovery-fence';
+import { clearAbandonedLock, reclaimAbandonedLock, rememberAbandonedLock } from './abandoned-owner';
 
 export const CONFIG_LOCK_WAIT_MS = 15_000;
 export const CONFIG_LOCK_STALE_MS = 60_000;
@@ -28,7 +28,7 @@ export type ConfigLock = {
 };
 
 function configOwnerIsAlive(pid: number): boolean {
-  if (process.platform === "win32") return true;
+  if (process.platform === 'win32') return true;
   try {
     return processIsAlive(pid);
   } catch {
@@ -39,13 +39,13 @@ function configOwnerIsAlive(pid: number): boolean {
 function parseLock(text: string): LockRecord | null {
   try {
     const value: unknown = JSON.parse(text);
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const { pid, owner, createdAt, starttime } = value as Record<string, unknown>;
-    return typeof pid === "number" &&
+    return typeof pid === 'number' &&
       Number.isSafeInteger(pid) &&
-      typeof owner === "string" &&
-      typeof createdAt === "number" &&
-      (starttime === undefined || typeof starttime === "string")
+      typeof owner === 'string' &&
+      typeof createdAt === 'number' &&
+      (starttime === undefined || typeof starttime === 'string')
       ? { pid, owner, createdAt, ...(starttime === undefined ? {} : { starttime }) }
       : null;
   } catch {
@@ -55,7 +55,7 @@ function parseLock(text: string): LockRecord | null {
 
 async function readLock(path: string): Promise<LockRecord | null> {
   try {
-    return parseLock(await readFile(path, "utf8"));
+    return parseLock(await readFile(path, 'utf8'));
   } catch {
     return null;
   }
@@ -101,16 +101,16 @@ async function unlinkOwnedLock(
     }
     await unlink(path);
   } catch (error) {
-    if (!isNodeError(error, "ENOENT")) throw error;
+    if (!isNodeError(error, 'ENOENT')) throw error;
   }
 }
 
 async function reclaimStaleLock(path: string, assertFence: () => Promise<void>): Promise<boolean> {
   let text: string;
   try {
-    text = await readFile(path, "utf8");
+    text = await readFile(path, 'utf8');
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return true;
+    if (isNodeError(error, 'ENOENT')) return true;
     throw error;
   }
   const [record, metadata] = await Promise.all([Promise.resolve(parseLock(text)), stat(path).catch(() => null)]);
@@ -125,13 +125,13 @@ async function reclaimStaleLock(path: string, assertFence: () => Promise<void>):
   if (!stale || metadata === null) return false;
   try {
     await assertFence();
-    if ((await readFile(path, "utf8")) !== text) return false;
+    if ((await readFile(path, 'utf8')) !== text) return false;
     const currentMetadata = await stat(path);
     if (!sameFileSnapshot(metadata, currentMetadata)) return false;
     await unlink(path);
     return true;
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return true;
+    if (isNodeError(error, 'ENOENT')) return true;
     throw error;
   }
 }
@@ -169,7 +169,7 @@ export async function acquireConfigLock(path: string, signal?: AbortSignal): Pro
             throw error;
           }
         } catch (error) {
-          if (!isNodeError(error, "EEXIST")) throw error;
+          if (!isNodeError(error, 'EEXIST')) throw error;
           if (await reclaimAbandonedLock(path, assertFence)) return null;
           return (await reclaimStaleLock(path, assertFence)) ? null : false;
         }
@@ -193,10 +193,10 @@ export async function acquireConfigLock(path: string, signal?: AbortSignal): Pro
       try {
         const [record, metadata] = await Promise.all([readLock(path), stat(path)]);
         if (record?.owner !== owner || metadata.dev !== identity.dev || metadata.ino !== identity.ino) {
-          throw new Error("Config lock ownership lost");
+          throw new Error('Config lock ownership lost');
         }
       } catch (error) {
-        if (isNodeError(error, "ENOENT")) throw new Error("Config lock ownership lost");
+        if (isNodeError(error, 'ENOENT')) throw new Error('Config lock ownership lost');
         throw error;
       }
     };

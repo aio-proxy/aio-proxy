@@ -1,7 +1,6 @@
-import type { DashboardProviderSummary } from "@aio-proxy/types";
-
-import { m } from "@aio-proxy/i18n";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { m } from '@aio-proxy/i18n';
+import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { forwardRef, useImperativeHandle, useState } from 'react';
 
 import {
   AlertDialog,
@@ -12,11 +11,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 
-import { useProviderDelete } from "../hooks/use-provider-mutations";
+import { useProviderDelete } from '../hooks/use-provider-mutations';
 
-type DeleteProviderTarget = Pick<DashboardProviderSummary, "id">;
+type DeleteProviderTarget = Pick<DashboardProviderSummary, 'id'>;
 
 export type DeleteProviderDialogRef = {
   readonly open: (provider: DeleteProviderTarget) => void;
@@ -59,15 +58,15 @@ export const DeleteProviderDialog = forwardRef<DeleteProviderDialogRef, DeletePr
         {provider !== null && (
           <AlertDialogContent data-testid="delete-provider-dialog">
             <AlertDialogHeader>
-              <AlertDialogTitle>{m["dashboard.providers.delete_dialog.title"]()}</AlertDialogTitle>
+              <AlertDialogTitle>{m['dashboard.providers.delete_dialog.title']()}</AlertDialogTitle>
               <AlertDialogDescription>
-                {m["dashboard.providers.delete_dialog.description"]({ id: provider.id })}
+                {m['dashboard.providers.delete_dialog.description']({ id: provider.id })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>{m["dashboard.providers.delete_dialog.cancel"]()}</AlertDialogCancel>
+              <AlertDialogCancel>{m['dashboard.providers.delete_dialog.cancel']()}</AlertDialogCancel>
               <AlertDialogAction data-testid="delete-confirm" onClick={handleConfirm} disabled={isPending}>
-                {m["dashboard.providers.delete_dialog.confirm"]()}
+                {m['dashboard.providers.delete_dialog.confirm']()}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

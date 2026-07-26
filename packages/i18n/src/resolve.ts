@@ -1,4 +1,4 @@
-import type { locales } from "./paraglide/runtime";
+import type { locales } from './paraglide/runtime';
 
 export type Locale = (typeof locales)[number];
 
@@ -16,24 +16,24 @@ declare const process: {
 };
 
 function normalizeLocale(value: string | undefined): Locale | undefined {
-  if (value === undefined || value.trim() === "") {
+  if (value === undefined || value.trim() === '') {
     return undefined;
   }
 
-  for (const part of value.split(":")) {
-    const tag = part.split(".")[0]?.split("@")[0]?.replaceAll("_", "-");
+  for (const part of value.split(':')) {
+    const tag = part.split('.')[0]?.split('@')[0]?.replaceAll('_', '-');
     const normalized = tag?.toLowerCase();
-    if (normalized === "en" || normalized?.startsWith("en-")) {
-      return "en";
+    if (normalized === 'en' || normalized?.startsWith('en-')) {
+      return 'en';
     }
     if (
-      normalized === "zh" ||
-      normalized === "zh-cn" ||
-      normalized === "zh-hans" ||
-      normalized?.startsWith("zh-hans-") ||
-      normalized?.startsWith("zh-cn-")
+      normalized === 'zh' ||
+      normalized === 'zh-cn' ||
+      normalized === 'zh-hans' ||
+      normalized?.startsWith('zh-hans-') ||
+      normalized?.startsWith('zh-cn-')
     ) {
-      return "zh-Hans";
+      return 'zh-Hans';
     }
   }
 
@@ -53,7 +53,7 @@ export function resolveLocale(env: LocaleEnv = process.env): Locale {
     env.LANG,
     env.LANGUAGE,
     intlLocale(),
-    "en",
+    'en',
   ] as const;
 
   for (const candidate of candidates) {
@@ -63,18 +63,18 @@ export function resolveLocale(env: LocaleEnv = process.env): Locale {
     }
   }
 
-  return "en";
+  return 'en';
 }
 
 export function resolveLocaleFromArgv(argv: readonly string[]): Locale {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--lang") {
+    if (arg === '--lang') {
       const lang = argv[index + 1];
       return resolveLocale(lang === undefined ? {} : { lang });
     }
-    if (arg?.startsWith("--lang=")) {
-      return resolveLocale({ lang: arg.slice("--lang=".length) });
+    if (arg?.startsWith('--lang=')) {
+      return resolveLocale({ lang: arg.slice('--lang='.length) });
     }
   }
 

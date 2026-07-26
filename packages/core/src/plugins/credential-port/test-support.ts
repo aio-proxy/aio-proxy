@@ -1,29 +1,28 @@
-import type { Diagnostic } from "@aio-proxy/types";
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { zod } from "@aio-proxy/plugin-sdk";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { zod } from '@aio-proxy/plugin-sdk';
+import type { Diagnostic } from '@aio-proxy/types';
 
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
+import { type OpenDbHandle, openDb } from '../../db';
+import type { DiagnosticFactory, PluginLogSink } from '../diagnostic/index';
+import { createCredentialPort } from '../index';
+import { type AccountWrite, createPluginRepository, type PluginRepository } from '../repository/index';
 
-import { type OpenDbHandle, openDb } from "../../db";
-import { createCredentialPort } from "../index";
-import { type AccountWrite, createPluginRepository, type PluginRepository } from "../repository/index";
-
-function account(providerId: string, credential: unknown = { token: "initial-secret" }): AccountWrite {
+function account(providerId: string, credential: unknown = { token: 'initial-secret' }): AccountWrite {
   return {
     providerId,
-    plugin: "@aio-proxy/example",
-    capability: "oauth",
+    plugin: '@aio-proxy/example',
+    capability: 'oauth',
     fingerprint: `${providerId}-fingerprint`,
     options: {},
-    secrets: { clientSecret: "account-secret" },
+    secrets: { clientSecret: 'account-secret' },
     credential,
-    label: "Example",
+    label: 'Example',
     expiresAt: 1,
     catalog: {
-      kind: "replace",
+      kind: 'replace',
       value: {
         catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
         refreshedAt: 1,
@@ -33,7 +32,7 @@ function account(providerId: string, credential: unknown = { token: "initial-sec
 }
 
 function createAccount(repository: PluginRepository, value: AccountWrite): void {
-  const pending = repository.stageAccountOperation({ kind: "create", targetDigest: "create", account: value });
+  const pending = repository.stageAccountOperation({ kind: 'create', targetDigest: 'create', account: value });
   repository.completeAccountOperation(pending.operationId);
 }
 
@@ -47,8 +46,8 @@ function createFixtureScope(): {
 } {
   const homes = new Set<string>();
   return {
-    open(providerIds = ["provider-1"]) {
-      const home = mkdtempSync(join(tmpdir(), "aio-proxy-credential-port-"));
+    open(providerIds = ['provider-1']) {
+      const home = mkdtempSync(join(tmpdir(), 'aio-proxy-credential-port-'));
       homes.add(home);
       const handle = openDb({ home });
       const repository = createPluginRepository(handle.sqlite);
@@ -65,21 +64,21 @@ function createFixtureScope(): {
 function diagnosticFactory(): DiagnosticFactory {
   return (code, options): Diagnostic => ({
     code,
-    summary: "Credential refresh failed",
+    summary: 'Credential refresh failed',
     retryable: options.retryable,
-    occurredAt: "2026-07-15T00:00:00.000Z",
+    occurredAt: '2026-07-15T00:00:00.000Z',
     ...(options.suggestedCommand === undefined ? {} : { suggestedCommand: options.suggestedCommand }),
   });
 }
 
 function port(
   repository: PluginRepository,
-  providerId = "provider-1",
+  providerId = 'provider-1',
   overrides: {
-    readonly schema?: Parameters<typeof createCredentialPort>[0]["schema"];
+    readonly schema?: Parameters<typeof createCredentialPort>[0]['schema'];
     readonly diagnostics?: DiagnosticFactory;
     readonly logger?: PluginLogSink;
-    readonly mode?: Parameters<typeof createCredentialPort>[0]["mode"];
+    readonly mode?: Parameters<typeof createCredentialPort>[0]['mode'];
     readonly onDiagnosticChanged?: () => void;
     readonly onCredentialChanged?: () => void;
     readonly pluginSecrets?: unknown;
@@ -95,10 +94,10 @@ function port(
     onDiagnosticChanged: overrides.onDiagnosticChanged ?? (() => {}),
     onCredentialChanged: overrides.onCredentialChanged ?? (() => {}),
   };
-  if (overrides.mode === "control-plane") {
+  if (overrides.mode === 'control-plane') {
     return createCredentialPort({
       ...base,
-      mode: "control-plane",
+      mode: 'control-plane',
       ...(overrides.additionalSecretValues === undefined
         ? {}
         : { additionalSecretValues: overrides.additionalSecretValues }),
@@ -106,7 +105,7 @@ function port(
   }
   return createCredentialPort({
     ...base,
-    ...(overrides.mode === undefined ? {} : { mode: "runtime" as const }),
+    ...(overrides.mode === undefined ? {} : { mode: 'runtime' as const }),
     ...(overrides.pluginSecrets === undefined ? {} : { pluginSecrets: overrides.pluginSecrets }),
   });
 }

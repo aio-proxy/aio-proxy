@@ -1,6 +1,6 @@
-import type { Monaco } from "@monaco-editor/react";
+import type { Monaco } from '@monaco-editor/react';
 
-import type { JsonSchema } from "./json-editor-state";
+import type { JsonSchema } from './json-editor-state';
 
 export type JsonSchemaRegistration = {
   readonly uri: string;
@@ -14,8 +14,8 @@ type MonacoWithJsonDefaults = Monaco & {
       setDiagnosticsOptions(options: {
         readonly validate: boolean;
         readonly allowComments: boolean;
-        readonly trailingCommas: "error";
-        readonly schemaValidation: "error";
+        readonly trailingCommas: 'error';
+        readonly schemaValidation: 'error';
         readonly schemas: readonly JsonSchemaRegistration[];
       }): void;
     };
@@ -51,8 +51,8 @@ const globalRegistry = createJsonSchemaRegistry((schemas) => {
   (activeMonaco as MonacoWithJsonDefaults).json.jsonDefaults.setDiagnosticsOptions({
     validate: true,
     allowComments: false,
-    trailingCommas: "error",
-    schemaValidation: "error",
+    trailingCommas: 'error',
+    schemaValidation: 'error',
     schemas: schemas.map(({ fileMatch, ...registration }) => ({
       ...registration,
       fileMatch: [...fileMatch],
@@ -73,5 +73,5 @@ export const validateJsonModel = async (monaco: Monaco, modelUri: string) => {
 
   return diagnostics
     .filter(({ severity }) => severity === 1 || severity === 2)
-    .map(({ severity }) => ({ severity: severity === 1 ? ("error" as const) : ("warning" as const) }));
+    .map(({ severity }) => ({ severity: severity === 1 ? ('error' as const) : ('warning' as const) }));
 };

@@ -1,15 +1,13 @@
-import type { FC } from "react";
+import { m } from '@aio-proxy/i18n';
+import { PlusIcon, WaypointsIcon } from 'lucide-react';
+import type { FC } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { PlusIcon, WaypointsIcon } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-
-import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from "../../alias-editor";
-
-import { ProviderAliasCard } from "./provider-alias-card";
-import { ProviderAliasDraft } from "./provider-alias-draft";
+import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../alias-editor';
+import { ProviderAliasCard } from './provider-alias-card';
+import { ProviderAliasDraft } from './provider-alias-draft';
 
 type Props = {
   readonly alias: ProviderAlias;
@@ -51,7 +49,7 @@ export const ProviderAliasList: FC<Props> = ({
           <EmptyMedia variant="icon">
             <WaypointsIcon />
           </EmptyMedia>
-          <EmptyTitle>{m["dashboard.providers.form.aliases_empty_models"]()}</EmptyTitle>
+          <EmptyTitle>{m['dashboard.providers.form.aliases_empty_models']()}</EmptyTitle>
         </EmptyHeader>
       </Empty>
     );
@@ -64,12 +62,12 @@ export const ProviderAliasList: FC<Props> = ({
           <EmptyMedia variant="icon">
             <WaypointsIcon />
           </EmptyMedia>
-          <EmptyTitle>{m["dashboard.providers.form.aliases_empty"]()}</EmptyTitle>
+          <EmptyTitle>{m['dashboard.providers.form.aliases_empty']()}</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
           <Button type="button" onClick={onAddAliasDraft}>
             <PlusIcon data-icon="inline-start" />
-            {m["dashboard.providers.form.add_alias"]()}
+            {m['dashboard.providers.form.add_alias']()}
           </Button>
         </EmptyContent>
       </Empty>

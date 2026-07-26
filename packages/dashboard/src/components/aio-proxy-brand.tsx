@@ -1,16 +1,16 @@
-import { m } from "@aio-proxy/i18n";
+import { m } from '@aio-proxy/i18n';
 
 interface AioProxyBrandProps {
   readonly logoHeight?: string;
   readonly showTagline?: boolean;
 }
 
-export const AioProxyBrand: React.FC<AioProxyBrandProps> = ({ logoHeight = "24px", showTagline = true }) => {
+export const AioProxyBrand: React.FC<AioProxyBrandProps> = ({ logoHeight = '24px', showTagline = true }) => {
   return (
     <div>
       <div
         className="flex items-center gap-1 font-heading text-[calc(var(--logo-height)*0.75)] font-semibold text-foreground"
-        style={{ "--logo-height": logoHeight } as React.CSSProperties}
+        style={{ '--logo-height': logoHeight } as React.CSSProperties}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -23,7 +23,7 @@ export const AioProxyBrand: React.FC<AioProxyBrandProps> = ({ logoHeight = "24px
         </svg>
         <span>Proxy</span>
       </div>
-      {showTagline ? <div className="mt-1 truncate text-xs text-muted-foreground">{m["brand.tagline"]()}</div> : null}
+      {showTagline ? <div className="mt-1 truncate text-xs text-muted-foreground">{m['brand.tagline']()}</div> : null}
     </div>
   );
 };

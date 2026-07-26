@@ -15,8 +15,8 @@ export const setCodeEditorAriaInvalid = (
   ariaDescribedBy?: string,
 ) => {
   const textbox = editor.getDomNode()?.querySelector('textarea.inputarea, [role="textbox"]');
-  if (invalid) textbox?.setAttribute("aria-invalid", "true");
-  else textbox?.removeAttribute("aria-invalid");
-  if (ariaDescribedBy) textbox?.setAttribute("aria-describedby", ariaDescribedBy);
-  else textbox?.removeAttribute("aria-describedby");
+  if (invalid) textbox?.setAttribute('aria-invalid', 'true');
+  else textbox?.removeAttribute('aria-invalid');
+  if (ariaDescribedBy) textbox?.setAttribute('aria-describedby', ariaDescribedBy);
+  else textbox?.removeAttribute('aria-describedby');
 };

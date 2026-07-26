@@ -1,9 +1,8 @@
-import type { RequestBodyDirection, ServerLogSink } from "../../server-log";
-
-import { logServerEvent, serverErrorDetails, serverErrorType } from "../../server-log";
-import { tapTextBody } from "../body-tap";
-import { currentDebugRequestLogScope } from "../context";
-import { requestMetadata, responseMetadata } from "../request-metadata";
+import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
+import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
+import { tapTextBody } from '../body-tap';
+import { currentDebugRequestLogScope } from '../context';
+import { requestMetadata, responseMetadata } from '../request-metadata';
 
 type BunFetchInit = RequestInit & { readonly decompress?: boolean };
 
@@ -17,7 +16,7 @@ type BodyIdentity = {
 
 type ResponseMetadata = ResponseInit & {
   readonly redirected: boolean;
-  readonly type: Response["type"];
+  readonly type: Response['type'];
   readonly url: string;
 };
 
@@ -36,24 +35,24 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
     const startedAt = performance.now();
     try {
       const request = new Request(input, init);
-      logServerEvent(scope.logger, { event: "request.upstream_snapshot", ...identity, ...requestMetadata(request) });
-      const delegated = requestWithObservedBody(request, { ...identity, direction: "upstream_request" }, scope.logger);
+      logServerEvent(scope.logger, { event: 'request.upstream_snapshot', ...identity, ...requestMetadata(request) });
+      const delegated = requestWithObservedBody(request, { ...identity, direction: 'upstream_request' }, scope.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
       const response = await fetcher(delegated, decompress === undefined ? undefined : { decompress });
       logServerEvent(scope.logger, {
-        event: "request.upstream_result",
+        event: 'request.upstream_result',
         ...identity,
         durationMs: performance.now() - startedAt,
-        outcome: "response",
+        outcome: 'response',
         ...responseMetadata(response),
       });
-      return responseWithObservedBody(response, { ...identity, direction: "upstream_response" }, scope.logger);
+      return responseWithObservedBody(response, { ...identity, direction: 'upstream_response' }, scope.logger);
     } catch (error) {
       logServerEvent(scope.logger, {
-        event: "request.upstream_result",
+        event: 'request.upstream_result',
         ...identity,
         durationMs: performance.now() - startedAt,
-        outcome: "exception",
+        outcome: 'exception',
         ...serverErrorDetails(error),
       });
       throw error;
@@ -65,12 +64,12 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
   const scope = currentDebugRequestLogScope();
   if (scope === undefined) return request;
   logServerEvent(scope.logger, {
-    event: "request.inbound_snapshot",
+    event: 'request.inbound_snapshot',
     requestId: scope.requestId,
     inboundProtocol,
     ...requestMetadata(request),
   });
-  return requestWithObservedBody(request, { requestId: scope.requestId, direction: "inbound" }, scope.logger);
+  return requestWithObservedBody(request, { requestId: scope.requestId, direction: 'inbound' }, scope.logger);
 }
 
 function observedBody(
@@ -82,11 +81,11 @@ function observedBody(
   let sequence = 0;
   return tapTextBody(body, contentType, {
     chunk(text) {
-      logServerEvent(logger, { event: "request.body_chunk", ...identity, sequence: sequence++, text });
+      logServerEvent(logger, { event: 'request.body_chunk', ...identity, sequence: sequence++, text });
     },
     terminal({ byteLength, error, outcome }) {
       logServerEvent(logger, {
-        event: "request.body_terminal",
+        event: 'request.body_terminal',
         ...identity,
         sequence,
         byteLength,
@@ -101,7 +100,7 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
   try {
     const body = request.body;
     if (body === null) return request;
-    const contentType = request.headers.get("content-type");
+    const contentType = request.headers.get('content-type');
     const init: RequestInit = {
       cache: request.cache,
       credentials: request.credentials,
@@ -129,7 +128,7 @@ function responseWithObservedBody(response: Response, identity: BodyIdentity, lo
     const body = response.body;
     if (body === null) return response;
     source = body;
-    contentType = response.headers.get("content-type");
+    contentType = response.headers.get('content-type');
     metadata = {
       headers: response.headers,
       status: response.status,

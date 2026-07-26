@@ -1,12 +1,13 @@
-import { isPlainObject } from "es-toolkit/predicate";
-import { chmod, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 
-import { isNodeError } from "../../file-lock/fs";
-import { acquireConfigLock } from "./lock";
-import { type ConfigRecord, digestProviderEntry, encodeCandidate, parseConfig } from "./serialization";
+import { isPlainObject } from 'es-toolkit/predicate';
 
-export { CONFIG_LOCK_HEARTBEAT_MS, CONFIG_LOCK_STALE_MS, CONFIG_LOCK_WAIT_MS } from "./lock";
-export { digestProviderEntry } from "./serialization";
+import { isNodeError } from '../../file-lock/fs';
+import { acquireConfigLock } from './lock';
+import { type ConfigRecord, digestProviderEntry, encodeCandidate, parseConfig } from './serialization';
+
+export { CONFIG_LOCK_HEARTBEAT_MS, CONFIG_LOCK_STALE_MS, CONFIG_LOCK_WAIT_MS } from './lock';
+export { digestProviderEntry } from './serialization';
 
 export type AtomicConfigTransactionOptions = {
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
@@ -15,15 +16,15 @@ export type AtomicConfigTransactionOptions = {
 };
 
 export class AtomicConfigCommitUncertainError extends Error {
-  override readonly name: string = "AtomicConfigCommitUncertainError";
+  override readonly name: string = 'AtomicConfigCommitUncertainError';
 
   constructor() {
-    super("Config candidate was committed but its final state could not be confirmed");
+    super('Config candidate was committed but its final state could not be confirmed');
   }
 }
 
 export class AtomicConfigLockReleaseError extends AtomicConfigCommitUncertainError {
-  override readonly name = "AtomicConfigLockReleaseError";
+  override readonly name = 'AtomicConfigLockReleaseError';
 
   constructor(cause: unknown) {
     super();
@@ -37,7 +38,7 @@ async function originalFile(path: string): Promise<{ readonly bytes: Uint8Array 
     const [bytes, metadata] = await Promise.all([readFile(path), stat(path)]);
     return { bytes, mode: metadata.mode & 0o777 };
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return { bytes: null, mode: 0o600 };
+    if (isNodeError(error, 'ENOENT')) return { bytes: null, mode: 0o600 };
     throw error;
   }
 }
@@ -106,7 +107,7 @@ export class AtomicConfigFile {
                 try {
                   await lock.withOwnershipFence(() => unlink(this.#path));
                 } catch (rollbackError) {
-                  if (!isNodeError(rollbackError, "ENOENT")) throw rollbackError;
+                  if (!isNodeError(rollbackError, 'ENOENT')) throw rollbackError;
                 }
               } else {
                 await writeAtomic(this.#path, original.bytes, original.mode, tempPath, lock.withOwnershipFence);
@@ -149,7 +150,7 @@ export class AtomicConfigFile {
   }
 
   async providerEntry(providerId: string): Promise<unknown | undefined> {
-    const providers = (await this.read())["providers"];
+    const providers = (await this.read())['providers'];
     return isPlainObject(providers) ? providers[providerId] : undefined;
   }
 

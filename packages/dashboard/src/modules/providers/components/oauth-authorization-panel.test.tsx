@@ -1,15 +1,15 @@
-import { expect, rs, test } from "@rstest/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { expect, rs, test } from '@rstest/core';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { OAuthAuthorizationPanel } from "./oauth-authorization-panel";
+import { OAuthAuthorizationPanel } from './oauth-authorization-panel';
 
-test("shows specific fingerprint mismatch guidance", () => {
+test('shows specific fingerprint mismatch guidance', () => {
   render(
     <OAuthAuthorizationPanel
       session={{
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        status: "failed",
-        code: "PROVIDER_FINGERPRINT_MISMATCH",
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        status: 'failed',
+        code: 'PROVIDER_FINGERPRINT_MISMATCH',
       }}
       onSubmitCallback={rs.fn()}
       onCancel={rs.fn()}
@@ -20,14 +20,14 @@ test("shows specific fingerprint mismatch guidance", () => {
   expect(screen.getByText(/different account|其他账户/u)).toBeTruthy();
 });
 
-test("clears a manually submitted callback URL", async () => {
+test('clears a manually submitted callback URL', async () => {
   const submit = rs.fn();
   render(
     <OAuthAuthorizationPanel
       session={{
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        status: "loopback",
-        authorizationUrl: "https://example.com/authorize",
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        status: 'loopback',
+        authorizationUrl: 'https://example.com/authorize',
         allowManualCallback: true,
       }}
       onSubmitCallback={submit}
@@ -37,20 +37,20 @@ test("clears a manually submitted callback URL", async () => {
   );
 
   const input = screen.getByLabelText(/Complete callback URL|完整回调 URL/u);
-  fireEvent.change(input, { target: { value: "http://127.0.0.1/callback?code=secret" } });
-  fireEvent.click(screen.getByRole("button", { name: /Submit callback|提交回调/u }));
+  fireEvent.change(input, { target: { value: 'http://127.0.0.1/callback?code=secret' } });
+  fireEvent.click(screen.getByRole('button', { name: /Submit callback|提交回调/u }));
 
   await waitFor(() => {
-    expect(submit).toHaveBeenCalledWith("http://127.0.0.1/callback?code=secret");
-    expect(input).toHaveValue("");
+    expect(submit).toHaveBeenCalledWith('http://127.0.0.1/callback?code=secret');
+    expect(input).toHaveValue('');
   });
 });
 
-test("shows a restart action for a cancelled session", () => {
+test('shows a restart action for a cancelled session', () => {
   const restart = rs.fn();
   render(
     <OAuthAuthorizationPanel
-      session={{ id: "550e8400-e29b-41d4-a716-446655440000", status: "cancelled" }}
+      session={{ id: '550e8400-e29b-41d4-a716-446655440000', status: 'cancelled' }}
       onSubmitCallback={rs.fn()}
       onCancel={restart}
       isPending={false}
@@ -58,6 +58,6 @@ test("shows a restart action for a cancelled session", () => {
   );
 
   expect(screen.getByText(/authorization was cancelled|授权已取消/u)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /Start over|重新开始/u }));
+  fireEvent.click(screen.getByRole('button', { name: /Start over|重新开始/u }));
   expect(restart).toHaveBeenCalledTimes(1);
 });

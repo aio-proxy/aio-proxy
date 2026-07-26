@@ -1,14 +1,15 @@
-import { createPluginRepository, type DiagnosticFactory, type PluginRepository } from "@aio-proxy/core";
-import { type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-export const PROVIDER_ID = "person";
-export const PLUGIN = "@example/oauth";
-export const CAPABILITY = "default";
+import { createPluginRepository, type DiagnosticFactory, type PluginRepository } from '@aio-proxy/core';
+import { type OpenDbHandle, openDb } from '@aio-proxy/core/db';
 
-export type QuotaAccountFixtureState = "ready" | "missing" | "mismatch" | "invalid-options" | "invalid-credential";
+export const PROVIDER_ID = 'person';
+export const PLUGIN = '@example/oauth';
+export const CAPABILITY = 'default';
+
+export type QuotaAccountFixtureState = 'ready' | 'missing' | 'mismatch' | 'invalid-options' | 'invalid-credential';
 
 export const diagnostics: DiagnosticFactory = (code, options) => ({
   code,
@@ -26,17 +27,17 @@ export function cleanupQuotaRepositories(): void {
 }
 
 export function createQuotaRepository(
-  accountState: QuotaAccountFixtureState = "ready",
+  accountState: QuotaAccountFixtureState = 'ready',
   providerIds: readonly string[] = [PROVIDER_ID],
 ): PluginRepository {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-plugin-quota-"));
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-plugin-quota-'));
   homes.push(home);
   const handle = openDb({ home });
   handles.push(handle);
   const repository = createPluginRepository(handle.sqlite);
   for (const providerId of providerIds) {
     const operation = repository.stageAccountOperation({
-      kind: "create",
+      kind: 'create',
       targetDigest: `quota-read:${providerId}`,
       account: {
         providerId,
@@ -44,25 +45,25 @@ export function createQuotaRepository(
         capability: CAPABILITY,
         fingerprint: `${providerId}@example.com`,
         options: {},
-        secrets: { clientSecret: "account-secret" },
-        credential: { token: "credential-secret" },
+        secrets: { clientSecret: 'account-secret' },
+        credential: { token: 'credential-secret' },
         catalog: {
-          kind: "missing",
-          diagnostic: diagnostics("CATALOG_UNAVAILABLE", { providerId, retryable: true }),
+          kind: 'missing',
+          diagnostic: diagnostics('CATALOG_UNAVAILABLE', { providerId, retryable: true }),
         },
       },
     });
     repository.completeAccountOperation(operation.operationId);
   }
-  repository.writePluginSecret(PLUGIN, null, { apiKey: "plugin-secret" });
-  if (accountState === "ready") return repository;
+  repository.writePluginSecret(PLUGIN, null, { apiKey: 'plugin-secret' });
+  if (accountState === 'ready') return repository;
   return {
     ...repository,
     readAccount(providerId) {
       const account = repository.readAccount(providerId);
-      if (accountState === "missing" || account === null) return null;
-      if (accountState === "mismatch") return { ...account, capability: "other" };
-      if (accountState === "invalid-options") return { ...account, secrets: [] };
+      if (accountState === 'missing' || account === null) return null;
+      if (accountState === 'mismatch') return { ...account, capability: 'other' };
+      if (accountState === 'invalid-options') return { ...account, secrets: [] };
       return { ...account, credential: { token: 42 } };
     },
   };

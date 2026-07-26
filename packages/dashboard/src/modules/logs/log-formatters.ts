@@ -1,8 +1,7 @@
-import type { UsageRow } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { UsageRow } from '@aio-proxy/types';
 
-import { m } from "@aio-proxy/i18n";
-
-import { createUsageValueFormatter } from "../usage/services/usage-value-formatter";
+import { createUsageValueFormatter } from '../usage/services/usage-value-formatter';
 
 export const displayTotalTokens = (usage: UsageRow | undefined) =>
   usage?.totalTokens ??
@@ -11,11 +10,11 @@ export const displayTotalTokens = (usage: UsageRow | undefined) =>
     : undefined);
 
 export const formatLogCost = (cost: number | undefined, locale = navigator.language) =>
-  cost === undefined ? m["dashboard.logs.not_available"]() : createUsageValueFormatter("cost", locale)(cost);
+  cost === undefined ? m['dashboard.logs.not_available']() : createUsageValueFormatter('cost', locale)(cost);
 
 export const formatDuration = (milliseconds: number, locale = navigator.language) =>
   milliseconds < 1_000
-    ? m["dashboard.logs.duration_ms"]({ value: new Intl.NumberFormat(locale).format(milliseconds) })
-    : m["dashboard.logs.duration_s"]({
+    ? m['dashboard.logs.duration_ms']({ value: new Intl.NumberFormat(locale).format(milliseconds) })
+    : m['dashboard.logs.duration_s']({
         value: new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(milliseconds / 1_000),
       });

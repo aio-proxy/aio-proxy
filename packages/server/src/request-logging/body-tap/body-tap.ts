@@ -1,4 +1,4 @@
-export type BodyTapOutcome = "complete" | "cancelled" | "error";
+export type BodyTapOutcome = 'complete' | 'cancelled' | 'error';
 
 export type BodyTapTerminal = {
   readonly byteLength: number;
@@ -18,13 +18,13 @@ export function tapTextBody(
 ): ReadableStream<Uint8Array> {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const decoder = new TextDecoder();
-  const sse = contentType?.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream";
-  let buffered = "";
+  const sse = contentType?.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
+  let buffered = '';
   let byteLength = 0;
   let diagnosticActive = true;
   let settled = false;
   const sourceReader = () => (reader ??= source.getReader());
-  const terminal = (value: Omit<BodyTapTerminal, "byteLength">) => {
+  const terminal = (value: Omit<BodyTapTerminal, 'byteLength'>) => {
     if (settled) return;
     settled = true;
     try {
@@ -35,7 +35,7 @@ export function tapTextBody(
     if (!diagnosticActive) return;
     try {
       if (!sse) {
-        if (text !== "") observer.chunk(text);
+        if (text !== '') observer.chunk(text);
         return;
       }
       buffered += text;
@@ -44,10 +44,10 @@ export function tapTextBody(
         observer.chunk(buffered.slice(0, end));
         buffered = buffered.slice(end);
       }
-      if (final && buffered !== "") observer.chunk(buffered);
+      if (final && buffered !== '') observer.chunk(buffered);
     } catch (error) {
       diagnosticActive = false;
-      terminal({ outcome: "error", error });
+      terminal({ outcome: 'error', error });
     }
   };
 
@@ -59,7 +59,7 @@ export function tapTextBody(
           const next = await activeReader.read();
           if (next.done) {
             emit(decoder.decode(), true);
-            terminal({ outcome: "complete" });
+            terminal({ outcome: 'complete' });
             try {
               activeReader.releaseLock();
             } catch {}
@@ -70,7 +70,7 @@ export function tapTextBody(
           controller.enqueue(next.value);
           emit(decoder.decode(next.value, { stream: true }));
         } catch (error) {
-          terminal({ outcome: "error", error });
+          terminal({ outcome: 'error', error });
           try {
             reader?.releaseLock();
           } catch {}
@@ -78,7 +78,7 @@ export function tapTextBody(
         }
       },
       async cancel(reason) {
-        terminal({ outcome: "cancelled" });
+        terminal({ outcome: 'cancelled' });
         try {
           await sourceReader().cancel(reason);
         } finally {
@@ -104,7 +104,7 @@ function sseEventEnd(text: string): number {
 }
 
 function lineEndingLength(text: string, index: number): number {
-  if (text[index] === "\n") return 1;
-  if (text[index] !== "\r") return 0;
-  return text[index + 1] === "\n" ? 2 : 1;
+  if (text[index] === '\n') return 1;
+  if (text[index] !== '\r') return 0;
+  return text[index + 1] === '\n' ? 2 : 1;
 }

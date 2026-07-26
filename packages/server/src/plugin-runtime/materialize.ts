@@ -1,14 +1,14 @@
-import type { AccountContext, CredentialPort } from "@aio-proxy/plugin-sdk";
-
-import { type StoredCatalog, validateModelCatalog } from "@aio-proxy/core";
-import { type Diagnostic, providerLoginCommand } from "@aio-proxy/types";
+import { type StoredCatalog, validateModelCatalog } from '@aio-proxy/core';
+import type { AccountContext, CredentialPort } from '@aio-proxy/plugin-sdk';
+import { type Diagnostic, providerLoginCommand } from '@aio-proxy/types';
 
 import {
   OAuthPluginAccountPreparationError,
   type PreparedOAuthPluginAccount,
   prepareOAuthPluginAccount,
-} from "../plugin-account";
-import { createRuntimeProvider, withRoutingConfig } from "./capabilities";
+} from '../plugin-account';
+import type { RuntimeProviderInstance } from '../runtime';
+import { createRuntimeProvider, withRoutingConfig } from './capabilities';
 import {
   catalogDiagnostic,
   catalogFreshness,
@@ -17,19 +17,20 @@ import {
   pluginVersion,
   refreshDiagnostic,
   summary,
-} from "./catalog";
-import { digest, runtimeIdentity } from "./identity";
+} from './catalog';
+import { digest, runtimeIdentity } from './identity';
 import {
   type CatalogJobDescriptor,
   type MaterializePluginProviderOptions,
   PLUGIN_RUNTIME_TIMEOUT_MS,
   type PluginProviderMaterialization,
-} from "./types";
+  type RuntimeIdentityKey,
+} from './types';
 
 function runtimeDeadline<T>(task: Promise<T>): Promise<T> {
   task.catch(() => {});
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Plugin runtime creation timed out")), PLUGIN_RUNTIME_TIMEOUT_MS);
+    const timer = setTimeout(() => reject(new Error('Plugin runtime creation timed out')), PLUGIN_RUNTIME_TIMEOUT_MS);
     task.then(
       (value) => {
         clearTimeout(timer);
@@ -41,6 +42,98 @@ function runtimeDeadline<T>(task: Promise<T>): Promise<T> {
       },
     );
   });
+}
+
+function readStoredCatalog(
+  repository: MaterializePluginProviderOptions['repository'],
+  providerId: string,
+): { readonly storedCatalog: StoredCatalog | null; readonly catalogReadFailed: boolean } {
+  let catalogReadFailed = false;
+  let storedCatalog: StoredCatalog | null;
+  try {
+    storedCatalog = repository.readCatalog(providerId);
+  } catch {
+    catalogReadFailed = true;
+    storedCatalog = null;
+  }
+  if (storedCatalog !== null) {
+    try {
+      storedCatalog = { ...storedCatalog, catalog: validateModelCatalog(storedCatalog.catalog) };
+    } catch {
+      storedCatalog = null;
+    }
+  }
+  return { storedCatalog, catalogReadFailed };
+}
+
+type PersistedSummary = (
+  provider: RuntimeProviderInstance | undefined,
+  catalog: StoredCatalog | null,
+) => PluginProviderMaterialization['summary'];
+type CatalogJobFor = (credentials: CredentialPort<unknown>) => CatalogJobDescriptor;
+
+function catalogUnavailableMaterialization(
+  options: MaterializePluginProviderOptions,
+  unavailable: Diagnostic | undefined,
+  persistedSummary: PersistedSummary,
+  catalogJobFor: CatalogJobFor,
+  createCredentials: () => CredentialPort<unknown>,
+): PluginProviderMaterialization {
+  const { config } = options;
+  const diagnostic =
+    unavailable ??
+    options.diagnostics('CATALOG_UNAVAILABLE', {
+      plugin: config.plugin,
+      capability: config.capability,
+      providerId: config.id,
+      retryable: true,
+    });
+  if (!config.enabled) return { summary: persistedSummary(undefined, null), state: diagnosticState(diagnostic) };
+  const credentials = createCredentials();
+  return {
+    summary: persistedSummary(undefined, null),
+    state: diagnosticState(diagnostic),
+    catalogJob: catalogJobFor(credentials),
+  };
+}
+
+async function createRuntimeMaterialization(
+  options: MaterializePluginProviderOptions,
+  adapter: PreparedOAuthPluginAccount['adapter'],
+  accountOptions: unknown,
+  storedCatalog: StoredCatalog,
+  identity: RuntimeIdentityKey,
+  credentials: CredentialPort<unknown>,
+  catalogJob: CatalogJobDescriptor,
+  state: PluginProviderMaterialization['state'],
+  persistedSummary: PersistedSummary,
+  accountSummary: PreparedOAuthPluginAccount['accountSummary'],
+): Promise<PluginProviderMaterialization> {
+  const { config } = options;
+  try {
+    const result = await runtimeDeadline(
+      Promise.resolve().then(() =>
+        adapter.createRuntime({
+          credentials: credentials as never,
+          options: accountOptions,
+          catalog: storedCatalog.catalog,
+          ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
+          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
+        }),
+      ),
+    );
+    const provider = createRuntimeProvider(config, result, storedCatalog.catalog);
+    const cacheEntry = { identity, provider, credentials };
+    return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
+  } catch (error) {
+    options.logger({
+      event: 'plugin.runtime.create.failed',
+      code: 'RUNTIME_CREATE_FAILED',
+      context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
+      error: { name: error instanceof Error ? error.name : 'Error', message: 'Plugin runtime creation failed' },
+    });
+    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary);
+  }
 }
 
 export async function materializePluginProvider(
@@ -66,7 +159,7 @@ export async function materializePluginProvider(
   try {
     diagnostics = repository.readDiagnostics(config.id);
   } catch {
-    return failure(options, "CREDENTIALS_MISSING_OR_INVALID", false, providerLoginCommand(config.id), accountSummary);
+    return failure(options, 'CREDENTIALS_MISSING_OR_INVALID', false, providerLoginCommand(config.id), accountSummary);
   }
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
@@ -76,26 +169,12 @@ export async function materializePluginProvider(
     };
   }
 
-  let catalogReadFailed = false;
-  let storedCatalog: StoredCatalog | null;
-  try {
-    storedCatalog = repository.readCatalog(config.id);
-  } catch {
-    catalogReadFailed = true;
-    storedCatalog = null;
-  }
-  if (storedCatalog !== null) {
-    try {
-      storedCatalog = { ...storedCatalog, catalog: validateModelCatalog(storedCatalog.catalog) };
-    } catch {
-      storedCatalog = null;
-    }
-  }
+  const { storedCatalog, catalogReadFailed } = readStoredCatalog(repository, config.id);
 
   const unavailable =
     catalogDiagnostic(diagnostics) ??
     (catalogReadFailed
-      ? options.diagnostics("CATALOG_UNAVAILABLE", {
+      ? options.diagnostics('CATALOG_UNAVAILABLE', {
           plugin: config.plugin,
           capability: config.capability,
           providerId: config.id,
@@ -121,21 +200,7 @@ export async function materializePluginProvider(
   });
 
   if (storedCatalog === null) {
-    const diagnostic =
-      unavailable ??
-      options.diagnostics("CATALOG_UNAVAILABLE", {
-        plugin: config.plugin,
-        capability: config.capability,
-        providerId: config.id,
-        retryable: true,
-      });
-    if (!config.enabled) return { summary: persistedSummary(undefined, null), state: diagnosticState(diagnostic) };
-    const credentials = createCredentials();
-    return {
-      summary: persistedSummary(undefined, null),
-      state: diagnosticState(diagnostic),
-      catalogJob: catalogJobFor(credentials),
-    };
+    return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
   const identity = runtimeIdentity({
@@ -150,7 +215,7 @@ export async function materializePluginProvider(
     catalogRefreshedAt: storedCatalog.refreshedAt,
   });
   const state = {
-    status: "ready",
+    status: 'ready',
     catalog: catalogFreshness(adapter.catalog.policy, storedCatalog, unavailable),
     ...(unavailable === undefined ? {} : { diagnostic: unavailable }),
   } as const;
@@ -173,28 +238,16 @@ export async function materializePluginProvider(
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   }
 
-  try {
-    const result = await runtimeDeadline(
-      Promise.resolve().then(() =>
-        adapter.createRuntime({
-          credentials: credentials as never,
-          options: accountOptions,
-          catalog: storedCatalog.catalog,
-          ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
-          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
-        }),
-      ),
-    );
-    const provider = createRuntimeProvider(config, result, storedCatalog.catalog);
-    const cacheEntry = { identity, provider, credentials };
-    return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
-  } catch (error) {
-    options.logger({
-      event: "plugin.runtime.create.failed",
-      code: "RUNTIME_CREATE_FAILED",
-      context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
-      error: { name: error instanceof Error ? error.name : "Error", message: "Plugin runtime creation failed" },
-    });
-    return failure(options, "RUNTIME_CREATE_FAILED", true, undefined, accountSummary);
-  }
+  return createRuntimeMaterialization(
+    options,
+    adapter,
+    accountOptions,
+    storedCatalog,
+    identity,
+    credentials,
+    catalogJob,
+    state,
+    persistedSummary,
+    accountSummary,
+  );
 }

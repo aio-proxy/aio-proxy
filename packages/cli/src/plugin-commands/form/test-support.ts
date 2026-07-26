@@ -1,6 +1,6 @@
-import { zod } from "@aio-proxy/plugin-sdk";
+import { zod } from '@aio-proxy/plugin-sdk';
 
-import type { PluginFormPrompts } from "./index";
+import type { PluginFormPrompts } from './index';
 
 export type PromptCall = { type: string; config: unknown; signal?: AbortSignal };
 
@@ -11,10 +11,10 @@ export function prompts(values: readonly unknown[], calls: PromptCall[] = []): P
     return values[index++];
   };
   return {
-    input: next("input") as PluginFormPrompts["input"],
-    password: next("password") as PluginFormPrompts["password"],
-    confirm: next("confirm") as PluginFormPrompts["confirm"],
-    select: next("select") as PluginFormPrompts["select"],
+    input: next('input') as PluginFormPrompts['input'],
+    password: next('password') as PluginFormPrompts['password'],
+    confirm: next('confirm') as PluginFormPrompts['confirm'],
+    select: next('select') as PluginFormPrompts['select'],
   };
 }
 
@@ -24,23 +24,23 @@ export const spec = {
     token: zod.string().min(1).optional(),
     retries: zod.number().int(),
     enabled: zod.boolean(),
-    region: zod.enum(["us", "eu"]),
-    advanced: zod.object({ mode: zod.literal("strict") }),
+    region: zod.enum(['us', 'eu']),
+    advanced: zod.object({ mode: zod.literal('strict') }),
   }),
   form: [
-    { type: "text", key: "endpoint", label: "Endpoint" },
-    { type: "secret", key: "token", label: "Token" },
-    { type: "number", key: "retries", label: "Retries" },
-    { type: "boolean", key: "enabled", label: "Enabled", defaultValue: false },
+    { type: 'text', key: 'endpoint', label: 'Endpoint' },
+    { type: 'secret', key: 'token', label: 'Token' },
+    { type: 'number', key: 'retries', label: 'Retries' },
+    { type: 'boolean', key: 'enabled', label: 'Enabled', defaultValue: false },
     {
-      type: "select",
-      key: "region",
-      label: "Region",
+      type: 'select',
+      key: 'region',
+      label: 'Region',
       options: [
-        { label: "US", value: "us" },
-        { label: "EU", value: "eu" },
+        { label: 'US', value: 'us' },
+        { label: 'EU', value: 'eu' },
       ],
     },
-    { type: "json", key: "advanced", label: "Advanced" },
+    { type: 'json', key: 'advanced', label: 'Advanced' },
   ],
 } as const;

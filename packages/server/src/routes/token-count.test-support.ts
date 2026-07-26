@@ -1,21 +1,19 @@
-import type { TokenCountCapability } from "@aio-proxy/plugin-sdk";
-
 import {
   anthropicMessagesAdapter,
   geminiGenerateContentAdapter,
   openAIResponsesAdapter,
   Router,
-} from "@aio-proxy/core";
-import { ConfigSchema, ProviderKind, type ProviderProtocol } from "@aio-proxy/types";
+} from '@aio-proxy/core';
+import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
+import { ConfigSchema, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 
-import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
-import type { ServerLog } from "../server-log";
+import { createRecording } from '../../__tests__/pipeline-helpers/recording';
+import { LogicalSessionStore } from '../logical-session-store';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
+import type { ServerLog } from '../server-log';
+import { handleTokenCount } from './token-count';
 
-import { createRecording } from "../../_test/pipeline-helpers/recording";
-import { LogicalSessionStore } from "../logical-session-store";
-import { handleTokenCount } from "./token-count";
-
-export const requestedModel = "count-model";
+export const requestedModel = 'count-model';
 
 export function countFixture(
   providers: readonly RuntimeProviderInstance[],
@@ -39,10 +37,10 @@ export function countFixture(
     requestRecorder: recording.recorder,
     usageCapture: {
       passthrough(): never {
-        throw new Error("token counting must not capture generation usage");
+        throw new Error('token counting must not capture generation usage');
       },
       stream(): never {
-        throw new Error("token counting must not capture generation usage");
+        throw new Error('token counting must not capture generation usage');
       },
     },
   } satisfies ProviderRouteSource;
@@ -82,7 +80,7 @@ export function provider(options: {
   readonly id: string;
   readonly supportsProviderTool?: boolean;
   readonly targetProtocol?: ProviderProtocol;
-  readonly tokenCount?: TokenCountCapability["countTokens"];
+  readonly tokenCount?: TokenCountCapability['countTokens'];
 }): RuntimeProviderInstance {
   return {
     alias: { [requestedModel]: { model: `${options.id}-wire`, preserve: false } },
@@ -91,7 +89,7 @@ export function provider(options: {
     kind: ProviderKind.OAuth,
     model: {
       invoke() {
-        throw new Error("generation must not run during token counting");
+        throw new Error('generation must not run during token counting');
       },
       supportsProviderTool: () => options.supportsProviderTool === true,
       ...(options.targetProtocol === undefined ? {} : { targetProtocol: () => options.targetProtocol }),
@@ -107,7 +105,7 @@ export function configOrderedProviders(
     providers: Object.fromEntries(
       entries.map(({ provider, weight }) => [
         provider.id,
-        { kind: "ai-sdk", models: [requestedModel], packageName: "@example/provider", weight },
+        { kind: 'ai-sdk', models: [requestedModel], packageName: '@example/provider', weight },
       ]),
     ),
   });
@@ -115,7 +113,7 @@ export function configOrderedProviders(
   return config.providers.map(({ id }) => byId.get(id) as RuntimeProviderInstance);
 }
 
-export function counter(id: string, inputTokens: number, calls: string[]): TokenCountCapability["countTokens"] {
+export function counter(id: string, inputTokens: number, calls: string[]): TokenCountCapability['countTokens'] {
   return async () => {
     calls.push(id);
     return { inputTokens };
@@ -123,28 +121,28 @@ export function counter(id: string, inputTokens: number, calls: string[]): Token
 }
 
 export function anthropicRequest(overrides: Readonly<Record<string, unknown>> = {}): Request {
-  return jsonRequest("https://proxy.test/v1/messages/count_tokens", {
+  return jsonRequest('https://proxy.test/v1/messages/count_tokens', {
     model: requestedModel,
     max_tokens: 16,
-    messages: [{ role: "user", content: "hello" }],
+    messages: [{ role: 'user', content: 'hello' }],
     ...overrides,
   });
 }
 
 export function geminiRequest(): Request {
   return jsonRequest(`https://proxy.test/v1beta/models/${requestedModel}:countTokens`, {
-    contents: [{ role: "user", parts: [{ text: "hello" }] }],
+    contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
   });
 }
 
 export function openAIResponsesRequest(): Request {
-  return jsonRequest("https://proxy.test/v1/responses/input_tokens", {
+  return jsonRequest('https://proxy.test/v1/responses/input_tokens', {
     model: requestedModel,
     input: [
-      { type: "custom_tool_call", call_id: "call_1", name: "exec", input: "pwd" },
-      { type: "custom_tool_call_output", call_id: "call_1", output: "done" },
+      { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+      { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
     ],
-    tools: [{ type: "custom", name: "exec", description: "shell", format: { type: "text" } }],
+    tools: [{ type: 'custom', name: 'exec', description: 'shell', format: { type: 'text' } }],
   });
 }
 
@@ -154,8 +152,8 @@ export function geminiContext() {
 
 function jsonRequest(url: string, body: unknown): Request {
   return new Request(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }

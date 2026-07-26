@@ -3,25 +3,24 @@ import {
   AtomicConfigFile,
   type PendingAccountOperation,
   type PluginRepository,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
 
-import type { FifoQueue } from "./fifo-queue";
-import type { RetiredProviderSnapshot } from "./runtime";
-
-import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from "./account-removal";
-import { createFifoQueue } from "./fifo-queue";
+import { type AccountRemovalCoordinator, asProviderRecord, createAccountRemovalCoordinator } from './account-removal';
+import type { FifoQueue } from './fifo-queue';
+import { createFifoQueue } from './fifo-queue';
+import type { RetiredProviderSnapshot } from './runtime';
 
 export class ConfigPathMissingError extends Error {
   constructor() {
-    super("config file path is not configured");
-    this.name = "ConfigPathMissingError";
+    super('config file path is not configured');
+    this.name = 'ConfigPathMissingError';
   }
 }
 
 export class ConfigReloadRejectedError extends Error {
   constructor(reason: string) {
     super(`config reload rejected: ${reason}`);
-    this.name = "ConfigReloadRejectedError";
+    this.name = 'ConfigReloadRejectedError';
   }
 }
 
@@ -66,7 +65,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     try {
       await file.transaction(
         async (current) => {
-          const providers = asProviderRecord(current["providers"]);
+          const providers = asProviderRecord(current['providers']);
           const nextProviders = fn(providers);
           staged.push(...accountRemovals.stageRemoved(providers, nextProviders));
           return { next: { ...current, providers: nextProviders }, result: undefined };

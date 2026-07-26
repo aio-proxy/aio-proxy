@@ -1,4 +1,4 @@
-import { RequestMappingIndex } from "./replay-cache/request-mapping-index";
+import { RequestMappingIndex } from './replay-cache/request-mapping-index';
 
 const DEFAULT_TTL_MS = 3_600_000;
 const DEFAULT_MAX_ENTRIES = 10_240;
@@ -7,13 +7,13 @@ export type ReplayKey = `${string}\u0000sha256:${string}`;
 export type ReplayScope = { readonly key: ReplayKey; readonly requestId: string; readonly generation: number };
 export type ReplayPart =
   | {
-      readonly type: "thought-signature";
+      readonly type: 'thought-signature';
       readonly contentIndex: number;
       readonly partIndex: number;
       readonly signature: string;
     }
   | {
-      readonly type: "function-call";
+      readonly type: 'function-call';
       readonly contentIndex: number;
       readonly partIndex: number;
       readonly call: unknown;

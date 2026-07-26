@@ -3,7 +3,7 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { reado
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
 export type JsonValidationMarker = {
-  readonly severity: "error" | "warning";
+  readonly severity: 'error' | 'warning';
 };
 
 export type JsonEditorValidation = {
@@ -27,7 +27,7 @@ export type JsonValidationState = {
 };
 
 export const createJsonEditorModelUri = (generatedId: string, id?: string) =>
-  `inmemory://aio-proxy/json-editor/${encodeURIComponent(id ?? "editor")}-${encodeURIComponent(generatedId)}.json`;
+  `inmemory://aio-proxy/json-editor/${encodeURIComponent(id ?? 'editor')}-${encodeURIComponent(generatedId)}.json`;
 
 export const createJsonValidationState = (draft: string, schema: JsonSchema | undefined): JsonValidationState => ({
   generation: 1,
@@ -65,7 +65,7 @@ export const completeJsonValidation = (
 ): JsonValidationState => (generation === state.generation ? { ...state, pending: false, markers } : state);
 
 export const parseJsonDraft = (draft: string): JsonDraftParseResult => {
-  if (draft.trim() === "") return { ok: true, value: undefined };
+  if (draft.trim() === '') return { ok: true, value: undefined };
 
   try {
     return { ok: true, value: JSON.parse(draft) as JsonValue };
@@ -85,7 +85,7 @@ export const mergeJsonValidation = ({
   readonly pending?: boolean;
   readonly schema?: JsonSchema;
 }): JsonEditorValidation => ({
-  valid: syntaxValid && !pending && !markers.some(({ severity }) => severity === "error"),
+  valid: syntaxValid && !pending && !markers.some(({ severity }) => severity === 'error'),
   syntaxValid,
   pending,
   markers,

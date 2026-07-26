@@ -23,7 +23,7 @@ object keys are not templatable); missing values become empty strings before val
 guarantee injected proxy fetch support; third-party dynamic packages are best effort.
 
 ```yaml
-proxy: "{{env.GLOBAL_PROXY}}"
+proxy: '{{env.GLOBAL_PROXY}}'
 
 providers:
   openai:
@@ -33,13 +33,13 @@ providers:
     apiKey: $OPENAI_API_KEY
     proxy: false
     headers:
-      Authorization: "Bearer {{env.OPENAI_UPSTREAM_TOKEN}}"
-      X-Tenant: "{{env.TENANT_ID}}"
+      Authorization: 'Bearer {{env.OPENAI_UPSTREAM_TOKEN}}'
+      X-Tenant: '{{env.TENANT_ID}}'
 
   anthropic-sdk:
     kind: ai-sdk
-    packageName: "@ai-sdk/anthropic"
-    proxy: "{{env.ANTHROPIC_PROXY}}"
+    packageName: '@ai-sdk/anthropic'
+    proxy: '{{env.ANTHROPIC_PROXY}}'
     options:
-      apiKey: "{{env.ANTHROPIC_API_KEY}}"
+      apiKey: '{{env.ANTHROPIC_API_KEY}}'
 ```

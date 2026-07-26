@@ -1,7 +1,7 @@
-import { defineConfig, mergeRslibConfig, type RsbuildPlugin, type RslibConfig } from "@rslib/core";
+import { defineConfig, mergeRslibConfig, type RsbuildPlugin, type RslibConfig } from '@rslib/core';
 
-type LibraryBuildConfig = Omit<RslibConfig, "lib"> & {
-  readonly lib?: RslibConfig["lib"];
+type LibraryBuildConfig = Omit<RslibConfig, 'lib'> & {
+  readonly lib?: RslibConfig['lib'];
 };
 
 export type { RsbuildPlugin };
@@ -10,22 +10,23 @@ export const defineLibraryConfig = (options: LibraryBuildConfig = {}): RslibConf
   const baseConfig: RslibConfig = {
     lib: [
       {
-        id: "library",
-        format: "esm",
+        id: 'library',
+        format: 'esm',
         bundle: false,
         dts: true,
         source: {
           entry: {
             index: [
-              "./src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
-              "!./src/**/*.d.ts",
-              "!./src/**/*.test.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+              './src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}',
+              '!./src/**/*.d.ts',
+              '!./src/**/*.test.{js,jsx,mjs,cjs,ts,tsx,mts,cts}',
+              '!./src/**/*.test-support.{js,jsx,mjs,cjs,ts,tsx,mts,cts}',
             ],
           },
         },
         output: {
           distPath: {
-            root: "./dist",
+            root: './dist',
           },
         },
       },

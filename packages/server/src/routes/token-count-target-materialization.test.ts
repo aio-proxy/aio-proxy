@@ -1,15 +1,15 @@
-import type { TokenCountInput } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { ProviderProtocol } from "@aio-proxy/types";
-import { expect, test } from "bun:test";
+import type { TokenCountInput } from '@aio-proxy/plugin-sdk';
+import { ProviderProtocol } from '@aio-proxy/types';
 
-import { countFixture, provider, requestedModel } from "./token-count.test-support";
+import { countFixture, provider, requestedModel } from './token-count.test-support';
 
-test("materializes custom tools for the token-count target protocol", async () => {
-  let countedInvocation: TokenCountInput["invocation"] | undefined;
+test('materializes custom tools for the token-count target protocol', async () => {
+  let countedInvocation: TokenCountInput['invocation'] | undefined;
   const fixture = countFixture([
     provider({
-      id: "responses",
+      id: 'responses',
       targetProtocol: ProviderProtocol.OpenAIResponse,
       tokenCount: async ({ invocation }) => {
         countedInvocation = invocation;
@@ -21,19 +21,19 @@ test("materializes custom tools for the token-count target protocol", async () =
   const response = await fixture.openAIResponses();
 
   expect(await response.json()).toEqual({ input_tokens: 9 });
-  expect(countedInvocation?.tools?.exec).toMatchObject({ type: "provider" });
+  expect(countedInvocation?.tools?.exec).toMatchObject({ type: 'provider' });
   expect(countedInvocation?.messages[0]).toMatchObject({
-    role: "assistant",
-    content: [{ type: "tool-call", toolCallId: "call_1", toolName: "exec", input: "pwd" }],
+    role: 'assistant',
+    content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec', input: 'pwd' }],
   });
 });
 
-test("skips token counters that cannot preserve image detail", async () => {
+test('skips token counters that cannot preserve image detail', async () => {
   let incompatibleCalls = 0;
-  let countedInvocation: TokenCountInput["invocation"] | undefined;
+  let countedInvocation: TokenCountInput['invocation'] | undefined;
   const fixture = countFixture([
     provider({
-      id: "anthropic",
+      id: 'anthropic',
       targetProtocol: ProviderProtocol.Anthropic,
       tokenCount: async () => {
         incompatibleCalls += 1;
@@ -41,7 +41,7 @@ test("skips token counters that cannot preserve image detail", async () => {
       },
     }),
     provider({
-      id: "responses",
+      id: 'responses',
       targetProtocol: ProviderProtocol.OpenAIResponse,
       tokenCount: async ({ invocation }) => {
         countedInvocation = invocation;
@@ -51,12 +51,12 @@ test("skips token counters that cannot preserve image detail", async () => {
   ]);
 
   const response = await fixture.openAIResponses(
-    jsonRequest("https://proxy.test/v1/responses/input_tokens", {
+    jsonRequest('https://proxy.test/v1/responses/input_tokens', {
       model: requestedModel,
       input: [
         {
-          role: "user",
-          content: [{ type: "input_image", image_url: "data:image/png;base64,AA==", detail: "low" }],
+          role: 'user',
+          content: [{ type: 'input_image', image_url: 'data:image/png;base64,AA==', detail: 'low' }],
         },
       ],
     }),
@@ -65,17 +65,17 @@ test("skips token counters that cannot preserve image detail", async () => {
   expect(await response.json()).toEqual({ input_tokens: 9 });
   expect(incompatibleCalls).toBe(0);
   expect(countedInvocation?.messages[0]).toMatchObject({
-    role: "user",
-    content: [{ providerOptions: { openai: { imageDetail: "low" } } }],
+    role: 'user',
+    content: [{ providerOptions: { openai: { imageDetail: 'low' } } }],
   });
 });
 
-test("skips token counters that cannot preserve Gemini model-history images", async () => {
+test('skips token counters that cannot preserve Gemini model-history images', async () => {
   let incompatibleCalls = 0;
-  let countedInvocation: TokenCountInput["invocation"] | undefined;
+  let countedInvocation: TokenCountInput['invocation'] | undefined;
   const fixture = countFixture([
     provider({
-      id: "anthropic",
+      id: 'anthropic',
       targetProtocol: ProviderProtocol.Anthropic,
       tokenCount: async () => {
         incompatibleCalls += 1;
@@ -83,7 +83,7 @@ test("skips token counters that cannot preserve Gemini model-history images", as
       },
     }),
     provider({
-      id: "gemini",
+      id: 'gemini',
       targetProtocol: ProviderProtocol.Gemini,
       tokenCount: async ({ invocation }) => {
         countedInvocation = invocation;
@@ -96,10 +96,10 @@ test("skips token counters that cannot preserve Gemini model-history images", as
     jsonRequest(`https://proxy.test/v1beta/models/${requestedModel}:countTokens`, {
       contents: [
         {
-          role: "model",
+          role: 'model',
           parts: [
-            { inlineData: { mimeType: "image/png", data: "AA==" } },
-            { fileData: { mimeType: "image/png", fileUri: "https://example.test/prior.png" } },
+            { inlineData: { mimeType: 'image/png', data: 'AA==' } },
+            { fileData: { mimeType: 'image/png', fileUri: 'https://example.test/prior.png' } },
           ],
         },
       ],
@@ -109,13 +109,13 @@ test("skips token counters that cannot preserve Gemini model-history images", as
   expect(await response.json()).toEqual({ totalTokens: 9 });
   expect(incompatibleCalls).toBe(0);
   expect(countedInvocation?.messages[0]).toEqual({
-    role: "assistant",
+    role: 'assistant',
     content: [
-      { type: "file", mediaType: "image/png", data: { type: "data", data: "AA==" } },
+      { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AA==' } },
       {
-        type: "file",
-        mediaType: "image/png",
-        data: { type: "reference", reference: { google: "https://example.test/prior.png" } },
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'reference', reference: { google: 'https://example.test/prior.png' } },
       },
     ],
   });
@@ -123,8 +123,8 @@ test("skips token counters that cannot preserve Gemini model-history images", as
 
 function jsonRequest(url: string, body: unknown): Request {
   return new Request(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }

@@ -1,22 +1,22 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { providerLoginCommand } from "./commands";
-import { IdSchema } from "./common";
-import { type DiagnosticCode, ProviderStateSchema } from "./plugin";
-import { ProviderKind, ProviderProtocolSchema } from "./provider";
+import { providerLoginCommand } from './commands';
+import { IdSchema } from './common';
+import { type DiagnosticCode, ProviderStateSchema } from './plugin';
+import { ProviderKind, ProviderProtocolSchema } from './provider';
 import {
   RequestOutcomeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
   UsageRowSchema,
-} from "./usage";
+} from './usage';
 
-export const DashboardProviderProbeSchema = z.enum(["OK", "FAIL"]);
+export const DashboardProviderProbeSchema = z.enum(['OK', 'FAIL']);
 
 export const DashboardProviderSummarySchema = z.object({
   id: IdSchema,
-  kind: z.union([z.enum(ProviderKind), z.literal("invalid")]),
+  kind: z.union([z.enum(ProviderKind), z.literal('invalid')]),
   enabled: z.boolean(),
   passthrough: z.boolean(),
   last_status: z.string(),
@@ -30,7 +30,7 @@ export const DashboardProviderSummarySchema = z.object({
   capability: z.string().optional(),
   accountLabel: z.string().optional(),
   expiresAt: z.number().int().optional(),
-  catalogLastSuccessAt: z.string().datetime().optional(),
+  catalogLastSuccessAt: z.iso.datetime().optional(),
 });
 
 export const DashboardProvidersResponseSchema = z.object({
@@ -56,7 +56,7 @@ export const DashboardUsageSummarySchema = z.object({
 
 export const DashboardUsageSeriesSchema = z.object({
   key: z.string().min(1),
-  kind: z.enum(["dimension", "other", "failed", "cancelled"]),
+  kind: z.enum(['dimension', 'other', 'failed', 'cancelled']),
 });
 
 export const DashboardUsageBucketSchema = z.object({
@@ -68,9 +68,9 @@ export const DashboardUsageOverviewResponseSchema = z.object({
   range: UsageOverviewRangeSchema,
   metric: UsageOverviewMetricSchema,
   groupBy: UsageOverviewGroupBySchema,
-  rangeStart: z.string().datetime(),
-  rangeEnd: z.string().datetime(),
-  bucketUnit: z.enum(["hour", "day"]),
+  rangeStart: z.iso.datetime(),
+  rangeEnd: z.iso.datetime(),
+  bucketUnit: z.enum(['hour', 'day']),
   summary: DashboardUsageSummarySchema,
   series: z.array(DashboardUsageSeriesSchema),
   buckets: z.array(DashboardUsageBucketSchema),
@@ -108,8 +108,8 @@ export const DashboardRequestLogSchema = z.object({
   finalStatusCode: z.number().int().optional(),
   errorCode: z.string().optional(),
   attempts: z.array(DashboardRequestAttemptSchema),
-  startedAt: z.string().datetime(),
-  completedAt: z.string().datetime(),
+  startedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime(),
   durationMs: z.number().int().min(0),
   usage: UsageRowSchema.optional(),
 });
@@ -122,9 +122,9 @@ export const DashboardRequestLogsResponseSchema = z.object({
   pageCount: z.number().int().min(0),
 });
 
-export const DashboardEventSchema = z.discriminatedUnion("event", [
+export const DashboardEventSchema = z.discriminatedUnion('event', [
   z.object({
-    event: z.literal("config.changed"),
+    event: z.literal('config.changed'),
     data: z.object({
       providerIds: z.object({
         added: z.array(IdSchema),
@@ -133,14 +133,14 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
     }),
   }),
   z.object({
-    event: z.literal("events.dropped"),
+    event: z.literal('events.dropped'),
     data: z.object({
       queuedBytes: z.number().int().min(0),
       queuedEvents: z.number().int().min(0),
     }),
   }),
   z.object({
-    event: z.literal("trace.start"),
+    event: z.literal('trace.start'),
     data: z.object({
       trace_id: IdSchema,
       providerId: IdSchema,
@@ -148,14 +148,14 @@ export const DashboardEventSchema = z.discriminatedUnion("event", [
     }),
   }),
   z.object({
-    event: z.literal("trace.delta"),
+    event: z.literal('trace.delta'),
     data: z.object({
       trace_id: IdSchema,
       textDelta: z.string(),
     }),
   }),
   z.object({
-    event: z.literal("trace.end"),
+    event: z.literal('trace.end'),
     data: z.object({
       trace_id: IdSchema,
       usage: UsageRowSchema.optional(),
@@ -169,13 +169,13 @@ export type DashboardProviderSummaryInput = z.input<typeof DashboardProviderSumm
 export type DashboardProviderSummary = z.output<typeof DashboardProviderSummarySchema>;
 
 const providerLoginDiagnosticCodes: ReadonlySet<DiagnosticCode> = new Set([
-  "ACCOUNT_OPTIONS_INVALID",
-  "CREDENTIALS_MISSING_OR_INVALID",
-  "CREDENTIAL_REFRESH_FAILED",
+  'ACCOUNT_OPTIONS_INVALID',
+  'CREDENTIALS_MISSING_OR_INVALID',
+  'CREDENTIAL_REFRESH_FAILED',
 ]);
 
 export const dashboardProviderSuggestedCommand = (
-  provider: Pick<DashboardProviderSummary, "id" | "state">,
+  provider: Pick<DashboardProviderSummary, 'id' | 'state'>,
 ): string | undefined => {
   const diagnostic = provider.state.diagnostic;
   if (diagnostic === undefined) return undefined;
@@ -187,9 +187,9 @@ export const dashboardProviderSuggestedCommand = (
 };
 
 export const dashboardProviderNeedsReauthorization = (
-  provider: Pick<DashboardProviderSummary, "id" | "kind" | "state">,
+  provider: Pick<DashboardProviderSummary, 'id' | 'kind' | 'state'>,
 ): boolean =>
-  provider.kind === "oauth" && dashboardProviderSuggestedCommand(provider) === providerLoginCommand(provider.id);
+  provider.kind === 'oauth' && dashboardProviderSuggestedCommand(provider) === providerLoginCommand(provider.id);
 
 export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersResponseSchema>;
 export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;

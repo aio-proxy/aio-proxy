@@ -1,1 +1,1 @@
-export { redactLogText, redactLogValue } from "./redact";
+export { redactLogText, redactLogValue } from './redact';
