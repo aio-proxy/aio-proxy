@@ -1,14 +1,13 @@
-import { REQUEST_BODY_LIMITS } from "@aio-proxy/core";
-
-import type { UsageCompletion } from "../../usage-capture";
+import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 
 import {
   createProtocolContext,
   defineProtocolAdapter,
   defineProviderRouteSource,
   type FakeProvider,
-} from "../../../_test/pipeline-helpers";
-import { handleProtocolRequest } from "./index";
+} from '../../../__tests__/pipeline-helpers';
+import type { UsageCompletion } from '../../usage-capture';
+import { handleProtocolRequest } from './index';
 
 export const MAX_BODY_BYTES = REQUEST_BODY_LIMITS.encoded;
 
@@ -31,6 +30,6 @@ export function pipeline(
   };
 }
 
-export function attemptsOf(recording: ReturnType<typeof defineProviderRouteSource>["recording"]) {
+export function attemptsOf(recording: ReturnType<typeof defineProviderRouteSource>['recording']) {
   return recording.attempts.map(({ outcome, providerId, statusCode }) => ({ outcome, providerId, statusCode }));
 }

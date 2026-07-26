@@ -1,4 +1,4 @@
-import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
+import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
 
 import {
   AuthorizationUrlInvalidError,
@@ -8,7 +8,7 @@ import {
   LoopbackOAuthError,
   LoopbackRequestInvalidError,
   LoopbackStateMismatchError,
-} from "./errors";
+} from './errors';
 
 type UntrustedLoopbackRequest = {
   readonly state?: unknown;
@@ -30,27 +30,27 @@ function invalidLoopbackRequest(): never {
 export function requireValidRequest(request: LoopbackRequest): void {
   try {
     const value: unknown = request;
-    if (typeof value !== "object" || value === null) invalidLoopbackRequest();
+    if (typeof value !== 'object' || value === null) invalidLoopbackRequest();
     const candidate = value as UntrustedLoopbackRequest;
     const { state, redirect, authorizationUrl, allowManualCallbackUrl } = candidate;
     if (
-      typeof state !== "string" ||
+      typeof state !== 'string' ||
       state.trim().length === 0 ||
-      typeof redirect !== "object" ||
+      typeof redirect !== 'object' ||
       redirect === null ||
-      typeof authorizationUrl !== "function" ||
-      typeof allowManualCallbackUrl !== "boolean"
+      typeof authorizationUrl !== 'function' ||
+      typeof allowManualCallbackUrl !== 'boolean'
     ) {
       invalidLoopbackRequest();
     }
     const { hostname, port, path } = redirect as UntrustedRedirect;
     if (
-      (hostname !== "localhost" && hostname !== "127.0.0.1") ||
-      (port !== "dynamic" && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65_535)) ||
-      typeof path !== "string" ||
-      !path.startsWith("/") ||
-      path.includes("?") ||
-      path.includes("#")
+      (hostname !== 'localhost' && hostname !== '127.0.0.1') ||
+      (port !== 'dynamic' && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535)) ||
+      typeof path !== 'string' ||
+      !path.startsWith('/') ||
+      path.includes('?') ||
+      path.includes('#')
     ) {
       invalidLoopbackRequest();
     }
@@ -67,7 +67,7 @@ export function requireHttpUrl(value: string): URL {
   } catch {
     throw new AuthorizationUrlInvalidError();
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new AuthorizationUrlInvalidError();
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new AuthorizationUrlInvalidError();
   return url;
 }
 
@@ -102,15 +102,15 @@ export function parseCallback(
     callback.hostname !== expected.hostname ||
     callback.port !== expected.port ||
     callback.pathname !== expected.pathname ||
-    callback.username !== "" ||
-    callback.password !== "" ||
-    callback.hash !== ""
+    callback.username !== '' ||
+    callback.password !== '' ||
+    callback.hash !== ''
   ) {
     throw new LoopbackCallbackMismatchError();
   }
-  if (callback.searchParams.get("state") !== expectedState) throw new LoopbackStateMismatchError();
-  if (callback.searchParams.get("error") !== null) throw new LoopbackOAuthError();
-  const code = callback.searchParams.get("code");
+  if (callback.searchParams.get('state') !== expectedState) throw new LoopbackStateMismatchError();
+  if (callback.searchParams.get('error') !== null) throw new LoopbackOAuthError();
+  const code = callback.searchParams.get('code');
   if (code === null || code.length === 0) throw new LoopbackCodeMissingError();
   return { code };
 }

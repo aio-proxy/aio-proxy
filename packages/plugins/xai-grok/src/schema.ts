@@ -1,4 +1,4 @@
-import { zod } from "@aio-proxy/plugin-sdk";
+import { zod } from '@aio-proxy/plugin-sdk';
 
 export const credentialSchema = zod.object({
   accessToken: zod.string().min(1),

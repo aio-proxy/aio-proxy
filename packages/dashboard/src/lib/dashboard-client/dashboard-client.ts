@@ -1,6 +1,5 @@
-import type { AppType } from "@aio-proxy/server";
-
-import { hc } from "hono/client";
+import type { AppType } from '@aio-proxy/server';
+import { hc } from 'hono/client';
 
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};
@@ -24,12 +23,12 @@ async function isDashboardUnavailable(response: Response): Promise<boolean> {
   if (response.status !== 503) return false;
   try {
     const body = (await response.clone().json()) as { readonly error?: unknown };
-    return body.error === "dashboard_unavailable";
+    return body.error === 'dashboard_unavailable';
   } catch {
     return false;
   }
 }
 
-export const createDashboardClient = (baseUrl = "") => hc<AppType>(baseUrl, { fetch: dashboardFetch });
+export const createDashboardClient = (baseUrl = '') => hc<AppType>(baseUrl, { fetch: dashboardFetch });
 
-export const dashboardClient = createDashboardClient("");
+export const dashboardClient = createDashboardClient('');

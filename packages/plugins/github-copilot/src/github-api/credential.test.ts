@@ -1,26 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 
-import { currentGitHubCopilotCredential, fetchCopilotToken } from ".";
-import { credentialPort, withFetchMock } from "../../_test/test-support";
+import { currentGitHubCopilotCredential, fetchCopilotToken } from '.';
+import { credentialPort, withFetchMock } from '../../__tests__/test-support';
 
-describe("GitHub Copilot credential", () => {
-  test("calculates token expiry in milliseconds", async () => {
+describe('GitHub Copilot credential', () => {
+  test('calculates token expiry in milliseconds', async () => {
     const result = await withFetchMock(
-      async () => Response.json({ token: "copilot-token", expires_at: 9_999_999_999 }),
-      () => fetchCopilotToken("https://api.github.com", "github-token", new AbortController().signal),
+      async () => Response.json({ token: 'copilot-token', expires_at: 9_999_999_999 }),
+      () => fetchCopilotToken('https://api.github.com', 'github-token', new AbortController().signal),
     );
 
-    expect(result).toEqual({ access: "copilot-token", expires: 9_999_999_999_000 });
+    expect(result).toEqual({ access: 'copilot-token', expires: 9_999_999_999_000 });
   });
 
-  test("refreshes an expired token with the credential port signal", async () => {
+  test('refreshes an expired token with the credential port signal', async () => {
     const refreshSignal = new AbortController().signal;
     const credentials = credentialPort(
       {
-        githubToken: "github-token",
-        copilotToken: "stale-token",
+        githubToken: 'github-token',
+        copilotToken: 'stale-token',
         expiresAt: 0,
-        baseURL: "https://stale.example",
+        baseURL: 'https://stale.example',
       },
       refreshSignal,
     );
@@ -30,7 +30,7 @@ describe("GitHub Copilot credential", () => {
       async (_input, init) => {
         refreshSignals.push(init?.signal as AbortSignal);
         return Response.json({
-          token: "tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;",
+          token: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',
           expires_at: 9_999_999_999,
         });
       },
@@ -39,10 +39,10 @@ describe("GitHub Copilot credential", () => {
 
     expect(refreshSignals).toEqual([refreshSignal]);
     expect(current).toEqual({
-      githubToken: "github-token",
-      copilotToken: "tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;",
+      githubToken: 'github-token',
+      copilotToken: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',
       expiresAt: 9_999_999_999_000,
-      baseURL: "https://api.individual.githubcopilot.com",
+      baseURL: 'https://api.individual.githubcopilot.com',
     });
     expect(credentials.current()).toEqual({ value: current, revision: 2 });
   });

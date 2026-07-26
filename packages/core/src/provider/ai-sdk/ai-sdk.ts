@@ -1,23 +1,22 @@
-import type { LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
-import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type {
   AiSdkLanguageModel,
-  CallSettings,
+  AiSdkCallSettings,
   LoadedAiSdkRuntimeProvider,
   ModelMessage,
   TextStreamPart,
   ToolSet,
-} from "../../ai-sdk-bridge";
-import type { AiSdkProviderLoadOptions } from "../ai-sdk-loader/index";
-import type { ProviderFetch } from "../proxy-fetch";
-
-import { streamAiSdkText } from "../../ai-sdk-bridge";
-import { AiSdkProviderError, ProviderNotInstalledError } from "../../error";
-import { imageTargetProtocolForPackage } from "../../image-input";
-import { loadAiSdkProvider } from "../ai-sdk-loader/index";
-import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from "../ai-sdk-reasoning";
-import { wrapOpenAIPackageFetch } from "../openai-stream-fetch";
+} from '../../ai-sdk-bridge';
+import { streamAiSdkText } from '../../ai-sdk-bridge';
+import { AiSdkProviderError, ProviderNotInstalledError } from '../../error';
+import { imageTargetProtocolForPackage } from '../../image-input';
+import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
+import { loadAiSdkProvider } from '../ai-sdk-loader/index';
+import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from '../ai-sdk-reasoning';
+import { wrapOpenAIPackageFetch } from '../openai-stream-fetch';
+import type { ProviderFetch } from '../proxy-fetch';
 
 type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
   readonly aioProxy?: Readonly<Record<string, unknown>>;
@@ -27,7 +26,7 @@ export type AiSdkProviderInvokeRequest = {
   readonly context: LogicalRequestContext;
   readonly modelId: string;
   readonly messages: readonly ModelMessage[];
-  readonly settings?: CallSettings & { readonly providerOptions?: AiSdkProviderOptions };
+  readonly settings?: AiSdkCallSettings & { readonly providerOptions?: AiSdkProviderOptions };
   readonly tools?: ToolSet;
   readonly providerTools?: readonly ProviderExecutedTool[];
   readonly signal?: AbortSignal;
@@ -103,7 +102,7 @@ export function createAiSdkProvider(
         async start(controller) {
           try {
             if (request.providerTools !== undefined && request.providerTools.length > 0) {
-              throw new TypeError("AI SDK providers do not support provider-executed tools");
+              throw new TypeError('AI SDK providers do not support provider-executed tools');
             }
             const model =
               options.resolveModel?.(config, request.modelId, null) ??
@@ -145,7 +144,7 @@ async function resolveProviderModel(
   config: AiSdkProvider,
   modelId: string,
   providerTask: () => Promise<LoadedAiSdkRuntimeProvider | null>,
-  resolveModel: AiSdkProviderFactoryOptions["resolveModel"],
+  resolveModel: AiSdkProviderFactoryOptions['resolveModel'],
 ): Promise<AiSdkLanguageModel> {
   const provider = await providerTask();
   return resolveModel?.(config, modelId, provider) ?? (await resolveLoadedModel({ config, modelId, provider }));
@@ -156,7 +155,7 @@ function enqueueStreamParts(
   parts: readonly TextStreamPart<ToolSet>[],
 ): void {
   for (const part of parts) {
-    if (part.type === "error") {
+    if (part.type === 'error') {
       throw part.error;
     }
     controller.enqueue(part);
@@ -166,7 +165,7 @@ function enqueueStreamParts(
 function loadOptions(config: AiSdkProvider, providerFetch: ProviderFetch | undefined): AiSdkProviderLoadOptions {
   const configured = config.options ?? {};
   const options = providerFetch === undefined ? configured : { ...configured, fetch: providerFetch };
-  if (config.packageName !== "@ai-sdk/openai-compatible" || options["name"] !== undefined) return options;
+  if (config.packageName !== '@ai-sdk/openai-compatible' || options['name'] !== undefined) return options;
   return { ...options, name: config.id };
 }
 
@@ -188,7 +187,7 @@ async function resolveLoadedModel({
     return callableModel;
   }
 
-  if (typeof provider !== "function" && typeof provider.languageModel === "function") {
+  if (typeof provider !== 'function' && typeof provider.languageModel === 'function') {
     return provider.languageModel(modelId);
   }
 
@@ -199,7 +198,7 @@ async function resolveLoadedModel({
 }
 
 function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: string): AiSdkLanguageModel | undefined {
-  if (typeof provider !== "function") {
+  if (typeof provider !== 'function') {
     return undefined;
   }
 
@@ -215,12 +214,12 @@ function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
   const candidate: LanguageModelShape = value;
 
   return (
-    typeof candidate.provider === "string" &&
-    typeof candidate.modelId === "string" &&
-    typeof candidate.doStream === "function"
+    typeof candidate.provider === 'string' &&
+    typeof candidate.modelId === 'string' &&
+    typeof candidate.doStream === 'function'
   );
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

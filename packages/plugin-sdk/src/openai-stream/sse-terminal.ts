@@ -1,44 +1,44 @@
-import { createParser } from "eventsource-parser";
+import { createParser } from 'eventsource-parser';
 
-import type { ProtocolId } from "../runtime";
-import type { ContentDecodedReader } from "./content-decoding";
+import type { ProtocolId } from '../runtime';
+import type { ContentDecodedReader } from './content-decoding';
 
-export type OpenAIStreamProtocol = Extract<ProtocolId, "openai-response" | "openai-compatible">;
+export type OpenAIStreamProtocol = Extract<ProtocolId, 'openai-response' | 'openai-compatible'>;
 
 const responsesTerminalTypes = new Set([
-  "response.completed",
-  "response.incomplete",
-  "response.failed",
-  "response.cancelled",
-  "response.done",
-  "error",
+  'response.completed',
+  'response.incomplete',
+  'response.failed',
+  'response.cancelled',
+  'response.done',
+  'error',
 ]);
 
 const textDecoder = new TextDecoder();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
 
 function isResponsesTerminal(event: { readonly event?: string; readonly data: string }): boolean {
   if (event.event !== undefined && responsesTerminalTypes.has(event.event)) return true;
   try {
     const value: unknown = JSON.parse(event.data);
-    return isRecord(value) && typeof value["type"] === "string" && responsesTerminalTypes.has(value["type"]);
+    return isRecord(value) && typeof value['type'] === 'string' && responsesTerminalTypes.has(value['type']);
   } catch {
     return false;
   }
 }
 
 function isCompatibleTerminal(event: { readonly data: string }): boolean {
-  return event.data === "[DONE]";
+  return event.data === '[DONE]';
 }
 
 function isTerminal(
   event: { readonly event?: string; readonly data: string },
   protocol: OpenAIStreamProtocol,
 ): boolean {
-  return protocol === "openai-response" ? isResponsesTerminal(event) : isCompatibleTerminal(event);
+  return protocol === 'openai-response' ? isResponsesTerminal(event) : isCompatibleTerminal(event);
 }
 
 function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
@@ -91,7 +91,7 @@ function parseFrame(frameBytes: Uint8Array): { readonly event?: string; readonly
     },
   });
   // Normalize only for classification; outbound frame bytes stay byte-identical.
-  const normalized = textDecoder.decode(frameBytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = textDecoder.decode(frameBytes).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   parser.feed(normalized);
   return parsed;
 }
@@ -153,7 +153,7 @@ export function createOpenAISseBody(
 
         if (terminalFound) {
           finished = true;
-          ignoreCancel(decoded, "OpenAI protocol terminal reached");
+          ignoreCancel(decoded, 'OpenAI protocol terminal reached');
           controller.close();
           return;
         }
@@ -167,8 +167,8 @@ export function createOpenAISseBody(
           controller.error(read.error);
           return;
         }
-        if (read.done && protocol === "openai-response") {
-          const error = new Error("OpenAI Responses stream ended before a terminal event");
+        if (read.done && protocol === 'openai-response') {
+          const error = new Error('OpenAI Responses stream ended before a terminal event');
           if (outbound.length > 0) {
             pendingError = error;
             return;
@@ -182,7 +182,7 @@ export function createOpenAISseBody(
           finished = true;
           if (carry.byteLength > 0) controller.enqueue(carry);
           carry = new Uint8Array(0);
-          ignoreCancel(decoded, "OpenAI-compatible stream ended");
+          ignoreCancel(decoded, 'OpenAI-compatible stream ended');
           controller.close();
           return;
         }

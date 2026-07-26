@@ -1,6 +1,6 @@
-import { type Config, ConfigSchema } from "@aio-proxy/types";
+import { type Config, ConfigSchema } from '@aio-proxy/types';
 
-import { resolveConfigTemplates } from "./resolve-config-templates";
+import { resolveConfigTemplates } from './resolve-config-templates';
 
 export function parseRuntimeConfig(
   value: unknown,

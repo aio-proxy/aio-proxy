@@ -8,6 +8,7 @@
         "@changesets/cli": "^2.31.0",
         "@commitlint/cli": "^21.2.0",
         "@commitlint/config-conventional": "^21.2.0",
+        "@logtape/lint": "^2.2.4",
         "@microsoft/api-extractor": "7.58.11",
         "@types/bun": "catalog:",
         "lefthook": "^2.1.9",
@@ -124,6 +125,7 @@
         "@tanstack/react-form": "^1.33.0",
         "@tanstack/react-query": "^5.101.2",
         "@tanstack/react-router": "^1.170.17",
+        "@tanstack/react-store": "^0.11.0",
         "@tanstack/react-table": "^8.21.3",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -727,6 +729,8 @@
     "@lobehub/icons-static-svg": ["@lobehub/icons-static-svg@1.93.0", "", {}, "sha512-in3w3Epepw4h/Opw0zIyOSVrABioI/QDDyxINRl/kaVkIfKlGms+RVtRH3rXtnALpCEIRVm/kJo8bphoT59Bow=="],
 
     "@logtape/file": ["@logtape/file@2.1.1", "", { "peerDependencies": { "@logtape/logtape": "^2.1.1" } }, "sha512-AlT69oM1MEe1TV04go9s50/orHxc9n4fPu9MW7P5sG+hH55EDHJALd6D9zTEIm0PP4znR+XgTeml2ANnY2bkNw=="],
+
+    "@logtape/lint": ["@logtape/lint@2.2.4", "", { "peerDependencies": { "eslint": ">=8.0.0" }, "optionalPeers": ["eslint"] }, "sha512-WE2tDV1VG79vKgOkXoJRlyHreSyWsYwhYK7pdyhei87F34x5YMluQ7lRiRPvAxhDiE5KtG8msPP4eNSOI47nfA=="],
 
     "@logtape/logtape": ["@logtape/logtape@2.1.1", "", {}, "sha512-aULbCqUQGerfOsZ3CMvcKtueKzmdchluXYUd3bIHKmOIS93fx1ko0+hyRQ4flloGZ8EiyRPydZXiy8n1J/eAQA=="],
 

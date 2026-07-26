@@ -27,7 +27,7 @@
     "build:migrations": "bun scripts/build-migrations.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test",
-    "test:artifact": "bun test ./_test/build-entry.smoke.ts"
+    "test:artifact": "bun test ./__tests__/build-entry.smoke.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",

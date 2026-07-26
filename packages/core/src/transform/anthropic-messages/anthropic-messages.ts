@@ -1,4 +1,5 @@
-import type { FilePart } from "../../ai-sdk-bridge";
+import type { FilePart } from '../../ai-sdk-bridge';
+import { AnthropicMessagesTransformError } from '../../error';
 import type {
   AnthropicAssistantContentBlock,
   AnthropicImageBlock,
@@ -6,7 +7,8 @@ import type {
   AnthropicTextBlock,
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
-} from "../../ingress/anthropic-messages/index";
+} from '../../ingress/anthropic-messages/index';
+import { convertAnthropicMessagesToModelMessages } from './to-model';
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesFromModelMessages,
@@ -17,16 +19,13 @@ import type {
   TextPart,
   ToolCallPart,
   ToolResultPart,
-} from "./types";
-
-import { AnthropicMessagesTransformError } from "../../error";
-import { convertAnthropicMessagesToModelMessages } from "./to-model";
+} from './types';
 
 export type {
   AnthropicMessagesFromModelMessages,
   AnthropicMessagesModelMessages,
   AnthropicModelMessage,
-} from "./types";
+} from './types';
 
 export function anthropicMessagesToModelMessages(req: AnthropicMessagesRequest): AnthropicMessagesModelMessages {
   return convertAnthropicMessagesToModelMessages(req);
@@ -37,34 +36,34 @@ export function modelMessagesToAnthropicMessages({
   messages,
   settings,
 }: AnthropicMessagesFromModelMessages): AnthropicMessagesRequest {
-  if (model === "") {
-    throw new AnthropicMessagesTransformError("model");
+  if (model === '') {
+    throw new AnthropicMessagesTransformError('model');
   }
 
-  let system: AnthropicMessagesRequest["system"];
-  const requestMessages: AnthropicMessagesRequest["messages"] = [];
+  let system: AnthropicMessagesRequest['system'];
+  const requestMessages: AnthropicMessagesRequest['messages'] = [];
 
   for (const [index, message] of messages.entries()) {
     switch (message.role) {
-      case "system":
+      case 'system':
         if (index !== 0) {
           throw new AnthropicMessagesTransformError(`messages.${index}.role`);
         }
         system = message.providerOptions?.anthropic.system ?? message.content;
         break;
-      case "user":
+      case 'user':
         requestMessages.push({
-          role: "user",
+          role: 'user',
           content: userContentFromModelParts(message.content, `messages.${index}.content`),
         });
         break;
-      case "assistant":
+      case 'assistant':
         requestMessages.push({
-          role: "assistant",
+          role: 'assistant',
           content: assistantContentFromModelParts(message.content, `messages.${index}.content`),
         });
         break;
-      case "tool":
+      case 'tool':
         throw new AnthropicMessagesTransformError(`messages.${index}.role`);
       default:
         assertNever(message);
@@ -82,18 +81,18 @@ export function modelMessagesToAnthropicMessages({
 }
 
 function userContentFromModelParts(
-  content: AnthropicUserMessage["content"],
+  content: AnthropicUserMessage['content'],
   path: string,
-): Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"] {
-  return typeof content === "string"
+): Extract<AnthropicMessagesRequest['messages'][number], { role: 'user' }>['content'] {
+  return typeof content === 'string'
     ? content
     : content.map((part, index) => {
         switch (part.type) {
-          case "text":
+          case 'text':
             return textBlock(part);
-          case "file":
+          case 'file':
             return imageBlock(part, `${path}.${index}`);
-          case "tool-result":
+          case 'tool-result':
             return toolResultBlock(part, `${path}.${index}`);
           default:
             throw new AnthropicMessagesTransformError(`${path}.${index}.type`);
@@ -102,20 +101,20 @@ function userContentFromModelParts(
 }
 
 function assistantContentFromModelParts(
-  content: AnthropicAssistantMessage["content"],
+  content: AnthropicAssistantMessage['content'],
   path: string,
-): Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"] {
-  return typeof content === "string"
+): Extract<AnthropicMessagesRequest['messages'][number], { role: 'assistant' }>['content'] {
+  return typeof content === 'string'
     ? content
     : content.map((part, index) => {
         switch (part.type) {
-          case "text":
+          case 'text':
             return textBlock(part);
-          case "tool-call":
+          case 'tool-call':
             return toolUseBlock(part);
-          case "reasoning":
+          case 'reasoning':
             return thinkingBlock(part, `${path}.${index}`);
-          case "tool-result":
+          case 'tool-result':
             throw new AnthropicMessagesTransformError(`${path}.${index}.type`);
           default:
             return assertNever(part);
@@ -125,7 +124,7 @@ function assistantContentFromModelParts(
 
 function textBlock(part: TextPart): AnthropicTextBlock {
   return {
-    type: "text",
+    type: 'text',
     text: part.text,
     ...(part.providerOptions?.anthropic.cache_control !== undefined
       ? { cache_control: part.providerOptions.anthropic.cache_control }
@@ -135,7 +134,7 @@ function textBlock(part: TextPart): AnthropicTextBlock {
 
 function toolUseBlock(part: ToolCallPart): AnthropicToolUseBlock {
   return {
-    type: "tool_use",
+    type: 'tool_use',
     id: part.toolCallId,
     name: part.toolName,
     input: part.input,
@@ -147,14 +146,14 @@ function toolUseBlock(part: ToolCallPart): AnthropicToolUseBlock {
 
 function toolResultBlock(part: ToolResultPart, path: string): AnthropicToolResultBlock {
   return {
-    type: "tool_result",
+    type: 'tool_result',
     tool_use_id: part.toolCallId,
     content:
-      part.output.type === "text"
+      part.output.type === 'text'
         ? part.output.value
         : part.output.value.map((contentPart, index) =>
-            contentPart.type === "text"
-              ? { type: "text" as const, text: contentPart.text }
+            contentPart.type === 'text'
+              ? { type: 'text' as const, text: contentPart.text }
               : imageBlock(contentPart, `${path}.content.${index}`),
           ),
     ...(part.providerOptions?.anthropic.cache_control !== undefined
@@ -164,23 +163,23 @@ function toolResultBlock(part: ToolResultPart, path: string): AnthropicToolResul
 }
 
 function imageBlock(part: FilePart, path: string): AnthropicImageBlock {
-  if (part.mediaType !== "image" && !part.mediaType.startsWith("image/")) {
+  if (part.mediaType !== 'image' && !part.mediaType.startsWith('image/')) {
     throw new AnthropicMessagesTransformError(`${path}.mediaType`);
   }
   const data = part.data;
-  if (typeof data !== "object" || data === null || !("type" in data)) {
+  if (typeof data !== 'object' || data === null || !('type' in data)) {
     throw new AnthropicMessagesTransformError(`${path}.data`);
   }
   const source =
-    data.type === "url"
-      ? ({ type: "url", url: data.url.toString() } as const)
-      : data.type === "data" && typeof data.data === "string" && part.mediaType !== "image"
-        ? ({ type: "base64", media_type: part.mediaType, data: data.data } as const)
+    data.type === 'url'
+      ? ({ type: 'url', url: data.url.toString() } as const)
+      : data.type === 'data' && typeof data.data === 'string' && part.mediaType !== 'image'
+        ? ({ type: 'base64', media_type: part.mediaType, data: data.data } as const)
         : undefined;
   if (source === undefined) throw new AnthropicMessagesTransformError(`${path}.data`);
   const cacheControl = (part.providerOptions as AnthropicProviderOptions | undefined)?.anthropic?.cache_control;
   return {
-    type: "image",
+    type: 'image',
     source,
     ...(cacheControl === undefined ? {} : { cache_control: cacheControl }),
   };
@@ -192,7 +191,7 @@ function thinkingBlock(part: ReasoningPart, path: string): AnthropicAssistantCon
     throw new AnthropicMessagesTransformError(`${path}.providerOptions.anthropic.signature`);
   }
 
-  return { type: "thinking", thinking: part.text, signature };
+  return { type: 'thinking', thinking: part.text, signature };
 }
 
 function assertNever(value: never): never {

@@ -1,4 +1,4 @@
-import { type Stats, unwatchFile, watchFile } from "node:fs";
+import { type Stats, unwatchFile, watchFile } from 'node:fs';
 
 export type ConfigWatcher = {
   readonly close: () => void;

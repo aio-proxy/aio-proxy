@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-const CONFIG_FILE_NAMES = ["config.yml", "config.yaml", "config.jsonc", "config.json"] as const;
+const CONFIG_FILE_NAMES = ['config.yml', 'config.yaml', 'config.jsonc', 'config.json'] as const;
 
 /**
  * Single source of truth for the `~/.aio-proxy` filesystem layout.
@@ -13,26 +13,30 @@ const CONFIG_FILE_NAMES = ["config.yml", "config.yaml", "config.jsonc", "config.
  */
 export function aioHome(): string {
   const home = (process.env as { readonly AIO_PROXY_HOME?: string }).AIO_PROXY_HOME;
-  return home === undefined || home === "" ? join(homedir(), ".aio-proxy") : home;
+  return home === undefined || home === '' ? join(homedir(), '.aio-proxy') : home;
 }
 
 export function configPath(): string {
   const home = aioHome();
-  return CONFIG_FILE_NAMES.map((name) => join(home, name)).find(existsSync) ?? join(home, "config.jsonc");
+  return CONFIG_FILE_NAMES.map((name) => join(home, name)).find(existsSync) ?? join(home, 'config.jsonc');
 }
 
 export function dbPath(): string {
-  return join(aioHome(), "aio-proxy.db");
+  return join(aioHome(), 'aio-proxy.db');
 }
 
 export function packagesDir(): string {
-  return join(aioHome(), "packages");
+  return join(aioHome(), 'packages');
 }
 
 export function pidPath(): string {
-  return join(aioHome(), "aio-proxy.pid");
+  return join(aioHome(), 'aio-proxy.pid');
 }
 
 export function logPath(): string {
-  return join(aioHome(), "aio-proxy.log");
+  return join(aioHome(), 'aio-proxy.log');
+}
+
+export function tmpDir(): string {
+  return join(aioHome(), 'tmp');
 }

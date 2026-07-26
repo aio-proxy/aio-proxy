@@ -1,13 +1,13 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { IdSchema } from "./common";
+import { IdSchema } from './common';
 
 const TokenCountSchema = z.number().int().min(0);
 
-export const RequestOutcomeSchema = z.enum(["success", "failure", "cancelled"]);
-export const UsageOverviewRangeSchema = z.enum(["24h", "7d", "14d", "30d"]);
-export const UsageOverviewMetricSchema = z.enum(["cost", "tokens", "requests"]);
-export const UsageOverviewGroupBySchema = z.enum(["model", "provider"]);
+export const RequestOutcomeSchema = z.enum(['success', 'failure', 'cancelled']);
+export const UsageOverviewRangeSchema = z.enum(['24h', '7d', '14d', '30d']);
+export const UsageOverviewMetricSchema = z.enum(['cost', 'tokens', 'requests']);
+export const UsageOverviewGroupBySchema = z.enum(['model', 'provider']);
 
 export const UsageRowSchema = z.object({
   providerId: IdSchema,

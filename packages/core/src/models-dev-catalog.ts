@@ -1,8 +1,7 @@
-import type { ModelCapabilities } from "@anthropic-ai/sdk/resources/models";
+import type { ModelCapabilities } from '@anthropic-ai/sdk/resources/models';
+import { type Model, Models, type ProviderMap, type RequestOptions } from '@opencode-ai/models';
 
-import { type Model, Models, type ProviderMap, type RequestOptions } from "@opencode-ai/models";
-
-import type { OpenRouterModelPrice } from "./usage-pricing";
+import type { OpenRouterModelPrice } from './usage-pricing';
 
 export type OpenRouterPriceCatalog = {
   readonly find: (modelId: string) => OpenRouterModelPrice | undefined;
@@ -15,7 +14,7 @@ export type ModelsDevCatalog = OpenRouterPriceCatalog & {
 
 export type ModelsDevCapabilities = Pick<
   ModelCapabilities,
-  "effort" | "image_input" | "pdf_input" | "structured_outputs" | "thinking"
+  'effort' | 'image_input' | 'pdf_input' | 'structured_outputs' | 'thinking'
 >;
 
 export type ModelsDevModelMetadata = {
@@ -38,7 +37,7 @@ type MetadataCatalog = {
 
 const modelsDev = Models.make();
 const modelsDevRequestTimeoutMs = 3_000;
-const openRouterProviderId = "openrouter";
+const openRouterProviderId = 'openrouter';
 const defaultFetch: FetchModelsDevProviders = (options) => modelsDev.providers(options);
 
 export async function createModelsDevCatalog(
@@ -74,7 +73,7 @@ function uniqueBareEntries<T>(byId: ReadonlyMap<string, T>): ReadonlyMap<string,
   const duplicateBareIds = new Set<string>();
 
   for (const [id, value] of byId) {
-    const bareId = id.split("/").at(-1) ?? id;
+    const bareId = id.split('/').at(-1) ?? id;
     if (byBareId.has(bareId)) {
       duplicateBareIds.add(bareId);
       byBareId.delete(bareId);
@@ -118,7 +117,7 @@ function parseMetadata(providers: ProviderMap): MetadataCatalog {
   for (const [providerId, provider] of Object.entries(providers)) {
     const providerMetadata = new Map<string, ModelsDevModelMetadata>();
     for (const model of Object.values(provider.models)) {
-      const bareId = model.id.split("/").at(-1) ?? model.id;
+      const bareId = model.id.split('/').at(-1) ?? model.id;
       const metadata = metadataFromProvider(model);
       providerMetadata.set(model.id, metadata);
       providerMetadata.set(bareId, metadata);
@@ -147,8 +146,8 @@ function parseMetadata(providers: ProviderMap): MetadataCatalog {
 }
 
 function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevModelMetadata | undefined {
-  const slashIndex = modelId.indexOf("/");
-  const bareId = modelId.split("/").at(-1) ?? modelId;
+  const slashIndex = modelId.indexOf('/');
+  const bareId = modelId.split('/').at(-1) ?? modelId;
   const providerId = slashIndex > 0 ? modelId.slice(0, slashIndex) : canonicalProviderId(bareId);
   const providerMetadata = providerId === undefined ? undefined : catalog.byProvider.get(providerId);
   return (
@@ -161,12 +160,12 @@ function resolveMetadata(catalog: MetadataCatalog, modelId: string): ModelsDevMo
   );
 }
 
-function canonicalProviderId(modelId: string): "anthropic" | "openai" | undefined {
-  if (modelId.startsWith("claude-")) {
-    return "anthropic";
+function canonicalProviderId(modelId: string): 'anthropic' | 'openai' | undefined {
+  if (modelId.startsWith('claude-')) {
+    return 'anthropic';
   }
   if (/^(?:chatgpt-|codex-|dall-e-|gpt-|o[1-9](?:-|$)|text-embedding-|tts-|whisper-)/u.test(modelId)) {
-    return "openai";
+    return 'openai';
   }
   return undefined;
 }
@@ -183,25 +182,25 @@ function metadataFromProvider(model: Model): ModelsDevModelMetadata {
 
 function modelCapabilities(model: Model): ModelsDevCapabilities {
   const options = model.reasoning_options ?? [];
-  const effort = options.find((option) => option.type === "effort");
+  const effort = options.find((option) => option.type === 'effort');
   const values = effort?.values ?? [];
   return {
     effort: {
-      high: support(values.includes("high")),
-      low: support(values.includes("low")),
-      max: support(values.includes("max")),
-      medium: support(values.includes("medium")),
+      high: support(values.includes('high')),
+      low: support(values.includes('low')),
+      max: support(values.includes('max')),
+      medium: support(values.includes('medium')),
       supported: effort !== undefined,
-      xhigh: support(values.includes("xhigh")),
+      xhigh: support(values.includes('xhigh')),
     },
-    image_input: support(model.modalities.input.includes("image")),
-    pdf_input: support(model.modalities.input.includes("pdf")),
+    image_input: support(model.modalities.input.includes('image')),
+    pdf_input: support(model.modalities.input.includes('pdf')),
     structured_outputs: support(model.structured_output === true),
     thinking: {
       supported: model.reasoning,
       types: {
         adaptive: support(effort !== undefined),
-        enabled: support(options.some((option) => option.type === "budget_tokens" || option.type === "toggle")),
+        enabled: support(options.some((option) => option.type === 'budget_tokens' || option.type === 'toggle')),
       },
     },
   };

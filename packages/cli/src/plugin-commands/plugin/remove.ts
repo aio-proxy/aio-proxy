@@ -1,15 +1,15 @@
-import { loadPluginRegistry } from "@aio-proxy/core";
-import { getLocale, m } from "@aio-proxy/i18n";
-import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+import { loadPluginRegistry } from '@aio-proxy/core';
+import { getLocale, m } from '@aio-proxy/i18n';
+import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 
-import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from "./config-entry";
+import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from './config-entry';
 import {
   createCliPluginDiagnosticFactory,
   createDefaultPluginLifecycleDeps,
   type PluginLifecycleDeps,
   requireConfirmation,
-} from "./deps";
-import { BuiltInPluginRemovalError, PluginSecretPurgeConflictError, PluginTrustRejectedError } from "./errors";
+} from './deps';
+import { BuiltInPluginRemovalError, PluginSecretPurgeConflictError, PluginTrustRejectedError } from './errors';
 
 export type PluginRemoveOptions = { readonly purgeSecrets?: boolean; readonly yes?: boolean };
 export type PluginPruneOptions = { readonly yes?: boolean };
@@ -37,7 +37,7 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
     for (const packageName of names) {
       const loaded = snapshot.plugins.get(packageName);
       const state =
-        loaded?.state.status === "failed"
+        loaded?.state.status === 'failed'
           ? loaded.state.diagnostic.summary
           : deps.builtInNames.has(packageName)
             ? m.cli_plugin_state_builtin()
@@ -48,7 +48,7 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
       const description =
         loaded?.description === undefined ? undefined : resolveLocalizedText(loaded.description, getLocale());
       const identity = label === undefined ? packageName : `${label} (${packageName})`;
-      deps.print(`${identity} ${state}${description === undefined ? "" : ` — ${description}`}`);
+      deps.print(`${identity} ${state}${description === undefined ? '' : ` — ${description}`}`);
     }
   } finally {
     if (injected === undefined) deps.close?.();

@@ -1,12 +1,12 @@
-import { getLocale, m } from "@aio-proxy/i18n";
-import { format, parseISO } from "date-fns";
-import { enUS, zhCN } from "date-fns/locale";
-import { useAtomValue } from "jotai";
-import { useId } from "react";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { getLocale, m } from '@aio-proxy/i18n';
+import { format, parseISO } from 'date-fns';
+import { enUS, zhCN } from 'date-fns/locale';
+import { useAtomValue } from 'jotai';
+import { useId } from 'react';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
-import { formatExactTokenCount } from "@/components/token-count";
-import { Card, CardContent } from "@/components/ui/card";
+import { formatExactTokenCount } from '@/components/token-count';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   type ChartConfig,
   ChartContainer,
@@ -14,22 +14,21 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart";
+} from '@/components/ui/chart';
 
-import type { UsageOverviewData, UsageOverviewSeries } from "../services/usage-service";
-
-import { createUsageValueFormatter } from "../services/usage-value-formatter";
-import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
-import { UsageTrendTabs } from "./usage-trend-tabs";
+import type { UsageOverviewData, UsageOverviewSeries } from '../services/usage-service';
+import { createUsageValueFormatter } from '../services/usage-value-formatter';
+import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
+import { UsageTrendTabs } from './usage-trend-tabs';
 
 type Props = {
   readonly data: UsageOverviewData;
 };
 
 const seriesColor = (series: UsageOverviewSeries, index: number) => {
-  if (series.kind === "failed") return "var(--destructive)";
-  if (series.kind === "cancelled") return "var(--muted-foreground)";
-  if (series.kind === "other") return "var(--chart-5)";
+  if (series.kind === 'failed') return 'var(--destructive)';
+  if (series.kind === 'cancelled') return 'var(--muted-foreground)';
+  if (series.kind === 'other') return 'var(--chart-5)';
   return `var(--chart-${(index % 5) + 1})`;
 };
 
@@ -38,31 +37,31 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const chartTitleId = useId();
   const chartDescriptionId = useId();
   const uiLocale = getLocale();
-  const dateLocale = uiLocale.startsWith("zh") ? zhCN : enUS;
+  const dateLocale = uiLocale.startsWith('zh') ? zhCN : enUS;
   const formatValue = createUsageValueFormatter(metric, uiLocale);
   const formatTooltipValue =
-    metric === "tokens" ? (value: number) => formatExactTokenCount(value, uiLocale) : formatValue;
+    metric === 'tokens' ? (value: number) => formatExactTokenCount(value, uiLocale) : formatValue;
   const seriesLabel = (series: UsageOverviewSeries) => {
-    if (series.kind === "dimension")
-      return series.key.startsWith("dimension:")
-        ? decodeURIComponent(series.key.slice("dimension:".length))
+    if (series.kind === 'dimension')
+      return series.key.startsWith('dimension:')
+        ? decodeURIComponent(series.key.slice('dimension:'.length))
         : series.key;
-    if (series.kind === "other") return m["dashboard.usage.series_other"]();
-    if (series.kind === "failed") return m["dashboard.usage.series_failed"]();
-    return m["dashboard.usage.series_cancelled"]();
+    if (series.kind === 'other') return m['dashboard.usage.series_other']();
+    if (series.kind === 'failed') return m['dashboard.usage.series_failed']();
+    return m['dashboard.usage.series_cancelled']();
   };
   const chartConfig = Object.fromEntries(
     data.series.map((series, index) => [series.key, { label: seriesLabel(series), color: seriesColor(series, index) }]),
   ) satisfies ChartConfig;
   const chartData = data.buckets.map((bucket) => ({ bucket: bucket.key, ...bucket.values }));
   const formatBucket = (value: string, tooltip: boolean) =>
-    format(parseISO(value), data.bucketUnit === "hour" ? "MMM d, HH:mm xxx" : tooltip ? "PP" : "MMM d", {
+    format(parseISO(value), data.bucketUnit === 'hour' ? 'MMM d, HH:mm xxx' : tooltip ? 'PP' : 'MMM d', {
       locale: dateLocale,
     });
   return (
     <Card>
       <UsageTrendTabs
-        description={m["dashboard.usage.chart_description"]()}
+        description={m['dashboard.usage.chart_description']()}
         titleId={chartTitleId}
         descriptionId={chartDescriptionId}
       >

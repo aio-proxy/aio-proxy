@@ -1,9 +1,9 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const idSchema = z.string().min(1);
 
 export const functionToolSchema = z.object({
-  type: z.literal("function"),
+  type: z.literal('function'),
   name: idSchema,
   description: z.string().optional(),
   parameters: z.unknown().optional(),
@@ -12,24 +12,24 @@ export const functionToolSchema = z.object({
 });
 
 export const customToolSchema = z.object({
-  type: z.literal("custom"),
+  type: z.literal('custom'),
   name: idSchema,
   description: z.string().optional(),
   format: z.unknown().optional(),
 });
 
 export const namespaceToolSchema = z.object({
-  type: z.literal("namespace"),
+  type: z.literal('namespace'),
   name: idSchema,
   description: z.string().optional(),
   tools: z.array(functionToolSchema).min(1),
 });
 
 const executableToolSchema = z.union([functionToolSchema, customToolSchema, namespaceToolSchema]);
-const knownToolTypes = new Set(["function", "custom", "namespace"]);
+const knownToolTypes = new Set(['function', 'custom', 'namespace']);
 
 const unsupportedToolSchema = z.object({
-  type: z.literal("__aio_proxy_unsupported_tool__"),
+  type: z.literal('__aio_proxy_unsupported_tool__'),
   wireType: idSchema,
 });
 
@@ -39,10 +39,10 @@ export const openAIResponsesToolSchema = z.unknown().transform((tool, context) =
 
   const wireType = safeToolType(tool);
   if (wireType !== undefined && !knownToolTypes.has(wireType)) {
-    return { type: "__aio_proxy_unsupported_tool__" as const, wireType };
+    return { type: '__aio_proxy_unsupported_tool__' as const, wireType };
   }
 
-  context.addIssue({ code: "custom", message: "Invalid OpenAI Responses tool" });
+  context.addIssue({ code: 'custom', message: 'Invalid OpenAI Responses tool' });
   return z.NEVER;
 });
 
@@ -57,7 +57,7 @@ export type OpenAIResponsesExecutableTool =
 export type OpenAIResponsesTool = OpenAIResponsesExecutableTool | OpenAIResponsesUnsupportedTool;
 
 function safeToolType(value: unknown): string | undefined {
-  return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
+  return typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string'
     ? value.type
     : undefined;
 }

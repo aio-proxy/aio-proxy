@@ -1,11 +1,10 @@
-import { isEqual } from "es-toolkit/predicate";
+import { isEqual } from 'es-toolkit/predicate';
 
-import type { ReplayPart } from "../../../protocol/replay-cache";
+import type { ReplayPart } from '../../../protocol/replay-cache';
+import { validThoughtSignature } from '../../../protocol/signatures';
+import { asRecord } from '../payload-shape';
 
-import { validThoughtSignature } from "../../../protocol/signatures";
-import { asRecord } from "../payload-shape";
-
-export type FunctionCallReplayPart = Extract<ReplayPart, { type: "function-call" }>;
+export type FunctionCallReplayPart = Extract<ReplayPart, { type: 'function-call' }>;
 
 export function orderedReplayParts(parts: readonly ReplayPart[]): readonly ReplayPart[] {
   const ordered = [...parts].sort(
@@ -19,7 +18,7 @@ export function orderedReplayParts(parts: readonly ReplayPart[]): readonly Repla
       continue;
     }
     const existing = unique[index];
-    if (existing?.type === "function-call" && existing.signature === undefined && part.signature !== undefined) {
+    if (existing?.type === 'function-call' && existing.signature === undefined && part.signature !== undefined) {
       unique[index] = { ...existing, signature: part.signature };
     }
   }
@@ -31,15 +30,15 @@ function sameOccurrence(left: ReplayPart, right: ReplayPart): boolean {
     return false;
   }
   return (
-    left.type === "thought-signature" ||
-    (right.type === "function-call" && compatibleReplayCalls(left.call, right.call))
+    left.type === 'thought-signature' ||
+    (right.type === 'function-call' && compatibleReplayCalls(left.call, right.call))
   );
 }
 
 export function replayPart(part: ReplayPart, modelId: string): readonly Record<string, unknown>[] {
-  if (part.type === "thought-signature") {
+  if (part.type === 'thought-signature') {
     return validThoughtSignature(modelId, part.signature)
-      ? [{ text: "", thought: true, thoughtSignature: part.signature }]
+      ? [{ text: '', thought: true, thoughtSignature: part.signature }]
       : [];
   }
   if (part.signature !== undefined && !validThoughtSignature(modelId, part.signature)) return [];
@@ -75,13 +74,13 @@ function compatibleReplayCalls(left: unknown, right: unknown): boolean {
 
 function canonicalCall(value: unknown): CanonicalCall | undefined {
   const call = asRecord(value);
-  const id = Reflect.get(call ?? {}, "id");
-  const name = Reflect.get(call ?? {}, "name");
-  if (call === undefined || (id != null && typeof id !== "string") || typeof name !== "string") return undefined;
-  const args = Reflect.get(call, "args");
+  const id = Reflect.get(call ?? {}, 'id');
+  const name = Reflect.get(call ?? {}, 'name');
+  if (call === undefined || (id != null && typeof id !== 'string') || typeof name !== 'string') return undefined;
+  const args = Reflect.get(call, 'args');
   return {
     args: args === undefined ? {} : args,
-    id: typeof id === "string" ? id : undefined,
+    id: typeof id === 'string' ? id : undefined,
     name,
   };
 }
@@ -91,31 +90,31 @@ function sameCallFields(left: CanonicalCall, right: CanonicalCall): boolean {
 }
 
 function canonicalValueKey(value: unknown): string {
-  if (value === null) return framedValue("n", "");
-  if (Array.isArray(value)) return framedValue("a", value.map(canonicalValueKey).join(""));
+  if (value === null) return framedValue('n', '');
+  if (Array.isArray(value)) return framedValue('a', value.map(canonicalValueKey).join(''));
   const record = asRecord(value);
   if (record !== undefined) {
     return framedValue(
-      "o",
+      'o',
       Object.keys(record)
         .sort()
-        .map((key) => framedValue("k", key) + canonicalValueKey(Reflect.get(record, key)))
-        .join(""),
+        .map((key) => framedValue('k', key) + canonicalValueKey(Reflect.get(record, key)))
+        .join(''),
     );
   }
-  if (typeof value === "number") {
-    if (Number.isNaN(value)) return framedValue("d", "NaN");
-    if (Object.is(value, -0)) return framedValue("d", "-0");
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) return framedValue('d', 'NaN');
+    if (Object.is(value, -0)) return framedValue('d', '-0');
   }
   const tag = {
-    bigint: "i",
-    boolean: "b",
-    function: "f",
-    number: "d",
-    object: "x",
-    string: "s",
-    symbol: "y",
-    undefined: "u",
+    bigint: 'i',
+    boolean: 'b',
+    function: 'f',
+    number: 'd',
+    object: 'x',
+    string: 's',
+    symbol: 'y',
+    undefined: 'u',
   }[typeof value];
   return framedValue(tag, String(value));
 }

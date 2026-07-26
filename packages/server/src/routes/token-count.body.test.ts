@@ -1,20 +1,19 @@
-import type { TokenCountCapability } from "@aio-proxy/plugin-sdk";
+import { expect, spyOn, test } from 'bun:test';
 
-import { anthropicMessagesAdapter, REQUEST_BODY_LIMITS, Router } from "@aio-proxy/core";
-import { ProviderKind } from "@aio-proxy/types";
-import { expect, spyOn, test } from "bun:test";
+import { anthropicMessagesAdapter, REQUEST_BODY_LIMITS, Router } from '@aio-proxy/core';
+import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
+import { ProviderKind } from '@aio-proxy/types';
 
-import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
+import { createRecording } from '../../__tests__/pipeline-helpers/recording';
+import { LogicalSessionStore } from '../logical-session-store';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
+import { handleTokenCount } from './token-count';
 
-import { createRecording } from "../../_test/pipeline-helpers/recording";
-import { LogicalSessionStore } from "../logical-session-store";
-import { handleTokenCount } from "./token-count";
-
-test("rejects oversized Content-Length and cancels the count request body before parsing", async () => {
+test('rejects oversized Content-Length and cancels the count request body before parsing', async () => {
   let cancelled = false;
-  const request = new Request("https://proxy.test/v1/messages/count_tokens", {
-    method: "POST",
-    headers: { "content-length": String(REQUEST_BODY_LIMITS.encoded + 1), "content-type": "application/json" },
+  const request = new Request('https://proxy.test/v1/messages/count_tokens', {
+    method: 'POST',
+    headers: { 'content-length': String(REQUEST_BODY_LIMITS.encoded + 1), 'content-type': 'application/json' },
     body: new ReadableStream<Uint8Array>({
       cancel() {
         cancelled = true;
@@ -33,23 +32,23 @@ test("rejects oversized Content-Length and cancels the count request body before
   expect(fixture.releases()).toBe(0);
 });
 
-test("rejects unsupported content encoding before counting tokens", async () => {
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
+test('rejects unsupported content encoding before counting tokens', async () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const fixture = countFixture([]);
   try {
     const response = await runCount(
       fixture.source,
-      new Request("https://proxy.test/v1/messages/count_tokens", {
-        method: "POST",
-        headers: { "content-encoding": "compress", "content-type": "application/json" },
-        body: JSON.stringify({ model: "count-model", max_tokens: 16, messages: [] }),
+      new Request('https://proxy.test/v1/messages/count_tokens', {
+        method: 'POST',
+        headers: { 'content-encoding': 'compress', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'count-model', max_tokens: 16, messages: [] }),
       }),
     );
 
     expect(response.status).toBe(415);
     expect(await response.json()).toEqual({
-      type: "error",
-      error: { type: "invalid_request_error", message: "Unsupported Content-Encoding" },
+      type: 'error',
+      error: { type: 'invalid_request_error', message: 'Unsupported Content-Encoding' },
     });
     expect(fixture.recording.begins).toHaveLength(1);
     expect(fixture.recording.finals).toEqual([]);
@@ -59,14 +58,14 @@ test("rejects unsupported content encoding before counting tokens", async () => 
   }
 });
 
-test("releases the retained count body after a provider returns a real count", async () => {
+test('releases the retained count body after a provider returns a real count', async () => {
   const request = anthropicRequest();
   const fixture = countFixture([
     countProvider(async ({ request: replay }) => {
       expect(await replay.json()).toEqual({
         max_tokens: 16,
-        messages: [{ content: "hello", role: "user" }],
-        model: "count-model",
+        messages: [{ content: 'hello', role: 'user' }],
+        model: 'count-model',
       });
       return { inputTokens: 5 };
     }),
@@ -78,17 +77,17 @@ test("releases the retained count body after a provider returns a real count", a
   expect(request.bodyUsed).toBe(true);
 });
 
-test("releases the retained count body after returning an estimate", async () => {
+test('releases the retained count body after returning an estimate', async () => {
   const request = anthropicRequest();
   const fixture = countFixture([
     countProvider(async () => {
-      throw new Error("counter unavailable");
+      throw new Error('counter unavailable');
     }),
   ]);
 
   const response = await runCount(fixture.source, request);
 
-  expect(response.headers.get("x-aio-proxy-token-count-estimated")).toBe("true");
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(request.bodyUsed).toBe(true);
 });
 
@@ -109,25 +108,25 @@ function countFixture(providers: readonly RuntimeProviderInstance[]) {
     requestRecorder: recording.recorder,
     usageCapture: {
       passthrough(): never {
-        throw new Error("token counting must not capture generation usage");
+        throw new Error('token counting must not capture generation usage');
       },
       stream(): never {
-        throw new Error("token counting must not capture generation usage");
+        throw new Error('token counting must not capture generation usage');
       },
     },
   } satisfies ProviderRouteSource;
   return { recording, releases: () => releaseCount, source };
 }
 
-function countProvider(countTokens: TokenCountCapability["countTokens"]): RuntimeProviderInstance {
+function countProvider(countTokens: TokenCountCapability['countTokens']): RuntimeProviderInstance {
   return {
-    alias: { "count-model": { model: "count-wire", preserve: false } },
+    alias: { 'count-model': { model: 'count-wire', preserve: false } },
     enabled: true,
-    id: "counter",
+    id: 'counter',
     kind: ProviderKind.OAuth,
     model: {
       invoke() {
-        throw new Error("generation must not run during token counting");
+        throw new Error('generation must not run during token counting');
       },
       supportsProviderTool: () => true,
     },
@@ -146,13 +145,13 @@ function runCount(source: ProviderRouteSource, rawRequest: Request): Promise<Res
 }
 
 function anthropicRequest(): Request {
-  return new Request("https://proxy.test/v1/messages/count_tokens", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+  return new Request('https://proxy.test/v1/messages/count_tokens', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: "count-model",
+      model: 'count-model',
       max_tokens: 16,
-      messages: [{ role: "user", content: "hello" }],
+      messages: [{ role: 'user', content: 'hello' }],
     }),
   });
 }

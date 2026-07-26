@@ -1,6 +1,6 @@
-import type { ImageFilePart } from "../../image-input";
-import type { AnthropicCacheControl, AnthropicTextBlock } from "../../ingress/anthropic-messages/index";
-import type { AnthropicThinkingOption } from "../../protocol/anthropic-thinking";
+import type { ImageFilePart } from '../../image-input';
+import type { AnthropicCacheControl, AnthropicTextBlock } from '../../ingress/anthropic-messages/index';
+import type { AnthropicThinkingOption } from '../../protocol/anthropic-thinking';
 
 export type AnthropicProviderOptions = {
   readonly anthropic: {
@@ -11,13 +11,13 @@ export type AnthropicProviderOptions = {
 };
 
 export type TextPart = {
-  readonly type: "text";
+  readonly type: 'text';
   readonly text: string;
   readonly providerOptions?: AnthropicProviderOptions;
 };
 
 export type ToolCallPart = {
-  readonly type: "tool-call";
+  readonly type: 'tool-call';
   readonly toolCallId: string;
   readonly toolName: string;
   readonly input: unknown;
@@ -25,41 +25,41 @@ export type ToolCallPart = {
 };
 
 export type ToolResultPart = {
-  readonly type: "tool-result";
+  readonly type: 'tool-result';
   readonly toolCallId: string;
   readonly toolName: string;
   readonly output:
-    | { readonly type: "text"; readonly value: string }
+    | { readonly type: 'text'; readonly value: string }
     | {
-        readonly type: "content";
+        readonly type: 'content';
         readonly value: readonly (TextPart | ImageFilePart)[];
       };
   readonly providerOptions?: AnthropicProviderOptions;
 };
 
 export type ReasoningPart = {
-  readonly type: "reasoning";
+  readonly type: 'reasoning';
   readonly text: string;
   readonly providerOptions?: AnthropicProviderOptions;
 };
 
 export type AnthropicSystemMessage = {
-  readonly role: "system";
+  readonly role: 'system';
   readonly content: string;
   readonly providerOptions?: AnthropicProviderOptions;
 };
 
 export type AnthropicUserMessage = {
-  readonly role: "user";
+  readonly role: 'user';
   readonly content: string | readonly (TextPart | ImageFilePart | ToolResultPart)[];
 };
 
 export type AnthropicAssistantMessage = {
-  readonly role: "assistant";
+  readonly role: 'assistant';
   readonly content: string | readonly (TextPart | ToolCallPart | ToolResultPart | ReasoningPart)[];
 };
 
-type AnthropicToolMessage = { readonly role: "tool"; readonly content: readonly ToolResultPart[] };
+type AnthropicToolMessage = { readonly role: 'tool'; readonly content: readonly ToolResultPart[] };
 
 export type AnthropicModelMessage =
   | AnthropicSystemMessage

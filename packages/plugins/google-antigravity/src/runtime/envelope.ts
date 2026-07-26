@@ -1,11 +1,10 @@
-import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityCredential } from "../schema";
+import { antigravityFamilyForWireModel, modelCapabilities } from '../catalog/families';
+import { applyValidatedToolMode, normalizeFunctionDeclarations } from '../protocol/tool-schema';
+import type { GoogleAntigravityCredential } from '../schema';
 
-import { antigravityFamilyForWireModel, modelCapabilities } from "../catalog/families";
-import { applyValidatedToolMode, normalizeFunctionDeclarations } from "../protocol/tool-schema";
-
-export type CcaRequestType = "agent" | "image_gen" | "web_search";
+export type CcaRequestType = 'agent' | 'image_gen' | 'web_search';
 
 export type CcaRequestBody = Record<string, unknown> & {
   readonly generationConfig?: Record<string, unknown> & { readonly maxOutputTokens?: number };
@@ -16,7 +15,7 @@ export type CcaRequestBody = Record<string, unknown> & {
 export type CcaEnvelope = {
   readonly model: string;
   readonly project: string;
-  readonly userAgent: "antigravity";
+  readonly userAgent: 'antigravity';
   readonly requestId: string;
   readonly requestType: CcaRequestType;
   readonly request: CcaRequestBody;
@@ -25,24 +24,24 @@ export type CcaEnvelope = {
 export type CcaEnvelopeInput = {
   readonly body: Readonly<Record<string, unknown>>;
   readonly context: LogicalRequestContext;
-  readonly credential: Pick<GoogleAntigravityCredential, "projectId">;
+  readonly credential: Pick<GoogleAntigravityCredential, 'projectId'>;
   readonly modelId: string;
   readonly requestType: CcaRequestType;
 };
 
 export function wireSessionId(key: `sha256:${string}`): string {
-  const hex = new Bun.CryptoHasher("sha256").update(key).digest("hex").slice(0, 16);
+  const hex = new Bun.CryptoHasher('sha256').update(key).digest('hex').slice(0, 16);
   const positive = BigInt(`0x${hex}`) & ((1n << 63n) - 1n);
   return `-${positive === 0n ? 1n : positive}`;
 }
 
 export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
-  const claudeBacked = antigravityFamilyForWireModel(input.modelId)?.thinking.mode === "claude";
+  const claudeBacked = antigravityFamilyForWireModel(input.modelId)?.thinking.mode === 'claude';
   const request = applyValidatedToolMode(normalizeToolDomains(cleanGeminiBody(input.body)), claudeBacked);
   return {
     model: input.modelId,
     project: input.credential.projectId,
-    userAgent: "antigravity",
+    userAgent: 'antigravity',
     requestId: `agent-${input.context.requestId}`,
     requestType: input.requestType,
     request: applyWireProfile(request, input.modelId, input.context.session.key),
@@ -52,10 +51,10 @@ export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
 function normalizeToolDomains(body: Record<string, unknown> & { readonly tools?: unknown }): Record<string, unknown> {
   const domains = body.tools;
   if (domains === undefined) return body;
-  if (!Array.isArray(domains)) throw new TypeError("Gemini tools must be an array");
+  if (!Array.isArray(domains)) throw new TypeError('Gemini tools must be an array');
   const tools = domains.flatMap((value): Record<string, unknown>[] => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new TypeError("Gemini tool domains must be objects");
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new TypeError('Gemini tool domains must be objects');
     }
     const { functionDeclarations, ...domains } = value as Record<string, unknown>;
     if (functionDeclarations === undefined) return [{ ...domains }];
@@ -78,9 +77,9 @@ function applyWireProfile(
   sessionKey: `sha256:${string}`,
 ): CcaRequestBody {
   const profile = modelCapabilities(modelId);
-  const generationConfig = record(Reflect.get(body, "generationConfig"));
-  const labels = record(Reflect.get(body, "labels"));
-  const explicitLimit = generationConfig === undefined ? undefined : Reflect.get(generationConfig, "maxOutputTokens");
+  const generationConfig = record(Reflect.get(body, 'generationConfig'));
+  const labels = record(Reflect.get(body, 'labels'));
+  const explicitLimit = generationConfig === undefined ? undefined : Reflect.get(generationConfig, 'maxOutputTokens');
   return {
     ...body,
     ...(profile === undefined
@@ -89,7 +88,7 @@ function applyWireProfile(
           generationConfig: {
             ...generationConfig,
             maxOutputTokens:
-              typeof explicitLimit === "number" && Number.isFinite(explicitLimit)
+              typeof explicitLimit === 'number' && Number.isFinite(explicitLimit)
                 ? Math.min(explicitLimit, profile.maxOutputTokens)
                 : profile.maxOutputTokens,
           },
@@ -100,7 +99,7 @@ function applyWireProfile(
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }

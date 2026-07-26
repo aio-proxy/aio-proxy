@@ -1,16 +1,14 @@
-import type React from "react";
+import { m } from '@aio-proxy/i18n';
+import { kebabCase } from 'es-toolkit/string';
+import type React from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { kebabCase } from "es-toolkit/string";
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-
-import type { useProviderForm } from "../hooks/use-provider-form";
-
-import { ProviderFormMode } from "../constants";
+import { ProviderFormMode } from '../constants';
+import type { useProviderForm } from '../hooks/use-provider-form';
 
 type Props = {
   form: ReturnType<typeof useProviderForm>;
@@ -24,24 +22,24 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
         <form.Field name="name">
           {(field) => (
             <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_name"]()}</Label>
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_name']()}</Label>
               <Input
                 id={field.name}
-                value={field.state.value ?? ""}
+                value={field.state.value ?? ''}
                 onChange={(e) => field.handleChange(e.target.value)}
                 onBlur={() => {
                   field.handleBlur();
                   if (mode === ProviderFormMode.Create) {
-                    const currentId = form.getFieldValue("id");
-                    if (!currentId || currentId.trim() === "") {
-                      const generated = kebabCase(field.state.value ?? "");
-                      if (generated !== "") {
-                        form.setFieldValue("id", generated);
+                    const currentId = form.getFieldValue('id');
+                    if (!currentId || currentId.trim() === '') {
+                      const generated = kebabCase(field.state.value ?? '');
+                      if (generated !== '') {
+                        form.setFieldValue('id', generated);
                       }
                     }
                   }
                 }}
-                placeholder={m["dashboard.providers.form.placeholder_name"]()}
+                placeholder={m['dashboard.providers.form.placeholder_name']()}
               />
             </Field>
           )}
@@ -52,12 +50,12 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
           <form.Field name="id">
             {(field) => (
               <Field>
-                <Label htmlFor={field.name}>{m["dashboard.providers.form.label_id"]()}</Label>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_id']()}</Label>
                 <Input
                   id={field.name}
-                  value={field.state.value ?? ""}
+                  value={field.state.value ?? ''}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder={m["dashboard.providers.form.placeholder_id"]()}
+                  placeholder={m['dashboard.providers.form.placeholder_id']()}
                 />
               </Field>
             )}
@@ -68,7 +66,7 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
         <form.Field name="enabled">
           {(field) => (
             <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_enabled"]()}</Label>
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_enabled']()}</Label>
               <Switch
                 id={field.name}
                 checked={field.state.value ?? true}
@@ -82,12 +80,12 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
         <form.Field name="weight">
           {(field) => (
             <Field>
-              <Label htmlFor={field.name}>{m["dashboard.providers.form.label_weight"]()}</Label>
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
               <Input
                 id={field.name}
                 type="number"
-                value={field.state.value ?? ""}
-                onChange={(e) => field.handleChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                value={field.state.value ?? ''}
+                onChange={(e) => field.handleChange(e.target.value === '' ? undefined : Number(e.target.value))}
               />
             </Field>
           )}

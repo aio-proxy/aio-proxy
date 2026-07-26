@@ -1,14 +1,13 @@
-import type { LanguageModelV4, ProviderV4 } from "@ai-sdk/provider";
-import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
+import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
-
-import { createAntigravityCredentialSource } from "./credential";
-import { type AntigravityLanguageModelRuntime, createAntigravityLanguageModel } from "./google-model";
-import { takeAioProxyOptions } from "./private-options";
-import { createGeminiRawResolver } from "./raw";
-import { createAntigravityTokenCount } from "./token-count";
-import { AntigravityTransport } from "./transport";
+import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
+import { createAntigravityCredentialSource } from './credential';
+import { type AntigravityLanguageModelRuntime, createAntigravityLanguageModel } from './google-model';
+import { takeAioProxyOptions } from './private-options';
+import { createGeminiRawResolver } from './raw';
+import { createAntigravityTokenCount } from './token-count';
+import { AntigravityTransport } from './transport';
 
 export type GoogleAntigravityRuntimeDependencies = {
   readonly fetch?: typeof globalThis.fetch;
@@ -21,10 +20,10 @@ export function createAntigravityProviderV4(
   options: { readonly modelMetadata?: (modelId: string) => JsonValue | undefined } = {},
 ): ProviderV4 {
   return {
-    specificationVersion: "v4",
+    specificationVersion: 'v4',
     languageModel: (modelId) => providerLanguageModel(modelId, runtime, options.modelMetadata),
-    embeddingModel: unsupported("embedding"),
-    imageModel: unsupported("image generation"),
+    embeddingModel: unsupported('embedding'),
+    imageModel: unsupported('image generation'),
   };
 }
 
@@ -55,7 +54,7 @@ export function createGoogleAntigravityRuntime(
     provider: createAntigravityProviderV4(modelRuntime, {
       modelMetadata: (modelId) => metadataByModel.get(modelId),
     }),
-    providerTools: { supported: ["web-search"] },
+    providerTools: { supported: ['web-search'] },
     raw: createGeminiRawResolver(transport),
     tokenCount: createAntigravityTokenCount(transport, (modelId) => metadataByModel.get(modelId)),
   };
@@ -67,7 +66,7 @@ function providerLanguageModel(
   modelMetadata: ((modelId: string) => JsonValue | undefined) | undefined,
 ): LanguageModelV4 {
   const shape = createAntigravityLanguageModel(modelId, runtime);
-  const modelFor = (providerOptions: Parameters<LanguageModelV4["doGenerate"]>[0]["providerOptions"]) => {
+  const modelFor = (providerOptions: Parameters<LanguageModelV4['doGenerate']>[0]['providerOptions']) => {
     const providerTools = takeAioProxyOptions(providerOptions).privateOptions.providerTools;
     if (providerTools === undefined || providerTools.length === 0) return shape;
     const metadata = modelMetadata?.(modelId);

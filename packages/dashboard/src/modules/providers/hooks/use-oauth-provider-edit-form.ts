@@ -1,5 +1,5 @@
-import { OAuthProviderMutationBodySchema, type ProviderAlias } from "@aio-proxy/types";
-import { useForm } from "@tanstack/react-form";
+import { OAuthProviderMutationBodySchema, type ProviderAlias } from '@aio-proxy/types';
+import { useForm } from '@tanstack/react-form';
 
 export interface OAuthProviderCommonFormValues {
   readonly id: string;
@@ -19,14 +19,14 @@ export const useOAuthProviderEditForm = (
     validators: {
       onChange: ({ value }) => {
         const result = OAuthProviderMutationBodySchema.safeParse({
-          kind: "oauth",
+          kind: 'oauth',
           id: value.id,
           name: value.name,
           enabled: value.enabled,
           weight: value.weight,
           alias: value.alias,
         });
-        return result.success ? undefined : result.error.issues.map((issue) => issue.message).join(", ");
+        return result.success ? undefined : result.error.issues.map((issue) => issue.message).join(', ');
       },
     },
     onSubmit: ({ value }) => onSubmit(value),

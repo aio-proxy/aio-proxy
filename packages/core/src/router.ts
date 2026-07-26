@@ -1,9 +1,8 @@
-import { type AliasConfig, type ModelId, resolveAliasTarget } from "@aio-proxy/types";
+import { type AliasConfig, type ModelId, resolveAliasTarget } from '@aio-proxy/types';
 
-import type { AiSdkProviderInstance } from "./provider/ai-sdk/index";
-import type { ApiProviderInstance } from "./provider/api/index";
-
-import { RouterModelCollisionError, RouterModelNotFoundError } from "./error";
+import { RouterModelCollisionError, RouterModelNotFoundError } from './error';
+import type { AiSdkProviderInstance } from './provider/ai-sdk/index';
+import type { ApiProviderInstance } from './provider/api/index';
 
 export type RoutableProvider = {
   readonly id: string;
@@ -14,8 +13,8 @@ export type RoutableProvider = {
 
 export type ProviderInstance = RoutableProvider &
   (
-    | { readonly kind: ApiProviderInstance["kind"] }
-    | { readonly kind: AiSdkProviderInstance["kind"] }
+    | { readonly kind: ApiProviderInstance['kind'] }
+    | { readonly kind: AiSdkProviderInstance['kind'] }
     | { readonly kind: string }
   );
 
@@ -56,7 +55,7 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
   }
 
   resolve(model: string, variantKey?: string): RouterCandidate<TProvider>[] {
-    const route = model.indexOf("/") > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
+    const route = model.indexOf('/') > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
 
     if (route === undefined) {
       throw new RouterModelNotFoundError(model);
@@ -103,7 +102,7 @@ export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
 }
 
 function directModelIds(provider: RoutableProvider): string[] {
-  const configuredModelIds = new Set<string>("models" in provider ? (provider.models ?? []) : []);
+  const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
   const modelIds = new Set(configuredModelIds);
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {

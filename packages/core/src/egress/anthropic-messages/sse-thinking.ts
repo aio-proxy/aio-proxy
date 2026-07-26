@@ -1,4 +1,4 @@
-import { contentBlockStop, event, thinkingStart } from "./format";
+import { contentBlockStop, event, thinkingStart } from './format';
 
 type ThinkingBlock = {
   readonly id: string;
@@ -26,9 +26,9 @@ export function createAnthropicThinkingStream(input: {
     if (block.index !== undefined) return block.index;
     block.index = input.nextIndex();
     input.enqueue(thinkingStart(block.index));
-    if (block.pendingText !== "") {
+    if (block.pendingText !== '') {
       input.enqueue(thinkingDelta(block.index, block.pendingText));
-      block.pendingText = "";
+      block.pendingText = '';
     }
     return block.index;
   };
@@ -41,9 +41,9 @@ export function createAnthropicThinkingStream(input: {
     if (index === undefined) return;
     input.enqueue(
       event({
-        type: "content_block_delta",
+        type: 'content_block_delta',
         index,
-        delta: { type: "signature_delta", signature: block.signature ?? "" },
+        delta: { type: 'signature_delta', signature: block.signature ?? '' },
       }),
     );
     input.enqueue(contentBlockStop(index));
@@ -54,7 +54,7 @@ export function createAnthropicThinkingStream(input: {
       if (active?.id !== id) close(active);
       active = blocks.get(id);
       if (active === undefined) {
-        active = { id, index: undefined, pendingText: "", signature };
+        active = { id, index: undefined, pendingText: '', signature };
         blocks.set(id, active);
       } else {
         active.signature = signature ?? active.signature;
@@ -65,7 +65,7 @@ export function createAnthropicThinkingStream(input: {
       let block = blocks.get(id);
       if (block === undefined) {
         close(active);
-        block = { id, index: undefined, pendingText: "", signature };
+        block = { id, index: undefined, pendingText: '', signature };
         blocks.set(id, block);
       }
       block.signature = signature ?? block.signature;
@@ -90,8 +90,8 @@ export function createAnthropicThinkingStream(input: {
 
 function thinkingDelta(index: number, thinking: string): Uint8Array {
   return event({
-    type: "content_block_delta",
+    type: 'content_block_delta',
     index,
-    delta: { type: "thinking_delta", thinking },
+    delta: { type: 'thinking_delta', thinking },
   });
 }

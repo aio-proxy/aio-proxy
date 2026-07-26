@@ -1,7 +1,7 @@
-import { format, isValid, parse, type Locale } from "date-fns";
-import { z } from "zod";
+import { format, isValid, parse, type Locale } from 'date-fns';
+import { z } from 'zod';
 
-import type { DateTimeRange } from "./date-time-range-picker.types";
+import type { DateTimeRange } from './date-time-range-picker.types';
 
 export interface DateTimeRangeDraft {
   readonly from: string;
@@ -31,7 +31,7 @@ export const cloneValidDate = (value: Date | undefined): Date | undefined => {
 
 export const formatDateTime = (value: Date | undefined, pattern: string, locale: Locale): string => {
   const date = cloneValidDate(value);
-  return date === undefined ? "" : format(date, pattern, { locale });
+  return date === undefined ? '' : format(date, pattern, { locale });
 };
 
 export const createDateTimeRangeDraft = (
@@ -45,15 +45,15 @@ export const createDateTimeRangeDraft = (
 
 export const parseDateTimeEndpoint = (
   text: string,
-  boundary: "from" | "to",
+  boundary: 'from' | 'to',
   pattern: string,
   locale: Locale,
 ): Date | undefined => {
-  const reference = new Date(2000, 0, 1, 0, 0, boundary === "from" ? 0 : 59, boundary === "from" ? 0 : 999);
+  const reference = new Date(2000, 0, 1, 0, 0, boundary === 'from' ? 0 : 59, boundary === 'from' ? 0 : 999);
   let parsed = parse(text, pattern, reference, { locale });
   if (!isValid(parsed) || format(parsed, pattern, { locale }) !== text) return undefined;
 
-  if (boundary === "to") {
+  if (boundary === 'to') {
     const nextDay = new Date(parsed);
     nextDay.setDate(nextDay.getDate() + 1);
     const overlap = nextDay.getTime() - parsed.getTime() - DAY_IN_MILLISECONDS;
@@ -71,11 +71,11 @@ export const parseDateTimeEndpoint = (
   return parsed;
 };
 
-const createEndpointSchema = (boundary: "from" | "to", pattern: string, locale: Locale, invalidMessage: string) =>
+const createEndpointSchema = (boundary: 'from' | 'to', pattern: string, locale: Locale, invalidMessage: string) =>
   z.string().transform((text, context) => {
     const date = parseDateTimeEndpoint(text, boundary, pattern, locale);
     if (date !== undefined) return date;
-    context.addIssue({ code: "custom", message: invalidMessage });
+    context.addIssue({ code: 'custom', message: invalidMessage });
     return z.NEVER;
   });
 
@@ -91,16 +91,16 @@ export const createDateTimeRangeDraftSchema = ({
 
   return z
     .object({
-      from: createEndpointSchema("from", pattern, locale, messages.invalid),
-      to: createEndpointSchema("to", pattern, locale, messages.invalid),
+      from: createEndpointSchema('from', pattern, locale, messages.invalid),
+      to: createEndpointSchema('to', pattern, locale, messages.invalid),
     })
     .superRefine(({ from, to }, context) => {
-      if (from > to) context.addIssue({ code: "custom", message: messages.order });
+      if (from > to) context.addIssue({ code: 'custom', message: messages.order });
       if (minimum !== undefined && from < minimum) {
-        context.addIssue({ code: "custom", message: messages.beforeMin, path: ["from"] });
+        context.addIssue({ code: 'custom', message: messages.beforeMin, path: ['from'] });
       }
       if (maximum !== undefined && to > maximum) {
-        context.addIssue({ code: "custom", message: messages.afterMax, path: ["to"] });
+        context.addIssue({ code: 'custom', message: messages.afterMax, path: ['to'] });
       }
     });
 };

@@ -1,5 +1,3 @@
-import type { Config, DashboardProviderSummary, Provider } from "@aio-proxy/types";
-
 import {
   type AiSdkProviderInstance,
   bridgeApiProviderToAiSdk,
@@ -7,13 +5,13 @@ import {
   createApiProvider,
   createProxyFetch,
   modelRoutes,
-} from "@aio-proxy/core";
-import { ProviderKind } from "@aio-proxy/types";
+} from '@aio-proxy/core';
+import type { Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
+import { ProviderKind } from '@aio-proxy/types';
 
-import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from "../runtime";
-
-import { createObservedFetch } from "../request-logging";
-import { probeAiSdk, probeApi, type ProviderProbe } from "./probe";
+import { createObservedFetch } from '../request-logging';
+import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from '../runtime';
+import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
 
 export type MaterializeProvidersOptions = {
   readonly bridgeApiProvider?: typeof bridgeApiProviderToAiSdk;
@@ -28,7 +26,7 @@ export type ProviderRuntime = {
   readonly summaries: readonly ProviderRuntimeSummary[];
 };
 
-export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, "state">;
+export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, 'state'>;
 
 export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
@@ -80,12 +78,12 @@ export function materializeRuntimeProvider(
     };
   }
 
-  throw new TypeError("Runtime provider must expose a raw or model capability");
+  throw new TypeError('Runtime provider must expose a raw or model capability');
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
-  const raw = Object.hasOwn(provider, "raw") ? (provider as { readonly raw?: unknown }).raw : undefined;
-  const model = Object.hasOwn(provider, "model") ? (provider as { readonly model?: unknown }).model : undefined;
+  const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
+  const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
   if (raw !== undefined && !isRuntimeRawCapability(raw)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
   }
@@ -96,19 +94,19 @@ function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider
 }
 
 function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
-  return typeof value === "object" && value !== null && "resolve" in value && typeof value.resolve === "function";
+  return typeof value === 'object' && value !== null && 'resolve' in value && typeof value.resolve === 'function';
 }
 
 function isModelTransport(value: unknown): value is ModelTransport {
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    "invoke" in value &&
-    typeof value.invoke === "function" &&
-    (!("ensureAvailable" in value) ||
+    'invoke' in value &&
+    typeof value.invoke === 'function' &&
+    (!('ensureAvailable' in value) ||
       value.ensureAvailable === undefined ||
-      typeof value.ensureAvailable === "function") &&
-    (!("targetProtocol" in value) || value.targetProtocol === undefined || typeof value.targetProtocol === "function")
+      typeof value.ensureAvailable === 'function') &&
+    (!('targetProtocol' in value) || value.targetProtocol === undefined || typeof value.targetProtocol === 'function')
   );
 }
 
@@ -179,7 +177,7 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
     kind: provider.kind,
     enabled: provider.enabled,
     passthrough: provider.raw !== undefined,
-    last_status: "unknown",
+    last_status: 'unknown',
     last_latency: null,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
     ...(name === undefined ? {} : { name }),
@@ -189,8 +187,8 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
 }
 
 export function providerDiff(
-  before: readonly Pick<DashboardProviderSummary, "id">[],
-  after: readonly Pick<DashboardProviderSummary, "id">[],
+  before: readonly Pick<DashboardProviderSummary, 'id'>[],
+  after: readonly Pick<DashboardProviderSummary, 'id'>[],
 ) {
   const beforeIds = new Set(before.map((provider) => provider.id));
   const afterIds = new Set(after.map((provider) => provider.id));
@@ -213,7 +211,7 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
     kind: provider.kind,
     enabled: provider.enabled,
     passthrough: provider.kind === ProviderKind.Api,
-    last_status: "unknown",
+    last_status: 'unknown',
     last_latency: null,
     name: provider.name,
     clientModels,

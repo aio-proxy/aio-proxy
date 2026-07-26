@@ -6,6 +6,7 @@ import type {
   PluginPackageImporter,
   PluginRepository,
   Router,
+  recoverPendingAccountOperations,
 } from '@aio-proxy/core';
 import type { RequestLogStore, TraceStore } from '@aio-proxy/core/db';
 import type {
@@ -51,7 +52,7 @@ export type ServerStateTestHooks = {
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
   readonly reconciliationRetryMs?: number;
   readonly recoveryScheduler?: RecoveryScheduler;
-  readonly recoverPendingAccountOperations?: typeof import('@aio-proxy/core').recoverPendingAccountOperations;
+  readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
   readonly oauthSessionNow?: () => number;
   readonly oauthSessionTtlMs?: number;
 };

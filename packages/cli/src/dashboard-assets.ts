@@ -1,7 +1,8 @@
-import { type DashboardAssets, directoryDashboardAssets } from "@aio-proxy/server";
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { type DashboardAssets, directoryDashboardAssets } from '@aio-proxy/server';
 
 export type CliDeps = {
   readonly dashboardAssets: () => DashboardAssets;
@@ -9,7 +10,7 @@ export type CliDeps = {
 };
 
 export const devDashboardStaticDir = (): string => {
-  const indexPath = fileURLToPath(import.meta.resolve("@aio-proxy/dashboard/dist/index.html"));
+  const indexPath = fileURLToPath(import.meta.resolve('@aio-proxy/dashboard/dist/index.html'));
   if (!existsSync(indexPath)) {
     throw new Error(`Dashboard assets not found at ${indexPath}. Run \`bun run build:dashboard\` first.`);
   }

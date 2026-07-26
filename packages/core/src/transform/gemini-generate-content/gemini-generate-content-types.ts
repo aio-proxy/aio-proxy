@@ -1,20 +1,20 @@
-import type { ModelMessage } from "../../ai-sdk-bridge";
-import type { GeminiGenerateContentRequest } from "../../ingress/gemini-generate-content/index";
+import type { ModelMessage } from '../../ai-sdk-bridge';
+import type { GeminiGenerateContentRequest } from '../../ingress/gemini-generate-content/index';
 
 export type GeminiGenerateContentTool = Readonly<{
-  readonly type: "function";
+  readonly type: 'function';
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
 }>;
 
 export type GeminiGenerateContentSettings = Readonly<{
-  readonly generationConfig?: GeminiGenerateContentRequest["generationConfig"] | undefined;
-  readonly safetySettings?: GeminiGenerateContentRequest["safetySettings"] | undefined;
+  readonly generationConfig?: GeminiGenerateContentRequest['generationConfig'] | undefined;
+  readonly safetySettings?: GeminiGenerateContentRequest['safetySettings'] | undefined;
   readonly providerOptions?:
     | {
         readonly google: {
-          readonly safetySettings?: GeminiGenerateContentRequest["safetySettings"];
+          readonly safetySettings?: GeminiGenerateContentRequest['safetySettings'];
         };
       }
     | undefined;

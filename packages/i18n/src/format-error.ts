@@ -1,7 +1,5 @@
-import { HTTPException } from "hono/http-exception";
-import { ZodError } from "zod";
-
-import type { Locale } from "./resolve";
+import { HTTPException } from 'hono/http-exception';
+import { ZodError } from 'zod';
 
 import {
   AliasCollisionError,
@@ -11,8 +9,9 @@ import {
   PortOutOfRangeError,
   ProviderNotInstalledError,
   StaleProviderGenerationError,
-} from "./errors";
-import { m } from "./paraglide/messages";
+} from './errors';
+import { m } from './paraglide/messages';
+import type { Locale } from './resolve';
 
 export type FormattedUserError = {
   readonly code: string;
@@ -21,17 +20,17 @@ export type FormattedUserError = {
 
 function formatAppError(err: AppError, locale: Locale): FormattedUserError {
   switch (err.messageKey) {
-    case "cli_error_config_invalid":
+    case 'cli_error_config_invalid':
       return {
         code: err.code,
         message: m.cli_error_config_invalid({}, { locale }),
       };
-    case "cli_error_config_not_found":
+    case 'cli_error_config_not_found':
       return {
         code: err.code,
         message: m.cli_error_config_not_found({}, { locale }),
       };
-    case "cli_error_config_write_failed":
+    case 'cli_error_config_write_failed':
       if (err instanceof ConfigWriteError) {
         return {
           code: err.code,
@@ -40,9 +39,9 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       }
       return {
         code: err.code,
-        message: m.cli_error_config_write_failed({ path: "" }, { locale }),
+        message: m.cli_error_config_write_failed({ path: '' }, { locale }),
       };
-    case "cli_error_port_out_of_range":
+    case 'cli_error_port_out_of_range':
       if (err instanceof PortOutOfRangeError) {
         return {
           code: err.code,
@@ -51,9 +50,9 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
       }
       return {
         code: err.code,
-        message: m.cli_error_port_out_of_range({ port: "" }, { locale }),
+        message: m.cli_error_port_out_of_range({ port: '' }, { locale }),
       };
-    case "error_invalid_locale":
+    case 'error_invalid_locale':
       return {
         code: err.code,
         message: m.error_invalid_locale({}, { locale }),

@@ -1,44 +1,44 @@
-import { REQUEST_BODY_LIMITS } from "@aio-proxy/core";
-import { ProviderProtocol } from "@aio-proxy/types";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { ServerLog } from "../server-log";
+import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
+import { ProviderProtocol } from '@aio-proxy/types';
 
-import { createTempHomes, recorded } from "../../_test/openai-responses.test-support";
-import { createServer } from "../server";
+import { createTempHomes, recorded } from '../../__tests__/openai-responses.test-support';
+import { createServer } from '../server';
+import type { ServerLog } from '../server-log';
 
-const homes = createTempHomes("aio-proxy-responses-early-logs-");
+const homes = createTempHomes('aio-proxy-responses-early-logs-');
 afterEach(homes.cleanup);
 
 const cases = [
   {
-    name: "malformed JSON",
-    body: "{",
+    name: 'malformed JSON',
+    body: '{',
     statusCode: 400,
-    requestedModelId: "<unparsed>",
-    errorCode: "invalid_request",
-    errorType: "SyntaxError",
+    requestedModelId: '<unparsed>',
+    errorCode: 'invalid_request',
+    errorType: 'SyntaxError',
   },
   {
-    name: "oversized Content-Length",
-    body: "{}",
+    name: 'oversized Content-Length',
+    body: '{}',
     contentLength: String(REQUEST_BODY_LIMITS.encoded + 1),
     statusCode: 413,
-    requestedModelId: "<unparsed>",
-    errorCode: "request_too_large",
-    errorType: "RequestBodyTooLargeError",
+    requestedModelId: '<unparsed>',
+    errorCode: 'request_too_large',
+    errorType: 'RequestBodyTooLargeError',
   },
   {
-    name: "missing model route",
-    body: JSON.stringify({ model: "missing", input: "hello" }),
+    name: 'missing model route',
+    body: JSON.stringify({ model: 'missing', input: 'hello' }),
     statusCode: 404,
-    requestedModelId: "missing",
-    errorCode: "model_not_found",
-    errorType: "RouterModelNotFoundError",
+    requestedModelId: 'missing',
+    errorCode: 'model_not_found',
+    errorType: 'RouterModelNotFoundError',
   },
 ] as const;
 
-describe("OpenAI Responses early request observability", () => {
+describe('OpenAI Responses early request observability', () => {
   for (const scenario of cases) {
     test(`records and logs ${scenario.name} before any provider attempt`, async () => {
       const logs: ServerLog[] = [];
@@ -49,11 +49,11 @@ describe("OpenAI Responses early request observability", () => {
         logger: (entry) => logs.push(entry),
       });
 
-      const response = await app.request("/v1/responses", {
-        method: "POST",
+      const response = await app.request('/v1/responses', {
+        method: 'POST',
         headers: {
-          "content-type": "application/json",
-          ...("contentLength" in scenario ? { "content-length": scenario.contentLength } : {}),
+          'content-type': 'application/json',
+          ...('contentLength' in scenario ? { 'content-length': scenario.contentLength } : {}),
         },
         body: scenario.body,
       });
@@ -66,7 +66,7 @@ describe("OpenAI Responses early request observability", () => {
           expect.objectContaining({
             inboundProtocol: ProviderProtocol.OpenAIResponse,
             requestedModelId: scenario.requestedModelId,
-            outcome: "failure",
+            outcome: 'failure',
             finalStatusCode: scenario.statusCode,
             errorCode: scenario.errorCode,
             attempts: [],
@@ -76,11 +76,11 @@ describe("OpenAI Responses early request observability", () => {
       });
       expect(logs).toEqual([
         {
-          event: "request.rejected",
+          event: 'request.rejected',
           requestId: row?.requestId,
           inboundProtocol: ProviderProtocol.OpenAIResponse,
-          ...(scenario.requestedModelId === "<unparsed>" ? {} : { requestedModelId: scenario.requestedModelId }),
-          path: "/v1/responses",
+          ...(scenario.requestedModelId === '<unparsed>' ? {} : { requestedModelId: scenario.requestedModelId }),
+          path: '/v1/responses',
           statusCode: scenario.statusCode,
           errorCode: scenario.errorCode,
           errorType: scenario.errorType,

@@ -1,31 +1,30 @@
-import type { SharedV4ProviderOptions } from "@ai-sdk/provider";
+import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
+import { type LogicalRequestContext, type ProviderExecutedTool, zod } from '@aio-proxy/plugin-sdk';
 
-import { type LogicalRequestContext, type ProviderExecutedTool, zod } from "@aio-proxy/plugin-sdk";
-
-import type { AntigravityThinkingOption } from "../protocol/thinking";
+import type { AntigravityThinkingOption } from '../protocol/thinking';
 
 const logicalRequestSchema = zod.custom<LogicalRequestContext>((value) => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const session = Reflect.get(value, "session");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const session = Reflect.get(value, 'session');
   return (
-    typeof Reflect.get(value, "requestId") === "string" &&
-    typeof session === "object" &&
+    typeof Reflect.get(value, 'requestId') === 'string' &&
+    typeof session === 'object' &&
     session !== null &&
     !Array.isArray(session) &&
-    typeof Reflect.get(session, "key") === "string" &&
-    Reflect.get(session, "key").startsWith("sha256:") &&
-    typeof Reflect.get(session, "source") === "string"
+    typeof Reflect.get(session, 'key') === 'string' &&
+    Reflect.get(session, 'key').startsWith('sha256:') &&
+    typeof Reflect.get(session, 'source') === 'string'
   );
 });
 
-const thinkingSchema = zod.discriminatedUnion("mode", [
-  zod.object({ mode: zod.literal("disabled") }),
-  zod.object({ mode: zod.literal("fixed"), budgetTokens: zod.number().int().positive() }),
-  zod.object({ mode: zod.literal("adaptive"), effort: zod.enum(["low", "medium", "high", "max"]) }),
+const thinkingSchema = zod.discriminatedUnion('mode', [
+  zod.object({ mode: zod.literal('disabled') }),
+  zod.object({ mode: zod.literal('fixed'), budgetTokens: zod.number().int().positive() }),
+  zod.object({ mode: zod.literal('adaptive'), effort: zod.enum(['low', 'medium', 'high', 'max']) }),
 ]) satisfies zod.ZodType<AntigravityThinkingOption>;
 
 const providerToolSchema = zod.object({
-  type: zod.literal("web-search"),
+  type: zod.literal('web-search'),
   name: zod.string().min(1),
   maxUses: zod.number().int().positive().optional(),
   allowedDomains: zod.array(zod.string().min(1)).optional(),

@@ -1,12 +1,11 @@
-import type { RequestLogsQuery } from "@aio-proxy/core/db";
+import { modelRoutes } from '@aio-proxy/core';
+import type { RequestLogsQuery } from '@aio-proxy/core/db';
+import { DashboardRequestLogsPageSizeSchema, RequestOutcomeSchema } from '@aio-proxy/types';
+import { Hono } from 'hono';
+import { validator } from 'hono/validator';
+import { z } from 'zod';
 
-import { modelRoutes } from "@aio-proxy/core";
-import { DashboardRequestLogsPageSizeSchema, RequestOutcomeSchema } from "@aio-proxy/types";
-import { Hono } from "hono";
-import { validator } from "hono/validator";
-import { z } from "zod";
-
-import type { ServerState } from "../server-state";
+import type { ServerState } from '../server-state';
 
 const RequestLogsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -28,11 +27,11 @@ const RequestLogsQuerySchema = z.object({
   finalStatusCode: z.coerce.number().int().min(100).max(599).optional(),
 });
 
-const requestLogsValidator = validator("query", (raw, context) => {
+const requestLogsValidator = validator('query', (raw, context) => {
   const parsed = RequestLogsQuerySchema.safeParse(raw);
   return parsed.success
     ? toRequestLogsQuery(parsed.data)
-    : context.json({ error: "validation failed", details: parsed.error.issues }, 400);
+    : context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
 });
 
 function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): RequestLogsQuery {
@@ -52,8 +51,8 @@ function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): Req
 }
 
 export const createDashboardRequestLogsRoute = (state: ServerState) =>
-  new Hono().get("/", requestLogsValidator, async (context) => {
-    const data = state.requestLog.list(context.req.valid("query"));
+  new Hono().get('/', requestLogsValidator, async (context) => {
+    const data = state.requestLog.list(context.req.valid('query'));
     const catalog = await state.modelsDevCatalog().catch(() => undefined);
     const providerNames = new Map(state.currentConfig().providers.map((provider) => [provider.id, provider.name]));
     const runtimeProviders = new Map(

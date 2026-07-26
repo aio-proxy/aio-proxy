@@ -1,7 +1,7 @@
-import { m } from "@aio-proxy/i18n";
+import { m } from '@aio-proxy/i18n';
 
 export class ProviderCapabilityNotFoundError extends Error {
-  override readonly name = "ProviderCapabilityNotFoundError";
+  override readonly name = 'ProviderCapabilityNotFoundError';
   constructor(readonly reference?: string) {
     super(
       reference === undefined
@@ -12,12 +12,12 @@ export class ProviderCapabilityNotFoundError extends Error {
 }
 
 export class ProviderCapabilityAmbiguousError extends Error {
-  override readonly name = "ProviderCapabilityAmbiguousError";
+  override readonly name = 'ProviderCapabilityAmbiguousError';
   constructor(
     readonly input: string,
     readonly references: readonly string[],
   ) {
-    const joined = references.join(", ");
+    const joined = references.join(', ');
     super(
       input.length === 0
         ? m.cli_provider_login_error_capability_ambiguous_selection({ references: joined })
@@ -27,7 +27,7 @@ export class ProviderCapabilityAmbiguousError extends Error {
 }
 
 export class ProviderCapabilityMismatchError extends Error {
-  override readonly name = "ProviderCapabilityMismatchError";
+  override readonly name = 'ProviderCapabilityMismatchError';
   constructor(
     readonly requested: string,
     readonly target: string,
@@ -37,14 +37,14 @@ export class ProviderCapabilityMismatchError extends Error {
 }
 
 export class ProviderTargetNotFoundError extends Error {
-  override readonly name = "ProviderTargetNotFoundError";
+  override readonly name = 'ProviderTargetNotFoundError';
   constructor(readonly providerId: string) {
     super(m.cli_provider_login_error_target_not_found({ provider: providerId }));
   }
 }
 
 export class ProviderTargetInvalidError extends Error {
-  override readonly name = "ProviderTargetInvalidError";
+  override readonly name = 'ProviderTargetInvalidError';
   constructor(readonly providerId: string) {
     super(m.cli_provider_login_error_target_invalid({ provider: providerId }));
   }

@@ -1,18 +1,17 @@
-import { m } from "@aio-proxy/i18n";
-import { useForm } from "@tanstack/react-form";
-import { PlusIcon, Trash2Icon } from "lucide-react";
-import { type FC, useState } from "react";
+import { m } from '@aio-proxy/i18n';
+import { useForm } from '@tanstack/react-form';
+import { PlusIcon, Trash2Icon } from 'lucide-react';
+import { type FC, useState } from 'react';
 
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
-import type { AliasDraft, AliasEditResult } from "../alias-editor";
-
-import { aliasEditErrorMessage, type VisibleEditError } from "../alias-editor-copy";
+import type { AliasDraft, AliasEditResult } from '../alias-editor';
+import { aliasEditErrorMessage, type VisibleEditError } from '../alias-editor-copy';
 
 type Props = {
   readonly id: string;
@@ -23,18 +22,18 @@ type Props = {
 };
 
 export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscard, onDirtyChange }) => {
-  const initialModel = models[0] ?? "";
+  const initialModel = models[0] ?? '';
   const [error, setError] = useState<VisibleEditError | null>(null);
-  const defaultValues: AliasDraft = { name: "", model: initialModel, preserve: false };
+  const defaultValues: AliasDraft = { name: '', model: initialModel, preserve: false };
   const form = useForm({
     defaultValues,
     onSubmit: ({ value }) => {
       const result = onCommit(value);
       if (result.ok) {
         setError(null);
-      } else if (result.code !== "alias-missing") {
+      } else if (result.code !== 'alias-missing') {
         setError(result.code);
-        document.getElementById(result.code === "target-required" ? targetId : nameId)?.focus();
+        document.getElementById(result.code === 'target-required' ? targetId : nameId)?.focus();
       }
     },
   });
@@ -42,16 +41,16 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
   const targetId = `provider-variant-draft-${id}-target`;
   const preserveId = `provider-variant-draft-${id}-preserve`;
   const reportDirty = (next: AliasDraft) =>
-    onDirtyChange(id, next.name.trim() !== "" || next.model !== initialModel || next.preserve);
+    onDirtyChange(id, next.name.trim() !== '' || next.model !== initialModel || next.preserve);
 
   return (
     <Card size="sm" data-testid="provider-variant-draft">
       <CardHeader>
-        <CardTitle>{m["dashboard.providers.form.variant_draft_title"]()}</CardTitle>
+        <CardTitle>{m['dashboard.providers.form.variant_draft_title']()}</CardTitle>
         <CardAction>
           <Button type="button" variant="ghost" size="sm" onClick={onDiscard}>
             <Trash2Icon data-icon="inline-start" />
-            {m["dashboard.providers.form.discard_draft"]()}
+            {m['dashboard.providers.form.discard_draft']()}
           </Button>
         </CardAction>
       </CardHeader>
@@ -59,13 +58,13 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
         <FieldGroup className="gap-4 md:grid md:grid-cols-2">
           <form.Field name="name">
             {(field) => (
-              <Field data-invalid={error === "name-required" || error === "name-duplicate"}>
-                <FieldLabel htmlFor={nameId}>{m["dashboard.providers.form.variant_name"]()}</FieldLabel>
+              <Field data-invalid={error === 'name-required' || error === 'name-duplicate'}>
+                <FieldLabel htmlFor={nameId}>{m['dashboard.providers.form.variant_name']()}</FieldLabel>
                 <Input
                   id={nameId}
                   autoFocus
                   value={field.state.value}
-                  aria-invalid={error === "name-required" || error === "name-duplicate"}
+                  aria-invalid={error === 'name-required' || error === 'name-duplicate'}
                   onChange={(event) => {
                     const next = { ...form.state.values, name: event.target.value };
                     field.handleChange(event.target.value);
@@ -78,8 +77,8 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
           </form.Field>
           <form.Field name="model">
             {(field) => (
-              <Field data-invalid={error === "target-required"}>
-                <FieldLabel htmlFor={targetId}>{m["dashboard.providers.form.variant_target"]()}</FieldLabel>
+              <Field data-invalid={error === 'target-required'}>
+                <FieldLabel htmlFor={targetId}>{m['dashboard.providers.form.variant_target']()}</FieldLabel>
                 <Select
                   value={field.state.value}
                   onValueChange={(model) => {
@@ -90,7 +89,7 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
                     setError(null);
                   }}
                 >
-                  <SelectTrigger id={targetId} className="w-full" aria-invalid={error === "target-required"}>
+                  <SelectTrigger id={targetId} className="w-full" aria-invalid={error === 'target-required'}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -118,7 +117,7 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
                     reportDirty(next);
                   }}
                 />
-                <FieldLabel htmlFor={preserveId}>{m["dashboard.providers.form.variant_preserve"]()}</FieldLabel>
+                <FieldLabel htmlFor={preserveId}>{m['dashboard.providers.form.variant_preserve']()}</FieldLabel>
               </Field>
             )}
           </form.Field>
@@ -128,7 +127,7 @@ export const ProviderVariantDraft: FC<Props> = ({ id, models, onCommit, onDiscar
       <CardFooter className="justify-end">
         <Button type="button" size="sm" onClick={() => void form.handleSubmit()}>
           <PlusIcon data-icon="inline-start" />
-          {m["dashboard.providers.form.add_draft"]()}
+          {m['dashboard.providers.form.add_draft']()}
         </Button>
       </CardFooter>
     </Card>

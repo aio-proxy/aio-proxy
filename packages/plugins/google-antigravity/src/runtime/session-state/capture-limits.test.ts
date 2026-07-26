@@ -1,64 +1,64 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { ReasoningReplayCache } from "../../protocol/replay-cache";
-import { captureReasoningReplay } from "../session-state";
-import { appendSseReplayPayload, createSseReplayState, failSseReplay } from "./replay-accumulator";
+import { ReasoningReplayCache } from '../../protocol/replay-cache';
+import { captureReasoningReplay } from '../session-state';
+import { appendSseReplayPayload, createSseReplayState, failSseReplay } from './replay-accumulator';
 
-const MODEL = "claude-opus-4-6-thinking";
-const SIGNATURE = "capture-limit-signature-".repeat(3);
+const MODEL = 'claude-opus-4-6-thinking';
+const SIGNATURE = 'capture-limit-signature-'.repeat(3);
 const CAPTURE_BYTE_LIMIT = 1024 * 1024;
 const CAPTURE_ENTRY_LIMIT = 1024;
 
-test("forwards an oversized unterminated event without committing prior replay", async () => {
-  const chunks = [callFrame("call-1", "STOP"), `data: ${"x".repeat(CAPTURE_BYTE_LIMIT + 1)}`];
+test('forwards an oversized unterminated event without committing prior replay', async () => {
+  const chunks = [callFrame('call-1', 'STOP'), `data: ${'x'.repeat(CAPTURE_BYTE_LIMIT + 1)}`];
 
-  const captured = await capture(chunks, "unterminated");
+  const captured = await capture(chunks, 'unterminated');
 
-  expect(captured.text).toBe(chunks.join(""));
+  expect(captured.text).toBe(chunks.join(''));
   expect(captured.replay).toBeUndefined();
 });
 
-test("stops capture after cumulative valid event data exceeds one MiB", async () => {
+test('stops capture after cumulative valid event data exceeds one MiB', async () => {
   const chunks = [
-    ...Array.from({ length: 17 }, (_, index) => callFrame(`call-${index}`, undefined, "x".repeat(64 * 1024))),
+    ...Array.from({ length: 17 }, (_, index) => callFrame(`call-${index}`, undefined, 'x'.repeat(64 * 1024))),
     finishFrame(),
   ];
 
-  const captured = await capture(chunks, "cumulative-bytes");
+  const captured = await capture(chunks, 'cumulative-bytes');
 
-  expect(captured.text).toBe(chunks.join(""));
+  expect(captured.text).toBe(chunks.join(''));
   expect(captured.replay).toBeUndefined();
 });
 
-test("stops capture when retained replay parts exceed the entry ceiling", async () => {
+test('stops capture when retained replay parts exceed the entry ceiling', async () => {
   const chunks = [
     ...Array.from({ length: CAPTURE_ENTRY_LIMIT + 1 }, (_, index) => callFrame(`call-${index}`)),
     finishFrame(),
   ];
 
-  const captured = await capture(chunks, "parts");
+  const captured = await capture(chunks, 'parts');
 
-  expect(captured.text).toBe(chunks.join(""));
+  expect(captured.text).toBe(chunks.join(''));
   expect(captured.replay).toBeUndefined();
 });
 
-test("stops capture when active partial calls exceed the entry ceiling", async () => {
+test('stops capture when active partial calls exceed the entry ceiling', async () => {
   const chunks = [
     ...Array.from({ length: CAPTURE_ENTRY_LIMIT + 1 }, (_, index) => partialCallFrame(`call-${index}`)),
     ...Array.from({ length: CAPTURE_ENTRY_LIMIT + 1 }, terminalCallFrame),
     finishFrame(),
   ];
 
-  const captured = await capture(chunks, "active-calls");
+  const captured = await capture(chunks, 'active-calls');
 
-  expect(captured.text).toBe(chunks.join(""));
+  expect(captured.text).toBe(chunks.join(''));
   expect(captured.replay).toBeUndefined();
 });
 
-test("replay failure clears accumulated parts and active partial calls", () => {
+test('replay failure clears accumulated parts and active partial calls', () => {
   const state = createSseReplayState();
-  appendSseReplayPayload(state, MODEL, payload([completeCall("complete")]));
-  appendSseReplayPayload(state, MODEL, payload([partialCall("active")]));
+  appendSseReplayPayload(state, MODEL, payload([completeCall('complete')]));
+  appendSseReplayPayload(state, MODEL, payload([partialCall('active')]));
 
   expect(state.parts).toHaveLength(1);
   expect(state.streamedCalls.active.size).toBe(1);
@@ -91,19 +91,19 @@ function terminalCallFrame(): string {
 }
 
 function finishFrame(): string {
-  return frame(payload([], "STOP"));
+  return frame(payload([], 'STOP'));
 }
 
 function completeCall(id: string) {
-  return { functionCall: { id, name: "tool", args: {} }, thoughtSignature: SIGNATURE };
+  return { functionCall: { id, name: 'tool', args: {} }, thoughtSignature: SIGNATURE };
 }
 
 function partialCall(id: string) {
   return {
     functionCall: {
       id,
-      name: "tool",
-      partialArgs: [{ jsonPath: "$.value", stringValue: "x", willContinue: true }],
+      name: 'tool',
+      partialArgs: [{ jsonPath: '$.value', stringValue: 'x', willContinue: true }],
       willContinue: true,
     },
     thoughtSignature: SIGNATURE,
@@ -116,7 +116,7 @@ function payload(parts: readonly unknown[], finishReason?: string) {
       candidates: [
         {
           index: 0,
-          ...(parts.length === 0 ? {} : { content: { role: "model", parts } }),
+          ...(parts.length === 0 ? {} : { content: { role: 'model', parts } }),
           ...(finishReason === undefined ? {} : { finishReason }),
         },
       ],
@@ -137,6 +137,6 @@ function sseResponse(chunks: readonly string[]): Response {
         controller.close();
       },
     }),
-    { headers: { "Content-Type": "text/event-stream" } },
+    { headers: { 'Content-Type': 'text/event-stream' } },
   );
 }

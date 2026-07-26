@@ -1,12 +1,12 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
-import type { TextStreamPart, ToolSet } from "ai";
+import type { LanguageModelV2StreamPart } from '@ai-sdk/provider';
+import type { TextStreamPart, ToolSet } from 'ai';
 
 import {
   writeOpenAIResponsesResponse as writeOpenAIResponsesResponseRaw,
   writeOpenAIResponsesSSE as writeOpenAIResponsesSSERaw,
-} from "../index";
+} from '../index';
 
-const defaultEgress = { modelId: "test-model" };
+const defaultEgress = { modelId: 'test-model' };
 
 export const writeOpenAIResponsesResponse = (
   stream: Parameters<typeof writeOpenAIResponsesResponseRaw>[0],
@@ -37,13 +37,13 @@ export type ResponseEvent = {
 
 export async function frames(stream: ReadableStream<Uint8Array>): Promise<ResponseEvent[]> {
   const decoder = new TextDecoder();
-  let body = "";
+  let body = '';
   for await (const chunk of stream) body += decoder.decode(chunk, { stream: true });
   body += decoder.decode();
   return body
     .trim()
-    .split("\n\n")
-    .map((frame) => JSON.parse(frame.split("\n")[1]?.slice("data: ".length) ?? "null") as ResponseEvent);
+    .split('\n\n')
+    .map((frame) => JSON.parse(frame.split('\n')[1]?.slice('data: '.length) ?? 'null') as ResponseEvent);
 }
 
 export function partStream(parts: readonly unknown[]): ReadableStream<LanguageModelV2StreamPart> {

@@ -1,55 +1,18 @@
-import {
-  AccountCleanupPendingError,
-  NpmInstallError,
-  NpmLockError,
-  NpmPackageEntrypointError,
-  NpmPackageJsonError,
-  NpmPackageNameError,
-  npmAdd,
-  PendingAccountOperationConflictError,
-} from '@aio-proxy/core';
 import { UsageOverviewGroupBySchema, UsageOverviewMetricSchema, UsageOverviewRangeSchema } from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
-import { ZodError, z } from 'zod';
+import { z } from 'zod';
 
-import { ConfigReloadRejectedError } from '../config-store';
 import type { DashboardAuthentication } from '../dashboard-auth';
-import { isTrustedProviderPackage } from '../provider-package-trust';
 import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
 import { createDashboardOAuthLoginRoutes } from './oauth-login';
-import {
-  insertProvider,
-  type ParsedProviderMutation,
-  parseProviderMutation,
-  ProviderAlreadyExistsError,
-  ProviderNotFoundError,
-  replaceOAuthProvider,
-  replaceProvider,
-} from './provider-mutation';
-import { providerPackageQueryValidator, providerPackageStatus } from './provider-package-metadata';
+import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
+import { createDashboardProviderWriteRoutes } from './provider-write-routes';
 import { createDashboardRequestLogsRoute } from './request-logs';
 
-const ProviderInstallRequestSchema = z.object({
-  npm: z.string().min(1),
-  confirmed: z.boolean().optional(),
-  registry: z.url().optional(),
-});
-
 export { redactSecrets } from './provider-secrets';
-
-const providerMutationValidator = validator('json', (raw, context): ParsedProviderMutation | Response => {
-  const parsed = parseProviderMutation(raw);
-  return parsed.ok ? parsed.body : context.json(parsed.payload, parsed.status);
-});
-
-const probeKey = 'probe';
-
-const providerProbeValidator = validator('query', (raw): { readonly probe?: string } =>
-  typeof raw[probeKey] === 'string' ? { probe: raw[probeKey] } : {},
-);
 
 const UsageOverviewQuerySchema = z.object({
   range: UsageOverviewRangeSchema.default('24h'),
@@ -67,159 +30,13 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
-    .get('/providers', async (context) => {
-      const filter = context.req.query('filter');
-      const probe = context.req.query('probe') === 'true';
-      const providers = await state.providerSummaries({ filter, probe });
-      return context.json({ providers });
-    })
-    .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
-      context.json(await providerPackageStatus(context.req.valid('query').npm)),
-    )
-    .get('/providers/:id/edit-view', (context) => {
-      const id = context.req.param('id');
-      const data = state.currentConfig().providers.find((entry) => entry.id === id);
-      if (data === undefined) {
-        return context.json({ error: 'provider not found' }, 404);
-      }
-      const provider = redactSecrets(data) as typeof data & { hasApiKey: boolean };
-      provider.hasApiKey = false;
-      if ('apiKey' in provider) {
-        provider.hasApiKey = typeof provider.apiKey === 'string' && provider.apiKey !== '';
-        delete provider.apiKey;
-      }
-      const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
-      return context.json({ provider, ...(oauth === undefined ? {} : { oauth }) });
-    })
-    .post('/providers', providerMutationValidator, async (context) => {
-      if (state.configPath === undefined) {
-        return context.json({ error: 'config file path is not configured' }, 409);
-      }
-      const { authored, materialized } = context.req.valid('json');
-      if (materialized.kind === 'oauth') {
-        return context.json({ error: 'OAuth providers must be created through login' }, 400);
-      }
-      const { id, ...bodyRest } = authored;
-      const providerData: Record<string, unknown> = { ...bodyRest };
-      try {
-        await state.configStore.mutateProviders((record) => insertProvider(record, id, providerData));
-      } catch (error) {
-        if (error instanceof ProviderAlreadyExistsError) {
-          return context.json({ error: 'provider id already exists', id: error.providerId }, 409);
-        }
-        if (error instanceof ConfigReloadRejectedError) {
-          return context.json({ error: 'config rejected', detail: error.message }, 422);
-        }
-        throw error;
-      }
-      const summaries = await state.providerSummaries({ filter: id, probe: false });
-      const provider = summaries[0];
-      if (provider === undefined) {
-        return context.json({ error: 'provider summary not found' }, 500);
-      }
-      return context.json({ provider }, 201);
-    })
-    .put('/providers/:id', providerMutationValidator, async (context) => {
-      if (state.configPath === undefined) {
-        return context.json({ error: 'config file path is not configured' }, 409);
-      }
-      const id = context.req.param('id');
-      const { authored, materialized } = context.req.valid('json');
-      if (materialized.id !== id) {
-        return context.json({ error: 'provider rename not supported' }, 400);
-      }
-      const { id: _id, ...bodyRest } = authored;
-      const providerData: Record<string, unknown> = { ...bodyRest };
-      try {
-        await state.configStore.mutateProviders((record) =>
-          materialized.kind === 'oauth'
-            ? replaceOAuthProvider(record, id, providerData)
-            : replaceProvider(record, id, providerData),
-        );
-      } catch (error) {
-        if (error instanceof ProviderNotFoundError) {
-          return context.json({ error: 'provider not found' }, 404);
-        }
-        if (error instanceof ConfigReloadRejectedError) {
-          return context.json({ error: 'config rejected', detail: error.message }, 422);
-        }
-        throw error;
-      }
-      const summaries = await state.providerSummaries({ filter: id, probe: false });
-      const provider = summaries[0];
-      if (provider === undefined) {
-        return context.json({ error: 'provider summary not found' }, 500);
-      }
-      return context.json({ provider });
-    })
-    .delete('/providers/:id', async (context) => {
-      if (state.configPath === undefined) {
-        return context.json({ error: 'config file path is not configured' }, 409);
-      }
-      const id = context.req.param('id');
-      if ((await state.providerSummaries({ filter: id, probe: false })).length === 0) {
-        return context.json({ error: 'provider not found' }, 404);
-      }
-      try {
-        await state.configStore.deleteProvider(id);
-      } catch (error) {
-        if (error instanceof AccountCleanupPendingError || error instanceof PendingAccountOperationConflictError) {
-          return context.json({ error: 'provider account cleanup pending', id }, 409);
-        }
-        throw error;
-      }
-      return context.json({ ok: true, id });
-    })
-    .get('/providers/:id', providerProbeValidator, async (context) => {
-      const query = context.req.valid('query');
-      const providers = await state.providerSummaries({
-        filter: context.req.param('id'),
-        probe: query.probe === 'true',
-      });
-      const provider = providers[0];
-      if (provider === undefined) {
-        return context.json({ error: 'provider not found' }, 404);
-      }
-      return context.json({ provider });
-    })
+    .route('/', createDashboardProviderReadRoutes(state))
+    .route('/', createDashboardProviderWriteRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
       return context.json(state.traceStore.overview(query));
     })
     .route('/logs', createDashboardRequestLogsRoute(state))
-    .post('/providers/install', async (context) => {
-      try {
-        const request = ProviderInstallRequestSchema.parse(await context.req.json());
-        if (!isTrustedProviderPackage(request.npm) && request.confirmed !== true) {
-          return context.json({ code: 'confirmation_required', error: 'provider install requires confirmation' }, 400);
-        }
-        const installed = await npmAdd(request.npm, request.registry);
-        return context.json({ installed });
-      } catch (error) {
-        if (error instanceof ZodError || error instanceof SyntaxError) {
-          return context.json(
-            {
-              error: 'provider install requires { npm, confirmed: true, registry? }',
-            },
-            400,
-          );
-        }
-        if (error instanceof NpmPackageNameError) {
-          return context.json({ error: error.message }, 400);
-        }
-        if (error instanceof NpmLockError) {
-          return context.json({ error: error.message }, 423);
-        }
-        if (
-          error instanceof NpmInstallError ||
-          error instanceof NpmPackageEntrypointError ||
-          error instanceof NpmPackageJsonError
-        ) {
-          return context.json({ error: error.message }, 502);
-        }
-        throw error;
-      }
-    })
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {
       const result = await state.reload();

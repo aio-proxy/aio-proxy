@@ -1,4 +1,4 @@
-import type { ZodType } from "@aio-proxy/plugin-sdk";
+import type { ZodType } from '@aio-proxy/plugin-sdk';
 
 export async function fetchJson<Output>(
   url: string,
@@ -13,15 +13,15 @@ export async function fetchJson<Output>(
 
 export function copilotHeaders(token: string): HeadersInit {
   return {
-    accept: "application/json",
+    accept: 'application/json',
     authorization: `Bearer ${token}`,
-    "Copilot-Integration-Id": "vscode-chat",
-    "Editor-Plugin-Version": "copilot-chat/0.35.0",
-    "Editor-Version": "vscode/1.107.0",
-    "User-Agent": "GitHubCopilotChat/0.35.0",
+    'Copilot-Integration-Id': 'vscode-chat',
+    'Editor-Plugin-Version': 'copilot-chat/0.35.0',
+    'Editor-Version': 'vscode/1.107.0',
+    'User-Agent': 'GitHubCopilotChat/0.35.0',
   };
 }
 
 export function authHeaders(token: string): HeadersInit {
-  return { accept: "application/json", authorization: `Bearer ${token}` };
+  return { accept: 'application/json', authorization: `Bearer ${token}` };
 }

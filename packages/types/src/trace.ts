@@ -5,7 +5,7 @@ import { UsageRowSchema } from './usage';
 
 const TraceBaseSchema = z.object({
   traceId: IdSchema,
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
 });
 
 export const TraceEventSchema = z.discriminatedUnion('type', [

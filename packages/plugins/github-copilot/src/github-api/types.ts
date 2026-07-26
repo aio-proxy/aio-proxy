@@ -1,8 +1,8 @@
-import type { LocalizedText } from "@aio-proxy/plugin-sdk";
+import type { LocalizedText } from '@aio-proxy/plugin-sdk';
 
 export type GitHubAccountOptions =
-  | { readonly deploymentType: "github.com" }
-  | { readonly deploymentType: "enterprise"; readonly enterpriseURL: string };
+  | { readonly deploymentType: 'github.com' }
+  | { readonly deploymentType: 'enterprise'; readonly enterpriseURL: string };
 
 export type GitHubCopilotCredential = {
   readonly githubToken: string;

@@ -1,11 +1,11 @@
-import { type DashboardOAuthSessionStart, DashboardOAuthSessionStartSchema } from "@aio-proxy/types";
-import { useForm } from "@tanstack/react-form";
-import { z } from "zod";
+import { type DashboardOAuthSessionStart, DashboardOAuthSessionStartSchema } from '@aio-proxy/types';
+import { useForm } from '@tanstack/react-form';
+import { z } from 'zod';
 
 export interface OAuthProviderFormValues {
   readonly capabilityKey: string;
-  readonly publicValues: DashboardOAuthSessionStart["publicValues"];
-  readonly secrets: DashboardOAuthSessionStart["secrets"];
+  readonly publicValues: DashboardOAuthSessionStart['publicValues'];
+  readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
   readonly jsonValues: Readonly<Record<string, string>>;
 }
@@ -13,7 +13,7 @@ export interface OAuthProviderFormValues {
 const OAuthJsonValuesSchema = z.record(
   z.string(),
   z.string().refine((value) => {
-    if (value === "") return true;
+    if (value === '') return true;
     try {
       JSON.parse(value);
       return true;
@@ -29,7 +29,7 @@ export const useOAuthProviderForm = (
 ) =>
   useForm({
     defaultValues: {
-      capabilityKey: "",
+      capabilityKey: '',
       publicValues: {},
       secrets: {},
       clearSecrets: [],
@@ -39,13 +39,13 @@ export const useOAuthProviderForm = (
     validators: {
       onChange: ({ value }) => {
         const session = DashboardOAuthSessionStartSchema.safeParse({
-          targetProviderId: "form-validation",
+          targetProviderId: 'form-validation',
           publicValues: value.publicValues,
           secrets: value.secrets,
           clearSecrets: value.clearSecrets,
         });
         const jsonValues = OAuthJsonValuesSchema.safeParse(value.jsonValues);
-        return session.success && jsonValues.success ? undefined : "INVALID_OAUTH_ACCOUNT_OPTIONS";
+        return session.success && jsonValues.success ? undefined : 'INVALID_OAUTH_ACCOUNT_OPTIONS';
       },
     },
     onSubmit: ({ value }) => onSubmit(value),

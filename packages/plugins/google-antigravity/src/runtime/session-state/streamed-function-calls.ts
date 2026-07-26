@@ -1,9 +1,8 @@
-import type { ReplayPart } from "../../protocol/replay-cache";
-
-import { validThoughtSignature } from "../../protocol/signatures";
-import { canonicalFunctionCallArgs } from "./function-call-args";
-import { type PartialArg, PartialArgsAccumulator } from "./partial-args-accumulator";
-import { asRecord } from "./payload-shape";
+import type { ReplayPart } from '../../protocol/replay-cache';
+import { validThoughtSignature } from '../../protocol/signatures';
+import { canonicalFunctionCallArgs } from './function-call-args';
+import { type PartialArg, PartialArgsAccumulator } from './partial-args-accumulator';
+import { asRecord } from './payload-shape';
 
 type ActiveStreamedCall = {
   readonly accumulator: PartialArgsAccumulator;
@@ -30,12 +29,12 @@ export function appendFunctionCallPart(
   contentIndex: number,
   partIndex: number,
 ): AppendResult {
-  if (!Object.hasOwn(value, "functionCall")) return { handled: false };
-  const call = asRecord(Reflect.get(value, "functionCall"));
+  if (!Object.hasOwn(value, 'functionCall')) return { handled: false };
+  const call = asRecord(Reflect.get(value, 'functionCall'));
   if (call === undefined) return { handled: true, invalid: true };
   const parsed = parseFunctionCall(call);
   if (parsed === undefined) return { handled: true, invalid: true };
-  const signatureValue = Reflect.get(value, "thoughtSignature");
+  const signatureValue = Reflect.get(value, 'thoughtSignature');
   const signature = validThoughtSignature(modelId, signatureValue) ? signatureValue : undefined;
   const isStreaming = parsed.partialArgs !== undefined || (parsed.name !== undefined && parsed.willContinue === true);
   const isTerminal =
@@ -125,7 +124,7 @@ function replayPart(
   partIndex: number,
 ): ReplayPart {
   return {
-    type: "function-call",
+    type: 'function-call',
     contentIndex,
     partIndex,
     call: { ...(id === undefined ? {} : { id }), name, args },
@@ -142,22 +141,22 @@ type ParsedFunctionCall = {
 };
 
 function parseFunctionCall(call: Readonly<Record<string, unknown>>): ParsedFunctionCall | undefined {
-  const idValue = Reflect.get(call, "id");
-  const nameValue = Reflect.get(call, "name");
-  const willContinueValue = Reflect.get(call, "willContinue");
+  const idValue = Reflect.get(call, 'id');
+  const nameValue = Reflect.get(call, 'name');
+  const willContinueValue = Reflect.get(call, 'willContinue');
   if (!isNullableString(idValue) || !isNullableString(nameValue) || !isNullableBoolean(willContinueValue)) {
     return undefined;
   }
-  const partialArgsValue = Reflect.get(call, "partialArgs");
+  const partialArgsValue = Reflect.get(call, 'partialArgs');
   const partialArgs = partialArgsValue == null ? undefined : parsePartialArgs(partialArgsValue);
   if (partialArgs === false) return undefined;
-  const args = Reflect.get(call, "args");
+  const args = Reflect.get(call, 'args');
   return {
     args,
-    id: typeof idValue === "string" ? idValue : undefined,
-    name: typeof nameValue === "string" ? nameValue : undefined,
+    id: typeof idValue === 'string' ? idValue : undefined,
+    name: typeof nameValue === 'string' ? nameValue : undefined,
     partialArgs,
-    willContinue: typeof willContinueValue === "boolean" ? willContinueValue : undefined,
+    willContinue: typeof willContinueValue === 'boolean' ? willContinueValue : undefined,
   };
 }
 
@@ -166,8 +165,8 @@ function parsePartialArgs(value: unknown): readonly PartialArg[] | false {
   const result: PartialArg[] = [];
   for (const item of value) {
     const part = asRecord(item);
-    const jsonPath = Reflect.get(part ?? {}, "jsonPath");
-    if (part === undefined || typeof jsonPath !== "string" || !validPartialArgFields(part)) return false;
+    const jsonPath = Reflect.get(part ?? {}, 'jsonPath');
+    if (part === undefined || typeof jsonPath !== 'string' || !validPartialArgFields(part)) return false;
     result.push(part as PartialArg);
   }
   return result;
@@ -175,21 +174,21 @@ function parsePartialArgs(value: unknown): readonly PartialArg[] | false {
 
 function validPartialArgFields(value: Readonly<Record<string, unknown>>): boolean {
   return (
-    isNullableString(Reflect.get(value, "stringValue")) &&
-    isNullableNumber(Reflect.get(value, "numberValue")) &&
-    isNullableBoolean(Reflect.get(value, "boolValue")) &&
-    isNullableBoolean(Reflect.get(value, "willContinue"))
+    isNullableString(Reflect.get(value, 'stringValue')) &&
+    isNullableNumber(Reflect.get(value, 'numberValue')) &&
+    isNullableBoolean(Reflect.get(value, 'boolValue')) &&
+    isNullableBoolean(Reflect.get(value, 'willContinue'))
   );
 }
 
 function isNullableString(value: unknown): boolean {
-  return value == null || typeof value === "string";
+  return value == null || typeof value === 'string';
 }
 
 function isNullableNumber(value: unknown): boolean {
-  return value == null || typeof value === "number";
+  return value == null || typeof value === 'number';
 }
 
 function isNullableBoolean(value: unknown): boolean {
-  return value == null || typeof value === "boolean";
+  return value == null || typeof value === 'boolean';
 }

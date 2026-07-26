@@ -1,6 +1,6 @@
-import type { ModelCatalog, ModelDescriptor } from "@aio-proxy/plugin-sdk";
+import type { ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
 
-import { modelCapabilities } from "./families";
+import { modelCapabilities } from './families';
 
 type SnapshotModel = Readonly<{
   id: string;
@@ -11,44 +11,44 @@ type SnapshotModel = Readonly<{
 
 const snapshotModels: readonly SnapshotModel[] = [
   {
-    id: "claude-opus-4-6-thinking",
-    displayName: "Claude Opus 4.6 (Thinking)",
+    id: 'claude-opus-4-6-thinking',
+    displayName: 'Claude Opus 4.6 (Thinking)',
     contextWindow: 200_000,
     supportsWebSearch: false,
   },
   {
-    id: "claude-sonnet-4-6",
-    displayName: "Claude Sonnet 4.6",
+    id: 'claude-sonnet-4-6',
+    displayName: 'Claude Sonnet 4.6',
     contextWindow: 200_000,
     supportsWebSearch: false,
   },
   {
-    id: "gemini-3-flash-agent",
-    displayName: "Gemini 3.5 Flash (High)",
+    id: 'gemini-3-flash-agent',
+    displayName: 'Gemini 3.5 Flash (High)',
     contextWindow: 1_048_576,
     supportsWebSearch: true,
   },
   {
-    id: "gemini-3.1-pro-low",
-    displayName: "Gemini 3.1 Pro (Low)",
+    id: 'gemini-3.1-pro-low',
+    displayName: 'Gemini 3.1 Pro (Low)',
     contextWindow: 1_048_576,
     supportsWebSearch: true,
   },
   {
-    id: "gemini-3.5-flash-extra-low",
-    displayName: "Gemini 3.5 Flash (Extra Low)",
+    id: 'gemini-3.5-flash-extra-low',
+    displayName: 'Gemini 3.5 Flash (Extra Low)',
     contextWindow: 1_048_576,
     supportsWebSearch: true,
   },
   {
-    id: "gemini-3.5-flash-low",
-    displayName: "Gemini 3.5 Flash (Low)",
+    id: 'gemini-3.5-flash-low',
+    displayName: 'Gemini 3.5 Flash (Low)',
     contextWindow: 1_048_576,
     supportsWebSearch: true,
   },
   {
-    id: "gemini-pro-agent",
-    displayName: "Gemini 3.1 Pro (High)",
+    id: 'gemini-pro-agent',
+    displayName: 'Gemini 3.1 Pro (High)',
     contextWindow: 1_048_576,
     supportsWebSearch: true,
   },

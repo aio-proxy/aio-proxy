@@ -4,12 +4,12 @@ const RFC850_DATE_PATTERN =
   /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), ([0-9]{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$/;
 const ASCTIME_DATE_PATTERN =
   /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (?: [1-9]|[0-9]{2}) [0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}$/;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-const LONG_WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const LONG_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
 export function retryAfterMilliseconds(value: string | null | undefined, now = Date.now()): number {
   const normalized = value?.trim();
-  if (normalized === undefined || normalized === "") return Number.POSITIVE_INFINITY;
+  if (normalized === undefined || normalized === '') return Number.POSITIVE_INFINITY;
   if (/^[0-9]+$/.test(normalized)) {
     const seconds = Number(normalized);
     return Number.isFinite(seconds) ? seconds * 1_000 : Number.POSITIVE_INFINITY;
@@ -61,9 +61,9 @@ function formatRfc850(date: Date): string {
 
 function formatAsctime(date: Date): string {
   const [weekday, , month, year, time] = imfParts(date);
-  return `${weekday} ${month} ${String(date.getUTCDate()).padStart(2, " ")} ${time} ${year}`;
+  return `${weekday} ${month} ${String(date.getUTCDate()).padStart(2, ' ')} ${time} ${year}`;
 }
 
 function imfParts(date: Date): [string, string, string, string, string] {
-  return date.toUTCString().replace(",", "").split(" ") as [string, string, string, string, string];
+  return date.toUTCString().replace(',', '').split(' ') as [string, string, string, string, string];
 }

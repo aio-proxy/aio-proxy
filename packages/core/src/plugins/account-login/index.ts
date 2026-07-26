@@ -1,4 +1,4 @@
-export { CATALOG_DISCOVERY_TIMEOUT_MS, LOGIN_TIMEOUT_MS } from "./deadline";
+export { CATALOG_DISCOVERY_TIMEOUT_MS, LOGIN_TIMEOUT_MS } from './deadline';
 export {
   AccountCleanupPendingError,
   AccountOptionsValidationError,
@@ -13,7 +13,7 @@ export {
   ProviderCapabilityTargetMismatchError,
   ProviderConfigInvalidError,
   ProviderFingerprintMismatchError,
-} from "./errors";
+} from './errors';
 export {
   type LoginOAuthAccountOptions,
   type LoginOAuthAccountResult,
@@ -21,7 +21,7 @@ export {
   type OAuthProviderPatch,
   type RenderAccountOptions,
   type RenderAccountOptionsInput,
-} from "./login";
+} from './login';
 export {
   ABSENT_PROVIDER_DIGEST,
   type DeleteOAuthAccountOptions,
@@ -31,4 +31,4 @@ export {
   RECOVERY_DRAIN_RETRY_MS,
   type RecoverPendingAccountOperationsOptions,
   recoverPendingAccountOperations,
-} from "./recovery";
+} from './recovery';

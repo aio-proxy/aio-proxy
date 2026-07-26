@@ -1,10 +1,10 @@
 const HUB_VERSION_MANIFEST =
-  "https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-arm64-mac.yml";
-const FALLBACK_VERSION = "2.2.1";
+  'https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-arm64-mac.yml';
+const FALLBACK_VERSION = '2.2.1';
 const CACHE_TTL_MS = 6 * 60 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
-export const ANTIGRAVITY_GOOGLE_API_CLIENT = "gl-node/22.21.1";
+export const ANTIGRAVITY_GOOGLE_API_CLIENT = 'gl-node/22.21.1';
 
 export type HubVersionCache = {
   readonly version: () => string;
@@ -26,8 +26,8 @@ export function createHubVersionCache(
   const runtime = globalThis as typeof globalThis & {
     readonly process?: { readonly platform?: string; readonly arch?: string };
   };
-  const platform = options.platform ?? runtime.process?.platform ?? "unknown";
-  const arch = options.arch ?? runtime.process?.arch ?? "unknown";
+  const platform = options.platform ?? runtime.process?.platform ?? 'unknown';
+  const arch = options.arch ?? runtime.process?.arch ?? 'unknown';
   let cachedVersion = FALLBACK_VERSION;
   let expiresAt = 0;
   let refreshFlight: Promise<void> | undefined;
@@ -35,12 +35,12 @@ export function createHubVersionCache(
   const refresh = async (): Promise<void> => {
     try {
       const response = await fetchImpl(HUB_VERSION_MANIFEST, {
-        headers: { "Cache-Control": "no-cache", "User-Agent": "electron-builder" },
+        headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'electron-builder' },
         signal: (options.timeoutSignal ?? (() => AbortSignal.timeout(FETCH_TIMEOUT_MS)))(),
       });
-      if (!response.ok) throw new Error("manifest request failed");
+      if (!response.ok) throw new Error('manifest request failed');
       const version = parseVersion(await response.text());
-      if (version === undefined) throw new Error("manifest version is invalid");
+      if (version === undefined) throw new Error('manifest version is invalid');
       cachedVersion = version;
     } catch {
       // The last verified version, including the built-in fallback, remains usable.

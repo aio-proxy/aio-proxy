@@ -1,7 +1,6 @@
-import { createParser } from "eventsource-parser";
+import { createParser } from 'eventsource-parser';
 
-import type { ReasoningReplayCache, ReplayScope } from "../../protocol/replay-cache";
-
+import type { ReasoningReplayCache, ReplayScope } from '../../protocol/replay-cache';
 import {
   appendSseReplayPayload,
   completedSseReplay,
@@ -9,7 +8,7 @@ import {
   failSseReplay,
   replayFromJsonPayload,
   type SseReplayState,
-} from "./replay-accumulator";
+} from './replay-accumulator';
 
 const MAX_CAPTURE_EVENT_CHARS = 1024 * 1024;
 const MAX_CAPTURE_TOTAL_BYTES = 1024 * 1024;
@@ -23,7 +22,7 @@ export async function captureReasoningReplay(
   cache: ReasoningReplayCache,
 ): Promise<Response> {
   if (!response.ok || response.body === null) return response;
-  if (response.headers.get("content-type")?.includes("text/event-stream") === true) {
+  if (response.headers.get('content-type')?.includes('text/event-stream') === true) {
     return captureSse(response, modelId, scope, cache);
   }
   try {
@@ -87,7 +86,7 @@ function captureSse(response: Response, modelId: string, scope: ReplayScope, cac
         if (!active) return;
         try {
           const tail = decoder.decode();
-          if (tail !== "") parser.feed(tail);
+          if (tail !== '') parser.feed(tail);
           parser.reset({ consume: true });
         } catch {
           stopCapture();

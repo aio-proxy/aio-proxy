@@ -1,6 +1,6 @@
-import { isNodeError } from "./fs";
+import { isNodeError } from './fs';
 
-export const PROCESS_STARTTIME_TIMEOUT = Symbol("process-starttime-timeout");
+export const PROCESS_STARTTIME_TIMEOUT = Symbol('process-starttime-timeout');
 
 const PROCESS_STARTTIME_WAIT_MS = 250;
 const PROCESS_STARTTIME_CLEANUP_WAIT_MS = 250;
@@ -16,7 +16,7 @@ export function processIsAlive(pid: number): boolean {
     return true;
   } catch (error) {
     if (!(error instanceof Error)) throw error;
-    return !isNodeError(error, "ESRCH");
+    return !isNodeError(error, 'ESRCH');
   }
 }
 
@@ -48,12 +48,12 @@ function drainProcessStdout(stdout: ReadableStream<Uint8Array> | null): {
   readonly result: Promise<string>;
   readonly cancel: () => Promise<void>;
 } {
-  if (stdout === null) return { result: Promise.resolve(""), cancel: async () => {} };
+  if (stdout === null) return { result: Promise.resolve(''), cancel: async () => {} };
   const reader = stdout.getReader();
   const result = observe(
     (async () => {
       const decoder = new TextDecoder();
-      let text = "";
+      let text = '';
       try {
         while (true) {
           const part = await reader.read();
@@ -72,9 +72,9 @@ function drainProcessStdout(stdout: ReadableStream<Uint8Array> | null): {
 }
 
 export async function processStarttime(pid: number): Promise<string | null> {
-  let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
+  let child: Bun.Subprocess<'pipe', 'pipe', 'pipe'>;
   try {
-    child = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], { stdout: "pipe", stderr: "pipe" });
+    child = Bun.spawn(['ps', '-o', 'lstart=', '-p', String(pid)], { stdout: 'pipe', stderr: 'pipe' });
   } catch (error) {
     if (error instanceof Error) return null;
     throw error;

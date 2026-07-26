@@ -1,29 +1,28 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, ProviderFetch } from "@aio-proxy/core";
+import { expect, test } from 'bun:test';
 
-import { ConfigSchema, ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { expect, test } from "bun:test";
+import type { AiSdkProviderInstance, ApiProviderInstance, ProviderFetch } from '@aio-proxy/core';
+import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import type { ServerLog } from "../server-log";
+import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
+import { reconstructed, waitFor } from '../request-logging/test-support';
+import type { ServerLog } from '../server-log';
+import { materializeProviders } from './materialize';
 
-import { withAttemptLogContext, withRequestLogContext } from "../request-logging";
-import { reconstructed, waitFor } from "../request-logging/test-support";
-import { materializeProviders } from "./materialize";
-
-test("materialized provider fetches observe final upstream requests only inside debug attempts", async () => {
+function observedFetchFixture() {
   const config = ConfigSchema.parse({
-    proxy: "http://global.proxy.test:8080",
+    proxy: 'http://global.proxy.test:8080',
     providers: {
       api: {
-        baseURL: "https://api.provider.test",
+        baseURL: 'https://api.provider.test',
         kind: ProviderKind.Api,
-        models: ["api-model"],
+        models: ['api-model'],
         protocol: ProviderProtocol.OpenAICompatible,
       },
       sdk: {
         kind: ProviderKind.AiSdk,
-        models: ["sdk-model"],
-        packageName: "@ai-sdk/openai-compatible",
-        proxy: "http://sdk.proxy.test:9090",
+        models: ['sdk-model'],
+        packageName: '@ai-sdk/openai-compatible',
+        proxy: 'http://sdk.proxy.test:9090',
       },
     },
   });
@@ -64,7 +63,7 @@ test("materialized provider fetches observe final upstream requests only inside 
       return {
         enabled: true,
         ensureAvailable: async () => {
-          await aiSdkFetch!("https://sdk.provider.test/probe");
+          await aiSdkFetch!('https://sdk.provider.test/probe');
         },
         id: provider.id,
         invoke: () => new ReadableStream(),
@@ -73,80 +72,97 @@ test("materialized provider fetches observe final upstream requests only inside 
     },
   });
 
-  expect(proxies).toEqual(["http://global.proxy.test:8080", "http://sdk.proxy.test:9090"]);
-  expect(apiFetch).toBe(bridgeFetch);
+  return {
+    delegated,
+    logs,
+    proxies,
+    runtime,
+    apiFetch: () => apiFetch,
+    bridgeFetch: () => bridgeFetch,
+    aiSdkFetch: () => aiSdkFetch,
+  };
+}
 
-  expect(await Promise.all([...runtime.probes.values()].map((probe) => probe()))).toEqual(["OK", "OK"]);
+test('materialized provider fetches observe final upstream requests only inside debug attempts', async () => {
+  const fixture = observedFetchFixture();
+  const { delegated, logs, proxies, runtime } = fixture;
+  const apiFetch = fixture.apiFetch();
+  const aiSdkFetch = fixture.aiSdkFetch();
+
+  expect(proxies).toEqual(['http://global.proxy.test:8080', 'http://sdk.proxy.test:9090']);
+  expect(apiFetch).toBe(fixture.bridgeFetch());
+
+  expect(await Promise.all([...runtime.probes.values()].map((probe) => probe()))).toEqual(['OK', 'OK']);
   expect(delegated).toHaveLength(2);
   expect(logs).toEqual([]);
 
   await withRequestLogContext(
-    { requestId: "request-1", debug: true, logger: (entry) => logs.push(entry) },
+    { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
     async () => {
-      await withAttemptLogContext({ attemptIndex: 0, providerId: "api", modelId: "api-model" }, () =>
-        apiFetch!("https://final-api.test/v1/responses?api_key=api-query-secret", {
-          body: JSON.stringify({ apiKey: "api-body-secret", model: "api-model", prompt: "api-prompt-secret" }),
+      await withAttemptLogContext({ attemptIndex: 0, providerId: 'api', modelId: 'api-model' }, () =>
+        apiFetch!('https://final-api.test/v1/responses?api_key=api-query-secret', {
+          body: JSON.stringify({ apiKey: 'api-body-secret', model: 'api-model', prompt: 'api-prompt-secret' }),
           headers: {
-            "content-type": "application/json",
-            "user-agent": "api-generated-agent",
-            "x-api-key": "api-header-secret",
+            'content-type': 'application/json',
+            'user-agent': 'api-generated-agent',
+            'x-api-key': 'api-header-secret',
           },
-          method: "POST",
+          method: 'POST',
         }),
       );
-      await withAttemptLogContext({ attemptIndex: 1, providerId: "sdk", modelId: "sdk-model" }, () =>
-        aiSdkFetch!("https://final-sdk.test/v1/chat/completions?token=sdk-query-secret", {
-          body: JSON.stringify({ messages: [{ content: "sdk-content-secret", role: "user" }], model: "sdk-model" }),
+      await withAttemptLogContext({ attemptIndex: 1, providerId: 'sdk', modelId: 'sdk-model' }, () =>
+        aiSdkFetch!('https://final-sdk.test/v1/chat/completions?token=sdk-query-secret', {
+          body: JSON.stringify({ messages: [{ content: 'sdk-content-secret', role: 'user' }], model: 'sdk-model' }),
           headers: {
-            accept: "application/json",
-            authorization: "Bearer sdk-header-secret",
-            "content-type": "application/json",
+            accept: 'application/json',
+            authorization: 'Bearer sdk-header-secret',
+            'content-type': 'application/json',
           },
-          method: "POST",
+          method: 'POST',
         }),
       );
     },
   );
 
-  await waitFor(() => logs.filter((entry) => entry.event === "request.upstream_snapshot").length === 2);
+  await waitFor(() => logs.filter((entry) => entry.event === 'request.upstream_snapshot').length === 2);
   const snapshots = logs
-    .filter((entry) => entry.event === "request.upstream_snapshot")
+    .filter((entry) => entry.event === 'request.upstream_snapshot')
     .sort((left, right) => left.attemptIndex - right.attemptIndex);
   expect(snapshots).toHaveLength(2);
   expect(snapshots).toEqual([
     expect.objectContaining({
       attemptIndex: 0,
-      providerId: "api",
-      modelId: "api-model",
-      method: "POST",
-      url: "https://final-api.test/v1/responses?api_key=api-query-secret",
+      providerId: 'api',
+      modelId: 'api-model',
+      method: 'POST',
+      url: 'https://final-api.test/v1/responses?api_key=api-query-secret',
       headers: {
-        "content-type": "application/json",
-        "user-agent": "api-generated-agent",
-        "x-api-key": "[REDACTED]",
+        'content-type': 'application/json',
+        'user-agent': 'api-generated-agent',
+        'x-api-key': '[REDACTED]',
       },
     }),
     expect.objectContaining({
       attemptIndex: 1,
-      providerId: "sdk",
-      modelId: "sdk-model",
-      method: "POST",
-      url: "https://final-sdk.test/v1/chat/completions?token=sdk-query-secret",
+      providerId: 'sdk',
+      modelId: 'sdk-model',
+      method: 'POST',
+      url: 'https://final-sdk.test/v1/chat/completions?token=sdk-query-secret',
       headers: {
-        accept: "application/json",
-        authorization: "[REDACTED]",
-        "content-type": "application/json",
+        accept: 'application/json',
+        authorization: '[REDACTED]',
+        'content-type': 'application/json',
       },
     }),
   ]);
-  expect(reconstructed(logs, "upstream_request", 0)).toContain("api-body-secret");
-  expect(reconstructed(logs, "upstream_request", 0)).toContain("api-prompt-secret");
-  expect(reconstructed(logs, "upstream_request", 1)).toContain("sdk-content-secret");
-  expect(JSON.stringify(logs)).not.toContain("api-header-secret");
-  expect(JSON.stringify(logs)).not.toContain("sdk-header-secret");
+  expect(reconstructed(logs, 'upstream_request', 0)).toContain('api-body-secret');
+  expect(reconstructed(logs, 'upstream_request', 0)).toContain('api-prompt-secret');
+  expect(reconstructed(logs, 'upstream_request', 1)).toContain('sdk-content-secret');
+  expect(JSON.stringify(logs)).not.toContain('api-header-secret');
+  expect(JSON.stringify(logs)).not.toContain('sdk-header-secret');
   expect(delegated).toHaveLength(4);
   expect(delegated.slice(-2).map(({ body }) => body)).toEqual([
-    reconstructed(logs, "upstream_request", 0),
-    reconstructed(logs, "upstream_request", 1),
+    reconstructed(logs, 'upstream_request', 0),
+    reconstructed(logs, 'upstream_request', 1),
   ]);
 });

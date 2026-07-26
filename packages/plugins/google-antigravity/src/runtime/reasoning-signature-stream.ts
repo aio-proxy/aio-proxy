@@ -1,6 +1,6 @@
-import type { LanguageModelV4StreamPart, SharedV4ProviderMetadata } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart, SharedV4ProviderMetadata } from '@ai-sdk/provider';
 
-import { validThoughtSignature } from "../protocol/signatures";
+import { validThoughtSignature } from '../protocol/signatures';
 
 type ActiveReasoning = {
   readonly id: string;
@@ -36,7 +36,7 @@ export function bridgeLateReasoningSignatures(
     }
   };
   const transform = (part: LanguageModelV4StreamPart): void => {
-    if (part.type === "raw") {
+    if (part.type === 'raw') {
       const observed = observeGoogleChunk(part.rawValue, modelId, sourceActive, sources);
       sourceActive = observed.active;
       if (preserveRaw) pending.push(part);
@@ -49,12 +49,12 @@ export function bridgeLateReasoningSignatures(
         !active.hasEmittedSignature &&
         observed.signedSources.includes(source)
       ) {
-        pending.push(withGoogleSignature({ type: "reasoning-delta", id: active.id, delta: "" }, lateSignature));
+        pending.push(withGoogleSignature({ type: 'reasoning-delta', id: active.id, delta: '' }, lateSignature));
         active.hasEmittedSignature = true;
       }
       return;
     }
-    if (part.type === "reasoning-start") {
+    if (part.type === 'reasoning-start') {
       const sanitized = withoutInvalidGoogleSignature(part, modelId);
       const source = sources.shift();
       const inlineSignature = metadataSignature(sanitized.providerMetadata, modelId);
@@ -68,7 +68,7 @@ export function bridgeLateReasoningSignatures(
       pending.push(output);
       return;
     }
-    if (part.type === "reasoning-delta") {
+    if (part.type === 'reasoning-delta') {
       const sanitized = withoutInvalidGoogleSignature(part, modelId);
       if (active?.id !== sanitized.id) {
         active = { id: sanitized.id, source: sources.shift(), hasEmittedSignature: false };
@@ -80,7 +80,7 @@ export function bridgeLateReasoningSignatures(
       active.hasEmittedSignature ||= inlineSignature !== undefined || lateSignature !== undefined;
       return;
     }
-    if (part.type !== "reasoning-end") {
+    if (part.type !== 'reasoning-end') {
       pending.push(part);
       return;
     }
@@ -137,19 +137,19 @@ function observeGoogleChunk(
 ): { readonly active: ReasoningSource | undefined; readonly signedSources: readonly ReasoningSource[] } {
   const signedSources: ReasoningSource[] = [];
   const payload = record(value);
-  const candidates = array(Reflect.get(payload ?? {}, "candidates"));
+  const candidates = array(Reflect.get(payload ?? {}, 'candidates'));
   const candidate = record(candidates[0]);
-  const content = record(Reflect.get(candidate ?? {}, "content"));
-  for (const value of array(Reflect.get(content ?? {}, "parts"))) {
+  const content = record(Reflect.get(candidate ?? {}, 'content'));
+  for (const value of array(Reflect.get(content ?? {}, 'parts'))) {
     const part = record(value);
     if (part === undefined) continue;
-    const text = Reflect.get(part, "text");
-    if (typeof text === "string") {
-      if (text === "") {
-        const signature = Reflect.get(part, "thoughtSignature");
+    const text = Reflect.get(part, 'text');
+    if (typeof text === 'string') {
+      if (text === '') {
+        const signature = Reflect.get(part, 'thoughtSignature');
         if (
           active !== undefined &&
-          Reflect.get(part, "thought") === true &&
+          Reflect.get(part, 'thought') === true &&
           !hasNonTextPayload(part) &&
           active.lateSignature === undefined &&
           validThoughtSignature(modelId, signature)
@@ -157,7 +157,7 @@ function observeGoogleChunk(
           active.lateSignature = signature;
           signedSources.push(active);
         }
-      } else if (Reflect.get(part, "thought") === true) {
+      } else if (Reflect.get(part, 'thought') === true) {
         if (active === undefined) {
           active = { lateSignature: undefined };
           sources.push(active);
@@ -167,28 +167,28 @@ function observeGoogleChunk(
       }
       continue;
     }
-    if (Reflect.get(part, "inlineData") != null) active = undefined;
+    if (Reflect.get(part, 'inlineData') != null) active = undefined;
   }
   return { active, signedSources };
 }
 
 function hasNonTextPayload(part: Readonly<Record<string, unknown>>): boolean {
-  return ["functionCall", "functionResponse", "inlineData", "fileData", "executableCode", "codeExecutionResult"].some(
+  return ['functionCall', 'functionResponse', 'inlineData', 'fileData', 'executableCode', 'codeExecutionResult'].some(
     (property) => Reflect.get(part, property) != null,
   );
 }
 
 function metadataSignature(metadata: unknown, modelId: string): string | undefined {
-  const google = record(Reflect.get(record(metadata) ?? {}, "google"));
-  const signature = Reflect.get(google ?? {}, "thoughtSignature");
+  const google = record(Reflect.get(record(metadata) ?? {}, 'google'));
+  const signature = Reflect.get(google ?? {}, 'thoughtSignature');
   return validThoughtSignature(modelId, signature) ? signature : undefined;
 }
 
 function withoutInvalidGoogleSignature<T extends ReasoningPart>(part: T, modelId: string): T {
   const providerMetadata = record(part.providerMetadata);
-  const google = record(Reflect.get(providerMetadata ?? {}, "google"));
-  if (google === undefined || !Object.hasOwn(google, "thoughtSignature")) return part;
-  const signature = Reflect.get(google, "thoughtSignature");
+  const google = record(Reflect.get(providerMetadata ?? {}, 'google'));
+  if (google === undefined || !Object.hasOwn(google, 'thoughtSignature')) return part;
+  const signature = Reflect.get(google, 'thoughtSignature');
   if (validThoughtSignature(modelId, signature)) return part;
   const { thoughtSignature: _thoughtSignature, ...sanitizedGoogle } = google;
   return {
@@ -202,7 +202,7 @@ function withoutInvalidGoogleSignature<T extends ReasoningPart>(part: T, modelId
 
 function withGoogleSignature<T extends ReasoningPart>(part: T, signature: string): T {
   const providerMetadata = record(part.providerMetadata);
-  const google = record(Reflect.get(providerMetadata ?? {}, "google"));
+  const google = record(Reflect.get(providerMetadata ?? {}, 'google'));
   return {
     ...part,
     providerMetadata: {
@@ -213,7 +213,7 @@ function withGoogleSignature<T extends ReasoningPart>(part: T, signature: string
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Readonly<Record<string, unknown>>)
     : undefined;
 }

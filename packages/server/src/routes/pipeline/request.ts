@@ -1,7 +1,7 @@
-import { REQUEST_BODY_LIMITS } from "@aio-proxy/core";
+import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 
 export function hasInvalidOrOversizedContentLength(request: Request): boolean {
-  const contentLength = request.headers.get("content-length");
+  const contentLength = request.headers.get('content-length');
   return (
     contentLength !== null && (!/^\d+$/u.test(contentLength) || Number(contentLength) > REQUEST_BODY_LIMITS.encoded)
   );

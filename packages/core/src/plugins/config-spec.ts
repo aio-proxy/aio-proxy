@@ -5,9 +5,9 @@ import {
   type JsonValue,
   type LocalizedText,
   LocalizedTextSchema,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import { isPluginZodSchema } from "./schema";
+import { isPluginZodSchema } from './schema';
 
 export type ValidatedConfigSpec<T = unknown> = {
   readonly spec: ConfigSpec<T>;
@@ -16,19 +16,19 @@ export type ValidatedConfigSpec<T = unknown> = {
 
 export class ConfigSpecValidationError extends Error {
   constructor() {
-    super("Plugin config specification is invalid");
-    this.name = "ConfigSpecValidationError";
+    super('Plugin config specification is invalid');
+    this.name = 'ConfigSpecValidationError';
   }
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object") return false;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
   if (seen.has(value)) return false;
   seen.add(value);
   const prototype = Object.getPrototypeOf(value);
@@ -53,9 +53,9 @@ function validateWhen(value: unknown, knownKeys: ReadonlySet<string>): value is 
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   const { key, equals } = value;
-  if (typeof key !== "string" || !knownKeys.has(key)) return false;
-  if (typeof equals === "number") return Number.isFinite(equals);
-  return equals === null || ["string", "number", "boolean"].includes(typeof equals);
+  if (typeof key !== 'string' || !knownKeys.has(key)) return false;
+  if (typeof equals === 'number') return Number.isFinite(equals);
+  return equals === null || ['string', 'number', 'boolean'].includes(typeof equals);
 }
 
 function primitiveKey(value: string | number | boolean): string {
@@ -79,8 +79,8 @@ function validateSelectOptions(value: unknown):
   for (const option of value) {
     if (!isRecord(option)) return undefined;
     const { value: optionValue, label, description } = option;
-    if (!["string", "number", "boolean"].includes(typeof optionValue)) return undefined;
-    if (typeof optionValue === "number" && !Number.isFinite(optionValue)) return undefined;
+    if (!['string', 'number', 'boolean'].includes(typeof optionValue)) return undefined;
+    if (typeof optionValue === 'number' && !Number.isFinite(optionValue)) return undefined;
     const validatedLabel = localizedText(label);
     const validatedDescription = optionalLocalizedText(description);
     if (validatedLabel === undefined || validatedDescription === null) return undefined;
@@ -99,7 +99,7 @@ function validateSelectOptions(value: unknown):
 function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormField | undefined {
   if (!isRecord(value)) return undefined;
   const { key, label, description, when, type, placeholder, defaultValue, options } = value;
-  if (typeof key !== "string" || key.trim() === "" || key !== key.trim()) return undefined;
+  if (typeof key !== 'string' || key.trim() === '' || key !== key.trim()) return undefined;
   const validatedLabel = localizedText(label);
   const validatedDescription = optionalLocalizedText(description);
   if (knownKeys.has(key) || validatedLabel === undefined || validatedDescription === null) return undefined;
@@ -113,22 +113,22 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
   const validatedPlaceholder = optionalLocalizedText(placeholder);
 
   switch (type) {
-    case "text":
-    case "number":
+    case 'text':
+    case 'number':
       return validatedPlaceholder === null
         ? undefined
         : { ...base, type, ...(validatedPlaceholder === undefined ? {} : { placeholder: validatedPlaceholder }) };
-    case "secret":
+    case 'secret':
       return placeholder === undefined ? { ...base, type } : undefined;
-    case "boolean":
-      return defaultValue === undefined || typeof defaultValue === "boolean"
+    case 'boolean':
+      return defaultValue === undefined || typeof defaultValue === 'boolean'
         ? { ...base, type, ...(defaultValue === undefined ? {} : { defaultValue }) }
         : undefined;
-    case "select": {
+    case 'select': {
       const validatedOptions = validateSelectOptions(options);
       return validatedOptions === undefined ? undefined : { ...base, type, options: validatedOptions };
     }
-    case "json":
+    case 'json':
       return validatedPlaceholder !== null && (defaultValue === undefined || isJsonValue(defaultValue))
         ? {
             ...base,
@@ -157,8 +157,8 @@ export function validateConfigSpec<T = unknown>(value: unknown): ValidatedConfig
     if (validated === undefined) throw new ConfigSpecValidationError();
     validatedForm.push(validated);
     keys.add(validated.key);
-    if (validated.type === "secret") secretKeys.add(validated.key);
+    if (validated.type === 'secret') secretKeys.add(validated.key);
   }
 
-  return { spec: { schema: schema as ConfigSpec<T>["schema"], form: validatedForm }, secretKeys };
+  return { spec: { schema: schema as ConfigSpec<T>['schema'], form: validatedForm }, secretKeys };
 }

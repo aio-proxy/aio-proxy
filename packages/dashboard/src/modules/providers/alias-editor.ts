@@ -1,6 +1,5 @@
-import type { AliasConfig } from "@aio-proxy/types";
-
-import { normalizeAliasName, normalizeVariantKey } from "@aio-proxy/types";
+import type { AliasConfig } from '@aio-proxy/types';
+import { normalizeAliasName, normalizeVariantKey } from '@aio-proxy/types';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
@@ -12,16 +11,16 @@ export type AliasDraft = {
 
 export type AliasEditResult =
   | { readonly ok: true; readonly alias: ProviderAlias }
-  | { readonly ok: false; readonly code: "alias-missing" | "name-duplicate" | "name-required" | "target-required" };
+  | { readonly ok: false; readonly code: 'alias-missing' | 'name-duplicate' | 'name-required' | 'target-required' };
 
 export type AliasEditorIssue = {
   readonly code:
-    | "alias-name-duplicate"
-    | "alias-name-required"
-    | "preserved-route-conflict"
-    | "target-missing"
-    | "variant-name-duplicate"
-    | "variant-name-required";
+    | 'alias-name-duplicate'
+    | 'alias-name-required'
+    | 'preserved-route-conflict'
+    | 'target-missing'
+    | 'variant-name-duplicate'
+    | 'variant-name-required';
   readonly alias: string;
   readonly variant?: string;
 };
@@ -38,7 +37,7 @@ export const aliasControlId = (alias: string, variant?: string): string =>
 
 export const aliasIssueControlId = (issue: AliasEditorIssue): string => {
   const id = aliasControlId(issue.alias, issue.variant);
-  return issue.code === "target-missing" ? `${id}-target` : id;
+  return issue.code === 'target-missing' ? `${id}-target` : id;
 };
 
 type VariantRename = {
@@ -47,8 +46,8 @@ type VariantRename = {
   readonly name: string;
 };
 
-export function serializeAlias(alias: ProviderAlias, mode: "create" | "edit"): ProviderAlias | undefined {
-  return Object.keys(alias).length === 0 && mode === "create" ? undefined : alias;
+export function serializeAlias(alias: ProviderAlias, mode: 'create' | 'edit'): ProviderAlias | undefined {
+  return Object.keys(alias).length === 0 && mode === 'create' ? undefined : alias;
 }
 
 export function commitAliasDraft(alias: ProviderAlias, draft: AliasDraft): AliasEditResult {
@@ -67,7 +66,7 @@ export function commitAliasDraft(alias: ProviderAlias, draft: AliasDraft): Alias
 export function renameAlias(alias: ProviderAlias, current: string, next: string): AliasEditResult {
   const config = alias[current];
   if (config === undefined) {
-    return { ok: false, code: "alias-missing" };
+    return { ok: false, code: 'alias-missing' };
   }
 
   const name = normalizeAliasName(next);
@@ -88,7 +87,7 @@ export function renameAlias(alias: ProviderAlias, current: string, next: string)
 export function commitVariantDraft(alias: ProviderAlias, aliasName: string, draft: AliasDraft): AliasEditResult {
   const config = alias[aliasName];
   if (config === undefined) {
-    return { ok: false, code: "alias-missing" };
+    return { ok: false, code: 'alias-missing' };
   }
 
   const name = normalizeVariantKey(draft.name);
@@ -113,7 +112,7 @@ export function renameVariant(alias: ProviderAlias, rename: VariantRename): Alia
   const config = alias[rename.alias];
   const target = config?.variants?.[rename.variant];
   if (config === undefined || target === undefined) {
-    return { ok: false, code: "alias-missing" };
+    return { ok: false, code: 'alias-missing' };
   }
 
   const name = normalizeVariantKey(rename.name);
@@ -166,31 +165,31 @@ export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string
 
   for (const [aliasName, config] of Object.entries(alias)) {
     const normalizedAlias = normalizeAliasName(aliasName);
-    if (normalizedAlias === "") {
-      issues.push({ code: "alias-name-required", alias: aliasName });
+    if (normalizedAlias === '') {
+      issues.push({ code: 'alias-name-required', alias: aliasName });
     } else if (aliasNames.has(normalizedAlias)) {
-      issues.push({ code: "alias-name-duplicate", alias: aliasName });
+      issues.push({ code: 'alias-name-duplicate', alias: aliasName });
     }
     aliasNames.add(normalizedAlias);
 
     if (preservedModels.has(normalizedAlias) && targetModels(config).some((model) => model !== normalizedAlias)) {
-      issues.push({ code: "preserved-route-conflict", alias: aliasName });
+      issues.push({ code: 'preserved-route-conflict', alias: aliasName });
     }
     if (availableModels !== undefined && !availableModels.has(config.model)) {
-      issues.push({ code: "target-missing", alias: aliasName });
+      issues.push({ code: 'target-missing', alias: aliasName });
     }
 
     const variants = new Set<string>();
     for (const [variant, target] of Object.entries(config.variants ?? {})) {
       const normalizedVariant = normalizeVariantKey(variant);
-      if (normalizedVariant === "") {
-        issues.push({ code: "variant-name-required", alias: aliasName, variant });
+      if (normalizedVariant === '') {
+        issues.push({ code: 'variant-name-required', alias: aliasName, variant });
       } else if (variants.has(normalizedVariant)) {
-        issues.push({ code: "variant-name-duplicate", alias: aliasName, variant });
+        issues.push({ code: 'variant-name-duplicate', alias: aliasName, variant });
       }
       variants.add(normalizedVariant);
       if (availableModels !== undefined && !availableModels.has(target.model)) {
-        issues.push({ code: "target-missing", alias: aliasName, variant });
+        issues.push({ code: 'target-missing', alias: aliasName, variant });
       }
     }
   }
@@ -202,14 +201,14 @@ function draftError(
   name: string,
   model: string,
   existingNames: readonly string[],
-): Extract<AliasEditResult, { readonly ok: false }>["code"] | undefined {
-  if (name === "") {
-    return "name-required";
+): Extract<AliasEditResult, { readonly ok: false }>['code'] | undefined {
+  if (name === '') {
+    return 'name-required';
   }
-  if (model === "") {
-    return "target-required";
+  if (model === '') {
+    return 'target-required';
   }
-  return existingNames.includes(name) ? "name-duplicate" : undefined;
+  return existingNames.includes(name) ? 'name-duplicate' : undefined;
 }
 
 function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {

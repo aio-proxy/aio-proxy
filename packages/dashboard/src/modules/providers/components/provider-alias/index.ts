@@ -1,1 +1,1 @@
-export { ProviderAliasFields } from "./provider-alias-fields";
+export { ProviderAliasFields } from './provider-alias-fields';

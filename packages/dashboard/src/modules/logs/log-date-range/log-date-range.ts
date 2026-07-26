@@ -1,4 +1,4 @@
-import type { DateTimeRange } from "@/components/date-time-range-picker";
+import type { DateTimeRange } from '@/components/date-time-range-picker';
 
 type QueryRange = {
   readonly startedAfter: string;

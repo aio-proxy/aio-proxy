@@ -1,12 +1,16 @@
-import type { ProviderV4 } from "@ai-sdk/provider";
-import type { CallSettings, ModelMessage, ToolSet } from "ai";
+import type { ProviderV4 } from '@ai-sdk/provider';
+import type { LanguageModelCallOptions, ModelMessage, RequestOptions, ToolSet } from 'ai';
 
-import type { JsonValue } from "./json";
+import type { JsonValue } from './json';
 
-export type ProtocolId = "openai-compatible" | "openai-response" | "anthropic" | "gemini";
+export type ProtocolId = 'openai-compatible' | 'openai-response' | 'anthropic' | 'gemini';
+
+/** Non-deprecated replacement for the AI SDK `CallSettings` type. */
+export type AiSdkCallSettings = LanguageModelCallOptions &
+  Partial<Pick<RequestOptions, 'maxRetries' | 'abortSignal' | 'headers'>>;
 
 export type ProviderExecutedTool = {
-  readonly type: "web-search";
+  readonly type: 'web-search';
   readonly name: string;
   readonly maxUses?: number;
   readonly allowedDomains?: readonly string[];
@@ -14,21 +18,21 @@ export type ProviderExecutedTool = {
 };
 
 export type ProviderToolCapability = {
-  readonly supported: readonly ProviderExecutedTool["type"][];
+  readonly supported: readonly ProviderExecutedTool['type'][];
 };
 
 export type LogicalSessionSource =
-  | "internal"
-  | "openai-conversation"
-  | "openai-prompt-cache"
-  | "claude-code"
-  | "body-session"
-  | "body-conversation"
-  | "header-session"
-  | "header-conversation"
-  | "previous-response"
-  | "transcript"
-  | "generated";
+  | 'internal'
+  | 'openai-conversation'
+  | 'openai-prompt-cache'
+  | 'claude-code'
+  | 'body-session'
+  | 'body-conversation'
+  | 'header-session'
+  | 'header-conversation'
+  | 'previous-response'
+  | 'transcript'
+  | 'generated';
 
 export type LogicalRequestContext = {
   readonly requestId: string;
@@ -45,7 +49,7 @@ export type TokenCountInput = {
   readonly context: LogicalRequestContext;
   readonly invocation: {
     readonly messages: readonly ModelMessage[];
-    readonly settings?: CallSettings;
+    readonly settings?: AiSdkCallSettings;
     readonly tools?: ToolSet;
     readonly providerTools?: readonly ProviderExecutedTool[];
   };

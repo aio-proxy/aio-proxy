@@ -9,11 +9,11 @@ export function generateState(): string {
 
 export async function generatePKCE(): Promise<PKCE> {
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
   return { challenge: base64url(new Uint8Array(digest)), verifier };
 }
 
 export function base64url(bytes: Uint8Array): string {
   const encoded = btoa(String.fromCharCode(...bytes));
-  return encoded.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return encoded.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }

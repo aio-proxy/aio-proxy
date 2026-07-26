@@ -3,19 +3,18 @@ import {
   CredentialRefreshError,
   type CredentialSnapshot,
   type ZodType,
-} from "@aio-proxy/plugin-sdk";
-import { providerLoginCommand } from "@aio-proxy/types";
-import { delay } from "es-toolkit/promise";
-
-import type { PluginRepository, StoredAccount } from "./repository/index";
+} from '@aio-proxy/plugin-sdk';
+import { providerLoginCommand } from '@aio-proxy/types';
+import { delay } from 'es-toolkit/promise';
 
 import {
   collectSecretStrings,
   type DiagnosticFactory,
   type PluginLogSink,
   redactPluginError,
-} from "./diagnostic/index";
-import { parsePluginSchema } from "./schema";
+} from './diagnostic/index';
+import type { PluginRepository, StoredAccount } from './repository/index';
+import { parsePluginSchema } from './schema';
 
 const REFRESH_LEASE_MS = 45_000;
 const REFRESH_RENEW_MS = 15_000;
@@ -24,9 +23,9 @@ const REFRESH_WAIT_TIMEOUT_MS = 60_000;
 const REFRESH_POLL_MS = 100;
 const REFRESH_POLL_JITTER_MS = 25;
 
-type RefreshResult<Credential> = Awaited<ReturnType<CredentialPort<Credential>["refresh"]>>;
+type RefreshResult<Credential> = Awaited<ReturnType<CredentialPort<Credential>['refresh']>>;
 
-export type CredentialPortMode = "runtime" | "control-plane";
+export type CredentialPortMode = 'runtime' | 'control-plane';
 
 type CredentialPortBaseOptions<Credential> = {
   readonly providerId: string;
@@ -41,12 +40,12 @@ type CredentialPortBaseOptions<Credential> = {
 export type CreateCredentialPortOptions<Credential> = CredentialPortBaseOptions<Credential> &
   (
     | {
-        readonly mode?: "runtime";
+        readonly mode?: 'runtime';
         readonly pluginSecrets?: unknown;
         readonly additionalSecretValues?: never;
       }
     | {
-        readonly mode: "control-plane";
+        readonly mode: 'control-plane';
         readonly pluginSecrets?: never;
         readonly additionalSecretValues?: readonly string[];
       }
@@ -56,37 +55,37 @@ export class CredentialValidationError extends Error {
   readonly issues: readonly { readonly message: string; readonly path: readonly (string | number)[] }[];
 
   constructor(issues: readonly { readonly message: string; readonly path: readonly (string | number)[] }[]) {
-    super("Credential validation failed");
-    this.name = "CredentialValidationError";
+    super('Credential validation failed');
+    this.name = 'CredentialValidationError';
     this.issues = issues;
   }
 }
 
 export class CredentialRefreshTimeoutError extends Error {
   constructor() {
-    super("Credential refresh exchange timed out");
-    this.name = "CredentialRefreshTimeoutError";
+    super('Credential refresh exchange timed out');
+    this.name = 'CredentialRefreshTimeoutError';
   }
 }
 
 export class CredentialRefreshWaitTimeoutError extends Error {
   constructor() {
-    super("Timed out waiting for the credential refresh lease");
-    this.name = "CredentialRefreshWaitTimeoutError";
+    super('Timed out waiting for the credential refresh lease');
+    this.name = 'CredentialRefreshWaitTimeoutError';
   }
 }
 
 export class CredentialRefreshLeaseLostError extends Error {
   constructor() {
-    super("Credential refresh lease was lost");
-    this.name = "CredentialRefreshLeaseLostError";
+    super('Credential refresh lease was lost');
+    this.name = 'CredentialRefreshLeaseLostError';
   }
 }
 
 export class CredentialAccountMissingError extends Error {
   constructor() {
-    super("Credential account is unavailable");
-    this.name = "CredentialAccountMissingError";
+    super('Credential account is unavailable');
+    this.name = 'CredentialAccountMissingError';
   }
 }
 
@@ -215,14 +214,14 @@ function recordRefreshFailure<Credential>(
   secretValues: readonly string[],
 ): void {
   options.logger({
-    event: "plugin.credential.refresh.failed",
-    code: "CREDENTIAL_REFRESH_FAILED",
+    event: 'plugin.credential.refresh.failed',
+    code: 'CREDENTIAL_REFRESH_FAILED',
     context: { providerId: options.providerId },
     error: redactPluginError(error, { secretValues }),
   });
-  if (mode === "control-plane") return;
+  if (mode === 'control-plane') return;
   if (error instanceof CredentialRefreshError && error.retryable) return;
-  const diagnostic = options.diagnostics("CREDENTIAL_REFRESH_FAILED", {
+  const diagnostic = options.diagnostics('CREDENTIAL_REFRESH_FAILED', {
     providerId: options.providerId,
     retryable: false,
     suggestedCommand: providerLoginCommand(options.providerId),
@@ -235,7 +234,7 @@ function recordRefreshFailure<Credential>(
 export function createCredentialPort<Credential>(
   options: CreateCredentialPortOptions<Credential>,
 ): CredentialPort<Credential> {
-  const mode = options.mode ?? "runtime";
+  const mode = options.mode ?? 'runtime';
   return {
     async read() {
       return (await readValidated(options.providerId, options.schema, options.repository)).snapshot;
@@ -246,7 +245,7 @@ export function createCredentialPort<Credential>(
         let secretValues: readonly string[] = [];
         try {
           const lease = await waitForLease(options, owner, expectedRevision);
-          if (!lease.acquired) return { status: "superseded", snapshot: lease.snapshot };
+          if (!lease.acquired) return { status: 'superseded', snapshot: lease.snapshot };
           const guard = createRefreshLeaseGuard(() =>
             options.repository.renewRefreshLease(options.providerId, owner, Date.now() + REFRESH_LEASE_MS),
           );
@@ -255,12 +254,12 @@ export function createCredentialPort<Credential>(
             secretValues = [
               ...collectSecretStrings(current.snapshot.value),
               ...collectSecretStrings(current.account.secrets),
-              ...(options.mode === "control-plane"
+              ...(options.mode === 'control-plane'
                 ? (options.additionalSecretValues ?? [])
                 : collectSecretStrings(options.pluginSecrets)),
             ];
             if (current.snapshot.revision !== expectedRevision) {
-              return { status: "superseded", snapshot: current.snapshot };
+              return { status: 'superseded', snapshot: current.snapshot };
             }
             const exchanged = await guard.exchange((signal) => exchange(current.snapshot, signal));
             secretValues = [...secretValues, ...collectSecretStrings(exchanged.value)];
@@ -276,10 +275,10 @@ export function createCredentialPort<Credential>(
             if (updated === null) {
               const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
               if (latest.snapshot.revision === expectedRevision) throw new CredentialRefreshLeaseLostError();
-              return { status: "superseded", snapshot: latest.snapshot };
+              return { status: 'superseded', snapshot: latest.snapshot };
             }
-            if (mode !== "control-plane") {
-              if (options.repository.clearDiagnostic(options.providerId, "CREDENTIAL_REFRESH_FAILED")) {
+            if (mode !== 'control-plane') {
+              if (options.repository.clearDiagnostic(options.providerId, 'CREDENTIAL_REFRESH_FAILED')) {
                 options.onDiagnosticChanged();
               }
               if (
@@ -290,7 +289,7 @@ export function createCredentialPort<Credential>(
                 options.onCredentialChanged();
               }
             }
-            return { status: "updated", snapshot: { value: validated.value, revision: updated.revision } };
+            return { status: 'updated', snapshot: { value: validated.value, revision: updated.revision } };
           } finally {
             guard.close();
             options.repository.releaseRefreshLease(options.providerId, owner);

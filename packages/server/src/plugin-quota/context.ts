@@ -1,17 +1,15 @@
-import type { AccountContext, CredentialPort, OAuthAdapter } from "@aio-proxy/plugin-sdk";
-
 import {
   collectSecretStrings,
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
-} from "@aio-proxy/core";
-import { ProviderKind } from "@aio-proxy/types";
+} from '@aio-proxy/core';
+import type { AccountContext, CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { ProviderKind } from '@aio-proxy/types';
 
-import type { ProviderSnapshotLease } from "../runtime";
-
-import { prepareOAuthPluginAccount } from "../plugin-account";
-import { OAuthQuotaCapabilityUnavailableError } from "./errors";
+import { prepareOAuthPluginAccount } from '../plugin-account';
+import type { ProviderSnapshotLease } from '../runtime';
+import { OAuthQuotaCapabilityUnavailableError } from './errors';
 
 export type OAuthQuotaServiceDependencies = {
   readonly acquireSnapshot: () => ProviderSnapshotLease;
@@ -23,7 +21,7 @@ export type OAuthQuotaServiceDependencies = {
 
 export type PreparedOAuthQuotaContext = {
   readonly adapter: OAuthAdapter & {
-    readonly quota: NonNullable<OAuthAdapter["quota"]>;
+    readonly quota: NonNullable<OAuthAdapter['quota']>;
   };
   readonly accountContext: AccountContext<unknown, unknown>;
   readonly plugin: string;
@@ -77,7 +75,7 @@ async function prepareContext(
       repository: dependencies.repository,
       diagnostics: dependencies.diagnostics,
       logger: dependencies.logger,
-      credentialMode: "control-plane",
+      credentialMode: 'control-plane',
       onDiagnosticChanged: dependencies.onDiagnosticChanged,
       pluginSecretValues,
     });
@@ -86,7 +84,7 @@ async function prepareContext(
     }
     const secretValues = new Set(prepared.secretValues);
     return {
-      adapter: prepared.adapter as PreparedOAuthQuotaContext["adapter"],
+      adapter: prepared.adapter as PreparedOAuthQuotaContext['adapter'],
       accountContext: {
         credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
         options: prepared.accountOptions,

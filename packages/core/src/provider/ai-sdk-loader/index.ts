@@ -6,4 +6,4 @@ export {
   type BundledAiSdkProviderPackage,
   type LoadedAiSdkProvider,
   loadAiSdkProvider,
-} from "./ai-sdk-loader";
+} from './ai-sdk-loader';

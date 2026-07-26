@@ -1,5 +1,5 @@
-import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
-import type { Diagnostic, DiagnosticCode } from "@aio-proxy/types";
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { Diagnostic, DiagnosticCode } from '@aio-proxy/types';
 
 export type PluginSecretSnapshot = { readonly value: unknown; readonly revision: number };
 
@@ -18,13 +18,13 @@ export type StoredAccount = {
   readonly updatedAt: number;
 };
 
-export type StoredAccountSummary = Omit<StoredAccount, "options" | "secrets" | "credential">;
+export type StoredAccountSummary = Omit<StoredAccount, 'options' | 'secrets' | 'credential'>;
 export type StoredCatalog = { readonly catalog: ModelCatalog; readonly refreshedAt: number };
 
 export type PendingAccountOperation = {
   readonly operationId: string;
   readonly providerId: string;
-  readonly kind: "create" | "update" | "delete";
+  readonly kind: 'create' | 'update' | 'delete';
   readonly targetDigest: string;
   readonly appliedRevision: number;
   readonly previousRevision?: number;
@@ -42,33 +42,33 @@ export type AccountWrite = {
   readonly label?: string;
   readonly expiresAt?: number;
   readonly catalog:
-    | { readonly kind: "replace"; readonly value: StoredCatalog }
-    | { readonly kind: "preserve"; readonly diagnostic: Diagnostic }
-    | { readonly kind: "missing"; readonly diagnostic: Diagnostic };
+    | { readonly kind: 'replace'; readonly value: StoredCatalog }
+    | { readonly kind: 'preserve'; readonly diagnostic: Diagnostic }
+    | { readonly kind: 'missing'; readonly diagnostic: Diagnostic };
 };
 
 export type StageAccountOperationInput =
-  | { readonly kind: "create"; readonly targetDigest: string; readonly account: AccountWrite }
+  | { readonly kind: 'create'; readonly targetDigest: string; readonly account: AccountWrite }
   | {
-      readonly kind: "update";
+      readonly kind: 'update';
       readonly targetDigest: string;
       readonly expectedRuntimeRevision: number;
       readonly account: AccountWrite;
     }
   | {
-      readonly kind: "delete";
-      readonly targetDigest: "absent";
+      readonly kind: 'delete';
+      readonly targetDigest: 'absent';
       readonly providerId: string;
       readonly expectedRuntimeRevision: number;
     };
 
 export class PendingAccountOperationConflictError extends Error {
-  override readonly name = "PendingAccountOperationConflictError";
+  override readonly name = 'PendingAccountOperationConflictError';
   constructor(
     readonly providerId: string,
-    readonly pendingKind: PendingAccountOperation["kind"],
+    readonly pendingKind: PendingAccountOperation['kind'],
   ) {
-    super("PENDING_ACCOUNT_OPERATION_CONFLICT");
+    super('PENDING_ACCOUNT_OPERATION_CONFLICT');
   }
 }
 
@@ -87,8 +87,8 @@ export type PluginRepository = {
   readonly deleteAccount: (providerId: string) => void;
   readonly stageAccountOperation: (input: StageAccountOperationInput) => PendingAccountOperation;
   readonly completeAccountOperation: (operationId: string) => void;
-  readonly compensateAccountOperation: (operationId: string) => "compensated" | "superseded";
-  readonly finalizeDeleteOperation: (operationId: string) => "deleted" | "superseded";
+  readonly compensateAccountOperation: (operationId: string) => 'compensated' | 'superseded';
+  readonly finalizeDeleteOperation: (operationId: string) => 'deleted' | 'superseded';
   readonly listPendingAccountOperations: () => readonly PendingAccountOperation[];
   readonly tryAcquireRefreshLease: (providerId: string, owner: string, now: number, expiresAt: number) => boolean;
   readonly renewRefreshLease: (providerId: string, owner: string, expiresAt: number) => boolean;

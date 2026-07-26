@@ -1,14 +1,13 @@
-import type { GoogleProviderSettings } from "@ai-sdk/google";
-import type { JsonValue, LogicalRequestContext, ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
+import type { GoogleProviderSettings } from '@ai-sdk/google';
+import type { JsonValue, LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 
-import type { CcaTransport } from "./transport";
-
-import { repairGroundingSse, repairGroundingUrls } from "../protocol/grounding-urls";
-import { type AntigravityThinkingOption, applyAntigravityThinking } from "../protocol/thinking";
-import { AntigravityToolSchemaValidationError } from "../protocol/tool-schema";
-import { ccaGoogleSearch, ccaWebSearchInstruction } from "../protocol/web-search";
-import { createGeminiErrorResponse, unwrapCcaJson } from "./raw";
-import { unwrapCcaSse } from "./stream";
+import { repairGroundingSse, repairGroundingUrls } from '../protocol/grounding-urls';
+import { type AntigravityThinkingOption, applyAntigravityThinking } from '../protocol/thinking';
+import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
+import { ccaGoogleSearch, ccaWebSearchInstruction } from '../protocol/web-search';
+import { createGeminiErrorResponse, unwrapCcaJson } from './raw';
+import { unwrapCcaSse } from './stream';
+import type { CcaTransport } from './transport';
 
 export type AntigravityGoogleFetchContext = {
   readonly context: LogicalRequestContext;
@@ -22,7 +21,7 @@ export type AntigravityGoogleFetchContext = {
 export function createAntigravityGoogleFetch(
   call: AntigravityGoogleFetchContext,
   modelId: string,
-): NonNullable<GoogleProviderSettings["fetch"]> {
+): NonNullable<GoogleProviderSettings['fetch']> {
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     const target = parseGoogleTarget(request.url, modelId);
@@ -37,7 +36,7 @@ export function createAntigravityGoogleFetch(
         body,
         context: call.context,
         modelId: target.modelId,
-        requestType: "agent",
+        requestType: 'agent',
         stream: target.stream,
         signal: request.signal,
       });
@@ -54,7 +53,7 @@ export function createAntigravityGoogleFetch(
     }
     if (target.stream) {
       const headers = new Headers(response.headers);
-      headers.set("Content-Type", "text/event-stream; charset=utf-8");
+      headers.set('Content-Type', 'text/event-stream; charset=utf-8');
       const stream = unwrapCcaSse(response.body, { signal: request.signal, terminateOnError: true });
       return new Response(repairGroundingSse(stream, repairDependencies(call, request.signal)), {
         headers,
@@ -74,7 +73,7 @@ export function createAntigravityGoogleFetch(
       throw error;
     }
     const headers = new Headers(response.headers);
-    headers.set("Content-Type", "application/json");
+    headers.set('Content-Type', 'application/json');
     return new Response(JSON.stringify(payload), {
       headers,
       status: response.status,
@@ -90,13 +89,13 @@ function applyProviderTools(
   modelMetadata: JsonValue | undefined,
 ): Record<string, unknown> {
   if (providerTools === undefined || providerTools.length === 0) return body;
-  const currentTools = Reflect.get(body, "tools");
+  const currentTools = Reflect.get(body, 'tools');
   if (currentTools !== undefined && !Array.isArray(currentTools)) {
-    throw new TypeError("Gemini tools must be an array");
+    throw new TypeError('Gemini tools must be an array');
   }
   const instruction = ccaWebSearchInstruction(providerTools);
-  const systemInstruction = record(Reflect.get(body, "systemInstruction"));
-  const parts = Reflect.get(systemInstruction, "parts");
+  const systemInstruction = record(Reflect.get(body, 'systemInstruction'));
+  const parts = Reflect.get(systemInstruction, 'parts');
   const currentParts = Array.isArray(parts) ? parts : [];
   return {
     ...body,
@@ -121,7 +120,7 @@ function applyPrivateThinking(
   thinking: AntigravityThinkingOption | undefined,
 ): Record<string, unknown> {
   if (thinking === undefined) return body;
-  const generationConfig = record(Reflect.get(body, "generationConfig"));
+  const generationConfig = record(Reflect.get(body, 'generationConfig'));
   return {
     ...body,
     generationConfig: {
@@ -132,19 +131,19 @@ function applyPrivateThinking(
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function parseGoogleTarget(url: string, modelId: string): { readonly modelId: string; readonly stream: boolean } {
   const pathname = new URL(url).pathname;
   const match = pathname.match(/^\/[^/]+\/(.+):(generateContent|streamGenerateContent)$/u);
-  if (match === null) throw new Error("Google Antigravity received an unsupported Google codec request");
-  const encodedModelId = decodeURIComponent(match[1] ?? "");
-  const expectedModelId = modelId.includes("/") ? modelId : `models/${modelId}`;
+  if (match === null) throw new Error('Google Antigravity received an unsupported Google codec request');
+  const encodedModelId = decodeURIComponent(match[1] ?? '');
+  const expectedModelId = modelId.includes('/') ? modelId : `models/${modelId}`;
   if (encodedModelId !== expectedModelId) {
-    throw new Error("Google Antigravity received an unsupported Google codec request");
+    throw new Error('Google Antigravity received an unsupported Google codec request');
   }
-  return { modelId, stream: match[2] === "streamGenerateContent" };
+  return { modelId, stream: match[2] === 'streamGenerateContent' };
 }
 
 function createGoogleCodecErrorResponse(status: number): Response {
@@ -155,8 +154,8 @@ function createGoogleCodecErrorResponse(status: number): Response {
     {
       error: {
         code: status,
-        message: "Google Antigravity request failed",
-        status: "UNKNOWN",
+        message: 'Google Antigravity request failed',
+        status: 'UNKNOWN',
       },
     },
     { status },
@@ -166,18 +165,18 @@ function createGoogleCodecErrorResponse(status: number): Response {
 async function readGoogleBody(request: Request): Promise<Record<string, unknown>> {
   try {
     const body: unknown = await request.json();
-    if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+    if (typeof body === 'object' && body !== null && !Array.isArray(body)) {
       return body as Record<string, unknown>;
     }
   } catch (error) {
     throwIfAborted(request.signal);
     throw error;
   }
-  throw new TypeError("Google codec request body must be a JSON object");
+  throw new TypeError('Google codec request body must be a JSON object');
 }
 
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }

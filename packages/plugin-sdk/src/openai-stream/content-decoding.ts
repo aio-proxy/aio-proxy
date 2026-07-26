@@ -1,6 +1,5 @@
-import type { Transform } from "node:stream";
-
-import * as zlib from "node:zlib";
+import type { Transform } from 'node:stream';
+import * as zlib from 'node:zlib';
 
 export type DecodedRead = {
   readonly chunks: readonly Uint8Array[];
@@ -50,7 +49,7 @@ function createManagedStage(encoding: SupportedEncoding, onIdleError: (error: un
     flush: definition.flush,
   };
   // One persistent listener: records between-op errors and settles any active operation.
-  managed.stage.on("error", (error: Error) => {
+  managed.stage.on('error', (error: Error) => {
     if (managed.pendingError === undefined) managed.pendingError = error;
     const settle = managed.activeSettle;
     if (settle === undefined) onIdleError(error);
@@ -85,13 +84,13 @@ function runStageOperation(
       if (settled) return;
       settled = true;
       delete managed.activeSettle;
-      stage.off("data", onData);
+      stage.off('data', onData);
       const pending = managed.pendingError;
       if (pending !== undefined) managed.pendingError = undefined;
       const combined = error === undefined || error === null ? pending : error;
       resolve(combined === undefined ? { chunks } : { chunks, error: combined });
     };
-    stage.on("data", onData);
+    stage.on('data', onData);
     managed.activeSettle = finish;
     start(finish);
   });
@@ -120,7 +119,7 @@ function endStage(managed: ManagedStage): Promise<{ chunks: Uint8Array[]; error?
   }
   // Settle on close: zlib may emit error after the end() callback (e.g. truncated gzip).
   return runStageOperation(managed, (settle) => {
-    managed.stage.once("close", () => settle(null));
+    managed.stage.once('close', () => settle(null));
     if (managed.stage.writableEnded) {
       if (managed.stage.closed) settle(null);
       return;
@@ -132,7 +131,7 @@ function endStage(managed: ManagedStage): Promise<{ chunks: Uint8Array[]; error?
 async function feedStage(
   managed: ManagedStage,
   inputs: readonly Uint8Array[],
-  mode: "flush" | "end",
+  mode: 'flush' | 'end',
 ): Promise<{ chunks: Uint8Array[]; error?: unknown }> {
   const output: Uint8Array[] = [];
   let error: unknown;
@@ -148,7 +147,7 @@ async function feedStage(
   }
 
   if (error === undefined) {
-    const finished = mode === "end" ? await endStage(managed) : await flushStage(managed);
+    const finished = mode === 'end' ? await endStage(managed) : await flushStage(managed);
     output.push(...finished.chunks);
     if (finished.error !== undefined) error = finished.error;
   }
@@ -164,7 +163,7 @@ async function decodeThroughStages(
   let firstError: unknown;
 
   for (const managed of stages) {
-    const result = await feedStage(managed, current, "flush");
+    const result = await feedStage(managed, current, 'flush');
     current = result.chunks;
     if (result.error !== undefined && firstError === undefined) firstError = result.error;
   }
@@ -179,7 +178,7 @@ async function finalizeThroughStages(
   let firstError: unknown;
 
   for (const managed of stages) {
-    const result = await feedStage(managed, current, "end");
+    const result = await feedStage(managed, current, 'end');
     current = result.chunks;
     if (result.error !== undefined && firstError === undefined) firstError = result.error;
   }
@@ -191,10 +190,10 @@ export function createContentDecodedReader(
   source: ReadableStream<Uint8Array>,
   contentEncoding: string | null,
 ): ContentDecodedReader {
-  const encodingTokens = (contentEncoding ?? "")
-    .split(",")
+  const encodingTokens = (contentEncoding ?? '')
+    .split(',')
     .map((value) => value.trim().toLowerCase())
-    .filter((value) => value !== "" && value !== "identity");
+    .filter((value) => value !== '' && value !== 'identity');
 
   const encodings: SupportedEncoding[] = [];
   for (const encoding of encodingTokens) {

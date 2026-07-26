@@ -1,7 +1,7 @@
-import { AtomicConfigFile } from "@aio-proxy/core";
-import { isPlainObject } from "es-toolkit/predicate";
+import { AtomicConfigFile } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-const ARGON2ID_PREFIX = "$argon2id$";
+const ARGON2ID_PREFIX = '$argon2id$';
 const ARGON2ID_PATTERN =
   /^\$argon2id\$v=19\$m=(?<memory>\d+),t=(?<time>\d+),p=(?<parallelism>\d+)\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/u;
 const ARGON2ID_LIMITS = {
@@ -11,18 +11,18 @@ const ARGON2ID_LIMITS = {
 } as const;
 
 export async function normalizeDashboardPassword<T extends Record<string, unknown>>(config: T): Promise<T> {
-  const server = config["server"];
+  const server = config['server'];
   if (!isPlainObject(server)) return config;
-  const password = server["password"];
-  if (typeof password !== "string") return config;
-  if (password === "") throw new Error("Dashboard password must not be empty");
+  const password = server['password'];
+  if (typeof password !== 'string') return config;
+  if (password === '') throw new Error('Dashboard password must not be empty');
 
   if (password.startsWith(ARGON2ID_PREFIX)) {
-    if (!validArgon2idHash(password)) throw new Error("Invalid Argon2id password hash");
+    if (!validArgon2idHash(password)) throw new Error('Invalid Argon2id password hash');
     try {
-      await Bun.password.verify("aio-proxy-dashboard-probe", password);
+      await Bun.password.verify('aio-proxy-dashboard-probe', password);
     } catch {
-      throw new Error("Invalid Argon2id password hash");
+      throw new Error('Invalid Argon2id password hash');
     }
     return config;
   }
@@ -67,7 +67,7 @@ export async function prepareDashboardConfig(
 }
 
 function withoutDashboardPassword(config: unknown): unknown {
-  if (!isPlainObject(config) || !isPlainObject(config["server"])) return config;
-  const { password: _password, ...server } = config["server"];
+  if (!isPlainObject(config) || !isPlainObject(config['server'])) return config;
+  const { password: _password, ...server } = config['server'];
   return { ...config, server };
 }

@@ -5,12 +5,12 @@ import {
   type OAuthAdapter,
   type PluginDescriptor,
   zod,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from "./catalog";
-import { type KimiCredential, type KimiOAuthDependencies, loginKimi } from "./oauth";
-import { readKimiQuota } from "./quota";
-import { createKimiRuntime } from "./runtime/index";
+import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from './catalog';
+import { type KimiCredential, type KimiOAuthDependencies, loginKimi } from './oauth';
+import { readKimiQuota } from './quota';
+import { createKimiRuntime } from './runtime/index';
 
 export type KimiCodePresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -21,11 +21,11 @@ export type KimiCodePresentationText = {
 };
 
 export const englishPresentationText: KimiCodePresentationText = {
-  pluginLabel: "Kimi Code",
-  pluginDescription: "Use a Kimi Code account to access models",
-  adapterLabel: "Login with Kimi Code",
-  deviceInstructions: "Enter code",
-  waitingForAuthorization: "Waiting for Kimi authorization",
+  pluginLabel: 'Kimi Code',
+  pluginDescription: 'Use a Kimi Code account to access models',
+  adapterLabel: 'Login with Kimi Code',
+  deviceInstructions: 'Enter code',
+  waitingForAuthorization: 'Waiting for Kimi authorization',
 };
 
 export function createKimiCodePlugin(
@@ -37,9 +37,9 @@ export function createKimiCodePlugin(
     form: [],
   } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, KimiCredential> = {
-    id: "default",
+    id: 'default',
     label: presentationText.adapterLabel,
-    icon: "moonshot",
+    icon: 'moonshot',
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string().min(1),
@@ -59,17 +59,17 @@ export function createKimiCodePlugin(
       );
     },
     catalog: {
-      policy: { kind: "ttl", ttlMs: KIMI_CATALOG_TTL_MS },
+      policy: { kind: 'ttl', ttlMs: KIMI_CATALOG_TTL_MS },
       discover: (context) => discoverKimiCatalog(context, dependencies),
       initialFallback: (error) =>
-        error instanceof DOMException && error.name === "AbortError" ? undefined : staticKimiCatalog(),
+        error instanceof DOMException && error.name === 'AbortError' ? undefined : staticKimiCatalog(),
     },
     createRuntime: (context) => createKimiRuntime(context, dependencies),
     quota: { read: (context) => readKimiQuota(context, dependencies) },
   };
 
   return definePlugin((api) => api.oauth.register(adapter), {
-    label: presentationText.pluginLabel ?? "Kimi Code",
-    description: presentationText.pluginDescription ?? "Use a Kimi Code account to access models",
+    label: presentationText.pluginLabel ?? 'Kimi Code',
+    description: presentationText.pluginDescription ?? 'Use a Kimi Code account to access models',
   });
 }

@@ -1,26 +1,26 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { ReasoningReplayCache } from "../protocol/replay-cache";
-import { captureReasoningReplay } from "./session-state";
+import { ReasoningReplayCache } from '../protocol/replay-cache';
+import { captureReasoningReplay } from './session-state';
 
-const MODEL = "claude-opus-4-6-thinking";
-const SIGNATURE = "signature-".repeat(6);
+const MODEL = 'claude-opus-4-6-thinking';
+const SIGNATURE = 'signature-'.repeat(6);
 
-test("captures complete JSON signatures and function calls", async () => {
-  const fixture = replayFixture("json-complete");
+test('captures complete JSON signatures and function calls', async () => {
+  const fixture = replayFixture('json-complete');
   const captured = await captureReasoningReplay(
     Response.json({
       response: {
         candidates: [
           {
             content: {
-              role: "model",
+              role: 'model',
               parts: [
-                { text: "reasoning", thought: true, thoughtSignature: SIGNATURE },
-                { functionCall: { id: "call-1", name: "weather", args: {} }, thoughtSignature: SIGNATURE },
+                { text: 'reasoning', thought: true, thoughtSignature: SIGNATURE },
+                { functionCall: { id: 'call-1', name: 'weather', args: {} }, thoughtSignature: SIGNATURE },
               ],
             },
-            finishReason: "STOP",
+            finishReason: 'STOP',
           },
         ],
       },
@@ -32,33 +32,33 @@ test("captures complete JSON signatures and function calls", async () => {
 
   await captured.json();
   expect(fixture.cache.read(fixture.scope.key)?.parts).toEqual([
-    { type: "thought-signature", contentIndex: 0, partIndex: 0, signature: SIGNATURE },
+    { type: 'thought-signature', contentIndex: 0, partIndex: 0, signature: SIGNATURE },
     {
-      type: "function-call",
+      type: 'function-call',
       contentIndex: 0,
       partIndex: 1,
-      call: { id: "call-1", name: "weather", args: {} },
+      call: { id: 'call-1', name: 'weather', args: {} },
       signature: SIGNATURE,
     },
   ]);
 });
 
 test.each([
-  "MALFORMED_FUNCTION_CALL",
-  "MAX_TOKENS",
-  "IMAGE_SAFETY",
-  "RECITATION",
-  "SAFETY",
-  "BLOCKLIST",
-  "PROHIBITED_CONTENT",
-  "SPII",
-  "FINISH_REASON_UNSPECIFIED",
-  "OTHER",
-  "UNEXPECTED_TOOL_CALL",
-])("does not commit JSON replay for Google finish reason %s", async (finishReason) => {
+  'MALFORMED_FUNCTION_CALL',
+  'MAX_TOKENS',
+  'IMAGE_SAFETY',
+  'RECITATION',
+  'SAFETY',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'FINISH_REASON_UNSPECIFIED',
+  'OTHER',
+  'UNEXPECTED_TOOL_CALL',
+])('does not commit JSON replay for Google finish reason %s', async (finishReason) => {
   const fixture = replayFixture(`json-${finishReason}`);
   const captured = await captureReasoningReplay(
-    Response.json({ response: { candidates: [{ content: signedContent("call-1"), finishReason }] } }),
+    Response.json({ response: { candidates: [{ content: signedContent('call-1'), finishReason }] } }),
     MODEL,
     fixture.scope,
     fixture.cache,
@@ -68,14 +68,14 @@ test.each([
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("does not commit JSON replay while any candidate remains incomplete", async () => {
-  const fixture = replayFixture("json-incomplete-candidate");
+test('does not commit JSON replay while any candidate remains incomplete', async () => {
+  const fixture = replayFixture('json-incomplete-candidate');
   const captured = await captureReasoningReplay(
     Response.json({
       response: {
         candidates: [
-          { index: 0, content: signedContent("call-1"), finishReason: "STOP" },
-          { index: 1, content: signedContent("call-2") },
+          { index: 0, content: signedContent('call-1'), finishReason: 'STOP' },
+          { index: 1, content: signedContent('call-2') },
         ],
       },
     }),
@@ -88,14 +88,14 @@ test("does not commit JSON replay while any candidate remains incomplete", async
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("does not commit JSON replay with duplicate explicit candidate indexes", async () => {
-  const fixture = replayFixture("json-duplicate-candidate-index");
+test('does not commit JSON replay with duplicate explicit candidate indexes', async () => {
+  const fixture = replayFixture('json-duplicate-candidate-index');
   const captured = await captureReasoningReplay(
     Response.json({
       response: {
         candidates: [
-          { index: 0, content: signedContent("call-1") },
-          { index: 0, content: signedContent("call-2"), finishReason: "STOP" },
+          { index: 0, content: signedContent('call-1') },
+          { index: 0, content: signedContent('call-2'), finishReason: 'STOP' },
         ],
       },
     }),
@@ -108,14 +108,14 @@ test("does not commit JSON replay with duplicate explicit candidate indexes", as
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("does not commit JSON replay when multiple candidates finish with STOP", async () => {
-  const fixture = replayFixture("json-complete-candidates");
+test('does not commit JSON replay when multiple candidates finish with STOP', async () => {
+  const fixture = replayFixture('json-complete-candidates');
   const captured = await captureReasoningReplay(
     Response.json({
       response: {
         candidates: [
-          { index: 0, content: signedContent("call-1"), finishReason: "STOP" },
-          { index: 1, content: signedContent("call-2"), finishReason: "STOP" },
+          { index: 0, content: signedContent('call-1'), finishReason: 'STOP' },
+          { index: 1, content: signedContent('call-2'), finishReason: 'STOP' },
         ],
       },
     }),
@@ -128,14 +128,14 @@ test("does not commit JSON replay when multiple candidates finish with STOP", as
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("does not commit mixed explicit-index and fallback-position candidates", async () => {
-  const fixture = replayFixture("json-mixed-candidate-keys");
+test('does not commit mixed explicit-index and fallback-position candidates', async () => {
+  const fixture = replayFixture('json-mixed-candidate-keys');
   const captured = await captureReasoningReplay(
     Response.json({
       response: {
         candidates: [
-          { index: 1, content: signedContent("call-explicit"), finishReason: "STOP" },
-          { content: signedContent("call-fallback"), finishReason: "STOP" },
+          { index: 1, content: signedContent('call-explicit'), finishReason: 'STOP' },
+          { content: signedContent('call-fallback'), finishReason: 'STOP' },
         ],
       },
     }),
@@ -156,7 +156,7 @@ function replayFixture(marker: string) {
 
 function signedContent(id: string) {
   return {
-    role: "model",
-    parts: [{ functionCall: { id, name: "tool", args: {} }, thoughtSignature: SIGNATURE }],
+    role: 'model',
+    parts: [{ functionCall: { id, name: 'tool', args: {} }, thoughtSignature: SIGNATURE }],
   };
 }

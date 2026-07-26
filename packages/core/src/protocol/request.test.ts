@@ -1,5 +1,5 @@
-import { expect, spyOn, test } from "bun:test";
-import { brotliCompressSync, deflateRawSync, deflateSync } from "node:zlib";
+import { expect, spyOn, test } from 'bun:test';
+import { brotliCompressSync, deflateRawSync, deflateSync } from 'node:zlib';
 
 import {
   InvalidCompressedRequestBodyError,
@@ -8,57 +8,57 @@ import {
   readJsonRequest,
   rewriteJsonRequestModel,
   UnsupportedContentEncodingError,
-} from "./request";
+} from './request';
 
 const jsonBytes = new TextEncoder().encode(JSON.stringify({ ok: true }));
 
-test("rewriteJsonRequestModel preserves unknown fields and removes stale body encoding headers", async () => {
+test('rewriteJsonRequestModel preserves unknown fields and removes stale body encoding headers', async () => {
   const body = Bun.gzipSync(
-    new TextEncoder().encode(JSON.stringify({ model: "client-model", beta_field: { enabled: true } })),
+    new TextEncoder().encode(JSON.stringify({ model: 'client-model', beta_field: { enabled: true } })),
   );
   const rewritten = await rewriteJsonRequestModel(
-    new Request("https://proxy.test/v1/responses", {
-      method: "POST",
+    new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
       headers: {
-        "content-encoding": "gzip",
-        "content-length": String(body.byteLength),
-        "content-type": "application/json",
+        'content-encoding': 'gzip',
+        'content-length': String(body.byteLength),
+        'content-type': 'application/json',
       },
       body,
     }),
-    "upstream-model",
+    'upstream-model',
   );
 
-  expect(rewritten.headers.get("content-encoding")).toBeNull();
-  expect(rewritten.headers.get("content-length")).toBeNull();
+  expect(rewritten.headers.get('content-encoding')).toBeNull();
+  expect(rewritten.headers.get('content-length')).toBeNull();
   expect(await rewritten.json()).toEqual({
-    model: "upstream-model",
+    model: 'upstream-model',
     beta_field: { enabled: true },
   });
 });
 
 test.each([
-  ["gzip", Bun.gzipSync(jsonBytes)],
-  ["x-gzip", Bun.gzipSync(jsonBytes)],
-  ["zstd", Bun.zstdCompressSync(jsonBytes)],
-  ["deflate", deflateSync(jsonBytes)],
-  ["deflate", deflateRawSync(jsonBytes)],
-  ["br", brotliCompressSync(jsonBytes)],
-] as const)("readJsonRequest decodes %s request bodies", async (encoding, body) => {
+  ['gzip', Bun.gzipSync(jsonBytes)],
+  ['x-gzip', Bun.gzipSync(jsonBytes)],
+  ['zstd', Bun.zstdCompressSync(jsonBytes)],
+  ['deflate', deflateSync(jsonBytes)],
+  ['deflate', deflateRawSync(jsonBytes)],
+  ['br', brotliCompressSync(jsonBytes)],
+] as const)('readJsonRequest decodes %s request bodies', async (encoding, body) => {
   expect(await readJsonRequest(encodedRequest(encoding, body))).toEqual({ ok: true });
 });
 
-test.each(["identity", "IDENTITY"])("readJsonRequest ignores %s", async (encoding) => {
+test.each(['identity', 'IDENTITY'])('readJsonRequest ignores %s', async (encoding) => {
   expect(await readJsonRequest(encodedRequest(encoding, jsonBytes))).toEqual({ ok: true });
 });
 
-test("readJsonRequest parses requests without content encoding", async () => {
-  const request = new Request("https://proxy.test/v1/responses", { method: "POST", body: jsonBytes });
+test('readJsonRequest parses requests without content encoding', async () => {
+  const request = new Request('https://proxy.test/v1/responses', { method: 'POST', body: jsonBytes });
   expect(await readJsonRequest(request)).toEqual({ ok: true });
 });
 
-test.each(["compress", "gzip, br"])("readJsonRequest rejects unsupported coding %s", async (encoding) => {
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
+test.each(['compress', 'gzip, br'])('readJsonRequest rejects unsupported coding %s', async (encoding) => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
   try {
     await expect(readJsonRequest(encodedRequest(encoding, jsonBytes))).rejects.toBeInstanceOf(
       UnsupportedContentEncodingError,
@@ -70,13 +70,13 @@ test.each(["compress", "gzip, br"])("readJsonRequest rejects unsupported coding 
   }
 });
 
-test("readJsonRequest rejects unsupported coding without reading the body", async () => {
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
+test('readJsonRequest rejects unsupported coding without reading the body', async () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
   let pulls = 0;
   let releasePull = () => {};
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-encoding": "compress", "content-type": "application/json" },
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': 'compress', 'content-type': 'application/json' },
     body: new ReadableStream<Uint8Array>({
       pull(controller) {
         pulls += 1;
@@ -104,17 +104,17 @@ test("readJsonRequest rejects unsupported coding without reading the body", asyn
   }
 });
 
-test.each(["gzip", "zstd", "deflate", "br"])("normalizes corrupt %s bodies", async (encoding) => {
+test.each(['gzip', 'zstd', 'deflate', 'br'])('normalizes corrupt %s bodies', async (encoding) => {
   await expect(readJsonRequest(encodedRequest(encoding, new Uint8Array([1, 2, 3, 4])))).rejects.toBeInstanceOf(
     InvalidCompressedRequestBodyError,
   );
 });
 
-test("readJsonRequest limits decompressed gzip bytes", async () => {
-  const body = Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ padding: "x".repeat(64) })));
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+test('readJsonRequest limits decompressed gzip bytes', async () => {
+  const body = Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ padding: 'x'.repeat(64) })));
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': 'gzip', 'content-type': 'application/json' },
     body,
   });
 
@@ -123,11 +123,11 @@ test("readJsonRequest limits decompressed gzip bytes", async () => {
   );
 });
 
-test("readJsonRequest limits decompressed zstd bytes", async () => {
-  const body = Bun.zstdCompressSync(new TextEncoder().encode(JSON.stringify({ padding: "x".repeat(64) })));
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-encoding": "zstd", "content-type": "application/json" },
+test('readJsonRequest limits decompressed zstd bytes', async () => {
+  const body = Bun.zstdCompressSync(new TextEncoder().encode(JSON.stringify({ padding: 'x'.repeat(64) })));
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': 'zstd', 'content-type': 'application/json' },
     body,
   });
 
@@ -136,21 +136,21 @@ test("readJsonRequest limits decompressed zstd bytes", async () => {
   );
 });
 
-test("readJsonRequest does not raw-fallback when deflate output exceeds the limit", async () => {
-  const body = deflateSync(new TextEncoder().encode(JSON.stringify({ padding: "x".repeat(64) })));
+test('readJsonRequest does not raw-fallback when deflate output exceeds the limit', async () => {
+  const body = deflateSync(new TextEncoder().encode(JSON.stringify({ padding: 'x'.repeat(64) })));
   await expect(
-    readJsonRequest(encodedRequest("deflate", body), { encoded: body.byteLength, decoded: 32 }),
+    readJsonRequest(encodedRequest('deflate', body), { encoded: body.byteLength, decoded: 32 }),
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
-test("readJsonRequest limits encoded gzip bytes before decompression", async () => {
+test('readJsonRequest limits encoded gzip bytes before decompression', async () => {
   const emptyMember = Bun.gzipSync(new Uint8Array());
   const body = new Uint8Array(emptyMember.byteLength * 2);
   body.set(emptyMember);
   body.set(emptyMember, emptyMember.byteLength);
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-encoding": "gzip", "content-type": "application/json" },
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': 'gzip', 'content-type': 'application/json' },
     body,
   });
 
@@ -159,14 +159,14 @@ test("readJsonRequest limits encoded gzip bytes before decompression", async () 
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
-test("readJsonRequest rejects a chunked body before retaining bytes beyond the limit", async () => {
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+test('readJsonRequest rejects a chunked body before retaining bytes beyond the limit', async () => {
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('{"ok":'));
-        controller.enqueue(new TextEncoder().encode("true}"));
+        controller.enqueue(new TextEncoder().encode('true}'));
         controller.close();
       },
     }),
@@ -177,15 +177,15 @@ test("readJsonRequest rejects a chunked body before retaining bytes beyond the l
   );
 });
 
-test("readJsonRequest cancels every retained branch when a chunked body exceeds the limit", async () => {
+test('readJsonRequest cancels every retained branch when a chunked body exceeds the limit', async () => {
   let resolveCancellation: (reason: unknown) => void = () => {};
   const cancellation = new Promise<unknown>((resolve) => {
     resolveCancellation = resolve;
   });
   let chunks = 0;
-  const request = new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: new ReadableStream<Uint8Array>({
       pull(controller) {
         if (chunks < 9) {
@@ -203,7 +203,7 @@ test("readJsonRequest cancels every retained branch when a chunked body exceeds 
     readJsonRequest(request, { encoded: 8, decoded: REQUEST_BODY_LIMITS.decoded }),
     1_000,
   );
-  if (!request.bodyUsed) await request.body?.cancel("test cleanup");
+  if (!request.bodyUsed) await request.body?.cancel('test cleanup');
 
   expect(result).toBeInstanceOf(RequestBodyTooLargeError);
   expect(await settleWithin(cancellation, 100)).not.toBeInstanceOf(TimeoutError);
@@ -211,9 +211,9 @@ test("readJsonRequest cancels every retained branch when a chunked body exceeds 
 });
 
 function encodedRequest(encoding: string, body: Uint8Array): Request {
-  return new Request("https://proxy.test/v1/responses", {
-    method: "POST",
-    headers: { "content-encoding": encoding, "content-type": "application/json" },
+  return new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': encoding, 'content-type': 'application/json' },
     body,
   });
 }
@@ -226,7 +226,7 @@ async function settleWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<
     return await Promise.race([
       promise.catch((error: unknown) => error),
       new Promise<TimeoutError>((resolve) => {
-        timeout = setTimeout(() => resolve(new TimeoutError("Timed out")), timeoutMs);
+        timeout = setTimeout(() => resolve(new TimeoutError('Timed out')), timeoutMs);
       }),
     ]);
   } finally {

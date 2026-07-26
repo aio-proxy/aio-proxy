@@ -1,11 +1,10 @@
-import { isEqual } from "es-toolkit/predicate";
+import { isEqual } from 'es-toolkit/predicate';
 
-import type { ReplayPart } from "../../../protocol/replay-cache";
-
-import { validThoughtSignature } from "../../../protocol/signatures";
-import { asArray, asRecord } from "../payload-shape";
-import { allocateCallOccurrences, type CallOccurrence } from "./call-allocation";
-import { compatibleHistoryCall, replayPart } from "./replay-parts";
+import type { ReplayPart } from '../../../protocol/replay-cache';
+import { validThoughtSignature } from '../../../protocol/signatures';
+import { asArray, asRecord } from '../payload-shape';
+import { allocateCallOccurrences, type CallOccurrence } from './call-allocation';
+import { compatibleHistoryCall, replayPart } from './replay-parts';
 
 export function enrichModelTurn(
   body: Readonly<Record<string, unknown>>,
@@ -16,7 +15,7 @@ export function enrichModelTurn(
 ): Record<string, unknown> {
   const model = asRecord(contents[modelIndex]);
   if (model === undefined) return body;
-  const parts = [...asArray(Reflect.get(model, "parts"))];
+  const parts = [...asArray(Reflect.get(model, 'parts'))];
   const replacement = buildReplacement(parts, replay, modelId);
   if (replacement === undefined || isEqual(parts, replacement)) return body;
   const nextContents = [...contents];
@@ -35,10 +34,10 @@ function buildReplacement(
   const matchedThoughts = new Set<number>();
   let hasMatch = false;
   replay.forEach((part, replayIndex) => {
-    if (part.type === "thought-signature") {
+    if (part.type === 'thought-signature') {
       const index = parts.findIndex(
         (candidate, candidateIndex) =>
-          !matchedThoughts.has(candidateIndex) && Reflect.get(asRecord(candidate) ?? {}, "thought") === true,
+          !matchedThoughts.has(candidateIndex) && Reflect.get(asRecord(candidate) ?? {}, 'thought') === true,
       );
       if (index >= 0) {
         anchors[replayIndex] = index;
@@ -80,7 +79,7 @@ function buildReplacement(
 function callOccurrences(replay: readonly ReplayPart[]): readonly CallOccurrence[] {
   const occurrences: CallOccurrence[] = [];
   replay.forEach((part, replayIndex) => {
-    if (part.type !== "function-call") return;
+    if (part.type !== 'function-call') return;
     occurrences.push({ part, replayIndex });
   });
   return occurrences;
@@ -109,7 +108,7 @@ function missingReplayInsertions(
 function matchingCallIndexes(parts: readonly unknown[], occurrences: readonly CallOccurrence[]): readonly number[] {
   const indexes: number[] = [];
   parts.forEach((part, index) => {
-    const call = Reflect.get(asRecord(part) ?? {}, "functionCall");
+    const call = Reflect.get(asRecord(part) ?? {}, 'functionCall');
     if (occurrences.some((occurrence) => compatibleHistoryCall(call, occurrence.part.call))) indexes.push(index);
   });
   return indexes;
@@ -120,7 +119,7 @@ function signThought(
   signature: string,
   modelId: string,
 ): Record<string, unknown> {
-  if (validThoughtSignature(modelId, Reflect.get(existing, "thoughtSignature"))) return { ...existing };
+  if (validThoughtSignature(modelId, Reflect.get(existing, 'thoughtSignature'))) return { ...existing };
   return validThoughtSignature(modelId, signature) ? { ...existing, thoughtSignature: signature } : { ...existing };
 }
 
@@ -130,7 +129,7 @@ function signFunctionCall(
   modelId: string,
 ): Record<string, unknown> {
   if (validThoughtSignature(modelId, signature)) {
-    return Reflect.get(existing, "thoughtSignature") === signature
+    return Reflect.get(existing, 'thoughtSignature') === signature
       ? { ...existing }
       : { ...existing, thoughtSignature: signature };
   }

@@ -1,8 +1,8 @@
-import type { ProviderExecutedTool } from "@aio-proxy/plugin-sdk";
-import type { ProviderProtocol } from "@aio-proxy/types";
+import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import type { ProviderProtocol } from '@aio-proxy/types';
 
-import type { CallSettings, ModelMessage, TextStreamPart, ToolSet } from "../ai-sdk-bridge";
-import type { ProtocolSessionHints } from "./session";
+import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
+import type { ProtocolSessionHints } from './session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
 export type ModelEventStream = ReadableStream<TextStreamPart<ToolSet>>;
@@ -19,7 +19,7 @@ export type ProtocolErrorMapper = Readonly<{
 
 export type ModelInvocation = {
   readonly messages: readonly ModelMessage[];
-  readonly settings?: CallSettings;
+  readonly settings?: AiSdkCallSettings;
   readonly tools?: ToolSet;
   readonly providerTools?: readonly ProviderExecutedTool[];
 };
@@ -30,9 +30,9 @@ export type ModelEgressContext = {
 };
 
 export type ProtocolRequestDiagnostic = Readonly<{
-  feature: "background";
-  action: "dropped";
-  effectiveMode: "synchronous";
+  feature: 'background';
+  action: 'dropped';
+  effectiveMode: 'synchronous';
 }>;
 
 export type ProtocolAdapter<TRequest, TContext> = Readonly<{
@@ -56,11 +56,11 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
 
 export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
   ProtocolAdapter<TRequest, TContext>,
-  "modelInvocationForTarget" | "requestDiagnostics" | "variant"
+  'modelInvocationForTarget' | 'requestDiagnostics' | 'variant'
 > & {
-  readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>["modelInvocationForTarget"];
-  readonly variant?: ProtocolAdapter<TRequest, TContext>["variant"];
-  readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>["requestDiagnostics"];
+  readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>['modelInvocationForTarget'];
+  readonly variant?: ProtocolAdapter<TRequest, TContext>['variant'];
+  readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
 };
 
 const noVariant = (): undefined => undefined;

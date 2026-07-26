@@ -1,15 +1,14 @@
-import type { LogicalRequestContext, TokenCountInput } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { jsonSchema } from "ai";
-import { expect, test } from "bun:test";
+import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import { jsonSchema } from 'ai';
 
-import type { GoogleAntigravityCredential } from "../schema";
+import type { GoogleAntigravityCredential } from '../schema';
+import { wireSessionId } from './envelope';
+import { createAntigravityTokenCount } from './token-count';
+import { AntigravityTransport } from './transport';
 
-import { wireSessionId } from "./envelope";
-import { createAntigravityTokenCount } from "./token-count";
-import { AntigravityTransport } from "./transport";
-
-test("uses the Google codec and count endpoint for the CCA token count", async () => {
+test('uses the Google codec and count endpoint for the CCA token count', async () => {
   const seen: Request[] = [];
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
@@ -23,58 +22,58 @@ test("uses the Google codec and count endpoint for the CCA token count", async (
   const result = await counter.countTokens(
     countInput({
       invocation: {
-        messages: [{ role: "user", content: "what is the weather?" }],
+        messages: [{ role: 'user', content: 'what is the weather?' }],
         settings: {
-          providerOptions: { aioProxy: { thinking: { mode: "fixed", budgetTokens: 512 } } },
+          providerOptions: { aioProxy: { thinking: { mode: 'fixed', budgetTokens: 512 } } },
         },
         tools: {
           weather: {
-            description: "Forecast",
-            inputSchema: jsonSchema({ type: "object", properties: { days: { const: 3 } } }),
+            description: 'Forecast',
+            inputSchema: jsonSchema({ type: 'object', properties: { days: { const: 3 } } }),
           },
         },
-        providerTools: [{ type: "web-search", name: "web_search", maxUses: 2 }],
+        providerTools: [{ type: 'web-search', name: 'web_search', maxUses: 2 }],
       },
     }),
   );
 
   expect(result).toEqual({ inputTokens: 17 });
   expect(seen).toHaveLength(1);
-  expect(new URL(seen[0]?.url ?? "").pathname).toBe("/v1internal:countTokens");
+  expect(new URL(seen[0]?.url ?? '').pathname).toBe('/v1internal:countTokens');
   const envelope = await seen[0]?.clone().json();
   expect(envelope).toMatchObject({
-    model: "claude-sonnet-4-6",
-    project: "project-1",
-    requestId: "agent-00000000-0000-4000-8000-000000000001",
+    model: 'claude-sonnet-4-6',
+    project: 'project-1',
+    requestId: 'agent-00000000-0000-4000-8000-000000000001',
     request: {
       sessionId: wireSessionId(logicalContext().session.key),
-      contents: [{ role: "user", parts: [{ text: "what is the weather?" }] }],
+      contents: [{ role: 'user', parts: [{ text: 'what is the weather?' }] }],
       generationConfig: { thinkingConfig: { thinkingBudget: 512, includeThoughts: true } },
       systemInstruction: {
-        parts: [{ text: "Use Google Search when current or external information would improve the answer." }],
+        parts: [{ text: 'Use Google Search when current or external information would improve the answer.' }],
       },
       tools: expect.arrayContaining([
         {
           functionDeclarations: [
             {
-              name: "weather",
-              description: "Forecast",
+              name: 'weather',
+              description: 'Forecast',
               parameters: {
-                type: "object",
-                properties: { days: { type: "string", enum: ["3"] } },
+                type: 'object',
+                properties: { days: { type: 'string', enum: ['3'] } },
               },
             },
           ],
         },
         { googleSearch: { enhancedContent: { imageSearch: { maxResultCount: 2 } } } },
       ]),
-      toolConfig: { functionCallingConfig: { mode: "VALIDATED" } },
+      toolConfig: { functionCallingConfig: { mode: 'VALIDATED' } },
     },
   });
-  expect(JSON.stringify(envelope)).not.toContain("input_tokens");
+  expect(JSON.stringify(envelope)).not.toContain('input_tokens');
 });
 
-test("reuses daily to prod fallback, one auth refresh, and stable endpoint identity", async () => {
+test('reuses daily to prod fallback, one auth refresh, and stable endpoint identity', async () => {
   const seen: Request[] = [];
   let refreshes = 0;
   const transport = new AntigravityTransport({
@@ -82,14 +81,14 @@ test("reuses daily to prod fallback, one auth refresh, and stable endpoint ident
       current: async () => credentialFixture(),
       forceRefresh: async () => {
         refreshes += 1;
-        return credentialFixture({ accessToken: "access-2" });
+        return credentialFixture({ accessToken: 'access-2' });
       },
     },
     fetch: async (input, init) => {
       const request = new Request(input, init);
       seen.push(request);
       if (seen.length === 1) {
-        return Response.json({ error: { message: "No capacity is available" } }, { status: 503 });
+        return Response.json({ error: { message: 'No capacity is available' } }, { status: 503 });
       }
       if (seen.length === 2) return Response.json({}, { status: 401 });
       return Response.json({ totalTokens: 23 });
@@ -101,35 +100,35 @@ test("reuses daily to prod fallback, one auth refresh, and stable endpoint ident
   expect(result).toEqual({ inputTokens: 23 });
   expect(refreshes).toBe(1);
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
-    "https://daily-cloudcode-pa.googleapis.com",
-    "https://cloudcode-pa.googleapis.com",
-    "https://cloudcode-pa.googleapis.com",
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://cloudcode-pa.googleapis.com',
+    'https://cloudcode-pa.googleapis.com',
   ]);
   expect(seen.map((request) => new URL(request.url).pathname)).toEqual([
-    "/v1internal:countTokens",
-    "/v1internal:countTokens",
-    "/v1internal:countTokens",
+    '/v1internal:countTokens',
+    '/v1internal:countTokens',
+    '/v1internal:countTokens',
   ]);
-  expect(seen.map((request) => request.headers.get("authorization"))).toEqual([
-    "Bearer access-1",
-    "Bearer access-1",
-    "Bearer access-2",
+  expect(seen.map((request) => request.headers.get('authorization'))).toEqual([
+    'Bearer access-1',
+    'Bearer access-1',
+    'Bearer access-2',
   ]);
   expect(new Set(await Promise.all(seen.map((request) => request.clone().text()))).size).toBe(1);
 });
 
-test("rejects an invalid CCA token count", async () => {
+test('rejects an invalid CCA token count', async () => {
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async () => Response.json({ totalTokens: -1 }),
   });
 
-  await expect(createAntigravityTokenCount(transport).countTokens(countInput())).rejects.toThrow("valid token count");
+  await expect(createAntigravityTokenCount(transport).countTokens(countInput())).rejects.toThrow('valid token count');
 });
 
-test("preserves the exact caller cancellation reason", async () => {
+test('preserves the exact caller cancellation reason', async () => {
   const abort = new AbortController();
-  const reason = { kind: "count-cancelled" };
+  const reason = { kind: 'count-cancelled' };
   let requests = 0;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
@@ -146,9 +145,9 @@ test("preserves the exact caller cancellation reason", async () => {
   expect(requests).toBe(0);
 });
 
-test("preserves caller cancellation while reading the CCA count response", async () => {
+test('preserves caller cancellation while reading the CCA count response', async () => {
   const abort = new AbortController();
-  const reason = { kind: "count-response-cancelled" };
+  const reason = { kind: 'count-response-cancelled' };
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async () =>
@@ -156,10 +155,10 @@ test("preserves caller cancellation while reading the CCA count response", async
         new ReadableStream({
           pull(controller) {
             abort.abort(reason);
-            controller.error(new Error("reader failed after cancellation"));
+            controller.error(new Error('reader failed after cancellation'));
           },
         }),
-        { headers: { "content-type": "application/json" } },
+        { headers: { 'content-type': 'application/json' } },
       ),
   });
 
@@ -169,24 +168,24 @@ test("preserves caller cancellation while reading the CCA count response", async
 });
 
 function countInput(
-  overrides: { readonly invocation?: TokenCountInput["invocation"]; readonly signal?: AbortSignal } = {},
+  overrides: { readonly invocation?: TokenCountInput['invocation']; readonly signal?: AbortSignal } = {},
 ): TokenCountInput {
   return {
-    protocol: "anthropic",
-    modelId: "claude-sonnet-4-6",
-    request: new Request("https://proxy.test/v1/messages/count_tokens", {
-      method: "POST",
+    protocol: 'anthropic',
+    modelId: 'claude-sonnet-4-6',
+    request: new Request('https://proxy.test/v1/messages/count_tokens', {
+      method: 'POST',
       signal: overrides.signal,
     }),
     context: logicalContext(),
-    invocation: overrides.invocation ?? { messages: [{ role: "user", content: "hello" }] },
+    invocation: overrides.invocation ?? { messages: [{ role: 'user', content: 'hello' }] },
   };
 }
 
 function logicalContext(): LogicalRequestContext {
   return {
-    requestId: "00000000-0000-4000-8000-000000000001",
-    session: { key: "sha256:count-session", source: "claude-code" },
+    requestId: '00000000-0000-4000-8000-000000000001',
+    session: { key: 'sha256:count-session', source: 'claude-code' },
   };
 }
 
@@ -196,11 +195,11 @@ function credentialSource() {
 
 function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {}): GoogleAntigravityCredential {
   return {
-    accessToken: "access-1",
-    refreshToken: "refresh-1",
+    accessToken: 'access-1',
+    refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
-    email: "person@example.com",
-    projectId: "project-1",
+    email: 'person@example.com',
+    projectId: 'project-1',
     ...overrides,
   };
 }

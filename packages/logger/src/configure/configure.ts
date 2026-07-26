@@ -1,9 +1,8 @@
-import type { LogLevel } from "@aio-proxy/plugin-sdk";
+import type { LogLevel } from '@aio-proxy/plugin-sdk';
+import { getTimeRotatingFileSink } from '@logtape/file';
+import { ansiColorFormatter, configure, getConsoleSink, jsonLinesFormatter, type Sink } from '@logtape/logtape';
 
-import { getTimeRotatingFileSink } from "@logtape/file";
-import { ansiColorFormatter, configure, getConsoleSink, jsonLinesFormatter, type Sink } from "@logtape/logtape";
-
-import { toLogTapeLevel } from "../levels";
+import { toLogTapeLevel } from '../levels';
 
 export type LoggingConfig = {
   readonly enabled?: boolean;
@@ -20,7 +19,7 @@ export function isLoggingConfigured(): boolean {
 }
 
 export async function configureLogging(config: LoggingConfig): Promise<void> {
-  const sinkIds = ["console"];
+  const sinkIds = ['console'];
   const sinks: Record<string, Sink> = {
     console: getConsoleSink({
       formatter: process.stderr.isTTY === true ? ansiColorFormatter : jsonLinesFormatter,
@@ -28,23 +27,23 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
   };
 
   if (config.enabled === true) {
-    sinks["file"] = getTimeRotatingFileSink({
+    sinks['file'] = getTimeRotatingFileSink({
       directory: config.dir,
       formatter: jsonLinesFormatter,
       maxAgeMs: (config.retentionDays ?? 14) * DAY_MS,
     });
-    sinkIds.push("file");
+    sinkIds.push('file');
   }
 
   await configure({
     sinks,
     loggers: [
       {
-        category: ["aio-proxy"],
-        lowestLevel: toLogTapeLevel(config.level ?? "info"),
+        category: ['aio-proxy'],
+        lowestLevel: toLogTapeLevel(config.level ?? 'info'),
         sinks: sinkIds,
       },
-      { category: ["logtape", "meta"], lowestLevel: "warning", sinks: ["console"] },
+      { category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: ['console'] },
     ],
   });
   loggingConfigured = true;

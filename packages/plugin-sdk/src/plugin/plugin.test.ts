@@ -1,16 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 
-import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from "..";
+import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from '..';
 
-describe("definePlugin", () => {
-  test("brands an apiVersion 2 descriptor", () => {
+describe('definePlugin', () => {
+  test('brands an apiVersion 2 descriptor', () => {
     const descriptor = definePlugin(() => {});
     expect(descriptor.apiVersion).toBe(2);
     expect(descriptor[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
     expect(isPluginDescriptor(descriptor)).toBe(true);
   });
 
-  test("retains a plugin ConfigSpec without executing setup", () => {
+  test('retains a plugin ConfigSpec without executing setup', () => {
     let calls = 0;
     const options = { schema: zod.object({ baseURL: zod.url() }), form: [] } as const;
     const descriptor = definePlugin(
@@ -24,11 +24,11 @@ describe("definePlugin", () => {
     expect(calls).toBe(0);
   });
 
-  test("rejects unbranded lookalikes", () => {
+  test('rejects unbranded lookalikes', () => {
     expect(isPluginDescriptor({ apiVersion: 2, setup() {} })).toBe(false);
   });
 
-  test("rejects branded descriptors without object metadata", () => {
+  test('rejects branded descriptors without object metadata', () => {
     const descriptor = {
       [PLUGIN_DESCRIPTOR_BRAND]: true,
       apiVersion: PLUGIN_API_VERSION,
@@ -40,7 +40,7 @@ describe("definePlugin", () => {
     expect(isPluginDescriptor({ ...descriptor, metadata: [] })).toBe(false);
   });
 
-  test("recognizes descriptor shells without validating plugin options", () => {
+  test('recognizes descriptor shells without validating plugin options', () => {
     const descriptor = {
       [PLUGIN_DESCRIPTOR_BRAND]: true,
       apiVersion: PLUGIN_API_VERSION,
@@ -48,10 +48,10 @@ describe("definePlugin", () => {
     };
 
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: null } })).toBe(true);
-    expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: "bad" } } })).toBe(true);
+    expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: 'bad' } } })).toBe(true);
   });
 
-  test("accepts branded apiVersion 1 descriptors for compatibility", () => {
+  test('accepts branded apiVersion 1 descriptors for compatibility', () => {
     const descriptor = {
       [PLUGIN_DESCRIPTOR_BRAND]: true,
       apiVersion: 1,

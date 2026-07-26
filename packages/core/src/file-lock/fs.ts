@@ -1,7 +1,7 @@
-import type { Stats } from "node:fs";
+import type { Stats } from 'node:fs';
 
 export function isNodeError(error: unknown, code: string): boolean {
-  return error instanceof Error && "code" in error && error.code === code;
+  return error instanceof Error && 'code' in error && error.code === code;
 }
 
 export function sameFileSnapshot(before: Stats, after: Stats): boolean {

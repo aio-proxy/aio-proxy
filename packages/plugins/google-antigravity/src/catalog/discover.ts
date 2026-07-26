@@ -4,25 +4,24 @@ import {
   type ModelCatalog,
   type ModelDescriptor,
   zod,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from "../schema";
+import { currentGoogleCredential } from '../oauth/refresh';
+import { antigravityEndpoints } from '../runtime/endpoints';
+import { antigravityUserAgent } from '../runtime/hub-version';
+import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
+import { CatalogDiscoveryError } from './errors';
+import { ANTIGRAVITY_RETIRED_MODEL_IDS } from './families';
 
-import { currentGoogleCredential } from "../oauth/refresh";
-import { antigravityEndpoints } from "../runtime/endpoints";
-import { antigravityUserAgent } from "../runtime/hub-version";
-import { CatalogDiscoveryError } from "./errors";
-import { ANTIGRAVITY_RETIRED_MODEL_IDS } from "./families";
-
-const DISCOVERY_PATH = "/v1internal:fetchAvailableModels";
+const DISCOVERY_PATH = '/v1internal:fetchAvailableModels';
 const DISCOVERY_ENDPOINT_TIMEOUT_MS = CATALOG_DISCOVERY_TIMEOUT_MS / 3;
 
 export const ANTIGRAVITY_MODEL_DENYLIST = new Set([
-  "chat_20706",
-  "chat_23310",
-  "tab_flash_lite_preview",
-  "tab_jump_flash_lite_preview",
-  "gemini-2.5-pro",
+  'chat_20706',
+  'chat_23310',
+  'tab_flash_lite_preview',
+  'tab_jump_flash_lite_preview',
+  'gemini-2.5-pro',
 ]);
 
 const discoveredModelSchema = zod
@@ -64,7 +63,7 @@ export async function discoverAntigravityCatalog(
     signal: context.signal,
   });
   throwIfCallerAborted(context.signal);
-  const endpoints = antigravityEndpoints(context.options, "discovery");
+  const endpoints = antigravityEndpoints(context.options, 'discovery');
   let lastError: CatalogDiscoveryError | undefined;
 
   for (const endpoint of endpoints) {
@@ -73,11 +72,11 @@ export async function discoverAntigravityCatalog(
     } catch (error) {
       if (!(error instanceof CatalogDiscoveryError)) throw error;
       lastError = error;
-      if (error.kind !== "retryable") throw error;
+      if (error.kind !== 'retryable') throw error;
     }
   }
 
-  throw lastError ?? new CatalogDiscoveryError("retryable");
+  throw lastError ?? new CatalogDiscoveryError('retryable');
 }
 
 export function normalizeDiscoveredModels(
@@ -90,7 +89,7 @@ export function normalizeDiscoveredModels(
   for (const [rawModelId, model] of Object.entries(models)) {
     const modelId = rawModelId.trim();
     if (
-      modelId === "" ||
+      modelId === '' ||
       model.isInternal === true ||
       ANTIGRAVITY_MODEL_DENYLIST.has(modelId) ||
       ANTIGRAVITY_RETIRED_MODEL_IDS.has(modelId)
@@ -100,7 +99,7 @@ export function normalizeDiscoveredModels(
     const displayName = model.displayName?.trim();
     descriptors.set(modelId, {
       id: modelId,
-      ...(displayName === undefined || displayName === "" ? {} : { displayName }),
+      ...(displayName === undefined || displayName === '' ? {} : { displayName }),
       metadata: {
         antigravity: discoveredCapabilities(model, webSearchIds.has(modelId)),
       },
@@ -122,18 +121,18 @@ async function discoverEndpoint(
   let response: Response;
   try {
     response = await (dependencies.fetch ?? globalThis.fetch)(`${endpoint}${DISCOVERY_PATH}`, {
-      method: "POST",
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${credential.accessToken}`,
-        "Content-Type": "application/json",
-        "User-Agent": antigravityUserAgent(),
+        'Content-Type': 'application/json',
+        'User-Agent': antigravityUserAgent(),
       },
       body: JSON.stringify({ project: credential.projectId }),
       signal: AbortSignal.any([callerSignal, timeoutSignal]),
     });
   } catch {
     throwIfRequestAborted(callerSignal, timeoutSignal);
-    throw new CatalogDiscoveryError("retryable");
+    throw new CatalogDiscoveryError('retryable');
   }
   throwIfRequestAborted(callerSignal, timeoutSignal);
 
@@ -144,20 +143,20 @@ async function discoverEndpoint(
     payload = await response.json();
   } catch {
     throwIfRequestAborted(callerSignal, timeoutSignal);
-    throw new CatalogDiscoveryError("retryable");
+    throw new CatalogDiscoveryError('retryable');
   }
   throwIfRequestAborted(callerSignal, timeoutSignal);
   const parsed = discoverySchema.safeParse(payload);
-  if (!parsed.success) throw new CatalogDiscoveryError("retryable");
+  if (!parsed.success) throw new CatalogDiscoveryError('retryable');
   const language = normalizeDiscoveredModels(parsed.data.models, parsed.data.webSearchModelIds);
-  if (language.length === 0) throw new CatalogDiscoveryError("empty");
+  if (language.length === 0) throw new CatalogDiscoveryError('empty');
   return { language, image: [], embedding: [], speech: [], transcription: [], reranking: [] };
 }
 
 function classifyStatus(status: number): CatalogDiscoveryError {
-  if (status === 401 || status === 403) return new CatalogDiscoveryError("authorization", { status });
-  if (status === 429 || (status >= 500 && status <= 599)) return new CatalogDiscoveryError("retryable", { status });
-  return new CatalogDiscoveryError("request", { status });
+  if (status === 401 || status === 403) return new CatalogDiscoveryError('authorization', { status });
+  if (status === 429 || (status >= 500 && status <= 599)) return new CatalogDiscoveryError('retryable', { status });
+  return new CatalogDiscoveryError('request', { status });
 }
 
 function discoveredCapabilities(model: DiscoveredAntigravityModel, supportsWebSearch: boolean) {
@@ -172,13 +171,13 @@ function discoveredCapabilities(model: DiscoveredAntigravityModel, supportsWebSe
 
 function throwIfRequestAborted(callerSignal: AbortSignal, timeoutSignal: AbortSignal): void {
   throwIfCallerAborted(callerSignal);
-  if (timeoutSignal.aborted) throw new CatalogDiscoveryError("retryable");
+  if (timeoutSignal.aborted) throw new CatalogDiscoveryError('retryable');
 }
 
 function throwIfCallerAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
 function positive(value: number | undefined, fallback: number): number {

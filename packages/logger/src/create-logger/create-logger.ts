@@ -1,15 +1,14 @@
-import type { LogBindings, Logger } from "@aio-proxy/plugin-sdk";
+import type { LogBindings, Logger } from '@aio-proxy/plugin-sdk';
+import { getLogger } from '@logtape/logtape';
 
-import { getLogger } from "@logtape/logtape";
-
-import { redactLogText, redactLogValue } from "../redact";
+import { redactLogText, redactLogValue } from '../redact';
 
 type LoggerOptions = {
   readonly bindings?: LogBindings;
   readonly redactSecretValues?: readonly string[];
 };
 
-type LogMethod = Logger["info"];
+type LogMethod = Logger['info'];
 type Emit = (messageOrProps: string | LogBindings, propsOrMessage?: string | LogBindings) => void;
 
 export function createLogger(category: readonly string[], options: LoggerOptions = {}): Logger {
@@ -19,7 +18,7 @@ export function createLogger(category: readonly string[], options: LoggerOptions
   const shouldRedact = secrets.some((secret) => secret.length > 0);
 
   const redactionFailure = (): LogBindings => {
-    const redacted = redactLogValue({ message: "log redaction failed" }, secrets);
+    const redacted = redactLogValue({ message: 'log redaction failed' }, secrets);
     return isLogBindings(redacted) ? redacted : {};
   };
 
@@ -31,13 +30,13 @@ export function createLogger(category: readonly string[], options: LoggerOptions
     return { ...redactedBindings, ...redactedProperties };
   };
 
-  const emit = (level: "debug" | "info" | "warning" | "error"): Emit => {
+  const emit = (level: 'debug' | 'info' | 'warning' | 'error'): Emit => {
     const method = logTapeLogger[level].bind(logTapeLogger) as LogMethod;
     return (messageOrProps, propsOrMessage) => {
-      if (typeof messageOrProps === "string") {
+      if (typeof messageOrProps === 'string') {
         const message = shouldRedact ? redactLogText(messageOrProps, secrets) : messageOrProps;
         const properties =
-          propsOrMessage !== null && typeof propsOrMessage === "object"
+          propsOrMessage !== null && typeof propsOrMessage === 'object'
             ? mergeProperties(propsOrMessage)
             : mergeProperties({});
         method(message, properties);
@@ -45,7 +44,7 @@ export function createLogger(category: readonly string[], options: LoggerOptions
       }
 
       const properties = mergeProperties(messageOrProps);
-      if (typeof propsOrMessage === "string") {
+      if (typeof propsOrMessage === 'string') {
         method(shouldRedact ? redactLogText(propsOrMessage, secrets) : propsOrMessage, properties);
       } else {
         method(properties);
@@ -54,10 +53,10 @@ export function createLogger(category: readonly string[], options: LoggerOptions
   };
 
   return {
-    debug: emit("debug"),
-    info: emit("info"),
-    warn: emit("warning"),
-    error: emit("error"),
+    debug: emit('debug'),
+    info: emit('info'),
+    warn: emit('warning'),
+    error: emit('error'),
     child: (childBindings) =>
       createLogger(category, {
         bindings: mergeProperties(childBindings),
@@ -67,5 +66,5 @@ export function createLogger(category: readonly string[], options: LoggerOptions
 }
 
 function isLogBindings(value: unknown): value is LogBindings {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

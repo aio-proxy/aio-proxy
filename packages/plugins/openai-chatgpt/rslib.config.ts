@@ -1,8 +1,8 @@
-import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
+import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 
-const decode = (...parts: string[]) => atob(parts.join(""));
+const decode = (...parts: string[]) => atob(parts.join(''));
 
-export const openAIChatGPTClientId = decode("YXBwX0VNb2FtRUVaNz", "NmMENrWGFYcDdocmFubg==");
+export const openAIChatGPTClientId = decode('YXBwX0VNb2FtRUVaNz', 'NmMENrWGFYcDdocmFubg==');
 
 export default defineLibraryConfig({
   source: {

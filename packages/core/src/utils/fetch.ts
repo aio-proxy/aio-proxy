@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { z } from 'zod';
 
 export async function fetchJson<TSchema extends z.ZodType>(
   input: Parameters<typeof fetch>[0],

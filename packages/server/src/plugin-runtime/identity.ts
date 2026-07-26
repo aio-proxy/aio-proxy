@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash } from 'node:crypto';
 
-import type { PluginOptionsIdentityDigest, RuntimeIdentityKey } from "./types";
+import type { PluginOptionsIdentityDigest, RuntimeIdentityKey } from './types';
 
 function stable(value: unknown, seen = new Set<object>()): unknown {
-  if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) throw new TypeError("Cannot hash cyclic plugin data");
+  if (value === null || typeof value !== 'object') return value;
+  if (seen.has(value)) throw new TypeError('Cannot hash cyclic plugin data');
   seen.add(value);
   const result = Array.isArray(value)
     ? value.map((item) => stable(item, seen))
@@ -18,9 +18,9 @@ function stable(value: unknown, seen = new Set<object>()): unknown {
 }
 
 export function digest(value: unknown): `sha256:${string}` {
-  return `sha256:${createHash("sha256")
+  return `sha256:${createHash('sha256')
     .update(JSON.stringify(stable(value)))
-    .digest("hex")}`;
+    .digest('hex')}`;
 }
 
 export function pluginOptionsIdentityDigest(value: {

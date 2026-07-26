@@ -1,4 +1,4 @@
-import { zod } from "@aio-proxy/plugin-sdk";
+import { zod } from '@aio-proxy/plugin-sdk';
 
 export type GoogleAntigravityAccountOptions = { readonly baseURL?: string };
 
@@ -14,11 +14,11 @@ export type GoogleAntigravityCredential = {
 
 export function normalizeBaseURL(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
-  if (trimmed === undefined || trimmed === "") return undefined;
+  if (trimmed === undefined || trimmed === '') return undefined;
   const url = new URL(trimmed);
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("baseURL must use HTTP(S)");
-  if (url.search !== "" || url.hash !== "") throw new Error("baseURL must not include a query or fragment");
-  return url.toString().replace(/\/+$/u, "");
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('baseURL must use HTTP(S)');
+  if (url.search !== '' || url.hash !== '') throw new Error('baseURL must not include a query or fragment');
+  return url.toString().replace(/\/+$/u, '');
 }
 
 export const accountOptionsSchema = zod
@@ -33,7 +33,7 @@ export const credentialSchema = zod
     accessToken: zod.string().min(1),
     refreshToken: zod.string().min(1),
     expiresAt: zod.number(),
-    email: zod.string().email(),
+    email: zod.email(),
     projectId: zod.string().min(1),
     tokenType: zod.string().optional(),
     scope: zod.string().optional(),

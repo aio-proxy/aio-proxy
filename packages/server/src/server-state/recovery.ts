@@ -6,10 +6,10 @@ import {
   type PluginRepository,
   RECOVERY_DRAIN_RETRY_MS,
   type recoverPendingAccountOperations,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
 
-import type { FifoQueue } from "../fifo-queue";
-import type { ConfigReloadResult, RecoveryScheduler, RecoveryTimer } from "./types";
+import type { FifoQueue } from '../fifo-queue';
+import type { ConfigReloadResult, RecoveryScheduler, RecoveryTimer } from './types';
 
 type RecoverAccounts = typeof recoverPendingAccountOperations;
 
@@ -39,9 +39,9 @@ export async function recoverBeforeSnapshot(options: {
       options.configFile as AtomicConfigFile,
       options.repository,
       {
-        mode: "server",
+        mode: 'server',
         canDeleteAccount: () => true,
-        deleteMarkerOnProviderPresent: "retain",
+        deleteMarkerOnProviderPresent: 'retain',
         now: options.scheduler.now,
       },
       { factory: options.diagnostics, logger: options.logger },
@@ -99,9 +99,9 @@ export function createRecovery(options: {
         options.configFile,
         options.repository,
         {
-          mode: "server",
+          mode: 'server',
           canDeleteAccount: options.canDeleteAccount,
-          deleteMarkerOnProviderPresent: "retain",
+          deleteMarkerOnProviderPresent: 'retain',
           now: options.scheduler.now,
         },
         { factory: options.diagnostics, logger: options.logger },
@@ -113,10 +113,10 @@ export function createRecovery(options: {
       schedule(options.scheduler.now() + RECOVERY_DRAIN_RETRY_MS, expected);
       try {
         options.logger({
-          event: "plugin.account.recovery.failed",
-          code: "ACCOUNT_RECOVERY_FAILED",
+          event: 'plugin.account.recovery.failed',
+          code: 'ACCOUNT_RECOVERY_FAILED',
           context: {},
-          error: { name: error instanceof Error ? error.name : "Error", message: "Pending account recovery failed" },
+          error: { name: error instanceof Error ? error.name : 'Error', message: 'Pending account recovery failed' },
         });
       } catch {}
     }
@@ -146,9 +146,9 @@ export function createRecovery(options: {
           options.configFile as AtomicConfigFile,
           options.repository,
           {
-            mode: "server",
+            mode: 'server',
             canDeleteAccount: options.canDeleteAccount,
-            deleteMarkerOnProviderPresent: "retain",
+            deleteMarkerOnProviderPresent: 'retain',
             now: options.scheduler.now,
           },
           { factory: options.diagnostics, logger: options.logger },

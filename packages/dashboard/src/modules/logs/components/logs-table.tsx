@@ -1,18 +1,16 @@
-import type { DashboardRequestLog, DashboardRequestLogsResponse, RequestOutcome } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { DashboardRequestLog, DashboardRequestLogsResponse, RequestOutcome } from '@aio-proxy/types';
+import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
+import { ArrowRight } from 'lucide-react';
 
-import { m } from "@aio-proxy/i18n";
-import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { ArrowRight } from "lucide-react";
+import { DataTablePagination } from '@/components/data-table-pagination';
+import { ProtocolLabel } from '@/components/protocol-label';
+import { TokenCount } from '@/components/token-count';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-import { DataTablePagination } from "@/components/data-table-pagination";
-import { ProtocolLabel } from "@/components/protocol-label";
-import { TokenCount } from "@/components/token-count";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-import type { LogsSearch } from "../logs-search";
-
-import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
+import { displayTotalTokens, formatDuration, formatLogCost } from '../log-formatters';
+import type { LogsSearch } from '../logs-search';
 
 interface LogsTableProps {
   readonly data: DashboardRequestLogsResponse;
@@ -23,39 +21,39 @@ interface LogsTableProps {
 
 const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
 const outcomeBadgeVariants = {
-  success: "default",
-  failure: "destructive",
-  cancelled: "secondary",
-} as const satisfies Record<RequestOutcome, "default" | "destructive" | "secondary">;
+  success: 'default',
+  failure: 'destructive',
+  cancelled: 'secondary',
+} as const satisfies Record<RequestOutcome, 'default' | 'destructive' | 'secondary'>;
 const columns: ColumnDef<DashboardRequestLog>[] = [
   {
-    accessorKey: "completedAt",
-    header: () => m["dashboard.logs.completed_at"](),
+    accessorKey: 'completedAt',
+    header: () => m['dashboard.logs.completed_at'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => new Date(row.original.completedAt).toLocaleString(),
   },
   {
-    accessorKey: "outcome",
-    header: () => m["dashboard.logs.outcome"](),
+    accessorKey: 'outcome',
+    header: () => m['dashboard.logs.outcome'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => (
       <Badge variant={outcomeBadgeVariants[row.original.outcome]}>{outcomeLabel(row.original.outcome)}</Badge>
     ),
   },
   {
-    accessorKey: "inboundProtocol",
-    header: () => m["dashboard.logs.protocol"](),
+    accessorKey: 'inboundProtocol',
+    header: () => m['dashboard.logs.protocol'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => (
       <ProtocolLabel protocol={row.original.inboundProtocol} />
     ),
   },
   {
-    accessorKey: "finalProviderId",
-    header: () => m["dashboard.logs.final_provider"](),
+    accessorKey: 'finalProviderId',
+    header: () => m['dashboard.logs.final_provider'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) =>
-      row.original.finalProviderName ?? row.original.finalProviderId ?? m["dashboard.logs.not_available"](),
+      row.original.finalProviderName ?? row.original.finalProviderId ?? m['dashboard.logs.not_available'](),
   },
   {
-    id: "model",
-    header: () => m["dashboard.logs.model"](),
+    id: 'model',
+    header: () => m['dashboard.logs.model'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => {
       const log = row.original;
       const requestedModel =
@@ -77,27 +75,27 @@ const columns: ColumnDef<DashboardRequestLog>[] = [
     },
   },
   {
-    accessorKey: "finalStatusCode",
-    header: () => m["dashboard.logs.status"](),
+    accessorKey: 'finalStatusCode',
+    header: () => m['dashboard.logs.status'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) =>
-      row.original.finalStatusCode ?? m["dashboard.logs.not_available"](),
+      row.original.finalStatusCode ?? m['dashboard.logs.not_available'](),
   },
   {
-    accessorKey: "durationMs",
-    header: () => m["dashboard.logs.duration"](),
+    accessorKey: 'durationMs',
+    header: () => m['dashboard.logs.duration'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => formatDuration(row.original.durationMs),
   },
   {
-    id: "tokens",
-    header: () => m["dashboard.logs.tokens"](),
+    id: 'tokens',
+    header: () => m['dashboard.logs.tokens'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => {
       const tokens = displayTotalTokens(row.original.usage);
-      return tokens === undefined ? m["dashboard.logs.not_available"]() : <TokenCount value={tokens} />;
+      return tokens === undefined ? m['dashboard.logs.not_available']() : <TokenCount value={tokens} />;
     },
   },
   {
-    id: "cost",
-    header: () => m["dashboard.logs.cost"](),
+    id: 'cost',
+    header: () => m['dashboard.logs.cost'](),
     cell: ({ row }: CellContext<DashboardRequestLog, unknown>) => formatLogCost(row.original.usage?.estimatedCostUsd),
   },
 ];
@@ -111,11 +109,11 @@ export const LogsTable: React.FC<LogsTableProps> = ({ data, search, onSearchChan
     pageCount: data.pageCount,
     onPaginationChange: (updater) => {
       const current = { pageIndex: search.page - 1, pageSize: search.pageSize };
-      const next = typeof updater === "function" ? updater(current) : updater;
+      const next = typeof updater === 'function' ? updater(current) : updater;
       onSearchChange({
         ...search,
         page: next.pageSize === current.pageSize ? next.pageIndex + 1 : 1,
-        pageSize: next.pageSize as LogsSearch["pageSize"],
+        pageSize: next.pageSize as LogsSearch['pageSize'],
       });
     },
     getCoreRowModel: getCoreRowModel(),
@@ -141,11 +139,11 @@ export const LogsTable: React.FC<LogsTableProps> = ({ data, search, onSearchChan
                 key={row.id}
                 tabIndex={0}
                 role="button"
-                aria-label={`${m["dashboard.logs.details"]()}: ${row.original.requestId}`}
+                aria-label={`${m['dashboard.logs.details']()}: ${row.original.requestId}`}
                 className="cursor-pointer"
                 onClick={() => onSelect(row.original)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     onSelect(row.original);
                   }

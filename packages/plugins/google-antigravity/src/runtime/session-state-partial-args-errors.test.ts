@@ -1,35 +1,35 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { ReasoningReplayCache } from "../protocol/replay-cache";
-import { captureReasoningReplay } from "./session-state";
-import { appendSseReplayPayload, completedSseReplay, createSseReplayState } from "./session-state/replay-accumulator";
+import { ReasoningReplayCache } from '../protocol/replay-cache';
+import { captureReasoningReplay } from './session-state';
+import { appendSseReplayPayload, completedSseReplay, createSseReplayState } from './session-state/replay-accumulator';
 
-const MODEL = "claude-opus-4-6-thinking";
-const SIGNATURE = "partial-error-signature-".repeat(3);
+const MODEL = 'claude-opus-4-6-thinking';
+const SIGNATURE = 'partial-error-signature-'.repeat(3);
 
-test("does not complete replay while a streamed function call remains active", () => {
+test('does not complete replay while a streamed function call remains active', () => {
   const state = createSseReplayState();
 
   appendSseReplayPayload(state, MODEL, ccaPayload(startPart()));
-  appendSseReplayPayload(state, MODEL, { response: { candidates: [{ index: 0, finishReason: "STOP" }] } });
+  appendSseReplayPayload(state, MODEL, { response: { candidates: [{ index: 0, finishReason: 'STOP' }] } });
 
   expect(completedSseReplay(state)).toBeUndefined();
 });
 
-test("does not commit malformed partialArgs", async () => {
-  const fixture = replayFixture("malformed-partial-args");
+test('does not commit malformed partialArgs', async () => {
+  const fixture = replayFixture('malformed-partial-args');
   const response = await captureReasoningReplay(
     sseResponse([
       ccaPayload({
         functionCall: {
-          id: "call-weather",
-          name: "weather",
-          partialArgs: [{ stringValue: "Paris" }],
+          id: 'call-weather',
+          name: 'weather',
+          partialArgs: [{ stringValue: 'Paris' }],
           willContinue: true,
         },
         thoughtSignature: SIGNATURE,
       }),
-      { response: { candidates: [{ index: 0, finishReason: "STOP" }] } },
+      { response: { candidates: [{ index: 0, finishReason: 'STOP' }] } },
     ]),
     MODEL,
     fixture.scope,
@@ -40,18 +40,18 @@ test("does not commit malformed partialArgs", async () => {
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("ignores an orphan nameless partial chunk before a complete signed call", async () => {
-  const fixture = replayFixture("orphan-partial-args");
+test('ignores an orphan nameless partial chunk before a complete signed call', async () => {
+  const fixture = replayFixture('orphan-partial-args');
   const complete = {
-    functionCall: { id: "call-complete", name: "weather", args: { city: "Paris" } },
+    functionCall: { id: 'call-complete', name: 'weather', args: { city: 'Paris' } },
     thoughtSignature: SIGNATURE,
   };
   const response = await captureReasoningReplay(
     sseResponse([
-      ccaPayload({ functionCall: { partialArgs: [{ jsonPath: "$.ignored", stringValue: "value" }] } }),
+      ccaPayload({ functionCall: { partialArgs: [{ jsonPath: '$.ignored', stringValue: 'value' }] } }),
       {
         response: {
-          candidates: [{ index: 0, content: { role: "model", parts: [complete] }, finishReason: "STOP" }],
+          candidates: [{ index: 0, content: { role: 'model', parts: [complete] }, finishReason: 'STOP' }],
         },
       },
     ]),
@@ -62,14 +62,14 @@ test("ignores an orphan nameless partial chunk before a complete signed call", a
 
   await response.text();
   expect(fixture.cache.read(fixture.scope.key)?.parts).toMatchObject([
-    { type: "function-call", call: complete.functionCall, signature: SIGNATURE },
+    { type: 'function-call', call: complete.functionCall, signature: SIGNATURE },
   ]);
 });
 
-test("does not commit an active streamed call after a structured error", async () => {
-  const fixture = replayFixture("partial-args-error");
+test('does not commit an active streamed call after a structured error', async () => {
+  const fixture = replayFixture('partial-args-error');
   const response = await captureReasoningReplay(
-    sseResponse([startPayload(), { error: { code: 503, message: "failed", status: "UNAVAILABLE" } }]),
+    sseResponse([startPayload(), { error: { code: 503, message: 'failed', status: 'UNAVAILABLE' } }]),
     MODEL,
     fixture.scope,
     fixture.cache,
@@ -79,9 +79,9 @@ test("does not commit an active streamed call after a structured error", async (
   expect(fixture.cache.read(fixture.scope.key)).toBeUndefined();
 });
 
-test("cancels an active streamed call without committing partial replay", async () => {
-  const fixture = replayFixture("partial-args-cancel");
-  const reason = { kind: "partial-args-cancelled" };
+test('cancels an active streamed call without committing partial replay', async () => {
+  const fixture = replayFixture('partial-args-cancel');
+  const reason = { kind: 'partial-args-cancelled' };
   let cancelled: unknown;
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -92,7 +92,7 @@ test("cancels an active streamed call without committing partial replay", async 
     },
   });
   const response = await captureReasoningReplay(
-    new Response(source, { headers: { "Content-Type": "text/event-stream" } }),
+    new Response(source, { headers: { 'Content-Type': 'text/event-stream' } }),
     MODEL,
     fixture.scope,
     fixture.cache,
@@ -120,9 +120,9 @@ function startPayload() {
 function startPart() {
   return {
     functionCall: {
-      id: "call-weather",
-      name: "weather",
-      partialArgs: [{ jsonPath: "$.city", stringValue: "Par", willContinue: true }],
+      id: 'call-weather',
+      name: 'weather',
+      partialArgs: [{ jsonPath: '$.city', stringValue: 'Par', willContinue: true }],
       willContinue: true,
     },
     thoughtSignature: SIGNATURE,
@@ -132,13 +132,13 @@ function startPart() {
 function ccaPayload(part: unknown) {
   return {
     response: {
-      candidates: [{ index: 0, content: { role: "model", parts: [part] } }],
+      candidates: [{ index: 0, content: { role: 'model', parts: [part] } }],
     },
   };
 }
 
 function sseResponse(payloads: readonly unknown[]): Response {
-  return new Response(payloads.map(frame).join(""), { headers: { "Content-Type": "text/event-stream" } });
+  return new Response(payloads.map(frame).join(''), { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 function frame(payload: unknown): string {

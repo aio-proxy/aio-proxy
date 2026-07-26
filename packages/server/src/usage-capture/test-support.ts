@@ -1,4 +1,4 @@
-import type { TextStreamPart, ToolSet } from "@aio-proxy/core";
+import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
 export function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {
   return new ReadableStream({
@@ -11,9 +11,9 @@ export function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableS
 
 export function finishPart(): TextStreamPart<ToolSet> {
   return {
-    type: "finish",
-    finishReason: "stop",
-    rawFinishReason: "stop",
+    type: 'finish',
+    finishReason: 'stop',
+    rawFinishReason: 'stop',
     totalUsage: {
       inputTokenDetails: { cacheReadTokens: 2, cacheWriteTokens: 1, noCacheTokens: 1 },
       inputTokens: 4,
