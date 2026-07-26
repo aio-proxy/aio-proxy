@@ -40,6 +40,11 @@ describe('fileCacheStorage', () => {
     expect(await fileCacheStorage.getItem('k', { ttl: -1 })).toBeNull();
   });
 
+  test('ttl of 0 means never expires', async () => {
+    await fileCacheStorage.setItem('k', 'kept');
+    expect(await fileCacheStorage.getItem<string>('k', { ttl: 0 })).toBe('kept');
+  });
+
   test('fresh item survives a positive ttl', async () => {
     await fileCacheStorage.setItem('k', 'fresh');
     expect(await fileCacheStorage.getItem<string>('k', { ttl: 60_000 })).toBe('fresh');
