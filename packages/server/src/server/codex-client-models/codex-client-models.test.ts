@@ -1,4 +1,7 @@
-import { expect, test } from 'bun:test';
+import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { ProviderKind } from '@aio-proxy/types';
 
@@ -35,13 +38,23 @@ const upstream = {
   availability_nux: { message: 'keep me' },
 };
 
+const original = process.env.AIO_PROXY_HOME;
+let home: string;
+
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), 'codex-client-models-'));
+  process.env.AIO_PROXY_HOME = home;
+});
+
+afterEach(() => {
+  rmSync(home, { recursive: true, force: true });
+  if (original === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = original;
+});
+
 test('case A returns upstream verbatim with alias slug/id; case B synthesizes without availability_nux', async () => {
   const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState(), {
-    fetchImpl,
-    cachePath: '/tmp/does-not-exist-codex-' + Math.random().toString(36).slice(2) + '.json',
-    now: 0,
-  });
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
 
   const caseA = models.find((m) => m.id === 'gpt-5');
   expect(caseA).toBeDefined();

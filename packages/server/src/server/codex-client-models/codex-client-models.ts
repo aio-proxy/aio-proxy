@@ -3,7 +3,7 @@ import { resolveEnabledModels } from '../model-resolution/index';
 import { assembleCodexModel } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 
-type Options = { readonly fetchImpl?: typeof fetch; readonly cachePath?: string; readonly now?: number };
+type Options = { readonly fetchImpl?: typeof fetch };
 
 export async function codexClientModels(
   state: ServerState,
