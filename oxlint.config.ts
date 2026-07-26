@@ -1,3 +1,4 @@
+import logtape from '@logtape/lint/eslint';
 import { defineConfig } from 'oxlint';
 
 import { ignorePatterns } from './oxc.ts';
@@ -6,7 +7,7 @@ export default defineConfig({
   categories: {
     correctness: 'error',
   },
-
+  jsPlugins: [{ name: 'logtape', specifier: '@logtape/lint/eslint' }],
   rules: {
     'unicorn/filename-case': [
       'warn',
@@ -37,6 +38,7 @@ export default defineConfig({
     ],
     'typescript/no-deprecated': 'error',
     'typescript/consistent-type-imports': 'error',
+    ...logtape.configs.recommended.rules,
   },
   ignorePatterns,
 });
