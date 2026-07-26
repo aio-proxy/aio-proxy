@@ -22,7 +22,7 @@ export type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types
 const RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-export type RequestTraceWriteStore = Pick<TraceStore, 'startRoot' | 'complete' | 'prune'>;
+export type RequestTraceWriteStore = Pick<TraceStore, 'startRoot' | 'complete' | 'prune' | 'recover'>;
 
 export type RequestTraceSession = {
   readonly requestId: string;
@@ -58,6 +58,7 @@ export function createRequestTraceRecorder(options: {
   const now = options.now ?? (() => new Date());
   let lastPrunedAt = now();
   runPrune(options.store, options.logger, lastPrunedAt);
+  runRecover(options.store, options.logger, lastPrunedAt);
 
   return {
     begin(input) {
@@ -207,11 +208,17 @@ function runPrune(store: RequestTraceWriteStore, logger: ServerLogSink | undefin
   persistSafely(() => store.prune(new Date(now.getTime() - RETENTION_MS), now), logger, { operation: 'prune' });
 }
 
+// Roots left running by an unclean shutdown are marked interrupted at startup so
+// they leave the running set and are counted in usage_daily.
+function runRecover(store: RequestTraceWriteStore, logger: ServerLogSink | undefined, now: Date): void {
+  persistSafely(() => store.recover(now), logger, { operation: 'recover' });
+}
+
 function persistSafely(
   task: () => void,
   logger: ServerLogSink | undefined,
   failure: {
-    readonly operation: 'root_start' | 'complete' | 'prune';
+    readonly operation: 'root_start' | 'complete' | 'prune' | 'recover';
     readonly requestId?: string;
     readonly traceId?: string;
     readonly spanId?: string;

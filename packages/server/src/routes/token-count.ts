@@ -56,7 +56,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
 ): Promise<Response> {
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
-    return adapter.errors.tooLarge();
+    return finishRejected(session, adapter.errors.tooLarge());
   }
 
   let request: TRequest;
@@ -66,10 +66,12 @@ async function handleTokenCountInContext<TRequest, TContext>(
     invocation = adapter.modelInvocation(request, context);
   } catch (error) {
     await cancelRetainedRequestBody(rawRequest, error);
-    if (error instanceof RequestBodyTooLargeError) return adapter.errors.tooLarge();
-    if (error instanceof UnsupportedContentEncodingError) return adapter.errors.unsupportedContentEncoding();
+    if (error instanceof RequestBodyTooLargeError) return finishRejected(session, adapter.errors.tooLarge());
+    if (error instanceof UnsupportedContentEncodingError) {
+      return finishRejected(session, adapter.errors.unsupportedContentEncoding());
+    }
     const mapped = adapter.errors.requestError(error);
-    if (mapped !== undefined) return mapped;
+    if (mapped !== undefined) return finishRejected(session, mapped);
     throw error;
   }
 
@@ -103,6 +105,14 @@ async function handleTokenCountInContext<TRequest, TContext>(
   } finally {
     void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
   }
+}
+
+// Client errors (oversized body, unparseable request, unsupported encoding)
+// return before any provider attempt. begin() already persisted a running root,
+// so finish it as a terminal failure instead of leaving it running forever.
+function finishRejected(session: RequestTraceSession, response: Response): Response {
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status });
+  return response;
 }
 
 type CountCandidatesOptions<TRequest, TContext> = {

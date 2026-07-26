@@ -95,10 +95,12 @@ export function buildCompletion(deps: {
           },
         }
       : {}),
-    ...(identity.mutateSessionState && identity.resolution?.affinity !== undefined
+    ...(identity.mutateSessionState && identity.resolution !== undefined
       ? {
           sessionState: {
-            observedAffinity: identity.resolution.affinity,
+            // observedAffinity is undefined on a session's first request; the
+            // store treats that as bootstrap and inserts the initial row.
+            ...(identity.resolution.affinity !== undefined ? { observedAffinity: identity.resolution.affinity } : {}),
             ...(finish.outcome === 'success' && finish.responseId !== undefined
               ? { responseId: finish.responseId }
               : {}),

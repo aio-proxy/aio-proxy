@@ -41,6 +41,7 @@ export function completionTerminal(completion: UsageCompletion): SpanTerminal {
 export function completionFinish(
   completion: UsageCompletion,
   ids: { readonly providerId: string; readonly modelId: string },
+  responseId?: string,
 ): RequestTraceFinishInput {
   const statusCode = 'statusCode' in completion ? completion.statusCode : undefined;
   if (completion.outcome === 'success') {
@@ -50,6 +51,7 @@ export function completionFinish(
       finalModelId: ids.modelId,
       ...(statusCode === undefined ? {} : { finalHttpStatus: statusCode }),
       ...(completion.usage === undefined ? {} : { usage: completion.usage }),
+      ...(responseId === undefined ? {} : { responseId }),
     };
   }
   if (completion.outcome === 'failure') {

@@ -15,7 +15,7 @@ const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 export type UsageCompletion =
   | { readonly outcome: 'success'; readonly usage?: UsageRow; readonly statusCode?: number; readonly ttftMs?: number }
   | { readonly outcome: 'failure'; readonly statusCode?: number; readonly errorCode?: string; readonly ttftMs?: number }
-  | { readonly outcome: 'cancelled'; readonly statusCode?: number };
+  | { readonly outcome: 'cancelled'; readonly statusCode?: number; readonly ttftMs?: number };
 
 export type Captured<T> = {
   readonly value: T;
@@ -84,7 +84,7 @@ function streamCapture(
           controller.close();
           terminal.resolve(
             aborted
-              ? { outcome: 'cancelled' }
+              ? { outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) }
               : finished
                 ? {
                     outcome: 'success',
@@ -111,7 +111,7 @@ function streamCapture(
       } catch (error) {
         releaseReader();
         if (cancelled || isAbortError(error)) {
-          terminal.resolve({ outcome: 'cancelled' });
+          terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
         } else {
           terminal.resolve({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
         }
@@ -122,7 +122,7 @@ function streamCapture(
     },
     async cancel(reason) {
       cancelled = true;
-      terminal.resolve({ outcome: 'cancelled' });
+      terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
       try {
         await reader.cancel(reason);
       } finally {
@@ -169,8 +169,12 @@ function passthroughCapture(
         const next = await reader.read();
         if (!next.done) {
           if (sseObserver !== undefined && decoder !== undefined) {
-            if (firstTokenAt === undefined && startedAt !== undefined) firstTokenAt = performance.now();
             sseObserver.feed(decoder.decode(next.value, { stream: true }));
+            // Align TTFT with the first content token, not the first byte: only
+            // mark it once the observer has parsed a generated text/reasoning delta.
+            if (firstTokenAt === undefined && startedAt !== undefined && sseObserver.sawContent()) {
+              firstTokenAt = performance.now();
+            }
           } else if (captureJson) {
             const nextByteLength = byteLength + next.value.byteLength;
             if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
@@ -208,7 +212,11 @@ function passthroughCapture(
         });
       } catch (error) {
         done = true;
-        terminal.resolve({ outcome: isAbortError(error) ? 'cancelled' : 'failure', statusCode });
+        terminal.resolve({
+          outcome: isAbortError(error) ? 'cancelled' : 'failure',
+          statusCode,
+          ...ttftProperty(startedAt, firstTokenAt),
+        });
         controller.error(error);
       } finally {
         if (done) {
@@ -217,7 +225,7 @@ function passthroughCapture(
       }
     },
     async cancel(reason) {
-      terminal.resolve({ outcome: 'cancelled', statusCode });
+      terminal.resolve({ outcome: 'cancelled', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
       try {
         await reader.cancel(reason);
       } finally {

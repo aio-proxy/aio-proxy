@@ -111,6 +111,7 @@ Provider selection is model-first:
 1. Parse the inbound request enough to get the requested model.
 2. Resolve every provider that exposes that model alias.
 3. Order candidates by descending configured `weight`; equal or absent weights preserve config order.
+4. When an active session affinity binds the session to a provider, move that provider to the front and keep the remaining candidates in weight order. Session affinity intentionally overrides weight ordering so a session sticks to its previously successful provider (e.g. for prompt-cache continuity); a lower-weight bound provider is therefore tried before higher-weight candidates.
 
 For each candidate:
 

@@ -156,4 +156,23 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(attempt?.stream).toBe(false);
     expect(attempt?.ttftMs).toBeUndefined();
   });
+
+  test('opens the attempt span before the provider call so buffered requests get real duration', async () => {
+    const provider = modelProvider({
+      id: 'provider',
+      ensureAvailable: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      },
+      invoke: () => textStream('hello'),
+    });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+    expect(await response.json()).toEqual({ output: 'hello' });
+    await settleRecording();
+
+    // The span must cover ensureAvailable (~20ms); a zero-width span would mean
+    // it was opened only after the provider call returned.
+    expect(harness.recording.attempts[0]?.durationMs).toBeGreaterThanOrEqual(10);
+  });
 });

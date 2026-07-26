@@ -27,6 +27,7 @@ export type AttemptEmitter = {
     attemptSpan: OpenSpan,
     completion: Promise<UsageCompletion>,
     ids: { readonly providerId: string; readonly modelId: string },
+    getResponseId?: () => string | undefined,
   ) => Promise<RequestTraceFinishInput>;
 };
 
@@ -50,12 +51,12 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
     emitAttempt(base, index, terminal) {
       startAttempt(base, index).end(terminal);
     },
-    settleSuccess(attemptSpan, completion, ids) {
+    settleSuccess(attemptSpan, completion, ids, getResponseId) {
       return completion.then((value) => {
         const ttftMs = 'ttftMs' in value ? value.ttftMs : undefined;
         if (ttftMs !== undefined) attemptSpan.span.setAttribute(attributeName.ttftMs, ttftMs);
         attemptSpan.end(completionTerminal(value));
-        return completionFinish(value, ids);
+        return completionFinish(value, ids, getResponseId?.());
       });
     },
   };
