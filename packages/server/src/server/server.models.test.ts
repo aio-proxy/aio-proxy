@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { createServer as createBaseServer } from '@aio-proxy/server';
 
-import { config, noModelsDevCatalog } from '../../_test/server.test-support';
+import { config, noModelsDevCatalog } from '../../__tests__/server.test-support';
 import { loopbackServer } from '../dashboard-auth/test-support';
 
 describe('GET /v1/models client_version routing', () => {

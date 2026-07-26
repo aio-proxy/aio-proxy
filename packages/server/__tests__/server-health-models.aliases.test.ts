@@ -53,7 +53,7 @@ describe('server routes', () => {
     );
   });
 
-  test('Given alias metadata without a name When models are requested Then the upstream name is used', async () => {
+  test('Given alias metadata without a name When models are requested Then the alias slug is used', async () => {
     const app = await createServer({
       modelsDevCatalogTask: async () => ({
         displayName: () => undefined,
@@ -82,7 +82,7 @@ describe('server routes', () => {
 
     expect(await response.json()).toEqual(
       expectedModelList([
-        expectedModel('friendly-alias', 'api', 'Upstream Model', {
+        expectedModel('friendly-alias', 'api', 'friendly-alias', {
           maxInputTokens: 100,
           maxTokens: 10,
         }),
