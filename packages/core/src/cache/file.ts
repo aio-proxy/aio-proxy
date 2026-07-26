@@ -18,7 +18,8 @@ interface GetCacheOptions<T = unknown> {
 
 class FileCacheStorage {
   #getFilePath(key: string): string {
-    return join(tmpDir(), 'cache-storage', `${key}.json`);
+    // encodeURIComponent strips path separators, so keys cannot escape the dir.
+    return join(tmpDir(), 'cache-storage', `${encodeURIComponent(key)}.json`);
   }
 
   #logger = createLogger(['cache-storage', 'file']);
@@ -65,6 +66,13 @@ class FileCacheStorage {
       return value as T;
     } catch (error) {
       if ((error as { code?: string }).code === 'ENOENT') {
+        return null;
+      }
+      if (error instanceof SyntaxError) {
+        this.#logger.warn(`Malformed cache file for key {key}: {error}`, {
+          key,
+          error: error.message,
+        });
         return null;
       }
       throw error;

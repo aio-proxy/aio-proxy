@@ -61,6 +61,19 @@ describe('fileCacheStorage', () => {
     expect(await fileCacheStorage.getItem('bad')).toBeNull();
   });
 
+  test('non-JSON file content returns null instead of throwing', async () => {
+    await Bun.file(join(home, 'tmp', 'cache-storage', 'raw.json')).write('not json at all');
+    expect(await fileCacheStorage.getItem('raw')).toBeNull();
+  });
+
+  test('keys with path separators stay inside the cache dir', async () => {
+    await fileCacheStorage.setItem('../escape', 'contained');
+    // The traversal attempt round-trips as a normal key...
+    expect(await fileCacheStorage.getItem<string>('../escape')).toBe('contained');
+    // ...and no file leaks outside cache-storage.
+    expect(await Bun.file(join(home, 'tmp', 'escape.json')).exists()).toBe(false);
+  });
+
   test('removeItem deletes and is idempotent', async () => {
     await fileCacheStorage.setItem('k', 'gone');
     await fileCacheStorage.removeItem('k');
