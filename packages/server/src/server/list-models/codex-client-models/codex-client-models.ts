@@ -1,5 +1,5 @@
-import type { ServerState } from '../../server-state';
-import { resolveEnabledModels } from '../model-resolution/index';
+import type { ServerState } from '../../../server-state';
+import { resolveEnabledModels } from '../../model-resolution/index';
 import { assembleCodexModel } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 

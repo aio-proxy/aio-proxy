@@ -2,19 +2,25 @@ import { type Model, Models, type ProviderMap, type RequestOptions } from '@open
 
 import type { OpenRouterModelPrice } from './usage-pricing';
 
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export type OpenRouterPriceCatalog = {
   readonly find: (modelId: string) => OpenRouterModelPrice | undefined;
 };
 
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export type ModelsDevCatalog = OpenRouterPriceCatalog & {
+  /** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
   readonly displayName: (modelId: string) => string | undefined;
   // The raw models.dev record. Consumers derive whatever provider-specific shape
   // they need (Anthropic capabilities, Codex catalog rows, token limits) at their
   // own boundary; the catalog itself passes the upstream Model through untouched.
+  /** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
   readonly metadata: (modelId: string) => Model | undefined;
 };
 
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export type FetchModelsDevProviders = (options?: RequestOptions) => Promise<ProviderMap>;
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export type FetchOpenRouterPrices = FetchModelsDevProviders;
 
 type MetadataCatalog = {
@@ -29,10 +35,13 @@ const modelsDevRequestTimeoutMs = 3_000;
 const openRouterProviderId = 'openrouter';
 const defaultFetch: FetchModelsDevProviders = (options) => modelsDev.providers(options);
 
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export async function createModelsDevCatalog(
   fetchProviders: FetchModelsDevProviders = defaultFetch,
 ): Promise<ModelsDevCatalog> {
-  const providers = await fetchProviders({ signal: AbortSignal.timeout(modelsDevRequestTimeoutMs) });
+  const providers = await fetchProviders({
+    signal: AbortSignal.timeout(modelsDevRequestTimeoutMs),
+  });
   const prices = parsePrices(providers);
   const byId = new Map(prices.map((price) => [price.id, price]));
   const byBareId = uniqueBareEntries(byId);
@@ -54,6 +63,7 @@ export async function createModelsDevCatalog(
   };
 }
 
+/** @deprecated Use the `models-dev` module (`getModels`/`getProviders`) instead. */
 export async function createOpenRouterPriceCatalog(
   fetchProviders: FetchModelsDevProviders = defaultFetch,
 ): Promise<OpenRouterPriceCatalog> {

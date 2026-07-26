@@ -76,7 +76,7 @@ test('a non-reasoning model advertises no reasoning levels and no default', () =
     }),
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
-  expect(entry.default_reasoning_level).toBe('');
+  expect(entry).not.toHaveProperty('default_reasoning_level');
   // Codex's InputModality enum has no 'pdf'; a pdf-capable model must not leak it.
   expect(entry.input_modalities).toEqual(['text', 'image']);
 });
@@ -92,5 +92,5 @@ test('an effort option missing its values does not crash and yields no levels', 
     }),
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
-  expect(entry.default_reasoning_level).toBe('');
+  expect(entry).not.toHaveProperty('default_reasoning_level');
 });

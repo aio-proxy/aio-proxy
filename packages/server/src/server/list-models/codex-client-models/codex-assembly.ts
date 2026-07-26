@@ -68,7 +68,9 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
 
   const levels = reasoningLevelsFor(input.metadata);
   const supportedReasoningLevels = levels.map(reasoningLevel);
-  const defaultReasoningLevel = levels.includes('low') ? 'low' : (levels[0] ?? '');
+  // Empty levels (an explicit non-reasoning model) must omit the field entirely;
+  // Codex rejects an empty-string default and would drop the whole catalog.
+  const defaultReasoningLevel = levels.includes('low') ? 'low' : levels[0];
 
   const scaffold = ScaffoldSchema.parse({});
 
@@ -84,7 +86,7 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     max_context_window: contextWindow,
     input_modalities: inputModalities,
     supported_reasoning_levels: supportedReasoningLevels,
-    default_reasoning_level: defaultReasoningLevel,
+    ...(defaultReasoningLevel === undefined ? {} : { default_reasoning_level: defaultReasoningLevel }),
     supports_search_tool: scaffold.supports_search_tool,
     base_instructions: text,
     model_messages: {

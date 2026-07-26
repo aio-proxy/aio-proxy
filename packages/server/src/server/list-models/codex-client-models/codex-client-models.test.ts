@@ -5,8 +5,8 @@ import { join } from 'node:path';
 
 import { ProviderKind } from '@aio-proxy/types';
 
-import type { RuntimeProviderInstance } from '../../runtime';
-import type { ServerState } from '../../server-state';
+import type { RuntimeProviderInstance } from '../../../runtime';
+import type { ServerState } from '../../../server-state';
 import { codexClientModels } from './codex-client-models';
 
 const provider = {
