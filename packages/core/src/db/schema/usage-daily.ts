@@ -1,4 +1,4 @@
-import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const usageDaily = sqliteTable(
   'usage_daily',
@@ -14,10 +14,11 @@ export const usageDaily = sqliteTable(
     pricedRequestCount: integer('priced_request_count').notNull().default(0),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
+    totalTokens: integer('total_tokens').notNull().default(0),
     cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
     cacheWriteTokens: integer('cache_write_tokens').notNull().default(0),
     reasoningTokens: integer('reasoning_tokens').notNull().default(0),
-    estimatedCostUsd: real('estimated_cost_usd').notNull().default(0),
+    estimatedCostNanoUsd: integer('estimated_cost_nano_usd').notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.localDay, table.modelDimension] })],
 );

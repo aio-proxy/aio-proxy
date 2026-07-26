@@ -51,7 +51,7 @@ export const traceSpan = sqliteTable(
     cacheReadTokens: integer('cache_read_tokens'),
     cacheWriteTokens: integer('cache_write_tokens'),
     reasoningTokens: integer('reasoning_tokens'),
-    estimatedCostUsd: real('estimated_cost_usd'),
+    estimatedCostNanoUsd: integer('estimated_cost_nano_usd'),
 
     attemptIndex: integer('attempt_index'),
     providerId: text('provider_id'),

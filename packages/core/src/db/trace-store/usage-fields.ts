@@ -11,7 +11,7 @@ export const usageColumnKeys = [
   'cacheReadTokens',
   'cacheWriteTokens',
   'reasoningTokens',
-  'estimatedCostUsd',
+  'estimatedCostNanoUsd',
 ] as const;
 
 export type UsageColumnKey = (typeof usageColumnKeys)[number];

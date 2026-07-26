@@ -8,6 +8,7 @@ import type {
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { nanoUsdToUsd } from '../../usage-numbers';
 import { traceSpan } from '../schema';
 import { mergeAttributes } from './span-projection';
 import type { TracesQuery } from './types';
@@ -51,7 +52,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
         ...(row.cacheReadTokens !== null ? { cacheReadTokens: row.cacheReadTokens } : {}),
         ...(row.cacheWriteTokens !== null ? { cacheWriteTokens: row.cacheWriteTokens } : {}),
         ...(row.reasoningTokens !== null ? { reasoningTokens: row.reasoningTokens } : {}),
-        ...(row.estimatedCostUsd !== null ? { estimatedCostUsd: row.estimatedCostUsd } : {}),
+        ...(row.estimatedCostNanoUsd !== null ? { estimatedCostUsd: nanoUsdToUsd(row.estimatedCostNanoUsd) } : {}),
       } as DashboardTraceSummary['usage']);
 
   return {
@@ -101,7 +102,7 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean): Dashboa
   setNum('cacheReadTokens', row.cacheReadTokens);
   setNum('cacheWriteTokens', row.cacheWriteTokens);
   setNum('reasoningTokens', row.reasoningTokens);
-  setNum('estimatedCostUsd', row.estimatedCostUsd);
+  setNum('estimatedCostUsd', row.estimatedCostNanoUsd === null ? null : nanoUsdToUsd(row.estimatedCostNanoUsd));
   setNum('attemptIndex', row.attemptIndex);
   setStr('providerId', row.providerId);
   setStr('providerKind', row.providerKind);

@@ -17,7 +17,7 @@ export const MIGRATIONS: readonly Migration[] = [
     {
         version: 2,
         file: "0001_violet_mentallo.sql",
-        sha256: "f2ac8491c8d999f81370a06a77e895dabc8c717e382d1506ae77e3444764b8a6",
+        sha256: "29de1a0e1975a1f7a0ca8c22aa05179b47456b1376e4edda3dfa52d1db8ebb07",
         sql: migration1Sql
     }
 ];

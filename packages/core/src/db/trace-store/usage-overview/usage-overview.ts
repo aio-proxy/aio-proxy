@@ -7,6 +7,7 @@ import type {
 import { and, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { nanoUsdToUsd } from '../../../usage-numbers';
 import { traceSpan } from '../../schema';
 import type { UsageOverviewQuery } from '../types';
 import { usageColumns } from '../usage-fields';
@@ -35,9 +36,9 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
 
   const summaryRow = db
     .select({
-      estimatedCostUsd: sql<number>`coalesce(sum(${traceSpan.estimatedCostUsd}), 0)`.mapWith(Number),
+      estimatedCostUsd: sql<number>`coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0)`.mapWith(nanoUsdToUsd),
       pricedRequestCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.estimatedCostUsd} is not null then 1 else 0 end), 0)`.mapWith(
+        sql<number>`coalesce(sum(case when ${traceSpan.estimatedCostNanoUsd} is not null then 1 else 0 end), 0)`.mapWith(
           Number,
         ),
       usageRequestCount: sql<number>`coalesce(sum(case when ${anyUsageColumn} then 1 else 0 end), 0)`.mapWith(Number),
@@ -145,7 +146,7 @@ function chartRows(
 
   const value =
     metric === 'cost'
-      ? sql<number>`coalesce(sum(${traceSpan.estimatedCostUsd}), 0)`.mapWith(Number)
+      ? sql<number>`coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0)`.mapWith(nanoUsdToUsd)
       : sql<number>`coalesce(sum(coalesce(${traceSpan.inputTokens}, 0) + coalesce(${traceSpan.outputTokens}, 0)), 0)`.mapWith(
           Number,
         );

@@ -46,7 +46,7 @@ CREATE TABLE `trace_span` (
 	`cache_read_tokens` integer,
 	`cache_write_tokens` integer,
 	`reasoning_tokens` integer,
-	`estimated_cost_usd` real,
+	`estimated_cost_nano_usd` integer,
 	`attempt_index` integer,
 	`provider_id` text,
 	`provider_kind` text,
@@ -84,9 +84,10 @@ CREATE TABLE `usage_daily` (
 	`priced_request_count` integer DEFAULT 0 NOT NULL,
 	`input_tokens` integer DEFAULT 0 NOT NULL,
 	`output_tokens` integer DEFAULT 0 NOT NULL,
+	`total_tokens` integer DEFAULT 0 NOT NULL,
 	`cache_read_tokens` integer DEFAULT 0 NOT NULL,
 	`cache_write_tokens` integer DEFAULT 0 NOT NULL,
 	`reasoning_tokens` integer DEFAULT 0 NOT NULL,
-	`estimated_cost_usd` real DEFAULT 0 NOT NULL,
+	`estimated_cost_nano_usd` integer DEFAULT 0 NOT NULL,
 	PRIMARY KEY(`local_day`, `model_dimension`)
 );

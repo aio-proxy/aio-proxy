@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a0549209-0013-4a01-90cc-9779c25c7f80",
+  "id": "848f74f3-da98-4246-89de-51c6594f6133",
   "prevId": "00532da3-8c9c-410b-af56-efa1e01c3ba1",
   "tables": {
     "oauth_account": {
@@ -788,9 +788,9 @@
           "notNull": false,
           "autoincrement": false
         },
-        "estimated_cost_usd": {
-          "name": "estimated_cost_usd",
-          "type": "real",
+        "estimated_cost_nano_usd": {
+          "name": "estimated_cost_nano_usd",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1144,6 +1144,14 @@
           "autoincrement": false,
           "default": 0
         },
+        "total_tokens": {
+          "name": "total_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "cache_read_tokens": {
           "name": "cache_read_tokens",
           "type": "integer",
@@ -1168,9 +1176,9 @@
           "autoincrement": false,
           "default": 0
         },
-        "estimated_cost_usd": {
-          "name": "estimated_cost_usd",
-          "type": "real",
+        "estimated_cost_nano_usd": {
+          "name": "estimated_cost_nano_usd",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,

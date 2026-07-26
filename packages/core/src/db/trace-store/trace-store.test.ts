@@ -3,92 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { usageDaily } from '../schema';
 import { createTraceStore } from './index';
 import { openTestDb } from './test-support';
-import type { StoredSpan, TraceCompletion, TraceRootStart } from './types';
-
-const TRACE_ID = 'a'.repeat(32);
-const ROOT_SPAN_ID = 'b'.repeat(16);
-const CHILD_SPAN_ID = 'c'.repeat(16);
-const STARTED_AT = new Date('2026-07-24T10:00:00.000Z');
-const ENDED_AT = new Date('2026-07-24T10:00:00.100Z');
-
-function rootStart(overrides: Partial<TraceRootStart> = {}): TraceRootStart {
-  const requestId = overrides.requestId ?? 'request-a';
-  return {
-    ...overrides,
-    traceId: overrides.traceId ?? TRACE_ID,
-    spanId: overrides.spanId ?? ROOT_SPAN_ID,
-    requestId,
-    inboundProtocol: overrides.inboundProtocol ?? 'openai-compatible',
-    name: overrides.name ?? 'aio_proxy.request',
-    kind: overrides.kind ?? 1,
-    startedAt: overrides.startedAt ?? STARTED_AT,
-    statusCode: overrides.statusCode ?? 0,
-    attributes: {
-      'aio_proxy.request.id': requestId,
-      'aio_proxy.protocol.inbound': 'openai-compatible',
-      ...overrides.attributes,
-    },
-    events: overrides.events ?? [],
-    links: overrides.links ?? [],
-  };
-}
-
-function rootSpan(overrides: Partial<StoredSpan> = {}): StoredSpan {
-  return {
-    traceId: TRACE_ID,
-    spanId: ROOT_SPAN_ID,
-    name: 'aio_proxy.request',
-    kind: 1,
-    startedAt: STARTED_AT,
-    endedAt: ENDED_AT,
-    statusCode: 0,
-    attributes: {
-      'aio_proxy.request.id': 'request-a',
-      'aio_proxy.protocol.inbound': 'openai-compatible',
-      'gen_ai.response.model': 'model-b',
-      'aio_proxy.route.final_provider_id': 'provider-b',
-    },
-    events: [],
-    links: [],
-    ...overrides,
-  };
-}
-
-function attemptSpan(overrides: Partial<StoredSpan> = {}): StoredSpan {
-  return {
-    traceId: TRACE_ID,
-    spanId: CHILD_SPAN_ID,
-    parentSpanId: ROOT_SPAN_ID,
-    name: 'aio_proxy.provider.attempt',
-    kind: 2,
-    startedAt: STARTED_AT,
-    endedAt: ENDED_AT,
-    statusCode: 0,
-    attributes: {
-      'aio_proxy.attempt.index': 0,
-      'aio_proxy.provider.id': 'provider-b',
-      'gen_ai.request.model': 'model-b',
-    },
-    events: [],
-    links: [],
-    ...overrides,
-  };
-}
-
-function completion(overrides: Partial<TraceCompletion> = {}): TraceCompletion {
-  return {
-    traceId: TRACE_ID,
-    rootSpanId: ROOT_SPAN_ID,
-    spans: [rootSpan(), attemptSpan()],
-    summary: {
-      finalProviderId: 'provider-b',
-      finalModelId: 'model-b',
-      finalHttpStatus: 200,
-      usage: { providerId: 'provider-b', modelId: 'model-b', inputTokens: 10, outputTokens: 5 },
-    },
-    ...overrides,
-  };
-}
+import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
 
 describe('trace store lifecycle', () => {
   test('persists root and children atomically with first-transition semantics', () => {
@@ -108,6 +23,7 @@ describe('trace store lifecycle', () => {
           requestId: 'request-a',
           finalProviderId: 'provider-b',
           finalModelId: 'model-b',
+          usage: { estimatedCostUsd: 0.1 },
         },
         spans: [{ name: 'aio_proxy.request' }, { name: 'aio_proxy.provider.attempt' }],
       });
@@ -118,11 +34,42 @@ describe('trace store lifecycle', () => {
           localDay: '2026-07-24',
           modelDimension: 'model-b',
           requestCount: 1,
+          usageRequestCount: 1,
+          pricedRequestCount: 1,
           successCount: 1,
           inputTokens: 10,
           outputTokens: 5,
+          totalTokens: 20,
+          estimatedCostNanoUsd: 100_000_000,
         }),
       ]);
+
+      const totalTraceId = 'd'.repeat(32);
+      const totalSpanId = 'e'.repeat(16);
+      store.startRoot(rootStart({ traceId: totalTraceId, spanId: totalSpanId, requestId: 'request-total' }));
+      expect(
+        store.complete(
+          completion({
+            traceId: totalTraceId,
+            rootSpanId: totalSpanId,
+            spans: [
+              rootSpan({
+                traceId: totalTraceId,
+                spanId: totalSpanId,
+                attributes: { 'aio_proxy.request.id': 'request-total' },
+              }),
+            ],
+            summary: {
+              finalProviderId: 'provider-b',
+              finalModelId: 'model-total',
+              usage: { providerId: 'provider-b', modelId: 'model-total', totalTokens: 42 },
+            },
+          }),
+        ),
+      ).toBe(true);
+      expect(handle.db.select().from(usageDaily).all()).toContainEqual(
+        expect.objectContaining({ modelDimension: 'model-total', usageRequestCount: 1, totalTokens: 42 }),
+      );
     } finally {
       handle.close();
     }
