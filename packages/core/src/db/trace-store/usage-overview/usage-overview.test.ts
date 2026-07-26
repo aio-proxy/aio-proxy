@@ -11,6 +11,12 @@ function makeStore() {
   return { handle, store: createTraceStore(handle.db) };
 }
 
+function bucketTotal(buckets: readonly { readonly values: Readonly<Record<string, string | number>> }[]): bigint {
+  return buckets
+    .flatMap(({ values }) => Object.values(values))
+    .reduce((total, value) => total + BigInt(String(value)), 0n);
+}
+
 function rootStart(traceId: string, startedAt: Date, attrs: Record<string, unknown> = {}): TraceRootStart {
   return {
     traceId,
@@ -104,9 +110,13 @@ describe('usage overview from trace roots', () => {
       const cost = store.overview({ range: '24h', metric: 'cost', groupBy: 'model', now: NOW });
 
       expect(tokens.series).toEqual([{ key: 'openai/gpt-5', kind: 'dimension' }]);
-      expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(150);
+      expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).filter((value) => value !== '0')).toEqual([
+        '150',
+      ]);
       expect(cost.series).toEqual([{ key: 'openai/gpt-5', kind: 'dimension' }]);
-      expect(cost.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(0.25);
+      expect(cost.buckets.flatMap(({ values }) => Object.values(values)).filter((value) => value !== '0')).toEqual([
+        '250000000',
+      ]);
     } finally {
       handle.close();
     }
@@ -123,7 +133,7 @@ describe('usage overview from trace roots', () => {
       });
 
       const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
-      expect(overview.summary.usageRequestCount).toBe(1);
+      expect(overview.summary.usageRequestCount).toBe('1');
     } finally {
       handle.close();
     }
@@ -162,7 +172,7 @@ describe('usage overview from trace roots', () => {
         { key: '__failed__', kind: 'failed' },
         { key: '__cancelled__', kind: 'cancelled' },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(6);
+      expect(bucketTotal(overview.buckets)).toBe(6n);
     } finally {
       handle.close();
     }
@@ -241,7 +251,9 @@ describe('usage overview from trace roots', () => {
         { key: 'model-4', kind: 'dimension' },
         { key: '__other__', kind: 'other' },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => [values.__other__]).reduce((a, b) => a + b, 0)).toBe(1);
+      expect(overview.buckets.flatMap(({ values }) => [values.__other__]).filter((value) => value !== '0')).toEqual([
+        '1',
+      ]);
     } finally {
       handle.close();
     }

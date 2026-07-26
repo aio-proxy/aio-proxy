@@ -7,7 +7,7 @@ import type {
 import { and, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
-import { nanoUsdToUsd } from '../../../usage-numbers';
+import { parseSqliteInteger } from '../../../usage-numbers';
 import { traceSpan } from '../../schema';
 import type { UsageOverviewQuery } from '../types';
 import { usageColumns } from '../usage-fields';
@@ -16,13 +16,18 @@ type ChartRow = {
   readonly bucket: string | number;
   readonly dimension: string;
   readonly kind: 'dimension' | 'failed' | 'cancelled';
-  readonly value: number;
+  readonly value: bigint;
 };
 
 type ChartBucket = {
   readonly identity: string | number;
   readonly key: string;
 };
+
+const requestTokens = sql`coalesce(
+  ${traceSpan.totalTokens},
+  coalesce(${traceSpan.inputTokens}, 0) + coalesce(${traceSpan.outputTokens}, 0)
+)`;
 
 export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): DashboardUsageOverviewResponse {
   const now = query.now ?? new Date();
@@ -36,40 +41,41 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
 
   const summaryRow = db
     .select({
-      estimatedCostUsd: sql<number>`coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0)`.mapWith(nanoUsdToUsd),
+      estimatedCostNanoUsd: sql<string>`cast(coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0) as text)`.mapWith(
+        parseSqliteInteger,
+      ),
       pricedRequestCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.estimatedCostNanoUsd} is not null then 1 else 0 end), 0)`.mapWith(
-          Number,
+        sql<string>`cast(coalesce(sum(case when ${traceSpan.estimatedCostNanoUsd} is not null then 1 else 0 end), 0) as text)`.mapWith(
+          parseSqliteInteger,
         ),
-      usageRequestCount: sql<number>`coalesce(sum(case when ${anyUsageColumn} then 1 else 0 end), 0)`.mapWith(Number),
-      requestCount: sql<number>`count(*)`.mapWith(Number),
+      usageRequestCount:
+        sql<string>`cast(coalesce(sum(case when ${anyUsageColumn} then 1 else 0 end), 0) as text)`.mapWith(
+          parseSqliteInteger,
+        ),
+      requestCount: sql<string>`cast(count(*) as text)`.mapWith(parseSqliteInteger),
       successCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.terminationReason} is null then 1 else 0 end), 0)`.mapWith(
-          Number,
+        sql<string>`cast(coalesce(sum(case when ${traceSpan.terminationReason} is null then 1 else 0 end), 0) as text)`.mapWith(
+          parseSqliteInteger,
         ),
       failureCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.terminationReason} in ('failure','interrupted') then 1 else 0 end), 0)`.mapWith(
-          Number,
+        sql<string>`cast(coalesce(sum(case when ${traceSpan.terminationReason} in ('failure','interrupted') then 1 else 0 end), 0) as text)`.mapWith(
+          parseSqliteInteger,
         ),
       cancelledCount:
-        sql<number>`coalesce(sum(case when ${traceSpan.terminationReason} = 'cancelled' then 1 else 0 end), 0)`.mapWith(
-          Number,
+        sql<string>`cast(coalesce(sum(case when ${traceSpan.terminationReason} = 'cancelled' then 1 else 0 end), 0) as text)`.mapWith(
+          parseSqliteInteger,
         ),
-      inputTokens: sql<number>`coalesce(sum(${traceSpan.inputTokens}), 0)`.mapWith(Number),
-      outputTokens: sql<number>`coalesce(sum(${traceSpan.outputTokens}), 0)`.mapWith(Number),
+      inputTokens: sql<string>`cast(coalesce(sum(${traceSpan.inputTokens}), 0) as text)`.mapWith(parseSqliteInteger),
+      outputTokens: sql<string>`cast(coalesce(sum(${traceSpan.outputTokens}), 0) as text)`.mapWith(parseSqliteInteger),
+      totalTokens: sql<string>`cast(coalesce(sum(${requestTokens}), 0) as text)`.mapWith(parseSqliteInteger),
     })
     .from(traceSpan)
     .where(and(isNull(traceSpan.parentSpanId), rangeFilter))
     .get()!;
 
   const elapsedMinutes = Math.max(1, (end.getTime() - start.getTime()) / 60_000);
-  const successRate =
-    summaryRow.successCount + summaryRow.failureCount === 0
-      ? null
-      : summaryRow.successCount / (summaryRow.successCount + summaryRow.failureCount);
-  const pricingCoverage =
-    summaryRow.usageRequestCount === 0 ? null : summaryRow.pricedRequestCount / summaryRow.usageRequestCount;
-  const totalTokens = summaryRow.inputTokens + summaryRow.outputTokens;
+  const successRate = ratio(summaryRow.successCount, summaryRow.successCount + summaryRow.failureCount);
+  const pricingCoverage = ratio(summaryRow.pricedRequestCount, summaryRow.usageRequestCount);
 
   const rows = chartRows(db, query.metric, query.groupBy, bucketUnit, start, rangeFilter);
   const { series, buckets } = buildChart(rows, query.metric, bucketKeys(query.range, start, end));
@@ -82,20 +88,20 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
     rangeEnd: end.toISOString(),
     bucketUnit,
     summary: {
-      estimatedCostUsd: summaryRow.estimatedCostUsd,
+      estimatedCostNanoUsd: summaryRow.estimatedCostNanoUsd.toString(),
       pricingCoverage,
-      pricedRequestCount: summaryRow.pricedRequestCount,
-      usageRequestCount: summaryRow.usageRequestCount,
-      requestCount: summaryRow.requestCount,
-      successCount: summaryRow.successCount,
-      failureCount: summaryRow.failureCount,
-      cancelledCount: summaryRow.cancelledCount,
+      pricedRequestCount: summaryRow.pricedRequestCount.toString(),
+      usageRequestCount: summaryRow.usageRequestCount.toString(),
+      requestCount: summaryRow.requestCount.toString(),
+      successCount: summaryRow.successCount.toString(),
+      failureCount: summaryRow.failureCount.toString(),
+      cancelledCount: summaryRow.cancelledCount.toString(),
       successRate,
-      inputTokens: summaryRow.inputTokens,
-      outputTokens: summaryRow.outputTokens,
-      totalTokens,
-      averageRpm: summaryRow.requestCount / elapsedMinutes,
-      averageTpm: totalTokens / elapsedMinutes,
+      inputTokens: summaryRow.inputTokens.toString(),
+      outputTokens: summaryRow.outputTokens.toString(),
+      totalTokens: summaryRow.totalTokens.toString(),
+      averageRpm: Number(summaryRow.requestCount) / elapsedMinutes,
+      averageTpm: Number(summaryRow.totalTokens) / elapsedMinutes,
     },
     series,
     buckets,
@@ -137,7 +143,12 @@ function chartRows(
       else 'dimension'
     end`;
     return db
-      .select({ bucket, dimension: normalDimension, kind, value: sql<number>`count(*)`.mapWith(Number) })
+      .select({
+        bucket,
+        dimension: normalDimension,
+        kind,
+        value: sql<string>`cast(count(*) as text)`.mapWith(parseSqliteInteger),
+      })
       .from(traceSpan)
       .where(and(isNull(traceSpan.parentSpanId), rangeFilter))
       .groupBy(bucket, normalDimension, kind)
@@ -146,10 +157,8 @@ function chartRows(
 
   const value =
     metric === 'cost'
-      ? sql<number>`coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0)`.mapWith(nanoUsdToUsd)
-      : sql<number>`coalesce(sum(coalesce(${traceSpan.inputTokens}, 0) + coalesce(${traceSpan.outputTokens}, 0)), 0)`.mapWith(
-          Number,
-        );
+      ? sql<string>`cast(coalesce(sum(${traceSpan.estimatedCostNanoUsd}), 0) as text)`.mapWith(parseSqliteInteger)
+      : sql<string>`cast(coalesce(sum(${requestTokens}), 0) as text)`.mapWith(parseSqliteInteger);
   return db
     .select({ bucket, dimension: normalDimension, kind: sql<'dimension'>`'dimension'`, value })
     .from(traceSpan)
@@ -159,14 +168,16 @@ function chartRows(
 }
 
 function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, chartBuckets: readonly ChartBucket[]) {
-  const totals = new Map<string, number>();
+  const totals = new Map<string, bigint>();
   for (const row of rows) {
     if (row.kind === 'dimension') {
-      totals.set(row.dimension, (totals.get(row.dimension) ?? 0) + row.value);
+      totals.set(row.dimension, (totals.get(row.dimension) ?? 0n) + row.value);
     }
   }
   const ranked = [...totals]
-    .sort(([leftKey, left], [rightKey, right]) => right - left || leftKey.localeCompare(rightKey))
+    .sort(
+      ([leftKey, left], [rightKey, right]) => compareBigIntDescending(left, right) || leftKey.localeCompare(rightKey),
+    )
     .map(([key]) => key);
   const retained = ranked.slice(0, 5);
   const hasOther = ranked.length > retained.length;
@@ -181,7 +192,7 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
       : []),
   ];
   const retainedSet = new Set(retained);
-  const valuesByBucket = new Map<string | number, Record<string, number>>();
+  const valuesByBucket = new Map<string | number, Record<string, bigint>>();
   for (const row of rows) {
     const dimension =
       row.kind === 'failed'
@@ -192,7 +203,7 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
             ? chartDimensionKey(row.dimension)
             : '__other__';
     const values = valuesByBucket.get(row.bucket) ?? {};
-    values[dimension] = (values[dimension] ?? 0) + row.value;
+    values[dimension] = (values[dimension] ?? 0n) + row.value;
     valuesByBucket.set(row.bucket, values);
   }
 
@@ -201,11 +212,16 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
     buckets: chartBuckets.map(({ identity, key }) => ({
       key,
       values: Object.fromEntries(
-        series.map(({ key: seriesKey }) => [seriesKey, valuesByBucket.get(identity)?.[seriesKey] ?? 0]),
+        series.map(({ key: seriesKey }) => [seriesKey, (valuesByBucket.get(identity)?.[seriesKey] ?? 0n).toString()]),
       ),
     })),
   };
 }
+
+const ratio = (numerator: bigint, denominator: bigint) =>
+  denominator === 0n ? null : Number(numerator) / Number(denominator);
+
+const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);
 
 const dimensionKeyPrefix = 'dimension:';
 const reservedSeriesKeys = new Set(['__failed__', '__cancelled__', '__other__']);

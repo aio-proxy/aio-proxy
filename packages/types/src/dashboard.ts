@@ -37,19 +37,21 @@ export const DashboardProvidersResponseSchema = z.object({
   providers: z.array(DashboardProviderSummarySchema),
 });
 
+export const NonNegativeIntegerStringSchema = z.string().regex(/^(?:0|[1-9]\d*)$/u);
+
 export const DashboardUsageSummarySchema = z.object({
-  estimatedCostUsd: z.number().min(0),
+  estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
   pricingCoverage: z.number().min(0).max(1).nullable(),
-  pricedRequestCount: z.number().int().min(0),
-  usageRequestCount: z.number().int().min(0),
-  requestCount: z.number().int().min(0),
-  successCount: z.number().int().min(0),
-  failureCount: z.number().int().min(0),
-  cancelledCount: z.number().int().min(0),
+  pricedRequestCount: NonNegativeIntegerStringSchema,
+  usageRequestCount: NonNegativeIntegerStringSchema,
+  requestCount: NonNegativeIntegerStringSchema,
+  successCount: NonNegativeIntegerStringSchema,
+  failureCount: NonNegativeIntegerStringSchema,
+  cancelledCount: NonNegativeIntegerStringSchema,
   successRate: z.number().min(0).max(1).nullable(),
-  inputTokens: z.number().int().min(0),
-  outputTokens: z.number().int().min(0),
-  totalTokens: z.number().int().min(0),
+  inputTokens: NonNegativeIntegerStringSchema,
+  outputTokens: NonNegativeIntegerStringSchema,
+  totalTokens: NonNegativeIntegerStringSchema,
   averageRpm: z.number().min(0),
   averageTpm: z.number().min(0),
 });
@@ -61,7 +63,7 @@ export const DashboardUsageSeriesSchema = z.object({
 
 export const DashboardUsageBucketSchema = z.object({
   key: z.string().min(1),
-  values: z.record(z.string(), z.number().min(0)),
+  values: z.record(z.string(), NonNegativeIntegerStringSchema),
 });
 
 export const DashboardUsageOverviewResponseSchema = z.object({
