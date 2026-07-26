@@ -147,7 +147,8 @@ test('maps model-not-found and releases the snapshot lease', async () => {
 
   expect(response.status).toBe(404);
   expect(fixture.recording.begins).toHaveLength(1);
-  expect(fixture.recording.finals).toEqual([]);
+  // model-not-found now finishes the running root as a terminal failure.
+  expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 404 })]);
   expect(fixture.releases()).toBe(1);
 });
 

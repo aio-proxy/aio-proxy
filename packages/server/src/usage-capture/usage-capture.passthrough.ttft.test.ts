@@ -4,10 +4,10 @@ import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createUsageCapture } from './index';
 
-function ssePassthrough(body: string) {
+function ssePassthrough(body: string, protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible) {
   return createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
     response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
-    protocol: ProviderProtocol.OpenAICompatible,
+    protocol,
     providerId: 'provider',
     modelId: 'model',
     startedAt: performance.now(),
@@ -39,6 +39,35 @@ describe('usage capture passthrough ttft', () => {
     const captured = ssePassthrough(
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n' +
         'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":0,"total_tokens":3}}\n\n',
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+  });
+
+  test('ignores Anthropic tool-argument deltas and records ttft on the first text delta', async () => {
+    const captured = ssePassthrough(
+      // input_json_delta carries tool arguments, not generated content: no ttft.
+      'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\\"a\\":1}"}}\n\n' +
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n' +
+        'data: {"type":"message_delta","usage":{"input_tokens":3,"output_tokens":2}}\n\n',
+      ProviderProtocol.Anthropic,
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    const ttftMs = 'ttftMs' in completion ? completion.ttftMs : undefined;
+    expect(typeof ttftMs).toBe('number');
+  });
+
+  test('omits ttft for an Anthropic stream that only emits tool-argument deltas', async () => {
+    const captured = ssePassthrough(
+      'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}\n\n' +
+        'data: {"type":"message_delta","usage":{"input_tokens":3,"output_tokens":1}}\n\n',
+      ProviderProtocol.Anthropic,
     );
     await drain(captured.value);
     const completion = await captured.completion;

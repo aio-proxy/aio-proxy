@@ -46,7 +46,13 @@ const NOOP_REPOSITORY: LogicalSessionRepository = {
 const DEFAULT_TTL_MS = 3_600_000;
 const DEFAULT_MAX_ENTRIES = 10_240;
 
-type ResponseSession = { readonly sessionKey: `sha256:${string}`; accessedAt: number };
+type ResponseSession = {
+  readonly sessionKey: `sha256:${string}`;
+  // Real (source, id) so the memory fallback returns the same identity the
+  // persisted path would; undefined only for legacy callers without it.
+  readonly identity?: SessionIdentity;
+  accessedAt: number;
+};
 
 export type LogicalSessionStoreOptions = {
   readonly repository?: LogicalSessionRepository;
@@ -100,10 +106,14 @@ export class LogicalSessionStore {
    * TraceStore transaction in Task 5; this keeps isolated route fixtures working
    * and serves as a fallback when no repository is injected.
    */
-  commitResponse(responseId: string, sessionKey: `sha256:${string}`): void {
+  commitResponse(responseId: string, sessionKey: `sha256:${string}`, identity?: SessionIdentity): void {
     const normalized = normalizeSessionValue(responseId);
     if (normalized === undefined) return;
-    this.#responses.set(normalized, { sessionKey, accessedAt: this.#now().getTime() });
+    this.#responses.set(normalized, {
+      sessionKey,
+      ...(identity === undefined ? {} : { identity }),
+      accessedAt: this.#now().getTime(),
+    });
     while (this.#responses.size > this.#maxEntries) this.#evictOldest();
   }
 
@@ -204,9 +214,9 @@ export class LogicalSessionStore {
       return undefined;
     }
     entry.accessedAt = nowMs;
-    const identity: SessionIdentity = { source: 'previous-response', id: entry.sessionKey };
+    const identity: SessionIdentity = entry.identity ?? { source: 'previous-response', id: entry.sessionKey };
     return {
-      session: { key: entry.sessionKey, source: 'previous-response' },
+      session: { key: entry.sessionKey, source: identity.source },
       identity,
       resolvedBy: 'previous-response',
     };

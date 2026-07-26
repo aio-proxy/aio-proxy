@@ -1,6 +1,7 @@
 import type { ModelInvocation, ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
+import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import type { AttemptLog } from '../logging';
@@ -38,6 +39,9 @@ export type AttemptLoopContext<TRequest, TContext> = {
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
   readonly logicalRequest: LogicalRequestContext;
+  // Real session identity behind logicalRequest, forwarded to commitResponse so
+  // the memory fallback resolves the same (source, id) as the persisted path.
+  readonly sessionIdentity: SessionIdentity;
   readonly streamRequested: boolean;
   readonly emitter: AttemptEmitter;
   readonly release: () => void;

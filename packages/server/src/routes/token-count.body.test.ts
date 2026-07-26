@@ -28,7 +28,7 @@ test('rejects oversized Content-Length and cancels the count request body before
   expect(cancelled).toBe(true);
   expect(request.bodyUsed).toBe(true);
   expect(fixture.recording.begins).toHaveLength(1);
-  expect(fixture.recording.finals).toEqual([]);
+  expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 413 })]);
   expect(fixture.releases()).toBe(0);
 });
 
@@ -51,7 +51,7 @@ test('rejects unsupported content encoding before counting tokens', async () => 
       error: { type: 'invalid_request_error', message: 'Unsupported Content-Encoding' },
     });
     expect(fixture.recording.begins).toHaveLength(1);
-    expect(fixture.recording.finals).toEqual([]);
+    expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 415 })]);
     expect(fixture.releases()).toBe(0);
   } finally {
     warn.mockRestore();

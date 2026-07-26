@@ -51,6 +51,7 @@ export async function attemptCandidates<TRequest, TContext>(
     session,
     source,
     logicalRequest: resolution.context,
+    sessionIdentity: resolution.identity,
     streamRequested,
     emitter: createAttemptEmitter(session, streamRequested),
     release,

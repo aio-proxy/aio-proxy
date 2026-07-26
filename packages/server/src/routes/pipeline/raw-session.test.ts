@@ -46,7 +46,11 @@ test.each([
   await response.text();
   const resumed = previous(source, responseId);
 
-  expect(resumed.session).toEqual({ key: logicalRequest?.session.key, source: 'previous-response' });
+  // The resumed session mirrors the original logical session's key and source
+  // (generated here), matching the persisted path; resolvedBy proves the commit
+  // was resolved through previous-response lookup.
+  expect(resumed.session).toEqual({ key: logicalRequest?.session.key, source: 'generated' });
+  expect(resumed.resolvedBy).toBe('previous-response');
 });
 
 test.each([
@@ -74,7 +78,9 @@ test.each([
   });
   await response.text();
 
-  expect(previous(source, responseId).session.source).toBe('generated');
+  const notCommitted = previous(source, responseId);
+  expect(notCommitted.session.source).toBe('generated');
+  expect(notCommitted.resolvedBy).toBe('generated');
 });
 
 test('does not commit a completed raw response event when the client cancels before EOF', async () => {
@@ -109,7 +115,9 @@ test('does not commit a completed raw response event when the client cancels bef
   await reader?.read();
   await reader?.cancel('client stopped');
 
-  expect(previous(source, 'resp_cancelled').session.source).toBe('generated');
+  const notCommitted = previous(source, 'resp_cancelled');
+  expect(notCommitted.session.source).toBe('generated');
+  expect(notCommitted.resolvedBy).toBe('generated');
 });
 
 function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {

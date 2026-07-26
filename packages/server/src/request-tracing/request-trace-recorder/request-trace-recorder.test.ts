@@ -21,6 +21,7 @@ function collector() {
       return true;
     },
     prune: () => {},
+    recover: () => {},
   };
   const logger = (entry: ServerLog) => void logs.push(entry);
   return { roots, completions, logs, store, logger };
@@ -147,6 +148,7 @@ describe('createRequestTraceRecorder', () => {
       },
       complete: () => true,
       prune: () => {},
+      recover: () => {},
     };
     const recorder = createRequestTraceRecorder({ store: throwingStore, logger: (e: ServerLog) => void logs.push(e) });
 

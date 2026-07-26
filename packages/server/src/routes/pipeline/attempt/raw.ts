@@ -59,7 +59,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
       : {
           onResponseId: (responseId: string) => {
             capturedResponseId = responseId;
-            source.logicalSessionStore.commitResponse(responseId, logicalRequest.session.key);
+            source.logicalSessionStore.commitResponse(responseId, logicalRequest.session.key, ctx.sessionIdentity);
           },
         }),
   });

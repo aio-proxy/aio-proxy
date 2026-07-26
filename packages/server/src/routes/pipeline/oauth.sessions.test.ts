@@ -44,7 +44,10 @@ describe('OAuth plugin raw pipeline sessions and capabilities', () => {
     expect(response.status).toBe(200);
     expect(body.id).toMatch(/^resp_/u);
     expect(logicalRequest?.session.key).toMatch(/^sha256:[0-9a-f]{64}$/u);
-    expect(resumed.session.source).toBe('previous-response');
+    // Resumed session mirrors the original (body-session) identity; resolvedBy
+    // proves the response ID was resolved via previous-response lookup.
+    expect(resumed.session.source).toBe('body-session');
+    expect(resumed.resolvedBy).toBe('previous-response');
     expect(resumed.session.key).toBe(logicalRequest?.session.key);
   });
 

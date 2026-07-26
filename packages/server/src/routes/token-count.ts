@@ -79,6 +79,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
     const requestedModel = adapter.model(request, context);
     const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
+      requestId: session.requestId,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });
@@ -97,7 +98,8 @@ async function handleTokenCountInContext<TRequest, TContext>(
         session,
       });
     } catch (error) {
-      if (error instanceof RouterModelNotFoundError) return adapter.errors.modelNotFound(error.message);
+      if (error instanceof RouterModelNotFoundError)
+        return finishRejected(session, adapter.errors.modelNotFound(error.message));
       throw error;
     } finally {
       lease.release();

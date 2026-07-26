@@ -111,6 +111,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     requestedModelId = requestedModel;
     const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
+      requestId: session.requestId,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });

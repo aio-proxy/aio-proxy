@@ -12,12 +12,22 @@ export function hasContentDelta(protocol: ProviderProtocol, value: unknown): boo
     case ProviderProtocol.OpenAIResponse:
       return openAIResponsesContent(value);
     case ProviderProtocol.Anthropic:
-      return isRecord(value) && value['type'] === 'content_block_delta';
+      return anthropicContent(value);
     case ProviderProtocol.Gemini:
       return geminiContent(value);
     default:
       return assertNever(protocol);
   }
+}
+
+// Anthropic content_block_delta also carries tool-argument (input_json_delta)
+// and signature (signature_delta) frames; only text/thinking deltas are
+// generated content, matching the streaming path's TTFT trigger.
+function anthropicContent(value: unknown): boolean {
+  if (!isRecord(value) || value['type'] !== 'content_block_delta') return false;
+  const delta = value['delta'];
+  if (!isRecord(delta)) return false;
+  return delta['type'] === 'text_delta' || delta['type'] === 'thinking_delta';
 }
 
 function openAICompatibleContent(value: unknown): boolean {

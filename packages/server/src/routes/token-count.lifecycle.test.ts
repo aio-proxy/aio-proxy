@@ -22,7 +22,9 @@ test('releases the retained body when count request validation fails', async () 
   expect(response.status).toBe(400);
   expect(request.bodyUsed).toBe(true);
   expect(fixture.recording.begins).toEqual([{ inboundProtocol: anthropicMessagesAdapter.protocol }]);
-  expect(fixture.recording.finals).toEqual([]);
+  // Client-error early return now finishes the running root as a terminal failure
+  // instead of leaving it running (see finishRejected in token-count.ts).
+  expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 400 })]);
   expect(fixture.releases()).toBe(0);
 });
 

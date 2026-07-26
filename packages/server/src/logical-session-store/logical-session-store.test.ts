@@ -63,6 +63,25 @@ describe('LogicalSessionStore', () => {
     expect(resolution.context.session.key).toMatch(/^sha256:/);
   });
 
+  test('memory fallback returns the committed identity, not the hashed key', () => {
+    // No repository -> resolveResponse is a no-op, so begin() must fall back to
+    // the in-memory map. commitResponse now carries the real (source, id) so the
+    // fallback resolves the same identity the persisted path would.
+    const store = new LogicalSessionStore();
+    store.commitResponse('resp-mem', 'sha256:deadbeef', { source: 'openai-prompt-cache', id: 'real-session' });
+
+    const resolution = store.begin({
+      requestId: 'req',
+      requestedModelId: 'gpt',
+      hints: { candidates: [], previousResponseId: 'resp-mem', transcript: {} },
+      headers: new Headers(),
+    });
+
+    expect(resolution.resolvedBy).toBe('previous-response');
+    expect(resolution.identity).toEqual({ source: 'openai-prompt-cache', id: 'real-session' });
+    expect(resolution.context.session).toEqual({ key: 'sha256:deadbeef', source: 'openai-prompt-cache' });
+  });
+
   test('resolves previous response through the repository with the original identity', () => {
     const repository = stubRepository({
       responses: new Map([['resp-older', { source: 'openai-prompt-cache', id: 'cache-key' }]]),
