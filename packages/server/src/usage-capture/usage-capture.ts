@@ -8,7 +8,9 @@ import {
   type PassthroughSseUsageObserver,
 } from '../passthrough-usage';
 import { isAbortError } from '../route-observation';
-import { normalizeAiSdkUsage, priceUsage } from './pricing';
+import type { ServerLogSink } from '../server-log';
+import { normalizeAiSdkUsage } from './pricing';
+import { finalizeUsage } from './usage-validation';
 
 const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
@@ -48,16 +50,19 @@ export type UsageCapture = {
 
 export function createUsageCapture(options: {
   readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
+  readonly logger?: ServerLogSink;
 }): UsageCapture {
   return {
-    stream: (streamOptions) => streamCapture(streamOptions, options.priceCatalogTask),
-    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.priceCatalogTask),
+    stream: (streamOptions) => streamCapture(streamOptions, options.priceCatalogTask, options.logger),
+    passthrough: (passthroughOptions) =>
+      passthroughCapture(passthroughOptions, options.priceCatalogTask, options.logger),
   };
 }
 
 function streamCapture(
   { stream, providerId, modelId, startedAt }: StreamUsageOptions,
   priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
+  logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
   const reader = stream.getReader();
@@ -68,10 +73,9 @@ function streamCapture(
   let firstTokenAt: number | undefined;
   let released = false;
   const releaseReader = () => {
-    if (!released) {
-      released = true;
-      reader.releaseLock();
-    }
+    if (released) return;
+    released = true;
+    reader.releaseLock();
   };
 
   const value = new ReadableStream<TextStreamPart<ToolSet>>({
@@ -88,7 +92,14 @@ function streamCapture(
               : finished
                 ? {
                     outcome: 'success',
-                    ...usageProperty(await priceUsage(finishUsage, priceCatalogTask, { source: 'ai-sdk' })),
+                    ...usageProperty(
+                      await finalizeUsage({
+                        usage: finishUsage,
+                        priceCatalogTask,
+                        accounting: { source: 'ai-sdk' },
+                        ...(logger === undefined ? {} : { logger }),
+                      }),
+                    ),
                     ...ttftProperty(startedAt, firstTokenAt),
                   }
                 : { outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) },
@@ -137,6 +148,7 @@ function streamCapture(
 function passthroughCapture(
   { response, protocol, providerId, modelId, onResponseId, startedAt }: PassthroughUsageOptions,
   priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
+  logger: ServerLogSink | undefined,
 ): Captured<Response> {
   if (response.status < 200 || response.status >= 400) {
     return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
@@ -157,10 +169,9 @@ function passthroughCapture(
   let firstTokenAt: number | undefined;
   let released = false;
   const releaseReader = () => {
-    if (!released) {
-      released = true;
-      reader.releaseLock();
-    }
+    if (released) return;
+    released = true;
+    reader.releaseLock();
   };
   const returnedBody = new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -198,11 +209,16 @@ function passthroughCapture(
             : captureJson
               ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
               : {};
-        const usage = await priceUsage(
-          observation.usage === undefined ? undefined : { ...observation.usage, providerId, modelId },
+        const usage = await finalizeUsage({
+          usage:
+            observation.usage === undefined && observation.issues === undefined
+              ? undefined
+              : { ...observation.usage, providerId, modelId },
           priceCatalogTask,
-          { source: 'passthrough', protocol },
-        );
+          accounting: { source: 'passthrough', protocol },
+          ...(logger === undefined ? {} : { logger }),
+          ...(observation.issues === undefined ? {} : { issues: observation.issues }),
+        });
         if (observation.responseId !== undefined) onResponseId?.(observation.responseId);
         terminal.resolve({
           outcome: 'success',
@@ -219,9 +235,7 @@ function passthroughCapture(
         });
         controller.error(error);
       } finally {
-        if (done) {
-          releaseReader();
-        }
+        if (done) releaseReader();
       }
     },
     async cancel(reason) {

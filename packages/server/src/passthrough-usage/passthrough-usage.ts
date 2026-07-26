@@ -2,12 +2,22 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { createParser } from 'eventsource-parser';
 
 import { hasContentDelta } from './content';
-import { type ExtractedUsage, isRecord, MAX_SSE_BUFFER_CHARS, parseJson, totalTokens } from './shared';
+import {
+  anthropicTotalTokens,
+  type ExtractedUsage,
+  isRecord,
+  MAX_SSE_BUFFER_CHARS,
+  parseJson,
+  type UsageExtraction,
+  type UsageIssue,
+  usageNumber,
+} from './shared';
 import { usageFromJson } from './usage';
 
 export type PassthroughObservation = {
   readonly responseId?: string;
   readonly usage?: ExtractedUsage;
+  readonly issues?: readonly UsageIssue[];
 };
 
 export type PassthroughSseUsageObserver = {
@@ -36,7 +46,7 @@ export function extractPassthroughObservation(protocol: ProviderProtocol, bodyTe
 
 export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): PassthroughSseUsageObserver {
   let active = true;
-  let observed: ExtractedUsage | undefined;
+  let observed: UsageExtraction = { kind: 'absent' };
   let responseId: string | undefined;
   let sawContent = false;
   const parser = createParser({
@@ -55,11 +65,8 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       if (parsed === undefined) {
         return;
       }
-      const next = observationFromJson(protocol, parsed);
-      if (next.usage !== undefined) {
-        observed = mergeObservedUsage(protocol, observed, next.usage);
-      }
-      responseId = next.responseId ?? responseId;
+      observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
+      responseId = completedResponseId(protocol, parsed) ?? responseId;
       if (!sawContent && hasContentDelta(protocol, parsed)) {
         sawContent = true;
       }
@@ -96,10 +103,11 @@ function observationFromJson(protocol: ProviderProtocol, value: unknown): Passth
   return observation(usageFromJson(protocol, value), completedResponseId(protocol, value));
 }
 
-function observation(usage: ExtractedUsage | undefined, responseId: string | undefined): PassthroughObservation {
+function observation(usage: UsageExtraction, responseId: string | undefined): PassthroughObservation {
   return {
     ...(responseId === undefined ? {} : { responseId }),
-    ...(usage === undefined ? {} : { usage }),
+    ...(usage.kind === 'valid' ? { usage: usage.usage } : {}),
+    ...(usage.kind === 'invalid' ? { issues: usage.issues } : {}),
   };
 }
 
@@ -112,13 +120,23 @@ function completedResponseId(protocol: ProviderProtocol, value: unknown): string
 
 function mergeObservedUsage(
   protocol: ProviderProtocol,
-  current: ExtractedUsage | undefined,
-  next: ExtractedUsage,
-): ExtractedUsage {
+  current: UsageExtraction,
+  next: UsageExtraction,
+): UsageExtraction {
+  if (current.kind === 'invalid') return current;
+  if (next.kind === 'invalid') return next;
+  if (next.kind === 'absent') return current;
   if (protocol !== ProviderProtocol.Anthropic) {
     return next;
   }
-  const merged = { ...current, ...next };
-  const total = totalTokens(merged.inputTokens, merged.outputTokens);
-  return total === undefined ? merged : { ...merged, totalTokens: total };
+  const merged = { ...(current.kind === 'valid' ? current.usage : {}), ...next.usage };
+  const total = usageNumber(
+    anthropicTotalTokens(merged.inputTokens, merged.outputTokens, merged.cacheWriteTokens, merged.cacheReadTokens),
+    'totalTokens',
+  );
+  if (total.kind === 'invalid') return { kind: 'invalid', issues: [total.issue] };
+  return {
+    kind: 'valid',
+    usage: total.kind === 'absent' ? merged : { ...merged, totalTokens: total.value },
+  };
 }

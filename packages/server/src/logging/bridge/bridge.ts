@@ -19,6 +19,7 @@ export const SERVER_LOG_LEVEL = {
   'trace.persistence_failed': 'error',
   'request.upstream_result': 'debug',
   'request.upstream_snapshot': 'debug',
+  'usage.accounting_dropped': 'warn',
 } as const satisfies Readonly<Record<ServerLog['event'], LogLevel>>;
 
 type SinkFallbackOptions<Entry> = {

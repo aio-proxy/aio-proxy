@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 import { IdSchema } from './common';
 
-const TokenCountSchema = z.number().int().min(0);
+// oxlint-disable-next-line typescript/no-deprecated -- Keep the finite boundary explicit in the public schema.
+const TokenCountSchema = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
 export const RequestOutcomeSchema = z.enum(['success', 'failure', 'cancelled']);
 export const UsageOverviewRangeSchema = z.enum(['24h', '7d', '14d', '30d']);
@@ -19,7 +20,8 @@ export const UsageRowSchema = z.object({
   cacheWriteTokens: TokenCountSchema.optional(),
   reasoningTokens: TokenCountSchema.optional(),
   priceModelId: IdSchema.optional(),
-  estimatedCostUsd: z.number().min(0).optional(),
+  // oxlint-disable-next-line typescript/no-deprecated -- Keep the finite boundary explicit in the public schema.
+  estimatedCostUsd: z.number().finite().min(0).optional(),
 });
 
 export type UsageRowInput = z.input<typeof UsageRowSchema>;
