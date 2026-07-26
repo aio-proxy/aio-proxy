@@ -8,7 +8,6 @@ import type { TraceCompletion, TraceTerminalSummary } from '../types';
 export type PreparedUsage = {
   readonly estimatedCostNanoUsd: number | undefined;
   readonly hasUsage: boolean;
-  readonly totalTokens: number;
 };
 
 function localDay(date: Date): string {
@@ -19,7 +18,6 @@ function localDay(date: Date): string {
 }
 
 export function prepareUsage(usage: TraceTerminalSummary['usage']): PreparedUsage {
-  const totalTokens = usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
   const estimatedCostNanoUsd = usage?.estimatedCostUsd === undefined ? undefined : usdToNanoUsd(usage.estimatedCostUsd);
   const hasUsage =
     usage !== undefined &&
@@ -32,7 +30,7 @@ export function prepareUsage(usage: TraceTerminalSummary['usage']): PreparedUsag
       usage.reasoningTokens,
       usage.estimatedCostUsd,
     ].some((value) => value !== undefined);
-  return { estimatedCostNanoUsd, hasUsage, totalTokens };
+  return { estimatedCostNanoUsd, hasUsage };
 }
 
 export function upsertUsageDelta(
@@ -59,7 +57,7 @@ export function upsertUsageDelta(
       pricedRequestCount: prepared.estimatedCostNanoUsd === undefined ? 0 : 1,
       inputTokens: usage?.inputTokens ?? 0,
       outputTokens: usage?.outputTokens ?? 0,
-      totalTokens: prepared.totalTokens,
+      totalTokens: usage?.totalTokens ?? sql`${BigInt(usage?.inputTokens ?? 0)} + ${BigInt(usage?.outputTokens ?? 0)}`,
       cacheReadTokens: usage?.cacheReadTokens ?? 0,
       cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
       reasoningTokens: usage?.reasoningTokens ?? 0,

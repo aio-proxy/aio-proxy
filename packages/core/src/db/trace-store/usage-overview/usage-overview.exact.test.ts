@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { DashboardUsageOverviewResponseSchema } from '@aio-proxy/types';
+
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
 import { completion, rootSpan, rootStart } from '../trace-store.test-support';
@@ -142,6 +144,39 @@ describe('exact usage overview aggregation', () => {
       expect(overview.buckets.reduce((total, { values }) => total + BigInt(values.__other__ ?? '0'), 0n)).toBe(
         9_007_199_254_740_992n,
       );
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('returns schema-safe buckets for prototype-named dimensions', () => {
+    const { handle, store } = makeStore();
+    try {
+      for (const [index, [modelId, totalTokens]] of [
+        ['__proto__', 3],
+        ['constructor', 2],
+        ['toString', 1],
+      ].entries()) {
+        complete(store, `${index}`.padEnd(32, 'p'), {
+          finalProviderId: 'provider',
+          finalModelId: modelId,
+          finalHttpStatus: 200,
+          usage: { providerId: 'provider', modelId, totalTokens },
+        });
+      }
+
+      const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
+      const bucket = overview.buckets.find(({ values }) => values['dimension:__proto__'] !== '0');
+
+      expect(overview.series).toEqual([
+        { key: 'dimension:__proto__', kind: 'dimension' },
+        { key: 'constructor', kind: 'dimension' },
+        { key: 'toString', kind: 'dimension' },
+      ]);
+      expect(bucket?.values['dimension:__proto__']).toBe('3');
+      expect(bucket?.values.constructor).toBe('2');
+      expect(bucket?.values.toString).toBe('1');
+      expect(DashboardUsageOverviewResponseSchema.parse(overview)).toEqual(overview);
     } finally {
       handle.close();
     }

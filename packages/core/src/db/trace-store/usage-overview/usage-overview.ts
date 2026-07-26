@@ -192,7 +192,7 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
       : []),
   ];
   const retainedSet = new Set(retained);
-  const valuesByBucket = new Map<string | number, Record<string, bigint>>();
+  const valuesByBucket = new Map<string | number, Map<string, bigint>>();
   for (const row of rows) {
     const dimension =
       row.kind === 'failed'
@@ -202,8 +202,8 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
           : retainedSet.has(row.dimension)
             ? chartDimensionKey(row.dimension)
             : '__other__';
-    const values = valuesByBucket.get(row.bucket) ?? {};
-    values[dimension] = (values[dimension] ?? 0n) + row.value;
+    const values = valuesByBucket.get(row.bucket) ?? new Map<string, bigint>();
+    values.set(dimension, (values.get(dimension) ?? 0n) + row.value);
     valuesByBucket.set(row.bucket, values);
   }
 
@@ -212,7 +212,10 @@ function buildChart(rows: readonly ChartRow[], metric: UsageOverviewMetric, char
     buckets: chartBuckets.map(({ identity, key }) => ({
       key,
       values: Object.fromEntries(
-        series.map(({ key: seriesKey }) => [seriesKey, (valuesByBucket.get(identity)?.[seriesKey] ?? 0n).toString()]),
+        series.map(({ key: seriesKey }) => [
+          seriesKey,
+          (valuesByBucket.get(identity)?.get(seriesKey) ?? 0n).toString(),
+        ]),
       ),
     })),
   };
@@ -224,7 +227,7 @@ const ratio = (numerator: bigint, denominator: bigint) =>
 const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);
 
 const dimensionKeyPrefix = 'dimension:';
-const reservedSeriesKeys = new Set(['__failed__', '__cancelled__', '__other__']);
+const reservedSeriesKeys = new Set(['__failed__', '__cancelled__', '__other__', '__proto__']);
 
 function chartDimensionKey(dimension: string): string {
   const needsEncoding =
