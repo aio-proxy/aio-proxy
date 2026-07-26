@@ -1,0 +1,1 @@
+export { fileCacheStorage } from './file';
