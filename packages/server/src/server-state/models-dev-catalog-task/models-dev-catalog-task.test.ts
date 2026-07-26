@@ -1,13 +1,13 @@
-import type { FetchModelsDevProviders, TextStreamPart, ToolSet } from "@aio-proxy/core";
+import { afterEach, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { ConfigSchema } from "@aio-proxy/types";
-import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { FetchModelsDevProviders, TextStreamPart, ToolSet } from '@aio-proxy/core';
+import { ConfigSchema } from '@aio-proxy/types';
 
-import { createModelsDevCatalogTask } from ".";
-import { createServerState } from "..";
+import { createModelsDevCatalogTask } from '.';
+import { createServerState } from '..';
 
 const homes: string[] = [];
 
@@ -17,33 +17,33 @@ afterEach(() => {
   }
 });
 
-test("model listing and usage pricing share one cached models.dev fetch", async () => {
+test('model listing and usage pricing share one cached models.dev fetch', async () => {
   let fetches = 0;
   const providers = {
     openrouter: {
-      doc: "https://openrouter.ai/models",
-      env: ["OPENROUTER_API_KEY"],
-      id: "openrouter",
+      doc: 'https://openrouter.ai/models',
+      env: ['OPENROUTER_API_KEY'],
+      id: 'openrouter',
       models: {
-        "openai/gpt-5.5": {
+        'openai/gpt-5.5': {
           attachment: true,
           cost: { input: 2, output: 10 },
-          description: "",
-          id: "openai/gpt-5.5",
-          last_updated: "2026-01-15",
+          description: '',
+          id: 'openai/gpt-5.5',
+          last_updated: '2026-01-15',
           limit: { context: 128_000, input: 120_000, output: 8_000 },
-          modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-          name: "GPT-5.5",
+          modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+          name: 'GPT-5.5',
           open_weights: false,
           reasoning: true,
-          reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
-          release_date: "2026-01-15",
+          reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
+          release_date: '2026-01-15',
           structured_output: true,
           tool_call: true,
         },
       },
-      name: "OpenRouter",
-      npm: "@openrouter/ai-sdk-provider",
+      name: 'OpenRouter',
+      npm: '@openrouter/ai-sdk-provider',
     },
   } satisfies Awaited<ReturnType<FetchModelsDevProviders>>;
   const state = await createServerState({
@@ -56,15 +56,15 @@ test("model listing and usage pricing share one cached models.dev fetch", async 
   });
 
   try {
-    expect((await state.modelsDevCatalog())?.metadata("gpt-5.5")).toMatchObject({
-      displayName: "GPT-5.5",
+    expect((await state.modelsDevCatalog())?.metadata('gpt-5.5')).toMatchObject({
+      displayName: 'GPT-5.5',
       maxInputTokens: 120_000,
       maxTokens: 8_000,
-      releaseDate: "2026-01-15",
+      releaseDate: '2026-01-15',
     });
     const captured = state.usageCapture.stream({
-      providerId: "provider",
-      modelId: "gpt-5.5",
+      providerId: 'provider',
+      modelId: 'gpt-5.5',
       stream: textStream([finishPart()]),
     });
 
@@ -78,7 +78,7 @@ test("model listing and usage pricing share one cached models.dev fetch", async 
 });
 
 function tempHome(): string {
-  const home = mkdtempSync(join(tmpdir(), "aio-proxy-models-dev-"));
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-models-dev-'));
   homes.push(home);
   return home;
 }
@@ -96,9 +96,9 @@ function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<T
 
 function finishPart(): TextStreamPart<ToolSet> {
   return {
-    type: "finish",
-    finishReason: "stop",
-    rawFinishReason: "stop",
+    type: 'finish',
+    finishReason: 'stop',
+    rawFinishReason: 'stop',
     totalUsage: {
       inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1 },
       inputTokens: 1,

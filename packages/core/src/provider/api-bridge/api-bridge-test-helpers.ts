@@ -1,6 +1,6 @@
-import type { LanguageModelV2, LoadedAiSdkProvider, ModelMessage, TextStreamPart, ToolSet } from "../../index";
+import type { LanguageModelV2, LoadedAiSdkProvider, ModelMessage, TextStreamPart, ToolSet } from '../../index';
 
-export const messages: readonly ModelMessage[] = [{ role: "user", content: "hello" }];
+export const messages: readonly ModelMessage[] = [{ role: 'user', content: 'hello' }];
 
 type LoadedProviderFactory = {
   readonly languageModel: (modelId: string) => LanguageModelV2;
@@ -8,13 +8,13 @@ type LoadedProviderFactory = {
 };
 
 type ModelStreamPart =
-  | { readonly type: "text-start"; readonly id: string }
+  | { readonly type: 'text-start'; readonly id: string }
   | {
-      readonly type: "text-delta";
+      readonly type: 'text-delta';
       readonly id: string;
       readonly delta: string;
     }
-  | { readonly type: "text-end"; readonly id: string };
+  | { readonly type: 'text-end'; readonly id: string };
 
 export async function collect(
   stream: ReadableStream<TextStreamPart<ToolSet>>,
@@ -30,9 +30,9 @@ export async function collect(
 function textPartStream(text: string): ReadableStream<ModelStreamPart> {
   return new ReadableStream({
     start(controller) {
-      controller.enqueue({ type: "text-start", id: "text-1" });
-      controller.enqueue({ type: "text-delta", id: "text-1", delta: text });
-      controller.enqueue({ type: "text-end", id: "text-1" });
+      controller.enqueue({ type: 'text-start', id: 'text-1' });
+      controller.enqueue({ type: 'text-delta', id: 'text-1', delta: text });
+      controller.enqueue({ type: 'text-end', id: 'text-1' });
       controller.close();
     },
   });
@@ -40,12 +40,12 @@ function textPartStream(text: string): ReadableStream<ModelStreamPart> {
 
 export function model(modelId: string, text: string): LanguageModelV2 {
   return {
-    specificationVersion: "v2",
-    provider: "mock",
+    specificationVersion: 'v2',
+    provider: 'mock',
     modelId,
     supportedUrls: {},
     async doGenerate() {
-      throw new Error("doGenerate should not be called");
+      throw new Error('doGenerate should not be called');
     },
     async doStream() {
       return { stream: textPartStream(text) };

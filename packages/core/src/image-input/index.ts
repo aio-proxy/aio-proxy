@@ -10,4 +10,4 @@ export {
   isImageMediaType,
   isValidBase64,
   openAIImageDetail,
-} from "./image-input";
+} from './image-input';

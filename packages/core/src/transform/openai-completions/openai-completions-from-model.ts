@@ -1,9 +1,8 @@
-import type { FilePart, ModelMessage } from "../../ai-sdk-bridge";
-import type { OpenAICompletionsRequest } from "../../ingress/openai-completions";
-import type { OpenAICompletionsFromModelMessages } from "./openai-completions";
-
-import { OpenAICompletionsTransformError } from "../../error";
-import { openAIImageDetail, type ImageInputDetail } from "../../image-input";
+import type { FilePart, ModelMessage } from '../../ai-sdk-bridge';
+import { OpenAICompletionsTransformError } from '../../error';
+import { openAIImageDetail, type ImageInputDetail } from '../../image-input';
+import type { OpenAICompletionsRequest } from '../../ingress/openai-completions';
+import type { OpenAICompletionsFromModelMessages } from './openai-completions';
 
 export function modelMessagesToOpenAICompletions({
   model,
@@ -13,29 +12,29 @@ export function modelMessagesToOpenAICompletions({
 }: OpenAICompletionsFromModelMessages): OpenAICompletionsRequest {
   return {
     model,
-    messages: messages.flatMap<OpenAICompletionsRequest["messages"][number]>((message, messageIndex) => {
+    messages: messages.flatMap<OpenAICompletionsRequest['messages'][number]>((message, messageIndex) => {
       switch (message.role) {
-        case "system":
-          return { role: "system", content: message.content };
-        case "user":
-          return { role: "user", content: openAIContent(message.content, `messages.${messageIndex}.content`) };
-        case "assistant": {
+        case 'system':
+          return { role: 'system', content: message.content };
+        case 'user':
+          return { role: 'user', content: openAIContent(message.content, `messages.${messageIndex}.content`) };
+        case 'assistant': {
           const content = assistantOpenAIContent(message.content, `messages.${messageIndex}.content`);
           const tool_calls = assistantToolCalls(message.content);
 
           return {
-            role: "assistant",
+            role: 'assistant',
             content,
             ...(tool_calls.length > 0 ? { tool_calls } : {}),
           };
         }
-        case "tool":
+        case 'tool':
           return message.content.map((part, partIndex) => {
-            if (part.type !== "tool-result") {
+            if (part.type !== 'tool-result') {
               throw new OpenAICompletionsTransformError(`messages.${messageIndex}.content.${partIndex}.type`);
             }
             return {
-              role: "tool",
+              role: 'tool',
               tool_call_id: part.toolCallId,
               content: toolContent(part, `messages.${messageIndex}.content.${partIndex}.output.value`),
             };
@@ -47,7 +46,7 @@ export function modelMessagesToOpenAICompletions({
       ? {}
       : {
           tools: tools.map((tool) => ({
-            type: "function",
+            type: 'function',
             function: {
               name: tool.name,
               ...(tool.description === undefined ? {} : { description: tool.description }),
@@ -63,22 +62,22 @@ export function modelMessagesToOpenAICompletions({
   };
 }
 
-type OpenAITextContent = { readonly type: "text"; readonly text: string };
+type OpenAITextContent = { readonly type: 'text'; readonly text: string };
 type OpenAIImageUrlContent = {
-  readonly type: "image_url";
+  readonly type: 'image_url';
   readonly image_url: { readonly url: string; readonly detail?: ImageInputDetail };
 };
 type OpenAIUserContentPart = OpenAITextContent | OpenAIImageUrlContent;
 
-function openAIContent(content: ModelMessage["content"], path: string): string | OpenAIUserContentPart[] {
-  if (typeof content === "string") return content;
+function openAIContent(content: ModelMessage['content'], path: string): string | OpenAIUserContentPart[] {
+  if (typeof content === 'string') return content;
   const parts: OpenAIUserContentPart[] = [];
   for (const [index, part] of content.entries()) {
-    if (part.type === "text") {
-      parts.push({ type: "text", text: part.text });
+    if (part.type === 'text') {
+      parts.push({ type: 'text', text: part.text });
       continue;
     }
-    if (part.type === "file") {
+    if (part.type === 'file') {
       parts.push(imageUrlContent(part, `${path}.${index}`));
     }
   }
@@ -86,44 +85,44 @@ function openAIContent(content: ModelMessage["content"], path: string): string |
 }
 
 function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
-  if (part.mediaType !== "image" && !part.mediaType.startsWith("image/")) {
+  if (part.mediaType !== 'image' && !part.mediaType.startsWith('image/')) {
     throw new OpenAICompletionsTransformError(`${path}.mediaType`);
   }
   const data = part.data;
-  if (typeof data !== "object" || data === null || !("type" in data)) {
+  if (typeof data !== 'object' || data === null || !('type' in data)) {
     throw new OpenAICompletionsTransformError(`${path}.data`);
   }
   const url =
-    data.type === "url"
+    data.type === 'url'
       ? data.url.toString()
-      : data.type === "data" && typeof data.data === "string"
+      : data.type === 'data' && typeof data.data === 'string'
         ? `data:${part.mediaType};base64,${data.data}`
         : undefined;
   if (url === undefined) throw new OpenAICompletionsTransformError(`${path}.data`);
   const detail = openAIImageDetail(part);
   return {
-    type: "image_url",
+    type: 'image_url',
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
 }
 
 function toolContent(
-  part: Extract<Extract<ModelMessage, { role: "tool" }>["content"][number], { type: "tool-result" }>,
+  part: Extract<Extract<ModelMessage, { role: 'tool' }>['content'][number], { type: 'tool-result' }>,
   path: string,
 ): string | OpenAIUserContentPart[] {
-  if (part.output.type === "text") return part.output.value;
-  if (part.output.type === "content") {
+  if (part.output.type === 'text') return part.output.value;
+  if (part.output.type === 'content') {
     return part.output.value.map((value, index): OpenAIUserContentPart => {
-      if (value.type === "text") return { type: "text", text: value.text };
-      if (value.type === "file") return imageUrlContent(value, `${path}.${index}`);
+      if (value.type === 'text') return { type: 'text', text: value.text };
+      if (value.type === 'file') return imageUrlContent(value, `${path}.${index}`);
       throw new OpenAICompletionsTransformError(`${path}.${index}.type`);
     });
   }
-  return "";
+  return '';
 }
 
-function assistantOpenAIContent(content: ModelMessage["content"], path: string) {
-  if (typeof content === "string") {
+function assistantOpenAIContent(content: ModelMessage['content'], path: string) {
+  if (typeof content === 'string') {
     return content;
   }
 
@@ -131,20 +130,20 @@ function assistantOpenAIContent(content: ModelMessage["content"], path: string) 
   return parts.length === 0 ? null : parts;
 }
 
-function assistantToolCalls(content: ModelMessage["content"]) {
-  if (typeof content === "string") {
+function assistantToolCalls(content: ModelMessage['content']) {
+  if (typeof content === 'string') {
     return [];
   }
 
   return content.flatMap((part) =>
-    part.type === "tool-call"
+    part.type === 'tool-call'
       ? [
           {
             id: part.toolCallId,
-            type: "function" as const,
+            type: 'function' as const,
             function: {
               name: part.toolName,
-              arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
+              arguments: typeof part.input === 'string' ? part.input : JSON.stringify(part.input),
             },
           },
         ]

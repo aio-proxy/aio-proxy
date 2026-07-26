@@ -1,15 +1,14 @@
-import type { ZodType } from "@aio-proxy/plugin-sdk";
+import type { ZodType } from '@aio-proxy/plugin-sdk';
 
-import type { ChatGPTCredential } from "./schema";
+import { extractAccountId } from './jwt';
+import type { ChatGPTCredential } from './schema';
+import { refreshTokenResponseSchema, tokenResponseSchema } from './schema';
 
-import { extractAccountId } from "./jwt";
-import { refreshTokenResponseSchema, tokenResponseSchema } from "./schema";
-
-const TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token" as const;
-const DEFAULT_REDIRECT_URI = "http://localhost:1455/auth/callback" as const;
+const TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token' as const;
+const DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback' as const;
 declare const __AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__: string;
 export const CHATGPT_CLIENT_ID = __AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__;
-const REFRESH_SCOPE = "openid profile email" as const;
+const REFRESH_SCOPE = 'openid profile email' as const;
 const DEFAULT_EXPIRES_IN_SECONDS = 3_600 as const;
 
 type OpenAITokenResponse = {
@@ -29,7 +28,7 @@ export type ChatGPTTokenExchangeOptions = {
 export type ChatGPTFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class ChatGPTTokenExchangeError extends Error {
-  override readonly name = "ChatGPTTokenExchangeError";
+  override readonly name = 'ChatGPTTokenExchangeError';
 
   constructor(readonly status: number) {
     super(`ChatGPT token exchange failed with status ${status}`);
@@ -37,18 +36,18 @@ export class ChatGPTTokenExchangeError extends Error {
 }
 
 export class ChatGPTAccountIdMissingError extends Error {
-  override readonly name = "ChatGPTAccountIdMissingError";
+  override readonly name = 'ChatGPTAccountIdMissingError';
 
   constructor() {
-    super("ChatGPT token response is missing chatgpt_account_id");
+    super('ChatGPT token response is missing chatgpt_account_id');
   }
 }
 
 export class ChatGPTRefreshTokenMissingError extends Error {
-  override readonly name = "ChatGPTRefreshTokenMissingError";
+  override readonly name = 'ChatGPTRefreshTokenMissingError';
 
   constructor() {
-    super("ChatGPT token response is missing refresh_token");
+    super('ChatGPT token response is missing refresh_token');
   }
 }
 
@@ -62,7 +61,7 @@ export async function exchangeCodeForTokens(
       client_id: CHATGPT_CLIENT_ID,
       code,
       code_verifier: verifier,
-      grant_type: "authorization_code",
+      grant_type: 'authorization_code',
       redirect_uri: options.redirectUri ?? DEFAULT_REDIRECT_URI,
     }),
     options,
@@ -79,7 +78,7 @@ export async function refreshAccessToken(
   const body = await postTokenRequest(
     new URLSearchParams({
       client_id: CHATGPT_CLIENT_ID,
-      grant_type: "refresh_token",
+      grant_type: 'refresh_token',
       refresh_token: refreshToken,
       scope: REFRESH_SCOPE,
     }),
@@ -98,10 +97,10 @@ async function postTokenRequest<T>(
   const response = await (options.fetch ?? globalThis.fetch)(TOKEN_ENDPOINT, {
     body,
     headers: {
-      accept: "application/json",
-      "content-type": "application/x-www-form-urlencoded",
+      accept: 'application/json',
+      'content-type': 'application/x-www-form-urlencoded',
     },
-    method: "POST",
+    method: 'POST',
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
 

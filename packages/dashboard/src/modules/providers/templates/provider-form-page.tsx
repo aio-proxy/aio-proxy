@@ -1,19 +1,18 @@
-import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from '@aio-proxy/types';
+import { useNavigate } from '@tanstack/react-router';
+import { type FC, useRef, useState } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { useNavigate } from "@tanstack/react-router";
-import { type FC, useRef, useState } from "react";
+import { PageContainer } from '@/components/page-container';
+import { Button } from '@/components/ui/button';
 
-import { PageContainer } from "@/components/page-container";
-import { Button } from "@/components/ui/button";
-
-import { aliasEditorIssues, aliasIssueControlId } from "../alias-editor";
-import { DeleteProviderDialog, type DeleteProviderDialogRef } from "../components/delete-provider-dialog";
-import { ProviderFormFieldsAiSdk } from "../components/provider-form-fields-ai-sdk";
-import { ProviderFormFieldsApi } from "../components/provider-form-fields-api";
-import { ProviderFormMode } from "../constants";
-import { useProviderForm } from "../hooks/use-provider-form";
-import { useProviderCreate, useProviderUpdate } from "../hooks/use-provider-mutations";
+import { aliasEditorIssues, aliasIssueControlId } from '../alias-editor';
+import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
+import { ProviderFormFieldsAiSdk } from '../components/provider-form-fields-ai-sdk';
+import { ProviderFormFieldsApi } from '../components/provider-form-fields-api';
+import { ProviderFormMode } from '../constants';
+import { useProviderForm } from '../hooks/use-provider-form';
+import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
 
 type Props = {
   mode: ProviderFormMode;
@@ -26,7 +25,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
   const navigate = useNavigate();
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const [aliasOpen, setAliasOpen] = useState(false);
-  const [optionsValid, setOptionsValid] = useState(kind === "api");
+  const [optionsValid, setOptionsValid] = useState(kind === 'api');
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const isPending = isCreating || isUpdating;
@@ -39,7 +38,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
       if (mode === ProviderFormMode.Create) {
         createProvider(value, {
           onSuccess: () => {
-            void navigate({ to: "/providers" });
+            void navigate({ to: '/providers' });
           },
         });
       } else if (providerId) {
@@ -47,7 +46,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
           { id: providerId, body: value },
           {
             onSuccess: () => {
-              void navigate({ to: "/providers" });
+              void navigate({ to: '/providers' });
             },
           },
         );
@@ -56,17 +55,17 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
   });
 
   const title =
-    mode === ProviderFormMode.Create ? m["dashboard.providers.new_title"]() : m["dashboard.providers.edit_title"]();
+    mode === ProviderFormMode.Create ? m['dashboard.providers.new_title']() : m['dashboard.providers.edit_title']();
   const subtitle =
     mode === ProviderFormMode.Edit && providerId !== undefined
-      ? `${providerId} · ${kind === "api" ? m["dashboard.providers.kind_label.api"]() : m["dashboard.providers.kind_label.ai-sdk"]()}`
+      ? `${providerId} · ${kind === 'api' ? m['dashboard.providers.kind_label.api']() : m['dashboard.providers.kind_label.ai-sdk']()}`
       : undefined;
 
   const submit = () => {
     if (!optionsValid) {
       return;
     }
-    const issues = aliasEditorIssues(form.getFieldValue("alias") ?? {}, form.getFieldValue("models"));
+    const issues = aliasEditorIssues(form.getFieldValue('alias') ?? {}, form.getFieldValue('models'));
     const issue = issues[0];
     if (issue !== undefined) {
       setAliasOpen(true);
@@ -89,7 +88,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
             submit();
           }}
         >
-          {kind === "api" ? (
+          {kind === 'api' ? (
             <ProviderFormFieldsApi
               form={form}
               mode={mode}
@@ -110,15 +109,15 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
           <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
             <div className="flex gap-3">
               <Button type="submit" disabled={!optionsValid || isPending} data-testid="provider-save">
-                {m["dashboard.providers.actions.save"]()}
+                {m['dashboard.providers.actions.save']()}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 data-testid="provider-cancel"
-                onClick={() => void navigate({ to: "/providers" })}
+                onClick={() => void navigate({ to: '/providers' })}
               >
-                {m["dashboard.providers.actions.cancel"]()}
+                {m['dashboard.providers.actions.cancel']()}
               </Button>
             </div>
             {mode === ProviderFormMode.Edit && providerId !== undefined ? (
@@ -127,13 +126,13 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
                 variant="destructive"
                 onClick={() => deleteDialogRef.current?.open({ id: providerId })}
               >
-                {m["dashboard.providers.actions.delete"]()}
+                {m['dashboard.providers.actions.delete']()}
               </Button>
             ) : null}
           </div>
         </form>
       </div>
-      <DeleteProviderDialog ref={deleteDialogRef} onDeleted={() => void navigate({ to: "/providers" })} />
+      <DeleteProviderDialog ref={deleteDialogRef} onDeleted={() => void navigate({ to: '/providers' })} />
     </PageContainer>
   );
 };

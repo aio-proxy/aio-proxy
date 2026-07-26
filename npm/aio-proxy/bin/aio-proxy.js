@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-"use strict";
-const { spawn } = require("node:child_process");
+'use strict';
+const { spawn } = require('node:child_process');
 
 const pkg = `@aio-proxy/cli-${process.platform}-${process.arch}`;
 let binary;
@@ -14,14 +14,14 @@ try {
   process.exit(1);
 }
 
-const child = spawn(binary, process.argv.slice(2), { stdio: "inherit" });
+const child = spawn(binary, process.argv.slice(2), { stdio: 'inherit' });
 
-child.on("error", (error) => {
+child.on('error', (error) => {
   console.error(error.message);
   process.exit(1);
 });
 
-const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
+const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 const forwarders = {};
 for (const sig of signals) {
   forwarders[sig] = () => {
@@ -32,7 +32,7 @@ for (const sig of signals) {
   process.on(sig, forwarders[sig]);
 }
 
-child.on("exit", (code, signal) => {
+child.on('exit', (code, signal) => {
   for (const sig of signals) {
     process.removeListener(sig, forwarders[sig]);
   }
@@ -40,5 +40,5 @@ child.on("exit", (code, signal) => {
     process.kill(process.pid, signal);
     return;
   }
-  process.exit(typeof code === "number" ? code : 1);
+  process.exit(typeof code === 'number' ? code : 1);
 });

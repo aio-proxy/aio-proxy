@@ -1,7 +1,7 @@
 const SSE_RESPONSE_INIT = {
   headers: {
-    "cache-control": "no-cache",
-    "content-type": "text/event-stream; charset=utf-8",
+    'cache-control': 'no-cache',
+    'content-type': 'text/event-stream; charset=utf-8',
   },
 } as const;
 
@@ -54,7 +54,7 @@ export async function preflightStream<T>(stream: ReadableStream<T>): Promise<Rea
       released = true;
     }
   };
-  let first: Awaited<ReturnType<ReadableStreamDefaultReader<T>["read"]>>;
+  let first: Awaited<ReturnType<ReadableStreamDefaultReader<T>['read']>>;
   try {
     first = await reader.read();
   } catch (error) {
@@ -63,7 +63,7 @@ export async function preflightStream<T>(stream: ReadableStream<T>): Promise<Rea
   }
   if (first.done) {
     releaseReader();
-    throw new Error("Upstream model stream ended before the first event");
+    throw new Error('Upstream model stream ended before the first event');
   }
   let firstPending = true;
 

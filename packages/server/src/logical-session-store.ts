@@ -1,6 +1,5 @@
-import type { LogicalRequestContext, LogicalSessionSource } from "@aio-proxy/plugin-sdk";
-
-import { hashSession, normalizeSessionValue, type ProtocolSessionHints, selectSessionCandidate } from "@aio-proxy/core";
+import { hashSession, normalizeSessionValue, type ProtocolSessionHints, selectSessionCandidate } from '@aio-proxy/core';
+import type { LogicalRequestContext, LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 
 const DEFAULT_TTL_MS = 3_600_000;
 const DEFAULT_MAX_ENTRIES = 10_240;
@@ -17,7 +16,7 @@ export type LogicalSessionInput = {
   readonly internalSessionId?: string;
 };
 
-type SelectedSession = LogicalRequestContext["session"];
+type SelectedSession = LogicalRequestContext['session'];
 type ResponseSession = { readonly sessionKey: `sha256:${string}`; accessedAt: number };
 
 export class LogicalSessionStore {
@@ -50,10 +49,10 @@ export class LogicalSessionStore {
   }
 
   #internalCandidate(value: string | undefined): SelectedSession | undefined {
-    return value === undefined ? undefined : selectedValue("internal", value);
+    return value === undefined ? undefined : selectedValue('internal', value);
   }
 
-  #firstCandidate(candidates: ProtocolSessionHints["candidates"]): SelectedSession | undefined {
+  #firstCandidate(candidates: ProtocolSessionHints['candidates']): SelectedSession | undefined {
     const candidate = selectSessionCandidate({ protocol: candidates, headers: new Headers() });
     return candidate === undefined ? undefined : selectedValue(candidate.source, candidate.value);
   }
@@ -75,11 +74,11 @@ export class LogicalSessionStore {
       return undefined;
     }
     entry.accessedAt = now;
-    return { key: entry.sessionKey, source: "previous-response" };
+    return { key: entry.sessionKey, source: 'previous-response' };
   }
 
   #generatedCandidate(): SelectedSession {
-    return { key: hashSession("generated", crypto.randomUUID()), source: "generated" };
+    return { key: hashSession('generated', crypto.randomUUID()), source: 'generated' };
   }
 
   #evictOldest(): void {

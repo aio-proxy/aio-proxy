@@ -1,35 +1,34 @@
-import type { ModelCatalog } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
-import { expect, test } from "bun:test";
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { createToolImageMarker } from '@aio-proxy/plugin-sdk/openai-stream';
 
-import type { GitHubCopilotCredential } from "../github-api";
-
-import { credentialPort, withFetchMock } from "../../_test/test-support";
-import { createGitHubCopilotRuntime } from "./runtime";
+import { credentialPort, withFetchMock } from '../../__tests__/test-support';
+import type { GitHubCopilotCredential } from '../github-api';
+import { createGitHubCopilotRuntime } from './runtime';
 
 const toolImagePrompt = [
   {
-    role: "assistant" as const,
-    content: [{ type: "tool-call" as const, toolCallId: "call_1", toolName: "inspect", input: {} }],
+    role: 'assistant' as const,
+    content: [{ type: 'tool-call' as const, toolCallId: 'call_1', toolName: 'inspect', input: {} }],
   },
   {
-    role: "tool" as const,
+    role: 'tool' as const,
     content: [
       {
-        type: "tool-result" as const,
-        toolCallId: "call_1",
-        toolName: "inspect",
+        type: 'tool-result' as const,
+        toolCallId: 'call_1',
+        toolName: 'inspect',
         output: {
-          type: "content" as const,
+          type: 'content' as const,
           value: [
-            { type: "text" as const, text: "before" },
+            { type: 'text' as const, text: 'before' },
             {
-              type: "file" as const,
-              mediaType: "image/png",
-              data: { type: "data" as const, data: "AA==" },
+              type: 'file' as const,
+              mediaType: 'image/png',
+              data: { type: 'data' as const, data: 'AA==' },
               providerOptions: {
-                openai: { imageDetail: "low" },
+                openai: { imageDetail: 'low' },
                 aioProxy: createToolImageMarker(),
               },
             },
@@ -40,11 +39,11 @@ const toolImagePrompt = [
   },
 ] as const;
 
-test("compatible delegate emits CPA tool image content", async () => {
+test('compatible delegate emits CPA tool image content', async () => {
   const credentials = credentialPort(validCredential());
   const runtime = await createGitHubCopilotRuntime({
     credentials: credentials.port,
-    options: { deploymentType: "github.com" },
+    options: { deploymentType: 'github.com' },
     catalog: catalog(),
     fetch: (input, init) => globalThis.fetch(input, init),
   });
@@ -54,25 +53,25 @@ test("compatible delegate emits CPA tool image content", async () => {
     async (input, init) => {
       captured = new Request(input, init);
       return Response.json({
-        id: "chatcmpl-test",
+        id: 'chatcmpl-test',
         created: 1,
-        model: "gpt-chat",
-        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+        model: 'gpt-chat',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       });
     },
-    () => runtime.provider.languageModel("gpt-chat").doGenerate({ prompt: toolImagePrompt }),
+    () => runtime.provider.languageModel('gpt-chat').doGenerate({ prompt: toolImagePrompt }),
   );
 
   expect((await captured?.json()) as unknown).toMatchObject({
     messages: [
-      expect.objectContaining({ role: "assistant" }),
+      expect.objectContaining({ role: 'assistant' }),
       {
-        role: "tool",
-        tool_call_id: "call_1",
+        role: 'tool',
+        tool_call_id: 'call_1',
         content: [
-          { type: "text", text: "before" },
-          { type: "image_url", image_url: { url: "data:image/png;base64,AA==", detail: "low" } },
+          { type: 'text', text: 'before' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==', detail: 'low' } },
         ],
       },
     ],
@@ -81,7 +80,7 @@ test("compatible delegate emits CPA tool image content", async () => {
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: "gpt-chat", metadata: { protocol: "openai-compatible" } }],
+    language: [{ id: 'gpt-chat', metadata: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],
@@ -92,9 +91,9 @@ function catalog(): ModelCatalog {
 
 function validCredential(): GitHubCopilotCredential {
   return {
-    githubToken: "github-token",
-    copilotToken: "copilot-token",
+    githubToken: 'github-token',
+    copilotToken: 'copilot-token',
     expiresAt: Date.now() + 60_000,
-    baseURL: "https://api.githubcopilot.com",
+    baseURL: 'https://api.githubcopilot.com',
   };
 }

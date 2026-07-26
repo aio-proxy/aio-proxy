@@ -1,4 +1,4 @@
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderProtocol } from '@aio-proxy/types';
 
 export type OpenRouterModelPrice = {
   readonly id: string;
@@ -23,8 +23,8 @@ export type UsageCostResult = {
 };
 
 export type UsageAccounting =
-  | { readonly source: "passthrough"; readonly protocol: ProviderProtocol }
-  | { readonly source: "ai-sdk" };
+  | { readonly source: 'passthrough'; readonly protocol: ProviderProtocol }
+  | { readonly source: 'ai-sdk' };
 
 export function calculateEstimatedCost(
   usage: UsagePricingInput,
@@ -57,7 +57,7 @@ function toBillableUsage(
   price: OpenRouterModelPrice,
   accounting: UsageAccounting,
 ): UsagePricingInput {
-  if (accounting.source === "ai-sdk") {
+  if (accounting.source === 'ai-sdk') {
     return inclusiveBillableUsage(usage, price);
   }
 

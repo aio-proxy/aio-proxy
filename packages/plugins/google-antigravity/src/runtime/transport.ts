@@ -1,22 +1,21 @@
-import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityAccountOptions } from "../schema";
-import type { AntigravityCredentialSource } from "./credential";
+import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
+import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/replay-cache';
+import type { GoogleAntigravityAccountOptions } from '../schema';
+import type { AntigravityCredentialSource } from './credential';
+import { antigravityEndpoints } from './endpoints';
+import { type CcaRequestType, createCcaEnvelope } from './envelope';
+import { hasExplicitNoCapacity } from './error-response';
+import { type AntigravityEndpointCategory, type AntigravityFailureReason, AntigravityUpstreamError } from './errors';
+import { createCcaHeaders } from './headers';
+import { retryAfterMilliseconds } from './retry-after';
+import { captureReasoningReplay, isSignatureInvalidResponse, prepareReasoningReplay } from './session-state';
+import { preflightCcaSse } from './stream';
 
-import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from "../oauth/constants";
-import { antigravityReplayCache, type ReasoningReplayCache } from "../protocol/replay-cache";
-import { antigravityEndpoints } from "./endpoints";
-import { type CcaRequestType, createCcaEnvelope } from "./envelope";
-import { hasExplicitNoCapacity } from "./error-response";
-import { type AntigravityEndpointCategory, type AntigravityFailureReason, AntigravityUpstreamError } from "./errors";
-import { createCcaHeaders } from "./headers";
-import { retryAfterMilliseconds } from "./retry-after";
-import { captureReasoningReplay, isSignatureInvalidResponse, prepareReasoningReplay } from "./session-state";
-import { preflightCcaSse } from "./stream";
-
-const GENERATE_PATH = "/v1internal:generateContent";
-const STREAM_PATH = "/v1internal:streamGenerateContent?alt=sse";
-const COUNT_PATH = "/v1internal:countTokens";
+const GENERATE_PATH = '/v1internal:generateContent';
+const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse';
+const COUNT_PATH = '/v1internal:countTokens';
 
 export type AntigravityExecuteInput = {
   readonly body: Readonly<Record<string, unknown>>;
@@ -24,7 +23,7 @@ export type AntigravityExecuteInput = {
   readonly modelId: string;
   readonly requestType: CcaRequestType;
   readonly stream: boolean;
-  readonly operation?: "countTokens";
+  readonly operation?: 'countTokens';
   readonly signal?: AbortSignal;
 };
 
@@ -65,7 +64,7 @@ export class AntigravityTransport implements CcaTransport {
     let authRefreshUsed = false;
     let lastFailure: AntigravityUpstreamError | undefined;
     let signatureRetryUsed = false;
-    const endpoints = antigravityEndpoints(this.#options, "inference");
+    const endpoints = antigravityEndpoints(this.#options, 'inference');
 
     for (const endpoint of endpoints) {
       const category = endpointCategory(endpoint, this.#options);
@@ -75,7 +74,7 @@ export class AntigravityTransport implements CcaTransport {
         let response: Response;
         try {
           response = await this.#fetch(`${endpoint}${requestPath(input)}`, {
-            method: "POST",
+            method: 'POST',
             headers: createCcaHeaders(credential, input.stream),
             body,
             ...(input.signal === undefined ? {} : { signal: input.signal }),
@@ -83,7 +82,7 @@ export class AntigravityTransport implements CcaTransport {
         } catch (error) {
           throwIfCallerAborted(input.signal);
           if (!isRetryableNetworkFailure(error)) throw error;
-          lastFailure = upstreamError(category, "upstream_network");
+          lastFailure = upstreamError(category, 'upstream_network');
           break;
         }
         throwIfCallerAborted(input.signal);
@@ -96,7 +95,7 @@ export class AntigravityTransport implements CcaTransport {
         }
 
         if (response.status === 429 && !shortRetryUsed) {
-          const delay = retryAfterMilliseconds(response.headers.get("retry-after"));
+          const delay = retryAfterMilliseconds(response.headers.get('retry-after'));
           if (delay < 3_000) {
             await discard(response);
             shortRetryUsed = true;
@@ -128,7 +127,7 @@ export class AntigravityTransport implements CcaTransport {
         if (input.stream && response.ok) {
           try {
             const preflight = await preflightCcaSse(response);
-            if (preflight.event?.kind === "retryable-error") {
+            if (preflight.event?.kind === 'retryable-error') {
               lastFailure = upstreamError(category, preflight.event.reason, preflight.event.status);
               await discard(preflight.response);
               break;
@@ -137,7 +136,7 @@ export class AntigravityTransport implements CcaTransport {
           } catch (error) {
             throwIfCallerAborted(input.signal);
             if (!isRetryableNetworkFailure(error)) throw error;
-            lastFailure = upstreamError(category, "upstream_network");
+            lastFailure = upstreamError(category, 'upstream_network');
             break;
           }
         }
@@ -146,12 +145,12 @@ export class AntigravityTransport implements CcaTransport {
       }
     }
 
-    throw lastFailure ?? upstreamError("custom", "upstream_network");
+    throw lastFailure ?? upstreamError('custom', 'upstream_network');
   }
 }
 
 function requestPath(input: AntigravityExecuteInput): string {
-  if (input.operation === "countTokens") return COUNT_PATH;
+  if (input.operation === 'countTokens') return COUNT_PATH;
   return input.stream ? STREAM_PATH : GENERATE_PATH;
 }
 
@@ -160,10 +159,10 @@ async function retryableResponse(
   category: AntigravityEndpointCategory,
   signal: AbortSignal | undefined,
 ): Promise<AntigravityUpstreamError | undefined> {
-  if (response.status === 429) return upstreamError(category, "upstream_rate_limited", 429);
+  if (response.status === 429) return upstreamError(category, 'upstream_rate_limited', 429);
   if (response.status !== 503) return undefined;
   return (await hasExplicitNoCapacity(response, signal))
-    ? upstreamError(category, "upstream_no_capacity", 503)
+    ? upstreamError(category, 'upstream_no_capacity', 503)
     : undefined;
 }
 
@@ -178,22 +177,22 @@ async function sleepWithSignal(
   const aborted = new Promise<never>((_resolve, reject) => {
     abort = () => {
       const reason: unknown = signal.reason;
-      reject(reason ?? new DOMException("The operation was aborted", "AbortError"));
+      reject(reason ?? new DOMException('The operation was aborted', 'AbortError'));
     };
-    signal.addEventListener("abort", abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true });
   });
   try {
     await Promise.race([sleep(milliseconds), aborted]);
   } finally {
-    signal.removeEventListener("abort", abort);
+    signal.removeEventListener('abort', abort);
   }
 }
 
 function endpointCategory(endpoint: string, options: GoogleAntigravityAccountOptions): AntigravityEndpointCategory {
-  if (options.baseURL !== undefined) return "custom";
-  if (endpoint === ANTIGRAVITY_DAILY) return "daily";
-  if (endpoint === ANTIGRAVITY_PROD) return "prod";
-  return "custom";
+  if (options.baseURL !== undefined) return 'custom';
+  if (endpoint === ANTIGRAVITY_DAILY) return 'daily';
+  if (endpoint === ANTIGRAVITY_PROD) return 'prod';
+  return 'custom';
 }
 
 function upstreamError(
@@ -211,29 +210,29 @@ async function discard(response: Response): Promise<void> {
 function throwIfCallerAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted !== true) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
 const RETRYABLE_NETWORK_CODES = new Set([
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "EPIPE",
-  "ETIMEDOUT",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_SOCKET",
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
 ]);
 
 function isRetryableNetworkFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true;
   if (!(error instanceof Error)) return false;
-  return isRetryableNetworkCode(Reflect.get(error, "code")) || isRetryableNetworkCode(Reflect.get(error, "cause"));
+  return isRetryableNetworkCode(Reflect.get(error, 'code')) || isRetryableNetworkCode(Reflect.get(error, 'cause'));
 }
 
 function isRetryableNetworkCode(value: unknown): boolean {
-  if (typeof value === "string") return RETRYABLE_NETWORK_CODES.has(value);
-  if (typeof value !== "object" || value === null) return false;
-  const code = Reflect.get(value, "code");
-  return typeof code === "string" && RETRYABLE_NETWORK_CODES.has(code);
+  if (typeof value === 'string') return RETRYABLE_NETWORK_CODES.has(value);
+  if (typeof value !== 'object' || value === null) return false;
+  const code = Reflect.get(value, 'code');
+  return typeof code === 'string' && RETRYABLE_NETWORK_CODES.has(code);
 }

@@ -1,17 +1,15 @@
-import type { AiSdkProvider, ApiProvider } from "@aio-proxy/types";
+import type { AiSdkProvider, ApiProvider } from '@aio-proxy/types';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-
-import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from "../../ai-sdk-bridge";
-import type { AiSdkProviderLoadOptions } from "../ai-sdk-loader/index";
-
-import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from "../ai-sdk/index";
-import { resolveApiKey } from "../api/index";
+import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
+import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
+import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from '../ai-sdk/index';
+import { resolveApiKey } from '../api/index';
 
 type BridgeMapping = {
   readonly options: AiSdkProviderLoadOptions;
   readonly packageName: string;
-  readonly resolveModel?: AiSdkProviderFactoryOptions["resolveModel"];
+  readonly resolveModel?: AiSdkProviderFactoryOptions['resolveModel'];
 };
 
 type RuntimeProviderMethods = {
@@ -56,7 +54,7 @@ function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: strin
   switch (provider.protocol) {
     case ProviderProtocol.OpenAICompatible:
       return {
-        packageName: "@ai-sdk/openai-compatible",
+        packageName: '@ai-sdk/openai-compatible',
         options: {
           ...sharedOptions,
           name: providerId,
@@ -64,17 +62,17 @@ function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: strin
       };
     case ProviderProtocol.Anthropic:
       return {
-        packageName: "@ai-sdk/anthropic",
+        packageName: '@ai-sdk/anthropic',
         options: sharedOptions,
       };
     case ProviderProtocol.Gemini:
       return {
-        packageName: "@ai-sdk/google",
+        packageName: '@ai-sdk/google',
         options: sharedOptions,
       };
     case ProviderProtocol.OpenAIResponse:
       return {
-        packageName: "@ai-sdk/openai",
+        packageName: '@ai-sdk/openai',
         options: sharedOptions,
         resolveModel: resolveOpenAIResponsesModel,
       };
@@ -96,11 +94,11 @@ export function resolveOpenAIResponsesModel(
 }
 
 function hasResponses(provider: unknown): provider is ResponsesProvider {
-  return hasRuntimeProviderMethods(provider) && typeof provider.responses === "function";
+  return hasRuntimeProviderMethods(provider) && typeof provider.responses === 'function';
 }
 
 function hasRuntimeProviderMethods(value: unknown): value is RuntimeProviderMethods {
-  return (typeof value === "object" && value !== null) || typeof value === "function";
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
 function assertNever(value: never): never {

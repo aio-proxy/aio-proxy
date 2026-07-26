@@ -1,14 +1,13 @@
-import { ProviderProtocol } from "@aio-proxy/types";
+import { ProviderProtocol } from '@aio-proxy/types';
 
-import type { SessionCandidate } from "./session";
-
-import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from "../egress/openai-completions";
-import { type OpenAICompletionsRequest, parseOpenAICompletions } from "../ingress/openai-completions";
-import { openAICompletionsToModelMessages } from "../transform/openai-completions/index";
-import { defineProtocolAdapter, type EmptyProtocolContext } from "./adapter";
-import { openAICompletionsErrors } from "./errors";
-import { readJsonRequest, rewriteJsonRequestModel } from "./request";
-import { functionToolSet } from "./tools";
+import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../egress/openai-completions';
+import { type OpenAICompletionsRequest, parseOpenAICompletions } from '../ingress/openai-completions';
+import { openAICompletionsToModelMessages } from '../transform/openai-completions/index';
+import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
+import { openAICompletionsErrors } from './errors';
+import { readJsonRequest, rewriteJsonRequestModel } from './request';
+import type { SessionCandidate } from './session';
+import { functionToolSet } from './tools';
 
 export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsRequest, EmptyProtocolContext>({
   protocol: ProviderProtocol.OpenAICompatible,
@@ -19,11 +18,11 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
   variant: (request) => request.reasoning_effort,
   session: (request) => ({
     candidates: [
-      candidate("openai-prompt-cache", request.prompt_cache_key),
-      candidate("body-session", request.metadata?.session_id),
-      candidate("body-conversation", request.metadata?.conversation_id),
-      candidate("body-session", request.session_id),
-      candidate("body-conversation", request.conversation_id),
+      candidate('openai-prompt-cache', request.prompt_cache_key),
+      candidate('body-session', request.metadata?.session_id),
+      candidate('body-conversation', request.metadata?.conversation_id),
+      candidate('body-session', request.session_id),
+      candidate('body-conversation', request.conversation_id),
     ].filter(isCandidate),
     transcript: request.messages,
   }),
@@ -45,7 +44,7 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
   errors: openAICompletionsErrors,
 });
 
-function candidate(source: SessionCandidate["source"], value: string | undefined): SessionCandidate | undefined {
+function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {
   return value === undefined ? undefined : { source, value };
 }
 

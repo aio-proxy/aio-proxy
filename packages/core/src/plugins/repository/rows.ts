@@ -1,6 +1,6 @@
-import type { Diagnostic } from "@aio-proxy/types";
+import type { Diagnostic } from '@aio-proxy/types';
 
-import type { PendingAccountOperation, StoredAccount, StoredAccountSummary, StoredCatalog } from "./types";
+import type { PendingAccountOperation, StoredAccount, StoredAccountSummary, StoredCatalog } from './types';
 
 export type AccountRow = {
   readonly provider_id: string;
@@ -16,14 +16,14 @@ export type AccountRow = {
   readonly expires_at: number | null;
   readonly updated_at: number;
 };
-export type AccountSummaryRow = Omit<AccountRow, "options_json" | "secret_json" | "credential_json">;
+export type AccountSummaryRow = Omit<AccountRow, 'options_json' | 'secret_json' | 'credential_json'>;
 export type CatalogRow = { readonly catalog_json: string; readonly refreshed_at: number };
 export type DiagnosticRow = { readonly diagnostic_json: string };
 export type PluginSecretRow = { readonly value_json: string; readonly revision: number };
 export type PendingRow = {
   readonly operation_id: string;
   readonly provider_id: string;
-  readonly kind: "create" | "update" | "delete";
+  readonly kind: 'create' | 'update' | 'delete';
   readonly target_digest: string;
   readonly applied_revision: number;
   readonly previous_revision: number | null;
@@ -34,12 +34,12 @@ export type RollbackSnapshot = StoredAccount & {
   readonly catalog: StoredCatalog | null;
   readonly diagnostics: readonly Diagnostic[];
 };
-export type ChildSnapshot = Pick<RollbackSnapshot, "catalog" | "diagnostics">;
+export type ChildSnapshot = Pick<RollbackSnapshot, 'catalog' | 'diagnostics'>;
 export type AccountOperationRollback = { readonly previous: RollbackSnapshot; readonly applied: ChildSnapshot };
 
 export function encodeJson(value: unknown): string {
   const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new TypeError("Plugin vault values must be JSON serializable");
+  if (encoded === undefined) throw new TypeError('Plugin vault values must be JSON serializable');
   return encoded;
 }
 export function decodeJson<T>(value: string): T {

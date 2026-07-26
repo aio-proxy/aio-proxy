@@ -6,26 +6,34 @@ import {
   type PluginRegistrySnapshot,
   type PluginRepository,
   type Router,
-} from "@aio-proxy/core";
-import { type Config, type DashboardProviderSummary, ProviderKind, type ProviderState } from "@aio-proxy/types";
-import { compact } from "es-toolkit/array";
-
-import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
-import type { ServerStateOptions } from "./types";
+} from '@aio-proxy/core';
+import {
+  type Config,
+  type DashboardProviderSummary,
+  type OAuthProvider,
+  ProviderKind,
+  type ProviderState,
+} from '@aio-proxy/types';
+import { compact } from 'es-toolkit/array';
 
 import {
   type CatalogJobDescriptor,
   materializePluginProvider,
+  type PluginOptionsIdentityDigest,
+  type PluginProviderMaterialization,
   type PluginRuntimeCacheEntry,
   pluginOptionsIdentityDigest,
-} from "../plugin-runtime";
+} from '../plugin-runtime';
 import {
   materializeProviders,
   materializeRuntimeProvider,
   type ProviderProbe,
+  type ProviderRuntime,
   providerSummary,
-} from "../provider-runtime";
-import { createObservedFetch } from "../request-logging";
+} from '../provider-runtime';
+import { createObservedFetch } from '../request-logging';
+import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import type { ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
@@ -55,49 +63,13 @@ export async function buildSnapshot(
 ): Promise<Snapshot> {
   const runtimeFetch = globalThis.fetch;
   const runtimeModelFetch = createObservedFetch(runtimeFetch);
-  const builtIns = options.builtIns ?? createEmbeddedBuiltIns();
-  const publicPluginOptions = new Map<string, unknown>(builtIns.map((plugin) => [plugin.packageName, undefined]));
-  for (const enablement of config.plugins) publicPluginOptions.set(enablement.packageName, enablement.options);
-  for (const provider of config.providers) {
-    if (provider.kind === ProviderKind.OAuth && !publicPluginOptions.has(provider.plugin)) {
-      publicPluginOptions.set(provider.plugin, undefined);
-    }
-  }
-  const pluginOptionInputs = new Map<
-    string,
-    { public: unknown; secret: unknown } | { public: unknown; error: unknown }
-  >(
-    [...publicPluginOptions].map(([packageName, publicOptions]) => {
-      try {
-        return [
-          packageName,
-          { public: publicOptions, secret: repository.readPluginSecret(packageName)?.value },
-        ] as const;
-      } catch (error) {
-        return [packageName, { public: publicOptions, error }] as const;
-      }
-    }),
-  );
-  const pluginOptionsDigests = new Map(
-    [...pluginOptionInputs].map(([packageName, input]) => [
-      packageName,
-      pluginOptionsIdentityDigest("error" in input ? { public: input.public, secret: undefined } : input),
-    ]),
-  );
-  const plugins = await loadPluginRegistry({
-    enablements: config.plugins,
-    builtIns,
+  const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
+    config,
+    options,
+    repository,
     diagnostics,
-    importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
     logger,
-    secrets: {
-      readPluginSecret(plugin) {
-        const input = pluginOptionInputs.get(plugin);
-        if (input !== undefined && "error" in input) throw input.error;
-        return input?.secret;
-      },
-    },
-  });
+  );
   const nonOAuth = {
     ...config,
     providers: config.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
@@ -120,54 +92,14 @@ export async function buildSnapshot(
         pluginOptionsDigest,
         runtimeFetch,
         runtimeModelFetch,
-        ...(pluginOptionInput === undefined || "error" in pluginOptionInput
+        ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),
         ...(previousEntry === undefined ? {} : { previous: previousEntry }),
       });
     }),
   );
-  const providerById = new Map(
-    [...base.providers, ...compact(oauth.map((item) => item.provider))].map(
-      (provider) => [provider.id, provider] as const,
-    ),
-  );
-  const providers = compact(config.providers.map((configured) => providerById.get(configured.id)));
-  const summaryById = new Map(
-    [...base.summaries, ...oauth.map((item) => item.summary)].map((summary) => [summary.id, summary] as const),
-  );
-  const summaryBases = [
-    ...config.invalidProviders.map(
-      (invalid) =>
-        ({
-          id: invalid.id,
-          kind: invalid.kind ?? "invalid",
-          enabled: false,
-          passthrough: false,
-          last_status: "unknown",
-          last_latency: null,
-          clientModels: [],
-        }) satisfies Omit<DashboardProviderSummary, "state">,
-    ),
-    ...compact(config.providers.map((configured) => summaryById.get(configured.id))),
-  ];
-  const assembledStates = new Map<string, ProviderState>();
-  for (const provider of nonOAuth.providers) assembledStates.set(provider.id, { status: "ready" });
-  for (const invalid of config.invalidProviders) {
-    assembledStates.set(invalid.id, {
-      status: "unavailable",
-      diagnostic: diagnostics(invalid.code, { providerId: invalid.id, retryable: false }),
-    });
-  }
-  oauth.forEach((item, index) => {
-    const provider = oauthConfigs[index];
-    if (provider !== undefined) assembledStates.set(provider.id, item.state);
-  });
-  const summaries = summaryBases.map((summary): DashboardProviderSummary => {
-    const state = assembledStates.get(summary.id);
-    if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
-    return { ...summary, state };
-  });
+  const { providers, summaries } = assembleProviders(config, nonOAuth, base, oauth, oauthConfigs, diagnostics);
   return {
     config,
     plugins,
@@ -187,6 +119,115 @@ export async function buildSnapshot(
   };
 }
 
+type PluginOptionInput = { public: unknown; secret: unknown } | { public: unknown; error: unknown };
+type LoadedPlugins = {
+  readonly plugins: PluginRegistrySnapshot;
+  readonly pluginOptionInputs: ReadonlyMap<string, PluginOptionInput>;
+  readonly pluginOptionsDigests: ReadonlyMap<string, PluginOptionsIdentityDigest>;
+};
+
+async function loadPlugins(
+  config: Config,
+  options: ServerStateOptions,
+  repository: PluginRepository,
+  diagnostics: DiagnosticFactory,
+  logger: PluginLogSink,
+): Promise<LoadedPlugins> {
+  const builtIns = options.builtIns ?? createEmbeddedBuiltIns();
+  const publicPluginOptions = new Map<string, unknown>(builtIns.map((plugin) => [plugin.packageName, undefined]));
+  for (const enablement of config.plugins) publicPluginOptions.set(enablement.packageName, enablement.options);
+  for (const provider of config.providers) {
+    if (provider.kind === ProviderKind.OAuth && !publicPluginOptions.has(provider.plugin)) {
+      publicPluginOptions.set(provider.plugin, undefined);
+    }
+  }
+  const pluginOptionInputs = new Map<string, PluginOptionInput>(
+    [...publicPluginOptions].map(([packageName, publicOptions]) => {
+      try {
+        return [
+          packageName,
+          { public: publicOptions, secret: repository.readPluginSecret(packageName)?.value },
+        ] as const;
+      } catch (error) {
+        return [packageName, { public: publicOptions, error }] as const;
+      }
+    }),
+  );
+  const pluginOptionsDigests = new Map(
+    [...pluginOptionInputs].map(([packageName, input]) => [
+      packageName,
+      pluginOptionsIdentityDigest('error' in input ? { public: input.public, secret: undefined } : input),
+    ]),
+  );
+  const plugins = await loadPluginRegistry({
+    enablements: config.plugins,
+    builtIns,
+    diagnostics,
+    importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
+    logger,
+    secrets: {
+      readPluginSecret(plugin) {
+        const input = pluginOptionInputs.get(plugin);
+        if (input !== undefined && 'error' in input) throw input.error;
+        return input?.secret;
+      },
+    },
+  });
+  return { plugins, pluginOptionInputs, pluginOptionsDigests };
+}
+
+function assembleProviders(
+  config: Config,
+  nonOAuth: Config,
+  base: ProviderRuntime,
+  oauth: readonly PluginProviderMaterialization[],
+  oauthConfigs: readonly OAuthProvider[],
+  diagnostics: DiagnosticFactory,
+): { readonly providers: readonly RuntimeProviderInstance[]; readonly summaries: readonly DashboardProviderSummary[] } {
+  const providerById = new Map(
+    [...base.providers, ...compact(oauth.map((item) => item.provider))].map(
+      (provider) => [provider.id, provider] as const,
+    ),
+  );
+  const providers = compact(config.providers.map((configured) => providerById.get(configured.id)));
+  const summaryById = new Map(
+    [...base.summaries, ...oauth.map((item) => item.summary)].map((summary) => [summary.id, summary] as const),
+  );
+  const summaryBases = [
+    ...config.invalidProviders.map(
+      (invalid) =>
+        ({
+          id: invalid.id,
+          kind: invalid.kind ?? 'invalid',
+          enabled: false,
+          passthrough: false,
+          last_status: 'unknown',
+          last_latency: null,
+          clientModels: [],
+        }) satisfies Omit<DashboardProviderSummary, 'state'>,
+    ),
+    ...compact(config.providers.map((configured) => summaryById.get(configured.id))),
+  ];
+  const assembledStates = new Map<string, ProviderState>();
+  for (const provider of nonOAuth.providers) assembledStates.set(provider.id, { status: 'ready' });
+  for (const invalid of config.invalidProviders) {
+    assembledStates.set(invalid.id, {
+      status: 'unavailable',
+      diagnostic: diagnostics(invalid.code, { providerId: invalid.id, retryable: false }),
+    });
+  }
+  oauth.forEach((item, index) => {
+    const provider = oauthConfigs[index];
+    if (provider !== undefined) assembledStates.set(provider.id, item.state);
+  });
+  const summaries = summaryBases.map((summary): DashboardProviderSummary => {
+    const state = assembledStates.get(summary.id);
+    if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
+    return { ...summary, state };
+  });
+  return { providers, summaries };
+}
+
 export function providerConfigRecord(config: Config): Record<string, unknown> {
   return Object.fromEntries([
     ...config.providers.map(({ id, ...provider }) => [id, provider] as const),
@@ -202,7 +243,7 @@ export function buildSnapshotWithProviders(
   const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
   const summaries = materialized.map((provider) => ({
     ...providerSummary(provider),
-    state: { status: "ready" } as const,
+    state: { status: 'ready' } as const,
   }));
   return {
     config,

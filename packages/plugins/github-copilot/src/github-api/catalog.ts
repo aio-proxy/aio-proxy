@@ -1,10 +1,9 @@
-import type { CredentialPort, ModelDescriptor, ProtocolId } from "@aio-proxy/plugin-sdk";
+import type { CredentialPort, ModelDescriptor, ProtocolId } from '@aio-proxy/plugin-sdk';
 
-import type { GitHubCopilotCredential } from "./types";
-
-import { copilotModelSchema, modelsResponseSchema } from "../schema";
-import { currentGitHubCopilotCredential } from "./credential";
-import { copilotHeaders, fetchJson } from "./http";
+import { copilotModelSchema, modelsResponseSchema } from '../schema';
+import { currentGitHubCopilotCredential } from './credential';
+import { copilotHeaders, fetchJson } from './http';
+import type { GitHubCopilotCredential } from './types';
 
 export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 
@@ -39,8 +38,8 @@ function modelEntry(value: unknown): ModelDescriptor | undefined {
 }
 
 function protocolFromEndpoints(endpoints: readonly string[]): ProtocolId | undefined {
-  if (endpoints.some((endpoint) => endpoint.includes("/v1/messages"))) return "anthropic";
-  if (endpoints.some((endpoint) => endpoint.includes("/responses"))) return "openai-response";
-  if (endpoints.some((endpoint) => endpoint.includes("/chat/completions"))) return "openai-compatible";
+  if (endpoints.some((endpoint) => endpoint.includes('/v1/messages'))) return 'anthropic';
+  if (endpoints.some((endpoint) => endpoint.includes('/responses'))) return 'openai-response';
+  if (endpoints.some((endpoint) => endpoint.includes('/chat/completions'))) return 'openai-compatible';
   return undefined;
 }

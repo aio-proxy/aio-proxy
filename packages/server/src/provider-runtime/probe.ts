@@ -1,7 +1,6 @@
-import type { ApiProviderInstance } from "@aio-proxy/core";
-import type { DashboardProviderProbe, Provider } from "@aio-proxy/types";
-
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
+import type { ApiProviderInstance } from '@aio-proxy/core';
+import type { DashboardProviderProbe, Provider, ProviderKind } from '@aio-proxy/types';
+import { ProviderProtocol } from '@aio-proxy/types';
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
 
@@ -15,24 +14,24 @@ export async function probeApi(
   try {
     const model = providerProbeModel(provider);
     if (model === undefined) {
-      return "FAIL";
+      return 'FAIL';
     }
     const request = providerProbeRequest(provider, model);
     const response = await instance.passthrough(
       new Request(request.url, {
         body: JSON.stringify(request.body),
-        headers: { "content-type": "application/json" },
-        method: "POST",
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
         signal: AbortSignal.timeout(1_000),
       }),
     );
     if (response.body !== null) {
       await response.body.cancel();
     }
-    return response.ok ? "OK" : "FAIL";
+    return response.ok ? 'OK' : 'FAIL';
   } catch (error) {
     if (error instanceof Error) {
-      return "FAIL";
+      return 'FAIL';
     }
     throw error;
   }
@@ -45,20 +44,20 @@ export function providerProbeRequest(
   const url = new URL(provider.baseURL);
   switch (provider.protocol) {
     case ProviderProtocol.OpenAICompatible:
-      url.pathname = "/v1/chat/completions";
+      url.pathname = '/v1/chat/completions';
       return {
-        body: { max_tokens: probeMaxOutputTokens, messages: [{ role: "user", content: "ping" }], model },
+        body: { max_tokens: probeMaxOutputTokens, messages: [{ role: 'user', content: 'ping' }], model },
         url,
       };
     case ProviderProtocol.OpenAIResponse:
-      url.pathname = "/v1/responses";
-      return { body: { input: "ping", max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
+      url.pathname = '/v1/responses';
+      return { body: { input: 'ping', max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
     case ProviderProtocol.Anthropic:
-      url.pathname = "/v1/messages";
+      url.pathname = '/v1/messages';
       return {
         body: {
           max_tokens: probeMaxOutputTokens,
-          messages: [{ role: "user", content: "ping" }],
+          messages: [{ role: 'user', content: 'ping' }],
           model,
         },
         url,
@@ -67,7 +66,7 @@ export function providerProbeRequest(
       url.pathname = `/v1beta/models/${model}:generateContent`;
       return {
         body: {
-          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
           generationConfig: { maxOutputTokens: probeMaxOutputTokens },
         },
         url,
@@ -86,15 +85,15 @@ export async function probeAiSdk(provider: {
   readonly ensureAvailable?: () => Promise<void>;
 }): Promise<DashboardProviderProbe> {
   if (provider.ensureAvailable === undefined) {
-    return "OK";
+    return 'OK';
   }
 
   try {
     await provider.ensureAvailable();
-    return "OK";
+    return 'OK';
   } catch (error) {
     if (error instanceof Error) {
-      return "FAIL";
+      return 'FAIL';
     }
     throw error;
   }

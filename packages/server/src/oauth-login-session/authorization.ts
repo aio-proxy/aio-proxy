@@ -1,9 +1,8 @@
-import type { AuthorizationPort, LoopbackRequest } from "@aio-proxy/plugin-sdk";
-import type { DashboardOAuthSession } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { AuthorizationPort, LoopbackRequest } from '@aio-proxy/plugin-sdk';
+import type { DashboardOAuthSession } from '@aio-proxy/types';
 
-import { m } from "@aio-proxy/i18n";
-
-import { loopbackRedirectUri, OAuthCallbackError, parseOAuthCallback, requireHttpUrl } from "./callback";
+import { loopbackRedirectUri, OAuthCallbackError, parseOAuthCallback, requireHttpUrl } from './callback';
 
 type LoopbackResult = { readonly code: string; readonly redirectUri: string };
 type LoopbackServer = ReturnType<typeof Bun.serve>;
@@ -24,7 +23,7 @@ export const createDashboardAuthorization = (options: {
 
   const loopback = async (request: LoopbackRequest): Promise<LoopbackResult> => {
     let server: LoopbackServer | undefined;
-    const requestedPort = request.redirect.port === "dynamic" ? 0 : request.redirect.port;
+    const requestedPort = request.redirect.port === 'dynamic' ? 0 : request.redirect.port;
     let expectedRedirectUri: string;
     let settled = false;
     let resolveResult = (_value: LoopbackResult) => {};
@@ -49,7 +48,7 @@ export const createDashboardAuthorization = (options: {
         const { code } = parseOAuthCallback(raw, expectedRedirectUri, request.state);
         settle({ ok: true, result: { code, redirectUri: expectedRedirectUri } });
       } catch (error) {
-        if (error instanceof OAuthCallbackError && error.code === "AUTHORIZATION_DENIED") {
+        if (error instanceof OAuthCallbackError && error.code === 'AUTHORIZATION_DENIED') {
           settle({ ok: false, error });
         }
         throw error;
@@ -59,7 +58,7 @@ export const createDashboardAuthorization = (options: {
     try {
       try {
         server = Bun.serve({
-          hostname: "127.0.0.1",
+          hostname: '127.0.0.1',
           port: requestedPort,
           fetch(incoming) {
             const url = new URL(incoming.url);
@@ -69,7 +68,7 @@ export const createDashboardAuthorization = (options: {
             try {
               accept(incoming.url);
               return new Response(m.cli_oauth_success_html(), {
-                headers: { "content-type": "text/html; charset=utf-8" },
+                headers: { 'content-type': 'text/html; charset=utf-8' },
               });
             } catch {
               return new Response(m.cli_oauth_invalid_callback_response(), { status: 400 });
@@ -77,26 +76,26 @@ export const createDashboardAuthorization = (options: {
           },
         });
       } catch {
-        if (request.redirect.port === "dynamic" || !request.allowManualCallbackUrl) {
-          throw new OAuthCallbackError("CALLBACK_PORT_UNAVAILABLE");
+        if (request.redirect.port === 'dynamic' || !request.allowManualCallbackUrl) {
+          throw new OAuthCallbackError('CALLBACK_PORT_UNAVAILABLE');
         }
       }
       const port = server?.port ?? requestedPort;
-      if (port === 0) throw new OAuthCallbackError("CALLBACK_PORT_UNAVAILABLE");
+      if (port === 0) throw new OAuthCallbackError('CALLBACK_PORT_UNAVAILABLE');
       expectedRedirectUri = loopbackRedirectUri(request, port);
       const authorizationUrl = requireHttpUrl(request.authorizationUrl({ redirectUri: expectedRedirectUri })).href;
       submit = accept;
       options.publish({
         id: options.sessionId,
-        status: "loopback",
+        status: 'loopback',
         authorizationUrl,
         allowManualCallback: request.allowManualCallbackUrl,
       });
 
       const abort = () => settle({ ok: false, error: options.signal.reason });
-      options.signal.addEventListener("abort", abort, { once: true });
+      options.signal.addEventListener('abort', abort, { once: true });
       closeCurrent = () => {
-        options.signal.removeEventListener("abort", abort);
+        options.signal.removeEventListener('abort', abort);
         submit = undefined;
         void server?.stop();
       };
@@ -117,7 +116,7 @@ export const createDashboardAuthorization = (options: {
       async presentDeviceCode(input) {
         options.publish({
           id: options.sessionId,
-          status: "device_code",
+          status: 'device_code',
           url: requireHttpUrl(input.url).href,
           userCode: input.userCode,
           ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
@@ -126,7 +125,7 @@ export const createDashboardAuthorization = (options: {
       loopback,
     },
     submitCallback(raw) {
-      if (submit === undefined) throw new OAuthCallbackError("CALLBACK_NOT_EXPECTED");
+      if (submit === undefined) throw new OAuthCallbackError('CALLBACK_NOT_EXPECTED');
       submit(raw);
     },
     close() {

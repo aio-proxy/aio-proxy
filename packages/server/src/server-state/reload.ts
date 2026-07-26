@@ -1,21 +1,19 @@
-import type { Config } from "@aio-proxy/types";
-
 import {
   AtomicConfigCommitUncertainError,
   type AtomicConfigFile,
   type PendingAccountOperation,
   parseRuntimeConfig,
-} from "@aio-proxy/core";
-import { ZodError } from "zod";
+} from '@aio-proxy/core';
+import type { Config } from '@aio-proxy/types';
+import { ZodError } from 'zod';
 
-import type { SnapshotManager } from "../plugin-snapshot";
-import type { RetiredProviderSnapshot } from "../runtime";
-import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure } from "./types";
-
-import { type AccountRemovalCoordinator, asProviderRecord } from "../account-removal";
-import { normalizeDashboardPassword } from "../dashboard-auth";
-import { providerDiff } from "../provider-runtime";
-import { providerConfigRecord, type Snapshot } from "./snapshot";
+import { type AccountRemovalCoordinator, asProviderRecord } from '../account-removal';
+import { normalizeDashboardPassword } from '../dashboard-auth';
+import type { SnapshotManager } from '../plugin-snapshot';
+import { providerDiff } from '../provider-runtime';
+import type { RetiredProviderSnapshot } from '../runtime';
+import { providerConfigRecord, type Snapshot } from './snapshot';
+import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure } from './types';
 
 export async function reloadSnapshot({
   accountRemovals,
@@ -36,7 +34,7 @@ export async function reloadSnapshot({
 }): Promise<ConfigReloadResult> {
   try {
     const before = (manager.current() as Snapshot).summaries;
-    if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, "reload");
+    if (configFile === undefined) await commitConfig((manager.current() as Snapshot).config, 'reload');
     else
       await reloadConfigFile({
         accountRemovals,
@@ -49,7 +47,7 @@ export async function reloadSnapshot({
     return { ok: true, diff: providerDiff(before, (manager.current() as Snapshot).summaries) };
   } catch (error) {
     const result = reloadError(error);
-    logger({ error: result.error, event: "config.reload_failed", stage: result.stage });
+    logger({ error: result.error, event: 'config.reload_failed', stage: result.stage });
     return result;
   }
 }
@@ -92,16 +90,16 @@ async function reloadConfigFile({
             ([providerId]) => !retainedProviderIds.has(providerId),
           ),
         );
-        const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(next["providers"]));
+        const detected = accountRemovals.stageRemoved(previousProviders, asProviderRecord(next['providers']));
         newlyStaged.push(...detected);
         staged.push(...detected);
         commitAfterWrite = next !== current;
-        if (!commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(next), "reload");
+        if (!commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(next), 'reload');
         return { next, result: undefined };
       },
       {
         verify: async (candidate) => {
-          if (commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(candidate), "reload");
+          if (commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(candidate), 'reload');
         },
       },
     );
@@ -118,13 +116,13 @@ async function reloadConfigFile({
 
 function reloadError(error: unknown): ReloadFailure {
   if (error instanceof SyntaxError || error instanceof ZodError)
-    return { ok: false, error: error.message, stage: "parse" };
+    return { ok: false, error: error.message, stage: 'parse' };
   if (error instanceof Error) {
     return {
       ok: false,
       error: error.message,
-      stage: error.name === "RouterModelCollisionError" ? "alias-collision" : "providers",
+      stage: error.name === 'RouterModelCollisionError' ? 'alias-collision' : 'providers',
     };
   }
-  return { ok: false, error: String(error), stage: "providers" };
+  return { ok: false, error: String(error), stage: 'providers' };
 }

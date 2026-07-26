@@ -1,11 +1,10 @@
-import type { Logger, LogBindings, LogLevel } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { expect, test } from "bun:test";
+import type { Logger, LogBindings, LogLevel } from '@aio-proxy/plugin-sdk';
 
-import type { ServerLog } from "../../server-log";
-
-import { createPluginLogSink, createServerLogSink, SERVER_LOG_LEVEL } from ".";
-import { withAttemptLogContext, withRequestLogContext } from "../../request-logging";
+import { createPluginLogSink, createServerLogSink, SERVER_LOG_LEVEL } from '.';
+import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
+import type { ServerLog } from '../../server-log';
 
 type LogCall = {
   readonly level: LogLevel;
@@ -20,118 +19,118 @@ function fakeLogger(calls: LogCall[]): Logger {
       calls.push({ level, messageOrProps, propsOrMessage });
 
   return {
-    debug: emit("debug"),
-    info: emit("info"),
-    warn: emit("warn"),
-    error: emit("error"),
+    debug: emit('debug'),
+    info: emit('info'),
+    warn: emit('warn'),
+    error: emit('error'),
     child: () => fakeLogger(calls),
   };
 }
 
-test("createServerLogSink forwards the complete entry at the mapped level", () => {
+test('createServerLogSink forwards the complete entry at the mapped level', () => {
   const calls: LogCall[] = [];
   const sink = createServerLogSink(fakeLogger(calls));
   const entries: readonly ServerLog[] = [
-    { event: "config.reload_failed", stage: "parse", error: "invalid config" },
+    { event: 'config.reload_failed', stage: 'parse', error: 'invalid config' },
     {
-      event: "request.failed",
-      requestId: "failed",
-      inboundProtocol: "openai",
-      path: "/v1/responses",
-      errorCode: "internal_error",
-      errorType: "Error",
+      event: 'request.failed',
+      requestId: 'failed',
+      inboundProtocol: 'openai',
+      path: '/v1/responses',
+      errorCode: 'internal_error',
+      errorType: 'Error',
     },
     {
-      event: "request.inbound_snapshot",
-      requestId: "inbound",
-      inboundProtocol: "openai-response",
-      method: "POST",
-      url: "https://proxy.test/v1/responses",
-      headers: { "content-type": "application/json" },
+      event: 'request.inbound_snapshot',
+      requestId: 'inbound',
+      inboundProtocol: 'openai-response',
+      method: 'POST',
+      url: 'https://proxy.test/v1/responses',
+      headers: { 'content-type': 'application/json' },
     },
     {
-      event: "request.upstream_snapshot",
-      requestId: "upstream",
+      event: 'request.upstream_snapshot',
+      requestId: 'upstream',
       attemptIndex: 0,
-      providerId: "provider",
-      modelId: "provider-model",
-      method: "POST",
-      url: "https://upstream.test/v1/responses",
-      headers: { authorization: "[REDACTED]" },
+      providerId: 'provider',
+      modelId: 'provider-model',
+      method: 'POST',
+      url: 'https://upstream.test/v1/responses',
+      headers: { authorization: '[REDACTED]' },
     },
     {
-      event: "request.upstream_result",
-      requestId: "upstream",
+      event: 'request.upstream_result',
+      requestId: 'upstream',
       attemptIndex: 0,
-      providerId: "provider",
-      modelId: "provider-model",
+      providerId: 'provider',
+      modelId: 'provider-model',
       durationMs: 42,
-      outcome: "response",
+      outcome: 'response',
       statusCode: 200,
-      headers: { "content-type": "application/json" },
+      headers: { 'content-type': 'application/json' },
     },
     {
-      event: "request.body_chunk",
-      requestId: "body",
-      direction: "upstream_response",
+      event: 'request.body_chunk',
+      requestId: 'body',
+      direction: 'upstream_response',
       attemptIndex: 1,
-      providerId: "provider",
-      modelId: "model",
+      providerId: 'provider',
+      modelId: 'model',
       sequence: 0,
       text: '{"visible":true}',
     },
     {
-      event: "request.body_terminal",
-      requestId: "body",
-      direction: "upstream_response",
+      event: 'request.body_terminal',
+      requestId: 'body',
+      direction: 'upstream_response',
       attemptIndex: 1,
-      providerId: "provider",
-      modelId: "model",
+      providerId: 'provider',
+      modelId: 'model',
       sequence: 1,
       byteLength: 16,
-      outcome: "complete",
+      outcome: 'complete',
     },
     {
-      event: "request.provider_attempt_failed",
-      requestId: "attempt",
-      inboundProtocol: "openai-response",
-      requestedModelId: "requested-model",
-      path: "/v1/responses",
-      providerId: "provider",
-      providerKind: "api",
-      modelId: "provider-model",
-      protocol: "openai-response",
+      event: 'request.provider_attempt_failed',
+      requestId: 'attempt',
+      inboundProtocol: 'openai-response',
+      requestedModelId: 'requested-model',
+      path: '/v1/responses',
+      providerId: 'provider',
+      providerKind: 'api',
+      modelId: 'provider-model',
+      protocol: 'openai-response',
       durationMs: 42,
       statusCode: 500,
-      failureKind: "response",
+      failureKind: 'response',
       fallback: true,
-      upstreamRequestId: "upstream-request",
+      upstreamRequestId: 'upstream-request',
     },
     {
-      event: "request.recorder_persistence_failed",
-      operation: "insert_final",
-      requestId: "persistence",
-      errorType: "DatabaseError",
+      event: 'request.recorder_persistence_failed',
+      operation: 'insert_final',
+      requestId: 'persistence',
+      errorType: 'DatabaseError',
     },
     {
-      event: "request.rejected",
-      requestId: "rejected",
-      inboundProtocol: "openai",
-      path: "/v1/responses",
+      event: 'request.rejected',
+      requestId: 'rejected',
+      inboundProtocol: 'openai',
+      path: '/v1/responses',
       statusCode: 400,
-      errorCode: "invalid_request",
-      errorType: "ValidationError",
+      errorCode: 'invalid_request',
+      errorType: 'ValidationError',
     },
-    { event: "request.recorder_invariant", requestId: "invariant", invariant: "requested_model_conflict" },
+    { event: 'request.recorder_invariant', requestId: 'invariant', invariant: 'requested_model_conflict' },
     {
-      event: "request.feature_downgraded",
-      requestId: "downgraded",
-      inboundProtocol: "openai",
-      requestedModelId: "model",
-      path: "/v1/responses",
-      feature: "background",
-      action: "dropped",
-      effectiveMode: "synchronous",
+      event: 'request.feature_downgraded',
+      requestId: 'downgraded',
+      inboundProtocol: 'openai',
+      requestedModelId: 'model',
+      path: '/v1/responses',
+      feature: 'background',
+      action: 'dropped',
+      effectiveMode: 'synchronous',
     },
   ];
 
@@ -144,72 +143,72 @@ test("createServerLogSink forwards the complete entry at the mapped level", () =
       propsOrMessage: undefined,
     })),
   );
-  expect(SERVER_LOG_LEVEL["request.body_chunk"]).toBe("debug");
-  expect(SERVER_LOG_LEVEL["request.body_terminal"]).toBe("debug");
+  expect(SERVER_LOG_LEVEL['request.body_chunk']).toBe('debug');
+  expect(SERVER_LOG_LEVEL['request.body_terminal']).toBe('debug');
 });
 
-test("createPluginLogSink preserves the structured redacted entry", () => {
+test('createPluginLogSink preserves the structured redacted entry', () => {
   const calls: LogCall[] = [];
   const sink = createPluginLogSink((context) => {
     expect(context).toBe(entry.context);
     return fakeLogger(calls);
   });
   const entry = {
-    event: "plugin.load_failed",
-    code: "PLUGIN_LOAD_FAILED",
-    context: { plugin: "@example/plugin", capability: "chat", providerId: "provider" },
+    event: 'plugin.load_failed',
+    code: 'PLUGIN_LOAD_FAILED',
+    context: { plugin: '@example/plugin', capability: 'chat', providerId: 'provider' },
     error: {
-      name: "Error",
-      message: "token=[REDACTED]",
-      stack: "Error: token=[REDACTED]",
+      name: 'Error',
+      message: 'token=[REDACTED]',
+      stack: 'Error: token=[REDACTED]',
     },
   } as const;
 
   sink(entry);
 
-  expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
+  expect(calls).toEqual([{ level: 'error', messageOrProps: entry, propsOrMessage: undefined }]);
 });
 
-test("logging bridges overwrite spoofed correlation with the active attempt", () => {
+test('logging bridges overwrite spoofed correlation with the active attempt', () => {
   const serverCalls: LogCall[] = [];
   const pluginCalls: LogCall[] = [];
   const serverSink = createServerLogSink(fakeLogger(serverCalls));
-  const pluginContext = { plugin: "@example/plugin", providerId: "spoofed-context" } as const;
+  const pluginContext = { plugin: '@example/plugin', providerId: 'spoofed-context' } as const;
   const pluginSink = createPluginLogSink((context) => {
     expect(context).toBe(pluginContext);
     return fakeLogger(pluginCalls);
   });
   const correlation = {
-    requestId: "trusted-request",
+    requestId: 'trusted-request',
     attemptIndex: 3,
-    providerId: "trusted-provider",
-    modelId: "trusted-model",
+    providerId: 'trusted-provider',
+    modelId: 'trusted-model',
   } as const;
 
   withRequestLogContext({ requestId: correlation.requestId, debug: false, logger: () => {} }, () =>
     withAttemptLogContext(correlation, () => {
       serverSink({
-        event: "request.provider_attempt_failed",
-        requestId: "spoofed-request",
-        inboundProtocol: "openai-response",
-        requestedModelId: "requested-model",
-        path: "/v1/responses",
-        providerId: "spoofed-provider",
-        providerKind: "api",
-        modelId: "spoofed-model",
+        event: 'request.provider_attempt_failed',
+        requestId: 'spoofed-request',
+        inboundProtocol: 'openai-response',
+        requestedModelId: 'requested-model',
+        path: '/v1/responses',
+        providerId: 'spoofed-provider',
+        providerKind: 'api',
+        modelId: 'spoofed-model',
         durationMs: 42,
-        failureKind: "response",
+        failureKind: 'response',
         fallback: false,
       });
       pluginSink({
-        event: "plugin.load_failed",
-        code: "PLUGIN_LOAD_FAILED",
+        event: 'plugin.load_failed',
+        code: 'PLUGIN_LOAD_FAILED',
         context: pluginContext,
-        error: { name: "Error", message: "failed" },
-        requestId: "spoofed-request",
+        error: { name: 'Error', message: 'failed' },
+        requestId: 'spoofed-request',
         attemptIndex: 99,
-        providerId: "spoofed-provider",
-        modelId: "spoofed-model",
+        providerId: 'spoofed-provider',
+        modelId: 'spoofed-model',
       });
     }),
   );
@@ -219,7 +218,7 @@ test("logging bridges overwrite spoofed correlation with the active attempt", ()
   }
 });
 
-test("createServerLogSink falls back until logging is configured without duplicate output", () => {
+test('createServerLogSink falls back until logging is configured without duplicate output', () => {
   const calls: LogCall[] = [];
   const fallbacks: ServerLog[] = [];
   let configured = false;
@@ -228,24 +227,24 @@ test("createServerLogSink falls back until logging is configured without duplica
     fallback: (entry) => fallbacks.push(entry),
   });
   const entry = {
-    event: "config.reload_failed",
-    stage: "parse",
-    error: "invalid config",
+    event: 'config.reload_failed',
+    stage: 'parse',
+    error: 'invalid config',
   } as const;
 
-  withRequestLogContext({ requestId: "trusted", debug: false, logger: () => {} }, () =>
-    withAttemptLogContext({ attemptIndex: 1, providerId: "provider", modelId: "model" }, () => sink(entry)),
+  withRequestLogContext({ requestId: 'trusted', debug: false, logger: () => {} }, () =>
+    withAttemptLogContext({ attemptIndex: 1, providerId: 'provider', modelId: 'model' }, () => sink(entry)),
   );
   configured = true;
   sink(entry);
 
   expect(fallbacks).toEqual([
-    { ...entry, requestId: "trusted", attemptIndex: 1, providerId: "provider", modelId: "model" },
+    { ...entry, requestId: 'trusted', attemptIndex: 1, providerId: 'provider', modelId: 'model' },
   ]);
-  expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
+  expect(calls).toEqual([{ level: 'error', messageOrProps: entry, propsOrMessage: undefined }]);
 });
 
-test("createPluginLogSink falls back until logging is configured without creating a logger", () => {
+test('createPluginLogSink falls back until logging is configured without creating a logger', () => {
   const calls: LogCall[] = [];
   const fallbacks: Parameters<ReturnType<typeof createPluginLogSink>>[0][] = [];
   let configured = false;
@@ -261,21 +260,21 @@ test("createPluginLogSink falls back until logging is configured without creatin
     },
   );
   const entry = {
-    event: "plugin.load_failed",
-    code: "PLUGIN_LOAD_FAILED",
-    context: { plugin: "@example/plugin" },
-    error: { name: "Error", message: "token=[REDACTED]" },
+    event: 'plugin.load_failed',
+    code: 'PLUGIN_LOAD_FAILED',
+    context: { plugin: '@example/plugin' },
+    error: { name: 'Error', message: 'token=[REDACTED]' },
   } as const;
 
-  withRequestLogContext({ requestId: "trusted", debug: false, logger: () => {} }, () =>
-    withAttemptLogContext({ attemptIndex: 1, providerId: "provider", modelId: "model" }, () => sink(entry)),
+  withRequestLogContext({ requestId: 'trusted', debug: false, logger: () => {} }, () =>
+    withAttemptLogContext({ attemptIndex: 1, providerId: 'provider', modelId: 'model' }, () => sink(entry)),
   );
   configured = true;
   sink(entry);
 
   expect(fallbacks).toEqual([
-    { ...entry, requestId: "trusted", attemptIndex: 1, providerId: "provider", modelId: "model" },
+    { ...entry, requestId: 'trusted', attemptIndex: 1, providerId: 'provider', modelId: 'model' },
   ]);
   expect(loggerCreations).toBe(1);
-  expect(calls).toEqual([{ level: "error", messageOrProps: entry, propsOrMessage: undefined }]);
+  expect(calls).toEqual([{ level: 'error', messageOrProps: entry, propsOrMessage: undefined }]);
 });

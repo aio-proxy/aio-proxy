@@ -9,10 +9,10 @@ export async function abortableDelay(milliseconds: number, signal?: AbortSignal)
     const abort = () => done(signal.reason);
     function done(error?: unknown): void {
       clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
+      signal?.removeEventListener('abort', abort);
       if (error === undefined) resolve();
       else reject(error);
     }
-    signal.addEventListener("abort", abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true });
   });
 }

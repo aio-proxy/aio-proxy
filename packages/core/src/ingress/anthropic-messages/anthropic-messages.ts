@@ -1,8 +1,7 @@
-import type { Tool } from "@anthropic-ai/sdk/resources/messages/messages";
+import type { Tool } from '@anthropic-ai/sdk/resources/messages/messages';
+import { z } from 'zod';
 
-import { z } from "zod";
-
-import { imageFilePart, isImageMediaType, isValidBase64 } from "../../image-input";
+import { imageFilePart, isImageMediaType, isValidBase64 } from '../../image-input';
 
 const IdSchema = z.string().min(1);
 const MetadataSchema = z
@@ -14,35 +13,35 @@ const MetadataSchema = z
   .catchall(z.unknown());
 
 const CacheControlSchema = z.object({
-  type: z.literal("ephemeral"),
-  ttl: z.enum(["5m", "1h"]).optional(),
+  type: z.literal('ephemeral'),
+  ttl: z.enum(['5m', '1h']).optional(),
 });
 
 const TextBlockSchema = z.object({
-  type: z.literal("text"),
+  type: z.literal('text'),
   text: z.string(),
   cache_control: CacheControlSchema.optional(),
 });
 
 const Base64ImageSourceSchema = z.object({
-  type: z.literal("base64"),
-  media_type: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+  type: z.literal('base64'),
+  media_type: z.string().refine((value) => value !== 'image' && isImageMediaType(value)),
   data: z.string().refine(isValidBase64),
 });
 
 const UrlImageSourceSchema = z.object({
-  type: z.literal("url"),
-  url: z.string().refine((url) => imageFilePart({ type: "url", url }) !== undefined),
+  type: z.literal('url'),
+  url: z.string().refine((url) => imageFilePart({ type: 'url', url }) !== undefined),
 });
 
 const ImageBlockSchema = z.object({
-  type: z.literal("image"),
-  source: z.discriminatedUnion("type", [Base64ImageSourceSchema, UrlImageSourceSchema]),
+  type: z.literal('image'),
+  source: z.discriminatedUnion('type', [Base64ImageSourceSchema, UrlImageSourceSchema]),
   cache_control: CacheControlSchema.optional(),
 });
 
 const ToolUseBlockSchema = z.object({
-  type: z.literal("tool_use"),
+  type: z.literal('tool_use'),
   id: IdSchema,
   name: IdSchema,
   input: z.unknown(),
@@ -50,15 +49,15 @@ const ToolUseBlockSchema = z.object({
 });
 
 const ToolResultTextBlockSchema = z.object({
-  type: z.literal("text"),
+  type: z.literal('text'),
   text: z.string(),
 });
 
-const ToolResultContentBlockSchema = z.discriminatedUnion("type", [ToolResultTextBlockSchema, ImageBlockSchema]);
+const ToolResultContentBlockSchema = z.discriminatedUnion('type', [ToolResultTextBlockSchema, ImageBlockSchema]);
 
 const ToolResultBlockSchema = z
   .object({
-    type: z.literal("tool_result"),
+    type: z.literal('tool_result'),
     tool_use_id: IdSchema.optional(),
     content: z.union([z.string(), z.array(ToolResultContentBlockSchema)]),
     cache_control: CacheControlSchema.optional(),
@@ -66,15 +65,15 @@ const ToolResultBlockSchema = z
   .superRefine((block, ctx) => {
     if (block.tool_use_id === undefined) {
       ctx.addIssue({
-        code: "custom",
-        path: ["tool_use_id"],
-        message: "Required",
+        code: 'custom',
+        path: ['tool_use_id'],
+        message: 'Required',
       });
     }
   })
   .pipe(
     z.object({
-      type: z.literal("tool_result"),
+      type: z.literal('tool_result'),
       tool_use_id: IdSchema,
       content: z.union([z.string(), z.array(ToolResultContentBlockSchema)]),
       cache_control: CacheControlSchema.optional(),
@@ -83,7 +82,7 @@ const ToolResultBlockSchema = z
 
 const ThinkingBlockSchema = z
   .object({
-    type: z.literal("thinking"),
+    type: z.literal('thinking'),
     thinking: z.string(),
     signature: IdSchema,
     cache_control: z.unknown().optional(),
@@ -91,35 +90,35 @@ const ThinkingBlockSchema = z
   .superRefine((block, ctx) => {
     if (block.cache_control !== undefined) {
       ctx.addIssue({
-        code: "custom",
-        path: ["cache_control"],
-        message: "Thinking blocks cannot include cache_control",
+        code: 'custom',
+        path: ['cache_control'],
+        message: 'Thinking blocks cannot include cache_control',
       });
     }
   })
   .pipe(
     z.object({
-      type: z.literal("thinking"),
+      type: z.literal('thinking'),
       thinking: z.string(),
       signature: IdSchema,
     }),
   );
 
-const UserContentBlockSchema = z.discriminatedUnion("type", [TextBlockSchema, ImageBlockSchema, ToolResultBlockSchema]);
+const UserContentBlockSchema = z.discriminatedUnion('type', [TextBlockSchema, ImageBlockSchema, ToolResultBlockSchema]);
 
-const AssistantContentBlockSchema = z.discriminatedUnion("type", [
+const AssistantContentBlockSchema = z.discriminatedUnion('type', [
   TextBlockSchema,
   ToolUseBlockSchema,
   ThinkingBlockSchema,
 ]);
 
 const UserMessageSchema = z.object({
-  role: z.literal("user"),
+  role: z.literal('user'),
   content: z.union([z.string(), z.array(UserContentBlockSchema)]),
 });
 
 const AssistantMessageSchema = z.object({
-  role: z.literal("assistant"),
+  role: z.literal('assistant'),
   content: z.union([z.string(), z.array(AssistantContentBlockSchema)]),
 });
 
@@ -129,19 +128,19 @@ const FunctionToolSchema = z.object({
   description: z.string().optional(),
   input_schema: z
     .object({
-      type: z.literal("object"),
+      type: z.literal('object'),
     })
     .catchall(z.unknown()),
 }) satisfies z.ZodType<{
-  name: Tool["name"];
-  description?: Tool["description"] | undefined;
-  input_schema: Tool["input_schema"];
+  name: Tool['name'];
+  description?: Tool['description'] | undefined;
+  input_schema: Tool['input_schema'];
 }>;
 
 const WebSearchToolSchema = z
   .object({
-    type: z.enum(["web_search_20250305", "web_search_20260209", "web_search_20260318"]),
-    name: z.literal("web_search"),
+    type: z.enum(['web_search_20250305', 'web_search_20260209', 'web_search_20260318']),
+    name: z.literal('web_search'),
     max_uses: z
       .number()
       .int()
@@ -160,27 +159,27 @@ const WebSearchToolSchema = z
   .superRefine((tool, context) => {
     if ((tool.allowed_domains?.length ?? 0) > 0 && (tool.blocked_domains?.length ?? 0) > 0) {
       context.addIssue({
-        code: "custom",
-        path: ["blocked_domains"],
-        message: "allowed_domains and blocked_domains cannot both be non-empty",
+        code: 'custom',
+        path: ['blocked_domains'],
+        message: 'allowed_domains and blocked_domains cannot both be non-empty',
       });
     }
   });
 
 const ToolSchema = z.union([FunctionToolSchema, WebSearchToolSchema]);
 
-const ThinkingSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("disabled") }),
-  z.object({ type: z.literal("enabled"), budget_tokens: z.number().int() }),
-  z.object({ type: z.literal("adaptive") }),
+const ThinkingSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('disabled') }),
+  z.object({ type: z.literal('enabled'), budget_tokens: z.number().int() }),
+  z.object({ type: z.literal('adaptive') }),
 ]);
 
-const OutputConfigSchema = z.object({ effort: z.enum(["low", "medium", "high", "max"]).optional() }).loose();
+const OutputConfigSchema = z.object({ effort: z.enum(['low', 'medium', 'high', 'max']).optional() }).loose();
 
 export const AnthropicMessagesRequestSchema = z.object({
   model: IdSchema,
   system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
-  messages: z.array(z.discriminatedUnion("role", [UserMessageSchema, AssistantMessageSchema])).min(1),
+  messages: z.array(z.discriminatedUnion('role', [UserMessageSchema, AssistantMessageSchema])).min(1),
   metadata: MetadataSchema.optional(),
   session_id: z.string().optional(),
   conversation_id: z.string().optional(),

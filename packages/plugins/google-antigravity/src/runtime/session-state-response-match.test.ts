@@ -1,26 +1,26 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { prepareReasoningReplay } from "./session-state";
+import { prepareReasoningReplay } from './session-state';
 
-const MODEL = "claude-opus-4-6-thinking";
-const SIGNATURE = "signature-".repeat(6);
+const MODEL = 'claude-opus-4-6-thinking';
+const SIGNATURE = 'signature-'.repeat(6);
 
-test("inserts replay before the latest same-name function response when IDs are absent", () => {
-  const oldModel = { role: "model", parts: [{ functionCall: { name: "weather", args: { city: "old" } } }] };
+test('inserts replay before the latest same-name function response when IDs are absent', () => {
+  const oldModel = { role: 'model', parts: [{ functionCall: { name: 'weather', args: { city: 'old' } } }] };
   const oldResponse = {
-    role: "user",
-    parts: [{ functionResponse: { name: "weather", response: { city: "old" } } }],
+    role: 'user',
+    parts: [{ functionResponse: { name: 'weather', response: { city: 'old' } } }],
   };
   const currentResponse = {
-    role: "user",
-    parts: [{ functionResponse: { name: "weather", response: { city: "current" } } }],
+    role: 'user',
+    parts: [{ functionResponse: { name: 'weather', response: { city: 'current' } } }],
   };
   const body = {
-    contents: [oldModel, oldResponse, { role: "user", parts: [{ text: "weather again" }] }, currentResponse],
+    contents: [oldModel, oldResponse, { role: 'user', parts: [{ text: 'weather again' }] }, currentResponse],
   };
 
   const prepared = prepareReasoningReplay(body, MODEL, {
-    parts: [replayCall({ name: "weather", args: { city: "current" } })],
+    parts: [replayCall({ name: 'weather', args: { city: 'current' } })],
   });
 
   expect(prepared.contents).toEqual([
@@ -28,10 +28,10 @@ test("inserts replay before the latest same-name function response when IDs are 
     oldResponse,
     body.contents[2],
     {
-      role: "model",
+      role: 'model',
       parts: [
         {
-          functionCall: { name: "weather", args: { city: "current" } },
+          functionCall: { name: 'weather', args: { city: 'current' } },
           thoughtSignature: SIGNATURE,
         },
       ],
@@ -40,46 +40,46 @@ test("inserts replay before the latest same-name function response when IDs are 
   ]);
 });
 
-test("prefers an exact function-call ID over same-name response history", () => {
+test('prefers an exact function-call ID over same-name response history', () => {
   const oldResponse = {
-    role: "user",
-    parts: [{ functionResponse: { id: "old", name: "weather", response: {} } }],
+    role: 'user',
+    parts: [{ functionResponse: { id: 'old', name: 'weather', response: {} } }],
   };
   const currentResponse = {
-    role: "user",
-    parts: [{ functionResponse: { id: "current", name: "weather", response: {} } }],
+    role: 'user',
+    parts: [{ functionResponse: { id: 'current', name: 'weather', response: {} } }],
   };
-  const body = { contents: [oldResponse, { role: "user", parts: [{ text: "again" }] }, currentResponse] };
+  const body = { contents: [oldResponse, { role: 'user', parts: [{ text: 'again' }] }, currentResponse] };
 
   const prepared = prepareReasoningReplay(body, MODEL, {
-    parts: [replayCall({ id: "current", name: "weather", args: {} })],
+    parts: [replayCall({ id: 'current', name: 'weather', args: {} })],
   });
 
   expect(prepared.contents[2]).toEqual({
-    role: "model",
+    role: 'model',
     parts: [
       {
-        functionCall: { id: "current", name: "weather", args: {} },
+        functionCall: { id: 'current', name: 'weather', args: {} },
         thoughtSignature: SIGNATURE,
       },
     ],
   });
 });
 
-test("does not associate an old model function call across an ordinary user turn", () => {
-  const call = { id: "call-1", name: "weather", args: {} };
-  const oldModel = { role: "model", parts: [{ functionCall: call }] };
-  const ordinaryUserTurn = { role: "user", parts: [{ text: "start a new request" }] };
+test('does not associate an old model function call across an ordinary user turn', () => {
+  const call = { id: 'call-1', name: 'weather', args: {} };
+  const oldModel = { role: 'model', parts: [{ functionCall: call }] };
+  const ordinaryUserTurn = { role: 'user', parts: [{ text: 'start a new request' }] };
   const response = {
-    role: "user",
-    parts: [{ functionResponse: { id: "call-1", name: "weather", response: {} } }],
+    role: 'user',
+    parts: [{ functionResponse: { id: 'call-1', name: 'weather', response: {} } }],
   };
   const body = { contents: [oldModel, ordinaryUserTurn, response] };
 
   const prepared = prepareReasoningReplay(body, MODEL, {
     parts: [
       {
-        type: "function-call",
+        type: 'function-call',
         contentIndex: 0,
         partIndex: 0,
         call,
@@ -91,14 +91,14 @@ test("does not associate an old model function call across an ordinary user turn
   expect(prepared.contents).toEqual([
     oldModel,
     ordinaryUserTurn,
-    { role: "model", parts: [{ functionCall: call, thoughtSignature: SIGNATURE }] },
+    { role: 'model', parts: [{ functionCall: call, thoughtSignature: SIGNATURE }] },
     response,
   ]);
 });
 
 function replayCall(call: unknown) {
   return {
-    type: "function-call" as const,
+    type: 'function-call' as const,
     contentIndex: 0,
     partIndex: 0,
     call,

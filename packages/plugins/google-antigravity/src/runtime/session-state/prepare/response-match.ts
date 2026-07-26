@@ -1,5 +1,5 @@
-import { asArray, asRecord } from "../payload-shape";
-import { compatibleHistoryCall, type FunctionCallReplayPart } from "./replay-parts";
+import { asArray, asRecord } from '../payload-shape';
+import { compatibleHistoryCall, type FunctionCallReplayPart } from './replay-parts';
 
 export type ReplayBoundary = { readonly modelIndex?: number; readonly responseIndex: number };
 
@@ -34,8 +34,8 @@ function responseCallMatches(
   calls: readonly FunctionCallReplayPart[],
   responseMatches: (call: Readonly<Record<string, unknown>>, response: Readonly<Record<string, unknown>>) => boolean,
 ): readonly ResponseCallMatch[] {
-  const responses = asArray(Reflect.get(asRecord(contentValue) ?? {}, "parts")).flatMap((part) => {
-    const response = asRecord(Reflect.get(asRecord(part) ?? {}, "functionResponse"));
+  const responses = asArray(Reflect.get(asRecord(contentValue) ?? {}, 'parts')).flatMap((part) => {
+    const response = asRecord(Reflect.get(asRecord(part) ?? {}, 'functionResponse'));
     return response === undefined ? [] : [response];
   });
   return calls.flatMap((call) => {
@@ -53,11 +53,11 @@ function modelBoundary(
   const modelIndex = responseIndex - 1;
   if (modelIndex < 0) return { responseIndex };
   const model = asRecord(contents[modelIndex]);
-  if (model === undefined || hasFunctionResponse(model) || Reflect.get(model, "role") !== "model") {
+  if (model === undefined || hasFunctionResponse(model) || Reflect.get(model, 'role') !== 'model') {
     return { responseIndex };
   }
-  const modelCalls = asArray(Reflect.get(model, "parts")).flatMap((part) => {
-    const call = Reflect.get(asRecord(part) ?? {}, "functionCall");
+  const modelCalls = asArray(Reflect.get(model, 'parts')).flatMap((part) => {
+    const call = Reflect.get(asRecord(part) ?? {}, 'functionCall');
     return call === undefined ? [] : [call];
   });
   if (modelCalls.length === 0) return { responseIndex };
@@ -65,36 +65,36 @@ function modelBoundary(
 }
 
 function matchingBoundaryCall(modelCalls: readonly unknown[], match: ResponseCallMatch): boolean {
-  const responseId = Reflect.get(match.response, "id");
-  if (typeof responseId !== "string") {
+  const responseId = Reflect.get(match.response, 'id');
+  if (typeof responseId !== 'string') {
     return modelCalls.some((modelCall) => compatibleHistoryCall(modelCall, match.call.call));
   }
-  const exactIdCalls = modelCalls.filter((modelCall) => Reflect.get(asRecord(modelCall) ?? {}, "id") === responseId);
+  const exactIdCalls = modelCalls.filter((modelCall) => Reflect.get(asRecord(modelCall) ?? {}, 'id') === responseId);
   const candidates =
     exactIdCalls.length > 0
       ? exactIdCalls
-      : modelCalls.filter((modelCall) => Reflect.get(asRecord(modelCall) ?? {}, "id") === undefined);
+      : modelCalls.filter((modelCall) => Reflect.get(asRecord(modelCall) ?? {}, 'id') === undefined);
   return candidates.some((modelCall) => compatibleHistoryCall(modelCall, match.call.call));
 }
 
 function exactIdMatch(call: Readonly<Record<string, unknown>>, response: Readonly<Record<string, unknown>>): boolean {
-  const callId = Reflect.get(call, "id");
-  const responseId = Reflect.get(response, "id");
-  return typeof callId === "string" && typeof responseId === "string" && callId === responseId;
+  const callId = Reflect.get(call, 'id');
+  const responseId = Reflect.get(response, 'id');
+  return typeof callId === 'string' && typeof responseId === 'string' && callId === responseId;
 }
 
 function fallbackNameMatch(
   call: Readonly<Record<string, unknown>>,
   response: Readonly<Record<string, unknown>>,
 ): boolean {
-  const callId = Reflect.get(call, "id");
-  const responseId = Reflect.get(response, "id");
-  if (typeof callId === "string" && typeof responseId === "string") return false;
-  return Reflect.get(call, "name") === Reflect.get(response, "name");
+  const callId = Reflect.get(call, 'id');
+  const responseId = Reflect.get(response, 'id');
+  if (typeof callId === 'string' && typeof responseId === 'string') return false;
+  return Reflect.get(call, 'name') === Reflect.get(response, 'name');
 }
 
 function hasFunctionResponse(content: Readonly<Record<string, unknown>> | undefined): boolean {
-  return asArray(Reflect.get(content ?? {}, "parts")).some(
-    (part) => asRecord(Reflect.get(asRecord(part) ?? {}, "functionResponse")) !== undefined,
+  return asArray(Reflect.get(content ?? {}, 'parts')).some(
+    (part) => asRecord(Reflect.get(asRecord(part) ?? {}, 'functionResponse')) !== undefined,
   );
 }

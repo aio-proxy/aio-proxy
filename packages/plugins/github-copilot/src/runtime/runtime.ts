@@ -1,19 +1,18 @@
-import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from "@aio-proxy/plugin-sdk";
-
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createOpenAIStreamFetch } from "@aio-proxy/plugin-sdk/openai-stream";
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
 
 import {
   copilotHeaders,
   currentGitHubCopilotCredential,
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
-} from "../github-api";
+} from '../github-api';
 
-const PLACEHOLDER_BASE_URL = "https://api.githubcopilot.com";
-const PLACEHOLDER_CREDENTIAL = "dynamic-credential";
+const PLACEHOLDER_BASE_URL = 'https://api.githubcopilot.com';
+const PLACEHOLDER_CREDENTIAL = 'dynamic-credential';
 
 export async function createGitHubCopilotRuntime(
   context: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>,
@@ -21,23 +20,23 @@ export async function createGitHubCopilotRuntime(
   const controlFetch = context.fetch ?? globalThis.fetch;
   const modelFetch = context.modelFetch ?? controlFetch;
   const dynamicFetch = createDynamicFetch(context.credentials, modelFetch, controlFetch);
-  const compatibleFetch = createOpenAIStreamFetch("openai-compatible", dynamicFetch, {
+  const compatibleFetch = createOpenAIStreamFetch('openai-compatible', dynamicFetch, {
     rewriteToolImages: true,
   });
   const openAICompatible = createOpenAICompatible({
-    name: "github-copilot.openai-compatible",
+    name: 'github-copilot.openai-compatible',
     baseURL: PLACEHOLDER_BASE_URL,
     apiKey: PLACEHOLDER_CREDENTIAL,
     fetch: compatibleFetch,
   });
   const anthropic = createAnthropic({
-    name: "github-copilot.anthropic",
+    name: 'github-copilot.anthropic',
     baseURL: `${PLACEHOLDER_BASE_URL}/v1`,
     authToken: PLACEHOLDER_CREDENTIAL,
     fetch: dynamicFetch,
   });
   const openAI = createOpenAI({
-    name: "github-copilot.openai",
+    name: 'github-copilot.openai',
     baseURL: PLACEHOLDER_BASE_URL,
     apiKey: PLACEHOLDER_CREDENTIAL,
     fetch: dynamicFetch,
@@ -50,15 +49,15 @@ export async function createGitHubCopilotRuntime(
   );
 
   const provider = {
-    specificationVersion: "v4" as const,
+    specificationVersion: 'v4' as const,
     languageModel(modelId: string) {
       const protocol = protocolByModelId.get(modelId);
       switch (protocol) {
-        case "openai-compatible":
+        case 'openai-compatible':
           return openAICompatible.languageModel(modelId);
-        case "anthropic":
+        case 'anthropic':
           return anthropic.languageModel(modelId);
-        case "openai-response":
+        case 'openai-response':
           return openAI.languageModel(modelId);
         default:
           throw new Error(`GitHub Copilot model ${modelId} has no supported protocol metadata`);
@@ -70,7 +69,7 @@ export async function createGitHubCopilotRuntime(
     imageModel(modelId: string) {
       return openAICompatible.imageModel(modelId);
     },
-  } satisfies OAuthRuntimeResult["provider"];
+  } satisfies OAuthRuntimeResult['provider'];
 
   return {
     provider,
@@ -87,7 +86,7 @@ export async function createGitHubCopilotRuntime(
 }
 
 function createDynamicFetch(
-  credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>["credentials"],
+  credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>['credentials'],
   modelFetch: typeof fetch,
   controlFetch: typeof fetch,
 ): typeof fetch {
@@ -109,22 +108,22 @@ async function fetchWithCredential(
   target.protocol = baseURL.protocol;
   target.host = baseURL.host;
   const headers = new Headers(request.headers);
-  headers.delete("x-api-key");
+  headers.delete('x-api-key');
   for (const [key, value] of Object.entries(copilotHeaders(credential.copilotToken))) headers.set(key, value);
 
   return await fetcher(target, {
     method: request.method,
     headers,
-    ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body }),
+    ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body: request.body }),
     signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
     redirect: request.redirect,
   });
 }
 
 function catalogProtocol(metadata: unknown): ProtocolId | undefined {
-  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return undefined;
-  const protocol = Reflect.get(metadata, "protocol");
-  return protocol === "openai-compatible" || protocol === "anthropic" || protocol === "openai-response"
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return undefined;
+  const protocol = Reflect.get(metadata, 'protocol');
+  return protocol === 'openai-compatible' || protocol === 'anthropic' || protocol === 'openai-response'
     ? protocol
     : undefined;
 }

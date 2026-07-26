@@ -1,8 +1,8 @@
-import { type ModelDescriptor, zod } from "@aio-proxy/plugin-sdk";
-import { filter, map, pipe, sortBy } from "es-toolkit/fp";
+import { type ModelDescriptor, zod } from '@aio-proxy/plugin-sdk';
+import { filter, map, pipe, sortBy } from 'es-toolkit/fp';
 
 export const CODEX_MODELS_URL =
-  "https://github.com/openai/codex/raw/refs/heads/main/codex-rs/models-manager/models.json";
+  'https://github.com/openai/codex/raw/refs/heads/main/codex-rs/models-manager/models.json';
 export const CHATGPT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 
 const CodexModelsSchema = zod.object({
@@ -29,7 +29,7 @@ export async function discoverOpenAIChatGPTModels(signal: AbortSignal): Promise<
       (model): ModelDescriptor => ({
         id: model.slug,
         displayName: model.display_name,
-        metadata: { protocol: "openai-response" },
+        metadata: { protocol: 'openai-response' },
       }),
     ),
   );

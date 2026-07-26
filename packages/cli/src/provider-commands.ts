@@ -1,3 +1,5 @@
+import { dirname } from 'node:path';
+
 import {
   listInstalledNpmPackages,
   NpmInstallError,
@@ -5,18 +7,17 @@ import {
   NpmPackageJsonError,
   NpmPackageNameError,
   npmAdd,
-} from "@aio-proxy/core";
-import { m } from "@aio-proxy/i18n";
+} from '@aio-proxy/core';
+import { m } from '@aio-proxy/i18n';
 import {
   type DashboardProviderSummary,
   DashboardProvidersResponseSchema,
   dashboardProviderSuggestedCommand,
-} from "@aio-proxy/types";
-import { confirm } from "@inquirer/prompts";
-import { dirname } from "node:path";
+} from '@aio-proxy/types';
+import { confirm } from '@inquirer/prompts';
 
-import { ProviderDashboardError } from "./errors";
-import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from "./plugin-commands/provider-login";
+import { ProviderDashboardError } from './errors';
+import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from './plugin-commands/provider-login';
 
 export type ProviderInstallOptions = {
   readonly yes?: boolean;
@@ -30,7 +31,7 @@ export type ProviderListOptions = {
   readonly url?: string;
 };
 
-const defaultDashboardUrl = "http://127.0.0.1:22078";
+const defaultDashboardUrl = 'http://127.0.0.1:22078';
 
 export const providerErrors = [
   NpmInstallError,
@@ -70,12 +71,12 @@ export async function providerList(options: ProviderListOptions): Promise<void> 
     return;
   }
 
-  const url = new URL("/dashboard/api/providers", options.url ?? defaultDashboardUrl);
+  const url = new URL('/dashboard/api/providers', options.url ?? defaultDashboardUrl);
   if (options.probe === true) {
-    url.searchParams.set("probe", "true");
+    url.searchParams.set('probe', 'true');
   }
   if (options.filter !== undefined) {
-    url.searchParams.set("filter", options.filter);
+    url.searchParams.set('filter', options.filter);
   }
 
   const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
@@ -86,7 +87,7 @@ export async function providerList(options: ProviderListOptions): Promise<void> 
   printProviderTable(parsed.providers, options.probe === true);
 }
 
-export async function providerTest(id: string, options: Omit<ProviderListOptions, "filter" | "probe">): Promise<void> {
+export async function providerTest(id: string, options: Omit<ProviderListOptions, 'filter' | 'probe'>): Promise<void> {
   await providerList({ ...options, filter: id, probe: true });
 }
 
@@ -116,7 +117,7 @@ function printProviderTable(providers: readonly DashboardProviderSummary[], prob
     m.cli_provider_list_header_suggested_command(),
     ...(probe ? [m.cli_provider_list_header_probe()] : []),
   ];
-  console.log(headers.join(" | "));
+  console.log(headers.join(' | '));
   for (const provider of providers) {
     const diagnostic = provider.state.diagnostic;
     console.log(
@@ -126,18 +127,18 @@ function printProviderTable(providers: readonly DashboardProviderSummary[], prob
         String(provider.enabled),
         String(provider.passthrough),
         provider.last_status,
-        provider.last_latency === null ? "-" : String(provider.last_latency),
+        provider.last_latency === null ? '-' : String(provider.last_latency),
         provider.state.status,
-        provider.state.status === "ready" ? (provider.state.catalog ?? "-") : "-",
-        provider.plugin ?? "-",
-        provider.capability ?? "-",
-        provider.accountLabel ?? "-",
-        provider.expiresAt === undefined ? "-" : new Date(provider.expiresAt).toISOString(),
-        provider.catalogLastSuccessAt ?? "-",
-        diagnostic?.summary ?? "-",
-        dashboardProviderSuggestedCommand(provider) ?? "-",
-        ...(probe ? [provider.probe ?? "FAIL"] : []),
-      ].join(" | "),
+        provider.state.status === 'ready' ? (provider.state.catalog ?? '-') : '-',
+        provider.plugin ?? '-',
+        provider.capability ?? '-',
+        provider.accountLabel ?? '-',
+        provider.expiresAt === undefined ? '-' : new Date(provider.expiresAt).toISOString(),
+        provider.catalogLastSuccessAt ?? '-',
+        diagnostic?.summary ?? '-',
+        dashboardProviderSuggestedCommand(provider) ?? '-',
+        ...(probe ? [provider.probe ?? 'FAIL'] : []),
+      ].join(' | '),
     );
   }
 }

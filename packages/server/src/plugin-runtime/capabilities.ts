@@ -1,3 +1,4 @@
+import { createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
@@ -6,21 +7,18 @@ import type {
   ProviderToolCapability,
   RawResolver,
   TokenCountCapability,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
+import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 
-import { createProviderV4Invoke, validateProviderV4 } from "@aio-proxy/core";
-import { type OAuthProvider, ProviderKind, type ProviderProtocol } from "@aio-proxy/types";
-
-import type { RuntimeProviderInstance } from "../runtime";
-
-import { modelMetadata } from "./catalog";
-import { PluginRawResolverError, PluginRawTransportError } from "./types";
+import type { RuntimeProviderInstance } from '../runtime';
+import { modelMetadata } from './catalog';
+import { PluginRawResolverError, PluginRawTransportError } from './types';
 
 export const pluginProtocol = {
-  "openai-compatible": "openai-compatible",
-  "openai-response": "openai-response",
-  anthropic: "anthropic",
-  gemini: "gemini",
+  'openai-compatible': 'openai-compatible',
+  'openai-response': 'openai-response',
+  anthropic: 'anthropic',
+  gemini: 'gemini',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
@@ -36,10 +34,10 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
       });
       if (transport === undefined) return undefined;
       if (
-        typeof transport !== "object" ||
+        typeof transport !== 'object' ||
         transport === null ||
         Array.isArray(transport) ||
-        typeof transport.invoke !== "function"
+        typeof transport.invoke !== 'function'
       ) {
         throw new PluginRawResolverError();
       }
@@ -69,22 +67,22 @@ export function createRuntimeProvider(
   catalog: ModelCatalog,
 ): RuntimeProviderInstance {
   if (
-    typeof result !== "object" ||
+    typeof result !== 'object' ||
     result === null ||
     Array.isArray(result) ||
-    !("provider" in result) ||
+    !('provider' in result) ||
     !validateProviderV4(result.provider)
   ) {
-    throw new Error("Invalid ProviderV4 runtime");
+    throw new Error('Invalid ProviderV4 runtime');
   }
-  if ("raw" in result && result.raw !== undefined && typeof result.raw !== "function") {
+  if ('raw' in result && result.raw !== undefined && typeof result.raw !== 'function') {
     throw new PluginRawResolverError();
   }
   const raw =
-    "raw" in result && typeof result.raw === "function" ? rawCapability(result.raw as RawResolver, catalog) : undefined;
-  const providerTools = providerToolCapability(Reflect.get(result, "providerTools"));
+    'raw' in result && typeof result.raw === 'function' ? rawCapability(result.raw as RawResolver, catalog) : undefined;
+  const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
-  const tokenCount = tokenCountCapability(Reflect.get(result, "tokenCount"));
+  const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const metadata = modelMetadata(catalog);
   return {
     id: config.id,
@@ -107,27 +105,27 @@ export function createRuntimeProvider(
 
 function tokenCountCapability(value: unknown): TokenCountCapability | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Invalid token count capability");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid token count capability');
   }
-  const countTokens = Reflect.get(value, "countTokens");
-  if (typeof countTokens !== "function") throw new Error("Invalid token count capability");
+  const countTokens = Reflect.get(value, 'countTokens');
+  if (typeof countTokens !== 'function') throw new Error('Invalid token count capability');
   return { countTokens: (input) => countTokens.call(value, input) };
 }
 
-const providerToolTypes: ReadonlySet<ProviderExecutedTool["type"]> = new Set(["web-search"]);
+const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['web-search']);
 
 function providerToolCapability(value: unknown): ProviderToolCapability | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Invalid provider tool capability");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid provider tool capability');
   }
-  const supported = Reflect.get(value, "supported");
+  const supported = Reflect.get(value, 'supported');
   if (
     !Array.isArray(supported) ||
-    !supported.every((type) => providerToolTypes.has(type as ProviderExecutedTool["type"]))
+    !supported.every((type) => providerToolTypes.has(type as ProviderExecutedTool['type']))
   ) {
-    throw new Error("Invalid provider tool capability");
+    throw new Error('Invalid provider tool capability');
   }
   return { supported } as ProviderToolCapability;
 }

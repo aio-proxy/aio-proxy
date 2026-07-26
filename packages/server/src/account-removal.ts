@@ -5,12 +5,12 @@ import {
   PENDING_OPERATION_TTL_MS,
   type PendingAccountOperation,
   type PluginRepository,
-} from "@aio-proxy/core";
-import { OAuthPluginProviderSchema, ProviderKind } from "@aio-proxy/types";
-import { minBy } from "es-toolkit/array";
+} from '@aio-proxy/core';
+import { OAuthPluginProviderSchema, ProviderKind } from '@aio-proxy/types';
+import { minBy } from 'es-toolkit/array';
 
-import type { FifoQueue } from "./fifo-queue";
-import type { RetiredProviderSnapshot } from "./runtime";
+import type { FifoQueue } from './fifo-queue';
+import type { RetiredProviderSnapshot } from './runtime';
 
 export type AccountRemovalCoordinator = {
   readonly stageRemoved: (
@@ -30,7 +30,7 @@ export type AccountRemovalCoordinator = {
 };
 
 export function asProviderRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export function oauthCapabilityOf(
@@ -38,13 +38,13 @@ export function oauthCapabilityOf(
   value: unknown,
 ): { readonly plugin: string; readonly capability: string } | undefined {
   const record = asProviderRecord(value);
-  if (Object.hasOwn(record, "vendor")) return undefined;
+  if (Object.hasOwn(record, 'vendor')) return undefined;
   const parsed = OAuthPluginProviderSchema.safeParse({ ...record, id: providerId });
   return parsed.success ? { plugin: parsed.data.plugin, capability: parsed.data.capability } : undefined;
 }
 
 function isOAuthProviderEntry(value: unknown): boolean {
-  return asProviderRecord(value)["kind"] === ProviderKind.OAuth;
+  return asProviderRecord(value)['kind'] === ProviderKind.OAuth;
 }
 
 export function createAccountRemovalCoordinator(options: {
@@ -54,7 +54,7 @@ export function createAccountRemovalCoordinator(options: {
   readonly canDeleteAccount?: (providerId: string) => boolean;
   readonly onRecoveryNeeded?: (nextRunAt: number) => void;
 }): AccountRemovalCoordinator {
-  const stageRemoved: AccountRemovalCoordinator["stageRemoved"] = (previousProviders, nextProviders) => {
+  const stageRemoved: AccountRemovalCoordinator['stageRemoved'] = (previousProviders, nextProviders) => {
     if (options.file === undefined || options.repository === undefined) return [];
     const operations: PendingAccountOperation[] = [];
     try {
@@ -72,7 +72,7 @@ export function createAccountRemovalCoordinator(options: {
         }
         operations.push(
           options.repository.stageAccountOperation({
-            kind: "delete",
+            kind: 'delete',
             targetDigest: ABSENT_PROVIDER_DIGEST,
             providerId,
             expectedRuntimeRevision: account.runtimeRevision,
@@ -86,16 +86,16 @@ export function createAccountRemovalCoordinator(options: {
     }
   };
 
-  const compensate: AccountRemovalCoordinator["compensate"] = (operations) => {
+  const compensate: AccountRemovalCoordinator['compensate'] = (operations) => {
     for (const operation of operations) options.repository?.compensateAccountOperation(operation.operationId);
   };
 
-  const cancelReadded: AccountRemovalCoordinator["cancelReadded"] = (_previousProviders, nextProviders) => {
+  const cancelReadded: AccountRemovalCoordinator['cancelReadded'] = (_previousProviders, nextProviders) => {
     if (options.repository === undefined) return;
     const presentProviderIds = new Set(Object.keys(nextProviders));
     if (presentProviderIds.size === 0) return;
     for (const operation of options.repository.listPendingAccountOperations()) {
-      if (operation.kind === "delete" && presentProviderIds.has(operation.providerId)) {
+      if (operation.kind === 'delete' && presentProviderIds.has(operation.providerId)) {
         options.repository.completeAccountOperation(operation.operationId);
       }
     }
@@ -109,7 +109,7 @@ export function createAccountRemovalCoordinator(options: {
         .listPendingAccountOperations?.()
         .some((candidate) => candidate.operationId === operation.operationId);
       if (pending === false) return { next: current, result: undefined };
-      const providers = asProviderRecord(current["providers"]);
+      const providers = asProviderRecord(current['providers']);
       if (Object.hasOwn(providers, operation.providerId)) {
         scheduleRecovery([operation]);
       } else if (!(options.canDeleteAccount ?? (() => true))(operation.providerId)) {
@@ -126,7 +126,7 @@ export function createAccountRemovalCoordinator(options: {
     if (earliest !== undefined) options.onRecoveryNeeded?.(earliest.createdAt + PENDING_OPERATION_TTL_MS);
   }
 
-  const finalizeAfterDrain: AccountRemovalCoordinator["finalizeAfterDrain"] = (operations, retired) => {
+  const finalizeAfterDrain: AccountRemovalCoordinator['finalizeAfterDrain'] = (operations, retired) => {
     scheduleRecovery(operations);
     return Promise.all(
       operations.map(async (operation) => {

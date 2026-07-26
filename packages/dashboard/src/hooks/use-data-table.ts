@@ -1,4 +1,5 @@
-import { useForm, useStore } from "@tanstack/react-form";
+import { useForm } from '@tanstack/react-form';
+import { useSelector } from '@tanstack/react-store';
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -10,8 +11,8 @@ import {
   type SortingState,
   useReactTable,
   type VisibilityState,
-} from "@tanstack/react-table";
-import { useState } from "react";
+} from '@tanstack/react-table';
+import { useState } from 'react';
 
 const useColumnVisibilityForm = () =>
   useForm({
@@ -23,10 +24,10 @@ export type ColumnVisibilityForm = ReturnType<typeof useColumnVisibilityForm>;
 export function useDataTable<TData>(data: readonly TData[], columns: readonly ColumnDef<TData>[]) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [globalFilter, setGlobalFilter] = useState('');
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
   const columnVisibilityForm = useColumnVisibilityForm();
-  const columnVisibility = useStore(columnVisibilityForm.store, (state) => state.values.columnVisibility);
+  const columnVisibility = useSelector(columnVisibilityForm.store, (state) => state.values.columnVisibility);
 
   const table = useReactTable({
     data: data as TData[],
@@ -35,8 +36,8 @@ export function useDataTable<TData>(data: readonly TData[], columns: readonly Co
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: (updater) =>
-      columnVisibilityForm.setFieldValue("columnVisibility", (value) =>
-        typeof updater === "function" ? updater(value) : updater,
+      columnVisibilityForm.setFieldValue('columnVisibility', (value) =>
+        typeof updater === 'function' ? updater(value) : updater,
       ),
     onGlobalFilterChange: setGlobalFilter,
     onPaginationChange: setPagination,

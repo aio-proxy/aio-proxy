@@ -1,11 +1,10 @@
-import { providerLoginCommand } from "@aio-proxy/types";
+import { providerLoginCommand } from '@aio-proxy/types';
 
-import type { DiagnosticFactory, PluginLogSink } from "../diagnostic/index";
-import type { PendingAccountOperation, PluginRepository } from "../repository/index";
-
-import { parseRuntimeConfig } from "../../config";
-import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from "../config-file";
-import { AccountCleanupPendingError } from "./errors";
+import { parseRuntimeConfig } from '../../config';
+import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from '../config-file';
+import type { DiagnosticFactory, PluginLogSink } from '../diagnostic/index';
+import type { PendingAccountOperation, PluginRepository } from '../repository/index';
+import { AccountCleanupPendingError } from './errors';
 import {
   accountMatches,
   type ConfigRecord,
@@ -14,12 +13,12 @@ import {
   providerRecord,
   structuredEntry,
   validateStagedOAuthWrite,
-} from "./validation";
+} from './validation';
 
 export const PENDING_OPERATION_TTL_MS = 30 * 60_000;
 export const ORPHAN_ACCOUNT_GRACE_MS = 30 * 60_000;
 export const RECOVERY_DRAIN_RETRY_MS = 5_000;
-export const ABSENT_PROVIDER_DIGEST = "absent";
+export const ABSENT_PROVIDER_DIGEST = 'absent';
 
 export type DeleteOAuthAccountOptions = {
   readonly providerId: string;
@@ -28,11 +27,11 @@ export type DeleteOAuthAccountOptions = {
   readonly verify?: (candidate: Readonly<ConfigRecord>) => Promise<void>;
 };
 export type RecoverPendingAccountOperationsOptions =
-  | { readonly mode: "cli"; readonly now?: () => number }
+  | { readonly mode: 'cli'; readonly now?: () => number }
   | {
-      readonly mode: "server";
+      readonly mode: 'server';
       readonly canDeleteAccount: (providerId: string) => boolean;
-      readonly deleteMarkerOnProviderPresent?: "complete" | "retain";
+      readonly deleteMarkerOnProviderPresent?: 'complete' | 'retain';
       readonly now?: () => number;
     };
 
@@ -47,19 +46,19 @@ export function safeSupersededDiagnostic(
   const suggestedCommand = providerLoginCommand(providerId);
   repository.writeDiagnostic(
     providerId,
-    diagnostics?.("AUTHORIZATION_FAILED", { providerId, retryable: true, suggestedCommand }) ?? {
-      code: "AUTHORIZATION_FAILED",
-      summary: "ACCOUNT_OPERATION_SUPERSEDED",
+    diagnostics?.('AUTHORIZATION_FAILED', { providerId, retryable: true, suggestedCommand }) ?? {
+      code: 'AUTHORIZATION_FAILED',
+      summary: 'ACCOUNT_OPERATION_SUPERSEDED',
       retryable: true,
       occurredAt: new Date(now).toISOString(),
       suggestedCommand,
     },
   );
   logger?.({
-    event: "plugin.account.compensation.superseded",
-    code: "AUTHORIZATION_FAILED",
+    event: 'plugin.account.compensation.superseded',
+    code: 'AUTHORIZATION_FAILED',
     context: { providerId },
-    error: { name: "Error", message: "ACCOUNT_OPERATION_SUPERSEDED" },
+    error: { name: 'Error', message: 'ACCOUNT_OPERATION_SUPERSEDED' },
   });
 }
 
@@ -75,7 +74,7 @@ export async function deleteOAuthAccount(options: DeleteOAuthAccountOptions): Pr
           throw new AccountCleanupPendingError(options.providerId);
         }
         const operation = options.repository.stageAccountOperation({
-          kind: "delete",
+          kind: 'delete',
           targetDigest: ABSENT_PROVIDER_DIGEST,
           providerId: options.providerId,
           expectedRuntimeRevision: account.runtimeRevision,
@@ -110,7 +109,7 @@ export async function recoverPendingAccountOperations(
   const now = (options.now ?? Date.now)();
   let nextRunAt: number | undefined;
   await config.transaction(async (current) => {
-    const rawProviders = current["providers"];
+    const rawProviders = current['providers'];
     if (rawProviders !== undefined && !isRecord(rawProviders)) {
       try {
         parseRuntimeConfig(current);
@@ -125,12 +124,12 @@ export async function recoverPendingAccountOperations(
         nextRunAt = earlier(nextRunAt, deadline);
         continue;
       }
-      if (options.mode === "cli" && operation.kind === "delete") continue;
+      if (options.mode === 'cli' && operation.kind === 'delete') continue;
       const currentEntry = providers[operation.providerId];
       const observedDigest = currentEntry === undefined ? ABSENT_PROVIDER_DIGEST : digestProviderEntry(currentEntry);
       if (observedDigest === operation.targetDigest) {
-        if (operation.kind === "delete") {
-          if (options.mode !== "server") continue;
+        if (operation.kind === 'delete') {
+          if (options.mode !== 'server') continue;
           if (!options.canDeleteAccount(operation.providerId)) {
             nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
             continue;
@@ -139,13 +138,13 @@ export async function recoverPendingAccountOperations(
         } else {
           repository.completeAccountOperation(operation.operationId);
         }
-      } else if (operation.kind === "delete") {
-        if (options.mode === "server" && options.deleteMarkerOnProviderPresent === "retain") {
+      } else if (operation.kind === 'delete') {
+        if (options.mode === 'server' && options.deleteMarkerOnProviderPresent === 'retain') {
           nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
         } else {
           repository.completeAccountOperation(operation.operationId);
         }
-      } else if (repository.compensateAccountOperation(operation.operationId) === "superseded") {
+      } else if (repository.compensateAccountOperation(operation.operationId) === 'superseded') {
         safeSupersededDiagnostic(operation.providerId, repository, diagnostics?.factory, diagnostics?.logger, now);
       }
     }
@@ -159,7 +158,7 @@ export async function recoverPendingAccountOperations(
         nextRunAt = earlier(nextRunAt, graceDeadline);
         continue;
       }
-      if (options.mode !== "server") continue;
+      if (options.mode !== 'server') continue;
       if (!options.canDeleteAccount(account.providerId)) {
         nextRunAt = earlier(nextRunAt, now + RECOVERY_DRAIN_RETRY_MS);
         continue;

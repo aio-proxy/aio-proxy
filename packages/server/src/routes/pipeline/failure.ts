@@ -1,11 +1,11 @@
-import type { RequestAttemptInput, RequestFinishInput } from "../../request-recorder";
+import type { RequestAttemptInput, RequestFinishInput } from '../../request-recorder';
 
-type AttemptBase = Omit<RequestAttemptInput, "outcome" | "statusCode" | "errorCode">;
+type AttemptBase = Omit<RequestAttemptInput, 'outcome' | 'statusCode' | 'errorCode'>;
 
 export function failedAttempt(base: AttemptBase, statusCode: number, errorCode?: string): RequestAttemptInput {
   return {
     ...base,
-    outcome: "failure",
+    outcome: 'failure',
     statusCode,
     ...(errorCode === undefined ? {} : { errorCode }),
   };
@@ -13,7 +13,7 @@ export function failedAttempt(base: AttemptBase, statusCode: number, errorCode?:
 
 export function finalFailure(base: AttemptBase, statusCode: number, errorCode?: string): RequestFinishInput {
   return {
-    outcome: "failure",
+    outcome: 'failure',
     finalProviderId: base.providerId,
     finalModelId: base.modelId,
     finalStatusCode: statusCode,

@@ -1,12 +1,11 @@
-import type { DashboardRequestLog, RequestOutcome } from "@aio-proxy/types";
-import type { ReactNode } from "react";
+import { m } from '@aio-proxy/i18n';
+import type { DashboardRequestLog, RequestOutcome } from '@aio-proxy/types';
+import { Clipboard } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { Clipboard } from "lucide-react";
-
-import { ProtocolLabel } from "@/components/protocol-label";
-import { TokenCount } from "@/components/token-count";
-import { Button } from "@/components/ui/button";
+import { ProtocolLabel } from '@/components/protocol-label';
+import { TokenCount } from '@/components/token-count';
+import { Button } from '@/components/ui/button';
 import {
   Drawer,
   DrawerClose,
@@ -15,10 +14,10 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-} from "@/components/ui/drawer";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from '@/components/ui/drawer';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { displayTotalTokens, formatDuration, formatLogCost } from "../log-formatters";
+import { displayTotalTokens, formatDuration, formatLogCost } from '../log-formatters';
 
 type Props = { readonly log: DashboardRequestLog | undefined; readonly onClose: () => void };
 
@@ -26,33 +25,33 @@ const renderTokenCount = (value: number | undefined) =>
   value === undefined ? undefined : <TokenCount value={value} />;
 
 export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
-  const missing = m["dashboard.logs.not_available"]();
+  const missing = m['dashboard.logs.not_available']();
   const outcomeLabel = (outcome: RequestOutcome) => m[`dashboard.logs.${outcome}`]();
   const rows: readonly (readonly [string, ReactNode])[] = log
     ? [
-        [m["dashboard.logs.outcome"](), outcomeLabel(log.outcome)],
-        [m["dashboard.logs.protocol"](), <ProtocolLabel key="inbound-protocol" protocol={log.inboundProtocol} />],
-        [m["dashboard.logs.requested_model"](), log.requestedModelId],
-        [m["dashboard.logs.final_provider"](), log.finalProviderId],
-        [m["dashboard.logs.final_model"](), log.finalModelId],
-        [m["dashboard.logs.status"](), log.finalStatusCode],
-        [m["dashboard.logs.error_code"](), log.errorCode],
-        [m["dashboard.logs.started_at"](), new Date(log.startedAt).toLocaleString()],
-        [m["dashboard.logs.completed_at"](), new Date(log.completedAt).toLocaleString()],
-        [m["dashboard.logs.duration"](), formatDuration(log.durationMs)],
+        [m['dashboard.logs.outcome'](), outcomeLabel(log.outcome)],
+        [m['dashboard.logs.protocol'](), <ProtocolLabel key="inbound-protocol" protocol={log.inboundProtocol} />],
+        [m['dashboard.logs.requested_model'](), log.requestedModelId],
+        [m['dashboard.logs.final_provider'](), log.finalProviderId],
+        [m['dashboard.logs.final_model'](), log.finalModelId],
+        [m['dashboard.logs.status'](), log.finalStatusCode],
+        [m['dashboard.logs.error_code'](), log.errorCode],
+        [m['dashboard.logs.started_at'](), new Date(log.startedAt).toLocaleString()],
+        [m['dashboard.logs.completed_at'](), new Date(log.completedAt).toLocaleString()],
+        [m['dashboard.logs.duration'](), formatDuration(log.durationMs)],
       ]
     : [];
   const usageRows: readonly (readonly [string, ReactNode])[] = log
     ? [
-        [m["dashboard.logs.usage_provider"](), log.usage?.providerId],
-        [m["dashboard.logs.usage_model"](), log.usage?.modelId],
-        [m["dashboard.logs.input_tokens"](), renderTokenCount(log.usage?.inputTokens)],
-        [m["dashboard.logs.output_tokens"](), renderTokenCount(log.usage?.outputTokens)],
-        [m["dashboard.logs.tokens"](), renderTokenCount(displayTotalTokens(log.usage))],
-        [m["dashboard.logs.cache_read_tokens"](), renderTokenCount(log.usage?.cacheReadTokens)],
-        [m["dashboard.logs.cache_write_tokens"](), renderTokenCount(log.usage?.cacheWriteTokens)],
-        [m["dashboard.logs.reasoning_tokens"](), renderTokenCount(log.usage?.reasoningTokens)],
-        [m["dashboard.logs.cost"](), formatLogCost(log.usage?.estimatedCostUsd)],
+        [m['dashboard.logs.usage_provider'](), log.usage?.providerId],
+        [m['dashboard.logs.usage_model'](), log.usage?.modelId],
+        [m['dashboard.logs.input_tokens'](), renderTokenCount(log.usage?.inputTokens)],
+        [m['dashboard.logs.output_tokens'](), renderTokenCount(log.usage?.outputTokens)],
+        [m['dashboard.logs.tokens'](), renderTokenCount(displayTotalTokens(log.usage))],
+        [m['dashboard.logs.cache_read_tokens'](), renderTokenCount(log.usage?.cacheReadTokens)],
+        [m['dashboard.logs.cache_write_tokens'](), renderTokenCount(log.usage?.cacheWriteTokens)],
+        [m['dashboard.logs.reasoning_tokens'](), renderTokenCount(log.usage?.reasoningTokens)],
+        [m['dashboard.logs.cost'](), formatLogCost(log.usage?.estimatedCostUsd)],
       ]
     : [];
   return (
@@ -65,7 +64,7 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>{m["dashboard.logs.details"]()}</DrawerTitle>
+          <DrawerTitle>{m['dashboard.logs.details']()}</DrawerTitle>
           <DrawerDescription>{log?.requestId}</DrawerDescription>
         </DrawerHeader>
         {log && (
@@ -73,11 +72,11 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
             <div className="space-y-5">
               <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(log.requestId)}>
                 <Clipboard />
-                {m["dashboard.logs.copy_id"]()}
+                {m['dashboard.logs.copy_id']()}
               </Button>
               {[
-                [m["dashboard.logs.summary"](), rows],
-                [m["dashboard.logs.usage"](), usageRows],
+                [m['dashboard.logs.summary'](), rows],
+                [m['dashboard.logs.usage'](), usageRows],
               ].map(([title, items]) => (
                 <section key={title as string}>
                   <h3 className="mb-2 font-medium">{title as string}</h3>
@@ -94,7 +93,7 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
                 </section>
               ))}
               <section>
-                <h3 className="mb-2 font-medium">{m["dashboard.logs.attempts"]()}</h3>
+                <h3 className="mb-2 font-medium">{m['dashboard.logs.attempts']()}</h3>
                 <div className="space-y-2">
                   {log.attempts.map((attempt) => (
                     <div className="rounded-xl border p-3 text-sm" key={attempt.index}>
@@ -126,7 +125,7 @@ export const LogDetailDrawer: React.FC<Props> = ({ log, onClose }) => {
           </ScrollArea>
         )}
         <DrawerFooter>
-          <DrawerClose render={<Button variant="outline" />}>{m["dashboard.logs.close"]()}</DrawerClose>
+          <DrawerClose render={<Button variant="outline" />}>{m['dashboard.logs.close']()}</DrawerClose>
         </DrawerFooter>
       </DrawerContent>
     </Drawer>

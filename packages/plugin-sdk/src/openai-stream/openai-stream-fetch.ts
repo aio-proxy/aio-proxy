@@ -1,10 +1,10 @@
-import { createContentDecodedReader, type ContentDecodedReader } from "./content-decoding";
-import { createOpenAISseBody, type OpenAIStreamProtocol } from "./sse-terminal";
-import { isTrustedToolImageMarker } from "./tool-image-trust";
+import { createContentDecodedReader, type ContentDecodedReader } from './content-decoding';
+import { createOpenAISseBody, type OpenAIStreamProtocol } from './sse-terminal';
+import { isTrustedToolImageMarker } from './tool-image-trust';
 
-export type { OpenAIStreamProtocol } from "./sse-terminal";
+export type { OpenAIStreamProtocol } from './sse-terminal';
 
-const OPENAI_ACCEPT_ENCODING = "gzip, deflate, br, zstd" as const;
+const OPENAI_ACCEPT_ENCODING = 'gzip, deflate, br, zstd' as const;
 
 type BunFetchInit = RequestInit & { decompress?: boolean };
 
@@ -26,11 +26,11 @@ export function createOpenAIStreamFetch(
   const streamFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const initialRequest = new Request(input, init);
     const request =
-      protocol === "openai-compatible" && resolvedOptions.rewriteToolImages === true
+      protocol === 'openai-compatible' && resolvedOptions.rewriteToolImages === true
         ? await rewriteCompatibleToolImages(initialRequest)
         : initialRequest;
     const headers = new Headers(request.headers);
-    headers.set("accept-encoding", OPENAI_ACCEPT_ENCODING);
+    headers.set('accept-encoding', OPENAI_ACCEPT_ENCODING);
 
     const response = await (fetcher as (input: RequestInfo | URL, init?: BunFetchInit) => Promise<Response>)(request, {
       headers,
@@ -51,9 +51,9 @@ export function createOpenAIStreamFetch(
 async function rewriteCompatibleToolImages(request: Request): Promise<Request> {
   const url = new URL(request.url);
   if (
-    request.method !== "POST" ||
-    !url.pathname.endsWith("/chat/completions") ||
-    !request.headers.get("content-type")?.toLowerCase().includes("application/json")
+    request.method !== 'POST' ||
+    !url.pathname.endsWith('/chat/completions') ||
+    !request.headers.get('content-type')?.toLowerCase().includes('application/json')
   ) {
     return request;
   }
@@ -63,20 +63,20 @@ async function rewriteCompatibleToolImages(request: Request): Promise<Request> {
   } catch {
     return request;
   }
-  if (!isRecord(body) || !Array.isArray(body["messages"])) return request;
+  if (!isRecord(body) || !Array.isArray(body['messages'])) return request;
   let changed = false;
-  const messages = body["messages"].map((message: unknown) => {
-    if (!isRecord(message) || message["role"] !== "tool" || typeof message["content"] !== "string") return message;
-    const content = compatibleToolContent(message["content"]);
+  const messages = body['messages'].map((message: unknown) => {
+    if (!isRecord(message) || message['role'] !== 'tool' || typeof message['content'] !== 'string') return message;
+    const content = compatibleToolContent(message['content']);
     if (content === undefined) return message;
     changed = true;
     return { ...message, content };
   });
   if (!changed) return request;
   const headers = new Headers(request.headers);
-  headers.delete("content-encoding");
-  headers.delete("content-length");
-  return new Request(request, { method: "POST", headers, body: JSON.stringify({ ...body, messages }) });
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  return new Request(request, { method: 'POST', headers, body: JSON.stringify({ ...body, messages }) });
 }
 
 function compatibleToolContent(content: string): readonly unknown[] | undefined {
@@ -88,50 +88,50 @@ function compatibleToolContent(content: string): readonly unknown[] | undefined 
   }
   if (!Array.isArray(value) || !value.some(isMarkedToolImage)) return undefined;
   return value.map((part) => {
-    if (isRecord(part) && part["type"] === "text" && typeof part["text"] === "string") {
-      return { type: "text", text: part["text"] };
+    if (isRecord(part) && part['type'] === 'text' && typeof part['text'] === 'string') {
+      return { type: 'text', text: part['text'] };
     }
     if (isMarkedToolImage(part)) return compatibleImagePart(part);
-    throw new TypeError("Marked tool image content contains an unsupported part");
+    throw new TypeError('Marked tool image content contains an unsupported part');
   });
 }
 
 function isMarkedToolImage(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (!isRecord(value) || value["type"] !== "file" || !isRecord(value["providerOptions"])) return false;
-  return isTrustedToolImageMarker(value["providerOptions"]["aioProxy"]);
+  if (!isRecord(value) || value['type'] !== 'file' || !isRecord(value['providerOptions'])) return false;
+  return isTrustedToolImageMarker(value['providerOptions']['aioProxy']);
 }
 
 function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
-  const mediaType = part["mediaType"];
-  const data = part["data"];
-  if (typeof mediaType !== "string" || (mediaType !== "image" && !mediaType.startsWith("image/")) || !isRecord(data)) {
-    throw new TypeError("Marked tool image is invalid");
+  const mediaType = part['mediaType'];
+  const data = part['data'];
+  if (typeof mediaType !== 'string' || (mediaType !== 'image' && !mediaType.startsWith('image/')) || !isRecord(data)) {
+    throw new TypeError('Marked tool image is invalid');
   }
   const url =
-    data["type"] === "data" && typeof data["data"] === "string"
-      ? `data:${mediaType};base64,${data["data"]}`
-      : data["type"] === "url" && typeof data["url"] === "string"
-        ? data["url"]
+    data['type'] === 'data' && typeof data['data'] === 'string'
+      ? `data:${mediaType};base64,${data['data']}`
+      : data['type'] === 'url' && typeof data['url'] === 'string'
+        ? data['url']
         : undefined;
-  if (url === undefined) throw new TypeError("Marked tool image source is unsupported");
-  const providerOptions = part["providerOptions"];
-  const openAI = isRecord(providerOptions) ? providerOptions["openai"] : undefined;
-  const detail = isRecord(openAI) ? openAI["imageDetail"] : undefined;
-  if (detail !== undefined && detail !== "auto" && detail !== "low" && detail !== "high") {
-    throw new TypeError("Marked tool image detail is invalid");
+  if (url === undefined) throw new TypeError('Marked tool image source is unsupported');
+  const providerOptions = part['providerOptions'];
+  const openAI = isRecord(providerOptions) ? providerOptions['openai'] : undefined;
+  const detail = isRecord(openAI) ? openAI['imageDetail'] : undefined;
+  if (detail !== undefined && detail !== 'auto' && detail !== 'low' && detail !== 'high') {
+    throw new TypeError('Marked tool image detail is invalid');
   }
   return {
-    type: "image_url" as const,
+    type: 'image_url' as const,
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isEventStream(contentType: string | null): boolean {
-  return (contentType ?? "").toLowerCase().includes("text/event-stream");
+  return (contentType ?? '').toLowerCase().includes('text/event-stream');
 }
 
 function createPlainDecodedBody(decoded: ContentDecodedReader): ReadableStream<Uint8Array> {
@@ -172,8 +172,8 @@ function createPlainDecodedBody(decoded: ContentDecodedReader): ReadableStream<U
 
 function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | null): Response {
   const headers = new Headers(response.headers);
-  headers.delete("content-encoding");
-  headers.delete("content-length");
+  headers.delete('content-encoding');
+  headers.delete('content-length');
   return new Response(body, {
     status: response.status,
     statusText: response.statusText,
@@ -182,13 +182,13 @@ function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | 
 }
 
 function normalizeOpenAIStreamResponse(response: Response, protocol: OpenAIStreamProtocol): Response {
-  const eventStream = isEventStream(response.headers.get("content-type"));
+  const eventStream = isEventStream(response.headers.get('content-type'));
   if (response.body === null && !eventStream) return response;
 
-  const encoding = response.headers.get("content-encoding");
-  const needsDecoding = (encoding ?? "").split(",").some((value) => {
+  const encoding = response.headers.get('content-encoding');
+  const needsDecoding = (encoding ?? '').split(',').some((value) => {
     const token = value.trim().toLowerCase();
-    return token !== "" && token !== "identity";
+    return token !== '' && token !== 'identity';
   });
   if (!needsDecoding && !eventStream) return response;
 

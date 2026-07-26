@@ -1,17 +1,16 @@
-import type { UsageOverviewGroupBy, UsageOverviewMetric } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { UsageOverviewGroupBy, UsageOverviewMetric } from '@aio-proxy/types';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { useReducer } from 'react';
+import { createPortal } from 'react-dom';
 
-import { m } from "@aio-proxy/i18n";
-import { useAtomValue, useSetAtom } from "jotai";
-import { useReducer } from "react";
-import { createPortal } from "react-dom";
+import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 
-import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
-
-const metrics: readonly UsageOverviewMetric[] = ["cost", "tokens", "requests"];
-const groupings: readonly UsageOverviewGroupBy[] = ["model", "provider"];
+const metrics: readonly UsageOverviewMetric[] = ['cost', 'tokens', 'requests'];
+const groupings: readonly UsageOverviewGroupBy[] = ['model', 'provider'];
 
 type Props = {
   readonly description: string;
@@ -28,13 +27,13 @@ export const UsageTrendTabs: React.FC<Props> = ({ description, titleId, descript
     null,
   );
   const metricLabels: Record<UsageOverviewMetric, string> = {
-    cost: m["dashboard.usage.metric_cost"](),
-    tokens: m["dashboard.usage.metric_tokens"](),
-    requests: m["dashboard.usage.metric_requests"](),
+    cost: m['dashboard.usage.metric_cost'](),
+    tokens: m['dashboard.usage.metric_tokens'](),
+    requests: m['dashboard.usage.metric_requests'](),
   };
   const groupingLabels: Record<UsageOverviewGroupBy, string> = {
-    model: m["dashboard.usage.chart_title_model"](),
-    provider: m["dashboard.usage.chart_title_provider"](),
+    model: m['dashboard.usage.chart_title_model'](),
+    provider: m['dashboard.usage.chart_title_provider'](),
   };
 
   return (
@@ -52,7 +51,7 @@ export const UsageTrendTabs: React.FC<Props> = ({ description, titleId, descript
           <CardDescription id={descriptionId}>{description}</CardDescription>
         </div>
         <div className="max-w-full min-w-0 overflow-x-auto pb-1 sm:shrink-0">
-          <TabsList className="shrink-0" aria-label={m["dashboard.usage.metric_label"]()}>
+          <TabsList className="shrink-0" aria-label={m['dashboard.usage.metric_label']()}>
             {metrics.map((metric) => (
               <TabsTrigger key={metric} value={metric}>
                 {metricLabels[metric]}
@@ -73,7 +72,7 @@ export const UsageTrendTabs: React.FC<Props> = ({ description, titleId, descript
             >
               {groupingTabsContainer
                 ? createPortal(
-                    <TabsList variant="line" className="shrink-0" aria-label={m["dashboard.usage.group_by_label"]()}>
+                    <TabsList variant="line" className="shrink-0" aria-label={m['dashboard.usage.group_by_label']()}>
                       {groupings.map((groupBy) => (
                         <TabsTrigger key={groupBy} value={groupBy}>
                           {groupingLabels[groupBy]}

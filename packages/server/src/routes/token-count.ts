@@ -1,5 +1,3 @@
-import type { LogicalRequestContext, TokenCountInput } from "@aio-proxy/plugin-sdk";
-
 import {
   assertImageInputSupported,
   type ModelInvocation,
@@ -8,14 +6,14 @@ import {
   RouterModelNotFoundError,
   type RouterResolution,
   UnsupportedContentEncodingError,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
+import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
 
-import type { RequestAttemptInput, RequestSession } from "../request-recorder";
-import type { ProviderRouteSource, RuntimeProviderInstance } from "../runtime";
-
-import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from "../request-logging";
-import { hasInvalidOrOversizedContentLength } from "./pipeline";
-import { cancelRetainedRequestBody } from "./pipeline/request";
+import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
+import type { RequestAttemptInput, RequestSession } from '../request-recorder';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
+import { hasInvalidOrOversizedContentLength } from './pipeline';
+import { cancelRetainedRequestBody } from './pipeline/request';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -48,7 +46,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
   session: RequestSession,
 ): Promise<Response> {
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
-    await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError("Request body too large"));
+    await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
     return adapter.errors.tooLarge();
   }
 
@@ -93,7 +91,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
       lease.release();
     }
   } finally {
-    void cancelRetainedRequestBody(rawRequest, "request body no longer needed");
+    void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
   }
 }
 
@@ -149,14 +147,14 @@ async function countCandidates<TRequest, TContext>({
       );
       rawRequest.signal.throwIfAborted();
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
-        throw new TypeError("Provider token count must be a non-negative integer");
+        throw new TypeError('Provider token count must be a non-negative integer');
       }
       session.finish({
-        outcome: "success",
+        outcome: 'success',
         finalProviderId: provider.id,
         finalModelId: candidate.modelId,
         finalStatusCode: 200,
-        attempt: { ...attemptBase(provider, candidate.modelId, startedAt), outcome: "success", statusCode: 200 },
+        attempt: { ...attemptBase(provider, candidate.modelId, startedAt), outcome: 'success', statusCode: 200 },
       });
       return Response.json(format(result.inputTokens));
     } catch (error) {
@@ -172,8 +170,8 @@ async function countCandidates<TRequest, TContext>({
 
   throwIfCountAborted(session, rawRequest.signal);
   const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
-  session.finish({ outcome: "success", finalStatusCode: 200 });
-  return Response.json(format(estimate), { headers: { "x-aio-proxy-token-count-estimated": "true" } });
+  session.finish({ outcome: 'success', finalStatusCode: 200 });
+  return Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
 }
 
 function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelInvocation): boolean {
@@ -188,17 +186,17 @@ function failedCountAttempt(
 ): RequestAttemptInput {
   return {
     ...attemptBase(provider, modelId, startedAt),
-    outcome: "failure",
+    outcome: 'failure',
     ...(statusCode === undefined ? {} : { statusCode }),
   };
 }
 
 function finishCancelled(session: RequestSession, attempt: RequestAttemptInput): void {
   session.finish({
-    outcome: "cancelled",
+    outcome: 'cancelled',
     finalProviderId: attempt.providerId,
     finalModelId: attempt.modelId,
-    attempt: { ...attempt, outcome: "cancelled" },
+    attempt: { ...attempt, outcome: 'cancelled' },
   });
 }
 
@@ -206,7 +204,7 @@ function throwIfCountAborted(session: RequestSession, signal: AbortSignal): void
   try {
     signal.throwIfAborted();
   } catch (error) {
-    session.finish({ outcome: "cancelled" });
+    session.finish({ outcome: 'cancelled' });
     throw error;
   }
 }

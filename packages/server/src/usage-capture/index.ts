@@ -5,4 +5,4 @@ export {
   type StreamUsageOptions,
   type UsageCapture,
   type UsageCompletion,
-} from "./usage-capture";
+} from './usage-capture';

@@ -4,25 +4,24 @@ import type {
   GenerateContentResponse,
   GenerateContentResponseUsageMetadata,
   Part,
-} from "@google/genai";
+} from '@google/genai';
 
-import type { TextStreamPart, ToolSet } from "../ai-sdk-bridge";
-import type { ModelEgressContext } from "../protocol/adapter";
-
-import { createCancellableEgressStream } from "./cancellable-stream";
+import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
+import type { ModelEgressContext } from '../protocol/adapter';
+import { createCancellableEgressStream } from './cancellable-stream';
 
 const encoder = new TextEncoder();
 
 type GeminiGenerateContentStreamPart = TextStreamPart<ToolSet>;
-type TextDeltaPart = Extract<GeminiGenerateContentStreamPart, { type: "text-delta" }>;
-type FinishPart = Extract<GeminiGenerateContentStreamPart, { type: "finish" }>;
-type FinishStepPart = Extract<GeminiGenerateContentStreamPart, { type: "finish-step" }>;
-type FinishReason = FinishPart["finishReason"];
-type TokenUsage = FinishPart["totalUsage"];
+type TextDeltaPart = Extract<GeminiGenerateContentStreamPart, { type: 'text-delta' }>;
+type FinishPart = Extract<GeminiGenerateContentStreamPart, { type: 'finish' }>;
+type FinishStepPart = Extract<GeminiGenerateContentStreamPart, { type: 'finish-step' }>;
+type FinishReason = FinishPart['finishReason'];
+type TokenUsage = FinishPart['totalUsage'];
 
 export type GeminiResponse = Pick<
   GenerateContentResponse,
-  "candidates" | "createTime" | "modelVersion" | "responseId" | "usageMetadata"
+  'candidates' | 'createTime' | 'modelVersion' | 'responseId' | 'usageMetadata'
 >;
 
 type ToolState = {
@@ -43,27 +42,27 @@ export async function writeGeminiGenerateContentResponse(
 ): Promise<GeminiResponse> {
   const text: string[] = [];
   const tools = new Map<string, ToolState>();
-  let finishReason = geminiFinishReason("other");
+  let finishReason = geminiFinishReason('other');
   let usage: GenerateContentResponseUsageMetadata | undefined;
   let metadata = fallbackMetadata(context.modelId);
 
   for await (const part of stream) {
     switch (part.type) {
-      case "text-delta":
+      case 'text-delta':
         text.push(textDelta(part));
         break;
-      case "tool-input-start":
-        tools.set(part.id, { id: part.id, toolName: part.toolName, input: "" });
+      case 'tool-input-start':
+        tools.set(part.id, { id: part.id, toolName: part.toolName, input: '' });
         break;
-      case "tool-input-delta": {
+      case 'tool-input-delta': {
         const tool = tools.get(part.id);
         if (tool !== undefined) tool.input += part.delta;
         break;
       }
-      case "finish-step":
+      case 'finish-step':
         metadata = upstreamMetadata(part, metadata);
         break;
-      case "finish":
+      case 'finish':
         finishReason = geminiFinishReason(part.finishReason);
         usage = geminiUsage(part.totalUsage);
         break;
@@ -74,7 +73,7 @@ export async function writeGeminiGenerateContentResponse(
 
   return response(
     metadata,
-    [...(text.length === 0 ? [] : [{ text: text.join("") }]), ...Array.from(tools.values()).map(toolPart)],
+    [...(text.length === 0 ? [] : [{ text: text.join('') }]), ...Array.from(tools.values()).map(toolPart)],
     finishReason,
     usage,
   );
@@ -90,23 +89,23 @@ export function writeGeminiGenerateContentSSE(
 
     for await (const part of parts) {
       switch (part.type) {
-        case "text-delta":
+        case 'text-delta':
           enqueue(frame(metadata, [{ text: textDelta(part) }]));
           break;
-        case "tool-input-start":
-          tools.set(part.id, { id: part.id, toolName: part.toolName, input: "" });
+        case 'tool-input-start':
+          tools.set(part.id, { id: part.id, toolName: part.toolName, input: '' });
           break;
-        case "tool-input-delta": {
+        case 'tool-input-delta': {
           const tool = tools.get(part.id);
           if (tool !== undefined) tool.input += part.delta;
           break;
         }
-        case "tool-input-end": {
+        case 'tool-input-end': {
           const tool = tools.get(part.id);
           if (tool !== undefined) enqueue(frame(metadata, [toolPart(tool)]));
           break;
         }
-        case "finish":
+        case 'finish':
           enqueue(frame(metadata, [], geminiFinishReason(part.finishReason), geminiUsage(part.totalUsage)));
           break;
         default:
@@ -121,7 +120,7 @@ function fallbackMetadata(model: string): ResponseMetadata {
 }
 
 function upstreamMetadata(part: FinishStepPart, fallback: ResponseMetadata): ResponseMetadata {
-  if (!("response" in part)) return fallback;
+  if (!('response' in part)) return fallback;
   return {
     id: part.response.id,
     model: part.response.modelId,
@@ -136,7 +135,7 @@ function response(
   usage?: GenerateContentResponseUsageMetadata,
 ): GeminiResponse {
   const candidate: Candidate = {
-    content: { role: "model", parts },
+    content: { role: 'model', parts },
     ...(finishReason === undefined ? {} : { finishReason }),
   };
   return {
@@ -174,7 +173,7 @@ function toolPart(tool: ToolState): Part {
 function parseJsonObject(value: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {};
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {};
   } catch (error) {
     if (error instanceof SyntaxError) return {};
     throw error;
@@ -183,16 +182,16 @@ function parseJsonObject(value: string): Record<string, unknown> {
 
 function geminiFinishReason(finishReason: FinishReason): GeminiFinishReason {
   switch (finishReason) {
-    case "length":
-      return "MAX_TOKENS" as GeminiFinishReason;
-    case "content-filter":
-      return "SAFETY" as GeminiFinishReason;
-    case "stop":
-    case "tool-calls":
-      return "STOP" as GeminiFinishReason;
-    case "error":
-    case "other":
-      return "OTHER" as GeminiFinishReason;
+    case 'length':
+      return 'MAX_TOKENS' as GeminiFinishReason;
+    case 'content-filter':
+      return 'SAFETY' as GeminiFinishReason;
+    case 'stop':
+    case 'tool-calls':
+      return 'STOP' as GeminiFinishReason;
+    case 'error':
+    case 'other':
+      return 'OTHER' as GeminiFinishReason;
   }
 }
 

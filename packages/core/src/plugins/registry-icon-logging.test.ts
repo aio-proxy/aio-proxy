@@ -1,30 +1,31 @@
-import { type OAuthAdapter, zod } from "@aio-proxy/plugin-sdk";
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 
-import { createPluginRegistryHost } from "./registry";
+import { type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 
-test("a throwing icon warning sink still strips the icon and commits the capability", () => {
+import { createPluginRegistryHost } from './registry';
+
+test('a throwing icon warning sink still strips the icon and commits the capability', () => {
   const host = createPluginRegistryHost(() => {
-    throw new Error("warning sink failed");
+    throw new Error('warning sink failed');
   });
-  const staging = host.stage("@example/icons");
+  const staging = host.stage('@example/icons');
   const adapter: OAuthAdapter = {
-    id: "default",
-    label: "Example",
-    icon: "data:text/html,private-icon-payload" as never,
+    id: 'default',
+    label: 'Example',
+    icon: 'data:text/html,private-icon-payload' as never,
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
-      throw new Error("not called");
+      throw new Error('not called');
     },
     catalog: {
-      policy: { kind: "static" },
+      policy: { kind: 'static' },
       async discover() {
         return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
       },
     },
     async createRuntime() {
-      throw new Error("not called");
+      throw new Error('not called');
     },
   };
 
@@ -32,5 +33,5 @@ test("a throwing icon warning sink still strips the icon and commits the capabil
   staging.seal();
   staging.commit();
 
-  expect(host.registry.resolveOAuth("@example/icons", "default")?.icon).toBeUndefined();
+  expect(host.registry.resolveOAuth('@example/icons', 'default')?.icon).toBeUndefined();
 });

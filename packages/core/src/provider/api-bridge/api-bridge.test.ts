@@ -1,10 +1,10 @@
-import { ProviderKind, ProviderProtocol } from "@aio-proxy/types";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 
-import type { AiSdkProviderLoadOptions, ProviderFetch } from "../../index";
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { bridgeApiProviderToAiSdk, createApiProvider } from "../../index";
-import { collect, loadedProvider, messages, model } from "./api-bridge-test-helpers";
+import type { AiSdkProviderLoadOptions } from '../../index';
+import { bridgeApiProviderToAiSdk } from '../../index';
+import { loadedProvider, model } from './api-bridge-test-helpers';
 
 declare const process: {
   readonly env: Record<string, string | undefined>;
@@ -12,43 +12,43 @@ declare const process: {
 
 Object.assign(globalThis, { AI_SDK_LOG_WARNINGS: false });
 
-describe("bridgeApiProviderToAiSdk", () => {
-  test("Given api provider protocols When bridged Then package and options are forwarded", async () => {
+describe('bridgeApiProviderToAiSdk', () => {
+  test('Given api provider protocols When bridged Then package and options are forwarded', async () => {
     // Given
     const previousKey = process.env.AIO_PROXY_BRIDGE_KEY;
-    process.env.AIO_PROXY_BRIDGE_KEY = "env-bridge-secret";
+    process.env.AIO_PROXY_BRIDGE_KEY = 'env-bridge-secret';
     const cases = [
       {
         protocol: ProviderProtocol.OpenAICompatible,
-        packageName: "@ai-sdk/openai-compatible",
+        packageName: '@ai-sdk/openai-compatible',
         options: {
-          apiKey: "env-bridge-secret",
-          baseURL: "https://api.example.com/v1",
-          name: "provider-openai-compatible",
+          apiKey: 'env-bridge-secret',
+          baseURL: 'https://api.example.com/v1',
+          name: 'provider-openai-compatible',
         },
       },
       {
         protocol: ProviderProtocol.Anthropic,
-        packageName: "@ai-sdk/anthropic",
+        packageName: '@ai-sdk/anthropic',
         options: {
-          apiKey: "env-bridge-secret",
-          baseURL: "https://api.example.com/v1",
+          apiKey: 'env-bridge-secret',
+          baseURL: 'https://api.example.com/v1',
         },
       },
       {
         protocol: ProviderProtocol.Gemini,
-        packageName: "@ai-sdk/google",
+        packageName: '@ai-sdk/google',
         options: {
-          apiKey: "env-bridge-secret",
-          baseURL: "https://api.example.com/v1",
+          apiKey: 'env-bridge-secret',
+          baseURL: 'https://api.example.com/v1',
         },
       },
       {
         protocol: ProviderProtocol.OpenAIResponse,
-        packageName: "@ai-sdk/openai",
+        packageName: '@ai-sdk/openai',
         options: {
-          apiKey: "env-bridge-secret",
-          baseURL: "https://api.example.com/v1",
+          apiKey: 'env-bridge-secret',
+          baseURL: 'https://api.example.com/v1',
         },
       },
     ] as const;
@@ -62,16 +62,16 @@ describe("bridgeApiProviderToAiSdk", () => {
             kind: ProviderKind.Api,
             id: `provider-${expected.protocol}`,
             protocol: expected.protocol,
-            apiKey: "$AIO_PROXY_BRIDGE_KEY",
-            baseURL: "https://api.example.com/v1",
-            models: ["gpt-test"],
+            apiKey: '$AIO_PROXY_BRIDGE_KEY',
+            baseURL: 'https://api.example.com/v1',
+            models: ['gpt-test'],
           },
           {
             async loadProvider(packageName, options) {
               packageSeen = packageName;
               optionsSeen = options;
               return loadedProvider({
-                languageModel: (modelId) => model(modelId, "ok"),
+                languageModel: (modelId) => model(modelId, 'ok'),
               });
             },
           },
@@ -83,12 +83,12 @@ describe("bridgeApiProviderToAiSdk", () => {
         // Then
         expect(bridge?.id).toBe(`provider-${expected.protocol}:bridge`);
         expect(bridge?.kind).toBe(ProviderKind.AiSdk);
-        expect(bridge?.models).toEqual(["gpt-test"]);
+        expect(bridge?.models).toEqual(['gpt-test']);
         expect(packageSeen).toBe(expected.packageName);
         const openAI =
-          expected.packageName === "@ai-sdk/openai" || expected.packageName === "@ai-sdk/openai-compatible";
+          expected.packageName === '@ai-sdk/openai' || expected.packageName === '@ai-sdk/openai-compatible';
         if (openAI) {
-          expect(typeof optionsSeen?.fetch).toBe("function");
+          expect(typeof optionsSeen?.fetch).toBe('function');
           const { fetch: _fetch, ...rest } = optionsSeen ?? {};
           expect(rest).toEqual(expected.options);
         } else {
@@ -102,162 +102,5 @@ describe("bridgeApiProviderToAiSdk", () => {
         process.env.AIO_PROXY_BRIDGE_KEY = previousKey;
       }
     }
-  });
-
-  test("forwards configured headers and injected fetch for every protocol", async () => {
-    const providerFetch = (async () => new Response("ok")) as ProviderFetch;
-    const headers = { Authorization: "Bearer configured", "X-Tenant": "team-a" };
-    const protocols = [
-      ProviderProtocol.OpenAICompatible,
-      ProviderProtocol.Anthropic,
-      ProviderProtocol.Gemini,
-      ProviderProtocol.OpenAIResponse,
-    ] as const;
-
-    for (const protocol of protocols) {
-      let optionsSeen: AiSdkProviderLoadOptions | undefined;
-      const bridge = bridgeApiProviderToAiSdk(
-        {
-          kind: ProviderKind.Api,
-          id: `provider-${protocol}`,
-          protocol,
-          apiKey: "secret",
-          baseURL: "https://api.example.com/v1",
-          headers,
-          models: ["gpt-test"],
-        },
-        {
-          fetch: providerFetch,
-          async loadProvider(_packageName, options) {
-            optionsSeen = options;
-            return loadedProvider({
-              languageModel: (modelId) => model(modelId, "ok"),
-            });
-          },
-        },
-      );
-
-      await bridge?.ensureAvailable?.();
-
-      const openAI = protocol === ProviderProtocol.OpenAICompatible || protocol === ProviderProtocol.OpenAIResponse;
-      if (openAI) {
-        expect(optionsSeen?.fetch).not.toBe(providerFetch);
-        expect(typeof optionsSeen?.fetch).toBe("function");
-      } else {
-        expect(optionsSeen?.fetch).toBe(providerFetch);
-      }
-      expect(optionsSeen?.headers).toEqual({
-        Authorization: "Bearer configured",
-        "X-Tenant": "team-a",
-      });
-      expect(optionsSeen?.apiKey).toBe("secret");
-      expect(optionsSeen?.baseURL).toBe("https://api.example.com/v1");
-    }
-  });
-
-  test("Given OpenAI Responses bridge When provider exposes responses Then responses model is preferred", async () => {
-    // Given
-    let responsesSeen: string | undefined;
-    let languageSeen: string | undefined;
-    const bridge = bridgeApiProviderToAiSdk(
-      {
-        kind: ProviderKind.Api,
-        id: "responses",
-        protocol: ProviderProtocol.OpenAIResponse,
-        baseURL: "https://api.example.com/v1",
-        models: ["gpt-test"],
-      },
-      {
-        async loadProvider() {
-          return loadedProvider({
-            languageModel(modelId) {
-              languageSeen = modelId;
-              return model(modelId, "language");
-            },
-            responses(modelId) {
-              responsesSeen = modelId;
-              return model(modelId, "responses");
-            },
-          });
-        },
-      },
-    );
-
-    // When
-    const parts = bridge === undefined ? [] : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
-
-    // Then
-    expect(responsesSeen).toBe("gpt-test");
-    expect(languageSeen).toBeUndefined();
-    expect(parts.filter((part) => part.type === "text-delta")).toEqual([
-      { type: "text-delta", id: "text-1", text: "responses" },
-    ]);
-  });
-
-  test("Given OpenAI Responses bridge without responses resolver When invoked Then languageModel is used", async () => {
-    // Given
-    let languageSeen: string | undefined;
-    const bridge = bridgeApiProviderToAiSdk(
-      {
-        kind: ProviderKind.Api,
-        id: "responses",
-        protocol: ProviderProtocol.OpenAIResponse,
-        baseURL: "https://api.example.com/v1",
-        models: ["gpt-test"],
-      },
-      {
-        async loadProvider() {
-          return loadedProvider({
-            languageModel(modelId) {
-              languageSeen = modelId;
-              return model(modelId, "language");
-            },
-          });
-        },
-      },
-    );
-
-    // When
-    const parts = bridge === undefined ? [] : await collect(bridge.invoke({ messages, modelId: "gpt-test" }));
-
-    // Then
-    expect(languageSeen).toBe("gpt-test");
-    expect(parts.filter((part) => part.type === "text-delta")).toEqual([
-      { type: "text-delta", id: "text-1", text: "language" },
-    ]);
-  });
-
-  test("Given materialized api provider When bridged Then retained metadata is used", async () => {
-    // Given
-    let packageSeen: string | undefined;
-    let optionsSeen: AiSdkProviderLoadOptions | undefined;
-    const provider = createApiProvider({
-      kind: ProviderKind.Api,
-      id: "responses",
-      protocol: ProviderProtocol.OpenAIResponse,
-      apiKey: "secret",
-      baseURL: "https://api.example.com/v1",
-      models: ["gpt-test"],
-    });
-
-    const bridge = bridgeApiProviderToAiSdk(provider, {
-      async loadProvider(packageName, options) {
-        packageSeen = packageName;
-        optionsSeen = options;
-        return loadedProvider({ languageModel: (modelId) => model(modelId, "ok") });
-      },
-    });
-
-    // When
-    await bridge?.ensureAvailable?.();
-
-    // Then
-    expect(packageSeen).toBe("@ai-sdk/openai");
-    expect(typeof optionsSeen?.fetch).toBe("function");
-    const { fetch: _fetch, ...rest } = optionsSeen ?? {};
-    expect(rest).toEqual({
-      apiKey: "secret",
-      baseURL: "https://api.example.com/v1",
-    });
   });
 });

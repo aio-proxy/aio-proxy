@@ -1,5 +1,3 @@
-import type { DashboardOAuthSession, DashboardOAuthSessionStart } from "@aio-proxy/types";
-
 import {
   type AtomicConfigFile,
   type DiagnosticFactory,
@@ -9,10 +7,11 @@ import {
   type PluginRegistry,
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
-} from "@aio-proxy/core";
+} from '@aio-proxy/core';
+import type { DashboardOAuthSession, DashboardOAuthSessionStart } from '@aio-proxy/types';
 
-import { createDashboardAuthorization, type DashboardAuthorization } from "./authorization";
-import { OAuthCallbackError } from "./callback";
+import { createDashboardAuthorization, type DashboardAuthorization } from './authorization';
+import { OAuthCallbackError } from './callback';
 
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
 type InternalSession = {
@@ -22,12 +21,90 @@ type InternalSession = {
   terminalAt: number | undefined;
 };
 
+type LoginSessionDeps = {
+  readonly configFile: AtomicConfigFile;
+  readonly repository: PluginRepository;
+  readonly acquireRegistry: () => RegistryLease;
+  readonly diagnostics: DiagnosticFactory;
+  readonly logger: PluginLogSink;
+  readonly reload: () => Promise<unknown>;
+  readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
+};
+
 export type OAuthLoginSessionManager = ReturnType<typeof createOAuthLoginSessionManager>;
 
 const failureCode = (error: unknown): string => {
   if (error instanceof OAuthCallbackError) return error.code;
   if (error instanceof Error && /^[A-Z][A-Z0-9_]+$/u.test(error.message)) return error.message;
-  return "OAUTH_LOGIN_FAILED";
+  return 'OAUTH_LOGIN_FAILED';
+};
+
+const runLoginSession = async (
+  deps: LoginSessionDeps,
+  session: InternalSession,
+  input: DashboardOAuthSessionStart,
+  id: string,
+): Promise<void> => {
+  const lease = deps.acquireRegistry();
+  const authorization = createDashboardAuthorization({
+    sessionId: id,
+    signal: session.controller.signal,
+    publish: (snapshot) => deps.publish(session, snapshot),
+  });
+  session.authorization = authorization;
+  try {
+    const result = await loginOAuthAccount({
+      ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
+      ...(input.capability === undefined ? {} : { capability: input.capability }),
+      ...(input.providerPatch === undefined
+        ? {}
+        : {
+            providerPatch: {
+              name: input.providerPatch.name,
+              enabled: input.providerPatch.enabled,
+              weight: input.providerPatch.weight,
+              alias: input.providerPatch.alias,
+            } satisfies OAuthProviderPatch,
+          }),
+      registry: lease.registry,
+      repository: deps.repository,
+      config: deps.configFile,
+      renderAccountOptions: async ({ currentSecrets }) => {
+        const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
+        for (const key of input.clearSecrets) delete secrets[key];
+        return { publicValues: input.publicValues, secrets };
+      },
+      createAuthorization: () => authorization.port,
+      diagnostics: deps.diagnostics,
+      logger: deps.logger,
+      onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
+      signal: session.controller.signal,
+    });
+    await deps.reload();
+    const warning = deps.repository
+      .readDiagnostics(result.providerId)
+      .some(({ code }) => code === 'CATALOG_UNAVAILABLE')
+      ? 'catalog_unavailable'
+      : undefined;
+    deps.publish(session, {
+      id,
+      status: 'succeeded',
+      providerId: result.providerId,
+      ...(warning === undefined ? {} : { warning }),
+    });
+  } catch (error) {
+    if (error instanceof ProviderAccountAlreadyExistsError) {
+      deps.publish(session, { id, status: 'succeeded', providerId: error.existingProviderId, duplicate: true });
+    } else if (session.controller.signal.aborted) {
+      deps.publish(session, { id, status: 'cancelled' });
+    } else {
+      deps.publish(session, { id, status: 'failed', code: failureCode(error) });
+    }
+  } finally {
+    authorization.close();
+    session.authorization = undefined;
+    lease.release();
+  }
 };
 
 export const createOAuthLoginSessionManager = (options: {
@@ -55,93 +132,45 @@ export const createOAuthLoginSessionManager = (options: {
   const publish = (session: InternalSession, snapshot: DashboardOAuthSession) => {
     if (
       closed ||
-      session.snapshot.status === "succeeded" ||
-      session.snapshot.status === "failed" ||
-      session.snapshot.status === "cancelled"
+      session.snapshot.status === 'succeeded' ||
+      session.snapshot.status === 'failed' ||
+      session.snapshot.status === 'cancelled'
     )
       return;
     session.snapshot = snapshot;
-    if (snapshot.status === "succeeded" || snapshot.status === "failed" || snapshot.status === "cancelled") {
+    if (snapshot.status === 'succeeded' || snapshot.status === 'failed' || snapshot.status === 'cancelled') {
       session.terminalAt = now();
     }
   };
 
   const start = (input: DashboardOAuthSessionStart) => {
-    if (closed) throw new Error("OAUTH_SESSION_MANAGER_CLOSED");
+    if (closed) throw new Error('OAUTH_SESSION_MANAGER_CLOSED');
     pruneExpired();
     const configFile = options.configFile;
-    if (configFile === undefined) throw new Error("CONFIG_PATH_MISSING");
+    if (configFile === undefined) throw new Error('CONFIG_PATH_MISSING');
     const id = crypto.randomUUID();
     const session: InternalSession = {
-      snapshot: { id, status: "preparing" },
+      snapshot: { id, status: 'preparing' },
       controller: new AbortController(),
       authorization: undefined,
       terminalAt: undefined,
     };
     sessions.set(id, session);
 
-    void (async () => {
-      const lease = options.acquireRegistry();
-      const authorization = createDashboardAuthorization({
-        sessionId: id,
-        signal: session.controller.signal,
-        publish: (snapshot) => publish(session, snapshot),
-      });
-      session.authorization = authorization;
-      try {
-        const result = await loginOAuthAccount({
-          ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
-          ...(input.capability === undefined ? {} : { capability: input.capability }),
-          ...(input.providerPatch === undefined
-            ? {}
-            : {
-                providerPatch: {
-                  name: input.providerPatch.name,
-                  enabled: input.providerPatch.enabled,
-                  weight: input.providerPatch.weight,
-                  alias: input.providerPatch.alias,
-                } satisfies OAuthProviderPatch,
-              }),
-          registry: lease.registry,
-          repository: options.repository,
-          config: configFile,
-          renderAccountOptions: async ({ currentSecrets }) => {
-            const secrets: Record<string, unknown> = { ...currentSecrets, ...input.secrets };
-            for (const key of input.clearSecrets) delete secrets[key];
-            return { publicValues: input.publicValues, secrets };
-          },
-          createAuthorization: () => authorization.port,
-          diagnostics: options.diagnostics,
-          logger: options.logger,
-          onAuthorized: () => publish(session, { id, status: "discovering" }),
-          signal: session.controller.signal,
-        });
-        await options.reload();
-        const warning = options.repository
-          .readDiagnostics(result.providerId)
-          .some(({ code }) => code === "CATALOG_UNAVAILABLE")
-          ? "catalog_unavailable"
-          : undefined;
-        publish(session, {
-          id,
-          status: "succeeded",
-          providerId: result.providerId,
-          ...(warning === undefined ? {} : { warning }),
-        });
-      } catch (error) {
-        if (error instanceof ProviderAccountAlreadyExistsError) {
-          publish(session, { id, status: "succeeded", providerId: error.existingProviderId, duplicate: true });
-        } else if (session.controller.signal.aborted) {
-          publish(session, { id, status: "cancelled" });
-        } else {
-          publish(session, { id, status: "failed", code: failureCode(error) });
-        }
-      } finally {
-        authorization.close();
-        session.authorization = undefined;
-        lease.release();
-      }
-    })();
+    void runLoginSession(
+      {
+        configFile,
+        repository: options.repository,
+        acquireRegistry: options.acquireRegistry,
+        diagnostics: options.diagnostics,
+        logger: options.logger,
+        reload: options.reload,
+        publish,
+      },
+      session,
+      input,
+      id,
+    );
 
     return session.snapshot;
   };
@@ -155,8 +184,8 @@ export const createOAuthLoginSessionManager = (options: {
     submitCallback(id: string, callbackUrl: string): DashboardOAuthSession {
       pruneExpired();
       const session = sessions.get(id);
-      if (session === undefined) throw new Error("OAUTH_SESSION_NOT_FOUND");
-      if (session.authorization === undefined) throw new OAuthCallbackError("CALLBACK_NOT_EXPECTED");
+      if (session === undefined) throw new Error('OAUTH_SESSION_NOT_FOUND');
+      if (session.authorization === undefined) throw new OAuthCallbackError('CALLBACK_NOT_EXPECTED');
       session.authorization.submitCallback(callbackUrl);
       return session.snapshot;
     },
@@ -164,15 +193,15 @@ export const createOAuthLoginSessionManager = (options: {
       pruneExpired();
       const session = sessions.get(id);
       if (session === undefined) return undefined;
-      session.controller.abort(new Error("OAUTH_LOGIN_CANCELLED"));
-      publish(session, { id, status: "cancelled" });
+      session.controller.abort(new Error('OAUTH_LOGIN_CANCELLED'));
+      publish(session, { id, status: 'cancelled' });
       return session.snapshot;
     },
     close() {
       if (closed) return;
       closed = true;
       for (const session of sessions.values()) {
-        session.controller.abort(new Error("SERVER_CLOSED"));
+        session.controller.abort(new Error('SERVER_CLOSED'));
         session.authorization?.close();
       }
       sessions.clear();

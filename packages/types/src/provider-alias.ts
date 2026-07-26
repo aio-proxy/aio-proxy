@@ -1,8 +1,7 @@
-import type { z } from "zod";
+import type { z } from 'zod';
 
-import type { AliasConfig } from "./common";
-
-import { normalizeAliasName, normalizeVariantKey } from "./common";
+import type { AliasConfig } from './common';
+import { normalizeAliasName, normalizeVariantKey } from './common';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
@@ -29,9 +28,9 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
   for (const [alias, config] of Object.entries(provider.alias)) {
     if (models !== undefined && !models.has(config.model)) {
       ctx.addIssue({
-        code: "custom",
+        code: 'custom',
         message: `Alias target "${config.model}" is not listed in models`,
-        path: ["alias", alias, "model"],
+        path: ['alias', alias, 'model'],
       });
     }
 
@@ -39,9 +38,9 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
     const clientModel = normalizeAliasName(alias);
     if (preservedModels.has(clientModel) && targetModels(config).some((model) => model !== clientModel)) {
       ctx.addIssue({
-        code: "custom",
+        code: 'custom',
         message: `Alias "${clientModel}" conflicts with a preserved original model id`,
-        path: ["alias", alias],
+        path: ['alias', alias],
       });
     }
   }
@@ -51,11 +50,11 @@ function validateAliasNames(alias: ProviderAlias, ctx: z.RefinementCtx): void {
   const names = new Set<string>();
   for (const name of Object.keys(alias)) {
     const normalized = normalizeAliasName(name);
-    if (normalized === "" || names.has(normalized)) {
+    if (normalized === '' || names.has(normalized)) {
       ctx.addIssue({
-        code: "custom",
-        message: normalized === "" ? "Alias name cannot be empty" : `Duplicate alias name "${normalized}"`,
-        path: ["alias", name],
+        code: 'custom',
+        message: normalized === '' ? 'Alias name cannot be empty' : `Duplicate alias name "${normalized}"`,
+        path: ['alias', name],
       });
     }
     names.add(normalized);
@@ -66,20 +65,20 @@ function validateVariants(config: AliasConfig, { alias, models, ctx }: VariantVa
   const names = new Set<string>();
   for (const [variant, target] of Object.entries(config.variants ?? {})) {
     const normalized = normalizeVariantKey(variant);
-    if (normalized === "" || names.has(normalized)) {
+    if (normalized === '' || names.has(normalized)) {
       ctx.addIssue({
-        code: "custom",
-        message: normalized === "" ? "Variant name cannot be empty" : `Duplicate variant name "${normalized}"`,
-        path: ["alias", alias, "variants", variant],
+        code: 'custom',
+        message: normalized === '' ? 'Variant name cannot be empty' : `Duplicate variant name "${normalized}"`,
+        path: ['alias', alias, 'variants', variant],
       });
     }
     names.add(normalized);
 
     if (models !== undefined && !models.has(target.model)) {
       ctx.addIssue({
-        code: "custom",
+        code: 'custom',
         message: `Alias variant target "${target.model}" is not listed in models`,
-        path: ["alias", alias, "variants", variant, "model"],
+        path: ['alias', alias, 'variants', variant, 'model'],
       });
     }
   }

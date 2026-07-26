@@ -1,41 +1,45 @@
+import { dirname } from 'node:path';
+
 import {
   AtomicConfigFile,
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
-  type PendingAccountOperation,
-  parseRuntimeConfig,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
-} from "@aio-proxy/core";
-import { createRequestLogStore, type OpenDbHandle, openDb } from "@aio-proxy/core/db";
-import { type Config, type DashboardOAuthCapability, DashboardOAuthProviderEditSchema } from "@aio-proxy/types";
-import { dirname } from "node:path";
+} from '@aio-proxy/core';
+import { createRequestLogStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
 
-import type { RetiredProviderSnapshot, RuntimeProviderInstance } from "../runtime";
-import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from "./types";
-
-import { createAccountRemovalCoordinator } from "../account-removal";
-import { CatalogScheduler } from "../catalog-scheduler";
-import { createConfigStore } from "../config-store";
-import { watchConfigFile } from "../config-watcher";
-import { createDashboardEventHub } from "../dashboard-events";
-import { dashboardOAuthCapabilities, dashboardOAuthForm } from "../dashboard-routes/oauth-capabilities";
-import { createFifoQueue } from "../fifo-queue";
-import { LogicalSessionStore } from "../logical-session-store";
-import { createOAuthLoginSessionManager } from "../oauth-login-session/manager";
-import { createOAuthQuotaOperations } from "../plugin-quota";
-import { createSnapshotManager } from "../plugin-snapshot";
-import { providerDiff } from "../provider-runtime";
-import { createRequestRecorder } from "../request-recorder";
-import { createUsageCapture } from "../usage-capture";
-import { defaultLogger, defaultPluginLogger } from "./logging";
-import { createModelsDevCatalogTask } from "./models-dev-catalog-task";
-import { createProviderSummaries } from "./probe";
-import { createRecovery, defaultRecoveryScheduler, recoverBeforeSnapshot } from "./recovery";
-import { reloadSnapshot } from "./reload";
-import { buildSnapshot, buildSnapshotWithProviders, providerConfigRecord, type Snapshot } from "./snapshot";
+import type { AccountRemovalCoordinator } from '../account-removal';
+import { createAccountRemovalCoordinator } from '../account-removal';
+import { CatalogScheduler } from '../catalog-scheduler';
+import { watchConfigFile } from '../config-watcher';
+import { createDashboardEventHub } from '../dashboard-events';
+import { createFifoQueue } from '../fifo-queue';
+import { LogicalSessionStore } from '../logical-session-store';
+import { createOAuthQuotaOperations } from '../plugin-quota';
+import type { SnapshotManager } from '../plugin-snapshot';
+import { createSnapshotManager } from '../plugin-snapshot';
+import { createRequestRecorder } from '../request-recorder';
+import type { RuntimeProviderInstance } from '../runtime';
+import { createUsageCapture } from '../usage-capture';
+import type { ServerRuntime } from './lifecycle';
+import {
+  assembleServerState,
+  commitConfig,
+  queueRebuild,
+  reloadNow,
+  replaceCatalogJobs,
+  startLoginSessions,
+  startRecovery,
+} from './lifecycle';
+import { defaultLogger, defaultPluginLogger } from './logging';
+import { createModelsDevCatalogTask } from './models-dev-catalog-task';
+import { createProviderSummaries } from './probe';
+import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
+import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
+import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from './types';
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
@@ -51,14 +55,31 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
+  const logger = options.logger ?? defaultLogger;
   const configFile =
     testHooks?.configFile ?? (options.configPath === undefined ? undefined : new AtomicConfigFile(options.configPath));
   const recoverAccounts = testHooks?.recoverPendingAccountOperations ?? recoverPendingAccountOperations;
   const recoveryScheduler = testHooks?.recoveryScheduler ?? defaultRecoveryScheduler();
   const queue = createFifoQueue();
-  let manager: ReturnType<typeof createSnapshotManager>;
-  let managerReady = false;
-  let closed = false;
+
+  const runtime: ServerRuntime = {
+    options,
+    internalOptions,
+    repository,
+    diagnostics,
+    pluginLogger,
+    logger,
+    queue,
+    events,
+    createRouter,
+    manager: undefined as unknown as SnapshotManager,
+    managerReady: false,
+    closed: false,
+    startupDiagnosticRebuildPending: false,
+    accountRemovals: undefined as unknown as AccountRemovalCoordinator,
+    scheduler: undefined as unknown as CatalogScheduler,
+    configFile,
+  };
 
   await recoverBeforeSnapshot({
     configFile,
@@ -70,17 +91,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     enqueue: queue,
   });
 
-  let startupDiagnosticRebuildPending = false;
-  const queueRebuild = () => {
-    if (closed) return;
-    if (!managerReady) {
-      startupDiagnosticRebuildPending = true;
-      return;
-    }
-    void queue(async () => {
-      if (!closed) await commitConfig((manager.current() as Snapshot).config, "credential-diagnostic");
-    }).catch(() => {});
-  };
   const initial =
     options.providerInstances === undefined
       ? await buildSnapshot(
@@ -90,186 +100,74 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
           repository,
           diagnostics,
           pluginLogger,
-          queueRebuild,
+          () => queueRebuild(runtime),
           createRouter,
         )
       : buildSnapshotWithProviders(options.config, options.providerInstances, createRouter);
-  manager = createSnapshotManager(initial);
-  managerReady = true;
+  runtime.manager = createSnapshotManager(initial);
+  const manager = runtime.manager;
+  runtime.managerReady = true;
   const oauthQuota = createOAuthQuotaOperations({
     acquireSnapshot: manager.acquire,
     repository,
     diagnostics,
     logger: pluginLogger,
-    onDiagnosticChanged: queueRebuild,
+    onDiagnosticChanged: () => queueRebuild(runtime),
   });
-  let recovery: ReturnType<typeof createRecovery> | undefined;
-  const accountRemovals = createAccountRemovalCoordinator({
+  runtime.accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
     repository,
     enqueue: queue,
     canDeleteAccount: manager.canDeleteAccount,
-    onRecoveryNeeded: (nextRunAt) => recovery?.schedule(nextRunAt),
+    onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
-  const scheduler = new CatalogScheduler({
+  runtime.scheduler = new CatalogScheduler({
     repository,
     diagnostics,
-    rebuild: () => queue(() => commitConfig((manager.current() as Snapshot).config, "catalog")),
+    rebuild: () => queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'catalog')),
   });
-  const replaceCatalogJobs = (jobs: Snapshot["catalogJobs"]): void => {
-    scheduler.replaceJobs(jobs);
-    testHooks?.onCatalogJobsReplaced?.(jobs);
-  };
-  if (startupDiagnosticRebuildPending) {
-    startupDiagnosticRebuildPending = false;
-    await queue(() => commitConfig((manager.current() as Snapshot).config, "credential-diagnostic"));
-  } else replaceCatalogJobs(initial.catalogJobs);
+  if (runtime.startupDiagnosticRebuildPending) {
+    runtime.startupDiagnosticRebuildPending = false;
+    await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
+  } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
   const requestLog = createRequestLogStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
-  const logger = options.logger ?? defaultLogger;
   const requestRecorder = createRequestRecorder({ store: requestLog, logger });
   const logicalSessionStore = new LogicalSessionStore();
 
-  async function commitConfig(config: Config, _reason: string): Promise<RetiredProviderSnapshot> {
-    const previous = manager.current() as Snapshot;
-    const candidate = await buildSnapshot(
-      config,
-      previous,
-      options,
-      repository,
-      diagnostics,
-      pluginLogger,
-      queueRebuild,
-      createRouter,
-    );
-    const before = (manager.current() as Snapshot).summaries;
-    const retired = manager.swap(candidate);
-    replaceCatalogJobs(candidate.catalogJobs);
-    events.publish({ event: "config.changed", data: providerDiff(before, candidate.summaries) });
-    accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
-    return retired;
-  }
-
-  const reloadNow = (retainedOperations: readonly PendingAccountOperation[] = []) =>
-    reloadSnapshot({
-      accountRemovals,
-      commitConfig,
-      configFile,
-      logger,
-      manager,
-      onDashboardAuthHealthChanged: internalOptions.__dashboardAuthHealthChanged,
-      retainedOperations,
-    });
-
-  recovery = createRecovery({
-    configFile,
-    repository,
-    diagnostics,
-    logger: pluginLogger,
+  const configStore = await startRecovery(runtime, {
     recoverAccounts,
-    scheduler: recoveryScheduler,
+    recoveryScheduler,
     reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
-    enqueue: queue,
-    canDeleteAccount: manager.canDeleteAccount,
-    reloadNow,
   });
-  await recovery.start();
-  const configStore = createConfigStore({
-    getConfigPath: () => options.configPath,
-    ...(configFile === undefined ? {} : { file: configFile }),
-    accountRemovals,
-    enqueue: queue,
-    onReconciliationNeeded: recovery.scheduleReconciliation,
-    repository,
-    verify: (candidate) => commitConfig(parseRuntimeConfig(candidate), "config-store"),
-  });
-
-  function oauthCapabilities(): readonly DashboardOAuthCapability[] {
-    const lease = manager.acquire();
-    try {
-      return dashboardOAuthCapabilities((lease.snapshot as Snapshot).plugins.registry);
-    } finally {
-      lease.release();
-    }
-  }
-
-  function oauthProviderEditView(providerId: string) {
-    const lease = manager.acquire();
-    try {
-      const snapshot = lease.snapshot as Snapshot;
-      const provider = snapshot.config.providers.find((candidate) => candidate.id === providerId);
-      if (provider?.kind !== "oauth") return undefined;
-      const adapter = snapshot.plugins.registry.resolveOAuth(provider.plugin, provider.capability);
-      const account = repository.readAccount(providerId);
-      const configuredSecrets = new Set(Object.keys(account?.secrets ?? {}));
-      const catalog = repository.readCatalog(providerId)?.catalog;
-      return DashboardOAuthProviderEditSchema.parse({
-        accountLabel: account?.label ?? account?.fingerprint ?? providerId,
-        publicValues: provider.options ?? {},
-        form: adapter === undefined ? [] : dashboardOAuthForm(adapter.account.options.form, configuredSecrets),
-        models: catalog?.language.map(({ id }) => id) ?? [],
-      });
-    } finally {
-      lease.release();
-    }
-  }
 
   const providerSummaries = createProviderSummaries(manager);
 
-  const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow());
-  const oauthLoginSessions = createOAuthLoginSessionManager({
-    configFile,
-    repository,
-    acquireRegistry: () => {
-      const lease = manager.acquire();
-      return {
-        registry: (lease.snapshot as Snapshot).plugins.registry,
-        release: lease.release,
-      };
-    },
-    diagnostics,
-    logger: pluginLogger,
-    reload,
-    now: testHooks?.oauthSessionNow,
-    terminalSessionTtlMs: testHooks?.oauthSessionTtlMs,
-  });
+  const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
+  const oauthLoginSessions = startLoginSessions(runtime, reload);
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
       : undefined;
-  return {
-    acquireProviderSnapshot: manager.acquire,
-    close() {
-      if (closed) return;
-      closed = true;
-      watcher?.close();
-      scheduler.close();
-      recovery?.close();
-      oauthLoginSessions.close();
-      events.close();
-      dbHandle.close();
-    },
-    configPath: options.configPath,
+  return assembleServerState(runtime, {
+    manager,
+    dbHandle,
     configStore,
-    currentProviderSnapshot: manager.current,
-    debugLogging: options.config.server.logging.level === "debug",
     events,
     logicalSessionStore,
-    oauthCapabilities,
-    oauthProviderEditView,
-    oauthLoginSessions,
-    providerSummaries,
-    currentConfig: () => (manager.current() as Snapshot).config,
     modelsDevCatalog,
     oauthQuota,
+    oauthLoginSessions,
+    providerSummaries,
     reload,
     requestLog,
-    logger,
     requestRecorder,
     usageCapture,
-  };
+    watcher,
+    closeRecovery: () => runtime.recovery?.close(),
+  });
 }
 
 function openServerDb(options: ServerStateOptions): OpenDbHandle {
@@ -277,7 +175,7 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
-export { createModelsDevCatalogTask } from "./models-dev-catalog-task";
+export { createModelsDevCatalogTask } from './models-dev-catalog-task';
 
 export type {
   ConfigReloadLog,
@@ -285,4 +183,4 @@ export type {
   ProviderSummaryOptions,
   ServerState,
   ServerStateOptions,
-} from "./types";
+} from './types';

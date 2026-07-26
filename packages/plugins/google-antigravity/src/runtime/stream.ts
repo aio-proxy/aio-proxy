@@ -1,11 +1,11 @@
-import { createParser } from "eventsource-parser";
+import { createParser } from 'eventsource-parser';
 
-import type { AntigravityFailureReason } from "./errors";
+import type { AntigravityFailureReason } from './errors';
 
 type PreflightEvent =
-  | { readonly kind: "model" }
-  | { readonly kind: "terminal-error" }
-  | { readonly kind: "retryable-error"; readonly reason: AntigravityFailureReason; readonly status: number };
+  | { readonly kind: 'model' }
+  | { readonly kind: 'terminal-error' }
+  | { readonly kind: 'retryable-error'; readonly reason: AntigravityFailureReason; readonly status: number };
 
 type CcaEventPayload = Record<string, unknown> & {
   readonly error?: unknown;
@@ -23,7 +23,7 @@ export type CcaSsePreflight = {
 };
 
 type StreamReaderOwner = {
-  readonly read: () => ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>;
+  readonly read: () => ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']>;
   readonly cancel: (reason?: unknown) => Promise<void>;
   readonly fail: (reason?: unknown) => Promise<void>;
   readonly release: () => void;
@@ -74,9 +74,9 @@ export function unwrapCcaSse(
       }
       if (payload.response !== undefined && payload.response !== null) {
         enqueue(payload.response);
-      } else if ("error" in payload) {
+      } else if ('error' in payload) {
         if (options.terminateOnError === true) {
-          failure = new Error("Google Antigravity stream failed");
+          failure = new Error('Google Antigravity stream failed');
         } else {
           enqueue(payload);
         }
@@ -94,7 +94,7 @@ export function unwrapCcaSse(
           const chunk = await owner.read();
           if (chunk.done) {
             const tail = decoder.decode();
-            if (tail !== "") parser.feed(tail);
+            if (tail !== '') parser.feed(tail);
             parser.reset({ consume: true });
             ended = true;
           } else {
@@ -218,19 +218,19 @@ function replayStream(
 }
 
 function createReaderOwner(reader: ReadableStreamDefaultReader<Uint8Array>): StreamReaderOwner {
-  let state: "active" | "canceling" | "released" = "active";
+  let state: 'active' | 'canceling' | 'released' = 'active';
   const release = () => {
-    if (state !== "active") return;
-    state = "released";
+    if (state !== 'active') return;
+    state = 'released';
     reader.releaseLock();
   };
   const cancel = async (reason?: unknown) => {
-    if (state !== "active") return;
-    state = "canceling";
+    if (state !== 'active') return;
+    state = 'canceling';
     try {
       await reader.cancel(reason);
     } finally {
-      state = "released";
+      state = 'released';
       reader.releaseLock();
     }
   };
@@ -245,16 +245,16 @@ function createReaderOwner(reader: ReadableStreamDefaultReader<Uint8Array>): Str
 }
 
 function classifyEvent(payload: CcaEventPayload): PreflightEvent | undefined {
-  if (payload.response !== undefined && payload.response !== null) return { kind: "model" };
-  if (!("error" in payload)) return undefined;
+  if (payload.response !== undefined && payload.response !== null) return { kind: 'model' };
+  if (!('error' in payload)) return undefined;
   const error = errorPayload(payload.error);
   const status = number(error?.code);
-  const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
-  if (status === 429) return { kind: "retryable-error", reason: "upstream_rate_limited", status };
-  if (status === 503 && message.includes("no capacity")) {
-    return { kind: "retryable-error", reason: "upstream_no_capacity", status };
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  if (status === 429) return { kind: 'retryable-error', reason: 'upstream_rate_limited', status };
+  if (status === 503 && message.includes('no capacity')) {
+    return { kind: 'retryable-error', reason: 'upstream_no_capacity', status };
   }
-  return { kind: "terminal-error" };
+  return { kind: 'terminal-error' };
 }
 
 function parseEvent(data: string): CcaEventPayload | undefined {
@@ -270,17 +270,17 @@ function frame(payload: unknown): Uint8Array {
 }
 
 function invalidStream(): TypeError {
-  return new TypeError("Google Antigravity returned an invalid event stream");
+  return new TypeError('Google Antigravity returned an invalid event stream');
 }
 
 function failureReason(failure: unknown, signal: AbortSignal | undefined): unknown {
   if (signal?.aborted !== true) return failure;
   const reason: unknown = signal.reason;
-  return reason ?? new DOMException("The operation was aborted", "AbortError");
+  return reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
@@ -290,5 +290,5 @@ function errorPayload(value: unknown): CcaErrorPayload | undefined {
 }
 
 function number(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
 }

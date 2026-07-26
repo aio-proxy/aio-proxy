@@ -1,17 +1,15 @@
-import type { AliasConfig } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { AliasConfig } from '@aio-proxy/types';
+import { Trash2Icon } from 'lucide-react';
+import { type FC, useState } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { Trash2Icon } from "lucide-react";
-import { type FC, useState } from "react";
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from "../../alias-editor";
-
-import { ProviderAliasConfigFields } from "./provider-alias-config-fields";
-import { ProviderAliasDeleteDialog } from "./provider-alias-delete-dialog";
-import { ProviderAliasVariants } from "./provider-alias-variants";
+import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../alias-editor';
+import { ProviderAliasConfigFields } from './provider-alias-config-fields';
+import { ProviderAliasDeleteDialog } from './provider-alias-delete-dialog';
+import { ProviderAliasVariants } from './provider-alias-variants';
 
 type Props = {
   readonly alias: ProviderAlias;
@@ -54,7 +52,7 @@ export const ProviderAliasCard: FC<Props> = ({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={m["dashboard.providers.form.remove_alias"]()}
+            aria-label={m['dashboard.providers.form.remove_alias']()}
             onClick={() => setDeleteOpen(true)}
           >
             <Trash2Icon />

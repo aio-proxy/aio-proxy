@@ -1,8 +1,8 @@
-import { defineLibraryConfig } from "@aio-proxy/infra/rslib";
+import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 
-const decode = (...parts: string[]) => atob(parts.join(""));
+const decode = (...parts: string[]) => atob(parts.join(''));
 
-export const githubCopilotClientId = decode("SXYxLmI1MDdhMDhjODdlY2Zl", "OTg=");
+export const githubCopilotClientId = decode('SXYxLmI1MDdhMDhjODdlY2Zl', 'OTg=');
 
 export default defineLibraryConfig({
   source: {

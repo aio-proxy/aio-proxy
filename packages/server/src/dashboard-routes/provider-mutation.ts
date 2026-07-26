@@ -1,16 +1,16 @@
-import { resolveConfigTemplates } from "@aio-proxy/core";
+import { resolveConfigTemplates } from '@aio-proxy/core';
 import {
   type ProviderMutationAuthoringBody,
   type ProviderMutationBody,
   ProviderMutationAuthoringBodySchema,
   ProviderMutationBodySchema,
-} from "@aio-proxy/types";
-import { isPlainObject } from "es-toolkit/predicate";
+} from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import { retainAuthoredTemplateStrings, retainRedactedSecrets } from "./provider-secrets";
+import { retainAuthoredTemplateStrings, retainRedactedSecrets } from './provider-secrets';
 
 export class ProviderAlreadyExistsError extends Error {
-  override readonly name = "ProviderAlreadyExistsError";
+  override readonly name = 'ProviderAlreadyExistsError';
 
   constructor(readonly providerId: string) {
     super(`provider ${providerId} already exists`);
@@ -18,7 +18,7 @@ export class ProviderAlreadyExistsError extends Error {
 }
 
 export class ProviderNotFoundError extends Error {
-  override readonly name = "ProviderNotFoundError";
+  override readonly name = 'ProviderNotFoundError';
 
   constructor(readonly providerId: string) {
     super(`provider ${providerId} not found`);
@@ -38,7 +38,7 @@ export function parseProviderMutation(raw: unknown): ProviderMutationParseResult
   const prepared = stripRedactedProxyPlaceholder(raw);
   const authoredParsed = ProviderMutationAuthoringBodySchema.safeParse(prepared);
   if (!authoredParsed.success) {
-    return { ok: false, status: 400, payload: { error: "validation failed", details: authoredParsed.error.issues } };
+    return { ok: false, status: 400, payload: { error: 'validation failed', details: authoredParsed.error.issues } };
   }
 
   let expanded: unknown;
@@ -48,7 +48,7 @@ export function parseProviderMutation(raw: unknown): ProviderMutationParseResult
     return {
       ok: false,
       status: 422,
-      payload: { error: "config rejected", detail: error instanceof Error ? error.message : String(error) },
+      payload: { error: 'config rejected', detail: error instanceof Error ? error.message : String(error) },
     };
   }
 
@@ -57,7 +57,7 @@ export function parseProviderMutation(raw: unknown): ProviderMutationParseResult
     return {
       ok: false,
       status: 422,
-      payload: { error: "validation failed", details: materializedParsed.error.issues },
+      payload: { error: 'validation failed', details: materializedParsed.error.issues },
     };
   }
 
@@ -88,22 +88,22 @@ export function replaceProvider(
   const previous = isPlainObject(previousValue) ? previousValue : {};
   const next = retainRedactedSecrets(previous, provider);
 
-  for (const key of ["headers", "proxy"] as const) {
+  for (const key of ['headers', 'proxy'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }
 
   const restored = retainAuthoredTemplateStrings(previous, next) as Record<string, unknown>;
 
-  if (provider["alias"] === undefined && previous["alias"] !== undefined) {
-    restored["alias"] = previous["alias"];
+  if (provider['alias'] === undefined && previous['alias'] !== undefined) {
+    restored['alias'] = previous['alias'];
   }
 
-  const apiKeyProvided = typeof provider["apiKey"] === "string" && provider["apiKey"] !== "";
+  const apiKeyProvided = typeof provider['apiKey'] === 'string' && provider['apiKey'] !== '';
   if (!apiKeyProvided) {
-    if (typeof previous["apiKey"] === "string") {
-      restored["apiKey"] = previous["apiKey"];
+    if (typeof previous['apiKey'] === 'string') {
+      restored['apiKey'] = previous['apiKey'];
     } else {
-      delete restored["apiKey"];
+      delete restored['apiKey'];
     }
   }
 
@@ -117,19 +117,19 @@ export function replaceOAuthProvider(
 ): Record<string, unknown> {
   const previousValue = record[providerId];
   if (previousValue === undefined) throw new ProviderNotFoundError(providerId);
-  if (!isPlainObject(previousValue) || previousValue["kind"] !== "oauth") {
-    throw new Error("PROVIDER_KIND_MISMATCH");
+  if (!isPlainObject(previousValue) || previousValue['kind'] !== 'oauth') {
+    throw new Error('PROVIDER_KIND_MISMATCH');
   }
   return replaceProvider(record, providerId, {
     ...provider,
-    plugin: previousValue["plugin"],
-    capability: previousValue["capability"],
-    ...(previousValue["options"] === undefined ? {} : { options: previousValue["options"] }),
+    plugin: previousValue['plugin'],
+    capability: previousValue['capability'],
+    ...(previousValue['options'] === undefined ? {} : { options: previousValue['options'] }),
   });
 }
 
 function stripRedactedProxyPlaceholder(raw: unknown): unknown {
-  if (!isPlainObject(raw) || raw["proxy"] !== "****") return raw;
+  if (!isPlainObject(raw) || raw['proxy'] !== '****') return raw;
   const { proxy: _proxy, ...rest } = raw;
   return rest;
 }

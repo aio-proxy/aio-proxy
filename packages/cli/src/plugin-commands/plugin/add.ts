@@ -1,9 +1,9 @@
-import { m } from "@aio-proxy/i18n";
+import { m } from '@aio-proxy/i18n';
 
-import { renderConfigSpec } from "../form";
-import { requirePluginPackageName } from "./config-entry";
-import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps, requireConfirmation } from "./deps";
-import { commitPluginConfig, loadDescriptor, stageDescriptor } from "./descriptor";
+import { renderConfigSpec } from '../form';
+import { requirePluginPackageName } from './config-entry';
+import { createDefaultPluginLifecycleDeps, type PluginLifecycleDeps, requireConfirmation } from './deps';
+import { commitPluginConfig, loadDescriptor, stageDescriptor } from './descriptor';
 
 export type PluginAddOptions = { readonly yes?: boolean; readonly registry?: string };
 

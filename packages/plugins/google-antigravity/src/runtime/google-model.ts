@@ -1,13 +1,12 @@
-import type { LanguageModelV4 } from "@ai-sdk/provider";
-import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { type AntigravityGoogleFetchContext, createAntigravityGoogleFetch } from './google-fetch';
+import { takeAioProxyOptions } from './private-options';
+import { bridgeLateReasoningSignatures } from './reasoning-signature-stream';
 
-import { type AntigravityGoogleFetchContext, createAntigravityGoogleFetch } from "./google-fetch";
-import { takeAioProxyOptions } from "./private-options";
-import { bridgeLateReasoningSignatures } from "./reasoning-signature-stream";
-
-const PLACEHOLDER_CREDENTIAL = "dynamic-oauth-credential";
+const PLACEHOLDER_CREDENTIAL = 'dynamic-oauth-credential';
 
 export type AntigravityLanguageModelRuntime = {
   readonly call: (context: LogicalRequestContext) => AntigravityGoogleFetchContext;
@@ -19,7 +18,7 @@ export function createAntigravityLanguageModel(
 ): LanguageModelV4 {
   const shape = googleDelegate(modelId);
   return {
-    specificationVersion: "v4",
+    specificationVersion: 'v4',
     provider: shape.provider,
     modelId: shape.modelId,
     supportedUrls: shape.supportedUrls,
@@ -53,7 +52,7 @@ export function createAntigravityLanguageModel(
 
 function googleDelegate(modelId: string, call?: AntigravityGoogleFetchContext): LanguageModelV4 {
   return createGoogleGenerativeAI({
-    name: "google-antigravity",
+    name: 'google-antigravity',
     apiKey: PLACEHOLDER_CREDENTIAL,
     ...(call === undefined ? {} : { fetch: createAntigravityGoogleFetch(call, modelId) }),
   }).languageModel(modelId);

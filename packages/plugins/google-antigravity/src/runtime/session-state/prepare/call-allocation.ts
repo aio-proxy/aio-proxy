@@ -1,7 +1,7 @@
-import { validThoughtSignature } from "../../../protocol/signatures";
-import { asRecord } from "../payload-shape";
-import { type AllocationCounts, maximumCardinality, removePair } from "./call-allocation-cardinality";
-import { callAllocationKey, type FunctionCallReplayPart, sameCanonicalCallFields } from "./replay-parts";
+import { validThoughtSignature } from '../../../protocol/signatures';
+import { asRecord } from '../payload-shape';
+import { type AllocationCounts, maximumCardinality, removePair } from './call-allocation-cardinality';
+import { callAllocationKey, type FunctionCallReplayPart, sameCanonicalCallFields } from './replay-parts';
 
 export type CallOccurrence = {
   readonly part: FunctionCallReplayPart;
@@ -34,28 +34,28 @@ export function allocateCallOccurrences(
     const call = asRecord(occurrence.part.call);
     const key = callAllocationKey(call);
     if (call === undefined || key === undefined) return;
-    const id = Reflect.get(call, "id");
+    const id = Reflect.get(call, 'id');
     const signature = validThoughtSignature(modelId, occurrence.part.signature) ? occurrence.part.signature : undefined;
     group(groups, key).occurrences.push({
       ...occurrence,
-      id: typeof id === "string" ? id : undefined,
+      id: typeof id === 'string' ? id : undefined,
       occurrenceOrder,
       signature,
     });
   });
   candidateIndexes.forEach((candidateIndex, candidateOrder) => {
     const candidate = asRecord(parts[candidateIndex]);
-    const call = asRecord(Reflect.get(candidate ?? {}, "functionCall"));
+    const call = asRecord(Reflect.get(candidate ?? {}, 'functionCall'));
     const key = callAllocationKey(call);
     if (candidate === undefined || call === undefined || key === undefined) return;
-    const id = Reflect.get(call, "id");
-    const signatureValue = Reflect.get(candidate, "thoughtSignature");
+    const id = Reflect.get(call, 'id');
+    const signatureValue = Reflect.get(candidate, 'thoughtSignature');
     const signature = validThoughtSignature(modelId, signatureValue) ? signatureValue : undefined;
     group(groups, key).candidates.push({
       call,
       candidateIndex,
       candidateOrder,
-      id: typeof id === "string" ? id : undefined,
+      id: typeof id === 'string' ? id : undefined,
       quality: signature !== undefined ? 2 : signatureValue === undefined ? 1 : 0,
       signature,
     });
@@ -74,7 +74,7 @@ function allocateGroup(groupValue: Group): readonly OrderedMatchedCall[] {
   const matches: OrderedMatchedCall[] = [];
   const pair = (occurrence: Occurrence, candidate: Candidate) => {
     if (!sameCanonicalCallFields(occurrence.part.call, candidate.call)) {
-      throw new Error("Replay function-call allocation key collision");
+      throw new Error('Replay function-call allocation key collision');
     }
     usedOccurrences.add(occurrence.occurrenceOrder);
     usedCandidates.add(candidate.candidateIndex);
@@ -101,7 +101,7 @@ function allocateGroup(groupValue: Group): readonly OrderedMatchedCall[] {
   for (const quality of [2, 1, 0] as const) {
     pairQuality(groupValue, quality, usedOccurrences, usedCandidates, safePair);
   }
-  if (target !== 0) throw new Error("Unable to allocate replay function calls");
+  if (target !== 0) throw new Error('Unable to allocate replay function calls');
   return matches;
 }
 
@@ -173,7 +173,7 @@ function pairExactSignatures(
 
 function pairQuality(
   groupValue: Group,
-  quality: Candidate["quality"],
+  quality: Candidate['quality'],
   usedOccurrences: ReadonlySet<number>,
   usedCandidates: ReadonlySet<number>,
   pair: (occurrence: Occurrence, candidate: Candidate) => boolean,

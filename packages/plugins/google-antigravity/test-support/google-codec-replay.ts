@@ -1,28 +1,26 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import { createGoogle } from '@ai-sdk/google';
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 
-import { createGoogle } from "@ai-sdk/google";
+import type { ReasoningReplay } from '../src/protocol/replay-cache';
+import { ReasoningReplayCache } from '../src/protocol/replay-cache';
+import { captureReasoningReplay } from '../src/runtime/session-state';
 
-import type { ReasoningReplay } from "../src/protocol/replay-cache";
-
-import { ReasoningReplayCache } from "../src/protocol/replay-cache";
-import { captureReasoningReplay } from "../src/runtime/session-state";
-
-export const TEST_MODEL = "claude-opus-4-6-thinking";
+export const TEST_MODEL = 'claude-opus-4-6-thinking';
 
 export async function codecCalls(events: readonly Record<string, unknown>[]) {
   let generatedId = 0;
   const google = createGoogle({
-    apiKey: "test-key",
-    baseURL: "https://example.test",
+    apiKey: 'test-key',
+    baseURL: 'https://example.test',
     generateId: () => `generated-${generatedId++}`,
     fetch: async () => googleSseResponse(events),
   });
   const result = await google.languageModel(TEST_MODEL).doStream({
-    prompt: [{ role: "user", content: [{ type: "text", text: "use tools" }] }],
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'use tools' }] }],
   });
   const parts = await collectParts(result.stream);
   return parts.flatMap((part) => {
-    if (part.type !== "tool-call" || part.providerExecuted === true) return [];
+    if (part.type !== 'tool-call' || part.providerExecuted === true) return [];
     return [{ id: part.toolCallId, name: part.toolName, args: canonicalCodecInput(part.input) }];
   });
 }
@@ -55,7 +53,7 @@ function ccaSseResponse(events: readonly Record<string, unknown>[]): Response {
 }
 
 function sseResponse(frames: readonly string[]): Response {
-  return new Response(frames.join(""), { headers: { "Content-Type": "text/event-stream" } });
+  return new Response(frames.join(''), { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 async function collectParts(stream: ReadableStream<LanguageModelV4StreamPart>): Promise<LanguageModelV4StreamPart[]> {

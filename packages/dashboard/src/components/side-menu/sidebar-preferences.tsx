@@ -1,6 +1,6 @@
-import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from "@aio-proxy/i18n";
-import { Eclipse, Languages } from "lucide-react";
-import { useTheme } from "next-themes";
+import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from '@aio-proxy/i18n';
+import { Eclipse, Languages } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 import {
   DropdownMenu,
@@ -8,20 +8,20 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+} from '@/components/ui/dropdown-menu';
+import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 
-import { reloadDashboard } from "./reload-dashboard";
-import { SidebarLogout } from "./sidebar-logout";
+import { reloadDashboard } from './reload-dashboard';
+import { SidebarLogout } from './sidebar-logout';
 
 const themes = [
-  ["system", () => m["dashboard.preferences.theme_system"]()],
-  ["light", () => m["dashboard.preferences.theme_light"]()],
-  ["dark", () => m["dashboard.preferences.theme_dark"]()],
+  ['system', () => m['dashboard.preferences.theme_system']()],
+  ['light', () => m['dashboard.preferences.theme_light']()],
+  ['dark', () => m['dashboard.preferences.theme_dark']()],
 ] as const;
 
 export const SidebarPreferences: React.FC = () => {
-  const { theme = "system", setTheme } = useTheme();
+  const { theme = 'system', setTheme } = useTheme();
 
   const changeLocale = async (locale: Locale) => {
     if (locale === getLocale()) return;
@@ -36,7 +36,7 @@ export const SidebarPreferences: React.FC = () => {
           <DropdownMenu>
             <DropdownMenuTrigger render={<SidebarMenuButton />}>
               <Eclipse />
-              <span>{m["dashboard.preferences.appearance"]()}</span>
+              <span>{m['dashboard.preferences.appearance']()}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="end">
               <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value)}>
@@ -53,7 +53,7 @@ export const SidebarPreferences: React.FC = () => {
           <DropdownMenu>
             <DropdownMenuTrigger render={<SidebarMenuButton />}>
               <Languages />
-              <span>{m["dashboard.preferences.language"]()}</span>
+              <span>{m['dashboard.preferences.language']()}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="end">
               <DropdownMenuRadioGroup value={getLocale()} onValueChange={(value) => void changeLocale(value as Locale)}>

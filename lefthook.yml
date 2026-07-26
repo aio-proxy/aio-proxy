@@ -3,15 +3,15 @@
 pre-commit:
   commands:
     oxlint:
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx}"
+      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx}'
       run: bunx oxlint --fix --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     oxfmt:
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css}"
+      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css}'
       run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     bun-check:
-      glob: "bun.lock"
+      glob: 'bun.lock'
       run: bun run scripts/bun-lock-check.ts
 
 commit-msg:

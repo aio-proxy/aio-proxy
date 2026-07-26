@@ -6,23 +6,29 @@ import type {
   LanguageModelV4,
   ProviderV3,
   ProviderV4,
-} from "@ai-sdk/provider";
+} from '@ai-sdk/provider';
 import type {
   AsyncIterableStream,
-  CallSettings,
   FilePart,
   JSONValue,
+  LanguageModelCallOptions,
   ModelMessage,
+  RequestOptions,
   TextPart,
   TextStreamPart,
   ToolSet,
-} from "ai";
+} from 'ai';
+import { jsonSchema, streamText } from 'ai';
 
-import { jsonSchema, streamText } from "ai";
+/**
+ * Non-deprecated replacement for the AI SDK `CallSettings` type: model-behavior
+ * options plus the request controls we forward to `streamText`.
+ */
+export type AiSdkCallSettings = LanguageModelCallOptions &
+  Partial<Pick<RequestOptions, 'maxRetries' | 'abortSignal' | 'headers'>>;
 
 export type {
   AsyncIterableStream,
-  CallSettings,
   FilePart,
   JSONValue,
   LanguageModelV2,
@@ -49,7 +55,7 @@ export type LoadedAiSdkRuntimeProvider = AiSdkRuntimeProvider | AiSdkCallablePro
 export type AiSdkTextStreamRequest = {
   readonly model: AiSdkLanguageModel;
   readonly messages: readonly ModelMessage[];
-  readonly settings?: CallSettings;
+  readonly settings?: AiSdkCallSettings;
   readonly tools?: ToolSet;
   readonly signal?: AbortSignal;
   readonly includeRawChunks?: boolean;
@@ -67,8 +73,8 @@ export function streamAiSdkText({
   signal,
   tools,
 }: AiSdkTextStreamRequest): AiSdkTextStreamResult {
-  const instructions = messages.filter((message) => message.role === "system");
-  const inputMessages = messages.filter((message) => message.role !== "system");
+  const instructions = messages.filter((message) => message.role === 'system');
+  const inputMessages = messages.filter((message) => message.role !== 'system');
 
   return streamText({
     ...settings,
@@ -77,6 +83,6 @@ export function streamAiSdkText({
     messages: [...inputMessages],
     ...(tools === undefined ? {} : { tools }),
     ...(signal === undefined ? {} : { abortSignal: signal }),
-    ...(includeRawChunks === true ? { includeRawChunks: true } : {}),
+    ...(includeRawChunks === true ? { include: { rawChunks: true } } : {}),
   });
 }

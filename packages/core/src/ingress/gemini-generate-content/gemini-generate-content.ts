@@ -1,13 +1,13 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { GeminiInlineDataTooLargeError } from "../../error";
-import { isHttpUrl, isImageMediaType, isValidBase64 } from "../../image-input";
+import { GeminiInlineDataTooLargeError } from '../../error';
+import { isHttpUrl, isImageMediaType, isValidBase64 } from '../../image-input';
 
 const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
 
 function base64ByteLength(data: string): number {
-  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
 }
 
@@ -17,12 +17,12 @@ const inlineDataSchema = z.object({
 });
 
 const fileDataSchema = z.object({
-  mimeType: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+  mimeType: z.string().refine((value) => value !== 'image' && isImageMediaType(value)),
   fileUri: z.string().refine(isHttpUrl),
 });
 
 const functionResponseInlineDataSchema = inlineDataSchema.extend({
-  mimeType: z.string().refine((value) => value !== "image" && isImageMediaType(value)),
+  mimeType: z.string().refine((value) => value !== 'image' && isImageMediaType(value)),
 });
 
 const functionResponsePartSchema = z
@@ -60,14 +60,14 @@ const partSchema = z
 
     if (count !== 1) {
       ctx.addIssue({
-        code: "custom",
-        message: "Expected exactly one Gemini part variant",
+        code: 'custom',
+        message: 'Expected exactly one Gemini part variant',
       });
     }
   });
 
 const contentSchema = z.object({
-  role: z.enum(["user", "model"]).optional(),
+  role: z.enum(['user', 'model']).optional(),
   parts: z.array(partSchema).min(1),
 });
 

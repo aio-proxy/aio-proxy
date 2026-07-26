@@ -5,13 +5,13 @@ import {
   type OAuthAdapter,
   type PluginDescriptor,
   zod,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from "./catalog";
-import { loginXAIGrok, type XAIGrokOAuthOptions } from "./oauth";
-import { readXAIGrokQuota } from "./quota";
-import { createXAIGrokRuntime } from "./runtime/index";
-import { credentialSchema, type XAIGrokCredential } from "./schema";
+import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from './catalog';
+import { loginXAIGrok, type XAIGrokOAuthOptions } from './oauth';
+import { readXAIGrokQuota } from './quota';
+import { createXAIGrokRuntime } from './runtime/index';
+import { credentialSchema, type XAIGrokCredential } from './schema';
 
 export type XAIGrokPresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -22,25 +22,25 @@ export type XAIGrokPresentationText = {
 };
 
 export const englishPresentationText: XAIGrokPresentationText = {
-  pluginLabel: "xAI Grok",
-  pluginDescription: "Use a SuperGrok or X Premium+ account to access Grok models",
-  adapterLabel: "Login with xAI Grok",
-  deviceInstructions: "Enter code",
-  waitingForAuthorization: "Waiting for xAI authorization",
+  pluginLabel: 'xAI Grok',
+  pluginDescription: 'Use a SuperGrok or X Premium+ account to access Grok models',
+  adapterLabel: 'Login with xAI Grok',
+  deviceInstructions: 'Enter code',
+  waitingForAuthorization: 'Waiting for xAI authorization',
 };
 
 export function createXAIGrokPlugin(
   presentationText: XAIGrokPresentationText = englishPresentationText,
-  dependencies: Pick<XAIGrokOAuthOptions, "fetch" | "now" | "sleep"> = {},
+  dependencies: Pick<XAIGrokOAuthOptions, 'fetch' | 'now' | 'sleep'> = {},
 ): PluginDescriptor<undefined> {
   const accountOptions = {
     schema: zod.object({}),
     form: [],
   } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, XAIGrokCredential> = {
-    id: "default",
+    id: 'default',
     label: presentationText.adapterLabel,
-    icon: "xai",
+    icon: 'xai',
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {
@@ -52,7 +52,7 @@ export function createXAIGrokPlugin(
       });
     },
     catalog: {
-      policy: { kind: "ttl", ttlMs: XAI_GROK_CATALOG_TTL_MS },
+      policy: { kind: 'ttl', ttlMs: XAI_GROK_CATALOG_TTL_MS },
       discover: (context) => discoverXAIGrokModels(context, dependencies),
       initialFallback: initialXAIGrokCatalogFallback,
     },
@@ -66,8 +66,8 @@ export function createXAIGrokPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? "xAI Grok",
-      description: presentationText.pluginDescription ?? "Use a SuperGrok or X Premium+ account to access Grok models",
+      label: presentationText.pluginLabel ?? 'xAI Grok',
+      description: presentationText.pluginDescription ?? 'Use a SuperGrok or X Premium+ account to access Grok models',
     },
   );
 }

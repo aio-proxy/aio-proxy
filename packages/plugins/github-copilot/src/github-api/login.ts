@@ -1,11 +1,10 @@
-import type { LocalizedText, OAuthLoginContext } from "@aio-proxy/plugin-sdk";
+import type { LocalizedText, OAuthLoginContext } from '@aio-proxy/plugin-sdk';
 
-import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from "./types";
-
-import { deviceCodeResponseSchema, githubTokenResponseSchema, githubUserResponseSchema } from "../schema";
-import { fetchCopilotToken } from "./credential";
-import { authHeaders, fetchJson } from "./http";
-import { getGitHubCopilotBaseURL, githubApiBase } from "./urls";
+import { deviceCodeResponseSchema, githubTokenResponseSchema, githubUserResponseSchema } from '../schema';
+import { fetchCopilotToken } from './credential';
+import { authHeaders, fetchJson } from './http';
+import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from './types';
+import { getGitHubCopilotBaseURL, githubApiBase } from './urls';
 
 declare const __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__: string;
 
@@ -15,9 +14,9 @@ export async function loginToGitHubCopilot(
   context: OAuthLoginContext,
   options: GitHubAccountOptions,
   presentationText: GitHubCopilotLoginPresentationText = {
-    deviceInstructions: "Enter code",
-    refreshingToken: "Refreshing GitHub Copilot token",
-    waitingForAuthorization: "Waiting for GitHub authorization",
+    deviceInstructions: 'Enter code',
+    refreshingToken: 'Refreshing GitHub Copilot token',
+    waitingForAuthorization: 'Waiting for GitHub authorization',
   },
 ): Promise<{
   readonly fingerprint: string;
@@ -26,8 +25,8 @@ export async function loginToGitHubCopilot(
   readonly credentials: GitHubCopilotCredential;
   readonly expiresAt: number;
 }> {
-  const enterpriseURL = options.deploymentType === "enterprise" ? options.enterpriseURL : undefined;
-  const authBase = enterpriseURL ?? "https://github.com";
+  const enterpriseURL = options.deploymentType === 'enterprise' ? options.enterpriseURL : undefined;
+  const authBase = enterpriseURL ?? 'https://github.com';
   const apiBase = githubApiBase(enterpriseURL);
   const device = await requestDeviceCode(authBase, context.signal);
   await context.authorization.presentDeviceCode({
@@ -61,9 +60,9 @@ async function requestDeviceCode(authBase: string, signal: AbortSignal) {
   return await fetchJson(
     `${authBase}/login/device/code`,
     {
-      body: new URLSearchParams({ client_id: CLIENT_ID, scope: "read:user" }),
-      headers: { accept: "application/json" },
-      method: "POST",
+      body: new URLSearchParams({ client_id: CLIENT_ID, scope: 'read:user' }),
+      headers: { accept: 'application/json' },
+      method: 'POST',
       signal,
     },
     deviceCodeResponseSchema,
@@ -86,28 +85,28 @@ async function pollGitHubToken(
         body: new URLSearchParams({
           client_id: CLIENT_ID,
           device_code: device.deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
         }),
-        headers: { accept: "application/json" },
-        method: "POST",
+        headers: { accept: 'application/json' },
+        method: 'POST',
         signal: context.signal,
       },
       githubTokenResponseSchema,
     );
     if (body.access_token !== undefined) return body.access_token;
-    if (body.error === "authorization_pending") {
+    if (body.error === 'authorization_pending') {
       context.progress(waitingForAuthorization);
       await abortableSleep(interval * 1_000, context.signal);
       continue;
     }
-    if (body.error === "slow_down") {
+    if (body.error === 'slow_down') {
       interval += 5;
       await abortableSleep(interval * 1_000, context.signal);
       continue;
     }
-    throw new Error(body.error ?? "GitHub device authorization failed");
+    throw new Error(body.error ?? 'GitHub device authorization failed');
   }
-  throw new Error("GitHub device authorization timed out");
+  throw new Error('GitHub device authorization timed out');
 }
 
 async function fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal) {
@@ -120,7 +119,7 @@ async function fetchGitHubUser(apiBase: string, githubToken: string, signal: Abo
 }
 
 function appendDeviceCode(text: LocalizedText, code: string): LocalizedText {
-  if (typeof text === "string") return `${text} ${code}`;
+  if (typeof text === 'string') return `${text} ${code}`;
   return Object.fromEntries(
     Object.entries(text).map(([locale, value]) => [locale, `${value} ${code}`]),
   ) as LocalizedText;
@@ -130,9 +129,9 @@ function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(done, milliseconds);
-    signal.addEventListener("abort", aborted, { once: true });
+    signal.addEventListener('abort', aborted, { once: true });
     function done() {
-      signal.removeEventListener("abort", aborted);
+      signal.removeEventListener('abort', aborted);
       resolve();
     }
     function aborted() {

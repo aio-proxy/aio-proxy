@@ -4,22 +4,22 @@ import {
   type LocalizedText,
   type OAuthAdapter,
   type PluginDescriptor,
-} from "@aio-proxy/plugin-sdk";
+} from '@aio-proxy/plugin-sdk';
 
-import { defaultAntigravityAliases } from "./catalog/aliases";
-import { discoverAntigravityCatalog } from "./catalog/discover";
-import { CatalogDiscoveryError } from "./catalog/errors";
-import { staticAntigravityCatalog } from "./catalog/snapshot";
-import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from "./oauth/flow";
-import { initializeAntigravityProject, type ProjectInitializationDependencies } from "./oauth/project";
-import { fetchGoogleEmail } from "./oauth/userinfo";
-import { createGoogleAntigravityRuntime } from "./runtime/provider";
+import { defaultAntigravityAliases } from './catalog/aliases';
+import { discoverAntigravityCatalog } from './catalog/discover';
+import { CatalogDiscoveryError } from './catalog/errors';
+import { staticAntigravityCatalog } from './catalog/snapshot';
+import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from './oauth/flow';
+import { initializeAntigravityProject, type ProjectInitializationDependencies } from './oauth/project';
+import { fetchGoogleEmail } from './oauth/userinfo';
+import { createGoogleAntigravityRuntime } from './runtime/provider';
 import {
   accountOptionsSchema,
   credentialSchema,
   type GoogleAntigravityAccountOptions,
   type GoogleAntigravityCredential,
-} from "./schema";
+} from './schema';
 
 export type GoogleAntigravityPresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -30,11 +30,11 @@ export type GoogleAntigravityPresentationText = {
 };
 
 export const englishPresentationText: GoogleAntigravityPresentationText = {
-  pluginLabel: "Google Antigravity",
-  pluginDescription: "Use a Google Antigravity account to access models",
-  adapterLabel: "Login with Google Antigravity",
-  baseURLLabel: "Custom Antigravity base URL",
-  baseURLPlaceholder: "https://proxy.example.com",
+  pluginLabel: 'Google Antigravity',
+  pluginDescription: 'Use a Google Antigravity account to access models',
+  adapterLabel: 'Login with Google Antigravity',
+  baseURLLabel: 'Custom Antigravity base URL',
+  baseURLPlaceholder: 'https://proxy.example.com',
 };
 
 export type GoogleAntigravityPluginDependencies = ProjectInitializationDependencies & {
@@ -49,8 +49,8 @@ export function createGoogleAntigravityPlugin(
     schema: accountOptionsSchema,
     form: [
       {
-        type: "text",
-        key: "baseURL",
+        type: 'text',
+        key: 'baseURL',
         label: presentationText.baseURLLabel,
         ...(presentationText.baseURLPlaceholder === undefined
           ? {}
@@ -60,7 +60,7 @@ export function createGoogleAntigravityPlugin(
   } as const satisfies ConfigSpec<GoogleAntigravityAccountOptions>;
 
   const adapter: OAuthAdapter<GoogleAntigravityAccountOptions, GoogleAntigravityCredential> = {
-    id: "default",
+    id: 'default',
     label: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
@@ -69,25 +69,25 @@ export function createGoogleAntigravityPlugin(
       const state = crypto.randomUUID();
       const callback = await context.authorization.loopback({
         state,
-        redirect: { hostname: "localhost", port: 51121, path: "/oauth-callback" },
+        redirect: { hostname: 'localhost', port: 51121, path: '/oauth-callback' },
         authorizationUrl: ({ redirectUri }) => buildGoogleAuthorizationUrl(state, redirectUri),
         allowManualCallbackUrl: true,
       });
-      if (callback.code.trim() === "") throw new Error("Google authorization code is missing");
+      if (callback.code.trim() === '') throw new Error('Google authorization code is missing');
       const token = await exchangeAuthorizationCode(callback.code, callback.redirectUri, {
         fetch: dependencies.fetch,
         now: dependencies.now,
         signal: context.signal,
       });
-      if (token.refreshToken.trim() === "") throw new Error("Google token response is missing a refresh token");
+      if (token.refreshToken.trim() === '') throw new Error('Google token response is missing a refresh token');
       const email = await fetchGoogleEmail(token.accessToken, { fetch: dependencies.fetch, signal: context.signal });
-      if (email.trim() === "") throw new Error("Google userinfo response is missing email");
+      if (email.trim() === '') throw new Error('Google userinfo response is missing email');
       const projectId = await initializeAntigravityProject(token.accessToken, parsedOptions, {
         fetch: dependencies.fetch,
         sleep: dependencies.sleep,
         signal: context.signal,
       });
-      if (projectId.trim() === "") throw new Error("Google Antigravity project identity is missing");
+      if (projectId.trim() === '') throw new Error('Google Antigravity project identity is missing');
       return {
         fingerprint: email,
         suggestedKey: `antigravity-${email}`,
@@ -97,7 +97,7 @@ export function createGoogleAntigravityPlugin(
       };
     },
     catalog: {
-      policy: { kind: "ttl", ttlMs: 6 * 60 * 60 * 1_000 },
+      policy: { kind: 'ttl', ttlMs: 6 * 60 * 60 * 1_000 },
       discover: async (context) =>
         await discoverAntigravityCatalog(context, {
           ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
@@ -120,8 +120,8 @@ export function createGoogleAntigravityPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? "Google Antigravity",
-      description: presentationText.pluginDescription ?? "Use a Google Antigravity account to access models",
+      label: presentationText.pluginLabel ?? 'Google Antigravity',
+      description: presentationText.pluginDescription ?? 'Use a Google Antigravity account to access models',
     },
   );
 }

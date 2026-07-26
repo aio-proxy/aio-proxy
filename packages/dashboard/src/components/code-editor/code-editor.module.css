@@ -8,7 +8,7 @@
   @apply border-ring ring-3 ring-ring/30;
 }
 
-.code-editor[aria-invalid="true"] {
+.code-editor[aria-invalid='true'] {
   @apply border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40;
 }
 

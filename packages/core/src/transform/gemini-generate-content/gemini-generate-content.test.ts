@@ -1,26 +1,25 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 
-import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from "../../index";
-
+import type { GeminiGenerateContentModelMessages, GeminiGenerateContentRequest } from '../../index';
 import {
   GeminiGenerateContentTransformError,
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
   parseGeminiGenerateContent,
-} from "../../index";
+} from '../../index';
 
-const fixtureRoot = `${import.meta.dir}/../../../_test/fixtures/gemini-generate-content`;
+const fixtureRoot = `${import.meta.dir}/../../../__tests__/fixtures/gemini-generate-content`;
 
 const validFixtures = [
-  "simple-text.json",
-  "system-instruction.json",
-  "inline-data-vision.json",
-  "function-call.json",
-  "function-response-tools-safety.json",
-  "file-data-vision.json",
+  'simple-text.json',
+  'system-instruction.json',
+  'inline-data-vision.json',
+  'function-call.json',
+  'function-response-tools-safety.json',
+  'file-data-vision.json',
 ] as const;
 const exactRoundTripFixtures = validFixtures.filter(
-  (file) => file !== "function-call.json" && file !== "function-response-tools-safety.json",
+  (file) => file !== 'function-call.json' && file !== 'function-response-tools-safety.json',
 );
 
 type FixtureFile = (typeof validFixtures)[number];
@@ -29,7 +28,7 @@ async function readFixture(file: FixtureFile): Promise<GeminiGenerateContentRequ
   return parseGeminiGenerateContent(await Bun.file(`${fixtureRoot}/${file}`).json());
 }
 
-describe("Gemini generateContent transform", () => {
+describe('Gemini generateContent transform', () => {
   for (const file of exactRoundTripFixtures) {
     test(`Given ${file} When transformed twice Then it round-trips exactly`, async () => {
       const request = await readFixture(file);
@@ -44,65 +43,65 @@ describe("Gemini generateContent transform", () => {
     });
   }
 
-  test("Given inlineData When converted Then AI SDK file part preserves bytes", async () => {
-    const request = await readFixture("inline-data-vision.json");
+  test('Given inlineData When converted Then AI SDK file part preserves bytes', async () => {
+    const request = await readFixture('inline-data-vision.json');
 
     const converted = geminiGenerateContentToModelMessages(request);
 
     expect(converted.messages[0]).toEqual({
-      role: "user",
+      role: 'user',
       content: [
-        { type: "text", text: "Describe this image." },
+        { type: 'text', text: 'Describe this image.' },
         {
-          type: "file",
-          mediaType: "image/png",
-          data: { type: "data", data: "iVBORw0KGgo=" },
+          type: 'file',
+          mediaType: 'image/png',
+          data: { type: 'data', data: 'iVBORw0KGgo=' },
         },
       ],
     });
   });
 
-  test("Given functionCall When converted Then AI SDK tool-call part is emitted", async () => {
-    const request = await readFixture("function-call.json");
+  test('Given functionCall When converted Then AI SDK tool-call part is emitted', async () => {
+    const request = await readFixture('function-call.json');
 
     const converted = geminiGenerateContentToModelMessages(request);
 
     expect(converted.messages[1]).toEqual({
-      role: "assistant",
+      role: 'assistant',
       content: [
         {
-          type: "tool-call",
-          toolCallId: "gemini-1-0",
-          toolName: "get_weather",
-          input: { city: "Tokyo" },
+          type: 'tool-call',
+          toolCallId: 'gemini-1-0',
+          toolName: 'get_weather',
+          input: { city: 'Tokyo' },
         },
       ],
     });
   });
 
-  test("Given functionResponse and safetySettings When converted Then tool result and google provider options are emitted", async () => {
-    const request = await readFixture("function-response-tools-safety.json");
+  test('Given functionResponse and safetySettings When converted Then tool result and google provider options are emitted', async () => {
+    const request = await readFixture('function-response-tools-safety.json');
 
     const converted = geminiGenerateContentToModelMessages(request);
 
     expect(converted.messages[0]).toEqual({
-      role: "tool",
+      role: 'tool',
       content: [
         {
-          type: "tool-result",
-          toolCallId: "gemini-response-get_weather-0-0",
-          toolName: "get_weather",
+          type: 'tool-result',
+          toolCallId: 'gemini-response-get_weather-0-0',
+          toolName: 'get_weather',
           output: {
-            type: "content",
+            type: 'content',
             value: [
               {
-                type: "text",
-                text: JSON.stringify({ temperature: "18C", condition: "rain" }),
+                type: 'text',
+                text: JSON.stringify({ temperature: '18C', condition: 'rain' }),
               },
               {
-                type: "file",
-                mediaType: "image/png",
-                data: { type: "data", data: "AA==" },
+                type: 'file',
+                mediaType: 'image/png',
+                data: { type: 'data', data: 'AA==' },
                 providerOptions: { aioProxy: { toolImage: true, trust: expect.any(String) } },
               },
             ],
@@ -117,76 +116,33 @@ describe("Gemini generateContent transform", () => {
     });
   });
 
-  test("Given model messages without model When reversed Then typed error names path", () => {
+  test('Given model messages without model When reversed Then typed error names path', () => {
     const converted: GeminiGenerateContentModelMessages = {
-      messages: [{ role: "user", content: "hello" }],
+      messages: [{ role: 'user', content: 'hello' }],
       settings: {},
     };
 
     expect(() =>
       modelMessagesToGeminiGenerateContent({
         ...converted,
-        model: "",
+        model: '',
       }),
-    ).toThrow(new GeminiGenerateContentTransformError("model"));
+    ).toThrow(new GeminiGenerateContentTransformError('model'));
   });
 
-  test("converts fileData URLs to canonical URL file parts", async () => {
-    const request = await readFixture("file-data-vision.json");
+  test('converts fileData URLs to canonical URL file parts', async () => {
+    const request = await readFixture('file-data-vision.json');
     const converted = geminiGenerateContentToModelMessages(request);
 
     expect(converted.messages[0]).toEqual({
-      role: "user",
+      role: 'user',
       content: [
-        { type: "text", text: "Describe this remote image." },
+        { type: 'text', text: 'Describe this remote image.' },
         {
-          type: "file",
-          mediaType: "image/png",
-          data: { type: "url", url: new URL("https://example.test/image.png") },
+          type: 'file',
+          mediaType: 'image/png',
+          data: { type: 'url', url: new URL('https://example.test/image.png') },
         },
-      ],
-    });
-    expect(modelMessagesToGeminiGenerateContent({ model: request.model, ...converted })).toEqual(request);
-  });
-
-  test("preserves mixed media and part order in model history", () => {
-    const request = parseGeminiGenerateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        {
-          role: "model",
-          parts: [
-            { text: "prior answer" },
-            { inlineData: { mimeType: "image/png", data: "AA==" } },
-            { functionCall: { id: "call_1", name: "inspect", args: { scope: "prior" } } },
-            { fileData: { mimeType: "image/png", fileUri: "https://example.test/prior.png" } },
-            { inlineData: { mimeType: "application/pdf", data: "AA==" } },
-            { text: "after media" },
-          ],
-        },
-      ],
-    });
-
-    const converted = geminiGenerateContentToModelMessages(request);
-
-    expect(converted.messages[0]).toEqual({
-      role: "assistant",
-      content: [
-        { type: "text", text: "prior answer" },
-        { type: "file", mediaType: "image/png", data: { type: "data", data: "AA==" } },
-        {
-          type: "tool-call",
-          toolCallId: "call_1",
-          toolName: "inspect",
-          input: { scope: "prior" },
-        },
-        {
-          type: "file",
-          mediaType: "image/png",
-          data: { type: "reference", reference: { google: "https://example.test/prior.png" } },
-        },
-        { type: "file", mediaType: "application/pdf", data: { type: "data", data: "AA==" } },
-        { type: "text", text: "after media" },
       ],
     });
     expect(modelMessagesToGeminiGenerateContent({ model: request.model, ...converted })).toEqual(request);

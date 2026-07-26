@@ -1,7 +1,6 @@
-import type { DashboardOAuthCapability } from "@aio-proxy/types";
-
-import { getLocale, m } from "@aio-proxy/i18n";
-import { resolveLocalizedText } from "@aio-proxy/plugin-sdk";
+import { getLocale, m } from '@aio-proxy/i18n';
+import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
+import type { DashboardOAuthCapability } from '@aio-proxy/types';
 
 import {
   Combobox,
@@ -10,9 +9,9 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from "@/components/ui/combobox";
-import { Field } from "@/components/ui/field";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/combobox';
+import { Field } from '@/components/ui/field';
+import { Label } from '@/components/ui/label';
 
 interface OAuthCapabilityComboboxProps {
   readonly capabilities: readonly DashboardOAuthCapability[];
@@ -26,7 +25,7 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
   onValueChange,
 }) => (
   <Field>
-    <Label htmlFor="oauth-capability">{m["dashboard.providers.oauth.select_label"]()}</Label>
+    <Label htmlFor="oauth-capability">{m['dashboard.providers.oauth.select_label']()}</Label>
     <Combobox
       items={capabilities}
       value={value}
@@ -35,11 +34,11 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
     >
       <ComboboxInput
         id="oauth-capability"
-        aria-label={m["dashboard.providers.oauth.select_label"]()}
-        placeholder={m["dashboard.providers.oauth.search_placeholder"]()}
+        aria-label={m['dashboard.providers.oauth.select_label']()}
+        placeholder={m['dashboard.providers.oauth.search_placeholder']()}
       />
       <ComboboxContent>
-        <ComboboxEmpty>{m["dashboard.providers.oauth.empty"]()}</ComboboxEmpty>
+        <ComboboxEmpty>{m['dashboard.providers.oauth.empty']()}</ComboboxEmpty>
         <ComboboxList>
           {capabilities.map((capability) => (
             <ComboboxItem key={`${capability.plugin}:${capability.capability}`} value={capability}>

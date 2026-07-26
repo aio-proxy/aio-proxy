@@ -1,4 +1,4 @@
-import { join, normalize, sep } from "node:path";
+import { join, normalize, sep } from 'node:path';
 
 export type DashboardAssets = (path: string) => Response | null | Promise<Response | null>;
 

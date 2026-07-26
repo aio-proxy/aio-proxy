@@ -1,17 +1,17 @@
-import { m } from "@aio-proxy/i18n";
-import { useAtomValue } from "jotai";
-import { ReceiptText } from "lucide-react";
+import { m } from '@aio-proxy/i18n';
+import { useAtomValue } from 'jotai';
+import { ReceiptText } from 'lucide-react';
 
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Skeleton } from '@/components/ui/skeleton';
 
-import { UsageRangeTabs } from "../components/usage-range-tabs";
-import { UsageSummaryGrid } from "../components/usage-summary-grid";
-import { UsageTrendChart } from "../components/usage-trend-chart";
-import { useUsageQuery } from "../hooks/use-usage-query";
-import { usageOverviewFiltersAtom } from "../stores/usage-overview-filters";
+import { UsageRangeTabs } from '../components/usage-range-tabs';
+import { UsageSummaryGrid } from '../components/usage-summary-grid';
+import { UsageTrendChart } from '../components/usage-trend-chart';
+import { useUsageQuery } from '../hooks/use-usage-query';
+import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 
-const loadingMetricIds = ["cost", "requests", "tokens", "rpm", "tpm", "success-rate"] as const;
+const loadingMetricIds = ['cost', 'requests', 'tokens', 'rpm', 'tpm', 'success-rate'] as const;
 
 export const UsageOverview: React.FC = () => {
   const filters = useAtomValue(usageOverviewFiltersAtom);
@@ -22,7 +22,7 @@ export const UsageOverview: React.FC = () => {
     content = (
       <>
         <span className="sr-only" role="status">
-          {m["dashboard.usage.loading"]()}
+          {m['dashboard.usage.loading']()}
         </span>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {loadingMetricIds.map((id) => (
@@ -39,8 +39,8 @@ export const UsageOverview: React.FC = () => {
           <EmptyMedia variant="icon">
             <ReceiptText />
           </EmptyMedia>
-          <EmptyTitle>{m["dashboard.usage.error_title"]()}</EmptyTitle>
-          <EmptyDescription>{m["dashboard.usage.error_description"]()}</EmptyDescription>
+          <EmptyTitle>{m['dashboard.usage.error_title']()}</EmptyTitle>
+          <EmptyDescription>{m['dashboard.usage.error_description']()}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -51,8 +51,8 @@ export const UsageOverview: React.FC = () => {
           <EmptyMedia variant="icon">
             <ReceiptText />
           </EmptyMedia>
-          <EmptyTitle>{m["dashboard.usage.empty_title"]()}</EmptyTitle>
-          <EmptyDescription>{m["dashboard.usage.empty_description"]()}</EmptyDescription>
+          <EmptyTitle>{m['dashboard.usage.empty_title']()}</EmptyTitle>
+          <EmptyDescription>{m['dashboard.usage.empty_description']()}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

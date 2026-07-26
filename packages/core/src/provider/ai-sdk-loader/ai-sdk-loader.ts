@@ -1,33 +1,32 @@
-import { pathToFileURL } from "node:url";
+import { pathToFileURL } from 'node:url';
 
-import type { LoadedAiSdkRuntimeProvider } from "../../ai-sdk-bridge";
-import type { ProviderFetch } from "../proxy-fetch";
-
-import { AiSdkProviderLoaderError } from "../../error";
-import { findInstalledNpmPackage } from "../../npm";
+import type { LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
+import { AiSdkProviderLoaderError } from '../../error';
+import { findInstalledNpmPackage } from '../../npm';
+import type { ProviderFetch } from '../proxy-fetch';
 
 export const BUNDLED_PROVIDER_PACKAGES = [
-  "@ai-sdk/openai",
-  "@ai-sdk/anthropic",
-  "@ai-sdk/google",
-  "@ai-sdk/openai-compatible",
-  "@ai-sdk/mistral",
-  "@ai-sdk/groq",
-  "@ai-sdk/xai",
-  "@openrouter/ai-sdk-provider",
+  '@ai-sdk/openai',
+  '@ai-sdk/anthropic',
+  '@ai-sdk/google',
+  '@ai-sdk/openai-compatible',
+  '@ai-sdk/mistral',
+  '@ai-sdk/groq',
+  '@ai-sdk/xai',
+  '@openrouter/ai-sdk-provider',
 ] as const;
 
 export type BundledAiSdkProviderPackage = (typeof BUNDLED_PROVIDER_PACKAGES)[number];
 
 export const BUNDLED_PROVIDER_VERSIONS = {
-  "@ai-sdk/openai": "4.0.4",
-  "@ai-sdk/anthropic": "4.0.3",
-  "@ai-sdk/google": "4.0.3",
-  "@ai-sdk/openai-compatible": "3.0.2",
-  "@ai-sdk/mistral": "4.0.2",
-  "@ai-sdk/groq": "4.0.2",
-  "@ai-sdk/xai": "4.0.3",
-  "@openrouter/ai-sdk-provider": "2.10.0",
+  '@ai-sdk/openai': '4.0.4',
+  '@ai-sdk/anthropic': '4.0.3',
+  '@ai-sdk/google': '4.0.3',
+  '@ai-sdk/openai-compatible': '3.0.2',
+  '@ai-sdk/mistral': '4.0.2',
+  '@ai-sdk/groq': '4.0.2',
+  '@ai-sdk/xai': '4.0.3',
+  '@openrouter/ai-sdk-provider': '2.10.0',
 } as const satisfies Record<BundledAiSdkProviderPackage, string>;
 
 export type AiSdkProviderLoadOptions = {
@@ -44,27 +43,27 @@ export type LoadedAiSdkProvider = LoadedAiSdkRuntimeProvider;
 type AiSdkProviderLoader = (options?: AiSdkProviderLoadOptions) => Promise<LoadedAiSdkProvider>;
 
 const bundledProviders = {
-  "@ai-sdk/openai": async (options) => {
-    const { createOpenAI } = await import("@ai-sdk/openai");
+  '@ai-sdk/openai': async (options) => {
+    const { createOpenAI } = await import('@ai-sdk/openai');
 
     return createOpenAI(options);
   },
-  "@ai-sdk/anthropic": async (options) => {
-    const { createAnthropic } = await import("@ai-sdk/anthropic");
+  '@ai-sdk/anthropic': async (options) => {
+    const { createAnthropic } = await import('@ai-sdk/anthropic');
 
     return createAnthropic(options);
   },
-  "@ai-sdk/google": async (options) => {
-    const { createGoogle } = await import("@ai-sdk/google");
+  '@ai-sdk/google': async (options) => {
+    const { createGoogle } = await import('@ai-sdk/google');
 
     return createGoogle(options);
   },
-  "@ai-sdk/openai-compatible": async (options = {}) => {
-    if (typeof options.baseURL !== "string" || typeof options.name !== "string") {
-      throw new AiSdkProviderLoaderError("@ai-sdk/openai-compatible requires name and baseURL");
+  '@ai-sdk/openai-compatible': async (options = {}) => {
+    if (typeof options.baseURL !== 'string' || typeof options.name !== 'string') {
+      throw new AiSdkProviderLoaderError('@ai-sdk/openai-compatible requires name and baseURL');
     }
 
-    const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
+    const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
 
     return createOpenAICompatible({
       ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
@@ -74,23 +73,23 @@ const bundledProviders = {
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     });
   },
-  "@ai-sdk/mistral": async (options) => {
-    const { createMistral } = await import("@ai-sdk/mistral");
+  '@ai-sdk/mistral': async (options) => {
+    const { createMistral } = await import('@ai-sdk/mistral');
 
     return createMistral(options);
   },
-  "@ai-sdk/groq": async (options) => {
-    const { createGroq } = await import("@ai-sdk/groq");
+  '@ai-sdk/groq': async (options) => {
+    const { createGroq } = await import('@ai-sdk/groq');
 
     return createGroq(options);
   },
-  "@ai-sdk/xai": async (options) => {
-    const { createXai } = await import("@ai-sdk/xai");
+  '@ai-sdk/xai': async (options) => {
+    const { createXai } = await import('@ai-sdk/xai');
 
     return createXai(options);
   },
-  "@openrouter/ai-sdk-provider": async (options) => {
-    const { createOpenRouter } = await import("@openrouter/ai-sdk-provider");
+  '@openrouter/ai-sdk-provider': async (options) => {
+    const { createOpenRouter } = await import('@openrouter/ai-sdk-provider');
 
     return createOpenRouter(options);
   },
@@ -99,11 +98,11 @@ const bundledProviders = {
 export const BUNDLED_PROVIDERS: Readonly<Record<string, AiSdkProviderLoader>> = bundledProviders;
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
-  return typeof value === "function";
+  return typeof value === 'function';
 }
 
 async function loadCachedProvider(
@@ -119,7 +118,7 @@ async function loadCachedProvider(
     throw new AiSdkProviderLoaderError(`No exports found in ${packageName}`);
   }
   for (const [name, value] of Object.entries(loaded)) {
-    if (name.startsWith("create") && isProviderLoader(value)) {
+    if (name.startsWith('create') && isProviderLoader(value)) {
       return value(options);
     }
   }

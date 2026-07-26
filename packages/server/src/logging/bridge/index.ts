@@ -1,1 +1,1 @@
-export { createPluginLogSink, createServerLogSink, SERVER_LOG_LEVEL } from "./bridge";
+export { createPluginLogSink, createServerLogSink, SERVER_LOG_LEVEL } from './bridge';

@@ -1,5 +1,3 @@
-import type { AuthorizationPort } from "@aio-proxy/plugin-sdk";
-
 import {
   AtomicConfigFile,
   configPath,
@@ -13,15 +11,16 @@ import {
   type PluginRegistry,
   type PluginRepository,
   type recoverPendingAccountOperations,
-} from "@aio-proxy/core";
-import { openDb } from "@aio-proxy/core/db";
-import { confirm, input, password, select } from "@inquirer/prompts";
+} from '@aio-proxy/core';
+import { openDb } from '@aio-proxy/core/db';
+import type { AuthorizationPort } from '@aio-proxy/plugin-sdk';
+import { confirm, input, password, select } from '@inquirer/prompts';
 
-import { openBrowser } from "../../open-browser";
-import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from "../authorization";
-import { type PluginFormPrompts, renderConfigSpec } from "../form";
-import { createCliPluginDiagnosticFactory } from "../plugin";
-import { type CapabilityChoice, createCapabilitySelector, createManualOnlyConfirmation } from "./capability";
+import { openBrowser } from '../../open-browser';
+import { createCliAuthorizationPort, createDefaultCliAuthorizationCopy } from '../authorization';
+import { type PluginFormPrompts, renderConfigSpec } from '../form';
+import { createCliPluginDiagnosticFactory } from '../plugin';
+import { type CapabilityChoice, createCapabilitySelector, createManualOnlyConfirmation } from './capability';
 
 type ConfigRecord = Record<string, unknown>;
 
@@ -31,7 +30,7 @@ export type ProviderLoginDeps = {
   readonly registry: PluginRegistry;
   readonly isTTY: boolean;
   readonly selectCapability: (choices: readonly CapabilityChoice[]) => Promise<string>;
-  readonly renderAccountOptions: LoginOAuthAccountOptions["renderAccountOptions"];
+  readonly renderAccountOptions: LoginOAuthAccountOptions['renderAccountOptions'];
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
@@ -49,10 +48,10 @@ export type ProviderLoginDefaultDepsOptions = {
 };
 
 function enablements(config: ConfigRecord): readonly { readonly packageName: string; readonly options?: unknown }[] {
-  if (!Array.isArray(config.plugins)) return [];
-  return config.plugins.flatMap((entry) => {
-    if (typeof entry === "string") return [{ packageName: entry }];
-    if (Array.isArray(entry) && typeof entry[0] === "string") {
+  if (!Array.isArray(config['plugins'])) return [];
+  return config['plugins'].flatMap((entry) => {
+    if (typeof entry === 'string') return [{ packageName: entry }];
+    if (Array.isArray(entry) && typeof entry[0] === 'string') {
       return [{ packageName: entry[0], ...(entry.length < 2 ? {} : { options: entry[1] }) }];
     }
     return [];

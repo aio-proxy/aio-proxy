@@ -6,23 +6,24 @@ import type {
   PluginPackageImporter,
   PluginRepository,
   Router,
-} from "@aio-proxy/core";
-import type { RequestLogStore } from "@aio-proxy/core/db";
+  recoverPendingAccountOperations,
+} from '@aio-proxy/core';
+import type { RequestLogStore } from '@aio-proxy/core/db';
 import type {
   Config,
   DashboardEvent,
   DashboardOAuthCapability,
   DashboardOAuthProviderEdit,
   DashboardProviderSummary,
-} from "@aio-proxy/types";
+} from '@aio-proxy/types';
 
-import type { ConfigStore } from "../config-store";
-import type { DashboardEventHub, DashboardEventLimits } from "../dashboard-events";
-import type { OAuthLoginSessionManager } from "../oauth-login-session/manager";
-import type { OAuthQuotaOperations } from "../plugin-quota";
-import type { CatalogJobDescriptor } from "../plugin-runtime";
-import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from "../runtime";
-import type { ConfigReloadLog, ServerLogSink } from "../server-log";
+import type { ConfigStore } from '../config-store';
+import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
+import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
+import type { OAuthQuotaOperations } from '../plugin-quota';
+import type { CatalogJobDescriptor } from '../plugin-runtime';
+import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import type { ConfigReloadLog, ServerLogSink } from '../server-log';
 
 export type ServerStateOptions = {
   readonly config: Config;
@@ -51,7 +52,7 @@ export type ServerStateTestHooks = {
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
   readonly reconciliationRetryMs?: number;
   readonly recoveryScheduler?: RecoveryScheduler;
-  readonly recoverPendingAccountOperations?: typeof import("@aio-proxy/core").recoverPendingAccountOperations;
+  readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
   readonly oauthSessionNow?: () => number;
   readonly oauthSessionTtlMs?: number;
 };
@@ -61,8 +62,8 @@ export type InternalServerStateOptions = ServerStateOptions & {
   readonly __test?: ServerStateTestHooks;
 };
 
-export type ConfigChangedData = Extract<DashboardEvent, { readonly event: "config.changed" }>["data"];
-export type ReloadFailure = { readonly error: string; readonly ok: false; readonly stage: ConfigReloadLog["stage"] };
+export type ConfigChangedData = Extract<DashboardEvent, { readonly event: 'config.changed' }>['data'];
+export type ReloadFailure = { readonly error: string; readonly ok: false; readonly stage: ConfigReloadLog['stage'] };
 export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChangedData } | ReloadFailure;
 
 export type ServerState = ProviderRouteSource & {
@@ -83,4 +84,4 @@ export type ServerState = ProviderRouteSource & {
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };
 
-export type { ConfigReloadLog } from "../server-log";
+export type { ConfigReloadLog } from '../server-log';

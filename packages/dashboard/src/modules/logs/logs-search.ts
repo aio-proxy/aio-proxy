@@ -1,6 +1,5 @@
-import type { DashboardRequestLogsPageSize, RequestOutcome } from "@aio-proxy/types";
-
-import { endOfDay, startOfDay } from "date-fns";
+import type { DashboardRequestLogsPageSize, RequestOutcome } from '@aio-proxy/types';
+import { endOfDay, startOfDay } from 'date-fns';
 
 export type LogsSearch = {
   readonly page: number;
@@ -16,11 +15,11 @@ export type LogsSearch = {
   readonly finalStatusCode?: number;
 };
 
-export type LogsFilterPatch = { [Key in keyof Omit<LogsSearch, "page">]?: LogsSearch[Key] | undefined };
+export type LogsFilterPatch = { [Key in keyof Omit<LogsSearch, 'page'>]?: LogsSearch[Key] | undefined };
 type RawLogsSearch = Record<string, unknown> & Partial<Record<keyof LogsSearch, unknown>>;
 
 const pageSizes = new Set([10, 20, 50, 100]);
-const outcomes = new Set(["success", "failure", "cancelled"]);
+const outcomes = new Set(['success', 'failure', 'cancelled']);
 
 export function createDefaultLogsSearch(now = new Date()): LogsSearch {
   return {
@@ -61,12 +60,12 @@ export function parseLogsSearch(raw: RawLogsSearch, now = new Date()): LogsSearc
     pageSize: (pageSize ?? defaults.pageSize) as DashboardRequestLogsPageSize,
     startedAfter: startedAfter ?? defaults.startedAfter,
     completedBefore: completedBefore ?? defaults.completedBefore,
-    ...optionalString("requestId", raw.requestId),
+    ...optionalString('requestId', raw.requestId),
     ...(outcome === undefined ? {} : { outcome: outcome as RequestOutcome }),
-    ...optionalString("inboundProtocol", raw.inboundProtocol),
-    ...optionalString("requestedModelId", raw.requestedModelId),
-    ...optionalString("finalProviderId", raw.finalProviderId),
-    ...optionalString("finalModelId", raw.finalModelId),
+    ...optionalString('inboundProtocol', raw.inboundProtocol),
+    ...optionalString('requestedModelId', raw.requestedModelId),
+    ...optionalString('finalProviderId', raw.finalProviderId),
+    ...optionalString('finalModelId', raw.finalModelId),
     ...(finalStatusCode === undefined ? {} : { finalStatusCode }),
   };
 }
@@ -84,11 +83,11 @@ export const isWithinRetention = (value: string, now = new Date()) => {
 
 const integer = (value: unknown) => {
   const parsed =
-    typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : undefined;
+    typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : undefined;
   return parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined;
 };
 
-const string = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined);
+const string = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined);
 
 const isoString = (value: unknown) => {
   const parsed = string(value);

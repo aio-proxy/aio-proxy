@@ -1,3 +1,5 @@
+import { AnthropicMessagesTransformError } from '../../error';
+import { imageFilePart, type ImageFilePart } from '../../image-input';
 import type {
   AnthropicCacheControl,
   AnthropicImageBlock,
@@ -5,7 +7,8 @@ import type {
   AnthropicTextBlock,
   AnthropicToolResultBlock,
   AnthropicToolUseBlock,
-} from "../../ingress/anthropic-messages/index";
+} from '../../ingress/anthropic-messages/index';
+import { anthropicThinkingOption } from '../../protocol/anthropic-thinking';
 import type {
   AnthropicAssistantMessage,
   AnthropicMessagesModelMessages,
@@ -18,11 +21,7 @@ import type {
   TextPart,
   ToolCallPart,
   ToolResultPart,
-} from "./types";
-
-import { AnthropicMessagesTransformError } from "../../error";
-import { imageFilePart, type ImageFilePart } from "../../image-input";
-import { anthropicThinkingOption } from "../../protocol/anthropic-thinking";
+} from './types';
 
 export function convertAnthropicMessagesToModelMessages(
   request: AnthropicMessagesRequest,
@@ -55,46 +54,46 @@ export function convertAnthropicMessagesToModelMessages(
 }
 
 function messageToModelMessage(
-  message: AnthropicMessagesRequest["messages"][number],
+  message: AnthropicMessagesRequest['messages'][number],
   toolNames: Map<string, string>,
   messageIndex: number,
 ): AnthropicUserMessage | AnthropicAssistantMessage {
   switch (message.role) {
-    case "user":
+    case 'user':
       return {
-        role: "user",
+        role: 'user',
         content: userContentToModelParts(message.content, toolNames, `messages.${messageIndex}.content`),
       };
-    case "assistant":
-      return { role: "assistant", content: assistantContentToModelParts(message.content, toolNames) };
+    case 'assistant':
+      return { role: 'assistant', content: assistantContentToModelParts(message.content, toolNames) };
     default:
       return assertNever(message);
   }
 }
 
-function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest["system"]>): AnthropicSystemMessage {
-  if (typeof system === "string") return { role: "system", content: system };
+function systemToModelMessage(system: NonNullable<AnthropicMessagesRequest['system']>): AnthropicSystemMessage {
+  if (typeof system === 'string') return { role: 'system', content: system };
   return {
-    role: "system",
-    content: system.map((part) => part.text).join(""),
+    role: 'system',
+    content: system.map((part) => part.text).join(''),
     providerOptions: { anthropic: { system } },
   };
 }
 
 function userContentToModelParts(
-  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "user" }>["content"],
+  content: Extract<AnthropicMessagesRequest['messages'][number], { role: 'user' }>['content'],
   toolNames: ReadonlyMap<string, string>,
   path: string,
 ): string | readonly (TextPart | ImageFilePart | ToolResultPart)[] {
-  return typeof content === "string"
+  return typeof content === 'string'
     ? content
     : content.map((part, index) => {
         switch (part.type) {
-          case "text":
+          case 'text':
             return textPart(part);
-          case "image":
+          case 'image':
             return anthropicImagePart(part, `${path}.${index}`, false);
-          case "tool_result":
+          case 'tool_result':
             return toolResultPart(part, toolNames, `${path}.${index}`);
           default:
             return assertNever(part);
@@ -103,21 +102,21 @@ function userContentToModelParts(
 }
 
 function assistantContentToModelParts(
-  content: Extract<AnthropicMessagesRequest["messages"][number], { role: "assistant" }>["content"],
+  content: Extract<AnthropicMessagesRequest['messages'][number], { role: 'assistant' }>['content'],
   toolNames: Map<string, string>,
 ): string | readonly (TextPart | ToolCallPart | ReasoningPart)[] {
-  return typeof content === "string"
+  return typeof content === 'string'
     ? content
     : content.map((part) => {
         switch (part.type) {
-          case "text":
+          case 'text':
             return textPart(part);
-          case "tool_use":
+          case 'tool_use':
             toolNames.set(part.id, part.name);
             return toolCallPart(part);
-          case "thinking":
+          case 'thinking':
             return {
-              type: "reasoning",
+              type: 'reasoning',
               text: part.thinking,
               providerOptions: { anthropic: { signature: part.signature } },
             };
@@ -129,7 +128,7 @@ function assistantContentToModelParts(
 
 function textPart(part: AnthropicTextBlock): TextPart {
   return {
-    type: "text",
+    type: 'text',
     text: part.text,
     ...(part.cache_control === undefined ? {} : { providerOptions: cacheProviderOptions(part.cache_control) }),
   };
@@ -137,7 +136,7 @@ function textPart(part: AnthropicTextBlock): TextPart {
 
 function toolCallPart(part: AnthropicToolUseBlock): ToolCallPart {
   return {
-    type: "tool-call",
+    type: 'tool-call',
     toolCallId: part.id,
     toolName: part.name,
     input: part.input,
@@ -151,17 +150,17 @@ function toolResultPart(
   path: string,
 ): ToolResultPart {
   return {
-    type: "tool-result",
+    type: 'tool-result',
     toolCallId: part.tool_use_id,
-    toolName: toolNames.get(part.tool_use_id) ?? "",
+    toolName: toolNames.get(part.tool_use_id) ?? '',
     output:
-      typeof part.content === "string"
-        ? { type: "text", value: part.content }
+      typeof part.content === 'string'
+        ? { type: 'text', value: part.content }
         : {
-            type: "content",
+            type: 'content',
             value: part.content.map((contentPart, index) =>
-              contentPart.type === "text"
-                ? { type: "text", text: contentPart.text }
+              contentPart.type === 'text'
+                ? { type: 'text', text: contentPart.text }
                 : anthropicImagePart(contentPart, `${path}.content.${index}`, true),
             ),
           },
@@ -171,9 +170,9 @@ function toolResultPart(
 
 function anthropicImagePart(part: AnthropicImageBlock, path: string, toolResult: boolean): ImageFilePart {
   const image =
-    part.source.type === "base64"
-      ? imageFilePart({ type: "base64", mediaType: part.source.media_type, data: part.source.data }, { toolResult })
-      : imageFilePart({ type: "url", url: part.source.url }, { toolResult });
+    part.source.type === 'base64'
+      ? imageFilePart({ type: 'base64', mediaType: part.source.media_type, data: part.source.data }, { toolResult })
+      : imageFilePart({ type: 'url', url: part.source.url }, { toolResult });
   if (image === undefined) throw new AnthropicMessagesTransformError(path);
   if (part.cache_control === undefined) return image;
   return {

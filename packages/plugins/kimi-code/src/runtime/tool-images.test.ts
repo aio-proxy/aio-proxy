@@ -1,34 +1,33 @@
-import type { CredentialPort, ModelCatalog } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { createToolImageMarker } from "@aio-proxy/plugin-sdk/openai-stream";
-import { expect, test } from "bun:test";
+import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { createToolImageMarker } from '@aio-proxy/plugin-sdk/openai-stream';
 
-import type { KimiCredential } from "../oauth";
-
-import { createKimiRuntime } from "./runtime";
+import type { KimiCredential } from '../oauth';
+import { createKimiRuntime } from './runtime';
 
 const toolImagePrompt = [
   {
-    role: "assistant" as const,
-    content: [{ type: "tool-call" as const, toolCallId: "call_1", toolName: "inspect", input: {} }],
+    role: 'assistant' as const,
+    content: [{ type: 'tool-call' as const, toolCallId: 'call_1', toolName: 'inspect', input: {} }],
   },
   {
-    role: "tool" as const,
+    role: 'tool' as const,
     content: [
       {
-        type: "tool-result" as const,
-        toolCallId: "call_1",
-        toolName: "inspect",
+        type: 'tool-result' as const,
+        toolCallId: 'call_1',
+        toolName: 'inspect',
         output: {
-          type: "content" as const,
+          type: 'content' as const,
           value: [
-            { type: "text" as const, text: "before" },
+            { type: 'text' as const, text: 'before' },
             {
-              type: "file" as const,
-              mediaType: "image/png",
-              data: { type: "data" as const, data: "AA==" },
+              type: 'file' as const,
+              mediaType: 'image/png',
+              data: { type: 'data' as const, data: 'AA==' },
               providerOptions: {
-                openai: { imageDetail: "low" },
+                openai: { imageDetail: 'low' },
                 aioProxy: createToolImageMarker(),
               },
             },
@@ -39,32 +38,32 @@ const toolImagePrompt = [
   },
 ] as const;
 
-test("compatible delegate emits CPA tool image content", async () => {
+test('compatible delegate emits CPA tool image content', async () => {
   let captured: Request | undefined;
   const runtime = await createKimiRuntime(context(validCredential(), catalog()), {
     fetch: async (input, init) => {
       captured = new Request(input, init);
       return Response.json({
-        id: "chatcmpl-test",
+        id: 'chatcmpl-test',
         created: 1,
-        model: "openai-model",
-        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+        model: 'openai-model',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       });
     },
   });
 
-  await runtime.provider.languageModel("openai-model").doGenerate({ prompt: toolImagePrompt });
+  await runtime.provider.languageModel('openai-model').doGenerate({ prompt: toolImagePrompt });
 
   expect((await captured?.json()) as unknown).toMatchObject({
     messages: [
-      expect.objectContaining({ role: "assistant" }),
+      expect.objectContaining({ role: 'assistant' }),
       {
-        role: "tool",
-        tool_call_id: "call_1",
+        role: 'tool',
+        tool_call_id: 'call_1',
         content: [
-          { type: "text", text: "before" },
-          { type: "image_url", image_url: { url: "data:image/png;base64,AA==", detail: "low" } },
+          { type: 'text', text: 'before' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==', detail: 'low' } },
         ],
       },
     ],
@@ -73,10 +72,10 @@ test("compatible delegate emits CPA tool image content", async () => {
 
 function validCredential(): KimiCredential {
   return {
-    accessToken: "access-token",
-    refreshToken: "refresh-token",
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
     expiresAt: 4_000_000_000_000,
-    deviceId: "device-1",
+    deviceId: 'device-1',
   };
 }
 
@@ -84,14 +83,14 @@ function credentialPort(initial: KimiCredential): CredentialPort<KimiCredential>
   return {
     read: async () => ({ value: initial, revision: 1 }),
     refresh: async () => {
-      throw new Error("tool image test must not refresh credentials");
+      throw new Error('tool image test must not refresh credentials');
     },
   };
 }
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: "openai-model", metadata: { protocol: "openai-compatible" } }],
+    language: [{ id: 'openai-model', metadata: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],

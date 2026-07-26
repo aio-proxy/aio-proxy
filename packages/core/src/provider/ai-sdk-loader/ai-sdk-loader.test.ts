@@ -1,17 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import type { ProviderFetch } from "../../index";
-
+import type { ProviderFetch } from '../../index';
 import {
   BUNDLED_PROVIDER_VERSIONS,
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
   loadAiSdkProvider,
   npmPackageCacheDir,
-} from "../../index";
+} from '../../index';
 
 type ExpectedProvider = {
   readonly packageName: BundledAiSdkProviderPackage;
@@ -21,65 +20,65 @@ type ExpectedProvider = {
 
 const expectedProviders: readonly ExpectedProvider[] = [
   {
-    packageName: "@ai-sdk/openai",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat", "responses"],
+    packageName: '@ai-sdk/openai',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat', 'responses'],
   },
   {
-    packageName: "@ai-sdk/anthropic",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat"],
+    packageName: '@ai-sdk/anthropic',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat'],
   },
   {
-    packageName: "@ai-sdk/google",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat"],
+    packageName: '@ai-sdk/google',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat'],
   },
   {
-    packageName: "@ai-sdk/openai-compatible",
+    packageName: '@ai-sdk/openai-compatible',
     options: {
-      apiKey: "test",
-      baseURL: "https://example.invalid/v1",
-      name: "test",
+      apiKey: 'test',
+      baseURL: 'https://example.invalid/v1',
+      name: 'test',
     },
-    methods: ["languageModel"],
+    methods: ['languageModel'],
   },
   {
-    packageName: "@ai-sdk/mistral",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat"],
+    packageName: '@ai-sdk/mistral',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat'],
   },
   {
-    packageName: "@ai-sdk/groq",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat"],
+    packageName: '@ai-sdk/groq',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat'],
   },
   {
-    packageName: "@ai-sdk/xai",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat", "responses"],
+    packageName: '@ai-sdk/xai',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat', 'responses'],
   },
   {
-    packageName: "@openrouter/ai-sdk-provider",
-    options: { apiKey: "test" },
-    methods: ["languageModel", "chat"],
+    packageName: '@openrouter/ai-sdk-provider',
+    options: { apiKey: 'test' },
+    methods: ['languageModel', 'chat'],
   },
 ];
 
-describe("loadAiSdkProvider", () => {
-  test("bundled provider versions match installed package metadata", async () => {
-    const corePackageRoot = join(import.meta.dir, "../../..");
+describe('loadAiSdkProvider', () => {
+  test('bundled provider versions match installed package metadata', async () => {
+    const corePackageRoot = join(import.meta.dir, '../../..');
     expect(Object.keys(BUNDLED_PROVIDER_VERSIONS).sort()).toEqual(
       expectedProviders.map((provider) => provider.packageName).sort(),
     );
 
     for (const { packageName } of expectedProviders) {
-      const manifest = await Bun.file(join(corePackageRoot, "node_modules", packageName, "package.json")).json();
+      const manifest = await Bun.file(join(corePackageRoot, 'node_modules', packageName, 'package.json')).json();
       expect(BUNDLED_PROVIDER_VERSIONS[packageName]).toBe(manifest.version);
     }
   });
 
-  test("loads every bundled provider factory without network calls", async () => {
+  test('loads every bundled provider factory without network calls', async () => {
     expect(Object.keys(BUNDLED_PROVIDERS).sort()).toEqual(
       expectedProviders.map((provider) => provider.packageName).sort(),
     );
@@ -89,64 +88,64 @@ describe("loadAiSdkProvider", () => {
 
       expect(provider).not.toBeNull();
       for (const method of expected.methods) {
-        expect(typeof provider?.[method]).toBe("function");
+        expect(typeof provider?.[method]).toBe('function');
       }
     }
   });
 
-  test("returns null for an unknown package", async () => {
-    const provider = await loadAiSdkProvider("@ai-sdk/not-installed", {
-      apiKey: "test",
+  test('returns null for an unknown package', async () => {
+    const provider = await loadAiSdkProvider('@ai-sdk/not-installed', {
+      apiKey: 'test',
     });
 
     expect(provider).toBeNull();
   });
 
-  test("forwards fetch into createOpenAICompatible instead of dropping it", async () => {
+  test('forwards fetch into createOpenAICompatible instead of dropping it', async () => {
     let fetchCalls = 0;
     const providerFetch = (async () => {
       fetchCalls += 1;
       return new Response('data: {"id":"x","choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', {
-        headers: { "content-type": "text/event-stream" },
+        headers: { 'content-type': 'text/event-stream' },
       });
     }) as ProviderFetch;
 
-    const provider = await loadAiSdkProvider("@ai-sdk/openai-compatible", {
-      apiKey: "test",
-      baseURL: "https://example.invalid/v1",
-      name: "test",
+    const provider = await loadAiSdkProvider('@ai-sdk/openai-compatible', {
+      apiKey: 'test',
+      baseURL: 'https://example.invalid/v1',
+      name: 'test',
       fetch: providerFetch,
     });
 
     expect(provider).not.toBeNull();
-    const result = await provider!.languageModel("gpt-test").doStream({
-      prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    const result = await provider!.languageModel('gpt-test').doStream({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
     });
     await Array.fromAsync(result.stream);
     expect(fetchCalls).toBeGreaterThan(0);
   });
 
-  test("Given runtime package cached When bundled lookup misses Then provider factory imports from cache", async () => {
+  test('Given runtime package cached When bundled lookup misses Then provider factory imports from cache', async () => {
     // Given
-    const home = mkdtempSync(join(tmpdir(), "aio-proxy-loader-home-"));
+    const home = mkdtempSync(join(tmpdir(), 'aio-proxy-loader-home-'));
     const previousHome = process.env.HOME;
     process.env.HOME = home;
-    const pkg = "aio-proxy-runtime-provider";
-    const packageDir = join(npmPackageCacheDir(pkg), "node_modules", pkg);
+    const pkg = 'aio-proxy-runtime-provider';
+    const packageDir = join(npmPackageCacheDir(pkg), 'node_modules', pkg);
     mkdirSync(packageDir, { recursive: true });
-    writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
+    writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: pkg, version: '1.0.0', main: 'index.js' }));
     writeFileSync(
-      join(packageDir, "index.js"),
-      "export function createRuntimeProvider(options) { return { languageModel() { return options.apiKey; } }; }\n",
+      join(packageDir, 'index.js'),
+      'export function createRuntimeProvider(options) { return { languageModel() { return options.apiKey; } }; }\n',
     );
 
     try {
       // When
-      const provider = await loadAiSdkProvider(pkg, { apiKey: "test-key" });
+      const provider = await loadAiSdkProvider(pkg, { apiKey: 'test-key' });
 
       // Then
       expect(provider).not.toBeNull();
-      expect(typeof provider?.languageModel).toBe("function");
+      expect(typeof provider?.languageModel).toBe('function');
     } finally {
       if (previousHome === undefined) {
         delete process.env.HOME;

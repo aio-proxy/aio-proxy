@@ -1,14 +1,13 @@
-import type { AliasConfig, AliasTarget } from "@aio-proxy/types";
+import { m } from '@aio-proxy/i18n';
+import type { AliasConfig, AliasTarget } from '@aio-proxy/types';
+import { omit } from 'es-toolkit/object';
+import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from 'lucide-react';
+import { type FC, useState } from 'react';
 
-import { m } from "@aio-proxy/i18n";
-import { omit } from "es-toolkit/object";
-import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from "lucide-react";
-import { type FC, useState } from "react";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FieldDescription } from "@/components/ui/field";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { FieldDescription } from '@/components/ui/field';
+import { Separator } from '@/components/ui/separator';
 
 import {
   type AliasEditorIssue,
@@ -16,9 +15,9 @@ import {
   commitVariantDraft,
   type ProviderAlias,
   renameVariant,
-} from "../../alias-editor";
-import { ProviderVariantDraft } from "../provider-variant-draft";
-import { ProviderVariantRow } from "../provider-variant-row";
+} from '../../alias-editor';
+import { ProviderVariantDraft } from '../provider-variant-draft';
+import { ProviderVariantRow } from '../provider-variant-row';
 
 type Props = {
   readonly alias: ProviderAlias;
@@ -63,13 +62,13 @@ export const ProviderAliasVariants: FC<Props> = ({
             aria-expanded={expanded}
             aria-label={
               expanded
-                ? m["dashboard.providers.form.collapse_variants"]({ alias: aliasName })
-                : m["dashboard.providers.form.expand_variants"]({ alias: aliasName })
+                ? m['dashboard.providers.form.collapse_variants']({ alias: aliasName })
+                : m['dashboard.providers.form.expand_variants']({ alias: aliasName })
             }
             onClick={() => setOpen((current) => !current)}
           >
             {expanded ? <ChevronUpIcon data-icon="inline-start" /> : <ChevronDownIcon data-icon="inline-start" />}
-            {m["dashboard.providers.form.label_variants"]()}
+            {m['dashboard.providers.form.label_variants']()}
           </Button>
           <Badge variant="secondary">{Object.keys(variants).length + draftIds.length}</Badge>
         </div>
@@ -83,12 +82,12 @@ export const ProviderAliasVariants: FC<Props> = ({
           }}
         >
           <PlusIcon data-icon="inline-start" />
-          {m["dashboard.providers.form.add_variant"]()}
+          {m['dashboard.providers.form.add_variant']()}
         </Button>
       </div>
       {expanded && (
         <div className="flex flex-col gap-3">
-          <FieldDescription>{m["dashboard.providers.form.variants_helper"]()}</FieldDescription>
+          <FieldDescription>{m['dashboard.providers.form.variants_helper']()}</FieldDescription>
           {Object.entries(variants).map(([variantName, target]) => (
             <ProviderVariantRow
               key={variantName}

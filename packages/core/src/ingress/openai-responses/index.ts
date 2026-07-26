@@ -1,12 +1,12 @@
-import { compact } from "es-toolkit/array";
-import { z } from "zod";
+import { compact } from 'es-toolkit/array';
+import { z } from 'zod';
 
 import {
   knownOpenAIResponsesInputItemTypes,
   type OpenAIResponsesInputItem,
   openAIResponsesInputItemSchema,
-} from "./input-items";
-import { openAIResponsesToolSchema } from "./tools";
+} from './input-items';
+import { openAIResponsesToolSchema } from './tools';
 
 const idSchema = z.string().min(1);
 const looseObjectSchema = z.object({}).catchall(z.unknown());
@@ -25,8 +25,8 @@ const conversationSchema = z.union([
     .catchall(z.unknown()),
 ]);
 const namedToolChoiceSchema = z.union([
-  z.object({ type: z.literal("function"), name: idSchema }),
-  z.object({ type: z.literal("custom"), name: idSchema }),
+  z.object({ type: z.literal('function'), name: idSchema }),
+  z.object({ type: z.literal('custom'), name: idSchema }),
 ]);
 
 const inputItemSchema = z.unknown().transform((item, context): OpenAIResponsesInputItem | undefined => {
@@ -35,15 +35,15 @@ const inputItemSchema = z.unknown().transform((item, context): OpenAIResponsesIn
 
   const wireType = safeWireType(item);
   if (wireType !== undefined && !knownOpenAIResponsesInputItemTypes.has(wireType)) {
-    return { type: "__aio_proxy_unsupported__", wireType };
+    return { type: '__aio_proxy_unsupported__', wireType };
   }
 
   if (wireType !== undefined || hasMessageDiscriminator(item)) {
-    context.addIssue({ code: "custom", message: "Invalid OpenAI Responses input item" });
+    context.addIssue({ code: 'custom', message: 'Invalid OpenAI Responses input item' });
     return z.NEVER;
   }
 
-  console.warn("[aio-proxy] OpenAI Responses input item degraded", "unknown", "input", "dropped");
+  console.warn('[aio-proxy] OpenAI Responses input item degraded', 'unknown', 'input', 'dropped');
   return undefined;
 });
 
@@ -56,13 +56,13 @@ export const OpenAIResponsesRequestSchema = z
         .array(inputItemSchema)
         .min(1)
         .transform((items) => compact(items))
-        .refine((items) => items.length > 0, "OpenAI Responses input must contain a semantic item"),
+        .refine((items) => items.length > 0, 'OpenAI Responses input must contain a semantic item'),
     ]),
     tools: z.array(openAIResponsesToolSchema).optional(),
     reasoning: z
       .object({
-        summary: z.enum(["auto", "concise", "detailed"]).optional(),
-        effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+        summary: z.enum(['auto', 'concise', 'detailed']).optional(),
+        effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
         context: z.unknown().optional(),
       })
       .optional(),
@@ -71,7 +71,7 @@ export const OpenAIResponsesRequestSchema = z
     top_p: z.number().optional(),
     max_output_tokens: z.number().int().positive().optional(),
     parallel_tool_calls: z.boolean().optional(),
-    tool_choice: z.union([z.enum(["none", "auto", "required"]), namedToolChoiceSchema, looseObjectSchema]).optional(),
+    tool_choice: z.union([z.enum(['none', 'auto', 'required']), namedToolChoiceSchema, looseObjectSchema]).optional(),
     store: z.boolean().optional(),
     background: z.boolean().optional(),
     conversation: conversationSchema.optional(),
@@ -85,12 +85,12 @@ export const OpenAIResponsesRequestSchema = z
     service_tier: z.string().optional(),
     text: z
       .object({
-        verbosity: z.enum(["low", "medium", "high"]).optional(),
+        verbosity: z.enum(['low', 'medium', 'high']).optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
   })
-  .passthrough();
+  .loose();
 
 export type OpenAIResponsesRequest = z.output<typeof OpenAIResponsesRequestSchema>;
 
@@ -110,13 +110,13 @@ export function parseOpenAIResponses(input: unknown): OpenAIResponsesRequest {
 }
 
 function safeWireType(value: unknown): string | undefined {
-  return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
+  return typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string'
     ? value.type
     : undefined;
 }
 
 function hasMessageDiscriminator(value: unknown): boolean {
-  return typeof value === "object" && value !== null && "role" in value;
+  return typeof value === 'object' && value !== null && 'role' in value;
 }
 
 export type {
@@ -125,7 +125,7 @@ export type {
   OpenAIResponsesTextPart,
   OpenAIResponsesToolOutputPart,
   OpenAIResponsesUnsupportedInputItem,
-} from "./input-items";
+} from './input-items';
 export type {
   OpenAIResponsesCustomTool,
   OpenAIResponsesExecutableTool,
@@ -133,4 +133,4 @@ export type {
   OpenAIResponsesNamespaceTool,
   OpenAIResponsesTool,
   OpenAIResponsesUnsupportedTool,
-} from "./tools";
+} from './tools';

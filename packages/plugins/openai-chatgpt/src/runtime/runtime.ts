@@ -1,16 +1,14 @@
-import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from "@aio-proxy/plugin-sdk";
+import { createOpenAI } from '@ai-sdk/openai';
+import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
 
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenAIStreamFetch } from "@aio-proxy/plugin-sdk/openai-stream";
+import { refreshAccessToken } from '../oauth-flow';
+import type { ChatGPTCredential } from '../schema';
 
-import type { ChatGPTCredential } from "../schema";
-
-import { refreshAccessToken } from "../oauth-flow";
-
-const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex" as const;
+const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
-const CHATGPT_USER_AGENT = "codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)" as const;
-const PLACEHOLDER_CREDENTIAL = "dynamic-credential" as const;
+const CHATGPT_USER_AGENT = 'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)' as const;
+const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
 export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
@@ -21,7 +19,7 @@ export async function createOpenAIChatGPTRuntime(
     context.fetch,
   );
   const openAI = createOpenAI({
-    name: "openai-chatgpt",
+    name: 'openai-chatgpt',
     baseURL: CHATGPT_CODEX_BASE_URL,
     apiKey: PLACEHOLDER_CREDENTIAL,
     fetch: dynamicFetch,
@@ -29,13 +27,13 @@ export async function createOpenAIChatGPTRuntime(
 
   return {
     provider: {
-      specificationVersion: "v4",
+      specificationVersion: 'v4',
       languageModel: (modelId) => openAI.languageModel(modelId),
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
     raw: ({ protocol }) =>
-      protocol === "openai-response" ? { invoke: (request) => dynamicFetch(request) } : undefined,
+      protocol === 'openai-response' ? { invoke: (request) => dynamicFetch(request) } : undefined,
   };
 }
 
@@ -44,23 +42,23 @@ export function createOpenAIChatGPTDynamicFetch(
   fetcher: typeof fetch = globalThis.fetch,
   credentialFetcher: typeof fetch = fetcher,
 ): typeof fetch {
-  const fetchOpenAIResponses = createOpenAIStreamFetch("openai-response", fetcher);
+  const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher);
   return async (input, init) => {
     const credential = await currentCredential(credentials, credentialFetcher);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
-    headers.delete("authorization");
-    headers.delete("host");
-    headers.set("authorization", `Bearer ${credential.accessToken}`);
-    headers.set("ChatGPT-Account-Id", credential.accountId);
-    headers.set("Originator", "codex-tui");
-    headers.set("User-Agent", CHATGPT_USER_AGENT);
-    headers.set("session-id", crypto.randomUUID());
+    headers.delete('authorization');
+    headers.delete('host');
+    headers.set('authorization', `Bearer ${credential.accessToken}`);
+    headers.set('ChatGPT-Account-Id', credential.accountId);
+    headers.set('Originator', 'codex-tui');
+    headers.set('User-Agent', CHATGPT_USER_AGENT);
+    headers.set('session-id', crypto.randomUUID());
 
     return await fetchOpenAIResponses(rewriteCodexUrl(request.url), {
       method: request.method,
       headers,
-      ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body }),
+      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body: request.body }),
       signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
       redirect: request.redirect,
     });
@@ -93,5 +91,5 @@ function rewriteCodexUrl(input: string): string {
 }
 
 function shouldRewriteCodexPath(pathname: string): boolean {
-  return pathname.endsWith("/responses") || pathname.endsWith("/chat/completions");
+  return pathname.endsWith('/responses') || pathname.endsWith('/chat/completions');
 }

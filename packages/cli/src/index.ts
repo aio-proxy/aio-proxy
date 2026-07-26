@@ -1,1 +1,1 @@
-export { buildProgram } from "./main";
+export { buildProgram } from './main';

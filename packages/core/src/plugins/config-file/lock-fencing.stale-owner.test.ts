@@ -1,0 +1,88 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+
+import { AtomicConfigFile } from '.';
+import { ageLockWithUnavailableIdentity, fixture } from './test-support';
+
+describe('AtomicConfigFile', () => {
+  test('a stale former owner cannot rename or release a replacement lock after it resumes', async () => {
+    const { path } = fixture('{}\n');
+    let resume!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let entered!: () => void;
+    const didEnter = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const update = new AtomicConfigFile(path).replace(async (current) => {
+      entered();
+      await paused;
+      return { ...current, staleOwnerWrite: true };
+    });
+    await didEnter;
+
+    const lockPath = `${path}.lock`;
+    ageLockWithUnavailableIdentity(lockPath);
+    let finishReplacement!: () => void;
+    const replacementCanFinish = new Promise<void>((resolve) => {
+      finishReplacement = resolve;
+    });
+    let replacementEntered!: () => void;
+    const replacementDidEnter = new Promise<void>((resolve) => {
+      replacementEntered = resolve;
+    });
+    const replacement = new AtomicConfigFile(path).replace(async (current) => {
+      replacementEntered();
+      await replacementCanFinish;
+      return { ...current, replacement: true };
+    });
+    await replacementDidEnter;
+    const replacementOwner = JSON.parse(readFileSync(lockPath, 'utf8')).owner;
+    resume();
+
+    await expect(update).rejects.toThrow('Config lock ownership lost');
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({});
+    expect(JSON.parse(readFileSync(lockPath, 'utf8')).owner).toBe(replacementOwner);
+    finishReplacement();
+    await replacement;
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ replacement: true });
+  });
+
+  test('a same-object mutation does not hold the recovery fence for its whole callback', async () => {
+    const { path } = fixture('{}\n');
+    const config = new AtomicConfigFile(path);
+    let resume!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let entered!: () => void;
+    const didEnter = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const first = config.transaction(async (current) => {
+      entered();
+      await paused;
+      return { next: current, result: 'first' };
+    });
+    await didEnter;
+    ageLockWithUnavailableIdentity(`${path}.lock`);
+
+    let secondEntered = false;
+    const second = config.replace((current) => {
+      secondEntered = true;
+      return { ...current, second: true };
+    });
+    const secondResult = second.then(() => undefined);
+    const deadline = Date.now() + 2_000;
+    while (!secondEntered) {
+      if (Date.now() >= deadline) throw new Error('replacement did not enter');
+      await Bun.sleep(5);
+    }
+
+    resume();
+    await expect(first).rejects.toThrow('Config lock ownership lost');
+    await secondResult;
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ second: true });
+  });
+});

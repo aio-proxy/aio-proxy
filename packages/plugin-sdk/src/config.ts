@@ -1,7 +1,7 @@
-import type { ZodType } from "zod";
+import type { ZodType } from 'zod';
 
-import type { JsonValue } from "./json";
-import type { LocalizedText } from "./localized-text";
+import type { JsonValue } from './json';
+import type { LocalizedText } from './localized-text';
 
 export type FormCondition = {
   readonly key: string;
@@ -17,18 +17,18 @@ type FormFieldBase<TType extends string> = {
 };
 
 export type FormField =
-  | (FormFieldBase<"text"> & { readonly placeholder?: LocalizedText })
-  | FormFieldBase<"secret">
-  | (FormFieldBase<"number"> & { readonly placeholder?: LocalizedText })
-  | (FormFieldBase<"boolean"> & { readonly defaultValue?: boolean })
-  | (FormFieldBase<"select"> & {
+  | (FormFieldBase<'text'> & { readonly placeholder?: LocalizedText })
+  | FormFieldBase<'secret'>
+  | (FormFieldBase<'number'> & { readonly placeholder?: LocalizedText })
+  | (FormFieldBase<'boolean'> & { readonly defaultValue?: boolean })
+  | (FormFieldBase<'select'> & {
       readonly options: readonly {
         readonly value: string | number | boolean;
         readonly label: LocalizedText;
         readonly description?: LocalizedText;
       }[];
     })
-  | (FormFieldBase<"json"> & {
+  | (FormFieldBase<'json'> & {
       readonly placeholder?: LocalizedText;
       readonly defaultValue?: JsonValue;
     });

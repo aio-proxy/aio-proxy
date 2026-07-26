@@ -1,14 +1,15 @@
-import { zod } from "@aio-proxy/plugin-sdk";
-import { afterEach, expect, test } from "bun:test";
-import { Buffer } from "node:buffer";
+import { afterEach, expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
+
+import { zod } from '@aio-proxy/plugin-sdk';
 
 import {
   OAuthQuotaReadError,
   OAuthQuotaResetError,
   OAuthQuotaResetUnavailableError,
   OAuthQuotaResetUnsupportedError,
-} from "./errors";
-import { createOAuthQuotaResetter } from "./reset";
+} from './errors';
+import { createOAuthQuotaResetter } from './reset';
 import {
   availableQuotaSnapshot,
   capturedQuotaError,
@@ -16,12 +17,12 @@ import {
   createQuotaFixture,
   PROVIDER_ID,
   quotaSignal,
-} from "./test-support";
+} from './test-support';
 
 afterEach(cleanupQuotaFixtures);
 
-test("redacts a refreshed credential observed during mutation from the mutation failure", async () => {
-  const refreshedSecret = "reset-refreshed-credential-secret";
+test('redacts a refreshed credential observed during mutation from the mutation failure', async () => {
+  const refreshedSecret = 'reset-refreshed-credential-secret';
   const fixture = createQuotaFixture({
     read: async () => availableQuotaSnapshot,
     reset: async ({ credentials }) => {
@@ -36,7 +37,7 @@ test("redacts a refreshed credential observed during mutation from the mutation 
   );
 
   expect(error).toBeInstanceOf(OAuthQuotaResetError);
-  expect(error).not.toHaveProperty("cause");
+  expect(error).not.toHaveProperty('cause');
   expect(fixture.logs).toHaveLength(1);
   expect(JSON.stringify(fixture.logs)).not.toMatch(
     /credential-secret|account-secret|plugin-secret|reset-refreshed-credential-secret/u,
@@ -44,8 +45,8 @@ test("redacts a refreshed credential observed during mutation from the mutation 
   expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: refreshedSecret });
 });
 
-test("retains a refreshed credential discovered in preflight for later mutation failure redaction", async () => {
-  const refreshedSecret = "preflight-refreshed-credential-secret";
+test('retains a refreshed credential discovered in preflight for later mutation failure redaction', async () => {
+  const refreshedSecret = 'preflight-refreshed-credential-secret';
   const fixture = createQuotaFixture({
     read: async ({ credentials }) => {
       const current = await credentials.read();
@@ -67,14 +68,14 @@ test("retains a refreshed credential discovered in preflight for later mutation 
   expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: refreshedSecret });
 });
 
-test("redacts a secret derived by account option parsing from reset failures", async () => {
-  const derivedSecret = Buffer.from("account-secret").toString("base64");
+test('redacts a secret derived by account option parsing from reset failures', async () => {
+  const derivedSecret = Buffer.from('account-secret').toString('base64');
   const fixture = createQuotaFixture({
     accountOptions: {
       schema: zod
         .object({ region: zod.string(), clientSecret: zod.string() })
-        .transform(({ clientSecret }) => ({ authorization: Buffer.from(clientSecret).toString("base64") })),
-      form: [{ type: "secret", key: "clientSecret", label: "Client secret" }],
+        .transform(({ clientSecret }) => ({ authorization: Buffer.from(clientSecret).toString('base64') })),
+      form: [{ type: 'secret', key: 'clientSecret', label: 'Client secret' }],
     },
     read: async () => availableQuotaSnapshot,
     reset: async ({ options }) => {
@@ -88,12 +89,12 @@ test("redacts a secret derived by account option parsing from reset failures", a
   expect(JSON.stringify(fixture.logs)).not.toContain(derivedSecret);
 });
 
-test("preserves the stable reset error when the mutation failure logger throws", async () => {
+test('preserves the stable reset error when the mutation failure logger throws', async () => {
   const fixture = createQuotaFixture({
     loggerFailure: true,
     read: async () => availableQuotaSnapshot,
     reset: async () => {
-      throw new Error("plugin failed");
+      throw new Error('plugin failed');
     },
   });
 
@@ -103,36 +104,36 @@ test("preserves the stable reset error when the mutation failure logger throws",
 
   expect(error).toBeInstanceOf(OAuthQuotaResetError);
   expect(error).toMatchObject({
-    name: "OAuthQuotaResetError",
-    message: "OAuth quota reset failed",
-    code: "OAUTH_QUOTA_RESET_FAILED",
+    name: 'OAuthQuotaResetError',
+    message: 'OAuth quota reset failed',
+    code: 'OAUTH_QUOTA_RESET_FAILED',
   });
-  expect(error).not.toHaveProperty("cause");
+  expect(error).not.toHaveProperty('cause');
 });
 
 test.each([
-  ["unsupported", {}, OAuthQuotaResetUnsupportedError],
-  ["unavailable", { read: async () => ({ items: [] }), reset: async () => {} }, OAuthQuotaResetUnavailableError],
+  ['unsupported', {}, OAuthQuotaResetUnsupportedError],
+  ['unavailable', { read: async () => ({ items: [] }), reset: async () => {} }, OAuthQuotaResetUnavailableError],
   [
-    "preflight",
-    { read: async () => Promise.reject(new Error("preflight failed")), reset: async () => {} },
+    'preflight',
+    { read: async () => Promise.reject(new Error('preflight failed')), reset: async () => {} },
     OAuthQuotaReadError,
   ],
   [
-    "mutation",
+    'mutation',
     {
       read: async () => availableQuotaSnapshot,
-      reset: async () => Promise.reject(new Error("mutation failed")),
+      reset: async () => Promise.reject(new Error('mutation failed')),
     },
     OAuthQuotaResetError,
   ],
 ] as const)(
-  "leaves routing and persistent diagnostics unchanged for a %s failure",
+  'leaves routing and persistent diagnostics unchanged for a %s failure',
   async (_name, options, ErrorType) => {
     const fixture = createQuotaFixture(options);
     fixture.repository.writeDiagnostic(PROVIDER_ID, {
-      code: "AUTHORIZATION_FAILED",
-      summary: "existing",
+      code: 'AUTHORIZATION_FAILED',
+      summary: 'existing',
       retryable: false,
       occurredAt: new Date(0).toISOString(),
     });
@@ -146,7 +147,7 @@ test.each([
       plugin,
       capability,
     }));
-    const routesBefore = router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId }));
+    const routesBefore = router.resolve('model').map(({ provider, modelId }) => ({ providerId: provider.id, modelId }));
     const diagnosticsBefore = fixture.repository.readDiagnostics(PROVIDER_ID);
 
     const error = await capturedQuotaError(
@@ -169,7 +170,7 @@ test.each([
     ).toEqual(providersBefore);
     expect(fixture.snapshot.router).toBe(router);
     expect(
-      fixture.snapshot.router.resolve("model").map(({ provider, modelId }) => ({ providerId: provider.id, modelId })),
+      fixture.snapshot.router.resolve('model').map(({ provider, modelId }) => ({ providerId: provider.id, modelId })),
     ).toEqual(routesBefore);
     expect(fixture.repository.readDiagnostics(PROVIDER_ID)).toEqual(diagnosticsBefore);
     expect(fixture.changed()).toBe(0);

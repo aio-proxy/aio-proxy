@@ -1,4 +1,4 @@
-import { asRecord } from "./payload-shape";
+import { asRecord } from './payload-shape';
 
 export async function isSignatureInvalidResponse(response: Response, signal?: AbortSignal): Promise<boolean> {
   if (response.status !== 400) return false;
@@ -7,7 +7,7 @@ export async function isSignatureInvalidResponse(response: Response, signal?: Ab
     throwIfAborted(signal);
     if (payload === undefined) return false;
     return (
-      containsSignatureError(Reflect.get(payload, "error")) || containsSignatureError(Reflect.get(payload, "message"))
+      containsSignatureError(Reflect.get(payload, 'error')) || containsSignatureError(Reflect.get(payload, 'message'))
     );
   } catch {
     throwIfAborted(signal);
@@ -16,12 +16,12 @@ export async function isSignatureInvalidResponse(response: Response, signal?: Ab
 }
 
 function containsSignatureError(value: unknown): boolean {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     const normalized = value.toLowerCase();
     return (
-      normalized.includes("thoughtsignature") ||
-      normalized.includes("thought_signature") ||
-      normalized.includes("invalid signature")
+      normalized.includes('thoughtsignature') ||
+      normalized.includes('thought_signature') ||
+      normalized.includes('invalid signature')
     );
   }
   if (Array.isArray(value)) return value.some(containsSignatureError);
@@ -32,5 +32,5 @@ function containsSignatureError(value: unknown): boolean {
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted !== true) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }

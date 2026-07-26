@@ -6,5 +6,5 @@ export {
   type RequestLogScope,
   withAttemptLogContext,
   withRequestLogContext,
-} from "./context";
-export { createObservedFetch, observeInboundRequest } from "./wire";
+} from './context';
+export { createObservedFetch, observeInboundRequest } from './wire';

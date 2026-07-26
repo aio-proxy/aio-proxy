@@ -1,54 +1,53 @@
-import type { OpenAIResponsesRequest } from "../../ingress/openai-responses/index";
+import type { OpenAIResponsesRequest } from '../../ingress/openai-responses/index';
+import { openAIResponsesInputMessages } from './compat';
+import {
+  normalizeOpenAIResponsesTools,
+  readOpenAIResponsesWireMetadata,
+  rejectOpenAIResponsesFeature,
+  warnOpenAIResponsesDegradation,
+} from './tools';
 import type {
   OpenAIResponsesModelMessages,
   OpenAIResponsesProviderOptions,
   OpenAIResponsesToolChoice,
   OpenAIResponsesTransformSettings,
   OpenAIResponsesTransformTool,
-} from "./types";
-
-import { openAIResponsesInputMessages } from "./compat";
-import {
-  normalizeOpenAIResponsesTools,
-  readOpenAIResponsesWireMetadata,
-  rejectOpenAIResponsesFeature,
-  warnOpenAIResponsesDegradation,
-} from "./tools";
+} from './types';
 
 const supportedRequestKeys = new Set([
-  "model",
-  "input",
-  "tools",
-  "reasoning",
-  "stream",
-  "temperature",
-  "top_p",
-  "max_output_tokens",
-  "parallel_tool_calls",
-  "tool_choice",
-  "store",
-  "background",
-  "conversation",
-  "previous_response_id",
-  "metadata",
-  "session_id",
-  "conversation_id",
-  "include",
-  "client_metadata",
-  "prompt_cache_key",
-  "service_tier",
-  "text",
+  'model',
+  'input',
+  'tools',
+  'reasoning',
+  'stream',
+  'temperature',
+  'top_p',
+  'max_output_tokens',
+  'parallel_tool_calls',
+  'tool_choice',
+  'store',
+  'background',
+  'conversation',
+  'previous_response_id',
+  'metadata',
+  'session_id',
+  'conversation_id',
+  'include',
+  'client_metadata',
+  'prompt_cache_key',
+  'service_tier',
+  'text',
 ]);
 
 export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest): OpenAIResponsesModelMessages {
   validateModelCompatibility(request);
-  const input = typeof request.input === "string" ? undefined : request.input;
+  const input = typeof request.input === 'string' ? undefined : request.input;
   const tools = normalizeOpenAIResponsesTools([
-    { tools: request.tools, source: "request" },
+    { tools: request.tools, source: 'request' },
     ...(input ?? [])
       .map((item, inputIndex) =>
-        item.type === "additional_tools"
-          ? { tools: item.tools, source: "additional_tools" as const, inputIndex }
+        item.type === 'additional_tools'
+          ? { tools: item.tools, source: 'additional_tools' as const, inputIndex }
           : undefined,
       )
       .filter((source) => source !== undefined),
@@ -56,8 +55,8 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
   validateCustomHistory(input, tools);
   return {
     messages:
-      typeof request.input === "string"
-        ? [{ role: "user", content: request.input }]
+      typeof request.input === 'string'
+        ? [{ role: 'user', content: request.input }]
         : openAIResponsesInputMessages(request.input),
     ...(tools === undefined ? {} : { tools }),
     settings: transformSettings(request, tools),
@@ -65,36 +64,36 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
 }
 
 function validateCustomHistory(
-  input: Exclude<OpenAIResponsesRequest["input"], string> | undefined,
+  input: Exclude<OpenAIResponsesRequest['input'], string> | undefined,
   tools: readonly OpenAIResponsesTransformTool[] | undefined,
 ): void {
   if (input === undefined) return;
   const customNames = new Set(
     (tools ?? []).flatMap((tool) => {
       const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
-      return metadata?.wireToolType === "custom" && metadata.wireToolName !== undefined ? [metadata.wireToolName] : [];
+      return metadata?.wireToolType === 'custom' && metadata.wireToolName !== undefined ? [metadata.wireToolName] : [];
     }),
   );
   for (const [index, item] of input.entries()) {
-    if (item.type === "custom_tool_call" && !customNames.has(item.name)) {
-      rejectOpenAIResponsesFeature("custom_tool_call", `input.${index}.type`);
+    if (item.type === 'custom_tool_call' && !customNames.has(item.name)) {
+      rejectOpenAIResponsesFeature('custom_tool_call', `input.${index}.type`);
     }
   }
 }
 
 function validateModelCompatibility(request: OpenAIResponsesRequest): void {
-  if (request.store === true) rejectOpenAIResponsesFeature("store", "store");
+  if (request.store === true) rejectOpenAIResponsesFeature('store', 'store');
   const unknown = Object.keys(request).find((key) => !supportedRequestKeys.has(key));
   if (unknown !== undefined) rejectOpenAIResponsesFeature(unknown, unknown);
-  if (request.include !== undefined) warnOpenAIResponsesDegradation("include", "include", "dropped");
+  if (request.include !== undefined) warnOpenAIResponsesDegradation('include', 'include', 'dropped');
   if (request.client_metadata !== undefined)
-    warnOpenAIResponsesDegradation("client_metadata", "client_metadata", "stripped");
-  if (request.service_tier !== undefined) warnOpenAIResponsesDegradation("service_tier", "service_tier", "dropped");
+    warnOpenAIResponsesDegradation('client_metadata', 'client_metadata', 'stripped');
+  if (request.service_tier !== undefined) warnOpenAIResponsesDegradation('service_tier', 'service_tier', 'dropped');
   if (request.text?.verbosity !== undefined)
-    warnOpenAIResponsesDegradation("text.verbosity", "text.verbosity", "dropped");
+    warnOpenAIResponsesDegradation('text.verbosity', 'text.verbosity', 'dropped');
   if (request.reasoning?.context !== undefined)
-    warnOpenAIResponsesDegradation("reasoning.context", "reasoning.context", "dropped");
-  if (request.background === true) warnOpenAIResponsesDegradation("background", "background", "synchronous");
+    warnOpenAIResponsesDegradation('reasoning.context', 'reasoning.context', 'dropped');
+  if (request.background === true) warnOpenAIResponsesDegradation('background', 'background', 'synchronous');
 }
 
 function transformSettings(
@@ -122,22 +121,22 @@ function transformSettings(
 }
 
 function transformToolChoice(
-  choice: OpenAIResponsesRequest["tool_choice"],
+  choice: OpenAIResponsesRequest['tool_choice'],
   tools: readonly OpenAIResponsesTransformTool[] | undefined,
 ): OpenAIResponsesToolChoice | undefined {
-  if (choice === undefined || typeof choice === "string") return choice;
-  if (!isNamedToolChoice(choice)) return rejectOpenAIResponsesFeature("tool_choice", "tool_choice");
+  if (choice === undefined || typeof choice === 'string') return choice;
+  if (!isNamedToolChoice(choice)) return rejectOpenAIResponsesFeature('tool_choice', 'tool_choice');
 
   const matches = (tools ?? []).filter((tool) => {
     const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
     return metadata?.wireToolType === choice.type && metadata.wireToolName === choice.name;
   });
   const match = matches.length === 1 ? matches[0] : undefined;
-  if (match === undefined) return rejectOpenAIResponsesFeature("tool_choice", "tool_choice");
-  return { type: "tool", toolName: match.name };
+  if (match === undefined) return rejectOpenAIResponsesFeature('tool_choice', 'tool_choice');
+  return { type: 'tool', toolName: match.name };
 }
 
-function isNamedToolChoice(value: Record<string, unknown>): value is { type: "function" | "custom"; name: string } {
+function isNamedToolChoice(value: Record<string, unknown>): value is { type: 'function' | 'custom'; name: string } {
   const candidate = value as { readonly type?: unknown; readonly name?: unknown };
-  return (candidate.type === "function" || candidate.type === "custom") && typeof candidate.name === "string";
+  return (candidate.type === 'function' || candidate.type === 'custom') && typeof candidate.name === 'string';
 }

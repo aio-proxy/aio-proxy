@@ -1,3 +1,5 @@
+import { pathToFileURL } from 'node:url';
+
 import {
   AtomicConfigCommitUncertainError,
   ConfigSpecValidationError,
@@ -8,30 +10,28 @@ import {
   PLUGIN_IMPORT_TIMEOUT_MS,
   type PluginSecretSnapshot,
   validateConfigSpec,
-} from "@aio-proxy/core";
-import { isPluginDescriptor, type PluginDescriptor } from "@aio-proxy/plugin-sdk";
-import { pathToFileURL } from "node:url";
+} from '@aio-proxy/core';
+import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import type { PluginLifecycleDeps, SecretRepository } from "./deps";
-
-import { cloneInertJson } from "../form";
-import { entries, packageNameOf, pluginEntry, replacePlugin, sameJson } from "./config-entry";
-import { createCliPluginDiagnosticFactory } from "./deps";
+import { cloneInertJson } from '../form';
+import { entries, packageNameOf, pluginEntry, replacePlugin, sameJson } from './config-entry';
+import type { PluginLifecycleDeps, SecretRepository } from './deps';
+import { createCliPluginDiagnosticFactory } from './deps';
 import {
   PluginConfigChangedError,
   PluginDescriptorInvalidError,
   PluginNotConfiguredError,
   PluginNotInstalledError,
   PluginSetupValidationError,
-} from "./errors";
+} from './errors';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function descriptorFromModule(packageName: string, imported: unknown): PluginDescriptor<unknown> {
   if (!isRecord(imported)) throw new PluginDescriptorInvalidError(packageName);
-  const descriptor = imported.default;
+  const descriptor = imported['default'];
   if (!isPluginDescriptor(descriptor)) throw new PluginDescriptorInvalidError(packageName);
   const typed = descriptor as PluginDescriptor<unknown>;
   try {
@@ -50,7 +50,7 @@ export async function loadDescriptor(
 ): Promise<PluginDescriptor<unknown>> {
   const attempt = crypto.randomUUID();
   const entrypoint = pathToFileURL(installed.entrypoint);
-  entrypoint.searchParams.set("aio_proxy_cli_attempt", attempt);
+  entrypoint.searchParams.set('aio_proxy_cli_attempt', attempt);
   return descriptorFromModule(
     packageName,
     await observedPromiseDeadline(
@@ -83,7 +83,7 @@ export async function stageDescriptor(
     secrets: { readPluginSecret: () => stagingSecrets },
   });
   const state = snapshot.plugins.get(packageName)?.state;
-  if (state?.status === "failed") throw new PluginSetupValidationError(packageName, state.diagnostic.summary);
+  if (state?.status === 'failed') throw new PluginSetupValidationError(packageName, state.diagnostic.summary);
 }
 
 async function compensateSecret(
@@ -116,7 +116,7 @@ export async function commitPluginConfig(
   let appliedRevision: number | null = null;
   try {
     await deps.config.transaction(async (current) => {
-      if (Object.hasOwn(options, "expectedEntry")) {
+      if (Object.hasOwn(options, 'expectedEntry')) {
         const latest = entries(current).find((entry) => packageNameOf(entry) === packageName);
         if (latest === undefined) throw new PluginNotConfiguredError(packageName);
         if (!sameJson(latest, options.expectedEntry)) throw new PluginConfigChangedError(packageName);

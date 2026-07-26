@@ -2,111 +2,111 @@
 name: aio-proxy Dashboard
 description: A quiet, reliable control tower for local model routing.
 colors:
-  primary: "oklch(51.1% 0.096 186.391)"
-  on-primary: "oklch(98.4% 0.014 180.72)"
-  background: "oklch(100% 0 0)"
-  foreground: "oklch(15.3% 0.006 107.1)"
-  card: "oklch(100% 0 0)"
-  sidebar: "oklch(98.8% 0.003 106.5)"
-  muted: "oklch(96.6% 0.005 106.5)"
-  muted-foreground: "oklch(58% 0.031 107.3)"
-  border: "oklch(93% 0.007 106.5)"
-  input: "oklch(93% 0.007 106.5 / 50%)"
-  secondary: "oklch(96.7% 0.001 286.375)"
-  on-secondary: "oklch(21% 0.006 285.885)"
-  destructive: "oklch(57.7% 0.245 27.325)"
-  destructive-soft: "oklch(57.7% 0.245 27.325 / 10%)"
+  primary: 'oklch(51.1% 0.096 186.391)'
+  on-primary: 'oklch(98.4% 0.014 180.72)'
+  background: 'oklch(100% 0 0)'
+  foreground: 'oklch(15.3% 0.006 107.1)'
+  card: 'oklch(100% 0 0)'
+  sidebar: 'oklch(98.8% 0.003 106.5)'
+  muted: 'oklch(96.6% 0.005 106.5)'
+  muted-foreground: 'oklch(58% 0.031 107.3)'
+  border: 'oklch(93% 0.007 106.5)'
+  input: 'oklch(93% 0.007 106.5 / 50%)'
+  secondary: 'oklch(96.7% 0.001 286.375)'
+  on-secondary: 'oklch(21% 0.006 285.885)'
+  destructive: 'oklch(57.7% 0.245 27.325)'
+  destructive-soft: 'oklch(57.7% 0.245 27.325 / 10%)'
 typography:
   headline:
-    fontFamily: "Lexend Variable, Lexend, SF Pro Text, PingFang SC, Helvetica Neue, Arial, sans-serif"
-    fontSize: "1.25rem"
+    fontFamily: 'Lexend Variable, Lexend, SF Pro Text, PingFang SC, Helvetica Neue, Arial, sans-serif'
+    fontSize: '1.25rem'
     fontWeight: 600
     lineHeight: 1.4
-    letterSpacing: "normal"
+    letterSpacing: 'normal'
   title:
-    fontFamily: "Lexend Variable, Lexend, SF Pro Text, PingFang SC, Helvetica Neue, Arial, sans-serif"
-    fontSize: "1rem"
+    fontFamily: 'Lexend Variable, Lexend, SF Pro Text, PingFang SC, Helvetica Neue, Arial, sans-serif'
+    fontSize: '1rem'
     fontWeight: 500
     lineHeight: 1.5
-    letterSpacing: "normal"
+    letterSpacing: 'normal'
   body:
-    fontFamily: "SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif"
-    fontSize: "0.875rem"
+    fontFamily: 'SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif'
+    fontSize: '0.875rem'
     fontWeight: 400
     lineHeight: 1.43
-    letterSpacing: "normal"
+    letterSpacing: 'normal'
   action:
-    fontFamily: "SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif"
-    fontSize: "0.875rem"
+    fontFamily: 'SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif'
+    fontSize: '0.875rem'
     fontWeight: 500
     lineHeight: 1.43
-    letterSpacing: "normal"
+    letterSpacing: 'normal'
   label:
-    fontFamily: "SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif"
-    fontSize: "0.75rem"
+    fontFamily: 'SF Pro TC, SF Pro SC, SF Pro Text, PingFang TC, PingFang SC, Helvetica Neue, Arial, sans-serif'
+    fontSize: '0.75rem'
     fontWeight: 500
     lineHeight: 1.33
-    letterSpacing: "normal"
+    letterSpacing: 'normal'
 rounded:
-  nav: "0.63rem"
-  panel: "0.81rem"
-  field: "0.99rem"
-  control: "1.17rem"
+  nav: '0.63rem'
+  panel: '0.81rem'
+  field: '0.99rem'
+  control: '1.17rem'
 spacing:
-  xs: "0.25rem"
-  sm: "0.5rem"
-  md: "0.75rem"
-  lg: "1rem"
-  xl: "1.5rem"
+  xs: '0.25rem'
+  sm: '0.5rem'
+  md: '0.75rem'
+  lg: '1rem'
+  xl: '1.5rem'
 components:
   button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.action}"
-    rounded: "{rounded.control}"
-    padding: "0.5rem 0.75rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.primary}'
+    textColor: '{colors.on-primary}'
+    typography: '{typography.action}'
+    rounded: '{rounded.control}'
+    padding: '0.5rem 0.75rem'
+    height: '2.25rem'
   button-outline:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.foreground}"
-    typography: "{typography.action}"
-    rounded: "{rounded.control}"
-    padding: "0.5rem 0.75rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.background}'
+    textColor: '{colors.foreground}'
+    typography: '{typography.action}'
+    rounded: '{rounded.control}'
+    padding: '0.5rem 0.75rem'
+    height: '2.25rem'
   button-destructive:
-    backgroundColor: "{colors.destructive-soft}"
-    textColor: "{colors.destructive}"
-    typography: "{typography.action}"
-    rounded: "{rounded.control}"
-    padding: "0.5rem 0.75rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.destructive-soft}'
+    textColor: '{colors.destructive}'
+    typography: '{typography.action}'
+    rounded: '{rounded.control}'
+    padding: '0.5rem 0.75rem'
+    height: '2.25rem'
   input:
-    backgroundColor: "{colors.input}"
-    textColor: "{colors.foreground}"
-    typography: "{typography.body}"
-    rounded: "{rounded.field}"
-    padding: "0.25rem 0.75rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.input}'
+    textColor: '{colors.foreground}'
+    typography: '{typography.body}'
+    rounded: '{rounded.field}'
+    padding: '0.25rem 0.75rem'
+    height: '2.25rem'
   card:
-    backgroundColor: "{colors.card}"
-    textColor: "{colors.foreground}"
-    typography: "{typography.body}"
-    rounded: "{rounded.control}"
-    padding: "1.5rem"
+    backgroundColor: '{colors.card}'
+    textColor: '{colors.foreground}'
+    typography: '{typography.body}'
+    rounded: '{rounded.control}'
+    padding: '1.5rem'
   badge-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.label}"
-    rounded: "{rounded.field}"
-    padding: "0.125rem 0.5rem"
-    height: "1.25rem"
+    backgroundColor: '{colors.primary}'
+    textColor: '{colors.on-primary}'
+    typography: '{typography.label}'
+    rounded: '{rounded.field}'
+    padding: '0.125rem 0.5rem'
+    height: '1.25rem'
   navigation-active:
-    backgroundColor: "{colors.muted}"
-    textColor: "{colors.foreground}"
-    typography: "{typography.action}"
-    rounded: "{rounded.nav}"
-    padding: "0.5rem 0.75rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.muted}'
+    textColor: '{colors.foreground}'
+    typography: '{typography.action}'
+    rounded: '{rounded.nav}'
+    padding: '0.5rem 0.75rem'
+    height: '2.25rem'
 ---
 
 # Design System: aio-proxy Dashboard

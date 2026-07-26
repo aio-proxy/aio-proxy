@@ -1,6 +1,6 @@
-import { resolveConfigTemplates } from "@aio-proxy/core";
-import { mapValues } from "es-toolkit/object";
-import { isPlainObject } from "es-toolkit/predicate";
+import { resolveConfigTemplates } from '@aio-proxy/core';
+import { mapValues } from 'es-toolkit/object';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 const OPENAI_SECRET_PATTERN = /^sk-[A-Za-z0-9_-]{20,}$/;
 const BEARER_SECRET_PATTERN = /^Bearer\s+.+$/i;
@@ -10,27 +10,27 @@ const SENSITIVE_KEY_PATTERN = /(?:api[-_]?key|authorization|bearer|credential|pa
 const MUSTACHE_PATTERN = /\{\{[\s\S]*\}\}/u;
 
 const isSecretBoundaryKey = (key: string): boolean =>
-  SENSITIVE_KEY_PATTERN.test(key) || key.toLowerCase() === "headers" || key.toLowerCase() === "proxy";
+  SENSITIVE_KEY_PATTERN.test(key) || key.toLowerCase() === 'headers' || key.toLowerCase() === 'proxy';
 
 const maskSecret = (key: string, value: string): string => {
   if (OPENAI_SECRET_PATTERN.test(value)) {
-    return "sk-****";
+    return 'sk-****';
   }
 
   if (BEARER_SECRET_PATTERN.test(value) || TOKEN_SECRET_PATTERN.test(value)) {
-    return "****";
+    return '****';
   }
 
   if (isSecretBoundaryKey(key)) {
-    return "****";
+    return '****';
   }
 
-  return value.replace(API_KEY_TEXT_PATTERN, "$1****$2");
+  return value.replace(API_KEY_TEXT_PATTERN, '$1****$2');
 };
 
-export const redactSecrets = (value: unknown, key = "", insideSecretBoundary = false): unknown => {
-  if (typeof value === "string") {
-    return insideSecretBoundary ? "****" : maskSecret(key, value);
+export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = false): unknown => {
+  if (typeof value === 'string') {
+    return insideSecretBoundary ? '****' : maskSecret(key, value);
   }
 
   if (Array.isArray(value)) {
@@ -42,7 +42,7 @@ export const redactSecrets = (value: unknown, key = "", insideSecretBoundary = f
       redactSecrets(
         entryValue,
         entryKey,
-        insideSecretBoundary || entryKey.toLowerCase() === "headers" || entryKey.toLowerCase() === "proxy",
+        insideSecretBoundary || entryKey.toLowerCase() === 'headers' || entryKey.toLowerCase() === 'proxy',
       ),
     );
   }
@@ -62,8 +62,8 @@ export function retainAuthoredTemplateStrings(
   submitted: unknown,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): unknown {
-  if (typeof submitted === "string") {
-    if (typeof authored === "string" && MUSTACHE_PATTERN.test(authored)) {
+  if (typeof submitted === 'string') {
+    if (typeof authored === 'string' && MUSTACHE_PATTERN.test(authored)) {
       const expanded = resolveConfigTemplates(authored, env);
       if (submitted === expanded) return authored;
     }
@@ -93,14 +93,14 @@ function mergeRecord(
       previous[key],
       value,
       key,
-      insideSecretBoundary || key.toLowerCase() === "headers" || key.toLowerCase() === "proxy",
+      insideSecretBoundary || key.toLowerCase() === 'headers' || key.toLowerCase() === 'proxy',
     ),
   );
 }
 
 function mergeValue(previous: unknown, submitted: unknown, key: string, insideSecretBoundary: boolean): unknown {
-  if (typeof previous === "string" && typeof submitted === "string") {
-    const redacted = insideSecretBoundary ? "****" : maskSecret(key, previous);
+  if (typeof previous === 'string' && typeof submitted === 'string') {
+    const redacted = insideSecretBoundary ? '****' : maskSecret(key, previous);
     return redacted !== previous && submitted === redacted ? previous : submitted;
   }
 

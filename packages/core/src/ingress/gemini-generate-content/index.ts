@@ -1,1 +1,1 @@
-export * from "./gemini-generate-content";
+export * from './gemini-generate-content';

@@ -1,1 +1,1 @@
-export { configureLogging, isLoggingConfigured, type LoggingConfig } from "./configure";
+export { configureLogging, isLoggingConfigured, type LoggingConfig } from './configure';

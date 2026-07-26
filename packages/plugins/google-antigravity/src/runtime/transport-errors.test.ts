@@ -1,17 +1,16 @@
-import type { LogicalRequestContext } from "@aio-proxy/plugin-sdk";
+import { expect, test } from 'bun:test';
 
-import { expect, test } from "bun:test";
+import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
-import type { GoogleAntigravityCredential } from "../schema";
+import type { GoogleAntigravityCredential } from '../schema';
+import { AntigravityUpstreamError } from './errors';
+import { AntigravityTransport } from './transport';
 
-import { AntigravityUpstreamError } from "./errors";
-import { AntigravityTransport } from "./transport";
-
-test("custom endpoints are attempted once and errors remain secret-safe", async () => {
-  const secret = "raw-upstream-secret";
+test('custom endpoints are attempted once and errors remain secret-safe', async () => {
+  const secret = 'raw-upstream-secret';
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
-    options: { baseURL: "https://custom.example.test" },
+    options: { baseURL: 'https://custom.example.test' },
     fetch: async () => Response.json({ error: { message: `no capacity ${secret}` } }, { status: 503 }),
   });
 
@@ -20,15 +19,15 @@ test("custom endpoints are attempted once and errors remain secret-safe", async 
   expect(error).toBeInstanceOf(AntigravityUpstreamError);
   expect(errorSurface(error)).not.toContain(secret);
   expect(JSON.parse(JSON.stringify(error))).toEqual({
-    endpoint: "custom",
-    reason: "upstream_no_capacity",
+    endpoint: 'custom',
+    reason: 'upstream_no_capacity',
     retryable: true,
     status: 503,
   });
 });
 
-test("propagates caller cancellation while inspecting a 503 body", async () => {
-  const reason = { kind: "body-inspection-cancelled" };
+test('propagates caller cancellation while inspecting a 503 body', async () => {
+  const reason = { kind: 'body-inspection-cancelled' };
   const abort = new AbortController();
   let requests = 0;
   const transport = new AntigravityTransport({
@@ -44,7 +43,7 @@ test("propagates caller cancellation while inspecting a 503 body", async () => {
         },
         { highWaterMark: 0 },
       );
-      return new Response(body, { status: 503, headers: { "Content-Type": "application/json" } });
+      return new Response(body, { status: 503, headers: { 'Content-Type': 'application/json' } });
     },
   });
 
@@ -52,14 +51,14 @@ test("propagates caller cancellation while inspecting a 503 body", async () => {
   expect(requests).toBe(1);
 });
 
-test("switches endpoint only for an explicit no-capacity error message", async () => {
+test('switches endpoint only for an explicit no-capacity error message', async () => {
   let requests = 0;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async () => {
       requests += 1;
       if (requests === 1) {
-        return Response.json({ error: { message: "No capacity is available" } }, { status: 503 });
+        return Response.json({ error: { message: 'No capacity is available' } }, { status: 503 });
       }
       return Response.json({ response: { ok: true } });
     },
@@ -72,10 +71,10 @@ test("switches endpoint only for an explicit no-capacity error message", async (
 });
 
 test.each([
-  ["phrase outside error.message", JSON.stringify({ message: "no capacity", error: { message: "busy" } })],
-  ["invalid JSON", '{"error":{"message":"no capacity"'],
-  ["HTML", "<html><body>no capacity</body></html>"],
-] as const)("keeps a 503 terminal when no-capacity appears in %s", async (_label, body) => {
+  ['phrase outside error.message', JSON.stringify({ message: 'no capacity', error: { message: 'busy' } })],
+  ['invalid JSON', '{"error":{"message":"no capacity"'],
+  ['HTML', '<html><body>no capacity</body></html>'],
+] as const)('keeps a 503 terminal when no-capacity appears in %s', async (_label, body) => {
   let requests = 0;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
@@ -91,14 +90,14 @@ test.each([
   expect(requests).toBe(1);
 });
 
-test("keeps an oversized 503 JSON body terminal", async () => {
+test('keeps an oversized 503 JSON body terminal', async () => {
   let requests = 0;
-  const body = JSON.stringify({ error: { message: "no capacity", detail: "x".repeat(70_000) } });
+  const body = JSON.stringify({ error: { message: 'no capacity', detail: 'x'.repeat(70_000) } });
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async () => {
       requests += 1;
-      return new Response(body, { status: 503, headers: { "Content-Type": "application/json" } });
+      return new Response(body, { status: 503, headers: { 'Content-Type': 'application/json' } });
     },
   });
 
@@ -108,8 +107,8 @@ test("keeps an oversized 503 JSON body terminal", async () => {
   expect(requests).toBe(1);
 });
 
-test("keeps a non-ending 503 body terminal within the inspection bound", async () => {
-  const reason = { kind: "end-non-ending-body-test" };
+test('keeps a non-ending 503 body terminal within the inspection bound', async () => {
+  const reason = { kind: 'end-non-ending-body-test' };
   const abort = new AbortController();
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let requests = 0;
@@ -123,13 +122,13 @@ test("keeps a non-ending 503 body terminal within the inspection bound", async (
           current.enqueue(new TextEncoder().encode('{"error":{"message":"no capacity"'));
         },
       });
-      return new Response(body, { status: 503, headers: { "Content-Type": "application/json" } });
+      return new Response(body, { status: 503, headers: { 'Content-Type': 'application/json' } });
     },
   });
 
   const execution = transport.execute(executeInput({ signal: abort.signal }));
-  const outcome = await Promise.race([execution, Bun.sleep(250).then(() => "inspection-timeout" as const)]);
-  if (outcome === "inspection-timeout") {
+  const outcome = await Promise.race([execution, Bun.sleep(250).then(() => 'inspection-timeout' as const)]);
+  if (outcome === 'inspection-timeout') {
     abort.abort(reason);
     controller?.error(reason);
     await execution.catch(() => undefined);
@@ -141,10 +140,10 @@ test("keeps a non-ending 503 body terminal within the inspection bound", async (
   expect(requests).toBe(1);
 });
 
-test("switches endpoint when SSE preflight exceeds its replay bound before commit", async () => {
+test('switches endpoint when SSE preflight exceeds its replay bound before commit', async () => {
   const origins: string[] = [];
   const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';
-  const unclassifiedEvent = `data: ${JSON.stringify({ metadata: "x".repeat(64 * 1024) })}\n\n`;
+  const unclassifiedEvent = `data: ${JSON.stringify({ metadata: 'x'.repeat(64 * 1024) })}\n\n`;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async (input) => {
@@ -156,13 +155,13 @@ test("switches endpoint when SSE preflight exceeds its replay bound before commi
   const response = await transport.execute(executeInput({ stream: true }));
 
   expect(await response.text()).toBe(modelEvent);
-  expect(origins).toEqual(["https://daily-cloudcode-pa.googleapis.com", "https://cloudcode-pa.googleapis.com"]);
+  expect(origins).toEqual(['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com']);
 });
 
-test("does not switch endpoint after post-model replay capture exceeds its bound", async () => {
+test('does not switch endpoint after post-model replay capture exceeds its bound', async () => {
   const origins: string[] = [];
   const modelEvent = 'data: {"response":{"candidates":[]}}\n\n';
-  const oversized = `data: ${"x".repeat(1024 * 1024 + 1)}`;
+  const oversized = `data: ${'x'.repeat(1024 * 1024 + 1)}`;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
     fetch: async (input) => {
@@ -174,11 +173,11 @@ test("does not switch endpoint after post-model replay capture exceeds its bound
   const response = await transport.execute(executeInput({ stream: true }));
 
   expect(await response.text()).toBe(modelEvent + oversized);
-  expect(origins).toEqual(["https://daily-cloudcode-pa.googleapis.com"]);
+  expect(origins).toEqual(['https://daily-cloudcode-pa.googleapis.com']);
 });
 
-test("does not switch endpoint after an unknown preflight reader failure", async () => {
-  const failure = new Error("stream implementation failure");
+test('does not switch endpoint after an unknown preflight reader failure', async () => {
+  const failure = new Error('stream implementation failure');
   let requests = 0;
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
@@ -193,7 +192,7 @@ test("does not switch endpoint after an unknown preflight reader failure", async
         },
         { highWaterMark: 0 },
       );
-      return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
     },
   });
 
@@ -201,12 +200,12 @@ test("does not switch endpoint after an unknown preflight reader failure", async
   expect(requests).toBe(1);
 });
 
-function executeInput(overrides: Partial<Parameters<AntigravityTransport["execute"]>[0]> = {}) {
+function executeInput(overrides: Partial<Parameters<AntigravityTransport['execute']>[0]> = {}) {
   return {
-    body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+    body: { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] },
     context: logicalContext(),
-    modelId: "gemini-3-flash-agent",
-    requestType: "agent" as const,
+    modelId: 'gemini-3-flash-agent',
+    requestType: 'agent' as const,
     stream: false,
     ...overrides,
   };
@@ -218,18 +217,18 @@ function credentialSource() {
 
 function credentialFixture(): GoogleAntigravityCredential {
   return {
-    accessToken: "access-1",
-    refreshToken: "refresh-1",
+    accessToken: 'access-1',
+    refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
-    email: "person@example.com",
-    projectId: "project-1",
+    email: 'person@example.com',
+    projectId: 'project-1',
   };
 }
 
 function logicalContext(): LogicalRequestContext {
   return {
-    requestId: "00000000-0000-4000-8000-000000000001",
-    session: { key: "sha256:abc", source: "transcript" },
+    requestId: '00000000-0000-4000-8000-000000000001',
+    session: { key: 'sha256:abc', source: 'transcript' },
   };
 }
 
@@ -239,13 +238,13 @@ async function rejected(promise: Promise<unknown>): Promise<Error> {
   } catch (error) {
     if (error instanceof Error) return error;
   }
-  throw new Error("expected an Error rejection");
+  throw new Error('expected an Error rejection');
 }
 
 function errorSurface(error: Error): string {
-  return [error.message, ...Object.values(error), JSON.stringify(error)].join(" ");
+  return [error.message, ...Object.values(error), JSON.stringify(error)].join(' ');
 }
 
 function sseResponse(value: string): Response {
-  return new Response(value, { headers: { "Content-Type": "text/event-stream" } });
+  return new Response(value, { headers: { 'Content-Type': 'text/event-stream' } });
 }

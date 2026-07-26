@@ -1,33 +1,33 @@
-import type { LoopbackRequest } from "@aio-proxy/plugin-sdk";
+import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
 
-import type { CliAuthorizationDeps } from "../authorization";
+import type { CliAuthorizationDeps } from '../authorization';
 
 export const copy = {
-  copiedDeviceCode: "Copied device code.",
+  copiedDeviceCode: 'Copied device code.',
   deviceCode: (code: string) => `Device code: ${code}`,
-  openedAuthorizationPage: "Opened authorization page.",
-  successHtml: "<html><body>Authorization complete.</body></html>",
-  alreadyCompleted: "Authorization already completed (test copy).",
-  invalidCallback: "Invalid OAuth callback (test copy).",
-  notFound: "Not found (test copy).",
+  openedAuthorizationPage: 'Opened authorization page.',
+  successHtml: '<html><body>Authorization complete.</body></html>',
+  alreadyCompleted: 'Authorization already completed (test copy).',
+  invalidCallback: 'Invalid OAuth callback (test copy).',
+  notFound: 'Not found (test copy).',
 } as const;
 
-const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
 
 export function resetInteractive(): void {
-  if (originalIsTTY === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
-  else Object.defineProperty(process.stdin, "isTTY", originalIsTTY);
+  if (originalIsTTY === undefined) Reflect.deleteProperty(process.stdin, 'isTTY');
+  else Object.defineProperty(process.stdin, 'isTTY', originalIsTTY);
 }
 
 export function setInteractive(value: boolean): void {
-  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value });
+  Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value });
 }
 
 function pendingManual(_authorizationUrl: string, signal: AbortSignal): Promise<string> {
   return new Promise((_, reject) => {
     const rejectAbort = () => reject(signal.reason);
     if (signal.aborted) rejectAbort();
-    else signal.addEventListener("abort", rejectAbort, { once: true });
+    else signal.addEventListener('abort', rejectAbort, { once: true });
   });
 }
 
@@ -62,8 +62,8 @@ export function createDeps(overrides: Partial<CliAuthorizationDeps> = {}): {
 
 export function request(overrides: Partial<LoopbackRequest> = {}): LoopbackRequest {
   return {
-    state: "expected-state",
-    redirect: { hostname: "localhost", port: "dynamic", path: "/auth/callback" },
+    state: 'expected-state',
+    redirect: { hostname: 'localhost', port: 'dynamic', path: '/auth/callback' },
     authorizationUrl: ({ redirectUri }) =>
       `https://identity.example/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
     allowManualCallbackUrl: false,
@@ -73,9 +73,22 @@ export function request(overrides: Partial<LoopbackRequest> = {}): LoopbackReque
 
 export async function expectPortAvailable(port: number): Promise<void> {
   const probe = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: '127.0.0.1',
     port,
     fetch: () => new Response(null, { status: 204 }),
   });
   await probe.stop(true);
+}
+
+export function authorizationCapture(url = 'https://identity.example/authorize') {
+  let redirectUri = '';
+  return {
+    authorizationUrl({ redirectUri: next }: { readonly redirectUri: string }) {
+      redirectUri = next;
+      return url;
+    },
+    get redirectUri() {
+      return redirectUri;
+    },
+  };
 }

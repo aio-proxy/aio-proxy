@@ -1,12 +1,12 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
 
-import { parseLogsSearch } from "@/modules/logs/logs-search";
-import { LogsPage } from "@/modules/logs/templates/logs-page";
+import { parseLogsSearch } from '@/modules/logs/logs-search';
+import { LogsPage } from '@/modules/logs/templates/logs-page';
 
 const LogsRoute: React.FC = () => {
-  const search = useSearch({ from: "/logs" });
-  const navigate = useNavigate({ from: "/logs" });
+  const search = useSearch({ from: '/logs' });
+  const navigate = useNavigate({ from: '/logs' });
   const canonicalized = useRef(false);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ const LogsRoute: React.FC = () => {
   return <LogsPage search={search} onSearchChange={(next) => void navigate({ search: next })} />;
 };
 
-export const Route = createFileRoute("/logs")({
+export const Route = createFileRoute('/logs')({
   validateSearch: (raw) => parseLogsSearch(raw),
   component: LogsRoute,
 });

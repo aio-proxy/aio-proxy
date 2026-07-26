@@ -1,4 +1,4 @@
-import type { DashboardEvent } from "@aio-proxy/types";
+import type { DashboardEvent } from '@aio-proxy/types';
 
 export type DashboardEventLimits = {
   readonly maxEvents: number;
@@ -20,7 +20,7 @@ type Subscriber = {
   outstandingEvents: number;
 };
 
-type TraceDeltaEvent = Extract<DashboardEvent, { readonly event: "trace.delta" }>;
+type TraceDeltaEvent = Extract<DashboardEvent, { readonly event: 'trace.delta' }>;
 
 const encoder = new TextEncoder();
 const defaultLimits = {
@@ -35,7 +35,7 @@ export function createDashboardEventHub(limits: DashboardEventLimits = defaultLi
   const traceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   function publish(event: DashboardEvent): void {
-    if (event.event === "trace.delta") {
+    if (event.event === 'trace.delta') {
       coalesceTraceDelta(event);
       return;
     }
@@ -120,7 +120,7 @@ export function createDashboardEventHub(limits: DashboardEventLimits = defaultLi
       subscriber.outstandingBytes + bytes.byteLength > limits.maxBytes
     ) {
       const dropped = encodeEvent({
-        event: "events.dropped",
+        event: 'events.dropped',
         data: {
           queuedBytes: subscriber.outstandingBytes,
           queuedEvents: subscriber.outstandingEvents,

@@ -1,12 +1,13 @@
-import { $ } from "bun";
-import { join } from "node:path";
+import { join } from 'node:path';
 
-import { writeMigrationManifestFromJournal } from "./migration-manifest";
+import { $ } from 'bun';
 
-const root = join(import.meta.dir, "..");
+import { writeMigrationManifestFromJournal } from './migration-manifest';
+
+const root = join(import.meta.dir, '..');
 
 await $`bunx drizzle-kit generate`.cwd(root);
 
 const result = await writeMigrationManifestFromJournal(root);
 
-console.log(`${result.changed ? "Updated" : "Verified"} ${result.migrations} migrations.`);
+console.log(`${result.changed ? 'Updated' : 'Verified'} ${result.migrations} migrations.`);

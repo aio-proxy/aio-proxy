@@ -1,5 +1,5 @@
-const GROUNDING_REDIRECT_ORIGIN = "https://vertexaisearch.cloud.google.com";
-const GROUNDING_REDIRECT_PREFIX = "/grounding-api-redirect/";
+const GROUNDING_REDIRECT_ORIGIN = 'https://vertexaisearch.cloud.google.com';
+const GROUNDING_REDIRECT_PREFIX = '/grounding-api-redirect/';
 const REPAIR_TIMEOUT_MS = 1_500;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -62,22 +62,22 @@ export function repairGroundingSse(
         ? cancellation.signal
         : AbortSignal.any([dependencies.signal, cancellation.signal]),
   };
-  let buffered = "";
+  let buffered = '';
   let ended = false;
-  let state: "active" | "canceling" | "released" = "active";
+  let state: 'active' | 'canceling' | 'released' = 'active';
   const release = () => {
-    if (state !== "active") return;
-    state = "released";
+    if (state !== 'active') return;
+    state = 'released';
     reader.releaseLock();
   };
   const cancel = async (reason?: unknown) => {
-    if (state !== "active") return;
-    state = "canceling";
+    if (state !== 'active') return;
+    state = 'canceling';
     cancellation.abort(reason);
     try {
       await reader.cancel(reason);
     } finally {
-      state = "released";
+      state = 'released';
       reader.releaseLock();
     }
   };
@@ -85,15 +85,15 @@ export function repairGroundingSse(
     async pull(controller) {
       try {
         let frame = takeFrame();
-        while (frame === undefined && !ended && state === "active") {
+        while (frame === undefined && !ended && state === 'active') {
           const chunk = await reader.read();
           if (chunk.done) {
             buffered += decoder.decode();
             ended = true;
             frame = takeFrame();
-            if (frame === undefined && buffered !== "") {
+            if (frame === undefined && buffered !== '') {
               frame = buffered;
-              buffered = "";
+              buffered = '';
             }
             if (frame === undefined) release();
           } else {
@@ -128,10 +128,10 @@ async function repairTerminalFrame(frame: string, dependencies: GroundingRepairD
   try {
     const data = frame
       .split(/\r?\n/u)
-      .filter((line) => line.startsWith("data:"))
+      .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).trimStart())
-      .join("\n");
-    if (data === "") return frame;
+      .join('\n');
+    if (data === '') return frame;
     const payload: unknown = JSON.parse(data);
     if (!isTerminal(payload)) return frame;
     const repaired = await repairGroundingUrls(payload, dependencies);
@@ -148,13 +148,13 @@ async function resolveGroundingUrl(
   fetch: typeof globalThis.fetch,
 ): Promise<string | undefined> {
   try {
-    const response = await fetch(url, { method: "HEAD", redirect: "manual", signal });
+    const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal });
     try {
       if (!REDIRECT_STATUSES.has(response.status)) return undefined;
-      const location = response.headers.get("location");
+      const location = response.headers.get('location');
       if (location === null) return undefined;
       const destination = new URL(location, url);
-      return destination.protocol === "http:" || destination.protocol === "https:" ? destination.href : undefined;
+      return destination.protocol === 'http:' || destination.protocol === 'https:' ? destination.href : undefined;
     } finally {
       await response.body?.cancel().catch(() => undefined);
     }
@@ -166,41 +166,41 @@ async function resolveGroundingUrl(
 function groundingUrls(payload: unknown): Set<string> {
   const urls = new Set<string>();
   for (const chunk of groundingChunks(payload)) {
-    const web = record(Reflect.get(chunk, "web"));
-    const uri = Reflect.get(web ?? {}, "uri");
-    if (typeof uri === "string" && isGroundingRedirect(uri)) urls.add(uri);
+    const web = record(Reflect.get(chunk, 'web'));
+    const uri = Reflect.get(web ?? {}, 'uri');
+    if (typeof uri === 'string' && isGroundingRedirect(uri)) urls.add(uri);
   }
   return urls;
 }
 
 function replaceGroundingUrls(payload: unknown, replacements: ReadonlyMap<string, string>): void {
   for (const chunk of groundingChunks(payload)) {
-    const web = record(Reflect.get(chunk, "web"));
-    const uri = Reflect.get(web ?? {}, "uri");
-    if (typeof uri !== "string") continue;
+    const web = record(Reflect.get(chunk, 'web'));
+    const uri = Reflect.get(web ?? {}, 'uri');
+    if (typeof uri !== 'string') continue;
     const replacement = replacements.get(uri);
-    if (replacement !== undefined && web !== undefined) Reflect.set(web, "uri", replacement);
+    if (replacement !== undefined && web !== undefined) Reflect.set(web, 'uri', replacement);
   }
 }
 
 function groundingChunks(payload: unknown): Record<string, unknown>[] {
   const root = record(payload);
-  const response = record(Reflect.get(root ?? {}, "response")) ?? root;
-  const candidateValue = Reflect.get(response ?? {}, "candidates");
+  const response = record(Reflect.get(root ?? {}, 'response')) ?? root;
+  const candidateValue = Reflect.get(response ?? {}, 'candidates');
   const candidates = Array.isArray(candidateValue) ? candidateValue : [];
   return candidates.flatMap((candidate) => {
-    const groundingMetadata = record(Reflect.get(record(candidate) ?? {}, "groundingMetadata"));
-    const chunks = Reflect.get(groundingMetadata ?? {}, "groundingChunks");
+    const groundingMetadata = record(Reflect.get(record(candidate) ?? {}, 'groundingMetadata'));
+    const chunks = Reflect.get(groundingMetadata ?? {}, 'groundingChunks');
     return Array.isArray(chunks) ? chunks.filter(isRecord) : [];
   });
 }
 
 function isTerminal(payload: unknown): boolean {
   const root = record(payload);
-  const response = record(Reflect.get(root ?? {}, "response")) ?? root;
-  const candidateValue = Reflect.get(response ?? {}, "candidates");
+  const response = record(Reflect.get(root ?? {}, 'response')) ?? root;
+  const candidateValue = Reflect.get(response ?? {}, 'candidates');
   const candidates = Array.isArray(candidateValue) ? candidateValue : [];
-  return candidates.some((candidate) => Reflect.get(record(candidate) ?? {}, "finishReason") !== undefined);
+  return candidates.some((candidate) => Reflect.get(record(candidate) ?? {}, 'finishReason') !== undefined);
 }
 
 function isGroundingRedirect(value: string): boolean {
@@ -220,7 +220,7 @@ function combinedSignal(dependencies: GroundingRepairDependencies): AbortSignal 
 function throwIfCallerAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted !== true) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -228,5 +228,5 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

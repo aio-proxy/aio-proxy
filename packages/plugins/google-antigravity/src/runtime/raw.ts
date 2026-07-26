@@ -1,15 +1,14 @@
-import type { RawResolver } from "@aio-proxy/plugin-sdk";
+import type { RawResolver } from '@aio-proxy/plugin-sdk';
 
-import type { CcaTransport } from "./transport";
-
-import { AntigravityThinkingError, geminiThinkingConfig } from "../protocol/thinking";
-import { AntigravityToolSchemaValidationError } from "../protocol/tool-schema";
-import { AntigravityUpstreamError } from "./errors";
-import { unwrapCcaSse } from "./stream";
+import { AntigravityThinkingError, geminiThinkingConfig } from '../protocol/thinking';
+import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
+import { AntigravityUpstreamError } from './errors';
+import { unwrapCcaSse } from './stream';
+import type { CcaTransport } from './transport';
 
 export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
   return ({ protocol, modelId }) => {
-    if (protocol !== "gemini") return undefined;
+    if (protocol !== 'gemini') return undefined;
     return {
       async invoke(request, context) {
         if (context === undefined) return createGeminiErrorResponse(500);
@@ -31,14 +30,14 @@ export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
             body,
             context,
             modelId,
-            requestType: "agent",
+            requestType: 'agent',
             stream,
             signal: request.signal,
           });
         } catch (error) {
           if (request.signal.aborted) {
             const reason: unknown = request.signal.reason;
-            throw reason ?? new DOMException("The operation was aborted", "AbortError");
+            throw reason ?? new DOMException('The operation was aborted', 'AbortError');
           }
           if (error instanceof AntigravityToolSchemaValidationError) return createGeminiErrorResponse(400);
           if (isAbort(error)) throw error;
@@ -53,7 +52,7 @@ export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
         if (stream) {
           if (response.body === null) return createGeminiErrorResponse(500);
           return new Response(unwrapCcaSse(response.body), {
-            headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+            headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
             status: response.status,
           });
         }
@@ -70,11 +69,11 @@ export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
 }
 
 function normalizeGeminiThinking(body: Record<string, unknown>, modelId: string): Record<string, unknown> {
-  const generationConfig = record(Reflect.get(body, "generationConfig"));
-  if (generationConfig === undefined || !Object.hasOwn(generationConfig, "thinkingConfig")) return body;
-  const thinkingConfig = record(Reflect.get(generationConfig, "thinkingConfig"));
+  const generationConfig = record(Reflect.get(body, 'generationConfig'));
+  if (generationConfig === undefined || !Object.hasOwn(generationConfig, 'thinkingConfig')) return body;
+  const thinkingConfig = record(Reflect.get(generationConfig, 'thinkingConfig'));
   if (thinkingConfig === undefined) {
-    throw new AntigravityThinkingError("Gemini thinkingConfig must be an object");
+    throw new AntigravityThinkingError('Gemini thinkingConfig must be an object');
   }
   return {
     ...body,
@@ -83,29 +82,29 @@ function normalizeGeminiThinking(body: Record<string, unknown>, modelId: string)
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
 
 export function unwrapCcaJson(payload: unknown): unknown {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return payload;
-  const response = Reflect.get(payload, "response");
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
+  const response = Reflect.get(payload, 'response');
   return response ?? payload;
 }
 
 function operation(request: Request): boolean | undefined {
-  if (request.method !== "POST") return undefined;
+  if (request.method !== 'POST') return undefined;
   const pathname = new URL(request.url).pathname;
-  if (pathname.endsWith(":generateContent")) return false;
-  if (pathname.endsWith(":streamGenerateContent")) return true;
+  if (pathname.endsWith(':generateContent')) return false;
+  if (pathname.endsWith(':streamGenerateContent')) return true;
   return undefined;
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown> | undefined> {
   try {
     const body: unknown = await request.json();
-    return typeof body === "object" && body !== null && !Array.isArray(body)
+    return typeof body === 'object' && body !== null && !Array.isArray(body)
       ? (body as Record<string, unknown>)
       : undefined;
   } catch {
@@ -120,7 +119,7 @@ export function createGeminiErrorResponse(status: number): Response {
     {
       error: {
         code,
-        message: "Google Antigravity request failed",
+        message: 'Google Antigravity request failed',
         status: geminiStatus(code),
       },
     },
@@ -131,28 +130,28 @@ export function createGeminiErrorResponse(status: number): Response {
 function geminiStatus(status: number): string {
   switch (status) {
     case 400:
-      return "INVALID_ARGUMENT";
+      return 'INVALID_ARGUMENT';
     case 401:
-      return "UNAUTHENTICATED";
+      return 'UNAUTHENTICATED';
     case 403:
-      return "PERMISSION_DENIED";
+      return 'PERMISSION_DENIED';
     case 404:
-      return "NOT_FOUND";
+      return 'NOT_FOUND';
     case 408:
     case 504:
-      return "DEADLINE_EXCEEDED";
+      return 'DEADLINE_EXCEEDED';
     case 409:
-      return "ABORTED";
+      return 'ABORTED';
     case 429:
-      return "RESOURCE_EXHAUSTED";
+      return 'RESOURCE_EXHAUSTED';
     case 499:
-      return "CANCELLED";
+      return 'CANCELLED';
     case 501:
-      return "UNIMPLEMENTED";
+      return 'UNIMPLEMENTED';
     case 503:
-      return "UNAVAILABLE";
+      return 'UNAVAILABLE';
     default:
-      return status >= 500 ? "INTERNAL" : "UNKNOWN";
+      return status >= 500 ? 'INTERNAL' : 'UNKNOWN';
   }
 }
 
@@ -161,11 +160,11 @@ function validStatus(status: number): boolean {
 }
 
 function isAbort(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
   const reason: unknown = signal.reason;
-  throw reason ?? new DOMException("The operation was aborted", "AbortError");
+  throw reason ?? new DOMException('The operation was aborted', 'AbortError');
 }

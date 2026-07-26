@@ -1,15 +1,15 @@
-import { BUILT_IN_PLUGIN_PACKAGE_NAMES, isNpmPackageName, type PluginSecretSnapshot } from "@aio-proxy/core";
-import { PluginPackageNameSchema } from "@aio-proxy/types";
-import { isPlainObject } from "es-toolkit/predicate";
+import { BUILT_IN_PLUGIN_PACKAGE_NAMES, isNpmPackageName, type PluginSecretSnapshot } from '@aio-proxy/core';
+import { PluginPackageNameSchema } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 export type ConfigRecord = Record<string, unknown>;
 
 export function entries(config: ConfigRecord): unknown[] {
-  return Array.isArray(config.plugins) ? config.plugins : [];
+  return Array.isArray(config['plugins']) ? config['plugins'] : [];
 }
 
 export function packageNameOf(entry: unknown): string | null {
-  const candidate = typeof entry === "string" ? entry : Array.isArray(entry) ? entry[0] : undefined;
+  const candidate = typeof entry === 'string' ? entry : Array.isArray(entry) ? entry[0] : undefined;
   const parsed = PluginPackageNameSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
 }
@@ -48,7 +48,7 @@ export function sameJson(left: unknown, right: unknown): boolean {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function usedPackageNames(config: ConfigRecord): Set<string> {
@@ -58,10 +58,10 @@ export function usedPackageNames(config: ConfigRecord): Set<string> {
       .map(packageNameOf)
       .filter((name): name is string => name !== null && !builtIns.has(name)),
   );
-  if (isRecord(config.providers)) {
-    for (const provider of Object.values(config.providers)) {
-      if (!isRecord(provider) || provider.kind !== "ai-sdk") continue;
-      const packageName = typeof provider.packageName === "string" ? provider.packageName : provider.package;
+  if (isRecord(config['providers'])) {
+    for (const provider of Object.values(config['providers'])) {
+      if (!isRecord(provider) || provider['kind'] !== 'ai-sdk') continue;
+      const packageName = typeof provider['packageName'] === 'string' ? provider['packageName'] : provider['package'];
       if (isNpmPackageName(packageName)) used.add(packageName);
     }
   }

@@ -1,19 +1,19 @@
-import type { HttpRequestMetadata } from "./request-logging/request-metadata";
+import type { HttpRequestMetadata } from './request-logging/request-metadata';
 
 export type ConfigReloadLog = {
   readonly error: string;
-  readonly event: "config.reload_failed";
-  readonly stage: "parse" | "providers" | "router" | "alias-collision";
+  readonly event: 'config.reload_failed';
+  readonly stage: 'parse' | 'providers' | 'router' | 'alias-collision';
 };
 
 export type DashboardAuthUnavailableLog = {
   readonly error: string;
   readonly errorType: string;
-  readonly event: "dashboard.auth_unavailable";
+  readonly event: 'dashboard.auth_unavailable';
 };
 
 export type RequestRejectedLog = {
-  readonly event: "request.rejected";
+  readonly event: 'request.rejected';
   readonly requestId: string;
   readonly inboundProtocol: string;
   readonly requestedModelId?: string;
@@ -37,7 +37,7 @@ export type SafeExceptionLog = {
 };
 
 export type RequestProviderAttemptFailedLog = {
-  readonly event: "request.provider_attempt_failed";
+  readonly event: 'request.provider_attempt_failed';
   readonly requestId: string;
   readonly attemptIndex: number;
   readonly inboundProtocol: string;
@@ -50,19 +50,19 @@ export type RequestProviderAttemptFailedLog = {
   readonly durationMs: number;
   readonly statusCode?: number;
   readonly errorCode?: string;
-  readonly failureKind: "response" | "exception";
+  readonly failureKind: 'response' | 'exception';
   readonly fallback: boolean;
   readonly upstreamRequestId?: string;
 } & SafeExceptionLog;
 
 export type RequestInboundSnapshotLog = {
-  readonly event: "request.inbound_snapshot";
+  readonly event: 'request.inbound_snapshot';
   readonly requestId: string;
   readonly inboundProtocol: string;
 } & HttpRequestMetadata;
 
 export type RequestUpstreamSnapshotLog = {
-  readonly event: "request.upstream_snapshot";
+  readonly event: 'request.upstream_snapshot';
   readonly requestId: string;
   readonly attemptIndex: number;
   readonly providerId: string;
@@ -70,7 +70,7 @@ export type RequestUpstreamSnapshotLog = {
 } & HttpRequestMetadata;
 
 type RequestUpstreamResultBase = {
-  readonly event: "request.upstream_result";
+  readonly event: 'request.upstream_result';
   readonly requestId: string;
   readonly attemptIndex: number;
   readonly providerId: string;
@@ -81,48 +81,48 @@ type RequestUpstreamResultBase = {
 export type RequestUpstreamResultLog = RequestUpstreamResultBase &
   (
     | {
-        readonly outcome: "response";
+        readonly outcome: 'response';
         readonly statusCode: number;
         readonly headers: Readonly<Record<string, string>>;
       }
-    | ({ readonly outcome: "exception" } & SafeExceptionLog)
+    | ({ readonly outcome: 'exception' } & SafeExceptionLog)
   );
 
 export type RequestFailedLog = {
-  readonly event: "request.failed";
+  readonly event: 'request.failed';
   readonly requestId: string;
   readonly inboundProtocol: string;
   readonly requestedModelId?: string;
   readonly path: string;
-  readonly errorCode: "internal_error";
+  readonly errorCode: 'internal_error';
   readonly errorType: string;
 };
 
 export type RequestRecorderInvariantLog = {
-  readonly event: "request.recorder_invariant";
+  readonly event: 'request.recorder_invariant';
   readonly requestId: string;
-  readonly invariant: "requested_model_conflict";
+  readonly invariant: 'requested_model_conflict';
 };
 
 export type RequestFeatureDowngradedLog = {
-  readonly event: "request.feature_downgraded";
+  readonly event: 'request.feature_downgraded';
   readonly requestId: string;
   readonly inboundProtocol: string;
   readonly requestedModelId: string;
   readonly path: string;
-  readonly feature: "background";
-  readonly action: "dropped";
-  readonly effectiveMode: "synchronous";
+  readonly feature: 'background';
+  readonly action: 'dropped';
+  readonly effectiveMode: 'synchronous';
 };
 
 export type RequestRecorderPersistenceFailedLog = {
-  readonly event: "request.recorder_persistence_failed";
-  readonly operation: "insert_final" | "prune";
+  readonly event: 'request.recorder_persistence_failed';
+  readonly operation: 'insert_final' | 'prune';
   readonly requestId?: string;
   readonly errorType: string;
 };
 
-export type RequestBodyDirection = "inbound" | "upstream_request" | "upstream_response";
+export type RequestBodyDirection = 'inbound' | 'upstream_request' | 'upstream_response';
 
 type RequestBodyIdentity = {
   readonly requestId: string;
@@ -133,16 +133,16 @@ type RequestBodyIdentity = {
 };
 
 export type RequestBodyChunkLog = RequestBodyIdentity & {
-  readonly event: "request.body_chunk";
+  readonly event: 'request.body_chunk';
   readonly sequence: number;
   readonly text: string;
 };
 
 export type RequestBodyTerminalLog = RequestBodyIdentity & {
-  readonly event: "request.body_terminal";
+  readonly event: 'request.body_terminal';
   readonly sequence: number;
   readonly byteLength: number;
-  readonly outcome: "complete" | "cancelled" | "error";
+  readonly outcome: 'complete' | 'cancelled' | 'error';
   readonly errorType?: string;
 };
 
@@ -170,29 +170,29 @@ export function logServerEvent(logger: ServerLogSink, entry: ServerLog): void {
 }
 
 export function serverErrorType(error: unknown): string {
-  if (typeof error !== "object" || error === null) return typeof error;
+  if (typeof error !== 'object' || error === null) return typeof error;
   try {
     if (error instanceof Error) {
       const prototype = Object.getPrototypeOf(error);
       const errorConstructor =
-        prototype === null ? undefined : Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
-      const errorType = typeof errorConstructor === "function" ? ownString(errorConstructor, "name") : undefined;
-      return errorType === undefined || errorType === "" ? "Error" : errorType;
+        prototype === null ? undefined : Object.getOwnPropertyDescriptor(prototype, 'constructor')?.value;
+      const errorType = typeof errorConstructor === 'function' ? ownString(errorConstructor, 'name') : undefined;
+      return errorType === undefined || errorType === '' ? 'Error' : errorType;
     }
   } catch {}
-  return "Object";
+  return 'Object';
 }
 
 const MAX_ERROR_DETAIL_CHARACTERS = 512;
 
 export function serverErrorDetails(error: unknown): SafeExceptionLog {
   const details: SafeExceptionLog = { errorType: serverErrorType(error).slice(0, MAX_ERROR_DETAIL_CHARACTERS) };
-  if (typeof error !== "object" || error === null) return details;
-  const exceptionCode = ownString(error, "code");
-  const cause = ownValue(error, "cause");
-  const causeCode = cause === undefined || cause === null ? undefined : ownString(cause, "code");
-  const errno = ownStringOrFiniteNumber(error, "errno");
-  const syscall = ownString(error, "syscall");
+  if (typeof error !== 'object' || error === null) return details;
+  const exceptionCode = ownString(error, 'code');
+  const cause = ownValue(error, 'cause');
+  const causeCode = cause === undefined || cause === null ? undefined : ownString(cause, 'code');
+  const errno = ownStringOrFiniteNumber(error, 'errno');
+  const syscall = ownString(error, 'syscall');
   return {
     ...details,
     ...(exceptionCode === undefined ? {} : { exceptionCode }),
@@ -206,20 +206,20 @@ export function serverErrorDetails(error: unknown): SafeExceptionLog {
 function ownValue(value: object, key: string): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor !== undefined && "value" in descriptor ? descriptor.value : undefined;
+    return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
   } catch {
     return undefined;
   }
 }
 
 function ownString(value: unknown, key: string): string | undefined {
-  if ((typeof value !== "object" && typeof value !== "function") || value === null) return undefined;
+  if ((typeof value !== 'object' && typeof value !== 'function') || value === null) return undefined;
   const own = ownValue(value, key);
-  return typeof own === "string" ? own.slice(0, MAX_ERROR_DETAIL_CHARACTERS) : undefined;
+  return typeof own === 'string' ? own.slice(0, MAX_ERROR_DETAIL_CHARACTERS) : undefined;
 }
 
 function ownStringOrFiniteNumber(value: object, key: string): string | number | undefined {
   const own = ownValue(value, key);
-  if (typeof own === "string") return own.slice(0, MAX_ERROR_DETAIL_CHARACTERS);
-  return typeof own === "number" && Number.isFinite(own) ? own : undefined;
+  if (typeof own === 'string') return own.slice(0, MAX_ERROR_DETAIL_CHARACTERS);
+  return typeof own === 'number' && Number.isFinite(own) ? own : undefined;
 }

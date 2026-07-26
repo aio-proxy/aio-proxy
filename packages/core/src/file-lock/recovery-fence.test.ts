@@ -1,16 +1,16 @@
-import { expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import * as fsPromises from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { expect, spyOn, test } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { runWithRecoveryFence } from "./recovery-fence";
+import { runWithRecoveryFence } from './recovery-fence';
 
-test.serial("reclaims a fresh malformed marker left by an interrupted publisher", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
-  const lockPath = join(dir, "config.lock");
+test.serial('reclaims a fresh malformed marker left by an interrupted publisher', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
+  const lockPath = join(dir, 'config.lock');
   const markerPath = `${lockPath}.recovery.interrupted`;
-  writeFileSync(markerPath, "");
+  writeFileSync(markerPath, '');
   try {
     await expect(
       runWithRecoveryFence(
@@ -19,21 +19,21 @@ test.serial("reclaims a fresh malformed marker left by an interrupted publisher"
           staleMs: 60_000,
           heartbeatMs: 10_000,
           deadline: Date.now() + 100,
-          timeoutError: () => new Error("acquisition timed out"),
+          timeoutError: () => new Error('acquisition timed out'),
         },
-        async () => "acquired",
+        async () => 'acquired',
       ),
-    ).resolves.toBe("acquired");
+    ).resolves.toBe('acquired');
     expect(existsSync(markerPath)).toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test.serial("acquisition filesystem errors are not translated after the deadline", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
-  const openError = new Error("recovery marker open failed");
-  const open = spyOn(fsPromises, "open").mockImplementation((async () => {
+test.serial('acquisition filesystem errors are not translated after the deadline', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
+  const openError = new Error('recovery marker open failed');
+  const open = spyOn(fsPromises, 'open').mockImplementation((async () => {
     await Bun.sleep(50);
     throw openError;
   }) as never);
@@ -41,11 +41,11 @@ test.serial("acquisition filesystem errors are not translated after the deadline
     await expect(
       runWithRecoveryFence(
         {
-          lockPath: join(dir, "config.lock"),
+          lockPath: join(dir, 'config.lock'),
           staleMs: 60_000,
           heartbeatMs: 10_000,
           deadline: Date.now() + 10,
-          timeoutError: () => new Error("acquisition timed out"),
+          timeoutError: () => new Error('acquisition timed out'),
         },
         async () => undefined,
       ),
@@ -56,28 +56,28 @@ test.serial("acquisition filesystem errors are not translated after the deadline
   }
 });
 
-test.serial("action errors are not translated after the acquisition deadline", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
+test.serial('action errors are not translated after the acquisition deadline', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
   const originalSpawn = Bun.spawn;
-  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+  const spawn = spyOn(Bun, 'spawn').mockImplementation((() => ({
     stdout: new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode("MATCH\n"));
+        controller.enqueue(new TextEncoder().encode('MATCH\n'));
         controller.close();
       },
     }),
     exited: Promise.resolve(0),
   })) as unknown as typeof Bun.spawn);
-  const actionError = new Error("action failed");
+  const actionError = new Error('action failed');
   try {
     await expect(
       runWithRecoveryFence(
         {
-          lockPath: join(dir, "config.lock"),
+          lockPath: join(dir, 'config.lock'),
           staleMs: 60_000,
           heartbeatMs: 10_000,
           deadline: Date.now() + 100,
-          timeoutError: () => new Error("acquisition timed out"),
+          timeoutError: () => new Error('acquisition timed out'),
         },
         async () => {
           await Bun.sleep(150);
@@ -93,10 +93,10 @@ test.serial("action errors are not translated after the acquisition deadline", a
 });
 
 test.serial(
-  "concurrent recovery acquisitions serialize without timing out",
+  'concurrent recovery acquisitions serialize without timing out',
   async () => {
-    const dir = mkdtempSync(join(tmpdir(), "aio-proxy-recovery-fence-"));
-    const lockPath = join(dir, "config.lock");
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-recovery-fence-'));
+    const lockPath = join(dir, 'config.lock');
     try {
       const results = await Promise.all(
         Array.from({ length: 8 }, async () =>
@@ -106,16 +106,16 @@ test.serial(
               staleMs: 60_000,
               heartbeatMs: 10_000,
               deadline: Date.now() + 10_000,
-              timeoutError: () => new Error("acquisition timed out"),
+              timeoutError: () => new Error('acquisition timed out'),
             },
             async () => {
               await Bun.sleep(10);
-              return "ok";
+              return 'ok';
             },
           ),
         ),
       );
-      expect(results).toEqual(Array.from({ length: 8 }, () => "ok"));
+      expect(results).toEqual(Array.from({ length: 8 }, () => 'ok'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

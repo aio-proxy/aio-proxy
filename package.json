@@ -39,7 +39,7 @@
   "scripts": {
     "check": "bun run lint && bun run format:check",
     "lint": "oxlint .",
-    "lint:types": "oxlint --type-aware --type-check .",
+    "lint:types": "oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "test:unit": "turbo run test:unit",

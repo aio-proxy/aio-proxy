@@ -1,10 +1,10 @@
-import type { ProtocolId } from "@aio-proxy/plugin-sdk";
-import type { ProviderProtocol } from "@aio-proxy/types";
+import type { ProtocolId } from '@aio-proxy/plugin-sdk';
+import type { ProviderProtocol } from '@aio-proxy/types';
 
-import { pluginProtocol } from "./capabilities";
+import { pluginProtocol } from './capabilities';
 
-export { pluginOptionsIdentityDigest } from "./identity";
-export { materializePluginProvider } from "./materialize";
+export { pluginOptionsIdentityDigest } from './identity';
+export { materializePluginProvider } from './materialize';
 export {
   type CatalogJobDescriptor,
   type MaterializePluginProviderOptions,
@@ -15,7 +15,7 @@ export {
   PluginRawTransportError,
   type PluginRuntimeCacheEntry,
   type RuntimeIdentityKey,
-} from "./types";
+} from './types';
 
 export function validatePluginProtocolMap(): Readonly<Record<ProviderProtocol, ProtocolId>> {
   return pluginProtocol;

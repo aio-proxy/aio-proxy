@@ -1,7 +1,7 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { AliasConfigSchema, IdSchema } from "./common";
-import { DashboardLocalizedTextSchema } from "./dashboard-localized-text";
+import { AliasConfigSchema, IdSchema } from './common';
+import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
   key: z.string().min(1),
@@ -18,13 +18,13 @@ const DashboardOAuthFormFieldBaseSchema = z.object({
 const dashboardOAuthFormField = <T extends z.ZodRawShape>(shape: T) =>
   z.strictObject({ ...DashboardOAuthFormFieldBaseSchema.shape, ...shape });
 
-export const DashboardOAuthFormFieldSchema = z.discriminatedUnion("type", [
-  dashboardOAuthFormField({ type: z.literal("text"), placeholder: DashboardLocalizedTextSchema.optional() }),
-  dashboardOAuthFormField({ type: z.literal("secret"), configured: z.boolean().default(false) }),
-  dashboardOAuthFormField({ type: z.literal("number"), placeholder: DashboardLocalizedTextSchema.optional() }),
-  dashboardOAuthFormField({ type: z.literal("boolean"), defaultValue: z.boolean().optional() }),
+export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
+  dashboardOAuthFormField({ type: z.literal('text'), placeholder: DashboardLocalizedTextSchema.optional() }),
+  dashboardOAuthFormField({ type: z.literal('secret'), configured: z.boolean().default(false) }),
+  dashboardOAuthFormField({ type: z.literal('number'), placeholder: DashboardLocalizedTextSchema.optional() }),
+  dashboardOAuthFormField({ type: z.literal('boolean'), defaultValue: z.boolean().optional() }),
   dashboardOAuthFormField({
-    type: z.literal("select"),
+    type: z.literal('select'),
     options: z.array(
       z.strictObject({
         value: z.union([z.string(), z.number(), z.boolean()]),
@@ -34,7 +34,7 @@ export const DashboardOAuthFormFieldSchema = z.discriminatedUnion("type", [
     ),
   }),
   dashboardOAuthFormField({
-    type: z.literal("json"),
+    type: z.literal('json'),
     placeholder: DashboardLocalizedTextSchema.optional(),
     defaultValue: z.json().optional(),
   }),
@@ -70,36 +70,36 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
 });
 
-export const DashboardOAuthSessionSchema = z.discriminatedUnion("status", [
-  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal("preparing") }),
+export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
+  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('preparing') }),
   z.strictObject({
     ...DashboardOAuthSessionCommonSchema.shape,
-    status: z.literal("device_code"),
+    status: z.literal('device_code'),
     url: z.url(),
     userCode: z.string().min(1),
     instructions: DashboardLocalizedTextSchema.optional(),
   }),
   z.strictObject({
     ...DashboardOAuthSessionCommonSchema.shape,
-    status: z.literal("loopback"),
+    status: z.literal('loopback'),
     authorizationUrl: z.url(),
     allowManualCallback: z.boolean(),
   }),
-  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal("discovering") }),
+  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('discovering') }),
   z.strictObject({
     ...DashboardOAuthSessionCommonSchema.shape,
-    status: z.literal("succeeded"),
+    status: z.literal('succeeded'),
     providerId: IdSchema,
     duplicate: z.boolean().optional(),
-    warning: z.literal("catalog_unavailable").optional(),
+    warning: z.literal('catalog_unavailable').optional(),
   }),
   z.strictObject({
     ...DashboardOAuthSessionCommonSchema.shape,
-    status: z.literal("failed"),
+    status: z.literal('failed'),
     code: z.string().min(1),
     providerId: IdSchema.optional(),
   }),
-  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal("cancelled") }),
+  z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('cancelled') }),
 ]);
 
 export const DashboardOAuthSessionStartSchema = z
@@ -112,7 +112,7 @@ export const DashboardOAuthSessionStartSchema = z
     providerPatch: DashboardOAuthProviderPatchSchema.optional(),
   })
   .refine((value) => value.capability !== undefined || value.targetProviderId !== undefined, {
-    message: "capability or targetProviderId is required",
+    message: 'capability or targetProviderId is required',
   });
 
 export const DashboardOAuthSessionResponseSchema = z.strictObject({ session: DashboardOAuthSessionSchema });

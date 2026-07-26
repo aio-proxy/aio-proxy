@@ -1,13 +1,13 @@
-import { m } from "@aio-proxy/i18n";
-import { Outlet } from "@tanstack/react-router";
+import { m } from '@aio-proxy/i18n';
+import { Outlet } from '@tanstack/react-router';
 
-import { SideMenu } from "@/components/side-menu";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Toaster } from "@/components/ui/sonner";
-import { useDashboardAuthSession } from "@/modules/auth/hooks/use-dashboard-auth-session";
-import { DashboardUnavailable } from "@/modules/auth/templates/dashboard-unavailable";
-import { LoginPage } from "@/modules/auth/templates/login-page";
+import { SideMenu } from '@/components/side-menu';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Toaster } from '@/components/ui/sonner';
+import { useDashboardAuthSession } from '@/modules/auth/hooks/use-dashboard-auth-session';
+import { DashboardUnavailable } from '@/modules/auth/templates/dashboard-unavailable';
+import { LoginPage } from '@/modules/auth/templates/login-page';
 
 export const RootLayoutContent: React.FC = () => {
   const session = useDashboardAuthSession();
@@ -15,7 +15,7 @@ export const RootLayoutContent: React.FC = () => {
   if (session.isPending) {
     return (
       <main
-        aria-label={m["dashboard.auth.loading"]()}
+        aria-label={m['dashboard.auth.loading']()}
         className="flex min-h-dvh items-center justify-center bg-background px-4"
       >
         <div className="w-full max-w-sm space-y-4" role="status">
@@ -25,8 +25,8 @@ export const RootLayoutContent: React.FC = () => {
       </main>
     );
   }
-  if (session.isError || session.data.status === "unavailable") return <DashboardUnavailable />;
-  if (session.data.status === "unauthenticated") return <LoginPage reason={session.data.reason} />;
+  if (session.isError || session.data.status === 'unavailable') return <DashboardUnavailable />;
+  if (session.data.status === 'unauthenticated') return <LoginPage reason={session.data.reason} />;
 
   return (
     <SidebarProvider className="bg-olive-50 dark:bg-olive-950">

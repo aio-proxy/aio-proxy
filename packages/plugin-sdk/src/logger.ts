@@ -1,4 +1,4 @@
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogBindings = Readonly<Record<string, unknown>>;
 export type Logger = {
   readonly debug: (messageOrProps: string | LogBindings, propsOrMessage?: string | LogBindings) => void;

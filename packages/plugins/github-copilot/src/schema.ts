@@ -1,6 +1,6 @@
-import { type ProtocolId, zod } from "@aio-proxy/plugin-sdk";
+import { type ProtocolId, zod } from '@aio-proxy/plugin-sdk';
 
-export type CopilotProtocol = Exclude<ProtocolId, "gemini">;
+export type CopilotProtocol = Exclude<ProtocolId, 'gemini'>;
 
 export const deviceCodeResponseSchema = zod
   .object({
@@ -40,13 +40,13 @@ export const modelsResponseSchema = zod.object({
 });
 
 const endpointSchema = zod.unknown().transform((endpoint) => {
-  return typeof endpoint === "string" ? endpoint : (JSON.stringify(endpoint) ?? "");
+  return typeof endpoint === 'string' ? endpoint : (JSON.stringify(endpoint) ?? '');
 });
 
 const capabilitiesSchema = zod.unknown().transform((capabilities) => {
-  if (Array.isArray(capabilities)) return capabilities.includes("chat");
-  if (typeof capabilities === "object" && capabilities !== null && "type" in capabilities) {
-    return capabilities.type === "chat";
+  if (Array.isArray(capabilities)) return capabilities.includes('chat');
+  if (typeof capabilities === 'object' && capabilities !== null && 'type' in capabilities) {
+    return capabilities.type === 'chat';
   }
   return undefined;
 });

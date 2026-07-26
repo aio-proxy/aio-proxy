@@ -1,32 +1,32 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import {
   installProviderPackage,
   ProviderPackageRequestError,
   providerPackageStatusQueryOptions,
-} from "../services/provider-options-schema-service";
-import { resolveLocalProviderOptionsSchema } from "../services/resolve-provider-options-schema";
+} from '../services/provider-options-schema-service';
+import { resolveLocalProviderOptionsSchema } from '../services/resolve-provider-options-schema';
 
 export type ProviderOptionsSchemaPhase =
-  | "idle"
-  | "checking"
-  | "installing"
-  | "install_deferred"
-  | "install_required"
-  | "ready"
-  | "schema_unavailable"
-  | "status_error"
-  | "install_error";
+  | 'idle'
+  | 'checking'
+  | 'installing'
+  | 'install_deferred'
+  | 'install_required'
+  | 'ready'
+  | 'schema_unavailable'
+  | 'status_error'
+  | 'install_error';
 
-export type ProviderOptionsSchemaResolution = "unknown" | "ready" | "unavailable" | "error";
+export type ProviderOptionsSchemaResolution = 'unknown' | 'ready' | 'unavailable' | 'error';
 
 type ProviderPackageStatus = {
   readonly trusted: boolean;
-  readonly state: "bundled" | "installed" | "missing";
+  readonly state: 'bundled' | 'installed' | 'missing';
 };
 
-type ProviderOptionsSchemaEffect = { readonly type: "install"; readonly confirmed: boolean };
+type ProviderOptionsSchemaEffect = { readonly type: 'install'; readonly confirmed: boolean };
 
 export type ProviderOptionsSchemaState = {
   readonly phase: ProviderOptionsSchemaPhase;
@@ -43,37 +43,37 @@ export type ProviderOptionsSchemaState = {
 };
 
 export type ProviderOptionsSchemaEvent =
-  | { readonly type: "package_changed"; readonly packageName: string }
-  | { readonly type: "package_committed"; readonly packageName: string; readonly allowAutomaticInstall?: boolean }
+  | { readonly type: 'package_changed'; readonly packageName: string }
+  | { readonly type: 'package_committed'; readonly packageName: string; readonly allowAutomaticInstall?: boolean }
   | {
-      readonly type: "status_loaded";
+      readonly type: 'status_loaded';
       readonly packageName: string;
       readonly generation: number;
       readonly status: ProviderPackageStatus;
     }
   | {
-      readonly type: "status_failed";
+      readonly type: 'status_failed';
       readonly packageName: string;
       readonly generation: number;
       readonly errorCode: string;
     }
-  | { readonly type: "install_confirmed" }
-  | { readonly type: "install_started" }
-  | { readonly type: "install_succeeded"; readonly packageName: string; readonly generation: number }
+  | { readonly type: 'install_confirmed' }
+  | { readonly type: 'install_started' }
+  | { readonly type: 'install_succeeded'; readonly packageName: string; readonly generation: number }
   | {
-      readonly type: "install_failed";
+      readonly type: 'install_failed';
       readonly packageName: string;
       readonly generation: number;
       readonly errorCode: string;
     };
 
 export const initialProviderOptionsSchemaState: ProviderOptionsSchemaState = {
-  phase: "idle",
+  phase: 'idle',
   committedPackage: null,
   commitGeneration: 0,
   automaticInstallAttempted: false,
   allowAutomaticInstall: false,
-  schemaResolution: "unknown",
+  schemaResolution: 'unknown',
   schemaPackage: null,
   schema: undefined,
   warnings: [],
@@ -82,17 +82,17 @@ export const initialProviderOptionsSchemaState: ProviderOptionsSchemaState = {
 };
 
 const rejectsCompletion = (state: ProviderOptionsSchemaState, event: ProviderOptionsSchemaEvent) => {
-  if (!("generation" in event)) {
+  if (!('generation' in event)) {
     return false;
   }
   if (event.packageName !== state.committedPackage || event.generation !== state.commitGeneration) return true;
   switch (event.type) {
-    case "status_loaded":
-    case "status_failed":
-      return state.phase !== "checking";
-    case "install_succeeded":
-    case "install_failed":
-      return state.phase !== "installing";
+    case 'status_loaded':
+    case 'status_failed':
+      return state.phase !== 'checking';
+    case 'install_succeeded':
+    case 'install_failed':
+      return state.phase !== 'installing';
   }
 };
 
@@ -105,62 +105,62 @@ export const providerOptionsSchemaTransition = (
   }
 
   switch (event.type) {
-    case "package_changed":
+    case 'package_changed':
       return { ...initialProviderOptionsSchemaState, commitGeneration: state.commitGeneration };
-    case "package_committed": {
+    case 'package_committed': {
       const local = resolveLocalProviderOptionsSchema(event.packageName);
       return {
         ...initialProviderOptionsSchemaState,
-        phase: "checking",
+        phase: 'checking',
         committedPackage: event.packageName,
         commitGeneration: state.commitGeneration + 1,
         allowAutomaticInstall: event.allowAutomaticInstall ?? true,
         schemaResolution: local.resolution,
-        schemaPackage: local.resolution === "ready" ? event.packageName : null,
+        schemaPackage: local.resolution === 'ready' ? event.packageName : null,
         schema: local.schema,
         warnings: local.warnings,
       };
     }
-    case "status_loaded": {
-      if (event.status.state === "missing") {
+    case 'status_loaded': {
+      if (event.status.state === 'missing') {
         if (event.status.trusted && state.automaticInstallAttempted) {
-          return { ...state, phase: "install_error", effect: undefined, errorCode: "package_still_missing" };
+          return { ...state, phase: 'install_error', effect: undefined, errorCode: 'package_still_missing' };
         }
-        if (!event.status.trusted) return { ...state, phase: "install_required", effect: undefined };
+        if (!event.status.trusted) return { ...state, phase: 'install_required', effect: undefined };
         return state.allowAutomaticInstall
-          ? { ...state, phase: "installing", effect: { type: "install", confirmed: false } }
-          : { ...state, phase: "install_deferred", effect: undefined };
+          ? { ...state, phase: 'installing', effect: { type: 'install', confirmed: false } }
+          : { ...state, phase: 'install_deferred', effect: undefined };
       }
-      const terminalPhase = state.schemaResolution === "ready" ? "ready" : "schema_unavailable";
+      const terminalPhase = state.schemaResolution === 'ready' ? 'ready' : 'schema_unavailable';
       return { ...state, phase: terminalPhase, effect: undefined };
     }
-    case "status_failed":
+    case 'status_failed':
       return {
         ...state,
-        phase: "status_error",
-        schemaResolution: "error",
+        phase: 'status_error',
+        schemaResolution: 'error',
         schemaPackage: null,
         schema: undefined,
         warnings: [],
         effect: undefined,
         errorCode: event.errorCode,
       };
-    case "install_confirmed":
-      return state.phase === "install_required"
-        ? { ...state, phase: "installing", effect: { type: "install", confirmed: true } }
+    case 'install_confirmed':
+      return state.phase === 'install_required'
+        ? { ...state, phase: 'installing', effect: { type: 'install', confirmed: true } }
         : state;
-    case "install_started":
-      return state.phase === "installing"
+    case 'install_started':
+      return state.phase === 'installing'
         ? {
             ...state,
             automaticInstallAttempted: state.automaticInstallAttempted || state.effect?.confirmed === false,
             effect: undefined,
           }
         : state;
-    case "install_succeeded":
-      return { ...state, phase: "checking", effect: undefined, errorCode: undefined };
-    case "install_failed":
-      return { ...state, phase: "install_error", effect: undefined, errorCode: event.errorCode };
+    case 'install_succeeded':
+      return { ...state, phase: 'checking', effect: undefined, errorCode: undefined };
+    case 'install_failed':
+      return { ...state, phase: 'install_error', effect: undefined, errorCode: event.errorCode };
   }
 };
 
@@ -178,7 +178,7 @@ export type UseProviderOptionsSchemaResult = {
 };
 
 const requestErrorCode = (error: unknown) =>
-  error instanceof ProviderPackageRequestError ? error.code : "request_failed";
+  error instanceof ProviderPackageRequestError ? error.code : 'request_failed';
 
 type RefetchResult<T> = { readonly data: T | undefined; readonly error: unknown };
 
@@ -188,11 +188,11 @@ export const providerStatusRefetchEvent = <T extends ProviderPackageStatus>(
   result: RefetchResult<T>,
 ): ProviderOptionsSchemaEvent => {
   if (result.error !== null && result.error !== undefined) {
-    return { type: "status_failed", packageName, generation, errorCode: requestErrorCode(result.error) };
+    return { type: 'status_failed', packageName, generation, errorCode: requestErrorCode(result.error) };
   }
   return result.data === undefined
-    ? { type: "status_failed", packageName, generation, errorCode: "request_failed" }
-    : { type: "status_loaded", packageName, generation, status: result.data };
+    ? { type: 'status_failed', packageName, generation, errorCode: 'request_failed' }
+    : { type: 'status_loaded', packageName, generation, status: result.data };
 };
 
 export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
@@ -202,11 +202,11 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   const packageName = state.committedPackage;
   const generation = state.commitGeneration;
   const statusQuery = useQuery({
-    ...providerPackageStatusQueryOptions(packageName ?? ""),
+    ...providerPackageStatusQueryOptions(packageName ?? ''),
     enabled: false,
   });
   const installMutation = useMutation({
-    mutationKey: ["providers", "install", packageName, generation],
+    mutationKey: ['providers', 'install', packageName, generation],
     mutationFn: ({
       packageName: mutationPackage,
       confirmed,
@@ -216,13 +216,13 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
       confirmed: boolean;
     }) => installProviderPackage({ packageName: mutationPackage, confirmed }),
     onSuccess: async (_data, variables) => {
-      dispatch({ type: "install_succeeded", packageName: variables.packageName, generation: variables.generation });
+      dispatch({ type: 'install_succeeded', packageName: variables.packageName, generation: variables.generation });
       const options = providerPackageStatusQueryOptions(variables.packageName);
       await queryClient.invalidateQueries({ queryKey: options.queryKey, exact: true });
     },
     onError: (error, variables) => {
       dispatch({
-        type: "install_failed",
+        type: 'install_failed',
         packageName: variables.packageName,
         generation: variables.generation,
         errorCode: requestErrorCode(error),
@@ -231,37 +231,37 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   });
 
   useEffect(() => {
-    if (packageName === null || state.phase !== "checking") {
+    if (packageName === null || state.phase !== 'checking') {
       return;
     }
     void statusQuery.refetch().then((result) => dispatch(providerStatusRefetchEvent(packageName, generation, result)));
   }, [generation, packageName, state.phase, statusQuery.refetch]);
 
   useEffect(() => {
-    if (packageName === null || state.effect?.type !== "install") {
+    if (packageName === null || state.effect?.type !== 'install') {
       return;
     }
     if (startedInstalls.current.has(generation)) {
-      dispatch({ type: "install_started" });
+      dispatch({ type: 'install_started' });
       return;
     }
     startedInstalls.current.add(generation);
-    dispatch({ type: "install_started" });
+    dispatch({ type: 'install_started' });
     installMutation.mutate({ packageName, generation, confirmed: state.effect.confirmed });
   }, [generation, packageName, state.effect, installMutation]);
 
   const changePackage = useCallback((nextPackageName: string) => {
-    dispatch({ type: "package_changed", packageName: nextPackageName });
+    dispatch({ type: 'package_changed', packageName: nextPackageName });
   }, []);
   const commitPackage = useCallback((nextPackageName: string, allowAutomaticInstall = true) => {
-    dispatch({ type: "package_committed", packageName: nextPackageName, allowAutomaticInstall });
+    dispatch({ type: 'package_committed', packageName: nextPackageName, allowAutomaticInstall });
   }, []);
   const requestInstall = useCallback(() => {
     if (packageName !== null) {
-      dispatch({ type: "package_committed", packageName, allowAutomaticInstall: true });
+      dispatch({ type: 'package_committed', packageName, allowAutomaticInstall: true });
     }
   }, [packageName]);
-  const confirmInstall = useCallback(() => dispatch({ type: "install_confirmed" }), []);
+  const confirmInstall = useCallback(() => dispatch({ type: 'install_confirmed' }), []);
 
   return {
     phase: state.phase,

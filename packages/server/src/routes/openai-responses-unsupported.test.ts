@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 
 import {
   aiSdkProvider,
@@ -6,10 +6,10 @@ import {
   textStream,
   unsupportedBeforeProviderInvocationCases,
   unsupportedEnvelope,
-} from "../../_test/openai-responses.test-support";
-import { createServer } from "../server";
+} from '../../__tests__/openai-responses.test-support';
+import { createServer } from '../server';
 
-describe("OpenAI Responses routes", () => {
+describe('OpenAI Responses routes', () => {
   for (const scenario of unsupportedBeforeProviderInvocationCases) {
     test(`Given ${scenario.name} When POST is requested Then unsupported feature is returned before provider invocation`, async () => {
       let invoked = false;
@@ -22,10 +22,10 @@ describe("OpenAI Responses routes", () => {
         providerInstances: [provider],
       });
 
-      const response = await app.request("/v1/responses", {
+      const response = await app.request('/v1/responses', {
         body: JSON.stringify(scenario.body),
-        headers: { "content-type": "application/json" },
-        method: "POST",
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
       });
 
       expect(response.status).toBe(501);
@@ -34,7 +34,7 @@ describe("OpenAI Responses routes", () => {
     });
   }
 
-  test("Given forbidden built-in tool When POST is requested Then unsupported feature is returned", async () => {
+  test('Given forbidden built-in tool When POST is requested Then unsupported feature is returned', async () => {
     let invoked = false;
     const provider = aiSdkProvider(() => {
       invoked = true;
@@ -45,30 +45,30 @@ describe("OpenAI Responses routes", () => {
       providerInstances: [provider],
     });
 
-    const response = await app.request("/v1/responses", {
+    const response = await app.request('/v1/responses', {
       body: JSON.stringify({
         ...responsesRequest,
-        tools: [{ type: "web_search_preview" }],
+        tools: [{ type: 'web_search_preview' }],
       }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
     });
 
     expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(unsupportedEnvelope("web_search_preview"));
+    expect(await response.json()).toEqual(unsupportedEnvelope('web_search_preview'));
     expect(invoked).toBe(false);
   });
 
-  test("Given stored response id When GET is requested Then retrieval is unsupported", async () => {
+  test('Given stored response id When GET is requested Then retrieval is unsupported', async () => {
     const app = await createServer({ config: { providers: {} } });
 
-    const response = await app.request("/v1/responses/resp-1");
+    const response = await app.request('/v1/responses/resp-1');
 
     expect(response.status).toBe(501);
-    expect(await response.json()).toEqual(unsupportedEnvelope("response_retrieval"));
+    expect(await response.json()).toEqual(unsupportedEnvelope('response_retrieval'));
   });
 
-  test("Given malformed JSON When POST is requested Then invalid request is returned before provider invocation", async () => {
+  test('Given malformed JSON When POST is requested Then invalid request is returned before provider invocation', async () => {
     let invoked = false;
     const provider = aiSdkProvider(() => {
       invoked = true;
@@ -79,18 +79,18 @@ describe("OpenAI Responses routes", () => {
       providerInstances: [provider],
     });
 
-    const response = await app.request("/v1/responses", {
-      body: "{",
-      headers: { "content-type": "application/json" },
-      method: "POST",
+    const response = await app.request('/v1/responses', {
+      body: '{',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
     });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: {
-        code: "invalid_request",
-        message: "Invalid OpenAI Responses request",
-        type: "invalid_request_error",
+        code: 'invalid_request',
+        message: 'Invalid OpenAI Responses request',
+        type: 'invalid_request_error',
       },
     });
     expect(invoked).toBe(false);

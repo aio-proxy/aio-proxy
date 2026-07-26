@@ -1,12 +1,13 @@
-import { Database } from "bun:sqlite";
-import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
-import { createHash } from "node:crypto";
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { Database } from 'bun:sqlite';
+import { createHash } from 'node:crypto';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
-import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from "../error";
-import { dbPath } from "../paths/index";
-import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from "./migrations.manifest";
+import { type BunSQLiteDatabase, drizzle } from 'drizzle-orm/bun-sqlite';
+
+import { DatabaseSchemaTooNewError, MigrationHashMismatchError } from '../error';
+import { dbPath } from '../paths/index';
+import { COMPILED_SCHEMA_VERSION, MIGRATIONS, type Migration } from './migrations.manifest';
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
@@ -77,33 +78,33 @@ function borrow(entry: RegistryEntry): OpenDbHandle {
 
 function resolveDbPath(options: OpenDbOptions): string {
   if (options.home !== undefined) {
-    return resolve(options.home, "aio-proxy.db");
+    return resolve(options.home, 'aio-proxy.db');
   }
   return dbPath();
 }
 
 function ensureDbFile(path: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  if (process.platform !== "win32") {
+  if (process.platform !== 'win32') {
     chmodSync(dirname(path), 0o700);
   }
 
   if (!existsSync(path)) {
-    closeSync(openSync(path, "w", 0o600));
+    closeSync(openSync(path, 'w', 0o600));
   }
 
-  if (process.platform !== "win32") {
+  if (process.platform !== 'win32') {
     chmodSync(path, 0o600);
   }
 }
 
 function applyPragmas(sqlite: Database, readonly: boolean): void {
-  sqlite.exec(`PRAGMA busy_timeout = ${DEFAULT_BUSY_TIMEOUT_MS}`);
+  sqlite.run(`PRAGMA busy_timeout = ${DEFAULT_BUSY_TIMEOUT_MS}`);
   if (!readonly) {
-    sqlite.exec("PRAGMA journal_mode = WAL");
+    sqlite.run('PRAGMA journal_mode = WAL');
   }
-  sqlite.exec("PRAGMA foreign_keys = ON");
-  sqlite.exec("PRAGMA synchronous = NORMAL");
+  sqlite.run('PRAGMA foreign_keys = ON');
+  sqlite.run('PRAGMA synchronous = NORMAL');
 }
 
 function applyMigrations(sqlite: Database, readonly: boolean): void {
@@ -124,24 +125,24 @@ function applyMigrations(sqlite: Database, readonly: boolean): void {
 }
 
 function applyMigration(sqlite: Database, migration: Migration): void {
-  const actualSha256 = createHash("sha256").update(migration.sql).digest("hex");
+  const actualSha256 = createHash('sha256').update(migration.sql).digest('hex');
   if (actualSha256 !== migration.sha256) {
     throw new MigrationHashMismatchError(migration, actualSha256);
   }
 
   const runMigration = sqlite.transaction(() => {
-    sqlite.exec(migration.sql);
-    sqlite.exec(`PRAGMA user_version = ${migration.version}`);
+    sqlite.run(migration.sql);
+    sqlite.run(`PRAGMA user_version = ${migration.version}`);
   });
   runMigration();
 }
 
 function readUserVersion(sqlite: Database): number {
-  const row = sqlite.query("PRAGMA user_version").get();
-  if (typeof row !== "object" || row === null) {
+  const row = sqlite.query('PRAGMA user_version').get();
+  if (typeof row !== 'object' || row === null) {
     return 0;
   }
 
   const value = Object.values(row).at(0);
-  return typeof value === "number" ? value : 0;
+  return typeof value === 'number' ? value : 0;
 }

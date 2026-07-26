@@ -1,4 +1,4 @@
-import type { DiagnosticCode } from "@aio-proxy/types";
+import { pathToFileURL } from 'node:url';
 
 import {
   isPluginDescriptor,
@@ -7,11 +7,11 @@ import {
   PLUGIN_API_VERSIONS_SUPPORTED,
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
-} from "@aio-proxy/plugin-sdk";
-import { pathToFileURL } from "node:url";
+} from '@aio-proxy/plugin-sdk';
+import type { DiagnosticCode } from '@aio-proxy/types';
 
-import type { NpmPackageInfo } from "../../../npm";
-import type { PluginPackageImporter } from "../index";
+import type { NpmPackageInfo } from '../../../npm';
+import type { PluginPackageImporter } from '../index';
 
 export const PLUGIN_IMPORT_TIMEOUT_MS = 10_000;
 export const PLUGIN_SETUP_TIMEOUT_MS = 5_000;
@@ -20,31 +20,31 @@ export class PluginHostError extends Error {
   readonly code: DiagnosticCode;
   readonly retryable: boolean;
   constructor(code: DiagnosticCode, retryable = false) {
-    super("Plugin host operation failed");
-    this.name = "PluginHostError";
+    super('Plugin host operation failed');
+    this.name = 'PluginHostError';
     this.code = code;
     this.retryable = retryable;
   }
 }
 
-export type LoadablePluginDescriptor<Options = unknown> = Omit<PluginDescriptor<Options>, "apiVersion"> & {
+export type LoadablePluginDescriptor<Options = unknown> = Omit<PluginDescriptor<Options>, 'apiVersion'> & {
   readonly apiVersion: (typeof PLUGIN_API_VERSIONS_SUPPORTED)[number];
 };
 
 const descriptorCache = new Map<string, Promise<LoadablePluginDescriptor<unknown>>>();
 const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const supportedApiVersions = new Set<number>(PLUGIN_API_VERSIONS_SUPPORTED);
 
 export function validateDescriptor(descriptor: unknown): LoadablePluginDescriptor<unknown> {
   if (isRecord(descriptor)) {
-    const apiVersion = Reflect.get(descriptor, "apiVersion");
-    if (Reflect.has(descriptor, "apiVersion") && !supportedApiVersions.has(apiVersion as number)) {
-      throw new PluginHostError("PLUGIN_API_INCOMPATIBLE");
+    const apiVersion = Reflect.get(descriptor, 'apiVersion');
+    if (Reflect.has(descriptor, 'apiVersion') && !supportedApiVersions.has(apiVersion as number)) {
+      throw new PluginHostError('PLUGIN_API_INCOMPATIBLE');
     }
   }
-  if (!isPluginDescriptor(descriptor)) throw new PluginHostError("PLUGIN_LOAD_FAILED");
+  if (!isPluginDescriptor(descriptor)) throw new PluginHostError('PLUGIN_LOAD_FAILED');
   const typed = descriptor as LoadablePluginDescriptor<unknown>;
   const label = LocalizedTextSchema.safeParse(typed.metadata.label);
   const description = LocalizedTextSchema.safeParse(typed.metadata.description);
@@ -52,7 +52,7 @@ export function validateDescriptor(descriptor: unknown): LoadablePluginDescripto
     (typed.metadata.label !== undefined && !label.success) ||
     (typed.metadata.description !== undefined && !description.success)
   ) {
-    throw new PluginHostError("PLUGIN_LOAD_FAILED");
+    throw new PluginHostError('PLUGIN_LOAD_FAILED');
   }
   return {
     [PLUGIN_DESCRIPTOR_BRAND]: true,
@@ -102,14 +102,14 @@ export async function loadThirdPartyDescriptor(
   if (cached === undefined) {
     const attempt = crypto.randomUUID();
     const entrypoint = pathToFileURL(installed.entrypoint);
-    entrypoint.searchParams.set("aio_proxy_plugin_attempt", attempt);
+    entrypoint.searchParams.set('aio_proxy_plugin_attempt', attempt);
     const imported = importer({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt });
     cached = observedPromiseDeadline(imported, {
       timeoutMs: PLUGIN_IMPORT_TIMEOUT_MS,
-      timeoutError: () => new PluginHostError("PLUGIN_LOAD_FAILED", true),
+      timeoutError: () => new PluginHostError('PLUGIN_LOAD_FAILED', true),
     }).then((value) => {
-      if (!isRecord(value)) throw new PluginHostError("PLUGIN_LOAD_FAILED");
-      return validateDescriptor(Reflect.get(value, "default"));
+      if (!isRecord(value)) throw new PluginHostError('PLUGIN_LOAD_FAILED');
+      return validateDescriptor(Reflect.get(value, 'default'));
     });
     descriptorCache.set(cacheKey, cached);
     cached.catch(() => {
