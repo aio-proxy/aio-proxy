@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
 
+import { anthropicMessagesAdapter } from '@aio-proxy/core';
+
 import { currentRequestLogContext } from '../request-logging';
 import { reconstructed, waitFor } from '../request-logging/test-support';
+import { handleTokenCount } from './token-count';
 import { anthropicRequest, countFixture, provider } from './token-count.test-support';
 
 test('correlates a token-count provider attempt with its inbound request', async () => {
@@ -65,6 +68,36 @@ test('keeps concurrent token-count request contexts isolated', async () => {
     expect.objectContaining({ requestId: 'request-2' }),
   ]);
   expect(currentRequestLogContext()).toBeUndefined();
+});
+
+test('releases the request when inbound token-count observation setup throws', async () => {
+  const failure = new Error('inbound observation failed');
+  let protocolReads = 0;
+  const adapter = {
+    ...anthropicMessagesAdapter,
+    get protocol() {
+      protocolReads += 1;
+      if (protocolReads === 2) throw failure;
+      return anthropicMessagesAdapter.protocol;
+    },
+  };
+  const fixture = countFixture([], { debugLogging: true });
+  const request = anthropicRequest();
+
+  await expect(
+    handleTokenCount({
+      adapter,
+      context: {},
+      format: (inputTokens) => ({ input_tokens: inputTokens }),
+      rawRequest: request,
+      source: fixture.source,
+    }),
+  ).rejects.toBe(failure);
+
+  expect(request.bodyUsed).toBe(true);
+  expect(fixture.recording.attempts).toEqual([]);
+  expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+  expect(fixture.releases()).toBe(0);
 });
 
 function markedRequest(marker: string): Request {

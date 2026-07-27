@@ -4,6 +4,52 @@ import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createUsageCapture } from './index';
 
+describe('oversized SSE passthrough completion', () => {
+  test('oversized SSE failure event completes as failure without changing the response', async () => {
+    const chunks = [`event: response.`, `failed\r\ndata: ${'x'.repeat(1024 * 1024 + 1)}\r\n`, '\r', '\n'];
+    const body = chunks.join('');
+    const captured = createUsageCapture().passthrough({
+      response: new Response(streamText(chunks), {
+        headers: { 'content-type': 'text/event-stream' },
+        status: 206,
+        statusText: 'Partial Content',
+      }),
+      protocol: ProviderProtocol.OpenAIResponse,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    expect(captured.value.status).toBe(206);
+    expect(captured.value.statusText).toBe('Partial Content');
+    expect(await captured.value.text()).toBe(body);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'failure', statusCode: 206 });
+  });
+
+  test('oversized SSE success event remains a successful passthrough', async () => {
+    const body =
+      'event: response.failed\nevent: response.output_text.delta\n' + `data: ${'x'.repeat(1024 * 1024 + 1)}\n\n`;
+    const captured = createUsageCapture().passthrough({
+      response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+      protocol: ProviderProtocol.OpenAIResponse,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    expect(await captured.value.text()).toBe(body);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success', statusCode: 200 });
+  });
+});
+
+function streamText(chunks: readonly string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
+
 describe('usage capture passthrough completion', () => {
   test.each([
     [

@@ -6,6 +6,7 @@ import { hashSession } from '../../../protocol/session';
 import { sessionAffinity, sessionResponse, traceSpan } from '../../schema';
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
+import type { TraceCompletion } from '../types';
 
 const TRACE_ID = 'a'.repeat(32);
 const ROOT_SPAN_ID = 'b'.repeat(16);
@@ -17,6 +18,11 @@ function completeWithSession(
   responseId?: string,
   observed?: unknown,
   usage?: UsageRow,
+  session: TraceCompletion['session'] = {
+    identity: { source: 'body-session', id: 'session-1' },
+    requestedModelId: 'model-a',
+    resolvedBy: 'body-session',
+  },
 ) {
   return store.complete({
     traceId: TRACE_ID,
@@ -41,11 +47,7 @@ function completeWithSession(
       finalHttpStatus: 200,
       ...(usage === undefined ? {} : { usage }),
     },
-    session: {
-      identity: { source: 'body-session', id: 'session-1' },
-      requestedModelId: 'model-a',
-      resolvedBy: 'body-session',
-    },
+    session,
     sessionState: { responseId, observedAffinity: observed as never },
   });
 }
@@ -243,6 +245,39 @@ describe('session state', () => {
 
       const observed = store.findAffinity({ source: 'body-session', id: 'session-1' }, 'model-a', ENDED_AT);
       expect(observed).toEqual({ providerId: 'provider-a', revision: 1, active: true });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('keeps response ownership without affinity for a fresh generated session', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      completeWithSession(store, 'resp-generated', undefined, undefined, {
+        identity: { source: 'generated', id: 'generated-1' },
+        requestedModelId: 'model-a',
+        resolvedBy: 'generated',
+      });
+
+      expect(handle.db.select().from(sessionResponse).all()).toHaveLength(1);
+      expect(handle.db.select().from(sessionAffinity).all()).toEqual([]);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('persists affinity when a generated identity is resumed by response', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      completeWithSession(store, undefined, undefined, undefined, {
+        identity: { source: 'generated', id: 'generated-1' },
+        requestedModelId: 'model-a',
+        resolvedBy: 'previous-response',
+      });
+
+      expect(handle.db.select().from(sessionAffinity).all()).toHaveLength(1);
     } finally {
       handle.close();
     }

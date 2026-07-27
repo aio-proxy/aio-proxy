@@ -1,13 +1,12 @@
 import { expect, test } from 'bun:test';
 
-import { anthropicMessagesAdapter, Router } from '@aio-proxy/core';
+import { anthropicMessagesAdapter } from '@aio-proxy/core';
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 
-import { createRecording } from '../../__tests__/pipeline-helpers/recording';
-import { LogicalSessionStore } from '../logical-session-store';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { handleTokenCount } from './token-count';
+import { countFixture } from './token-count.test-support';
 
 test('releases the retained body when count request validation fails', async () => {
   const request = new Request('https://proxy.test/v1/messages/count_tokens', {
@@ -15,7 +14,7 @@ test('releases the retained body when count request validation fails', async () 
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ model: 'count-model', max_tokens: 16, messages: 'invalid' }),
   });
-  const fixture = countSource([]);
+  const fixture = countFixture([]);
 
   const response = await runCount(fixture.source, request);
 
@@ -31,7 +30,27 @@ test('releases the retained body when count request validation fails', async () 
 test('finishes the trace before rethrowing an unmapped request error', async () => {
   const failure = new Error('unexpected parse failure');
   const request = anthropicRequest(new AbortController().signal);
-  const fixture = countSource([]);
+  const fixture = countFixture([]);
+  const adapter = {
+    ...anthropicMessagesAdapter,
+    parse: () => Promise.reject(failure),
+  };
+
+  await expect(runCount(fixture.source, request, { adapter })).rejects.toBe(failure);
+
+  expect(request.bodyUsed).toBe(true);
+  expect(fixture.recording.attempts).toEqual([]);
+  expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+  expect(fixture.releases()).toBe(0);
+});
+
+test('does not mask an unrelated request error when the signal is already aborted', async () => {
+  const controller = new AbortController();
+  const abortReason = new DOMException('client cancelled', 'AbortError');
+  const failure = new Error('unexpected parse failure');
+  const request = anthropicRequest(controller.signal);
+  controller.abort(abortReason);
+  const fixture = countFixture([]);
   const adapter = {
     ...anthropicMessagesAdapter,
     parse: () => Promise.reject(failure),
@@ -59,7 +78,7 @@ test.each(responseFormattingCases)(
   async (_name, provider, attempt) => {
     const failure = new Error('response formatting failed');
     const request = anthropicRequest(new AbortController().signal);
-    const fixture = countSource([provider]);
+    const fixture = countFixture([provider]);
     await expect(
       runCount(fixture.source, request, {
         format: () => {
@@ -78,7 +97,7 @@ test.each(responseFormattingCases)(
 test('rethrows an unmapped provider error instead of returning an estimate', async () => {
   const failure = Object.freeze({ kind: 'unexpected-provider-failure' });
   const request = anthropicRequest(new AbortController().signal);
-  const fixture = countSource([countProvider(() => Promise.reject(failure))]);
+  const fixture = countFixture([countProvider(() => Promise.reject(failure))]);
 
   await expect(runCount(fixture.source, request)).rejects.toBe(failure);
 
@@ -102,7 +121,7 @@ test.each(abortReasons)(
     const request = anthropicRequest(controller.signal);
     controller.abort(reason);
     let calls = 0;
-    const fixture = countSource([
+    const fixture = countFixture([
       countProvider(async () => {
         calls += 1;
         return { inputTokens: 5 };
@@ -124,7 +143,7 @@ test('does not return success when the request aborts while a counter ignores it
   const reason = new Error('client cancelled during count');
   const started = deferred<void>();
   const release = deferred<void>();
-  const fixture = countSource([
+  const fixture = countFixture([
     countProvider(async () => {
       started.resolve(undefined);
       await release.promise;
@@ -146,12 +165,12 @@ test('does not return success when the request aborts while a counter ignores it
   expect(fixture.releases()).toBe(1);
 });
 
-test('attributes an abort-dominant counter error only to the provider that was invoked', async () => {
+test('does not mask an unrelated counter error when the signal aborts', async () => {
   const controller = new AbortController();
   const abortReason = new Error('client cancelled first count');
   const counterError = new Error('first counter failed after abort');
   let secondCalls = 0;
-  const fixture = countSource([
+  const fixture = countFixture([
     countProvider(async () => {
       controller.abort(abortReason);
       throw counterError;
@@ -162,17 +181,14 @@ test('attributes an abort-dominant counter error only to the provider that was i
     }, 'second'),
   ]);
 
-  const result = await settleWithin(runCount(fixture.source, anthropicRequest(controller.signal)), 100);
+  await expect(runCount(fixture.source, anthropicRequest(controller.signal))).rejects.toBe(counterError);
 
-  expect(result).toBe(abortReason);
   expect(secondCalls).toBe(0);
   expect(fixture.recording.attempts).toEqual([
-    expect.objectContaining({ modelId: 'first-wire', outcome: 'cancelled', providerId: 'first' }),
+    expect.objectContaining({ modelId: 'first-wire', outcome: 'failure', providerId: 'first' }),
   ]);
   expect(fixture.recording.attempts[0]).not.toHaveProperty('statusCode');
-  expect(fixture.recording.finals).toEqual([
-    expect.objectContaining({ finalModelId: 'first-wire', finalProviderId: 'first', outcome: 'cancelled' }),
-  ]);
+  expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
   expect(fixture.recording.finals[0]).not.toHaveProperty('finalStatusCode');
   expect(fixture.releases()).toBe(1);
 });
@@ -181,7 +197,7 @@ test.each(abortReasons)('maps no fake provider error for an exact %s abort reaso
   const controller = new AbortController();
   const started = deferred<void>();
   const release = deferred<void>();
-  const fixture = countSource([
+  const fixture = countFixture([
     countProvider(async () => {
       started.resolve(undefined);
       await release.promise;
@@ -202,33 +218,6 @@ test.each(abortReasons)('maps no fake provider error for an exact %s abort reaso
   expect(fixture.recording.finals[0]).not.toHaveProperty('finalStatusCode');
   expect(fixture.releases()).toBe(1);
 });
-
-function countSource(providers: readonly RuntimeProviderInstance[]) {
-  const router = new Router(providers);
-  const recording = createRecording();
-  let releaseCount = 0;
-  const source = {
-    acquireProviderSnapshot: () => ({
-      snapshot: { providers, router },
-      release: () => {
-        releaseCount += 1;
-      },
-    }),
-    currentProviderSnapshot: () => ({ providers, router }),
-    logger() {},
-    logicalSessionStore: new LogicalSessionStore(),
-    requestRecorder: recording.recorder,
-    usageCapture: {
-      passthrough(): never {
-        throw new Error('token counting must not capture generation usage');
-      },
-      stream(): never {
-        throw new Error('token counting must not capture generation usage');
-      },
-    },
-  } satisfies ProviderRouteSource;
-  return { recording, releases: () => releaseCount, source };
-}
 
 function countProvider(countTokens: TokenCountCapability['countTokens'], id = 'counter'): RuntimeProviderInstance {
   return {

@@ -178,6 +178,7 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
     if (
       input.sessionState !== undefined &&
       input.session !== undefined &&
+      input.session.resolvedBy !== 'generated' &&
       input.summary.terminationReason === undefined &&
       input.summary.finalProviderId !== undefined
     ) {

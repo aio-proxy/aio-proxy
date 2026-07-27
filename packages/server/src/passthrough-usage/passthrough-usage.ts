@@ -14,6 +14,8 @@ import {
 } from './shared';
 import { usageFromJson } from './usage';
 
+const MAX_SSE_FAILURE_LINE_PREFIX_CHARS = 'event: response.incomplete'.length;
+
 export type PassthroughObservation = {
   readonly failed?: true;
   readonly responseId?: string;
@@ -51,6 +53,41 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
   let responseId: string | undefined;
   let sawContent = false;
   let failed = false;
+  let linePrefix = '';
+  let lineLength = 0;
+  let eventFailed = false;
+  let dataLines = 0;
+  let skipLineFeed = false;
+  const finishLine = () => {
+    if (lineLength === 0) {
+      failed ||= dataLines > 0 && eventFailed;
+      eventFailed = false;
+      dataLines = 0;
+    } else if (linePrefix === 'event' || linePrefix.startsWith('event:')) {
+      const value = linePrefix === 'event' ? '' : linePrefix.slice(6);
+      const eventType = value.startsWith(' ') ? value.slice(1) : value;
+      eventFailed = lineLength <= linePrefix.length && protocolFailure(protocol, eventType || undefined, undefined);
+    } else if (linePrefix === 'data' || linePrefix.startsWith('data:')) {
+      dataLines++;
+    }
+    linePrefix = '';
+    lineLength = 0;
+  };
+  const scanFailureEvents = (chunk: string) => {
+    for (const character of chunk) {
+      if (skipLineFeed) {
+        skipLineFeed = false;
+        if (character === '\n') continue;
+      }
+      if (character === '\r' || character === '\n') {
+        finishLine();
+        skipLineFeed = character === '\r';
+        continue;
+      }
+      if (linePrefix.length < MAX_SSE_FAILURE_LINE_PREFIX_CHARS) linePrefix += character;
+      lineLength++;
+    }
+  };
   const parser = createParser({
     maxBufferSize: MAX_SSE_BUFFER_CHARS,
     onError(error) {
@@ -59,12 +96,13 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       }
     },
     onEvent(event) {
+      failed ||= protocolFailure(protocol, event.event, undefined);
       if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
         active = false;
         return;
       }
       const parsed = parseJson(event.data);
-      failed ||= protocolFailure(protocol, event.event, parsed);
+      failed ||= protocolFailure(protocol, undefined, parsed);
       if (parsed === undefined) {
         return;
       }
@@ -78,9 +116,9 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
 
   return {
     feed(chunk) {
-      if (!active || chunk === '') {
-        return;
-      }
+      if (chunk === '') return;
+      scanFailureEvents(chunk);
+      if (!active) return;
       try {
         parser.feed(chunk);
       } catch {
@@ -88,6 +126,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       }
     },
     finish() {
+      scanFailureEvents('\n\n');
       if (active) {
         try {
           parser.feed('\n\n');

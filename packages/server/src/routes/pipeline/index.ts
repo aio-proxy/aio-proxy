@@ -4,6 +4,7 @@ import {
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
+import type { ProviderProtocol } from '@aio-proxy/types';
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
@@ -24,9 +25,10 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
 export async function handleProtocolRequest<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
 ): Promise<Response> {
+  const inboundProtocol = options.adapter.protocol;
   const session = options.source.requestRecorder.begin({
     headers: options.rawRequest.headers,
-    inboundProtocol: options.adapter.protocol,
+    inboundProtocol,
   });
   return await context.with(session.rootContext, () =>
     withRequestLogContext(
@@ -35,21 +37,27 @@ export async function handleProtocolRequest<TRequest, TContext>(
         debug: options.source.debugLogging === true,
         logger: options.source.logger,
       },
-      async () => {
-        const rawRequest = observeInboundRequest(options.rawRequest, options.adapter.protocol);
-        return await handleProtocolRequestInContext({ ...options, rawRequest }, session);
-      },
+      () => handleProtocolRequestInContext(options, session, inboundProtocol),
     ),
   );
 }
 
 async function handleProtocolRequestInContext<TRequest, TContext>(
-  { adapter, context, rawRequest, source }: HandleProtocolRequestOptions<TRequest, TContext>,
+  options: HandleProtocolRequestOptions<TRequest, TContext>,
   session: RequestTraceSession,
+  inboundProtocol: ProviderProtocol,
 ): Promise<Response> {
+  const { adapter, context, source } = options;
+  let { rawRequest } = options;
   let requestedModelId: string | undefined;
   let releaseRetainedBody = false;
   try {
+    try {
+      rawRequest = observeInboundRequest(rawRequest, inboundProtocol);
+    } catch (error) {
+      await cancelRetainedRequestBody(rawRequest, error);
+      throw error;
+    }
     if (hasInvalidOrOversizedContentLength(rawRequest)) {
       const error = new RequestBodyTooLargeError('Request body too large');
       await cancelRetainedRequestBody(rawRequest, error);
@@ -57,7 +65,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         source,
         session,
         rawRequest,
-        inboundProtocol: adapter.protocol,
+        inboundProtocol,
         response: adapter.errors.tooLarge(),
         errorCode: 'request_too_large',
         error,
@@ -74,7 +82,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           source,
           session,
           rawRequest,
-          inboundProtocol: adapter.protocol,
+          inboundProtocol,
           response: adapter.errors.tooLarge(),
           errorCode: 'request_too_large',
           error,
@@ -85,7 +93,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           source,
           session,
           rawRequest,
-          inboundProtocol: adapter.protocol,
+          inboundProtocol,
           response: adapter.errors.unsupportedContentEncoding(),
           errorCode: 'unsupported_content_encoding',
           error,
@@ -98,7 +106,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           source,
           session,
           rawRequest,
-          inboundProtocol: adapter.protocol,
+          inboundProtocol,
           response: mapped,
           errorCode,
           error,
@@ -123,7 +131,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         source,
         session,
         rawRequest,
-        inboundProtocol: adapter.protocol,
+        inboundProtocol,
         requestedModelId: requestedModel,
         response: adapter.errors.previousResponseConflict(),
         errorCode: 'previous_response_conflict',
@@ -134,7 +142,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       source,
       requestId: session.requestId,
       rawRequest,
-      inboundProtocol: adapter.protocol,
+      inboundProtocol,
       requestedModelId: requestedModel,
       diagnostics: adapter.requestDiagnostics(request, context),
     });
@@ -167,7 +175,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           source,
           session,
           rawRequest,
-          inboundProtocol: adapter.protocol,
+          inboundProtocol,
           requestedModelId: requestedModel,
           response,
           errorCode: 'model_not_found',
@@ -188,7 +196,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         source,
         requestId: session.requestId,
         rawRequest,
-        inboundProtocol: adapter.protocol,
+        inboundProtocol,
         ...(requestedModelId === undefined ? {} : { requestedModelId }),
         error,
       });

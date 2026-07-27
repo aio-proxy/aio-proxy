@@ -12,6 +12,7 @@ import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
+import { isInboundAbort } from '../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { hasInvalidOrOversizedContentLength } from './pipeline';
 import { prioritizeAffinity } from './pipeline/affinity';
@@ -45,10 +46,12 @@ export async function handleTokenCount<TRequest, TContext>(
       },
       async () => {
         try {
-          const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
-          return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
+          return await handleTokenCountInContext(options, session);
         } catch (error) {
-          if (rawRequest.signal.aborted) {
+          if (
+            (rawRequest.signal.aborted && error === rawRequest.signal.reason) ||
+            isInboundAbort(error, rawRequest.signal)
+          ) {
             session.finish({ outcome: 'cancelled' });
             throw rawRequest.signal.reason;
           }
@@ -61,9 +64,17 @@ export async function handleTokenCount<TRequest, TContext>(
 }
 
 async function handleTokenCountInContext<TRequest, TContext>(
-  { adapter, context, format, rawRequest, source }: HandleTokenCountOptions<TRequest, TContext>,
+  options: HandleTokenCountOptions<TRequest, TContext>,
   session: RequestTraceSession,
 ): Promise<Response> {
+  const { adapter, context, format, source } = options;
+  let { rawRequest } = options;
+  try {
+    rawRequest = observeInboundRequest(rawRequest, adapter.protocol);
+  } catch (error) {
+    await cancelRetainedRequestBody(rawRequest, error);
+    throw error;
+  }
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
     return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
@@ -204,10 +215,17 @@ async function countCandidates<TRequest, TContext>({
       }
       inputTokens = result.inputTokens;
     } catch (error) {
-      if (rawRequest.signal.aborted) {
+      if (
+        (rawRequest.signal.aborted && error === rawRequest.signal.reason) ||
+        isInboundAbort(error, rawRequest.signal)
+      ) {
         attemptSpan.end({ outcome: 'cancelled' });
         session.finish({ outcome: 'cancelled', finalProviderId: provider.id, finalModelId: candidate.modelId });
         throw rawRequest.signal.reason;
+      }
+      if (rawRequest.signal.aborted) {
+        attemptSpan.end({ outcome: 'failure' });
+        throw error;
       }
       const mapped = adapter.errors.provider(error);
       attemptSpan.end(failureTerminal(mapped?.status));
