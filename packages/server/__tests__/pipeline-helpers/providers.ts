@@ -1,4 +1,7 @@
-import { type ModelEventStream, Router } from '@aio-proxy/core';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { aioHome, type ModelEventStream, Router } from '@aio-proxy/core';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { LogicalSessionStore } from '../../src/logical-session-store';
@@ -12,6 +15,28 @@ import {
 } from '../../src/usage-capture';
 import { createRecording } from './recording';
 import { type FakeProvider, REQUESTED_MODEL } from './types';
+
+// Usage pricing resolves through getProviders()'s file cache rather than an
+// injected catalog, so an unseeded harness would reach models.dev over the
+// network and leave stream completions unsettled. Seed an empty provider map
+// synchronously: lookups miss locally and pricing settles without I/O. Write
+// once per home, and rename into place so a concurrent reader never observes a
+// partially written file.
+const seededHomes = new Set<string>();
+function seedEmptyPriceCatalog(): void {
+  const home = aioHome();
+  if (seededHomes.has(home)) return;
+  seededHomes.add(home);
+  const cacheDir = join(home, 'tmp', 'cache-storage');
+  mkdirSync(cacheDir, { recursive: true });
+  const target = join(cacheDir, `${encodeURIComponent('models-dev-providers')}.json`);
+  const staging = `${target}.${process.pid}.staging`;
+  writeFileSync(
+    staging,
+    JSON.stringify({ value: { openrouter: { models: {} } }, updatedAt: new Date().toISOString() }),
+  );
+  renameSync(staging, target);
+}
 
 export function rawProvider(options: {
   readonly id: string;
@@ -72,7 +97,8 @@ export function defineProviderRouteSource(
 ) {
   const providers = fixtures.map((fixture) => fixture.provider);
   const recording = createRecording();
-  const realUsageCapture = createUsageCapture({ priceCatalogTask: async () => undefined });
+  seedEmptyPriceCatalog();
+  const realUsageCapture = createUsageCapture();
   const usage = {
     capturedStreams: [] as ModelEventStream[],
     passthrough: [] as PassthroughUsageOptions[],

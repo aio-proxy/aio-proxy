@@ -62,7 +62,11 @@ export const OpenAIResponsesRequestSchema = z
     reasoning: z
       .object({
         summary: z.enum(['auto', 'concise', 'detailed']).optional(),
-        effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+        // We never branch on the effort value: it is only used as a routing
+        // variant key and otherwise passed through to the upstream verbatim.
+        // Gating it to a fixed enum would reject legitimate future levels a
+        // proxy has no business knowing about, so accept any string.
+        effort: z.string().optional(),
         context: z.unknown().optional(),
       })
       .optional(),

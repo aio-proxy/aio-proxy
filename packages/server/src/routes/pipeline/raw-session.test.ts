@@ -121,7 +121,7 @@ test('does not commit a completed raw response event when the client cancels bef
 });
 
 function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {
-  return { ...source, usageCapture: createUsageCapture({ priceCatalogTask: async () => undefined }) };
+  return { ...source, usageCapture: createUsageCapture() };
 }
 
 function previous(source: ProviderRouteSource, responseId: string) {

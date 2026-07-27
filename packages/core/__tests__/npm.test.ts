@@ -15,6 +15,8 @@ import {
 } from '../src/index';
 
 const homes: string[] = [];
+const originalHome = process.env.HOME;
+const originalAioHome = process.env.AIO_PROXY_HOME;
 
 function sandboxHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-npm-home-'));
@@ -101,8 +103,12 @@ afterEach(() => {
   for (const home of homes.splice(0)) {
     rmSync(home, { recursive: true, force: true });
   }
-  delete process.env.HOME;
-  delete process.env.AIO_PROXY_HOME;
+  // Restore instead of deleting: a bare delete leaks into sibling test files
+  // that rely on an outer AIO_PROXY_HOME and sends them at the real user db.
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalAioHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalAioHome;
 });
 
 describe.serial('npmAdd', () => {

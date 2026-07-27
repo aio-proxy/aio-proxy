@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { expectedModel, expectedModelList, noModelsDevCatalog } from './server.test-support';
+import {
+  clearModelsDevCatalog,
+  expectedModel,
+  expectedModelList,
+  modelsDevModel,
+  seedEmptyModelsDevCatalog,
+  seedModelsDevCatalog,
+  textOnlyCapabilities,
+} from './server.test-support';
 
 describe('server routes', () => {
   let dir: string;
@@ -19,11 +27,12 @@ describe('server routes', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    clearModelsDevCatalog();
   });
 
   test('Given added Anthropic aliases When models are requested Then upstream targets are hidden', async () => {
+    await seedEmptyModelsDevCatalog();
     const app = await createServer({
-      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           'anthropic-aliases': {
@@ -53,18 +62,16 @@ describe('server routes', () => {
     );
   });
 
-  test('Given alias metadata without a name When models are requested Then the upstream name is used', async () => {
-    const app = await createServer({
-      modelsDevCatalogTask: async () => ({
-        displayName: () => undefined,
-        find: () => undefined,
-        metadata(modelId) {
-          return {
-            'friendly-alias': { maxInputTokens: 100, maxTokens: 10 },
-            'upstream-model': { displayName: 'Upstream Model', maxInputTokens: 200, maxTokens: 20 },
-          }[modelId];
-        },
+  test('Given alias metadata without a name When models are requested Then the alias slug is used', async () => {
+    // Metadata is read from the alias slug's own entry. name === id, so the
+    // alias carries no human-readable name and the slug is used as the display
+    // name; the upstream modelId's own entry is never consulted.
+    await seedModelsDevCatalog({
+      'friendly-alias': modelsDevModel('friendly-alias', 'friendly-alias', {
+        limit: { context: 128_000, input: 100, output: 10 },
       }),
+    });
+    const app = await createServer({
       config: {
         providers: {
           api: {
@@ -82,7 +89,10 @@ describe('server routes', () => {
 
     expect(await response.json()).toEqual(
       expectedModelList([
-        expectedModel('friendly-alias', 'api', 'Upstream Model', {
+        expectedModel('friendly-alias', 'api', 'friendly-alias', {
+          capabilities: textOnlyCapabilities,
+          created: 1_768_435_200,
+          createdAt: '2026-01-15T00:00:00.000Z',
           maxInputTokens: 100,
           maxTokens: 10,
         }),

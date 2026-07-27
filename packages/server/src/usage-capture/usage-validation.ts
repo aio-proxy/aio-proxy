@@ -1,4 +1,4 @@
-import { type OpenRouterPriceCatalog, type UsageAccounting, usdToNanoUsd } from '@aio-proxy/core';
+import { type UsageAccounting, usdToNanoUsd } from '@aio-proxy/core';
 import { type UsageRow, UsageRowSchema } from '@aio-proxy/types';
 
 import type { UsageIssue } from '../passthrough-usage/shared';
@@ -8,13 +8,12 @@ import { priceUsage } from './pricing';
 export async function finalizeUsage(input: {
   readonly usage: UsageRow | undefined;
   readonly accounting: UsageAccounting;
-  readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
   readonly logger?: ServerLogSink;
   readonly issues?: readonly UsageIssue[];
 }): Promise<UsageRow | undefined> {
   const normalized = validUsage(input.usage, input.accounting, input.logger, input.issues);
   if (normalized === undefined) return undefined;
-  const priced = await priceUsage(normalized, input.priceCatalogTask, input.accounting);
+  const priced = await priceUsage(normalized, input.accounting);
   return validUsage(priced, input.accounting, input.logger, undefined, true);
 }
 

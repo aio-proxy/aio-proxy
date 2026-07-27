@@ -7,7 +7,12 @@ import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
-import { expectedModel, expectedModelList } from './server.test-support';
+import {
+  clearModelsDevCatalog,
+  expectedModel,
+  expectedModelList,
+  seedEmptyModelsDevCatalog,
+} from './server.test-support';
 
 describe('server routes', () => {
   let dir: string;
@@ -20,13 +25,14 @@ describe('server routes', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    clearModelsDevCatalog();
   });
 
-  test('Given models.dev failure When models are requested Then ids remain valid display names', async () => {
+  test('Given no catalog metadata When models are requested Then ids remain valid display names', async () => {
+    // An empty catalog yields no metadata, so the display name falls back to the
+    // model id, matching the old models.dev-failure behavior.
+    await seedEmptyModelsDevCatalog();
     const app = await createServer({
-      modelsDevCatalogTask: async () => {
-        throw new Error('catalog unavailable');
-      },
       config: {
         providers: {
           api: {

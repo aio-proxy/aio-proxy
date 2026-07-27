@@ -5,7 +5,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { createUsageCapture } from './index';
 
 function ssePassthrough(body: string, protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible) {
-  return createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+  return createUsageCapture().passthrough({
     response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
     protocol,
     providerId: 'provider',

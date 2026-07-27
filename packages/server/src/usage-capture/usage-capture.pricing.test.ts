@@ -1,15 +1,18 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { OpenRouterPriceCatalog, TextStreamPart, ToolSet } from '@aio-proxy/core';
+import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
 import { createUsageCapture } from './index';
-import { drain, textStream } from './test-support';
+import { clearPriceCatalog, drain, seedPriceCatalog, textStream } from './test-support';
 
 describe('usage capture pricing stream', () => {
+  afterEach(() => {
+    clearPriceCatalog();
+  });
+
   test('ai-sdk Gemini-shaped usage does not double-count unpriced thoughts', async () => {
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'google/gemini', input: 1, output: 2 }),
-    };
+    // Priced via OpenRouter bare id: modelId 'gemini' resolves to 'google/gemini'.
+    await seedPriceCatalog([{ id: 'google/gemini', input: 1, output: 2 }]);
     const finish: TextStreamPart<ToolSet> = {
       type: 'finish',
       finishReason: 'stop',
@@ -22,7 +25,7 @@ describe('usage capture pricing stream', () => {
         totalTokens: 160,
       },
     };
-    const captured = createUsageCapture({ priceCatalogTask: async () => catalog }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'gemini',
       stream: textStream([finish]),
@@ -42,9 +45,7 @@ describe('usage capture pricing stream', () => {
   });
 
   test('ai-sdk Anthropic-shaped usage peels priced cache read and write once', async () => {
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'anthropic/claude', input: 2, output: 10, cacheRead: 0.5, cacheWrite: 3 }),
-    };
+    await seedPriceCatalog([{ id: 'anthropic/claude', input: 2, output: 10, cacheRead: 0.5, cacheWrite: 3 }]);
     const finish: TextStreamPart<ToolSet> = {
       type: 'finish',
       finishReason: 'stop',
@@ -57,7 +58,7 @@ describe('usage capture pricing stream', () => {
         totalTokens: 120,
       },
     };
-    const captured = createUsageCapture({ priceCatalogTask: async () => catalog }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'claude',
       stream: textStream([finish]),

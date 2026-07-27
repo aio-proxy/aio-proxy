@@ -8,11 +8,13 @@ import { createServer } from '@aio-proxy/server';
 import { DashboardRequestLogsResponseSchema, ProviderKind } from '@aio-proxy/types';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from './server.test-support';
 
 const homes: string[] = [];
 
 afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
+  clearModelsDevCatalog();
 });
 
 function rootAttributes(requestId: string, inboundProtocol: string, requestedModelId: string) {
@@ -140,6 +142,12 @@ function seedTraces(store: ReturnType<typeof createTraceStore>) {
 async function seededApp() {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-logs-'));
   homes.push(home);
+  // Display names now come from the models.dev catalog keyed by the id shown.
+  // name !== id, so each record supplies the human-readable name directly.
+  await seedModelsDevCatalog({
+    mini: modelsDevModel('mini', 'GPT Mini'),
+    'openai/gpt-5': modelsDevModel('openai/gpt-5', 'GPT-5'),
+  });
   const app = await createServer({
     config: {
       providers: {
@@ -153,15 +161,6 @@ async function seededApp() {
       },
     },
     dbHome: home,
-    modelsDevCatalogTask: async () => ({
-      displayName: () => undefined,
-      find: () => undefined,
-      metadata: (modelId) =>
-        ({
-          mini: { displayName: 'GPT Mini' },
-          'openai/gpt-5': { displayName: 'GPT-5' },
-        })[modelId],
-    }),
   });
   const handle = openDb({ home });
   seedTraces(createTraceStore(handle.db));

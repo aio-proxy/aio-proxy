@@ -1,4 +1,4 @@
-import { type OpenRouterPriceCatalog, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import {
@@ -48,20 +48,15 @@ export type UsageCapture = {
   readonly passthrough: (options: PassthroughUsageOptions) => Captured<Response>;
 };
 
-export function createUsageCapture(options: {
-  readonly priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>;
-  readonly logger?: ServerLogSink;
-}): UsageCapture {
+export function createUsageCapture(options: { readonly logger?: ServerLogSink } = {}): UsageCapture {
   return {
-    stream: (streamOptions) => streamCapture(streamOptions, options.priceCatalogTask, options.logger),
-    passthrough: (passthroughOptions) =>
-      passthroughCapture(passthroughOptions, options.priceCatalogTask, options.logger),
+    stream: (streamOptions) => streamCapture(streamOptions, options.logger),
+    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.logger),
   };
 }
 
 function streamCapture(
   { stream, providerId, modelId, startedAt }: StreamUsageOptions,
-  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -95,7 +90,6 @@ function streamCapture(
                     ...usageProperty(
                       await finalizeUsage({
                         usage: finishUsage,
-                        priceCatalogTask,
                         accounting: { source: 'ai-sdk' },
                         ...(logger === undefined ? {} : { logger }),
                       }),
@@ -147,7 +141,6 @@ function streamCapture(
 
 function passthroughCapture(
   { response, protocol, providerId, modelId, onResponseId, startedAt }: PassthroughUsageOptions,
-  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
   if (response.status < 200 || response.status >= 400) {
@@ -214,7 +207,6 @@ function passthroughCapture(
             observation.usage === undefined && observation.issues === undefined
               ? undefined
               : { ...observation.usage, providerId, modelId },
-          priceCatalogTask,
           accounting: { source: 'passthrough', protocol },
           ...(logger === undefined ? {} : { logger }),
           ...(observation.issues === undefined ? {} : { issues: observation.issues }),

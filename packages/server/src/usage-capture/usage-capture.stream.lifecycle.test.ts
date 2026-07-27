@@ -1,14 +1,24 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import type { OpenRouterPriceCatalog, TextStreamPart, ToolSet } from '@aio-proxy/core';
+import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
 import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
-import { drain, finishPart, textStream } from './test-support';
+import { clearPriceCatalog, drain, finishPart, seedPriceCatalog, textStream } from './test-support';
 
 describe('usage capture stream lifecycle', () => {
+  // Seed an empty price catalog by default so lookups resolve to no price
+  // without touching the network; the pricing case overrides it.
+  beforeEach(async () => {
+    await seedPriceCatalog([]);
+  });
+
+  afterEach(() => {
+    clearPriceCatalog();
+  });
+
   test('a stream without a finish part is failure', async () => {
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: textStream([{ type: 'text-delta', id: 'text-1', text: 'hello' }]),
@@ -23,7 +33,7 @@ describe('usage capture stream lifecycle', () => {
       { type: 'text-delta', id: 'text-1', text: 'hello' },
       { type: 'abort' },
     ] as const satisfies readonly TextStreamPart<ToolSet>[];
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: textStream(parts),
@@ -34,10 +44,9 @@ describe('usage capture stream lifecycle', () => {
   });
 
   test('a normally closed stream with finish is success and priced before completion', async () => {
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'priced/model', input: 2, output: 10, cacheRead: 3, cacheWrite: 4, reasoning: 5 }),
-    };
-    const captured = createUsageCapture({ priceCatalogTask: async () => catalog }).stream({
+    // bare id of 'priced/model' is 'model', so modelId 'model' resolves the price.
+    await seedPriceCatalog([{ id: 'priced/model', input: 2, output: 10, cacheRead: 3, cacheWrite: 4, reasoning: 5 }]);
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: textStream([finishPart()]),
@@ -63,7 +72,7 @@ describe('usage capture stream lifecycle', () => {
 
   test('consumer cancellation resolves cancelled', async () => {
     let cancelled = false;
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: new ReadableStream({
@@ -85,7 +94,7 @@ describe('usage capture stream lifecycle', () => {
   });
 
   test('records ttft from startedAt to the first content delta when streaming', async () => {
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       startedAt: performance.now(),
@@ -101,7 +110,7 @@ describe('usage capture stream lifecycle', () => {
   });
 
   test('omits ttft when startedAt is not provided', async () => {
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: textStream([{ type: 'text-delta', id: 'text-1', text: 'hi' }, finishPart()]),
@@ -114,11 +123,11 @@ describe('usage capture stream lifecycle', () => {
 
   test('pricing failures do not alter stream parts', async () => {
     const parts = [{ type: 'text-delta', id: 'text-1', text: 'hello' }, finishPart()] as const;
-    const captured = createUsageCapture({
-      priceCatalogTask: async () => {
-        throw new Error('pricing unavailable');
-      },
-    }).stream({ providerId: 'provider', modelId: 'model', stream: textStream(parts) });
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream(parts),
+    });
 
     expect(await drain(captured.value)).toEqual(parts);
     await expect(captured.completion).resolves.toEqual({
@@ -137,7 +146,6 @@ describe('usage capture stream validation', () => {
     } satisfies TextStreamPart<ToolSet>;
     const logs: ServerLog[] = [];
     const captured = createUsageCapture({
-      priceCatalogTask: async () => undefined,
       logger: (entry) => logs.push(entry),
     }).stream({
       providerId: 'provider',
@@ -160,12 +168,9 @@ describe('usage capture stream validation', () => {
   });
 
   test('invalid priced usage is dropped and logged', async () => {
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'priced/model', input: -1 }),
-    };
+    await seedPriceCatalog([{ id: 'priced/model', input: -1, output: 0 }]);
     const logs: ServerLog[] = [];
     const captured = createUsageCapture({
-      priceCatalogTask: async () => catalog,
       logger: (entry) => logs.push(entry),
     }).stream({
       providerId: 'provider',

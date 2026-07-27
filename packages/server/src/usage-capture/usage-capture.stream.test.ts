@@ -25,7 +25,7 @@ describe('usage capture stream', () => {
     });
     await settle();
     const beforeCapture = pulls;
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: source,
@@ -46,7 +46,7 @@ describe('usage capture stream', () => {
 
   test('a stream that sends data then errors is failure and preserves the error', async () => {
     const expected = new Error('upstream broke');
-    const capture = createUsageCapture({ priceCatalogTask: async () => undefined });
+    const capture = createUsageCapture();
     const captured = capture.stream({
       providerId: 'provider',
       modelId: 'model',
@@ -65,7 +65,7 @@ describe('usage capture stream', () => {
   test('an upstream AbortError is cancelled and remains visible to the consumer', async () => {
     const expected = new Error('upstream aborted');
     expected.name = 'AbortError';
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).stream({
+    const captured = createUsageCapture().stream({
       providerId: 'provider',
       modelId: 'model',
       stream: new ReadableStream({

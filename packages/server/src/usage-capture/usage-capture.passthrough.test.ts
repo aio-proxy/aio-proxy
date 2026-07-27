@@ -1,17 +1,28 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
+import { clearPriceCatalog, seedPriceCatalog } from './test-support';
 
 describe('usage capture passthrough observation', () => {
+  // Pricing resolves through getProviders(); an empty isolated catalog keeps
+  // the usage-observation cases from touching the network.
+  beforeEach(async () => {
+    await seedPriceCatalog([]);
+  });
+
+  afterEach(() => {
+    clearPriceCatalog();
+  });
+
   test('oversized JSON passthrough stays byte-identical and skips usage observation', async () => {
     const body = JSON.stringify({
       padding: 'x'.repeat(2 * 1024 * 1024),
       usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
     });
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response: new Response(body, { headers: { 'content-type': 'application/json' } }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
@@ -26,7 +37,7 @@ describe('usage capture passthrough observation', () => {
     const body =
       'data: {"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n' +
       `data: ${'x'.repeat(2 * 1024 * 1024)}\n\n`;
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
@@ -47,7 +58,7 @@ describe('usage capture passthrough observation', () => {
       bytes.slice(emojiStart + 2, carriageReturn + 1),
       bytes.slice(carriageReturn + 1),
     ];
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response: new Response(
         new ReadableStream({
           start(controller) {
@@ -76,7 +87,6 @@ describe('usage capture passthrough observation', () => {
     const body = '{"usage":{"prompt_tokens":1.5,"completion_tokens":2,"total_tokens":3.5}}';
     const logs: ServerLog[] = [];
     const captured = createUsageCapture({
-      priceCatalogTask: async () => undefined,
       logger: (entry) => logs.push(entry),
     }).passthrough({
       response: new Response(body, { headers: { 'content-type': 'application/json' } }),
@@ -110,7 +120,6 @@ describe('usage capture passthrough observation', () => {
     ].join('\n');
     const logs: ServerLog[] = [];
     const captured = createUsageCapture({
-      priceCatalogTask: async () => undefined,
       logger: (entry) => logs.push(entry),
     }).passthrough({
       response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),

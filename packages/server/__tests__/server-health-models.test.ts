@@ -6,19 +6,27 @@ import { join } from 'node:path';
 import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { config, expectedModel, expectedModelList, noModelsDevCatalog } from './server.test-support';
+import {
+  clearModelsDevCatalog,
+  config,
+  expectedModel,
+  expectedModelList,
+  seedEmptyModelsDevCatalog,
+} from './server.test-support';
 
 describe('server routes', () => {
   let dir: string;
   const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
     createBaseServer({ ...options, dbHome: dir });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-server-'));
+    await seedEmptyModelsDevCatalog();
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    clearModelsDevCatalog();
   });
 
   test('GET /health returns ok status and version when requested', async () => {
@@ -38,7 +46,7 @@ describe('server routes', () => {
 
   test('Given configured providers When OpenAI models are requested Then model list is returned', async () => {
     // Given
-    const app = await createServer({ config, modelsDevCatalogTask: noModelsDevCatalog });
+    const app = await createServer({ config });
 
     // When
     const response = await app.request('/v1/models');
@@ -58,7 +66,6 @@ describe('server routes', () => {
 
   test('Given API and AI SDK providers with models only When models are requested Then every model is listed', async () => {
     const app = await createServer({
-      modelsDevCatalogTask: noModelsDevCatalog,
       config: {
         providers: {
           api: {

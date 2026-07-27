@@ -1,19 +1,20 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { OpenRouterPriceCatalog } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createUsageCapture } from './index';
+import { clearPriceCatalog, seedPriceCatalog } from './test-support';
 
 describe('usage capture pricing passthrough', () => {
+  afterEach(() => {
+    clearPriceCatalog();
+  });
+
   test('passthrough preserves response metadata and bytes while parsing and pricing usage', async () => {
     const body = JSON.stringify({ usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } });
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'priced/model', input: 2, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 }),
-    };
-    const captured = createUsageCapture({
-      priceCatalogTask: async () => catalog,
-    }).passthrough({
+    // modelId 'priced/model' hits the OpenRouter entry by full id.
+    await seedPriceCatalog([{ id: 'priced/model', input: 2, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 }]);
+    const captured = createUsageCapture().passthrough({
       response: new Response(body, {
         headers: { 'content-type': 'application/json', 'x-upstream': 'yes' },
         status: 200,
@@ -21,7 +22,7 @@ describe('usage capture pricing passthrough', () => {
       }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
-      modelId: 'model',
+      modelId: 'priced/model',
     });
 
     expect(captured.value.status).toBe(200);
@@ -48,14 +49,12 @@ describe('usage capture pricing passthrough', () => {
       '',
       'data: [DONE]',
     ].join('\n');
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'openai/gpt-test', input: 2, output: 10, cacheRead: 0.5 }),
-    };
-    const captured = createUsageCapture({ priceCatalogTask: async () => catalog }).passthrough({
+    await seedPriceCatalog([{ id: 'openai/gpt-test', input: 2, output: 10, cacheRead: 0.5 }]);
+    const captured = createUsageCapture().passthrough({
       response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
-      modelId: 'gpt',
+      modelId: 'openai/gpt-test',
     });
     expect(await captured.value.text()).toBe(body);
     await expect(captured.completion).resolves.toEqual({
@@ -80,14 +79,12 @@ describe('usage capture pricing passthrough', () => {
         prompt_tokens_details: { cached_tokens: 1920 },
       },
     });
-    const catalog: OpenRouterPriceCatalog = {
-      find: () => ({ id: 'openai/gpt-test', input: 2, output: 10 }),
-    };
-    const captured = createUsageCapture({ priceCatalogTask: async () => catalog }).passthrough({
+    await seedPriceCatalog([{ id: 'openai/gpt-test', input: 2, output: 10 }]);
+    const captured = createUsageCapture().passthrough({
       response: new Response(body, { headers: { 'content-type': 'application/json' } }),
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
-      modelId: 'gpt',
+      modelId: 'openai/gpt-test',
     });
     await captured.value.text();
     await expect(captured.completion).resolves.toEqual({

@@ -1,5 +1,9 @@
 import { expect } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import { clearModelsCache } from '@aio-proxy/core';
 import type { createServer } from '@aio-proxy/server';
 import type { TextStreamPart, ToolSet } from 'ai';
 
@@ -13,8 +17,18 @@ export const chatRequest = {
   stream: true,
 };
 const nativeFetch = globalThis.fetch;
+const originalAioHome = process.env.AIO_PROXY_HOME;
+let catalogHome: string | undefined;
 
+// Point the models.dev catalog at an empty OpenRouter map. The catalog now
+// reads through fileCacheStorage (keyed off AIO_PROXY_HOME) and a process-wide
+// LRU before it fetches, so an isolated home plus a cleared cache are required
+// for the fetch stub to actually take effect and to keep the real ~/.aio-proxy
+// untouched.
 export function mockModelsDevCatalog(): void {
+  catalogHome = mkdtempSync(join(tmpdir(), 'aio-proxy-models-dev-catalog-'));
+  process.env.AIO_PROXY_HOME = catalogHome;
+  clearModelsCache();
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
     String(input) === 'https://models.dev/api.json'
       ? Promise.resolve(Response.json({ openrouter: { models: {} } }))
@@ -23,6 +37,13 @@ export function mockModelsDevCatalog(): void {
 
 export function restoreFetch(): void {
   globalThis.fetch = nativeFetch;
+  clearModelsCache();
+  if (catalogHome !== undefined) {
+    rmSync(catalogHome, { force: true, recursive: true });
+    catalogHome = undefined;
+  }
+  if (originalAioHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalAioHome;
 }
 
 export function textStream(parts: readonly TextStreamPart<ToolSet>[]): ReadableStream<TextStreamPart<ToolSet>> {

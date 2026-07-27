@@ -2,7 +2,7 @@ import { openai } from '@ai-sdk/openai';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { ModelMessage, ToolSet } from '../ai-sdk-bridge';
+import type { AiSdkCallSettings, ModelMessage, ToolSet } from '../ai-sdk-bridge';
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
@@ -42,9 +42,10 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   modelInvocation(request) {
     const transformed = openAIResponsesToModelMessages(request);
     const tools = functionToolSet(transformed.tools);
+    const { reasoning, ...settings } = transformed.settings;
     return {
       messages: transformed.messages,
-      settings: transformed.settings,
+      settings: { ...settings, ...reasoningSetting(reasoning) },
       ...(tools === undefined ? {} : { tools }),
     };
   },
@@ -116,6 +117,25 @@ async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string
 
 function conversationId(conversation: OpenAIResponsesRequest['conversation']): string | undefined {
   return typeof conversation === 'string' ? conversation : conversation?.id;
+}
+
+type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
+const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'provider-default',
+];
+
+// Ingress accepts any effort string so a future upstream level is not rejected
+// here, but the AI SDK call options only take the levels it knows. Drop an
+// unrecognized level and let the provider apply its own default.
+function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
+  const known = AI_SDK_REASONING.find((level) => level === effort);
+  return known === undefined ? {} : { reasoning: known };
 }
 
 function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {

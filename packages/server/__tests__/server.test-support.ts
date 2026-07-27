@@ -1,4 +1,8 @@
-import type { ModelsDevCapabilities } from '@aio-proxy/core';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 export const config = {
@@ -33,9 +37,116 @@ export const config = {
   },
 };
 
-export const noModelsDevCatalog = async () => undefined;
+// The models.dev catalog now resolves through fileCacheStorage (keyed off
+// AIO_PROXY_HOME) and a process-wide LRU rather than an injected task. Seed
+// helpers point that catalog at an isolated home so a test controls exactly
+// which model metadata /v1/models sees, and clean up the home plus caches
+// afterwards.
+const originalAioHome = process.env.AIO_PROXY_HOME;
+let seededHome: string | undefined;
 
-export const testCapabilities: ModelsDevCapabilities = {
+function useIsolatedCatalogHome(): void {
+  seededHome = mkdtempSync(join(tmpdir(), 'aio-proxy-catalog-'));
+  process.env.AIO_PROXY_HOME = seededHome;
+  clearModelsCache();
+}
+
+// Reset the catalog home and caches. Pair every seed call with this in afterEach.
+export function clearModelsDevCatalog(): void {
+  clearModelsCache();
+  if (seededHome !== undefined) {
+    rmSync(seededHome, { force: true, recursive: true });
+    seededHome = undefined;
+  }
+  if (originalAioHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalAioHome;
+}
+
+// Point the catalog at an empty OpenRouter map: every model resolves to no
+// metadata, the replacement for the old `noModelsDevCatalog` task.
+export async function seedEmptyModelsDevCatalog(): Promise<void> {
+  useIsolatedCatalogHome();
+  await fileCacheStorage.setItem('models-dev-providers', { openrouter: { models: {} } });
+}
+
+// Seed catalog metadata keyed by the alias slug callers query. Each record is
+// placed under both OpenRouter and, for prefixed slugs, its pinned provider, so
+// getModels resolves it regardless of which lookup branch the slug takes.
+export async function seedModelsDevCatalog(models: Record<string, ModelsDevModel>): Promise<void> {
+  useIsolatedCatalogHome();
+  const providerModels: Record<string, Record<string, ModelsDevModel>> = {
+    anthropic: {},
+    google: {},
+    openai: {},
+    openrouter: {},
+  };
+  const prefixProvider = (slug: string): string =>
+    slug.startsWith('claude-')
+      ? 'anthropic'
+      : slug.startsWith('gemini-')
+        ? 'google'
+        : slug.startsWith('gpt-')
+          ? 'openai'
+          : 'openrouter';
+  for (const [slug, model] of Object.entries(models)) {
+    providerModels.openrouter[slug] = model;
+    providerModels[prefixProvider(slug)][slug] = model;
+  }
+  const providers = Object.fromEntries(Object.entries(providerModels).map(([id, models]) => [id, { models }]));
+  await fileCacheStorage.setItem('models-dev-providers', providers);
+}
+
+// A models.dev record double. Overrides let each test tweak just the fields it
+// exercises; the server derives the Anthropic capabilities shape from this raw
+// Model at the /v1/models boundary.
+export const modelsDevModel = (id: string, name: string, overrides: Partial<ModelsDevModel> = {}): ModelsDevModel => ({
+  attachment: false,
+  description: '',
+  id,
+  last_updated: '2026-01-15',
+  limit: { context: 128_000, output: 8_000 },
+  modalities: { input: ['text'], output: ['text'] },
+  name,
+  open_weights: false,
+  reasoning: false,
+  release_date: '2026-01-15',
+  tool_call: false,
+  ...overrides,
+});
+
+// The capability signals shared by the /v1/models capabilities test.
+export const testCapabilitySignals: Partial<ModelsDevModel> = {
+  reasoning: true,
+  reasoning_options: [
+    { type: 'effort', values: ['low', 'medium', 'high'] },
+    { type: 'budget_tokens', min: 1_024 },
+  ],
+  modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+  structured_output: true,
+};
+
+// The Anthropic capabilities shape the server is expected to emit for the row above.
+// The capabilities shape derived from a default text-only, non-reasoning Model
+// (modelsDevModel with no overrides). Every capability is unsupported.
+export const textOnlyCapabilities = {
+  effort: {
+    high: { supported: false },
+    low: { supported: false },
+    max: { supported: false },
+    medium: { supported: false },
+    supported: false,
+    xhigh: { supported: false },
+  },
+  image_input: { supported: false },
+  pdf_input: { supported: false },
+  structured_outputs: { supported: false },
+  thinking: {
+    supported: false,
+    types: { adaptive: { supported: false }, enabled: { supported: false } },
+  },
+};
+
+export const testCapabilities = {
   effort: {
     high: { supported: true },
     low: { supported: true },
@@ -54,7 +165,7 @@ export const testCapabilities: ModelsDevCapabilities = {
 };
 
 type ExpectedModelMetadata = {
-  readonly capabilities?: ModelsDevCapabilities;
+  readonly capabilities?: typeof testCapabilities | typeof textOnlyCapabilities;
   readonly created?: number;
   readonly createdAt?: string;
   readonly maxInputTokens?: number;

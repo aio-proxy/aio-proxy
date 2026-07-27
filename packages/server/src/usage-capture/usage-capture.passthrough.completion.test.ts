@@ -10,7 +10,7 @@ describe('usage capture passthrough completion', () => {
     const cleanupError = new Error('test cleanup');
     let sourceController!: ReadableStreamDefaultController<Uint8Array>;
     let cancelledReason: unknown;
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response: new Response(
         new ReadableStream({
           start(controller) {
@@ -51,7 +51,7 @@ describe('usage capture passthrough completion', () => {
 
   test('passthrough body errors remain visible and complete as failure', async () => {
     const expected = new Error('upstream body broke');
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response: new Response(
         new ReadableStream({
           start(controller) {
@@ -72,7 +72,7 @@ describe('usage capture passthrough completion', () => {
 
   test('non-success passthrough completes immediately as failure without consuming the body', async () => {
     const response = new Response('rate limited', { status: 429 });
-    const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+    const captured = createUsageCapture().passthrough({
       response,
       protocol: ProviderProtocol.OpenAICompatible,
       providerId: 'provider',
