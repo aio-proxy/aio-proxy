@@ -14,6 +14,7 @@ import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } f
 import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { hasInvalidOrOversizedContentLength } from './pipeline';
+import { prioritizeAffinity } from './pipeline/affinity';
 import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
 import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
@@ -97,12 +98,20 @@ async function handleTokenCountInContext<TRequest, TContext>(
       headers: rawRequest.headers,
     });
     session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: false });
+    if (resolution.responseStatus === 'ambiguous') {
+      return finishRejected(session, adapter.errors.previousResponseConflict(), 'previous_response_conflict');
+    }
     const lease = source.acquireProviderSnapshot();
     try {
       const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+      const affinityOrdered =
+        resolution.affinity?.active === true
+          ? prioritizeAffinity(candidates, resolution.affinity.providerId)
+          : candidates;
+      const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
       return await countCandidates({
         adapter,
-        candidates,
+        candidates: ordered,
         context: resolution.context,
         format,
         invocation,

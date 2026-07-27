@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { geminiGenerateContentAdapter } from '@aio-proxy/core';
 
+import { LogicalSessionStore } from '../logical-session-store';
 import { createGeminiGenerateContentRoutes } from './gemini-generate-content';
 import {
   anthropicRequest,
@@ -10,6 +11,7 @@ import {
   counter,
   geminiContext,
   geminiRequest,
+  openAIResponsesRequest,
   provider,
   requestedModel,
 } from './token-count.test-support';
@@ -79,6 +81,78 @@ test('preserves config order for equal Provider weights', async () => {
 
   expect(await (await fixture.gemini()).json()).toEqual({ totalTokens: 11 });
   expect(calls).toEqual(['first']);
+});
+
+test('uses active session affinity before Provider weight', async () => {
+  const calls: string[] = [];
+  const fixture = countFixture(
+    configOrderedProviders([
+      { provider: provider({ id: 'weighted', tokenCount: counter('weighted', 11, calls) }), weight: 10 },
+      { provider: provider({ id: 'affinity', tokenCount: counter('affinity', 22, calls) }), weight: 1 },
+    ]),
+    {
+      logicalSessionStore: new LogicalSessionStore({
+        repository: {
+          resolveResponse: () => undefined,
+          findAffinity: () => ({ providerId: 'affinity', revision: 1, active: true }),
+        },
+      }),
+    },
+  );
+
+  expect(await (await fixture.anthropic(anthropicRequest({ session_id: 'session-1' }))).json()).toEqual({
+    input_tokens: 22,
+  });
+  expect(calls).toEqual(['affinity']);
+});
+
+test('prioritizes the response owner ahead of ordinary session affinity', async () => {
+  const calls: string[] = [];
+  const fixture = countFixture(
+    configOrderedProviders([
+      { provider: provider({ id: 'weighted', tokenCount: counter('weighted', 11, calls) }), weight: 10 },
+      { provider: provider({ id: 'affinity', tokenCount: counter('affinity', 22, calls) }), weight: 5 },
+      { provider: provider({ id: 'owner', tokenCount: counter('owner', 33, calls) }), weight: 1 },
+    ]),
+    {
+      logicalSessionStore: new LogicalSessionStore({
+        repository: {
+          resolveResponse: () => ({
+            status: 'owned',
+            owner: { identity: { source: 'body-session', id: 'session-1' }, providerId: 'owner' },
+          }),
+          findAffinity: () => ({ providerId: 'affinity', revision: 1, active: true }),
+        },
+      }),
+    },
+  );
+
+  expect(
+    await (await fixture.openAIResponses(openAIResponsesRequest({ previous_response_id: 'resp-1' }))).json(),
+  ).toEqual({ input_tokens: 33 });
+  expect(calls).toEqual(['owner']);
+});
+
+test('rejects an ambiguous previous response before token counting', async () => {
+  const calls: string[] = [];
+  const fixture = countFixture([provider({ id: 'unsafe', tokenCount: counter('unsafe', 11, calls) })], {
+    logicalSessionStore: new LogicalSessionStore({
+      repository: {
+        resolveResponse: () => ({ status: 'ambiguous' }),
+        findAffinity: () => undefined,
+      },
+    }),
+  });
+
+  const response = await fixture.openAIResponses(openAIResponsesRequest({ previous_response_id: 'resp-1' }));
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ error: { code: 'previous_response_conflict' } });
+  expect(calls).toEqual([]);
+  expect(fixture.recording.finals).toEqual([
+    expect.objectContaining({ outcome: 'failure', finalStatusCode: 409, errorCode: 'previous_response_conflict' }),
+  ]);
+  expect(fixture.releases()).toBe(0);
 });
 
 test('records failed and invalid counters before succeeding', async () => {
