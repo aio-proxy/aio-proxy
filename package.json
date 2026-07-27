@@ -53,11 +53,9 @@
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "dev:prepare": "turbo run build --filter=@aio-proxy/core",
     "dev": "bun run dev:prepare && turbo run dev serve:dev --filter=!@aio-proxy/infra",
-    "preflight": "bun run lint:types && bun run format:check && bun run test",
-    "changeset": "changeset"
+    "preflight": "bun run lint:types && bun run format:check && bun run test"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
     "@commitlint/cli": "^21.2.0",
     "@commitlint/config-conventional": "^21.2.0",
     "@logtape/lint": "^2.2.4",

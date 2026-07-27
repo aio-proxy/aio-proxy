@@ -1,6 +1,7 @@
 {
   "name": "@aio-proxy/plugin-sdk",
   "version": "0.0.0",
+  "repository": "github:aio-proxy/aio-proxy",
   "files": [
     "dist"
   ],
