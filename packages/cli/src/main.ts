@@ -34,8 +34,10 @@ import { isProviderLoginUserError } from './plugin-commands/provider-login';
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
 
 const VERSION = packageJson.version;
+const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
 
 const DEFAULT_CONFIG = {
+  $schema: CONFIG_SCHEMA_URL,
   server: { port: 22_078 },
   providers: {},
 } as const;
@@ -71,7 +73,7 @@ const validatePortArgv = (argv: readonly string[]) => {
   }
 };
 
-const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
+export const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
   if (!existsSync(path)) {
     try {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

@@ -6,9 +6,16 @@
   "bin": {
     "aio-proxy": "bin/aio-proxy.js"
   },
+  "exports": {
+    "./config.schema.json": "./config.schema.json"
+  },
   "files": [
-    "bin"
+    "bin",
+    "config.schema.json"
   ],
+  "scripts": {
+    "prepack": "cd ../.. && bun run --filter @aio-proxy/types build && cp packages/types/dist/config.schema.json npm/aio-proxy/config.schema.json"
+  },
   "optionalDependencies": {
     "@aio-proxy/cli-darwin-arm64": "0.0.0",
     "@aio-proxy/cli-darwin-x64": "0.0.0",

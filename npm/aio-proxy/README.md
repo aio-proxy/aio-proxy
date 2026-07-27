@@ -43,3 +43,17 @@ providers:
     options:
       apiKey: '{{env.ANTHROPIC_API_KEY}}'
 ```
+
+## Config schema
+
+Editors that honor the `$schema` field get completion and validation for `config.jsonc`.
+`aio-proxy serve` writes this automatically on first run. To add it by hand:
+
+```jsonc
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "providers": {},
+}
+```
+
+Pin `@latest` to a specific version to match your installed CLI.
