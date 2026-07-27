@@ -11,6 +11,7 @@ import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
 import { createDashboardRequestLogsRoute } from './request-logs';
+import { createDashboardTraceRoutes } from './traces';
 
 export { redactSecrets } from './provider-secrets';
 
@@ -36,6 +37,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       const query = context.req.valid('query');
       return context.json(state.traceStore.overview(query));
     })
+    .route('/traces', createDashboardTraceRoutes(state))
     .route('/logs', createDashboardRequestLogsRoute(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {
