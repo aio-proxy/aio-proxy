@@ -78,7 +78,7 @@ export function createCancellableEgressStream<T>(
       try {
         await cancelSource(reason);
       } finally {
-        completion.reject(reason);
+        completion.resolve();
         release();
       }
     },

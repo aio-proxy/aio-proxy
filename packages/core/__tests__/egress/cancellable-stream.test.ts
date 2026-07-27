@@ -60,9 +60,14 @@ test('downstream cancellation waits for source cleanup before settling completio
   const output = createCancellableEgressStream(source, async ({ parts, enqueue }) => {
     for await (const part of parts) enqueue(new Uint8Array([part]));
   });
-  void output.completion.catch(() => {
-    completionSettled = true;
-  });
+  void output.completion.then(
+    () => {
+      completionSettled = true;
+    },
+    () => {
+      completionSettled = true;
+    },
+  );
 
   const reader = output.getReader();
   await reader.read();
@@ -74,7 +79,7 @@ test('downstream cancellation waits for source cleanup before settling completio
   expect(source.locked).toBe(true);
   cleanup.resolve();
   await cancelled;
-  await expect(output.completion).rejects.toBe('client disconnected');
+  await expect(output.completion).resolves.toBeUndefined();
 });
 
 test('downstream cancellation preserves a source cancellation error', async () => {
@@ -95,7 +100,7 @@ test('downstream cancellation preserves a source cancellation error', async () =
   await reader.read();
 
   await expect(reader.cancel('client disconnected')).rejects.toBe(cancelError);
-  await expect(output.completion).rejects.toBe('client disconnected');
+  await expect(output.completion).resolves.toBeUndefined();
   expect(source.locked).toBe(false);
 });
 

@@ -123,6 +123,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
   });
 
   test('cancels the provider model stream through the real protocol egress', async () => {
+    const controller = new AbortController();
     let cancelCalls = 0;
     const provider = modelProvider({
       id: 'provider',
@@ -139,17 +140,22 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model: REQUESTED_MODEL, messages: [{ role: 'user', content: 'ping' }], stream: true }),
+        signal: controller.signal,
       }),
       source: route.source,
     });
 
     const reader = response.body?.getReader();
     expect((await reader?.read())?.done).toBe(false);
+    controller.abort();
     await reader?.cancel('client stopped');
     await settleRecording(route.recording);
 
     expect(cancelCalls).toBe(1);
     expect(route.usage.capturedStreams[0]?.locked).toBe(false);
+    expect(route.recording.finals[0]).toEqual(
+      expect.objectContaining({ finalProviderId: 'provider', outcome: 'cancelled' }),
+    );
   });
 
   test('records stream=true and a numeric ttft for a streamed model attempt', async () => {
