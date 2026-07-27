@@ -69,16 +69,24 @@ export async function attemptModelCandidate<TRequest, TContext>(
       : {
           onResponseId: (responseId: string) => {
             capturedResponseId = responseId;
-            source.logicalSessionStore.commitResponse(
-              responseId,
-              logicalRequest.session.key,
-              ctx.sessionIdentity,
-              provider.id,
-            );
           },
         }),
   } satisfies ModelEgressContext;
   const ids = { providerId: provider.id, modelId: candidate.modelId };
+  const commitCapturedResponse = () => {
+    if (capturedResponseId === undefined) return;
+    source.logicalSessionStore.commitResponse(
+      capturedResponseId,
+      logicalRequest.session.key,
+      ctx.sessionIdentity,
+      provider.id,
+    );
+  };
+  const commitResponseOnSuccess = (completion: typeof captured.completion) =>
+    completion.then((value) => {
+      if (value.outcome === 'success') commitCapturedResponse();
+      return value;
+    });
 
   if (adapter.wantsStream(request, context)) {
     const stream = await preflightStream(captured.value);
@@ -98,7 +106,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     session.finishFrom(
       ctx.emitter.settleSuccess(
         attemptSpan,
-        terminalCompletion(egressCompletion, rawRequest.signal).finally(release),
+        commitResponseOnSuccess(terminalCompletion(egressCompletion, rawRequest.signal)).finally(release),
         ids,
         () => capturedResponseId,
       ),
@@ -111,6 +119,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   // catch (reusing this span) instead of racing an immediate success completion.
   const value = await adapter.modelJson(captured.value, egressContext);
   const response = Response.json(value);
+  commitCapturedResponse();
   slot.spanRef.current = undefined;
   session.finishFrom(
     ctx.emitter.settleSuccess(

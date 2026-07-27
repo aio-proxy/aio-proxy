@@ -14,6 +14,7 @@ export function createCancellableEgressStream<T>(
   void completion.promise.catch(() => {});
   let cancelled = false;
   let canceling: Promise<void> | undefined;
+  let writerFinished = false;
   let released = false;
   let output: ReadableStreamDefaultController<Uint8Array>;
   let resume: (() => void) | undefined;
@@ -24,8 +25,18 @@ export function createCancellableEgressStream<T>(
     }
   };
   const cancelSource = (reason: unknown): Promise<void> => {
-    canceling ??= reader.cancel(reason).finally(release);
+    if (canceling !== undefined) return canceling;
+    if (released) return Promise.resolve();
+    canceling = reader.cancel(reason).finally(release);
     return canceling;
+  };
+  // Closing with queued bytes makes later downstream cancellation invisible.
+  // Settle only after the queue drains so cancellation can own the outcome.
+  const completeIfDrained = () => {
+    if (writerFinished && !cancelled && (output.desiredSize ?? 0) > 0) {
+      output.close();
+      completion.resolve();
+    }
   };
   const parts = {
     async *[Symbol.asyncIterator]() {
@@ -50,8 +61,8 @@ export function createCancellableEgressStream<T>(
       void run({ parts, enqueue: (value) => controller.enqueue(value) })
         .then(() => {
           if (!cancelled) {
-            controller.close();
-            completion.resolve();
+            writerFinished = true;
+            completeIfDrained();
           }
         })
         .catch(async (error: unknown) => {
@@ -71,6 +82,7 @@ export function createCancellableEgressStream<T>(
     },
     pull() {
       resume?.();
+      completeIfDrained();
     },
     async cancel(reason) {
       cancelled = true;
@@ -78,7 +90,7 @@ export function createCancellableEgressStream<T>(
       try {
         await cancelSource(reason);
       } finally {
-        completion.resolve();
+        completion.reject(new DOMException('The operation was aborted.', 'AbortError'));
         release();
       }
     },

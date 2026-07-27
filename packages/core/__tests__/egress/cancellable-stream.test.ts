@@ -79,7 +79,7 @@ test('downstream cancellation waits for source cleanup before settling completio
   expect(source.locked).toBe(true);
   cleanup.resolve();
   await cancelled;
-  await expect(output.completion).resolves.toBeUndefined();
+  await expect(output.completion).rejects.toHaveProperty('name', 'AbortError');
 });
 
 test('downstream cancellation preserves a source cancellation error', async () => {
@@ -100,8 +100,29 @@ test('downstream cancellation preserves a source cancellation error', async () =
   await reader.read();
 
   await expect(reader.cancel('client disconnected')).rejects.toBe(cancelError);
-  await expect(output.completion).resolves.toBeUndefined();
+  await expect(output.completion).rejects.toHaveProperty('name', 'AbortError');
   expect(source.locked).toBe(false);
+});
+
+test('downstream cancellation skips a source reader released after writer completion', async () => {
+  const source = new ReadableStream<number>({
+    start(controller) {
+      controller.enqueue(1);
+      controller.close();
+    },
+  });
+  const output = createCancellableEgressStream(source, async ({ parts, enqueue }) => {
+    for await (const part of parts) enqueue(new Uint8Array([part]));
+    enqueue(new Uint8Array([2]));
+  });
+
+  const reader = output.getReader();
+  expect((await reader.read()).value).toEqual(new Uint8Array([1]));
+  for (let attempt = 0; source.locked && attempt < 10; attempt += 1) await Promise.resolve();
+  expect(source.locked).toBe(false);
+
+  await expect(reader.cancel('client disconnected')).resolves.toBeUndefined();
+  await expect(output.completion).rejects.toHaveProperty('name', 'AbortError');
 });
 
 test('writer failure cancels the source once without replacing the writer error', async () => {
