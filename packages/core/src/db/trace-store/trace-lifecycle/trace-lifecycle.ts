@@ -144,8 +144,12 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
 
     upsertUsageDelta(tx, input, now, preparedUsage);
 
-    if (input.sessionState?.responseId !== undefined && input.session !== undefined) {
-      upsertResponse(tx, input.sessionState.responseId, input.session.identity, now);
+    if (
+      input.sessionState?.responseId !== undefined &&
+      input.session !== undefined &&
+      input.summary.finalProviderId !== undefined
+    ) {
+      upsertResponse(tx, input.sessionState.responseId, input.session.identity, input.summary.finalProviderId, now);
     }
 
     if (

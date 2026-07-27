@@ -115,7 +115,9 @@ function completedResponseId(protocol: ProviderProtocol, value: unknown): string
   if (protocol !== ProviderProtocol.OpenAIResponse || !isRecord(value)) return undefined;
   const response = isRecord(value['response']) ? value['response'] : value;
   const completed = value['type'] === 'response.completed' || response['status'] === 'completed';
-  return completed && typeof response['id'] === 'string' ? response['id'] : undefined;
+  if (!completed || typeof response['id'] !== 'string') return undefined;
+  const responseId = response['id'].trim();
+  return responseId === '' ? undefined : responseId;
 }
 
 function mergeObservedUsage(

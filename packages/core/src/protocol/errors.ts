@@ -14,6 +14,8 @@ import {
 import type { ProtocolErrorMapper } from './adapter';
 import { InvalidCompressedRequestBodyError } from './request';
 
+const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
+
 export const openAICompletionsErrors: ProtocolErrorMapper = {
   modelUnsupported: (error) =>
     error instanceof ImageInputUnsupportedError
@@ -27,6 +29,7 @@ export const openAICompletionsErrors: ProtocolErrorMapper = {
       ? openAIInvalid(400, 'invalid_request', 'Invalid OpenAI Completions request')
       : undefined,
   modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: () =>
@@ -51,6 +54,7 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
       : undefined;
   },
   modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: openAIUnsupported,
@@ -70,6 +74,7 @@ export const anthropicMessagesErrors: ProtocolErrorMapper = {
       ? anthropicError(400, 'invalid_request_error', 'Invalid Anthropic Messages request')
       : undefined,
   modelNotFound: (message) => anthropicError(404, 'not_found_error', message),
+  previousResponseConflict: () => anthropicError(409, 'invalid_request_error', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => anthropicError(413, 'invalid_request_error', 'Request body too large'),
   unsupportedContentEncoding: () => anthropicError(415, 'invalid_request_error', 'Unsupported Content-Encoding'),
   unsupported: () =>
@@ -95,6 +100,7 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
       : undefined;
   },
   modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),
+  previousResponseConflict: () => geminiError(409, 'ABORTED', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => geminiError(413, 'RESOURCE_EXHAUSTED', 'Request body too large'),
   unsupportedContentEncoding: () => geminiError(415, 'INVALID_ARGUMENT', 'Unsupported Content-Encoding'),
   unsupported: () =>
@@ -195,8 +201,15 @@ function anthropicError(status: number, type: 'invalid_request_error' | 'not_fou
 }
 
 function geminiError(
-  code: 400 | 404 | 413 | 415 | 499 | 500 | 501 | 503,
-  status: 'CANCELLED' | 'INVALID_ARGUMENT' | 'NOT_FOUND' | 'RESOURCE_EXHAUSTED' | 'UNAVAILABLE' | 'UNIMPLEMENTED',
+  code: 400 | 404 | 409 | 413 | 415 | 499 | 500 | 501 | 503,
+  status:
+    | 'ABORTED'
+    | 'CANCELLED'
+    | 'INVALID_ARGUMENT'
+    | 'NOT_FOUND'
+    | 'RESOURCE_EXHAUSTED'
+    | 'UNAVAILABLE'
+    | 'UNIMPLEMENTED',
   message: string,
 ): Response {
   return Response.json({ error: { code, message, status } }, { status: code });

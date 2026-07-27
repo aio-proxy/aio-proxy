@@ -6,4 +6,6 @@ export {
   type LogicalSessionStoreOptions,
   type SessionAffinityObservation,
   type SessionIdentity,
+  type SessionResponseOwner,
+  type SessionResponseResolution,
 } from './logical-session-store';

@@ -5,12 +5,23 @@ import {
   type LogicalSessionRepository,
   type SessionAffinityObservation,
   type SessionIdentity,
+  type SessionResponseResolution,
 } from './logical-session-store';
 
 describe('LogicalSessionStore', () => {
   test('uses internal, protocol, header, previous-response, then generated priority', () => {
     const store = new LogicalSessionStore({
-      repository: stubRepository({ responses: new Map([['resp-1', { source: 'body-session', id: 'body' }]]) }),
+      repository: stubRepository({
+        responses: new Map([
+          [
+            'resp-1',
+            {
+              status: 'owned',
+              owner: { identity: { source: 'body-session', id: 'body' }, providerId: 'provider-a' },
+            },
+          ],
+        ]),
+      }),
     });
     const protocol = [{ source: 'body-session', value: 'body' }] as const;
     const input = {
@@ -68,7 +79,12 @@ describe('LogicalSessionStore', () => {
     // the in-memory map. commitResponse now carries the real (source, id) so the
     // fallback resolves the same identity the persisted path would.
     const store = new LogicalSessionStore();
-    store.commitResponse('resp-mem', 'sha256:deadbeef', { source: 'openai-prompt-cache', id: 'real-session' });
+    store.commitResponse(
+      'resp-mem',
+      'sha256:deadbeef',
+      { source: 'openai-prompt-cache', id: 'real-session' },
+      'provider-a',
+    );
 
     const resolution = store.begin({
       requestId: 'req',
@@ -82,9 +98,38 @@ describe('LogicalSessionStore', () => {
     expect(resolution.context.session).toEqual({ key: 'sha256:deadbeef', source: 'openai-prompt-cache' });
   });
 
+  test('keeps long response ids with the same first 512 characters distinct in memory', () => {
+    const store = new LogicalSessionStore();
+    const prefix = 'x'.repeat(512);
+    store.commitResponse(`${prefix}A`, 'sha256:first', { source: 'body-session', id: 'session-a' }, 'provider-a');
+    store.commitResponse(`${prefix}B`, 'sha256:second', { source: 'body-session', id: 'session-b' }, 'provider-b');
+
+    const resolve = (responseId: string) =>
+      store.begin({
+        requestId: 'req',
+        requestedModelId: 'gpt',
+        hints: { candidates: [], previousResponseId: responseId, transcript: {} },
+        headers: new Headers(),
+      }).identity;
+
+    expect(resolve(`${prefix}A`)).toEqual({ source: 'body-session', id: 'session-a' });
+    expect(resolve(`${prefix}B`)).toEqual({ source: 'body-session', id: 'session-b' });
+  });
+
   test('resolves previous response through the repository with the original identity', () => {
     const repository = stubRepository({
-      responses: new Map([['resp-older', { source: 'openai-prompt-cache', id: 'cache-key' }]]),
+      responses: new Map([
+        [
+          'resp-older',
+          {
+            status: 'owned',
+            owner: {
+              identity: { source: 'openai-prompt-cache', id: 'cache-key' },
+              providerId: 'provider-a',
+            },
+          },
+        ],
+      ]),
     });
     const store = new LogicalSessionStore({ repository });
     const resolution = store.begin({
@@ -97,6 +142,30 @@ describe('LogicalSessionStore', () => {
     expect(resolution.resolvedBy).toBe('previous-response');
     expect(resolution.identity).toEqual({ source: 'openai-prompt-cache', id: 'cache-key' });
     expect(repository.lastResolveResponse).toBe('resp-older');
+  });
+
+  test('keeps the response owner separate from the session affinity observation', () => {
+    const responseOwner = {
+      identity: { source: 'body-session' as const, id: 'session-1' },
+      providerId: 'response-provider',
+    };
+    const affinity: SessionAffinityObservation = { providerId: 'affinity-provider', revision: 3, active: true };
+    const store = new LogicalSessionStore({
+      repository: {
+        resolveResponse: () => ({ status: 'owned', owner: responseOwner }),
+        findAffinity: () => affinity,
+      },
+    });
+
+    const resolution = store.begin({
+      requestId: 'request-a',
+      requestedModelId: 'gpt',
+      hints: { candidates: [], previousResponseId: 'resp-1', transcript: {} },
+      headers: new Headers(),
+    });
+
+    expect(resolution.responseOwner).toEqual(responseOwner);
+    expect(resolution.affinity).toEqual(affinity);
   });
 
   test('returns active affinity observation for a resolved session', () => {
@@ -197,7 +266,7 @@ describe('LogicalSessionStore', () => {
 });
 
 type StubRepositoryOptions = {
-  readonly responses?: Map<string, SessionIdentity>;
+  readonly responses?: Map<string, SessionResponseResolution>;
   readonly affinities?: Map<string, SessionAffinityObservation>;
   readonly resolveError?: Error;
   readonly affinityError?: Error;
@@ -208,7 +277,7 @@ function stubRepository(options: StubRepositoryOptions = {}): LogicalSessionRepo
   readonly lastFindAffinity: { identity: SessionIdentity; requestedModelId: string } | undefined;
   readonly findAffinityCalls: number;
 } {
-  const responses = options.responses ?? new Map<string, SessionIdentity>();
+  const responses = options.responses ?? new Map<string, SessionResponseResolution>();
   const affinities = options.affinities ?? new Map<string, SessionAffinityObservation>();
   let lastResolveResponse: string | undefined;
   let lastFindAffinity: { identity: SessionIdentity; requestedModelId: string } | undefined;

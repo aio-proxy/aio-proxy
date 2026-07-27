@@ -96,7 +96,7 @@ function toRequestLog(row: Row, attempts: readonly DashboardRequestAttempt[]): D
   return {
     requestId: row.requestId ?? '',
     inboundProtocol: row.inboundProtocol ?? '',
-    requestedModelId: row.requestedModelId ?? '',
+    requestedModelId: row.requestedModelId ?? '<unparsed>',
     outcome: outcomeOf(row.terminationReason, row.errorCode),
     ...(row.finalProviderId !== null ? { finalProviderId: row.finalProviderId } : {}),
     ...(row.finalModelId !== null ? { finalModelId: row.finalModelId } : {}),

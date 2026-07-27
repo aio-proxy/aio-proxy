@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from '../src/passthrough-usage';
+import { extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
   test('extracts Anthropic JSON usage', () => {
@@ -13,6 +13,26 @@ describe('passthrough usage extraction', () => {
           usage: {
             input_tokens: 11,
             output_tokens: 13,
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 11,
+      outputTokens: 13,
+      totalTokens: 24,
+    });
+  });
+
+  test('treats nullable Anthropic cache usage as absent', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.Anthropic,
+        JSON.stringify({
+          usage: {
+            input_tokens: 11,
+            output_tokens: 13,
+            cache_read_input_tokens: null,
+            cache_creation_input_tokens: null,
           },
         }),
       ),
@@ -54,7 +74,7 @@ describe('passthrough usage extraction', () => {
       'data: {"type":"message_start","message":{"usage":{"input_tokens":11,"cache_creation_input_tokens":5,"cache_read_input_tokens":7}}}',
       '',
       'event: message_delta',
-      'data: {"type":"message_delta","usage":{"output_tokens":13}}',
+      'data: {"type":"message_delta","usage":{"input_tokens":null,"output_tokens":13,"cache_creation_input_tokens":null,"cache_read_input_tokens":null}}',
       '',
     ].join(newline);
 

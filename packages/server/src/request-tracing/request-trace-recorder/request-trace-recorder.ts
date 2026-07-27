@@ -54,6 +54,7 @@ export function createRequestTraceRecorder(options: {
   readonly store: RequestTraceWriteStore;
   readonly now?: () => Date;
   readonly logger?: ServerLogSink;
+  readonly onResponsePersisted?: (responseId: string) => void;
 }): RequestTraceRecorder {
   const now = options.now ?? (() => new Date());
   let lastPrunedAt = now();
@@ -130,14 +131,22 @@ export function createRequestTraceRecorder(options: {
         try {
           applyTerminalAttributes(root, finish, identity);
           root.end();
-          persistSafely(
-            () =>
-              options.store.complete(
-                buildCompletion({ traceId, rootSpanId, spans: processor.take(traceId), finish, identity }),
-              ),
-            options.logger,
-            { operation: 'complete', requestId, traceId, spanId: rootSpanId },
-          );
+          const completion = buildCompletion({ traceId, rootSpanId, spans: processor.take(traceId), finish, identity });
+          const persisted = persistSafely(() => options.store.complete(completion), options.logger, {
+            operation: 'complete',
+            requestId,
+            traceId,
+            spanId: rootSpanId,
+          });
+          const responseId = completion.sessionState?.responseId;
+          if (persisted === true && responseId !== undefined && options.onResponsePersisted !== undefined) {
+            persistSafely(() => options.onResponsePersisted?.(responseId), options.logger, {
+              operation: 'response_reconcile',
+              requestId,
+              traceId,
+              spanId: rootSpanId,
+            });
+          }
         } finally {
           processor.abandon(traceId);
         }
@@ -214,18 +223,18 @@ function runRecover(store: RequestTraceWriteStore, logger: ServerLogSink | undef
   persistSafely(() => store.recover(now), logger, { operation: 'recover' });
 }
 
-function persistSafely(
-  task: () => void,
+function persistSafely<T>(
+  task: () => T,
   logger: ServerLogSink | undefined,
   failure: {
-    readonly operation: 'root_start' | 'complete' | 'prune' | 'recover';
+    readonly operation: 'root_start' | 'complete' | 'prune' | 'recover' | 'response_reconcile';
     readonly requestId?: string;
     readonly traceId?: string;
     readonly spanId?: string;
   },
-): void {
+): T | undefined {
   try {
-    task();
+    return task();
   } catch (error) {
     if (logger !== undefined) {
       logServerEvent(logger, {
@@ -234,5 +243,6 @@ function persistSafely(
         errorType: serverErrorType(error),
       });
     }
+    return undefined;
   }
 }

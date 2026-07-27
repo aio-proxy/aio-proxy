@@ -134,8 +134,12 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const traceStore = createTraceStore(dbHandle.db);
   const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
   const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog, logger });
-  const requestRecorder = createRequestTraceRecorder({ store: traceStore, logger });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
+  const requestRecorder = createRequestTraceRecorder({
+    store: traceStore,
+    logger,
+    onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
+  });
 
   const configStore = await startRecovery(runtime, {
     recoverAccounts,

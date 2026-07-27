@@ -68,7 +68,12 @@ export async function attemptModelCandidate<TRequest, TContext>(
       : {
           onResponseId: (responseId: string) => {
             capturedResponseId = responseId;
-            source.logicalSessionStore.commitResponse(responseId, logicalRequest.session.key, ctx.sessionIdentity);
+            source.logicalSessionStore.commitResponse(
+              responseId,
+              logicalRequest.session.key,
+              ctx.sessionIdentity,
+              provider.id,
+            );
           },
         }),
   } satisfies ModelEgressContext;

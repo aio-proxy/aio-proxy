@@ -124,7 +124,15 @@ export type RequestRecorderPersistenceFailedLog = {
 
 export type TracePersistenceFailedLog = {
   readonly event: 'trace.persistence_failed';
-  readonly operation: 'root_start' | 'complete' | 'recover' | 'prune' | 'resolve_response' | 'find_affinity';
+  readonly operation:
+    | 'root_start'
+    | 'complete'
+    | 'recover'
+    | 'prune'
+    | 'resolve_response'
+    | 'mark_response_ambiguous'
+    | 'find_affinity'
+    | 'response_reconcile';
   readonly requestId?: string;
   readonly traceId?: string;
   readonly spanId?: string;

@@ -1,7 +1,7 @@
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { listRequestLogs } from './request-logs';
-import { findAffinity, resolveResponse } from './session-state';
+import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
 import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
 import { find, list } from './trace-queries';
 import type { TraceStore } from './types';
@@ -16,6 +16,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     find: (traceId) => find(db, traceId),
     overview: (query) => overview(db, query),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),
+    markResponseAmbiguous: (responseId, now) => markResponseAmbiguous(db, responseId, now),
     findAffinity: (identity, requestedModelId, now) => findAffinity(db, identity, requestedModelId, now),
     recover: (now) => recover(db, now),
     prune: (traceCutoff, sessionCutoff) => prune(db, traceCutoff, sessionCutoff),

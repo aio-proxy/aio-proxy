@@ -22,10 +22,69 @@ test('releases the retained body when count request validation fails', async () 
   expect(response.status).toBe(400);
   expect(request.bodyUsed).toBe(true);
   expect(fixture.recording.begins).toEqual([{ inboundProtocol: anthropicMessagesAdapter.protocol }]);
-  // Client-error early return now finishes the running root as a terminal failure
-  // instead of leaving it running (see finishRejected in token-count.ts).
   expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 400 })]);
   expect(fixture.releases()).toBe(0);
+});
+
+test('finishes the trace before rethrowing an unmapped request error', async () => {
+  const failure = new Error('unexpected parse failure');
+  const request = anthropicRequest(new AbortController().signal);
+  const fixture = countSource([]);
+  const adapter = {
+    ...anthropicMessagesAdapter,
+    parse: () => Promise.reject(failure),
+  };
+
+  await expect(runCount(fixture.source, request, { adapter })).rejects.toBe(failure);
+
+  expect(request.bodyUsed).toBe(true);
+  expect(fixture.recording.attempts).toEqual([]);
+  expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+  expect(fixture.releases()).toBe(0);
+});
+
+const responseFormattingCases = [
+  ['count', countProvider(async () => ({ inputTokens: 5 })), { outcome: 'success', statusCode: 200 }],
+  [
+    'estimated count',
+    countProvider(() => Promise.reject(new Error('counter unavailable'))),
+    { outcome: 'failure', statusCode: 500 },
+  ],
+] as const;
+
+test.each(responseFormattingCases)(
+  'builds the %s response before recording success',
+  async (_name, provider, attempt) => {
+    const failure = new Error('response formatting failed');
+    const request = anthropicRequest(new AbortController().signal);
+    const fixture = countSource([provider]);
+    await expect(
+      runCount(fixture.source, request, {
+        format: () => {
+          throw failure;
+        },
+      }),
+    ).rejects.toBe(failure);
+
+    expect(request.bodyUsed).toBe(true);
+    expect(fixture.recording.attempts).toEqual([expect.objectContaining({ ...attempt, providerId: 'counter' })]);
+    expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+    expect(fixture.releases()).toBe(1);
+  },
+);
+
+test('rethrows an unmapped provider error instead of returning an estimate', async () => {
+  const failure = Object.freeze({ kind: 'unexpected-provider-failure' });
+  const request = anthropicRequest(new AbortController().signal);
+  const fixture = countSource([countProvider(() => Promise.reject(failure))]);
+
+  await expect(runCount(fixture.source, request)).rejects.toBe(failure);
+
+  expect(request.bodyUsed).toBe(true);
+  expect(fixture.recording.attempts).toEqual([expect.objectContaining({ outcome: 'failure', providerId: 'counter' })]);
+  expect(fixture.recording.attempts[0]).not.toHaveProperty('statusCode');
+  expect(fixture.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+  expect(fixture.releases()).toBe(1);
 });
 
 const abortReasons = [
@@ -185,11 +244,18 @@ function countProvider(countTokens: TokenCountCapability['countTokens'], id = 'c
   };
 }
 
-function runCount(source: ProviderRouteSource, rawRequest: Request): Promise<Response> {
+function runCount(
+  source: ProviderRouteSource,
+  rawRequest: Request,
+  options: {
+    readonly adapter?: typeof anthropicMessagesAdapter;
+    readonly format?: (inputTokens: number) => unknown;
+  } = {},
+): Promise<Response> {
   return handleTokenCount({
-    adapter: anthropicMessagesAdapter,
+    adapter: options.adapter ?? anthropicMessagesAdapter,
     context: {},
-    format: (inputTokens) => ({ input_tokens: inputTokens }),
+    format: options.format ?? ((inputTokens) => ({ input_tokens: inputTokens })),
     rawRequest,
     source,
   });

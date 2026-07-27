@@ -26,6 +26,7 @@ describe('defineProtocolAdapter', () => {
       errors: {
         requestError: () => undefined,
         modelNotFound: (message) => Response.json({ message }, { status: 404 }),
+        previousResponseConflict: () => new Response(null, { status: 409 }),
         tooLarge: () => new Response(null, { status: 413 }),
         unsupported: () => new Response(null, { status: 501 }),
         provider: () => undefined,

@@ -68,10 +68,10 @@ function anthropicUsage(value: unknown): UsageExtraction {
     return { kind: 'absent' };
   }
   const usage = container['usage'];
-  const inputTokens = numberField(usage, 'input_tokens', 'inputTokens');
+  const inputTokens = usageNumber(usage['input_tokens'] ?? undefined, 'inputTokens');
   const outputTokens = numberField(usage, 'output_tokens', 'outputTokens');
-  const cacheReadTokens = numberField(usage, 'cache_read_input_tokens', 'cacheReadTokens');
-  const cacheWriteTokens = numberField(usage, 'cache_creation_input_tokens', 'cacheWriteTokens');
+  const cacheReadTokens = usageNumber(usage['cache_read_input_tokens'] ?? undefined, 'cacheReadTokens');
+  const cacheWriteTokens = usageNumber(usage['cache_creation_input_tokens'] ?? undefined, 'cacheWriteTokens');
   return tokenUsage({
     inputTokens,
     outputTokens,

@@ -1,24 +1,32 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { hashSession } from '../../../protocol/session';
 import { sessionAffinity, sessionResponse } from '../../schema';
-import type { SessionAffinityObservation, SessionIdentity } from '../types';
+import type { SessionAffinityObservation, SessionIdentity, SessionResponseResolution } from '../types';
 
 const AFFINITY_TTL_MS = 60 * 60 * 1000;
 
-function hashResponseId(responseId: string): string {
+function hashResponseId(responseId: string): `sha256:${string}` | undefined {
   const trimmed = responseId.trim();
-  if (trimmed.length === 0) {
-    throw new Error('Response ID must not be empty');
-  }
-  return new Bun.CryptoHasher('sha256').update(trimmed).digest('hex');
+  if (trimmed.length === 0) return undefined;
+  return hashSession('response-id', trimmed);
 }
 
-export function resolveResponse(db: BunSQLiteDatabase, responseId: string, now: Date): SessionIdentity | undefined {
+export function resolveResponse(
+  db: BunSQLiteDatabase,
+  responseId: string,
+  now: Date,
+): SessionResponseResolution | undefined {
   const hash = hashResponseId(responseId);
+  if (hash === undefined) return undefined;
   const row = db.select().from(sessionResponse).where(eq(sessionResponse.responseIdSha256, hash)).get();
   if (row === undefined) {
     return undefined;
+  }
+  // Ambiguity is a permanent security tombstone: TTL must never restore routing.
+  if (row.ambiguous || row.sessionSource === null || row.sessionId === null || row.providerId === null) {
+    return { status: 'ambiguous' };
   }
   if (row.expiresAt.getTime() <= now.getTime()) {
     return undefined;
@@ -27,23 +35,62 @@ export function resolveResponse(db: BunSQLiteDatabase, responseId: string, now: 
   db.transaction((tx) => {
     tx.update(sessionResponse).set({ expiresAt: newExpiry }).where(eq(sessionResponse.responseIdSha256, hash)).run();
   });
-  return { source: row.sessionSource as SessionIdentity['source'], id: row.sessionId };
+  return {
+    status: 'owned',
+    owner: {
+      identity: { source: row.sessionSource as SessionIdentity['source'], id: row.sessionId },
+      providerId: row.providerId,
+    },
+  };
 }
 
-export function upsertResponse(tx: BunSQLiteDatabase, responseId: string, identity: SessionIdentity, now: Date): void {
+export function upsertResponse(
+  tx: BunSQLiteDatabase,
+  responseId: string,
+  identity: SessionIdentity,
+  providerId: string,
+  now: Date,
+): void {
   const hash = hashResponseId(responseId);
+  if (hash === undefined) return;
   const expiresAt = new Date(now.getTime() + AFFINITY_TTL_MS);
-  tx.insert(sessionResponse)
+  const existing = tx.select().from(sessionResponse).where(eq(sessionResponse.responseIdSha256, hash)).get();
+  if (existing === undefined) {
+    tx.insert(sessionResponse)
+      .values({
+        responseIdSha256: hash,
+        sessionSource: identity.source,
+        sessionId: identity.id,
+        providerId,
+        ambiguous: false,
+        expiresAt,
+      })
+      .run();
+    return;
+  }
+  const sameOwner =
+    existing.sessionSource === identity.source &&
+    existing.sessionId === identity.id &&
+    existing.providerId === providerId;
+  tx.update(sessionResponse)
+    .set({ expiresAt, ambiguous: existing.ambiguous || !sameOwner })
+    .where(eq(sessionResponse.responseIdSha256, hash))
+    .run();
+}
+
+export function markResponseAmbiguous(db: BunSQLiteDatabase, responseId: string, now: Date): void {
+  const hash = hashResponseId(responseId);
+  if (hash === undefined) return;
+  db.insert(sessionResponse)
     .values({
       responseIdSha256: hash,
-      sessionSource: identity.source,
-      sessionId: identity.id,
-      expiresAt,
+      sessionSource: null,
+      sessionId: null,
+      providerId: null,
+      ambiguous: true,
+      expiresAt: new Date(now.getTime() + AFFINITY_TTL_MS),
     })
-    .onConflictDoUpdate({
-      target: sessionResponse.responseIdSha256,
-      set: { sessionSource: identity.source, sessionId: identity.id, expiresAt },
-    })
+    .onConflictDoUpdate({ target: sessionResponse.responseIdSha256, set: { ambiguous: true } })
     .run();
 }
 
@@ -112,7 +159,9 @@ export function pruneSessionState(tx: BunSQLiteDatabase, cutoff: Date): void {
   tx.delete(sessionAffinity)
     .where(sql`${sessionAffinity.expiresAt} <= ${cutoff.getTime()}`)
     .run();
+  // ponytail: ambiguous rows are retained indefinitely; move them to a bounded
+  // durable deny-set if collision volume becomes measurable.
   tx.delete(sessionResponse)
-    .where(sql`${sessionResponse.expiresAt} <= ${cutoff.getTime()}`)
+    .where(and(eq(sessionResponse.ambiguous, false), sql`${sessionResponse.expiresAt} <= ${cutoff.getTime()}`))
     .run();
 }

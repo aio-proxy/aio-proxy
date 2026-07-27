@@ -1,1 +1,8 @@
-export { applyAffinity, findAffinity, pruneSessionState, resolveResponse, upsertResponse } from './session-state';
+export {
+  applyAffinity,
+  findAffinity,
+  markResponseAmbiguous,
+  pruneSessionState,
+  resolveResponse,
+  upsertResponse,
+} from './session-state';

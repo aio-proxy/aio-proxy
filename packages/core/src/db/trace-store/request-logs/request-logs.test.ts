@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { DashboardRequestLogsResponseSchema } from '@aio-proxy/types';
+
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
 import type { StoredSpan, TraceCompletion, TraceRootStart } from '../types';
@@ -189,6 +191,31 @@ describe('legacy request-logs projection from trace roots', () => {
       const failures = store.listRequestLogs({ page: 1, pageSize: PAGE_SIZE, outcome: 'failure' });
       expect(failures.total).toBe(1);
       expect(failures.items[0]?.requestId).toBe('req-bad');
+    } finally {
+      handle.close();
+    }
+  });
+});
+
+describe('early-rejected request-log projection', () => {
+  test('projects an early-rejected request with the unparsed model sentinel', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      completeWithAttempts(
+        store,
+        'unparsed',
+        NOW,
+        new Date(NOW.getTime() + 100),
+        { finalHttpStatus: 400, terminationReason: 'failure' },
+        {},
+        [],
+      );
+
+      const result = store.listRequestLogs({ page: 1, pageSize: PAGE_SIZE });
+
+      expect(result.items[0]?.requestedModelId).toBe('<unparsed>');
+      expect(DashboardRequestLogsResponseSchema.parse(result)).toEqual(result);
     } finally {
       handle.close();
     }

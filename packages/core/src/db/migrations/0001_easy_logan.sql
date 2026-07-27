@@ -12,8 +12,10 @@ CREATE TABLE `session_affinity` (
 CREATE INDEX `session_affinity_expires_idx` ON `session_affinity` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `session_response` (
 	`response_id_sha256` text PRIMARY KEY NOT NULL,
-	`session_source` text NOT NULL,
-	`session_id` text NOT NULL,
+	`session_source` text,
+	`session_id` text,
+	`provider_id` text,
+	`ambiguous` integer DEFAULT false NOT NULL,
 	`expires_at` integer NOT NULL
 );
 --> statement-breakpoint

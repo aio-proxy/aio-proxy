@@ -116,6 +116,19 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       headers: rawRequest.headers,
     });
     session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: true });
+    if (resolution.responseStatus === 'ambiguous') {
+      const error = new Error('Ambiguous previous response ownership');
+      return rejectRequest({
+        source,
+        session,
+        rawRequest,
+        inboundProtocol: adapter.protocol,
+        requestedModelId: requestedModel,
+        response: adapter.errors.previousResponseConflict(),
+        errorCode: 'previous_response_conflict',
+        error,
+      });
+    }
     logRequestDiagnostics({
       source,
       requestId: session.requestId,

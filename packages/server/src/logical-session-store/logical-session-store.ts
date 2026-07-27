@@ -2,6 +2,7 @@ import { hashSession, normalizeSessionValue, type ProtocolSessionHints, selectSe
 import type { LogicalRequestContext, LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 
 import { logServerEvent, type ServerLogSink } from '../server-log';
+import { ResponseOwnershipCache } from './response-cache';
 
 export type LogicalSessionInput = {
   readonly requestId?: string;
@@ -16,21 +17,37 @@ export type SessionIdentity = {
   readonly id: string;
 };
 
+export type SessionResponseOwner = {
+  readonly identity: SessionIdentity;
+  readonly providerId: string;
+};
+
+export type SessionResponseResolution =
+  | { readonly status: 'owned'; readonly owner: SessionResponseOwner }
+  | { readonly status: 'ambiguous' };
+
 export type SessionAffinityObservation = {
   readonly providerId: string;
   readonly revision: number;
   readonly active: boolean;
 };
 
-export type LogicalSessionResolution = LogicalRequestContext & {
-  readonly context: LogicalRequestContext;
-  readonly identity: SessionIdentity;
-  readonly resolvedBy: LogicalSessionSource;
-  readonly affinity?: SessionAffinityObservation;
-};
+type LogicalResponseState =
+  | { readonly responseStatus: 'none'; readonly responseOwner?: never }
+  | { readonly responseStatus: 'owned'; readonly responseOwner: SessionResponseOwner }
+  | { readonly responseStatus: 'ambiguous'; readonly responseOwner?: never };
+
+export type LogicalSessionResolution = LogicalRequestContext &
+  LogicalResponseState & {
+    readonly context: LogicalRequestContext;
+    readonly identity: SessionIdentity;
+    readonly resolvedBy: LogicalSessionSource;
+    readonly affinity?: SessionAffinityObservation;
+  };
 
 export type LogicalSessionRepository = {
-  readonly resolveResponse: (responseId: string, now: Date) => SessionIdentity | undefined;
+  readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
+  readonly markResponseAmbiguous?: (responseId: string, now: Date) => void;
   readonly findAffinity: (
     identity: SessionIdentity,
     requestedModelId: string,
@@ -46,14 +63,6 @@ const NOOP_REPOSITORY: LogicalSessionRepository = {
 const DEFAULT_TTL_MS = 3_600_000;
 const DEFAULT_MAX_ENTRIES = 10_240;
 
-type ResponseSession = {
-  readonly sessionKey: `sha256:${string}`;
-  // Real (source, id) so the memory fallback returns the same identity the
-  // persisted path would; undefined only for legacy callers without it.
-  readonly identity?: SessionIdentity;
-  accessedAt: number;
-};
-
 export type LogicalSessionStoreOptions = {
   readonly repository?: LogicalSessionRepository;
   readonly logger?: ServerLogSink;
@@ -63,65 +72,77 @@ export type LogicalSessionStoreOptions = {
 };
 
 type SelectedSession = LogicalRequestContext['session'];
+type SelectedResolution = {
+  readonly session: SelectedSession;
+  readonly identity: SessionIdentity;
+  readonly resolvedBy: LogicalSessionSource;
+};
+
+type PreviousResponseResolution =
+  | { readonly status: 'owned'; readonly owner: SessionResponseOwner; readonly selected: SelectedResolution }
+  | { readonly status: 'ambiguous' };
 
 export class LogicalSessionStore {
   readonly #repository: LogicalSessionRepository;
   readonly #logger: ServerLogSink | undefined;
   readonly #now: () => Date;
-  readonly #ttlMs: number;
-  readonly #maxEntries: number;
-  readonly #responses = new Map<string, ResponseSession>();
+  readonly #responses: ResponseOwnershipCache;
 
   constructor(options: LogicalSessionStoreOptions = {}) {
     this.#repository = options.repository ?? NOOP_REPOSITORY;
     this.#logger = options.logger;
     this.#now = options.now ?? (() => new Date());
-    this.#ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
-    this.#maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    this.#responses = new ResponseOwnershipCache(
+      options.ttlMs ?? DEFAULT_TTL_MS,
+      options.maxEntries ?? DEFAULT_MAX_ENTRIES,
+    );
   }
 
   begin(input: LogicalSessionInput): LogicalSessionResolution {
     const now = this.#now();
     const requestId = input.requestId ?? crypto.randomUUID();
     const requestedModelId = input.requestedModelId ?? 'unknown';
-    const selected = this.#select(input, now, requestId);
+    const response = this.#previousResponse(input.hints.previousResponseId, now, requestId);
+    const selected = this.#select(input, response?.status === 'owned' ? response.selected : undefined);
     const context: LogicalRequestContext = { requestId, session: selected.session };
 
     const affinity =
-      selected.resolvedBy === 'generated'
+      response?.status === 'ambiguous' || selected.resolvedBy === 'generated'
         ? undefined
         : this.#safeFindAffinity(selected.identity, requestedModelId, now, requestId);
 
-    return {
+    const resolution = {
       ...context,
       context,
       identity: selected.identity,
       resolvedBy: selected.resolvedBy,
       ...(affinity === undefined ? {} : { affinity }),
     };
+    if (response?.status === 'owned') {
+      return { ...resolution, responseStatus: 'owned', responseOwner: response.owner };
+    }
+    if (response?.status === 'ambiguous') return { ...resolution, responseStatus: 'ambiguous' };
+    return { ...resolution, responseStatus: 'none' };
   }
 
-  /**
-   * Transitional in-memory write path. Production writes move to the terminal
-   * TraceStore transaction in Task 5; this keeps isolated route fixtures working
-   * and serves as a fallback when no repository is injected.
-   */
-  commitResponse(responseId: string, sessionKey: `sha256:${string}`, identity?: SessionIdentity): void {
-    const normalized = normalizeSessionValue(responseId);
-    if (normalized === undefined) return;
-    this.#responses.set(normalized, {
-      sessionKey,
-      ...(identity === undefined ? {} : { identity }),
-      accessedAt: this.#now().getTime(),
-    });
-    while (this.#responses.size > this.#maxEntries) this.#evictOldest();
+  commitResponse(
+    responseId: string,
+    sessionKey: `sha256:${string}`,
+    identity: SessionIdentity,
+    providerId: string,
+  ): void {
+    this.#responses.commit(responseId, sessionKey, identity, providerId, this.#now().getTime());
   }
 
-  #select(
-    input: LogicalSessionInput,
-    now: Date,
-    requestId: string,
-  ): { session: SelectedSession; identity: SessionIdentity; resolvedBy: LogicalSessionSource } {
+  reconcilePersistedResponse(responseId: string): void {
+    const trimmed = responseId.trim();
+    if (trimmed.length === 0) return;
+    const now = this.#now();
+    const persisted = this.#safeResolveResponse(trimmed, now, undefined);
+    this.#reconcileResponse(trimmed, persisted, now, undefined);
+  }
+
+  #select(input: LogicalSessionInput, previous: SelectedResolution | undefined): SelectedResolution {
     const internal = this.#internalCandidate(input.internalSessionId);
     if (internal !== undefined) return internal;
 
@@ -131,7 +152,6 @@ export class LogicalSessionStore {
     const header = this.#headerCandidate(input.headers);
     if (header !== undefined) return header;
 
-    const previous = this.#previousResponse(input.hints.previousResponseId, now, requestId);
     if (previous !== undefined) return previous;
 
     const identity: SessionIdentity = { source: 'generated', id: crypto.randomUUID() };
@@ -190,45 +210,63 @@ export class LogicalSessionStore {
     responseId: string | undefined,
     now: Date,
     requestId: string,
-  ): { session: SelectedSession; identity: SessionIdentity; resolvedBy: LogicalSessionSource } | undefined {
+  ): PreviousResponseResolution | undefined {
     if (responseId === undefined) return undefined;
     const trimmed = responseId.trim();
     if (trimmed.length === 0) return undefined;
 
     const persisted = this.#safeResolveResponse(trimmed, now, requestId);
-    if (persisted !== undefined) {
-      return {
-        session: { key: hashSession(persisted.source, persisted.id), source: persisted.source },
-        identity: persisted,
-        resolvedBy: 'previous-response',
-      };
-    }
-
-    const normalized = normalizeSessionValue(trimmed);
-    if (normalized === undefined) return undefined;
-    const entry = this.#responses.get(normalized);
-    if (entry === undefined) return undefined;
-    const nowMs = now.getTime();
-    if (entry.accessedAt + this.#ttlMs <= nowMs) {
-      this.#responses.delete(normalized);
-      return undefined;
-    }
-    entry.accessedAt = nowMs;
-    const identity: SessionIdentity = entry.identity ?? { source: 'previous-response', id: entry.sessionKey };
+    const response = this.#reconcileResponse(trimmed, persisted, now, requestId);
+    if (response === undefined) return undefined;
+    if (response.status === 'ambiguous') return response;
+    const { owner } = response;
     return {
-      session: { key: entry.sessionKey, source: identity.source },
-      identity,
-      resolvedBy: 'previous-response',
+      status: 'owned',
+      owner,
+      selected: {
+        session: {
+          key: 'sessionKey' in response ? response.sessionKey : hashSession(owner.identity.source, owner.identity.id),
+          source: owner.identity.source,
+        },
+        identity: owner.identity,
+        resolvedBy: 'previous-response',
+      },
     };
   }
 
-  #safeResolveResponse(responseId: string, now: Date, requestId: string): SessionIdentity | undefined {
+  #safeResolveResponse(
+    responseId: string,
+    now: Date,
+    requestId: string | undefined,
+  ): SessionResponseResolution | undefined {
     try {
       return this.#repository.resolveResponse(responseId, now);
     } catch (error) {
       this.#emitPersistenceFailure('resolve_response', requestId, error);
       return undefined;
     }
+  }
+
+  #reconcileResponse(
+    responseId: string,
+    persisted: SessionResponseResolution | undefined,
+    now: Date,
+    requestId: string | undefined,
+  ) {
+    const response = this.#responses.reconcile(responseId, persisted, now.getTime());
+    if (
+      response?.status === 'ambiguous' &&
+      persisted?.status !== 'ambiguous' &&
+      'repair' in response &&
+      response.repair
+    ) {
+      try {
+        this.#repository.markResponseAmbiguous?.(responseId, now);
+      } catch (error) {
+        this.#emitPersistenceFailure('mark_response_ambiguous', requestId, error);
+      }
+    }
+    return response;
   }
 
   #safeFindAffinity(
@@ -245,20 +283,8 @@ export class LogicalSessionStore {
     }
   }
 
-  #evictOldest(): void {
-    let oldestId: string | undefined;
-    let oldestAccess = Number.POSITIVE_INFINITY;
-    for (const [responseId, entry] of this.#responses) {
-      if (entry.accessedAt < oldestAccess) {
-        oldestId = responseId;
-        oldestAccess = entry.accessedAt;
-      }
-    }
-    if (oldestId !== undefined) this.#responses.delete(oldestId);
-  }
-
   #emitPersistenceFailure(
-    operation: 'resolve_response' | 'find_affinity',
+    operation: 'resolve_response' | 'mark_response_ambiguous' | 'find_affinity',
     requestId: string | undefined,
     error: unknown,
   ): void {

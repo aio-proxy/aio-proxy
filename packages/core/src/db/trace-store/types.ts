@@ -36,6 +36,15 @@ export type SessionIdentity = {
   readonly id: string;
 };
 
+export type SessionResponseOwner = {
+  readonly identity: SessionIdentity;
+  readonly providerId: string;
+};
+
+export type SessionResponseResolution =
+  | { readonly status: 'owned'; readonly owner: SessionResponseOwner }
+  | { readonly status: 'ambiguous' };
+
 export type SessionAffinityObservation = {
   readonly providerId: string;
   readonly revision: number;
@@ -130,7 +139,8 @@ export type TraceStore = {
   readonly listRequestLogs: (query: RequestLogsQuery) => DashboardRequestLogsResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
-  readonly resolveResponse: (responseId: string, now: Date) => SessionIdentity | undefined;
+  readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
+  readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (
     identity: SessionIdentity,
     requestedModelId: string,

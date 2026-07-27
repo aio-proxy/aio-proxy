@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from '../src/passthrough-usage';
+import { extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
   test('extracts OpenAI Chat JSON usage', () => {
@@ -74,6 +74,15 @@ describe('passthrough usage extraction', () => {
         'event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":8,"total_tokens":15}}}\n\n',
       ),
     ).toEqual({ inputTokens: 7, outputTokens: 8, totalTokens: 15 });
+  });
+
+  test('treats a blank completed OpenAI Responses id as absent', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.OpenAIResponse,
+        JSON.stringify({ id: '   ', status: 'completed' }),
+      ),
+    ).toEqual({});
   });
 
   test('accepts CRLF SSE framing', () => {

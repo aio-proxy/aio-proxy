@@ -43,8 +43,17 @@ export async function handleTokenCount<TRequest, TContext>(
         logger: source.logger,
       },
       async () => {
-        const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
-        return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
+        try {
+          const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
+          return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
+        } catch (error) {
+          if (rawRequest.signal.aborted) {
+            session.finish({ outcome: 'cancelled' });
+            throw rawRequest.signal.reason;
+          }
+          session.finish({ outcome: 'failure', errorCode: 'internal_error' });
+          throw error;
+        }
       },
     ),
   );
@@ -162,6 +171,7 @@ async function countCandidates<TRequest, TContext>({
     throwIfCountAborted(session, rawRequest.signal);
     const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
     const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
+    let inputTokens: number;
     try {
       const result = await withAttemptLogContext(
         { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
@@ -178,15 +188,7 @@ async function countCandidates<TRequest, TContext>({
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
         throw new TypeError('Provider token count must be a non-negative integer');
       }
-      attemptSpan.span.setAttribute(attributeName.httpStatusCode, 200);
-      attemptSpan.end();
-      session.finish({
-        outcome: 'success',
-        finalProviderId: provider.id,
-        finalModelId: candidate.modelId,
-        finalHttpStatus: 200,
-      });
-      return Response.json(format(result.inputTokens));
+      inputTokens = result.inputTokens;
     } catch (error) {
       if (rawRequest.signal.aborted) {
         attemptSpan.end({ outcome: 'cancelled' });
@@ -195,13 +197,26 @@ async function countCandidates<TRequest, TContext>({
       }
       const mapped = adapter.errors.provider(error);
       attemptSpan.end(failureTerminal(mapped?.status));
+      if (mapped === undefined) throw error;
+      continue;
     }
+    attemptSpan.span.setAttribute(attributeName.httpStatusCode, 200);
+    attemptSpan.end();
+    const response = Response.json(format(inputTokens));
+    session.finish({
+      outcome: 'success',
+      finalProviderId: provider.id,
+      finalModelId: candidate.modelId,
+      finalHttpStatus: 200,
+    });
+    return response;
   }
 
   throwIfCountAborted(session, rawRequest.signal);
   const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
+  const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
   session.finish({ outcome: 'success', finalHttpStatus: 200 });
-  return Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
+  return response;
 }
 
 function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelInvocation): boolean {

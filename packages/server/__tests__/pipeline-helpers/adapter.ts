@@ -74,6 +74,7 @@ export function defineProtocolAdapter(
       requestError: (error) =>
         error instanceof SyntaxError ? errorResponse(400, 'request_error', 'Invalid test request') : undefined,
       modelNotFound: (message) => errorResponse(404, 'model_not_found', message),
+      previousResponseConflict: () => errorResponse(409, 'previous_response_conflict', 'ambiguous previous response'),
       tooLarge: () => errorResponse(413, 'too_large', 'Request body too large'),
       unsupported: (feature) => errorResponse(501, 'unsupported', feature),
       provider: (error) => (error instanceof Error ? errorResponse(502, 'provider_error', error.message) : undefined),

@@ -31,8 +31,9 @@ export async function attemptCandidates<TRequest, TContext>(
 ): Promise<Response> {
   const { adapter, candidates, context, deferRelease, resolution, rawRequest, release, request, session, source } =
     options;
-  const ordered =
+  const affinityOrdered =
     resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
+  const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
 
   const streamRequested = adapter.wantsStream(request, context);
   const logContext = {

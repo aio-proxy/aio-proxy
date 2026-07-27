@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
-import { sessionAffinity, sessionResponse } from '../../schema';
+import type { UsageRow } from '@aio-proxy/types';
+
+import { hashSession } from '../../../protocol/session';
+import { sessionAffinity, sessionResponse, traceSpan } from '../../schema';
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
 
@@ -9,7 +12,12 @@ const ROOT_SPAN_ID = 'b'.repeat(16);
 const STARTED_AT = new Date('2026-07-24T10:00:00.000Z');
 const ENDED_AT = new Date('2026-07-24T10:00:00.100Z');
 
-function completeWithSession(store: ReturnType<typeof createTraceStore>, responseId?: string, observed?: unknown) {
+function completeWithSession(
+  store: ReturnType<typeof createTraceStore>,
+  responseId?: string,
+  observed?: unknown,
+  usage?: UsageRow,
+) {
   return store.complete({
     traceId: TRACE_ID,
     rootSpanId: ROOT_SPAN_ID,
@@ -27,7 +35,12 @@ function completeWithSession(store: ReturnType<typeof createTraceStore>, respons
         links: [],
       },
     ],
-    summary: { finalProviderId: 'provider-a', finalModelId: 'model-a', finalHttpStatus: 200 },
+    summary: {
+      finalProviderId: 'provider-a',
+      finalModelId: 'model-a',
+      finalHttpStatus: 200,
+      ...(usage === undefined ? {} : { usage }),
+    },
     session: {
       identity: { source: 'body-session', id: 'session-1' },
       requestedModelId: 'model-a',
@@ -59,11 +72,17 @@ describe('session state', () => {
 
       const rows = handle.db.select().from(sessionResponse).all();
       expect(rows).toHaveLength(1);
-      expect(rows[0].responseIdSha256).not.toBe('resp-abc');
+      expect(rows[0].responseIdSha256).toBe(hashSession('response-id', 'resp-abc'));
       expect(rows[0].sessionId).toBe('session-1');
 
       const now = new Date(ENDED_AT.getTime() + 30 * 60 * 1000);
-      expect(store.resolveResponse('resp-abc', now)).toEqual({ source: 'body-session', id: 'session-1' });
+      expect(store.resolveResponse('resp-abc', now)).toEqual({
+        status: 'owned',
+        owner: {
+          identity: { source: 'body-session', id: 'session-1' },
+          providerId: 'provider-a',
+        },
+      });
       const after = handle.db.select().from(sessionResponse).get()!;
       expect(after.expiresAt.getTime()).toBeGreaterThan(now.getTime());
     } finally {
@@ -155,6 +174,45 @@ describe('session state', () => {
       });
 
       expect(handle.db.select().from(sessionResponse).all()).toHaveLength(2);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('treats a blank response id as absent without rolling back completion', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot({
+        traceId: TRACE_ID,
+        spanId: ROOT_SPAN_ID,
+        requestId: 'r1',
+        inboundProtocol: 'openai-compatible',
+        name: 'aio_proxy.request',
+        kind: 1,
+        startedAt: STARTED_AT,
+        statusCode: 0,
+        attributes: {},
+        events: [],
+        links: [],
+      });
+
+      expect(() =>
+        completeWithSession(store, '   ', undefined, {
+          providerId: 'provider-a',
+          modelId: 'model-a',
+          inputTokens: 7,
+          totalTokens: 7,
+        }),
+      ).not.toThrow();
+      expect(handle.db.select().from(sessionResponse).all()).toEqual([]);
+      expect(handle.db.select().from(sessionAffinity).all()).toHaveLength(1);
+      expect(handle.db.select().from(traceSpan).get()).toMatchObject({
+        endedAt: ENDED_AT,
+        inputTokens: 7,
+        totalTokens: 7,
+      });
+      expect(store.resolveResponse('   ', ENDED_AT)).toBeUndefined();
     } finally {
       handle.close();
     }

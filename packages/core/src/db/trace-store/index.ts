@@ -3,6 +3,8 @@ export type {
   RequestLogsQuery,
   SessionAffinityObservation,
   SessionIdentity,
+  SessionResponseOwner,
+  SessionResponseResolution,
   StoredSpan,
   TraceCompletion,
   TraceRootStart,
