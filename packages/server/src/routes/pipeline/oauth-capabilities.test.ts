@@ -22,9 +22,8 @@ describe('OAuth pipeline helper capabilities', () => {
     const harness = pipeline([provider]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ output: 'model' });
+    await settleRecording(harness.recording);
     expect(provider.calls.raw).toHaveLength(0);
     expect(provider.calls.model).toHaveLength(1);
     expect(harness.context.modelInvocationCalls).toBe(1);

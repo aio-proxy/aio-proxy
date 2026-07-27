@@ -23,9 +23,8 @@ describe('shared protocol routing pipeline capability selection', () => {
     const harness = pipeline([provider]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ transport: 'raw' });
+    await settleRecording(harness.recording);
     expect(provider.calls.raw).toHaveLength(1);
     expect(provider.calls.model).toHaveLength(0);
     expect(harness.context.modelInvocationCalls).toBe(0);

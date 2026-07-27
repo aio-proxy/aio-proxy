@@ -38,13 +38,12 @@ describe('shared protocol routing pipeline model commit fallback', () => {
       const stream = stage === 'first-event';
 
       const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
-      await settleRecording();
-
       if (stream) {
         expect(await response.text()).toContain('fallback');
       } else {
         expect(await response.json()).toEqual({ output: 'fallback' });
       }
+      await settleRecording(harness.recording);
       expect(primary.calls.model).toHaveLength(stage === 'ensure' ? 0 : 1);
       expect(backup.calls.model).toHaveLength(1);
       expect(harness.context.modelInvocationCalls).toBe(1);
@@ -79,7 +78,7 @@ describe('shared protocol routing pipeline model commit fallback', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
     expect(await response.text()).toContain('backup');
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     expect(writerCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([
@@ -112,7 +111,7 @@ describe('shared protocol routing pipeline model commit fallback', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
     expect(await response.json()).toEqual({ output: 'backup' });
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     expect(jsonCalls).toBe(2);
     expect(attemptsOf(harness.recording)).toEqual([

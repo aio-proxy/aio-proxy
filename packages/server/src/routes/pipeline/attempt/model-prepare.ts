@@ -1,7 +1,6 @@
 import type { ModelInvocation } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
-import type { ModelTransport } from '../../../runtime';
 import { attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import { logRequestRejected } from '../logging';
@@ -24,7 +23,7 @@ export function emitReject<TRequest, TContext>(
   errorCode?: string,
 ): AttemptStep {
   const { index, candidate, startedAt, hasNext } = slot;
-  const base = attemptBase(candidate.provider, candidate.modelId, startedAt);
+  const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
   ctx.emitter.emitAttempt(base, index, failureTerminal(response.status, errorCode));
   if (hasNext) {
     return { kind: 'fallback', lastFailure: response };
@@ -38,8 +37,8 @@ export function emitReject<TRequest, TContext>(
 export function resolveInvocation<TRequest, TContext>(
   ctx: AttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
-  model: ModelTransport,
   holder: InvocationHolder,
+  targetProtocol: ProviderProtocol | undefined,
 ): PreparedInvocation {
   const { adapter, request, context, rawRequest, session, source, requestedModelId } = ctx;
   const { index, candidate, startedAt } = slot;
@@ -55,7 +54,7 @@ export function resolveInvocation<TRequest, TContext>(
         const mapped = adapter.errors.requestError(error);
         if (mapped === undefined) throw error;
         const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
-        const base = attemptBase(candidate.provider, candidate.modelId, startedAt);
+        const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
         ctx.emitter.emitAttempt(base, index, failureTerminal(mapped.status, errorCode));
         session.finish(finalFailure(base, mapped.status, errorCode));
         logRequestRejected({
@@ -76,7 +75,6 @@ export function resolveInvocation<TRequest, TContext>(
     return { kind: 'step', step: emitReject(ctx, slot, holder.invocationUnsupported, 'unsupported_feature') };
   }
   if (holder.invocation === undefined) throw new TypeError('Protocol adapter returned no model invocation');
-  const targetProtocol = model.targetProtocol?.(candidate.modelId);
   return {
     kind: 'ok',
     candidateInvocation: adapter.modelInvocationForTarget(holder.invocation, targetProtocol),

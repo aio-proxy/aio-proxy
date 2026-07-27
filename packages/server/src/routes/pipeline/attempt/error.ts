@@ -29,7 +29,7 @@ export function unsupportedDispatch<TRequest, TContext>(
 ): AttemptStep {
   const { candidate, startedAt, hasNext, index } = slot;
   const unsupported = ctx.adapter.errors.unsupported('transform_dispatch');
-  const base = attemptBase(candidate.provider, candidate.modelId, startedAt);
+  const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
   ctx.emitter.emitAttempt(base, index, failureTerminal(unsupported.status));
   if (hasNext) {
     return { kind: 'fallback', lastFailure: unsupported };
@@ -48,11 +48,12 @@ export function handleAttemptError<TRequest, TContext>(
   const { adapter, rawRequest, session, logFailure } = ctx;
   const { index, candidate, startedAt, hasNext } = slot;
   const provider = candidate.provider;
-  const base = attemptBase(provider, candidate.modelId, startedAt);
+  const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
+  const logBase = { ...base, protocol: undefined };
   const mapped = adapter.errors.provider(error);
   if (mapped === undefined) {
     endAttemptSpan(ctx, slot, base, { outcome: 'failure' });
-    logFailure(index, attemptLog(base), 'exception', false, { error });
+    logFailure(index, attemptLog(logBase), 'exception', false, { error });
     throw error;
   }
 
@@ -61,7 +62,7 @@ export function handleAttemptError<TRequest, TContext>(
   const fallback = !cancelled && hasNext;
 
   if (!cancelled) {
-    logFailure(index, attemptLog(base, mapped.status), 'exception', fallback, { error });
+    logFailure(index, attemptLog(logBase, mapped.status), 'exception', fallback, { error });
   }
   endAttemptSpan(ctx, slot, base, { outcome, httpStatus: mapped.status });
 

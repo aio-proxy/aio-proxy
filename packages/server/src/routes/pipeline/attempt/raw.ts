@@ -18,10 +18,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     ctx;
   const { index, candidate, startedAt, hasNext, inAttempt } = slot;
   const provider = candidate.provider;
-  const attemptSpan = ctx.emitter.startAttempt(
-    attemptBase(provider, candidate.modelId, startedAt, adapter.protocol),
-    index,
-  );
+  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
 
   const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
@@ -30,7 +27,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
 
   const fallback = hasNext && shouldFallbackStatus(response.status);
   if (fallback || response.status < 200 || response.status >= 400) {
-    const base = attemptBase(provider, candidate.modelId, startedAt, adapter.protocol);
+    const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
     logFailure(index, attemptLog(base, response.status), 'response', fallback, { response });
     slot.spanRef.current = undefined;
     attemptSpan.end(failureTerminal(response.status));

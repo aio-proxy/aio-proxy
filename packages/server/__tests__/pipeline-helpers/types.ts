@@ -34,6 +34,11 @@ export type RecordedAttempt = {
   readonly providerId: string;
   readonly modelId: string;
   readonly providerKind: RuntimeProviderInstance['kind'];
+  readonly providerWeight?: number;
+  readonly transport?: 'raw' | 'ai_sdk';
+  readonly sourceProtocol?: ProviderProtocol;
+  readonly targetProtocol?: ProviderProtocol;
+  readonly selectionReason?: 'response_owner' | 'affinity' | 'weight';
   readonly protocol?: ProviderProtocol;
   readonly durationMs: number;
   readonly outcome: 'success' | 'failure' | 'cancelled';
@@ -60,4 +65,5 @@ export type Recording = {
   readonly identities: { readonly requestedModelId: string }[];
   readonly attempts: RecordedAttempt[];
   readonly finals: RecordedFinal[];
+  readonly settle: () => Promise<void>;
 };

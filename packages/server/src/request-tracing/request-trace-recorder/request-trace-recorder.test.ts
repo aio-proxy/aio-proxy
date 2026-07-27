@@ -105,6 +105,18 @@ describe('createRequestTraceRecorder', () => {
     expect(completions[0]?.summary.finalProviderId).toBe('provider-a');
   });
 
+  test('finishFrom rejection persists stable failure metadata', async () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+
+    session.finishFrom(Promise.reject(new Error('stream failed')));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(completions[0]?.summary).toMatchObject({ terminationReason: 'failure', errorCode: 'internal_error' });
+  });
+
   test('failure sets ERROR status and failure termination reason', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });

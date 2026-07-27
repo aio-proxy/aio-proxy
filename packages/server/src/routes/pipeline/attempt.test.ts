@@ -33,9 +33,8 @@ test('converts portable reasoning and uses the model candidate', async () => {
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
-
   expect(await response.json()).toMatchObject({ output_text: 'model response', status: 'completed' });
+  await settleRecording(route.recording);
   expect(model.calls.model).toHaveLength(1);
   expect(raw.calls.raw).toHaveLength(0);
   expect(
@@ -125,7 +124,7 @@ test('skips a Gemini candidate for a remote tool-result image and invokes the ne
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(gemini.calls.model).toHaveLength(0);
@@ -194,7 +193,7 @@ test('skips a Gemini candidate when a user image URL has no MIME subtype', async
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(gemini.calls.model).toHaveLength(0);
@@ -247,7 +246,7 @@ test('falls back after an OpenAI-compatible endpoint rejects the CPA extension',
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(compatible.calls.model).toHaveLength(1);

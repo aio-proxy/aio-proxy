@@ -4,6 +4,7 @@ import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
+import type { AttemptTraceMetadata } from '../attempt-base';
 import type { AttemptLog } from '../logging';
 import type { OpenSpan } from '../tracing';
 import type { AttemptEmitter } from './emit';
@@ -55,6 +56,13 @@ export type CandidateSlot = {
   readonly candidate: RouterResolution<RuntimeProviderInstance>;
   readonly startedAt: number;
   readonly hasNext: boolean;
+  readonly trace: {
+    providerWeight?: AttemptTraceMetadata['providerWeight'];
+    transport?: AttemptTraceMetadata['transport'];
+    sourceProtocol: AttemptTraceMetadata['sourceProtocol'];
+    targetProtocol?: AttemptTraceMetadata['targetProtocol'];
+    selectionReason: AttemptTraceMetadata['selectionReason'];
+  };
   readonly inAttempt: <T>(operation: () => T) => T;
   // Holds the attempt span once the provider call begins, so a throw during the
   // provider/egress phase reuses it instead of opening a duplicate failure span.

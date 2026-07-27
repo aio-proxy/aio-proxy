@@ -123,7 +123,11 @@ export function listRequestLogs(db: BunSQLiteDatabase, query: RequestLogsQuery):
     query.completedBefore === undefined ? undefined : lte(traceSpan.endedAt, query.completedBefore),
     query.requestId === undefined ? undefined : eq(traceSpan.requestId, query.requestId),
     query.inboundProtocol === undefined ? undefined : eq(traceSpan.inboundProtocol, query.inboundProtocol),
-    query.requestedModelId === undefined ? undefined : eq(traceSpan.requestedModelId, query.requestedModelId),
+    query.requestedModelId === undefined
+      ? undefined
+      : query.requestedModelId === '<unparsed>'
+        ? isNull(traceSpan.requestedModelId)
+        : eq(traceSpan.requestedModelId, query.requestedModelId),
     query.finalProviderId === undefined ? undefined : eq(traceSpan.finalProviderId, query.finalProviderId),
     query.finalModelId === undefined ? undefined : eq(traceSpan.finalModelId, query.finalModelId),
     query.finalStatusCode === undefined ? undefined : eq(traceSpan.finalHttpStatus, query.finalStatusCode),

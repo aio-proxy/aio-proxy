@@ -27,7 +27,7 @@ describe('shared protocol pipeline diagnostics', () => {
       rawRequest: jsonRequest({ model: REQUESTED_MODEL, input: 'hello', background: true }),
       source: route.source,
     });
-    await settleRecording();
+    await settleRecording(route.recording);
 
     expect(response.status).toBe(200);
     expect(route.logs).toEqual([

@@ -36,9 +36,8 @@ describe('shared protocol routing pipeline', () => {
     const harness = pipeline([unsupported, backup]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
     expect(unsupported.calls.raw).toHaveLength(0);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([

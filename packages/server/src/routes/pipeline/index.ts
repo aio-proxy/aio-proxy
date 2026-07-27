@@ -148,6 +148,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       return await attemptCandidates({
         adapter,
         candidates,
+        config: lease.snapshot.config,
         context,
         deferRelease,
         rawRequest,

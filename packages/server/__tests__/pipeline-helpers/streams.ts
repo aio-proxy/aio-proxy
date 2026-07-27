@@ -1,6 +1,6 @@
 import type { ModelEventStream } from '@aio-proxy/core';
 
-import type { ModelPart } from './types';
+import type { ModelPart, Recording } from './types';
 
 export function jsonRequest(
   body: unknown,
@@ -69,8 +69,8 @@ export function cancellableTextStream(text: string, onCancel: (reason: unknown) 
   });
 }
 
-export async function settleRecording(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+export async function settleRecording(recording: Recording): Promise<void> {
+  await recording.settle();
 }
 
 function finishPart(): ModelPart {

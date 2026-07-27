@@ -76,9 +76,8 @@ describe('OAuth plugin raw pipeline sessions and capabilities', () => {
     const harness = pipeline([primary, backup]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
       { outcome: 'failure', providerId: 'primary', statusCode: 502 },

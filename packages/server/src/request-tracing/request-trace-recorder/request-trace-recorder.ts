@@ -195,7 +195,7 @@ export function createRequestTraceRecorder(options: {
             },
             () => {
               if (state !== 'async-owned') return;
-              complete({ outcome: 'failure' });
+              complete({ outcome: 'failure', errorCode: 'internal_error' });
             },
           );
         },

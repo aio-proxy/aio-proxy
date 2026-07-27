@@ -19,7 +19,8 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const { index, candidate, startedAt, inAttempt } = slot;
   const provider = candidate.provider;
 
-  const prepared = resolveInvocation(ctx, slot, model, holder);
+  slot.trace.targetProtocol = model.targetProtocol?.(candidate.modelId);
+  const prepared = resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol);
   if (prepared.kind !== 'ok') return prepared.step;
   const { candidateInvocation, targetProtocol } = prepared;
 
@@ -38,7 +39,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     return emitReject(ctx, slot, unsupported);
   }
 
-  const base = attemptBase(provider, candidate.modelId, startedAt);
+  const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(() => model.ensureAvailable?.());

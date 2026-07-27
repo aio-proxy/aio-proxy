@@ -42,7 +42,11 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         [attributeName.providerKind]: base.providerKind,
         [attributeName.genAiResponseModel]: base.modelId,
         [attributeName.stream]: streamRequested,
-        ...(base.protocol === undefined ? {} : { [attributeName.targetProtocol]: base.protocol }),
+        ...(base.providerWeight === undefined ? {} : { [attributeName.providerWeight]: base.providerWeight }),
+        ...(base.transport === undefined ? {} : { [attributeName.transport]: base.transport }),
+        [attributeName.sourceProtocol]: base.sourceProtocol,
+        ...(base.targetProtocol === undefined ? {} : { [attributeName.targetProtocol]: base.targetProtocol }),
+        [attributeName.selectionReason]: base.selectionReason,
         ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
       },
     });

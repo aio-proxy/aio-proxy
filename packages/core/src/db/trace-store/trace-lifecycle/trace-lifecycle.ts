@@ -64,11 +64,34 @@ function validateCompletion(input: TraceCompletion): void {
   }
 }
 
+function orderChildSpansParentFirst(spans: readonly StoredSpan[], rootSpanId: string): StoredSpan[] {
+  const remaining = [...spans];
+  const ordered: StoredSpan[] = [];
+  const insertedSpanIds = new Set([rootSpanId]);
+
+  // ponytail: O(n²) preserves caller order; use stable Kahn queues if trace batches become large.
+  while (remaining.length > 0) {
+    const index = remaining.findIndex(
+      (span) => span.parentSpanId !== undefined && insertedSpanIds.has(span.parentSpanId),
+    );
+    if (index === -1) return [...ordered, ...remaining];
+
+    const [span] = remaining.splice(index, 1);
+    ordered.push(span!);
+    insertedSpanIds.add(span!.spanId);
+  }
+
+  return ordered;
+}
+
 export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean {
   validateCompletion(input);
 
   const rootSpan = input.spans.find((span) => span.spanId === input.rootSpanId)!;
-  const childSpans = input.spans.filter((span) => span.spanId !== input.rootSpanId);
+  const childSpans = orderChildSpansParentFirst(
+    input.spans.filter((span) => span.spanId !== input.rootSpanId),
+    input.rootSpanId,
+  );
   const endedAt = rootSpan.endedAt;
   const now = endedAt;
 

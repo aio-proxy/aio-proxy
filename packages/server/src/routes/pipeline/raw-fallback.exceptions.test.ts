@@ -22,9 +22,8 @@ describe('shared protocol routing pipeline raw exception logging', () => {
     const harness = pipeline([primary, backup]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
     expect(primary.calls.raw).toHaveLength(1);
     expect(backup.calls.raw).toHaveLength(1);
     expect(attemptsOf(harness.recording)).toEqual([
@@ -68,9 +67,8 @@ describe('shared protocol routing pipeline raw exception logging', () => {
     const harness = pipeline([primary, rawProvider({ id: 'backup' })]);
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
-    await settleRecording();
-
     expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
     expect(getterCalls).toBe(0);
     expect(harness.logs).toContainEqual(
       expect.objectContaining({

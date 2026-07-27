@@ -24,7 +24,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
     expect(await response.text()).toContain('backup');
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(1);
@@ -48,7 +48,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     expect(response.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
     await expect(response.text()).rejects.toThrow('after first event');
-    await settleRecording();
+    await settleRecording(harness.recording);
     expect(primary.calls.model).toHaveLength(1);
     expect(backup.calls.model).toHaveLength(0);
     expect(harness.context.modelInvocationCalls).toBe(1);
@@ -67,7 +67,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
     expect(await response.text()).toContain('done');
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
     expect(harness.recording.finals[0]).toEqual(
@@ -91,7 +91,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(reader).toBeDefined();
     expect((await reader?.read())?.done).toBe(false);
     await reader?.cancel('client stopped');
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     expect(cancelCalls).toBe(1);
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
@@ -124,7 +124,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     const reader = response.body?.getReader();
     expect((await reader?.read())?.done).toBe(false);
     await reader?.cancel('client stopped');
-    await settleRecording();
+    await settleRecording(route.recording);
 
     expect(cancelCalls).toBe(1);
     expect(route.usage.capturedStreams[0]?.locked).toBe(false);
@@ -136,7 +136,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
     expect(await response.text()).toContain('hello');
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     const attempt = harness.recording.attempts[0];
     expect(attempt?.stream).toBe(true);
@@ -150,7 +150,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
     expect(await response.json()).toEqual({ output: 'hello' });
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     const attempt = harness.recording.attempts[0];
     expect(attempt?.stream).toBe(false);
@@ -169,7 +169,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
     expect(await response.json()).toEqual({ output: 'hello' });
-    await settleRecording();
+    await settleRecording(harness.recording);
 
     // The span must cover ensureAvailable (~20ms); a zero-width span would mean
     // it was opened only after the provider call returned.

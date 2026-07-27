@@ -19,6 +19,7 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
   const identities: Recording['identities'] = [];
   const attempts: RecordedAttempt[] = [];
   const finals: RecordedFinal[] = [];
+  const waiters: { readonly target: number; readonly resolve: () => void }[] = [];
 
   const store: RequestTraceWriteStore = {
     startRoot() {},
@@ -27,6 +28,12 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
       const projected = projectAttempts(completion.spans);
       for (const attempt of projected) attempts.push(attempt);
       finals.push(projectFinal(completion, projected));
+      for (let index = waiters.length - 1; index >= 0; index -= 1) {
+        const waiter = waiters[index]!;
+        if (finals.length < waiter.target) continue;
+        waiters.splice(index, 1);
+        waiter.resolve();
+      }
       return true;
     },
   };
@@ -46,7 +53,18 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
       };
     },
   };
-  return { attempts, begins, finals, identities, recorder };
+  return {
+    attempts,
+    begins,
+    finals,
+    identities,
+    recorder,
+    settle() {
+      const target = begins.length;
+      if (finals.length >= target) return Promise.resolve();
+      return new Promise((resolve) => waiters.push({ target, resolve }));
+    },
+  };
 }
 
 function projectAttempts(spans: readonly StoredSpan[]): RecordedAttempt[] {
@@ -56,6 +74,10 @@ function projectAttempts(spans: readonly StoredSpan[]): RecordedAttempt[] {
 function projectAttempt(span: StoredSpan): RecordedAttempt {
   const attrs = span.attributes;
   const protocol = str(attrs, attributeName.targetProtocol) as ProviderProtocol | undefined;
+  const providerWeight = num(attrs, attributeName.providerWeight);
+  const transport = str(attrs, attributeName.transport) as RecordedAttempt['transport'];
+  const sourceProtocol = str(attrs, attributeName.sourceProtocol) as ProviderProtocol | undefined;
+  const selectionReason = str(attrs, attributeName.selectionReason) as RecordedAttempt['selectionReason'];
   const statusCode = num(attrs, attributeName.httpStatusCode);
   const errorCode = str(attrs, attributeName.errorCode);
   const stream = bool(attrs, attributeName.stream);
@@ -66,6 +88,11 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
     providerKind: (str(attrs, attributeName.providerKind) ?? '') as RecordedAttempt['providerKind'],
     durationMs: Math.max(0, span.endedAt.getTime() - span.startedAt.getTime()),
     outcome: (str(attrs, attributeName.terminationReason) ?? 'success') as RecordedAttempt['outcome'],
+    ...(providerWeight === undefined ? {} : { providerWeight }),
+    ...(transport === undefined ? {} : { transport }),
+    ...(sourceProtocol === undefined ? {} : { sourceProtocol }),
+    ...(protocol === undefined ? {} : { targetProtocol: protocol }),
+    ...(selectionReason === undefined ? {} : { selectionReason }),
     ...(protocol === undefined ? {} : { protocol }),
     ...(statusCode === undefined ? {} : { statusCode }),
     ...(errorCode === undefined ? {} : { errorCode }),

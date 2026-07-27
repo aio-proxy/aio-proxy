@@ -44,7 +44,7 @@ test('target materialization does not pollute a later fallback candidate', async
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(responses.calls.model).toHaveLength(1);
@@ -93,7 +93,7 @@ test('image detail skips targets that cannot preserve it', async () => {
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(anthropic.calls.model).toHaveLength(0);
@@ -145,7 +145,7 @@ test('Gemini model-history images skip incompatible targets and preserve Gemini 
     rawRequest,
     source: route.source,
   });
-  await settleRecording();
+  await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
   expect(anthropic.calls.model).toHaveLength(0);

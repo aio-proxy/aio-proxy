@@ -212,8 +212,13 @@ describe('early-rejected request-log projection', () => {
         [],
       );
 
-      const result = store.listRequestLogs({ page: 1, pageSize: PAGE_SIZE });
+      const result = store.listRequestLogs({
+        page: 1,
+        pageSize: PAGE_SIZE,
+        requestedModelId: '<unparsed>',
+      });
 
+      expect(result.total).toBe(1);
       expect(result.items[0]?.requestedModelId).toBe('<unparsed>');
       expect(DashboardRequestLogsResponseSchema.parse(result)).toEqual(result);
     } finally {
