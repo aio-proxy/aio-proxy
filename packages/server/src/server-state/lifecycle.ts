@@ -111,7 +111,6 @@ export type ServerStateParts = Pick<
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
-  | 'modelsDevCatalog'
   | 'oauthQuota'
   | 'oauthLoginSessions'
   | 'providerSummaries'
@@ -154,7 +153,6 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     oauthLoginSessions: parts.oauthLoginSessions,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
-    modelsDevCatalog: parts.modelsDevCatalog,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
     requestLog: parts.requestLog,

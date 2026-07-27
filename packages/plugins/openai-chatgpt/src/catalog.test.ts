@@ -24,3 +24,24 @@ test('keeps supported visible and hidden Codex models in priority order', async 
   ]);
   expect(CHATGPT_CATALOG_TTL_MS).toBe(6 * 60 * 60_000);
 });
+
+test('ignores unknown upstream fields while keeping lean projection', async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      models: [
+        {
+          slug: 'visible',
+          display_name: 'Visible',
+          priority: 1,
+          supported_in_api: true,
+          visibility: 'list',
+          base_instructions: 'x'.repeat(20000),
+          brand_new_field: true,
+        },
+      ],
+    });
+
+  await expect(discoverOpenAIChatGPTModels(new AbortController().signal)).resolves.toEqual([
+    { id: 'visible', displayName: 'Visible', metadata: { protocol: 'openai-response' } },
+  ]);
+});

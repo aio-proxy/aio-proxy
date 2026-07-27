@@ -24,7 +24,7 @@ class FileCacheStorage {
 
   #logger = createLogger(['cache-storage', 'file']);
 
-  async setItem(key: string, value: string) {
+  async setItem(key: string, value: unknown) {
     const filePath = this.#getFilePath(key);
     await file(filePath).write(
       JSON.stringify({

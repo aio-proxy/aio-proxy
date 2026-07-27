@@ -60,15 +60,18 @@ describe('OpenAIResponsesRequestSchema', () => {
     ).toThrow(ZodError);
   });
 
-  test.each(['none', 'xhigh'])('Given current reasoning effort %s When parsed Then request is accepted', (effort) => {
-    const result = OpenAIResponsesRequestSchema.safeParse({
-      model: 'gpt-5',
-      input: 'Hello',
-      reasoning: { effort },
-    });
+  test.each(['none', 'xhigh', 'max', 'ultra'])(
+    'Given any reasoning effort %s When parsed Then request is accepted',
+    (effort) => {
+      const result = OpenAIResponsesRequestSchema.safeParse({
+        model: 'gpt-5',
+        input: 'Hello',
+        reasoning: { effort },
+      });
 
-    expect(result.success).toBe(true);
-  });
+      expect(result.success).toBe(true);
+    },
+  );
 
   test('Given session fields When parsed Then fields are preserved', () => {
     const result = parseOpenAIResponses({

@@ -1,6 +1,7 @@
 import {
   calculateEstimatedCost,
-  type OpenRouterPriceCatalog,
+  findModelPrice,
+  getProviders,
   type TextStreamPart,
   type ToolSet,
   type UsageAccounting,
@@ -32,12 +33,11 @@ export function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelI
 
 export async function priceUsage(
   usage: UsageRow | undefined,
-  priceCatalogTask: () => Promise<OpenRouterPriceCatalog | undefined>,
   accounting: UsageAccounting,
 ): Promise<UsageRow | undefined> {
   if (usage === undefined) return undefined;
   try {
-    const price = (await priceCatalogTask())?.find(usage.modelId);
+    const price = findModelPrice(await getProviders(), usage.modelId);
     const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price, accounting);
     return cost === undefined ? usage : { ...usage, ...cost };
   } catch {

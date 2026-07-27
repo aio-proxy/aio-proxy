@@ -35,7 +35,6 @@ import {
   startRecovery,
 } from './lifecycle';
 import { defaultLogger, defaultPluginLogger } from './logging';
-import { createModelsDevCatalogTask } from './models-dev-catalog-task';
 import { createProviderSummaries } from './probe';
 import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
 import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
@@ -132,8 +131,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
   const requestLog = createRequestLogStore(dbHandle.db);
-  const modelsDevCatalog = options.modelsDevCatalogTask ?? createModelsDevCatalogTask();
-  const usageCapture = createUsageCapture({ priceCatalogTask: modelsDevCatalog });
+  const usageCapture = createUsageCapture();
   const requestRecorder = createRequestRecorder({ store: requestLog, logger });
   const logicalSessionStore = new LogicalSessionStore();
 
@@ -157,7 +155,6 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configStore,
     events,
     logicalSessionStore,
-    modelsDevCatalog,
     oauthQuota,
     oauthLoginSessions,
     providerSummaries,
@@ -174,8 +171,6 @@ function openServerDb(options: ServerStateOptions): OpenDbHandle {
   if (options.dbHome !== undefined) return openDb({ home: options.dbHome });
   return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
-
-export { createModelsDevCatalogTask } from './models-dev-catalog-task';
 
 export type {
   ConfigReloadLog,

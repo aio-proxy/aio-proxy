@@ -29,7 +29,7 @@ describe('usage capture passthrough persistence', () => {
       const handle = openDb({ home: tempHome() });
       const recorder = createRequestRecorder({ store: createRequestLogStore(handle.db), now: () => fixedNow });
       const session = recorder.begin({ inboundProtocol: 'openai-compatible', requestedModelId: 'mini' });
-      const captured = createUsageCapture({ priceCatalogTask: async () => undefined }).passthrough({
+      const captured = createUsageCapture().passthrough({
         response: new Response(body),
         protocol: ProviderProtocol.OpenAICompatible,
         providerId: 'provider',

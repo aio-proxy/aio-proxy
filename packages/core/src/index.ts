@@ -14,6 +14,7 @@ export type {
   ToolSet,
 } from './ai-sdk-bridge';
 export { jsonSchema } from './ai-sdk-bridge';
+export { fileCacheStorage } from './cache/index';
 export { parseRuntimeConfig, resolveConfigTemplates } from './config/index';
 export {
   type AnthropicMessageResponse,
@@ -102,16 +103,8 @@ export {
   parseOpenAIResponses,
   safeParseOpenAIResponses,
 } from './ingress/openai-responses/index';
-export {
-  createModelsDevCatalog,
-  createOpenRouterPriceCatalog,
-  type FetchModelsDevProviders,
-  type FetchOpenRouterPrices,
-  type ModelsDevCapabilities,
-  type ModelsDevCatalog,
-  type ModelsDevModelMetadata,
-  type OpenRouterPriceCatalog,
-} from './models-dev-catalog';
+export type { Model as ModelsDevModel } from '@opencode-ai/models';
+export { clearModelsCache, findModelPrice, getModels, getProviders } from './models-dev/index';
 export {
   findInstalledNpmPackage,
   isNpmPackageName,

@@ -1,11 +1,6 @@
-import { type ModelsDevCapabilities, type ModelsDevCatalog, modelRoutes, parseRuntimeConfig } from '@aio-proxy/core';
-import { ProviderKind } from '@aio-proxy/types';
-import type { ModelInfo as AnthropicModelInfo } from '@anthropic-ai/sdk/resources/models';
-import { getUnixTime, isValid, parseISO } from 'date-fns';
-import { filter, flatMap, map, pipe, uniqBy } from 'es-toolkit/fp';
+import { parseRuntimeConfig } from '@aio-proxy/core';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
-import type { Model as OpenAIModel } from 'openai/resources/models';
 
 import type { DashboardAssets } from '../dashboard-assets';
 import {
@@ -21,12 +16,13 @@ import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
-import type { RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import type { RuntimeProviderInput } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions } from '../server-state/types';
+import { codexClientModels, listModels } from './list-models/index';
 
 export const serverDefaults = {
   host: '127.0.0.1',
@@ -43,7 +39,6 @@ export type CreateServerOptions = {
   readonly configPath?: string;
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
-  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly port?: number;
   readonly host?: string;
@@ -65,7 +60,12 @@ const createRoutes = (
       version: '0.0.0',
     }),
   );
-  app.get('/v1/models', async (context) => context.json(await listModels(state)));
+  app.get('/v1/models', async (context) => {
+    if (context.req.query('client_version') !== undefined) {
+      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+    }
+    return context.json(await listModels(state));
+  });
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
@@ -132,89 +132,6 @@ const createRoutes = (
   return routes;
 };
 
-const unknownCreatedAt = '1970-01-01T00:00:00Z';
-type ModelListItem = OpenAIModel &
-  Omit<AnthropicModelInfo, 'capabilities'> & {
-    readonly capabilities: ModelsDevCapabilities | null;
-  };
-
-async function listModels(state: ServerState) {
-  const lease = state.acquireProviderSnapshot();
-  try {
-    const selected = pipe(
-      lease.snapshot.providers,
-      filter((provider) => provider.enabled),
-      flatMap((provider) =>
-        modelRoutes(provider).map((route) => ({ id: route.alias, modelId: route.modelId, provider })),
-      ),
-      uniqBy(({ id }) => id),
-    );
-
-    const catalog = selected.length === 0 ? undefined : await state.modelsDevCatalog().catch(() => undefined);
-
-    return pipe(
-      selected,
-      map(({ id, modelId, provider }): ModelListItem => {
-        const aliasMetadata = catalog?.metadata(id);
-        const upstreamMetadata =
-          id === modelId || aliasMetadata?.displayName !== undefined ? undefined : catalog?.metadata(modelId);
-        const metadata = aliasMetadata ?? upstreamMetadata;
-        const timestamps = modelTimestamps(metadata?.releaseDate);
-        return {
-          capabilities: metadata?.capabilities ?? null,
-          created: timestamps.created,
-          created_at: timestamps.createdAt,
-          display_name: modelDisplayName(
-            id,
-            modelId,
-            provider,
-            aliasMetadata?.displayName ?? upstreamMetadata?.displayName,
-          ),
-          id,
-          max_input_tokens: metadata?.maxInputTokens ?? null,
-          max_tokens: metadata?.maxTokens ?? null,
-          object: 'model',
-          owned_by: provider.id,
-          type: 'model',
-        };
-      }),
-      (data) => ({
-        data,
-        first_id: data[0]?.id ?? null,
-        has_more: false,
-        last_id: data.at(-1)?.id ?? null,
-        object: 'list' as const,
-      }),
-    );
-  } finally {
-    lease.release();
-  }
-}
-
-function modelDisplayName(
-  id: string,
-  modelId: string,
-  provider: RuntimeProviderInstance,
-  catalogDisplayName: string | undefined,
-): string {
-  if (provider.kind === ProviderKind.OAuth) {
-    return provider.modelMetadata?.[modelId]?.displayName ?? catalogDisplayName ?? id;
-  }
-  return catalogDisplayName ?? id;
-}
-
-function modelTimestamps(releaseDate: string | undefined): { readonly created: number; readonly createdAt: string } {
-  if (releaseDate === undefined) {
-    return { created: 0, createdAt: unknownCreatedAt };
-  }
-  const normalizedDate = releaseDate.length === 7 ? `${releaseDate}-01` : releaseDate;
-  const date = parseISO(`${normalizedDate}T00:00:00Z`);
-  if (!isValid(date)) {
-    return { created: 0, createdAt: unknownCreatedAt };
-  }
-  return { created: getUnixTime(date), createdAt: date.toISOString() };
-}
-
 export type AppType = ReturnType<typeof createRoutes>;
 
 export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
@@ -236,7 +153,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
     ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
     ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
-    ...(options.modelsDevCatalogTask === undefined ? {} : { modelsDevCatalogTask: options.modelsDevCatalogTask }),
     ...(options.providerInstances === undefined ? {} : { providerInstances: options.providerInstances }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),

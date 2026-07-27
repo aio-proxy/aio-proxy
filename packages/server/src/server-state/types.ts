@@ -1,7 +1,6 @@
 import type {
   AtomicConfigFile,
   BuiltInPluginDefinition,
-  ModelsDevCatalog,
   PluginLogSink,
   PluginPackageImporter,
   PluginRepository,
@@ -31,7 +30,6 @@ export type ServerStateOptions = {
   readonly dbHome?: string;
   readonly eventLimits?: DashboardEventLimits;
   readonly logger?: ServerLogSink;
-  readonly modelsDevCatalogTask?: () => Promise<ModelsDevCatalog | undefined>;
   readonly providerInstances?: readonly RuntimeProviderInput[];
   readonly watchConfig?: boolean;
   readonly pluginRepository?: PluginRepository;
@@ -71,7 +69,6 @@ export type ServerState = ProviderRouteSource & {
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
-  readonly modelsDevCatalog: () => Promise<ModelsDevCatalog | undefined>;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;

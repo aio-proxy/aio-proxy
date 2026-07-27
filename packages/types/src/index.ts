@@ -1,4 +1,5 @@
 export * from './aio';
+export * from './codex-model/index';
 export * from './commands';
 export * from './common';
 export * from './config/index';
