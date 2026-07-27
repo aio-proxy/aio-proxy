@@ -13,7 +13,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     complete: (input) => complete(db, input),
     list: (query) => list(db, query),
     listRequestLogs: (query) => listRequestLogs(db, query),
-    find: (traceId) => find(db, traceId),
+    find: (traceId, now) => find(db, traceId, now),
     overview: (query) => overview(db, query),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),
     markResponseAmbiguous: (responseId, now) => markResponseAmbiguous(db, responseId, now),

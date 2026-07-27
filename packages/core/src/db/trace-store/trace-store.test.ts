@@ -6,6 +6,20 @@ import { openTestDb } from './test-support';
 import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
 
 describe('trace store lifecycle', () => {
+  test('uses the supplied clock for running trace durations', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+
+      const detail = store.find(TRACE_ID, new Date('2026-07-24T10:00:00.250Z'));
+      expect(detail?.trace).toMatchObject({ endedAt: null, durationMs: 250 });
+      expect(detail?.spans).toEqual([expect.objectContaining({ endedAt: null, durationMs: 250 })]);
+    } finally {
+      handle.close();
+    }
+  });
+
   test('persists root and children atomically with first-transition semantics', () => {
     const handle = openTestDb();
     try {

@@ -32,14 +32,11 @@ function toIso(date: Date | null): string | null {
   return date === null ? null : date.toISOString();
 }
 
-function durationMs(startedAt: Date, endedAt: Date | null): number {
-  if (endedAt === null) {
-    return 0;
-  }
-  return Math.max(0, endedAt.getTime() - startedAt.getTime());
+function durationMs(startedAt: Date, endedAt: Date | null, now: Date): number {
+  return Math.max(0, (endedAt ?? now).getTime() - startedAt.getTime());
 }
 
-function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary {
+function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date): DashboardTraceSummary {
   const usage = !hasAnyUsage(row)
     ? undefined
     : ({
@@ -61,7 +58,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
     requestId: row.requestId ?? '',
     startedAt: row.startedAt.toISOString(),
     endedAt: toIso(row.endedAt),
-    durationMs: durationMs(row.startedAt, row.endedAt),
+    durationMs: durationMs(row.startedAt, row.endedAt, now),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
     ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),
     ...(row.errorType !== null ? { errorType: row.errorType } : {}),
@@ -79,7 +76,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect): DashboardTraceSummary
   };
 }
 
-function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean): DashboardTraceSpan {
+function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Date): DashboardTraceSpan {
   const columns: Record<string, string | number> = {};
   const setStr = (key: string, value: string | null): void => {
     if (value !== null) columns[key] = value;
@@ -126,7 +123,7 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean): Dashboa
     kind: KIND_TO_ENUM[row.kind] ?? 'INTERNAL',
     startedAt: row.startedAt.toISOString(),
     endedAt: toIso(row.endedAt),
-    durationMs: durationMs(row.startedAt, row.endedAt),
+    durationMs: durationMs(row.startedAt, row.endedAt, now),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
     ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),
     ...(row.errorType !== null ? { errorType: row.errorType } : {}),
@@ -178,9 +175,10 @@ export function list(db: BunSQLiteDatabase, query: TracesQuery): DashboardTraces
     .limit(query.pageSize)
     .offset((query.page - 1) * query.pageSize)
     .all();
+  const now = new Date();
 
   return {
-    items: rows.map((row) => rowToSummary(row)),
+    items: rows.map((row) => rowToSummary(row, now)),
     page: query.page,
     pageSize: query.pageSize,
     total,
@@ -188,7 +186,7 @@ export function list(db: BunSQLiteDatabase, query: TracesQuery): DashboardTraces
   };
 }
 
-export function find(db: BunSQLiteDatabase, traceId: string): DashboardTraceDetail | undefined {
+export function find(db: BunSQLiteDatabase, traceId: string, now = new Date()): DashboardTraceDetail | undefined {
   const rows = db
     .select()
     .from(traceSpan)
@@ -203,8 +201,8 @@ export function find(db: BunSQLiteDatabase, traceId: string): DashboardTraceDeta
     return undefined;
   }
   return {
-    trace: rowToSummary(root),
-    spans: rows.map((row) => rowToSpan(row, row.parentSpanId === null)),
+    trace: rowToSummary(root, now),
+    spans: rows.map((row) => rowToSpan(row, row.parentSpanId === null, now)),
   };
 }
 
