@@ -118,6 +118,7 @@ function projectFinal(completion: TraceCompletion, projected: readonly RecordedA
     outcome,
     ...(summary.finalProviderId === undefined ? {} : { finalProviderId: summary.finalProviderId }),
     ...(summary.finalModelId === undefined ? {} : { finalModelId: summary.finalModelId }),
+    ...(completion.sessionState?.responseId === undefined ? {} : { responseId: completion.sessionState.responseId }),
     ...(summary.finalHttpStatus === undefined ? {} : { finalStatusCode: summary.finalHttpStatus }),
     ...(summary.errorCode === undefined ? {} : { errorCode: summary.errorCode }),
     ...(summary.usage === undefined ? {} : { usage: summary.usage }),

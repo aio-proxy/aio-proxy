@@ -22,12 +22,13 @@ describe('defineProtocolAdapter', () => {
       },
       modelInvocation: () => ({ messages: [] }),
       modelJson: async () => ({ ok: true }),
-      modelSse: () => new ReadableStream<Uint8Array>(),
+      modelSse: () => Object.assign(new ReadableStream<Uint8Array>(), { completion: Promise.resolve() }),
       errors: {
         requestError: () => undefined,
         modelNotFound: (message) => Response.json({ message }, { status: 404 }),
         previousResponseConflict: () => new Response(null, { status: 409 }),
         tooLarge: () => new Response(null, { status: 413 }),
+        unsupportedContentEncoding: () => new Response(null, { status: 415 }),
         unsupported: () => new Response(null, { status: 501 }),
         provider: () => undefined,
       },
@@ -41,7 +42,7 @@ describe('defineProtocolAdapter', () => {
 });
 
 test('functionToolSet converts function definitions without mutating schemas', async () => {
-  const schema = { type: 'object', properties: { city: { type: 'string' } } };
+  const schema = { type: 'object', properties: { city: { type: 'string' } } } as const;
   const tools = functionToolSet([{ name: 'weather', description: 'Weather', inputSchema: schema }]);
 
   expect(Object.keys(tools ?? {})).toEqual(['weather']);

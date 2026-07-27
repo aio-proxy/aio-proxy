@@ -52,6 +52,9 @@ function validateCompletion(input: TraceCompletion): void {
   if (root === undefined) throw new Error('Completion must include the root span');
   if (root.traceId !== input.traceId) throw new Error('Root span trace id does not match completion trace id');
   if (input.summary.usage !== undefined) {
+    if (input.summary.terminationReason !== undefined) {
+      throw new Error('Only successful completions can include usage');
+    }
     if (input.summary.usage.providerId !== input.summary.finalProviderId) {
       throw new Error('Usage provider id must match the final provider id');
     }

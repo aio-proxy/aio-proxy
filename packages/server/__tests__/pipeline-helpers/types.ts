@@ -54,6 +54,7 @@ export type RecordedFinal = {
   readonly outcome: 'success' | 'failure' | 'cancelled';
   readonly finalProviderId?: string;
   readonly finalModelId?: string;
+  readonly responseId?: string;
   readonly finalStatusCode?: number;
   readonly errorCode?: string;
   readonly usage?: UsageRow;

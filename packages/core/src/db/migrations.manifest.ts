@@ -17,7 +17,7 @@ export const MIGRATIONS: readonly Migration[] = [
     {
         version: 2,
         file: "0001_easy_logan.sql",
-        sha256: "866fe7a00537b071fec7a47a8f2fc44bd6e6ec29dc777d49ef3885f0696d698a",
+        sha256: "26b13dbe017897f1c838d11b621164a6219f630330ae34991cf18dcd0105e778",
         sql: migration1Sql
     }
 ];

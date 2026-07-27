@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { openAICompletionsAdapter } from '@aio-proxy/core';
+import { openAICompletionsAdapter, openAIResponsesAdapter } from '@aio-proxy/core';
 
 import {
   cancellableTextStream,
@@ -73,6 +73,28 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: 'provider', outcome: 'success' }),
     );
+  });
+
+  test('records the OpenAI Responses ID after the streamed egress completes', async () => {
+    const provider = modelProvider({ id: 'provider', invoke: () => textStream('done') });
+    const route = defineProviderRouteSource([provider], { outcome: 'success' });
+    const response = await handleProtocolRequest({
+      adapter: openAIResponsesAdapter,
+      context: {},
+      rawRequest: jsonRequest({ model: REQUESTED_MODEL, input: 'ping', stream: true }),
+      source: route.source,
+    });
+
+    const frame = (await response.text())
+      .split('\n\n')
+      .find((value) => value.startsWith('event: response.completed\n'));
+    expect(frame).toBeDefined();
+    const completed = JSON.parse(frame?.split('\n')[1]?.slice('data: '.length) ?? 'null') as {
+      response: { id: string };
+    };
+    await settleRecording(route.recording);
+
+    expect(route.recording.finals[0]?.responseId).toBe(completed.response.id);
   });
 
   test('releases the preflight reader when the client cancels', async () => {

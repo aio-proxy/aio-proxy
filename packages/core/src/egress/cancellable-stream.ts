@@ -1,3 +1,5 @@
+import type { ModelSseStream } from '../protocol/adapter';
+
 export type EgressRunContext<T> = {
   readonly parts: AsyncIterable<T>;
   readonly enqueue: (value: Uint8Array) => void;
@@ -6,9 +8,12 @@ export type EgressRunContext<T> = {
 export function createCancellableEgressStream<T>(
   source: ReadableStream<T>,
   run: (context: EgressRunContext<T>) => Promise<void>,
-): ReadableStream<Uint8Array> {
+): ModelSseStream {
   const reader = source.getReader();
+  const completion = Promise.withResolvers<void>();
+  void completion.promise.catch(() => {});
   let cancelled = false;
+  let canceling: Promise<void> | undefined;
   let released = false;
   let output: ReadableStreamDefaultController<Uint8Array>;
   let resume: (() => void) | undefined;
@@ -17,6 +22,10 @@ export function createCancellableEgressStream<T>(
       released = true;
       reader.releaseLock();
     }
+  };
+  const cancelSource = (reason: unknown): Promise<void> => {
+    canceling ??= reader.cancel(reason).finally(release);
+    return canceling;
   };
   const parts = {
     async *[Symbol.asyncIterator]() {
@@ -35,15 +44,28 @@ export function createCancellableEgressStream<T>(
     },
   };
 
-  return new ReadableStream<Uint8Array>({
+  const body = new ReadableStream<Uint8Array>({
     start(controller) {
       output = controller;
       void run({ parts, enqueue: (value) => controller.enqueue(value) })
         .then(() => {
-          if (!cancelled) controller.close();
+          if (!cancelled) {
+            controller.close();
+            completion.resolve();
+          }
         })
-        .catch((error: unknown) => {
-          if (!cancelled) controller.error(error);
+        .catch(async (error: unknown) => {
+          const alreadyCancelled = cancelled;
+          cancelled = true;
+          resume?.();
+          if (!alreadyCancelled) controller.error(error);
+          const cleanup = alreadyCancelled ? canceling : cancelSource(error);
+          if (cleanup !== undefined) {
+            try {
+              await cleanup;
+            } catch {}
+          }
+          if (!alreadyCancelled) completion.reject(error);
         })
         .finally(release);
     },
@@ -54,10 +76,12 @@ export function createCancellableEgressStream<T>(
       cancelled = true;
       resume?.();
       try {
-        await reader.cancel(reason);
+        await cancelSource(reason);
       } finally {
+        completion.reject(reason);
         release();
       }
     },
   });
+  return Object.assign(body, { completion: completion.promise });
 }

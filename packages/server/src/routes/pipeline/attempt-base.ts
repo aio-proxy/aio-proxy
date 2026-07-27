@@ -3,10 +3,10 @@ import type { ProviderProtocol } from '@aio-proxy/types';
 import type { RuntimeProviderInstance } from '../../runtime';
 
 export type AttemptTraceMetadata = {
-  readonly providerWeight?: number;
-  readonly transport?: 'raw' | 'ai_sdk';
+  readonly providerWeight?: number | undefined;
+  readonly transport?: 'raw' | 'ai_sdk' | undefined;
   readonly sourceProtocol: ProviderProtocol;
-  readonly targetProtocol?: ProviderProtocol;
+  readonly targetProtocol?: ProviderProtocol | undefined;
   readonly selectionReason: 'response_owner' | 'affinity' | 'weight';
 };
 

@@ -47,14 +47,14 @@ describe('trace store lifecycle', () => {
         expect.objectContaining({
           localDay: '2026-07-24',
           modelDimension: 'model-b',
-          requestCount: 1,
-          usageRequestCount: 1,
-          pricedRequestCount: 1,
-          successCount: 1,
-          inputTokens: 10,
-          outputTokens: 5,
-          totalTokens: 20,
-          estimatedCostNanoUsd: 100_000_000,
+          requestCount: '1',
+          usageRequestCount: '1',
+          pricedRequestCount: '1',
+          successCount: '1',
+          inputTokens: '10',
+          outputTokens: '5',
+          totalTokens: '20',
+          estimatedCostNanoUsd: '100000000',
         }),
       ]);
 
@@ -82,7 +82,7 @@ describe('trace store lifecycle', () => {
         ),
       ).toBe(true);
       expect(handle.db.select().from(usageDaily).all()).toContainEqual(
-        expect.objectContaining({ modelDimension: 'model-total', usageRequestCount: 1, totalTokens: 42 }),
+        expect.objectContaining({ modelDimension: 'model-total', usageRequestCount: '1', totalTokens: '42' }),
       );
     } finally {
       handle.close();
@@ -127,6 +127,31 @@ describe('trace store lifecycle', () => {
     }
   });
 
+  test.each(['failure', 'cancelled', 'interrupted'] as const)(
+    'throws before mutating state when a %s completion includes usage',
+    (terminationReason) => {
+      const handle = openTestDb();
+      try {
+        const store = createTraceStore(handle.db);
+        store.startRoot(rootStart());
+
+        const bad = completion({
+          summary: {
+            finalProviderId: 'provider-b',
+            finalModelId: 'model-b',
+            terminationReason,
+            usage: { providerId: 'provider-b', modelId: 'model-b', inputTokens: 1 },
+          },
+        });
+        expect(() => store.complete(bad)).toThrow();
+        expect(store.find(TRACE_ID)?.trace.endedAt).toBeNull();
+        expect(handle.db.select().from(usageDaily).all()).toEqual([]);
+      } finally {
+        handle.close();
+      }
+    },
+  );
+
   test('throws before mutating state when sessionState is present without session', () => {
     const handle = openTestDb();
     try {
@@ -165,8 +190,8 @@ describe('trace store recover, list, and prune', () => {
         expect.objectContaining({
           localDay: '2026-07-24',
           modelDimension: 'unknown',
-          requestCount: 2,
-          interruptedCount: 2,
+          requestCount: '2',
+          interruptedCount: '2',
         }),
       ]);
     } finally {

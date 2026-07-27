@@ -83,8 +83,11 @@ export async function attemptModelCandidate<TRequest, TContext>(
   if (adapter.wantsStream(request, context)) {
     const stream = await preflightStream(captured.value);
     let response: Response;
+    let egressCompletion: typeof captured.completion;
     try {
-      response = createSseResponse(adapter.modelSse(stream, egressContext));
+      const egress = adapter.modelSse(stream, egressContext);
+      response = createSseResponse(egress);
+      egressCompletion = Promise.all([captured.completion, egress.completion]).then(([completion]) => completion);
     } catch (error) {
       try {
         await stream.cancel(error);
@@ -95,7 +98,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     session.finishFrom(
       ctx.emitter.settleSuccess(
         attemptSpan,
-        terminalCompletion(captured.completion, rawRequest.signal).finally(release),
+        terminalCompletion(egressCompletion, rawRequest.signal).finally(release),
         ids,
         () => capturedResponseId,
       ),

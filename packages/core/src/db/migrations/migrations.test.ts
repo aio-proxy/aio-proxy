@@ -39,8 +39,8 @@ test('applied migrations deploy the trace persistence contract', () => {
     expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();
     expect(dailyColumns).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'total_tokens', type: 'INTEGER' }),
-        expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
+        expect.objectContaining({ name: 'total_tokens', type: 'TEXT' }),
+        expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'TEXT' }),
       ]),
     );
     expect(dailyColumns.some(({ name }) => name.includes('provider'))).toBeFalse();

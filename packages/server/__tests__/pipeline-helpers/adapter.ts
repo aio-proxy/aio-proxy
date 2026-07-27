@@ -60,7 +60,7 @@ export function defineProtocolAdapter(
     modelSse(stream, ...args: unknown[]) {
       options.onModelEgress?.(args[0]);
       const encoder = new TextEncoder();
-      return stream.pipeThrough(
+      const body = stream.pipeThrough(
         new TransformStream<ModelPart, Uint8Array>({
           transform(part, controller) {
             if (part.type === 'text-delta') {
@@ -69,6 +69,7 @@ export function defineProtocolAdapter(
           },
         }),
       );
+      return Object.assign(body, { completion: Promise.resolve() });
     },
     errors: {
       requestError: (error) =>

@@ -1,6 +1,6 @@
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 
-import type { ModelEgressContext } from '../../protocol/adapter';
+import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
 import { createCancellableEgressStream } from '../cancellable-stream';
 import {
   assertSuccessfulFinish,
@@ -32,7 +32,7 @@ type SseContext = {
 export function writeOpenAIResponsesSSE(
   stream: ReadableStream<OpenAIResponsesStreamPart>,
   context: ModelEgressContext,
-): ReadableStream<Uint8Array> {
+): ModelSseStream {
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
     const ctx: SseContext = { state: responseState(context.modelId), seq: 0, enqueue };
 

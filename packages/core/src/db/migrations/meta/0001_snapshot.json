@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "21e76ab3-25f6-4a4a-b2f4-f84f596e5cee",
+  "id": "3dd49fd8-03ce-43c5-b235-add2bd835c30",
   "prevId": "00532da3-8c9c-410b-af56-efa1e01c3ba1",
   "tables": {
     "oauth_account": {
@@ -1089,115 +1089,115 @@
         },
         "request_count": {
           "name": "request_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "success_count": {
           "name": "success_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "error_count": {
           "name": "error_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "cancelled_count": {
           "name": "cancelled_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "interrupted_count": {
           "name": "interrupted_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "usage_request_count": {
           "name": "usage_request_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "priced_request_count": {
           "name": "priced_request_count",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "input_tokens": {
           "name": "input_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "output_tokens": {
           "name": "output_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "total_tokens": {
           "name": "total_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "cache_read_tokens": {
           "name": "cache_read_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "cache_write_tokens": {
           "name": "cache_write_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "reasoning_tokens": {
           "name": "reasoning_tokens",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
         "estimated_cost_nano_usd": {
           "name": "estimated_cost_nano_usd",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         }
       },
       "indexes": {},
