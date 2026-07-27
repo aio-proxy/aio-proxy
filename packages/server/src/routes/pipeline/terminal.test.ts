@@ -3,9 +3,26 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from '../../../__tests__/pipeline-helpers';
+import { terminalCompletion } from '../../route-observation';
 import { attemptsOf, pipeline } from './test-support';
 
 describe('shared protocol routing pipeline', () => {
+  test('classifies only a rejected inbound abort completion as cancelled', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(
+      await terminalCompletion(
+        Promise.reject(new DOMException('client disconnected', 'AbortError')),
+        controller.signal,
+      ),
+    ).toEqual({ outcome: 'cancelled' });
+    expect(await terminalCompletion(Promise.reject(new Error('usage failed')), controller.signal)).toEqual({
+      outcome: 'failure',
+      errorCode: 'internal_error',
+    });
+  });
+
   test('records inbound abort as cancelled and does not fall back', async () => {
     const controller = new AbortController();
     controller.abort();

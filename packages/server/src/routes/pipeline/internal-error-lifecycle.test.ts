@@ -6,6 +6,36 @@ import { defineProtocolAdapter, jsonRequest, REQUESTED_MODEL, rawProvider } from
 import { pipeline } from './test-support';
 
 describe('shared protocol pipeline internal-error lifecycle', () => {
+  test('classifies only a real inbound parse abort as cancelled', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abortError = new DOMException('client disconnected', 'AbortError');
+    const aborted = pipeline([rawProvider({ id: 'raw' })], {
+      adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, { parseError: abortError }),
+    });
+
+    await expect(aborted.run(jsonRequest({ model: REQUESTED_MODEL }, { signal: controller.signal }))).rejects.toBe(
+      abortError,
+    );
+
+    expect(aborted.recording.finals).toEqual([{ outcome: 'cancelled' }]);
+    expect(aborted.logs).toEqual([]);
+
+    const failure = new Error('unexpected parse failure');
+    const failed = pipeline([rawProvider({ id: 'raw' })], {
+      adapter: defineProtocolAdapter(ProviderProtocol.OpenAICompatible, { parseError: failure }),
+    });
+
+    await expect(failed.run(jsonRequest({ model: REQUESTED_MODEL }, { signal: controller.signal }))).rejects.toBe(
+      failure,
+    );
+
+    expect(failed.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+    expect(failed.logs).toEqual([
+      expect.objectContaining({ event: 'request.failed', errorCode: 'internal_error', errorType: 'Error' }),
+    ]);
+  });
+
   test('finishes a pending session before rethrowing an unmapped error', async () => {
     const failure = new Error('unexpected parse failure');
     const provider = rawProvider({ id: 'raw' });

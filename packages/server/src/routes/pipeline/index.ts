@@ -8,6 +8,7 @@ import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
 import type { RequestTraceSession } from '../../request-tracing';
+import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource } from '../../runtime';
 import { attemptCandidates } from './attempt';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
@@ -178,7 +179,11 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       if (!deferred) lease.release();
     }
   } catch (error) {
-    if (session.finish({ outcome: 'failure', errorCode: 'internal_error' })) {
+    const cancelled = isInboundAbort(error, rawRequest.signal);
+    if (
+      session.finish(cancelled ? { outcome: 'cancelled' } : { outcome: 'failure', errorCode: 'internal_error' }) &&
+      !cancelled
+    ) {
       logRequestFailed({
         source,
         requestId: session.requestId,

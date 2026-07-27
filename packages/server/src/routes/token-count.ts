@@ -65,7 +65,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
 ): Promise<Response> {
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
-    return finishRejected(session, adapter.errors.tooLarge());
+    return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
   }
 
   let request: TRequest;
@@ -75,12 +75,16 @@ async function handleTokenCountInContext<TRequest, TContext>(
     invocation = adapter.modelInvocation(request, context);
   } catch (error) {
     await cancelRetainedRequestBody(rawRequest, error);
-    if (error instanceof RequestBodyTooLargeError) return finishRejected(session, adapter.errors.tooLarge());
+    if (error instanceof RequestBodyTooLargeError) {
+      return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
+    }
     if (error instanceof UnsupportedContentEncodingError) {
-      return finishRejected(session, adapter.errors.unsupportedContentEncoding());
+      return finishRejected(session, adapter.errors.unsupportedContentEncoding(), 'unsupported_content_encoding');
     }
     const mapped = adapter.errors.requestError(error);
-    if (mapped !== undefined) return finishRejected(session, mapped);
+    if (mapped !== undefined) {
+      return finishRejected(session, mapped, mapped.status === 501 ? 'unsupported_feature' : 'invalid_request');
+    }
     throw error;
   }
 
@@ -107,8 +111,9 @@ async function handleTokenCountInContext<TRequest, TContext>(
         session,
       });
     } catch (error) {
-      if (error instanceof RouterModelNotFoundError)
-        return finishRejected(session, adapter.errors.modelNotFound(error.message));
+      if (error instanceof RouterModelNotFoundError) {
+        return finishRejected(session, adapter.errors.modelNotFound(error.message), 'model_not_found');
+      }
       throw error;
     } finally {
       lease.release();
@@ -121,8 +126,8 @@ async function handleTokenCountInContext<TRequest, TContext>(
 // Client errors (oversized body, unparseable request, unsupported encoding)
 // return before any provider attempt. begin() already persisted a running root,
 // so finish it as a terminal failure instead of leaving it running forever.
-function finishRejected(session: RequestTraceSession, response: Response): Response {
-  session.finish({ outcome: 'failure', finalHttpStatus: response.status });
+function finishRejected(session: RequestTraceSession, response: Response, errorCode: string): Response {
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, errorCode });
   return response;
 }
 

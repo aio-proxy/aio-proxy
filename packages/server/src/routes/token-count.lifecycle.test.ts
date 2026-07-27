@@ -22,7 +22,9 @@ test('releases the retained body when count request validation fails', async () 
   expect(response.status).toBe(400);
   expect(request.bodyUsed).toBe(true);
   expect(fixture.recording.begins).toEqual([{ inboundProtocol: anthropicMessagesAdapter.protocol }]);
-  expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'failure', finalStatusCode: 400 })]);
+  expect(fixture.recording.finals).toEqual([
+    expect.objectContaining({ outcome: 'failure', finalStatusCode: 400, errorCode: 'invalid_request' }),
+  ]);
   expect(fixture.releases()).toBe(0);
 });
 
@@ -283,7 +285,6 @@ function deferred<T>() {
 }
 
 class TimeoutError extends Error {}
-
 async function settleWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<T | unknown> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
