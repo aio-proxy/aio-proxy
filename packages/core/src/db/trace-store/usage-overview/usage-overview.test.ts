@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { traceSpan } from '../../schema';
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
 import type { StoredSpan, TraceCompletion, TraceRootStart } from '../types';
@@ -134,6 +135,42 @@ describe('usage overview from trace roots', () => {
 
       const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
       expect(overview.summary.usageRequestCount).toBe('1');
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('aggregates token and cost values beyond SQLite int64', () => {
+    const { handle, store } = makeStore();
+    try {
+      handle.db
+        .insert(traceSpan)
+        .values(
+          Array.from({ length: 1025 }, (_, index) => ({
+            traceId: index.toString(16).padStart(32, '0'),
+            spanId: 'f'.repeat(16),
+            name: 'aio_proxy.request',
+            kind: 1,
+            startedAt: new Date(NOW.getTime() - 1000),
+            endedAt: NOW,
+            statusCode: 0,
+            finalProviderId: 'provider',
+            finalModelId: 'model',
+            totalTokens: Number.MAX_SAFE_INTEGER,
+            estimatedCostNanoUsd: 9_000_000_000_000_000,
+            attributes: {},
+            events: [],
+            links: [],
+          })),
+        )
+        .run();
+
+      const tokens = store.overview({ range: '24h', metric: 'tokens', groupBy: 'provider', now: NOW });
+      const cost = store.overview({ range: '24h', metric: 'cost', groupBy: 'provider', now: NOW });
+      expect(tokens.summary.totalTokens).toBe('9232379236109515775');
+      expect(bucketTotal(tokens.buckets)).toBe(9_232_379_236_109_515_775n);
+      expect(cost.summary.estimatedCostNanoUsd).toBe('9225000000000000000');
+      expect(bucketTotal(cost.buckets)).toBe(9_225_000_000_000_000_000n);
     } finally {
       handle.close();
     }
