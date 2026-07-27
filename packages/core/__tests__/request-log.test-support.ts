@@ -3,12 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DashboardUsageOverviewResponseSchema, ProviderKind } from '@aio-proxy/types';
+import { ProviderKind } from '@aio-proxy/types';
 import { eq } from 'drizzle-orm';
 
 import { createRequestLogStore, openDb, requestLog, usage } from '../src/db';
 
-export { createRequestLogStore, DashboardUsageOverviewResponseSchema, eq, openDb, requestLog, usage };
+export { createRequestLogStore, eq, openDb, requestLog, usage };
 
 const homes: string[] = [];
 export const now = new Date('2026-07-11T08:00:00.000Z');

@@ -4,7 +4,30 @@ import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
 
-type DashboardUsageResponse = InferResponseType<typeof dashboardClient.dashboard.api.usage.$get, 200>;
+type DashboardUsageWireResponse = InferResponseType<typeof dashboardClient.dashboard.api.usage.$get, 200>;
+
+export const decodeUsageOverview = (wire: DashboardUsageWireResponse) => ({
+  ...wire,
+  summary: {
+    ...wire.summary,
+    estimatedCostNanoUsd: BigInt(wire.summary.estimatedCostNanoUsd),
+    pricedRequestCount: BigInt(wire.summary.pricedRequestCount),
+    usageRequestCount: BigInt(wire.summary.usageRequestCount),
+    requestCount: BigInt(wire.summary.requestCount),
+    successCount: BigInt(wire.summary.successCount),
+    failureCount: BigInt(wire.summary.failureCount),
+    cancelledCount: BigInt(wire.summary.cancelledCount),
+    inputTokens: BigInt(wire.summary.inputTokens),
+    outputTokens: BigInt(wire.summary.outputTokens),
+    totalTokens: BigInt(wire.summary.totalTokens),
+  },
+  buckets: wire.buckets.map((bucket) => ({
+    ...bucket,
+    values: Object.fromEntries(Object.entries(bucket.values).map(([key, value]) => [key, BigInt(value)])),
+  })),
+});
+
+export type UsageOverviewData = ReturnType<typeof decodeUsageOverview>;
 
 export class DashboardUsageRequestError extends Error {
   readonly status: number;
@@ -30,16 +53,15 @@ export const usageQueryOptions = (input: UsageQueryInput) =>
     refetchIntervalInBackground: false,
   });
 
-export const getUsage = async (input: UsageQueryInput): Promise<DashboardUsageResponse> => {
+export const getUsage = async (input: UsageQueryInput): Promise<UsageOverviewData> => {
   const response = await dashboardClient.dashboard.api.usage.$get({
     query: { range: input.range, metric: input.metric, groupBy: input.groupBy },
   });
   if (!response.ok) {
     throw new DashboardUsageRequestError(response.status);
   }
-  return response.json();
+  return decodeUsageOverview(await response.json());
 };
 
-export type UsageOverviewData = Awaited<ReturnType<typeof getUsage>>;
 export type UsageOverviewSeries = UsageOverviewData['series'][number];
 export type UsageOverviewSummary = UsageOverviewData['summary'];

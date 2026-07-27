@@ -2,7 +2,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { listRequestLogs } from './request-logs';
 import { findAffinity, resolveResponse } from './session-state';
-import { complete, prune, recover, startRoot } from './trace-lifecycle';
+import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
 import { find, list } from './trace-queries';
 import type { TraceStore } from './types';
 import { overview } from './usage-overview';

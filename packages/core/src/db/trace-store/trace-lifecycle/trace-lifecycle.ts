@@ -1,17 +1,11 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
-import { traceSpan, usageDaily } from '../schema';
-import { applyAffinity, pruneSessionState, upsertResponse } from './session-state';
-import { projectAttributes } from './span-projection';
-import type { StoredSpan, TraceCompletion, TraceRootStart } from './types';
-
-function localDay(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+import { traceSpan } from '../../schema';
+import { applyAffinity, pruneSessionState, upsertResponse } from '../session-state';
+import { projectAttributes } from '../span-projection';
+import type { StoredSpan, TraceCompletion, TraceRootStart } from '../types';
+import { prepareUsage, upsertInterruptedUsage, upsertUsageDelta } from './usage-persistence';
 
 function insertSpan(tx: BunSQLiteDatabase, span: StoredSpan, isRoot: boolean): void {
   const { columns, remaining } = projectAttributes(span.attributes, isRoot);
@@ -55,12 +49,8 @@ export function startRoot(db: BunSQLiteDatabase, input: TraceRootStart): void {
 
 function validateCompletion(input: TraceCompletion): void {
   const root = input.spans.find((span) => span.spanId === input.rootSpanId);
-  if (root === undefined) {
-    throw new Error('Completion must include the root span');
-  }
-  if (root.traceId !== input.traceId) {
-    throw new Error('Root span trace id does not match completion trace id');
-  }
+  if (root === undefined) throw new Error('Completion must include the root span');
+  if (root.traceId !== input.traceId) throw new Error('Root span trace id does not match completion trace id');
   if (input.summary.usage !== undefined) {
     if (input.summary.usage.providerId !== input.summary.finalProviderId) {
       throw new Error('Usage provider id must match the final provider id');
@@ -72,52 +62,6 @@ function validateCompletion(input: TraceCompletion): void {
   if (input.sessionState !== undefined && input.session === undefined) {
     throw new Error('sessionState requires session to be present');
   }
-}
-
-function upsertUsageDelta(tx: BunSQLiteDatabase, input: TraceCompletion, now: Date): void {
-  const { summary, session } = input;
-  const modelDimension = summary.finalModelId ?? session?.requestedModelId ?? 'unknown';
-  const usage = summary.usage;
-  const hasUsage = usage !== undefined;
-  const success = summary.terminationReason === undefined;
-
-  tx.insert(usageDaily)
-    .values({
-      localDay: localDay(now),
-      modelDimension,
-      requestCount: 1,
-      successCount: success ? 1 : 0,
-      errorCount: summary.terminationReason === 'failure' ? 1 : 0,
-      cancelledCount: summary.terminationReason === 'cancelled' ? 1 : 0,
-      interruptedCount: summary.terminationReason === 'interrupted' ? 1 : 0,
-      usageRequestCount: hasUsage ? 1 : 0,
-      pricedRequestCount: usage?.estimatedCostUsd !== undefined ? 1 : 0,
-      inputTokens: usage?.inputTokens ?? 0,
-      outputTokens: usage?.outputTokens ?? 0,
-      cacheReadTokens: usage?.cacheReadTokens ?? 0,
-      cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
-      reasoningTokens: usage?.reasoningTokens ?? 0,
-      estimatedCostUsd: usage?.estimatedCostUsd ?? 0,
-    })
-    .onConflictDoUpdate({
-      target: [usageDaily.localDay, usageDaily.modelDimension],
-      set: {
-        requestCount: sql`request_count + excluded.request_count`,
-        successCount: sql`success_count + excluded.success_count`,
-        errorCount: sql`error_count + excluded.error_count`,
-        cancelledCount: sql`cancelled_count + excluded.cancelled_count`,
-        interruptedCount: sql`interrupted_count + excluded.interrupted_count`,
-        usageRequestCount: sql`usage_request_count + excluded.usage_request_count`,
-        pricedRequestCount: sql`priced_request_count + excluded.priced_request_count`,
-        inputTokens: sql`input_tokens + excluded.input_tokens`,
-        outputTokens: sql`output_tokens + excluded.output_tokens`,
-        cacheReadTokens: sql`cache_read_tokens + excluded.cache_read_tokens`,
-        cacheWriteTokens: sql`cache_write_tokens + excluded.cache_write_tokens`,
-        reasoningTokens: sql`reasoning_tokens + excluded.reasoning_tokens`,
-        estimatedCostUsd: sql`estimated_cost_usd + excluded.estimated_cost_usd`,
-      },
-    })
-    .run();
 }
 
 export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean {
@@ -135,10 +79,9 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
       .where(and(eq(traceSpan.traceId, input.traceId), eq(traceSpan.spanId, input.rootSpanId)))
       .get();
 
-    if (existing !== undefined && existing.endedAt !== null) {
-      return false;
-    }
+    if (existing !== undefined && existing.endedAt !== null) return false;
 
+    const preparedUsage = prepareUsage(input.summary.usage);
     const { columns, remaining } = projectAttributes(rootSpan.attributes, true);
     const terminalColumns = {
       ...columns,
@@ -161,9 +104,9 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
       ...(input.summary.usage?.reasoningTokens !== undefined
         ? { reasoningTokens: input.summary.usage.reasoningTokens }
         : {}),
-      ...(input.summary.usage?.estimatedCostUsd !== undefined
-        ? { estimatedCostUsd: input.summary.usage.estimatedCostUsd }
-        : {}),
+      ...(preparedUsage.estimatedCostNanoUsd === undefined
+        ? {}
+        : { estimatedCostNanoUsd: preparedUsage.estimatedCostNanoUsd }),
     };
 
     if (existing === undefined) {
@@ -197,11 +140,9 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
         .run();
     }
 
-    for (const span of childSpans) {
-      insertSpan(tx, span, false);
-    }
+    for (const span of childSpans) insertSpan(tx, span, false);
 
-    upsertUsageDelta(tx, input, now);
+    upsertUsageDelta(tx, input, now, preparedUsage);
 
     if (input.sessionState?.responseId !== undefined && input.session !== undefined) {
       upsertResponse(tx, input.sessionState.responseId, input.session.identity, now);
@@ -230,30 +171,14 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
 export function recover(db: BunSQLiteDatabase, now: Date): number {
   return db.transaction((tx) => {
     const running = tx.select().from(traceSpan).where(isNull(traceSpan.endedAt)).all();
-    if (running.length === 0) {
-      return 0;
-    }
+    if (running.length === 0) return 0;
     for (const row of running) {
       tx.update(traceSpan)
         .set({ endedAt: now, statusCode: 2, terminationReason: 'interrupted' })
         .where(and(eq(traceSpan.traceId, row.traceId), eq(traceSpan.spanId, row.spanId)))
         .run();
     }
-    tx.insert(usageDaily)
-      .values({
-        localDay: localDay(now),
-        modelDimension: 'unknown',
-        requestCount: running.length,
-        interruptedCount: running.length,
-      })
-      .onConflictDoUpdate({
-        target: [usageDaily.localDay, usageDaily.modelDimension],
-        set: {
-          requestCount: sql`request_count + excluded.request_count`,
-          interruptedCount: sql`interrupted_count + excluded.interrupted_count`,
-        },
-      })
-      .run();
+    upsertInterruptedUsage(tx, running.length, now);
     return running.length;
   });
 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { OpenRouterPriceCatalog, TextStreamPart, ToolSet } from '@aio-proxy/core';
 
+import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
 import { drain, finishPart, textStream } from './test-support';
 
@@ -124,5 +125,65 @@ describe('usage capture stream lifecycle', () => {
       outcome: 'success',
       usage: expect.objectContaining({ providerId: 'provider', modelId: 'model', inputTokens: 4 }),
     });
+  });
+});
+
+describe('usage capture stream validation', () => {
+  test('invalid finish usage is dropped without altering stream parts', async () => {
+    const finish = finishPart();
+    const invalidFinish = {
+      ...finish,
+      totalUsage: { ...finish.totalUsage, inputTokens: Number.MAX_SAFE_INTEGER + 1 },
+    } satisfies TextStreamPart<ToolSet>;
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      priceCatalogTask: async () => undefined,
+      logger: (entry) => logs.push(entry),
+    }).stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream([invalidFinish]),
+    });
+
+    expect(await drain(captured.value)).toEqual([invalidFinish]);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success' });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'ai-sdk',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
+  });
+
+  test('invalid priced usage is dropped and logged', async () => {
+    const catalog: OpenRouterPriceCatalog = {
+      find: () => ({ id: 'priced/model', input: -1 }),
+    };
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      priceCatalogTask: async () => catalog,
+      logger: (entry) => logs.push(entry),
+    }).stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream([finishPart()]),
+    });
+
+    expect(await drain(captured.value)).toEqual([finishPart()]);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success' });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'ai-sdk',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
   });
 });

@@ -78,7 +78,7 @@ export async function waitForUsageRow(app: ReturnType<typeof createServer>): Pro
       typeof body.summary === 'object' &&
       body.summary !== null &&
       'requestCount' in body.summary &&
-      body.summary.requestCount === 1
+      body.summary.requestCount === '1'
     ) {
       return body;
     }

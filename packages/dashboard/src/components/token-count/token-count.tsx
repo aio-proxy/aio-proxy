@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { formatCompactTokenCount, formatExactTokenCount } from './format-token-count';
 
 interface TokenCountProps {
-  readonly value: number;
+  readonly value: number | bigint;
   readonly className?: string;
 }
 

@@ -1,7 +1,6 @@
 import type {
   DashboardRequestLogsPageSize,
   DashboardRequestLogsResponse,
-  DashboardUsageOverviewResponse,
   RequestOutcome,
   UsageOverviewGroupBy,
   UsageOverviewMetric,
@@ -32,6 +31,39 @@ export type UsageOverviewQuery = {
   readonly now?: Date;
 };
 
+export type LegacyUsageOverviewResponse = {
+  readonly range: UsageOverviewRange;
+  readonly metric: UsageOverviewMetric;
+  readonly groupBy: UsageOverviewGroupBy;
+  readonly rangeStart: string;
+  readonly rangeEnd: string;
+  readonly bucketUnit: 'hour' | 'day';
+  readonly summary: {
+    readonly estimatedCostUsd: number;
+    readonly pricingCoverage: number | null;
+    readonly pricedRequestCount: number;
+    readonly usageRequestCount: number;
+    readonly requestCount: number;
+    readonly successCount: number;
+    readonly failureCount: number;
+    readonly cancelledCount: number;
+    readonly successRate: number | null;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly totalTokens: number;
+    readonly averageRpm: number;
+    readonly averageTpm: number;
+  };
+  readonly series: readonly {
+    readonly key: string;
+    readonly kind: 'dimension' | 'other' | 'failed' | 'cancelled';
+  }[];
+  readonly buckets: readonly {
+    readonly key: string;
+    readonly values: Readonly<Record<string, number>>;
+  }[];
+};
+
 export type RequestLogsQuery = {
   readonly page: number;
   readonly pageSize: DashboardRequestLogsPageSize;
@@ -49,6 +81,6 @@ export type RequestLogsQuery = {
 export type RequestLogStore = {
   readonly insertFinal: (input: RequestLogFinal) => void;
   readonly list: (query: RequestLogsQuery) => DashboardRequestLogsResponse;
-  readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
+  readonly overview: (query: UsageOverviewQuery) => LegacyUsageOverviewResponse;
   readonly prune: (cutoff: Date) => void;
 };

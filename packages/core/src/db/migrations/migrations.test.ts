@@ -29,13 +29,21 @@ test('applied migrations deploy the trace persistence contract', () => {
       expect.arrayContaining(['trace_span', 'usage_daily', 'session_affinity', 'session_response']),
     );
 
+    const traceColumns = handle.sqlite.query<{ name: string; type: string }, []>('PRAGMA table_info(trace_span)').all();
     const dailyColumns = handle.sqlite
-      .query<{ name: string }, []>('PRAGMA table_info(usage_daily)')
-      .all()
-      .map(({ name }) => name);
-    expect(dailyColumns).toContain('local_day');
-    expect(dailyColumns).toContain('model_dimension');
-    expect(dailyColumns.some((name) => name.includes('provider'))).toBeFalse();
+      .query<{ name: string; type: string }, []>('PRAGMA table_info(usage_daily)')
+      .all();
+    expect(traceColumns).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' })]),
+    );
+    expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();
+    expect(dailyColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'total_tokens', type: 'INTEGER' }),
+        expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
+      ]),
+    );
+    expect(dailyColumns.some(({ name }) => name.includes('provider'))).toBeFalse();
   } finally {
     handle.close();
     rmSync(home, { recursive: true, force: true });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { traceSpan } from '../../schema';
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
 import type { StoredSpan, TraceCompletion, TraceRootStart } from '../types';
@@ -9,6 +10,12 @@ const NOW = new Date('2026-07-11T08:00:00.000Z');
 function makeStore() {
   const handle = openTestDb();
   return { handle, store: createTraceStore(handle.db) };
+}
+
+function bucketTotal(buckets: readonly { readonly values: Readonly<Record<string, string | number>> }[]): bigint {
+  return buckets
+    .flatMap(({ values }) => Object.values(values))
+    .reduce((total, value) => total + BigInt(String(value)), 0n);
 }
 
 function rootStart(traceId: string, startedAt: Date, attrs: Record<string, unknown> = {}): TraceRootStart {
@@ -104,9 +111,13 @@ describe('usage overview from trace roots', () => {
       const cost = store.overview({ range: '24h', metric: 'cost', groupBy: 'model', now: NOW });
 
       expect(tokens.series).toEqual([{ key: 'openai/gpt-5', kind: 'dimension' }]);
-      expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(150);
+      expect(tokens.buckets.flatMap(({ values }) => Object.values(values)).filter((value) => value !== '0')).toEqual([
+        '150',
+      ]);
       expect(cost.series).toEqual([{ key: 'openai/gpt-5', kind: 'dimension' }]);
-      expect(cost.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(0.25);
+      expect(cost.buckets.flatMap(({ values }) => Object.values(values)).filter((value) => value !== '0')).toEqual([
+        '250000000',
+      ]);
     } finally {
       handle.close();
     }
@@ -123,7 +134,43 @@ describe('usage overview from trace roots', () => {
       });
 
       const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
-      expect(overview.summary.usageRequestCount).toBe(1);
+      expect(overview.summary.usageRequestCount).toBe('1');
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('aggregates token and cost values beyond SQLite int64', () => {
+    const { handle, store } = makeStore();
+    try {
+      handle.db
+        .insert(traceSpan)
+        .values(
+          Array.from({ length: 1025 }, (_, index) => ({
+            traceId: index.toString(16).padStart(32, '0'),
+            spanId: 'f'.repeat(16),
+            name: 'aio_proxy.request',
+            kind: 1,
+            startedAt: new Date(NOW.getTime() - 1000),
+            endedAt: NOW,
+            statusCode: 0,
+            finalProviderId: 'provider',
+            finalModelId: 'model',
+            totalTokens: Number.MAX_SAFE_INTEGER,
+            estimatedCostNanoUsd: 9_000_000_000_000_000,
+            attributes: {},
+            events: [],
+            links: [],
+          })),
+        )
+        .run();
+
+      const tokens = store.overview({ range: '24h', metric: 'tokens', groupBy: 'provider', now: NOW });
+      const cost = store.overview({ range: '24h', metric: 'cost', groupBy: 'provider', now: NOW });
+      expect(tokens.summary.totalTokens).toBe('9232379236109515775');
+      expect(bucketTotal(tokens.buckets)).toBe(9_232_379_236_109_515_775n);
+      expect(cost.summary.estimatedCostNanoUsd).toBe('9225000000000000000');
+      expect(bucketTotal(cost.buckets)).toBe(9_225_000_000_000_000_000n);
     } finally {
       handle.close();
     }
@@ -162,7 +209,7 @@ describe('usage overview from trace roots', () => {
         { key: '__failed__', kind: 'failed' },
         { key: '__cancelled__', kind: 'cancelled' },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => Object.values(values)).reduce((a, b) => a + b, 0)).toBe(6);
+      expect(bucketTotal(overview.buckets)).toBe(6n);
     } finally {
       handle.close();
     }
@@ -241,7 +288,9 @@ describe('usage overview from trace roots', () => {
         { key: 'model-4', kind: 'dimension' },
         { key: '__other__', kind: 'other' },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => [values.__other__]).reduce((a, b) => a + b, 0)).toBe(1);
+      expect(overview.buckets.flatMap(({ values }) => [values.__other__]).filter((value) => value !== '0')).toEqual([
+        '1',
+      ]);
     } finally {
       handle.close();
     }

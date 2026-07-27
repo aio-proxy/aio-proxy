@@ -202,6 +202,7 @@ export {
   type UsageCostResult,
   type UsagePricingInput,
 } from './usage-pricing';
+export { COST_SCALE, nanoUsdToUsd, parseSqliteInteger, usdToNanoUsd } from './usage-numbers';
 
 export type ProviderSummary = {
   readonly id: string;

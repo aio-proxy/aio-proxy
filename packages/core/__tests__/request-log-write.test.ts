@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   createRequestLogStore,
-  DashboardUsageOverviewResponseSchema,
   eq,
   now,
   openDb,
@@ -14,7 +13,7 @@ import {
 } from './request-log.test-support';
 
 describe('request log store', () => {
-  test('returns a schema-valid zero summary for an empty database', () => {
+  test('returns a numeric zero summary for an empty database', () => {
     const handle = openDb({ home: tempHome() });
     try {
       const overview = createRequestLogStore(handle.db).overview({
@@ -40,7 +39,6 @@ describe('request log store', () => {
         averageRpm: 0,
         averageTpm: 0,
       });
-      expect(DashboardUsageOverviewResponseSchema.parse(overview)).toEqual(overview);
     } finally {
       handle.close();
     }

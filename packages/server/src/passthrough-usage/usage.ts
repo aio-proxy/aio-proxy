@@ -1,16 +1,18 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import {
+  anthropicTotalTokens,
   assertNever,
-  type ExtractedUsage,
+  fieldValue,
   isRecord,
   nestedNumberField,
   numberField,
   tokenUsage,
-  totalTokens,
+  type UsageExtraction,
+  usageNumber,
 } from './shared';
 
-export function usageFromJson(protocol: ProviderProtocol, value: unknown): ExtractedUsage | undefined {
+export function usageFromJson(protocol: ProviderProtocol, value: unknown): UsageExtraction {
   switch (protocol) {
     case ProviderProtocol.OpenAICompatible:
       return openAICompatibleUsage(value);
@@ -25,76 +27,86 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Extra
   }
 }
 
-function openAICompatibleUsage(value: unknown): ExtractedUsage | undefined {
+function openAICompatibleUsage(value: unknown): UsageExtraction {
   if (!isRecord(value) || !isRecord(value['usage'])) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const usage = value['usage'];
   return tokenUsage({
-    inputTokens: numberField(usage, 'prompt_tokens'),
-    outputTokens: numberField(usage, 'completion_tokens'),
-    totalTokens: numberField(usage, 'total_tokens'),
-    cacheReadTokens: nestedNumberField(usage, 'prompt_tokens_details', 'cached_tokens'),
-    reasoningTokens: nestedNumberField(usage, 'completion_tokens_details', 'reasoning_tokens'),
+    inputTokens: numberField(usage, 'prompt_tokens', 'inputTokens'),
+    outputTokens: numberField(usage, 'completion_tokens', 'outputTokens'),
+    totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
+    cacheReadTokens: nestedNumberField(usage, 'prompt_tokens_details', 'cached_tokens', 'cacheReadTokens'),
+    reasoningTokens: nestedNumberField(usage, 'completion_tokens_details', 'reasoning_tokens', 'reasoningTokens'),
   });
 }
 
-function openAIResponsesUsage(value: unknown): ExtractedUsage | undefined {
+function openAIResponsesUsage(value: unknown): UsageExtraction {
   if (!isRecord(value)) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const response = isRecord(value['response']) ? value['response'] : value;
   if (!isRecord(response['usage'])) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const usage = response['usage'];
   return tokenUsage({
-    inputTokens: numberField(usage, 'input_tokens'),
-    outputTokens: numberField(usage, 'output_tokens'),
-    totalTokens: numberField(usage, 'total_tokens'),
-    cacheReadTokens: nestedNumberField(usage, 'input_tokens_details', 'cached_tokens'),
-    reasoningTokens: nestedNumberField(usage, 'output_tokens_details', 'reasoning_tokens'),
+    inputTokens: numberField(usage, 'input_tokens', 'inputTokens'),
+    outputTokens: numberField(usage, 'output_tokens', 'outputTokens'),
+    totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
+    cacheReadTokens: nestedNumberField(usage, 'input_tokens_details', 'cached_tokens', 'cacheReadTokens'),
+    reasoningTokens: nestedNumberField(usage, 'output_tokens_details', 'reasoning_tokens', 'reasoningTokens'),
   });
 }
 
-function anthropicUsage(value: unknown): ExtractedUsage | undefined {
+function anthropicUsage(value: unknown): UsageExtraction {
   if (!isRecord(value)) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const container = isRecord(value['message']) ? value['message'] : value;
   if (!isRecord(container['usage'])) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const usage = container['usage'];
-  const inputTokens = numberField(usage, 'input_tokens');
-  const outputTokens = numberField(usage, 'output_tokens');
+  const inputTokens = numberField(usage, 'input_tokens', 'inputTokens');
+  const outputTokens = numberField(usage, 'output_tokens', 'outputTokens');
+  const cacheReadTokens = numberField(usage, 'cache_read_input_tokens', 'cacheReadTokens');
+  const cacheWriteTokens = numberField(usage, 'cache_creation_input_tokens', 'cacheWriteTokens');
   return tokenUsage({
     inputTokens,
     outputTokens,
-    totalTokens: totalTokens(inputTokens, outputTokens),
-    cacheReadTokens: numberField(usage, 'cache_read_input_tokens'),
-    cacheWriteTokens: numberField(usage, 'cache_creation_input_tokens'),
+    totalTokens: usageNumber(
+      anthropicTotalTokens(
+        fieldValue(inputTokens),
+        fieldValue(outputTokens),
+        fieldValue(cacheWriteTokens),
+        fieldValue(cacheReadTokens),
+      ),
+      'totalTokens',
+    ),
+    cacheReadTokens,
+    cacheWriteTokens,
   });
 }
 
-function geminiUsage(value: unknown): ExtractedUsage | undefined {
+function geminiUsage(value: unknown): UsageExtraction {
   if (Array.isArray(value)) {
     for (let index = value.length - 1; index >= 0; index -= 1) {
       if (isRecord(value[index]) && isRecord(value[index]['usageMetadata'])) {
         return geminiUsage(value[index]);
       }
     }
-    return undefined;
+    return { kind: 'absent' };
   }
   if (!isRecord(value) || !isRecord(value['usageMetadata'])) {
-    return undefined;
+    return { kind: 'absent' };
   }
   const usage = value['usageMetadata'];
   return tokenUsage({
-    inputTokens: numberField(usage, 'promptTokenCount'),
-    outputTokens: numberField(usage, 'candidatesTokenCount'),
-    totalTokens: numberField(usage, 'totalTokenCount'),
-    cacheReadTokens: numberField(usage, 'cachedContentTokenCount'),
-    reasoningTokens: numberField(usage, 'thoughtsTokenCount'),
+    inputTokens: numberField(usage, 'promptTokenCount', 'inputTokens'),
+    outputTokens: numberField(usage, 'candidatesTokenCount', 'outputTokens'),
+    totalTokens: numberField(usage, 'totalTokenCount', 'totalTokens'),
+    cacheReadTokens: numberField(usage, 'cachedContentTokenCount', 'cacheReadTokens'),
+    reasoningTokens: numberField(usage, 'thoughtsTokenCount', 'reasoningTokens'),
   });
 }

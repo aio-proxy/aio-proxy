@@ -1,7 +1,7 @@
 import { traceSpan } from '../schema';
 
-// Single source of truth for "which columns count as usage". Both the SQL
-// aggregate (usage-overview) and the JS row projection (trace-queries) derive
+// Single source of truth for "which columns count as usage". Both the overview
+// query and the JS row projection (trace-queries) derive
 // from this list so a request with any persisted usage field—not only
 // inputTokens—is treated as having usage.
 export const usageColumnKeys = [
@@ -11,7 +11,7 @@ export const usageColumnKeys = [
   'cacheReadTokens',
   'cacheWriteTokens',
   'reasoningTokens',
-  'estimatedCostUsd',
+  'estimatedCostNanoUsd',
 ] as const;
 
 export type UsageColumnKey = (typeof usageColumnKeys)[number];

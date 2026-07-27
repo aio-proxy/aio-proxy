@@ -39,7 +39,7 @@ describe('passthrough usage extraction', () => {
     ).toEqual({
       inputTokens: 11,
       outputTokens: 13,
-      totalTokens: 24,
+      totalTokens: 36,
       cacheReadTokens: 7,
       cacheWriteTokens: 5,
     });
@@ -61,7 +61,7 @@ describe('passthrough usage extraction', () => {
     expect(extractPassthroughUsage(ProviderProtocol.Anthropic, body)).toEqual({
       inputTokens: 11,
       outputTokens: 13,
-      totalTokens: 24,
+      totalTokens: 36,
       cacheReadTokens: 7,
       cacheWriteTokens: 5,
     });

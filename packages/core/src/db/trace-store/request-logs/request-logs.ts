@@ -8,6 +8,7 @@ import type {
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { nanoUsdToUsd } from '../../../usage-numbers';
 import { traceSpan } from '../../schema';
 import type { RequestLogsQuery } from '../types';
 import { hasAnyUsage } from '../usage-fields';
@@ -48,7 +49,7 @@ function usageOf(row: Row): UsageRow | undefined {
     ...(row.cacheReadTokens !== null ? { cacheReadTokens: row.cacheReadTokens } : {}),
     ...(row.cacheWriteTokens !== null ? { cacheWriteTokens: row.cacheWriteTokens } : {}),
     ...(row.reasoningTokens !== null ? { reasoningTokens: row.reasoningTokens } : {}),
-    ...(row.estimatedCostUsd !== null ? { estimatedCostUsd: row.estimatedCostUsd } : {}),
+    ...(row.estimatedCostNanoUsd !== null ? { estimatedCostUsd: nanoUsdToUsd(row.estimatedCostNanoUsd) } : {}),
   };
 }
 

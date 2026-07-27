@@ -103,7 +103,13 @@ describe('legacy request-logs projection from trace roots', () => {
           finalProviderId: 'openai',
           finalModelId: 'gpt-4o',
           finalHttpStatus: 200,
-          usage: { providerId: 'openai', modelId: 'gpt-4o', inputTokens: 10, outputTokens: 5 },
+          usage: {
+            providerId: 'openai',
+            modelId: 'gpt-4o',
+            inputTokens: 10,
+            outputTokens: 5,
+            estimatedCostUsd: 0.1,
+          },
         },
         { 'gen_ai.request.model': 'gpt-4o-alias' },
         [
@@ -138,6 +144,7 @@ describe('legacy request-logs projection from trace roots', () => {
       expect(log.durationMs).toBe(200);
       expect(log.usage?.inputTokens).toBe(10);
       expect(log.usage?.outputTokens).toBe(5);
+      expect(log.usage?.estimatedCostUsd).toBe(0.1);
       expect(log.attempts).toHaveLength(2);
       expect(log.attempts[0]).toMatchObject({
         index: 0,

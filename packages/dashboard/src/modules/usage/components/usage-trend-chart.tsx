@@ -21,9 +21,20 @@ import { createUsageValueFormatter } from '../services/usage-value-formatter';
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 import { UsageTrendTabs } from './usage-trend-tabs';
 
-type Props = {
+interface UsageTrendChartProps {
   readonly data: UsageOverviewData;
-};
+}
+
+export const toUsageChartData = (data: UsageOverviewData) =>
+  data.buckets.map((bucket) => ({
+    bucket: bucket.key,
+    ...Object.fromEntries(
+      Object.entries(bucket.values).map(([key, value]) => [
+        key,
+        data.metric === 'cost' ? Number(value) / 1_000_000_000 : Number(value),
+      ]),
+    ),
+  }));
 
 const seriesColor = (series: UsageOverviewSeries, index: number) => {
   if (series.kind === 'failed') return 'var(--destructive)';
@@ -32,7 +43,7 @@ const seriesColor = (series: UsageOverviewSeries, index: number) => {
   return `var(--chart-${(index % 5) + 1})`;
 };
 
-export const UsageTrendChart: React.FC<Props> = ({ data }) => {
+export const UsageTrendChart: React.FC<UsageTrendChartProps> = ({ data }) => {
   const { metric } = useAtomValue(usageOverviewFiltersAtom);
   const chartTitleId = useId();
   const chartDescriptionId = useId();
@@ -53,7 +64,7 @@ export const UsageTrendChart: React.FC<Props> = ({ data }) => {
   const chartConfig = Object.fromEntries(
     data.series.map((series, index) => [series.key, { label: seriesLabel(series), color: seriesColor(series, index) }]),
   ) satisfies ChartConfig;
-  const chartData = data.buckets.map((bucket) => ({ bucket: bucket.key, ...bucket.values }));
+  const chartData = toUsageChartData(data);
   const formatBucket = (value: string, tooltip: boolean) =>
     format(parseISO(value), data.bucketUnit === 'hour' ? 'MMM d, HH:mm xxx' : tooltip ? 'PP' : 'MMM d', {
       locale: dateLocale,

@@ -131,6 +131,15 @@ export type TracePersistenceFailedLog = {
   readonly errorType: string;
 };
 
+export type UsageAccountingDroppedLog = {
+  readonly event: 'usage.accounting_dropped';
+  readonly source: 'ai-sdk' | 'passthrough';
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly reason: 'invalid_usage';
+  readonly issues: readonly { readonly code: string; readonly path: readonly (string | number)[] }[];
+};
+
 export type RequestBodyDirection = 'inbound' | 'upstream_request' | 'upstream_response';
 
 type RequestBodyIdentity = {
@@ -168,6 +177,7 @@ export type ServerLog =
   | RequestRecorderPersistenceFailedLog
   | RequestRejectedLog
   | TracePersistenceFailedLog
+  | UsageAccountingDroppedLog
   | RequestUpstreamResultLog
   | RequestUpstreamSnapshotLog;
 

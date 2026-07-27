@@ -120,35 +120,49 @@ async function seededApp() {
 }
 
 describe('GET /dashboard/api/usage', () => {
-  test('returns the requested overview with pinned provider series', async () => {
+  test.each(['cost', 'tokens', 'requests'] as const)('returns JSON-safe string aggregates for %s', async (metric) => {
     const response = await (
       await seededApp()
-    ).request('/dashboard/api/usage?range=24h&metric=requests&groupBy=provider', undefined, loopbackServer);
+    ).request(`/dashboard/api/usage?range=24h&metric=${metric}&groupBy=provider`, undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(() => JSON.stringify(body)).not.toThrow();
     expect(DashboardUsageOverviewResponseSchema.parse(body)).toEqual(body);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       range: '24h',
-      metric: 'requests',
+      metric,
       groupBy: 'provider',
-      rangeStart: expect.any(String),
-      rangeEnd: expect.any(String),
-      bucketUnit: 'hour',
-      summary: expect.objectContaining({
-        requestCount: 3,
-        successCount: 1,
-        failureCount: 1,
-        cancelledCount: 1,
+      summary: {
+        estimatedCostNanoUsd: '250000000',
+        pricingCoverage: 1,
+        pricedRequestCount: '1',
+        usageRequestCount: '1',
+        requestCount: '3',
+        successCount: '1',
+        failureCount: '1',
+        cancelledCount: '1',
         successRate: 0.5,
-      }),
-      series: [
-        { key: 'openrouter', kind: 'dimension' },
-        { key: '__failed__', kind: 'failed' },
-        { key: '__cancelled__', kind: 'cancelled' },
-      ],
-      buckets: expect.any(Array),
+        inputTokens: '100',
+        outputTokens: '50',
+        totalTokens: '150',
+        averageRpm: expect.any(Number),
+        averageTpm: expect.any(Number),
+      },
     });
+    expect(typeof body.summary.requestCount).toBe('string');
+    for (const bucket of body.buckets) {
+      for (const value of Object.values(bucket.values)) expect(typeof value).toBe('string');
+    }
+    expect(body.series).toEqual(
+      metric === 'requests'
+        ? [
+            { key: 'openrouter', kind: 'dimension' },
+            { key: '__failed__', kind: 'failed' },
+            { key: '__cancelled__', kind: 'cancelled' },
+          ]
+        : [{ key: 'openrouter', kind: 'dimension' }],
+    );
   });
 
   test('uses the default range, metric, and grouping', async () => {
