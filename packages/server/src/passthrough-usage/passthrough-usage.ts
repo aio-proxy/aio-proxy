@@ -15,6 +15,7 @@ import {
 import { usageFromJson } from './usage';
 
 export type PassthroughObservation = {
+  readonly failed?: true;
   readonly responseId?: string;
   readonly usage?: ExtractedUsage;
   readonly issues?: readonly UsageIssue[];
@@ -49,6 +50,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
   let observed: UsageExtraction = { kind: 'absent' };
   let responseId: string | undefined;
   let sawContent = false;
+  let failed = false;
   const parser = createParser({
     maxBufferSize: MAX_SSE_BUFFER_CHARS,
     onError(error) {
@@ -62,6 +64,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
         return;
       }
       const parsed = parseJson(event.data);
+      failed ||= protocolFailure(protocol, event.event, parsed);
       if (parsed === undefined) {
         return;
       }
@@ -93,22 +96,48 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
           active = false;
         }
       }
-      return active ? observation(observed, responseId) : {};
+      return failed || active ? observation(observed, responseId, failed) : {};
     },
     sawContent: () => sawContent,
   };
 }
 
 function observationFromJson(protocol: ProviderProtocol, value: unknown): PassthroughObservation {
-  return observation(usageFromJson(protocol, value), completedResponseId(protocol, value));
+  return observation(
+    usageFromJson(protocol, value),
+    completedResponseId(protocol, value),
+    protocolFailure(protocol, undefined, value),
+  );
 }
 
-function observation(usage: UsageExtraction, responseId: string | undefined): PassthroughObservation {
+function observation(usage: UsageExtraction, responseId: string | undefined, failed: boolean): PassthroughObservation {
+  if (failed) return { failed: true };
   return {
     ...(responseId === undefined ? {} : { responseId }),
     ...(usage.kind === 'valid' ? { usage: usage.usage } : {}),
     ...(usage.kind === 'invalid' ? { issues: usage.issues } : {}),
   };
+}
+
+function protocolFailure(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
+  if (eventType === 'error') return true;
+  if (
+    protocol === ProviderProtocol.OpenAIResponse &&
+    (eventType === 'response.failed' || eventType === 'response.incomplete' || eventType === 'response.cancelled')
+  )
+    return true;
+  if (!isRecord(value)) return false;
+  if (value['type'] === 'error' || isRecord(value['error'])) return true;
+  if (protocol !== ProviderProtocol.OpenAIResponse) return false;
+  const response = isRecord(value['response']) ? value['response'] : value;
+  return (
+    value['type'] === 'response.failed' ||
+    value['type'] === 'response.incomplete' ||
+    value['type'] === 'response.cancelled' ||
+    response['status'] === 'failed' ||
+    response['status'] === 'incomplete' ||
+    response['status'] === 'cancelled'
+  );
 }
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {

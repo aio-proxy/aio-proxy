@@ -5,6 +5,42 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { createUsageCapture } from './index';
 
 describe('usage capture passthrough completion', () => {
+  test.each([
+    [
+      'OpenAI Responses',
+      ProviderProtocol.OpenAIResponse,
+      'event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed"}}\n\n',
+    ],
+    [
+      'Anthropic',
+      ProviderProtocol.Anthropic,
+      'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+    ],
+    [
+      'OpenAI-compatible',
+      ProviderProtocol.OpenAICompatible,
+      'data: {"error":{"type":"server_error","message":"Unavailable"}}\n\n',
+    ],
+    [
+      'Gemini',
+      ProviderProtocol.Gemini,
+      'data: {"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"Unavailable"}}\n\n',
+    ],
+  ] as const)(
+    '2xx %s SSE protocol failure completes as failure without changing bytes',
+    async (_name, protocol, body) => {
+      const captured = createUsageCapture().passthrough({
+        response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+        protocol,
+        providerId: 'provider',
+        modelId: 'model',
+      });
+
+      expect(await captured.value.text()).toBe(body);
+      await expect(captured.completion).resolves.toEqual({ outcome: 'failure', statusCode: 200 });
+    },
+  );
+
   test('passthrough consumer cancellation forwards the reason and completes as cancelled', async () => {
     const firstChunk = new TextEncoder().encode('first');
     const cleanupError = new Error('test cleanup');

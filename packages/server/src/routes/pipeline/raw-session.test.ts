@@ -9,6 +9,7 @@ import {
   jsonRequest,
   REQUESTED_MODEL,
   rawProvider,
+  settleRecording,
 } from '../../../__tests__/pipeline-helpers';
 import type { ProviderRouteSource } from '../../runtime';
 import { createUsageCapture } from '../../usage-capture';
@@ -68,7 +69,8 @@ test.each([
     protocol: ProviderProtocol.OpenAIResponse,
     invoke: async () => new Response(body, { headers: { 'content-type': contentType } }),
   });
-  const source = realUsageSource(defineProviderRouteSource([provider]).source);
+  const route = defineProviderRouteSource([provider]);
+  const source = realUsageSource(route.source);
 
   const response = await handleProtocolRequest({
     adapter: openAIResponsesAdapter,
@@ -77,10 +79,14 @@ test.each([
     source,
   });
   await response.text();
+  await settleRecording(route.recording);
 
   const notCommitted = previous(source, responseId);
   expect(notCommitted.session.source).toBe('generated');
   expect(notCommitted.resolvedBy).toBe('generated');
+  expect(route.recording.finals).toEqual([
+    expect.objectContaining({ outcome: 'failure', finalProviderId: 'raw', finalStatusCode: 200 }),
+  ]);
 });
 
 test('does not commit a completed raw response event when the client cancels before EOF', async () => {

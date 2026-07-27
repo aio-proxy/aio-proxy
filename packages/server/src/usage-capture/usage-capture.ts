@@ -202,6 +202,10 @@ function passthroughCapture(
             : captureJson
               ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
               : {};
+        if (observation.failed === true) {
+          terminal.resolve({ outcome: 'failure', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
+          return;
+        }
         const usage = await finalizeUsage({
           usage:
             observation.usage === undefined && observation.issues === undefined
