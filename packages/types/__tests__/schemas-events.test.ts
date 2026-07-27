@@ -5,6 +5,7 @@ import {
   type AioStreamPart,
   DashboardEventSchema,
   DashboardUsageOverviewResponseSchema,
+  NonNegativeIntegerStringSchema,
   RequestOutcomeSchema,
   TraceEventSchema,
   UsageOverviewGroupBySchema,
@@ -113,18 +114,18 @@ test('roundtrips the usage overview response', () => {
     rangeEnd: '2026-07-11T08:00:00.000Z',
     bucketUnit: 'hour',
     summary: {
-      estimatedCostUsd: 1.25,
+      estimatedCostNanoUsd: '1250000000',
       pricingCoverage: 0.8,
-      pricedRequestCount: 8,
-      usageRequestCount: 10,
-      requestCount: 12,
-      successCount: 10,
-      failureCount: 1,
-      cancelledCount: 1,
+      pricedRequestCount: '8',
+      usageRequestCount: '10',
+      requestCount: '12',
+      successCount: '10',
+      failureCount: '1',
+      cancelledCount: '1',
       successRate: 10 / 11,
-      inputTokens: 100,
-      outputTokens: 50,
-      totalTokens: 150,
+      inputTokens: '100',
+      outputTokens: '50',
+      totalTokens: '150',
       averageRpm: 12 / 1440,
       averageTpm: 150 / 1440,
     },
@@ -135,12 +136,20 @@ test('roundtrips the usage overview response', () => {
     buckets: [
       {
         key: '2026-07-11 08:00',
-        values: { 'openai/gpt-5': 1.25, __other__: 0 },
+        values: { 'openai/gpt-5': '1250000000', __other__: '0' },
       },
     ],
   } as const;
 
   expect(DashboardUsageOverviewResponseSchema.parse(response)).toEqual(response);
+});
+
+test.each(['-1', '01'])('rejects non-canonical aggregate integer %s', (value) => {
+  expect(NonNegativeIntegerStringSchema.safeParse(value).success).toBe(false);
+});
+
+test('rejects numeric usage overview aggregates', () => {
+  expect(NonNegativeIntegerStringSchema.safeParse(1).success).toBe(false);
 });
 
 const _message: AioModelMessage = { role: 'user', content: 'hello' };

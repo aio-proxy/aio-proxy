@@ -115,7 +115,7 @@ export type ServerStateParts = Pick<
   | 'oauthLoginSessions'
   | 'providerSummaries'
   | 'reload'
-  | 'requestLog'
+  | 'traceStore'
   | 'requestRecorder'
   | 'usageCapture'
 > & {
@@ -155,7 +155,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
-    requestLog: parts.requestLog,
+    traceStore: parts.traceStore,
     logger,
     requestRecorder: parts.requestRecorder,
     usageCapture: parts.usageCapture,

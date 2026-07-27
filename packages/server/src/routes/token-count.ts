@@ -8,12 +8,17 @@ import {
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
-import type { RequestAttemptInput, RequestSession } from '../request-recorder';
+import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
+import { isInboundAbort } from '../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { hasInvalidOrOversizedContentLength } from './pipeline';
+import { prioritizeAffinity } from './pipeline/affinity';
+import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
+import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -27,27 +32,52 @@ export async function handleTokenCount<TRequest, TContext>(
   options: HandleTokenCountOptions<TRequest, TContext>,
 ): Promise<Response> {
   const { adapter, rawRequest, source } = options;
-  const session = source.requestRecorder.begin({ inboundProtocol: adapter.protocol });
-  return await withRequestLogContext(
-    {
-      requestId: session.requestId,
-      debug: source.debugLogging === true,
-      logger: source.logger,
-    },
-    async () => {
-      const observedRequest = observeInboundRequest(rawRequest, adapter.protocol);
-      return await handleTokenCountInContext({ ...options, rawRequest: observedRequest }, session);
-    },
+  const session = source.requestRecorder.begin({
+    headers: rawRequest.headers,
+    inboundProtocol: adapter.protocol,
+    operation: 'token_count',
+  });
+  return await context.with(session.rootContext, () =>
+    withRequestLogContext(
+      {
+        requestId: session.requestId,
+        debug: source.debugLogging === true,
+        logger: source.logger,
+      },
+      async () => {
+        try {
+          return await handleTokenCountInContext(options, session);
+        } catch (error) {
+          if (
+            (rawRequest.signal.aborted && error === rawRequest.signal.reason) ||
+            isInboundAbort(error, rawRequest.signal)
+          ) {
+            session.finish({ outcome: 'cancelled' });
+            throw rawRequest.signal.reason;
+          }
+          session.finish({ outcome: 'failure', errorCode: 'internal_error' });
+          throw error;
+        }
+      },
+    ),
   );
 }
 
 async function handleTokenCountInContext<TRequest, TContext>(
-  { adapter, context, format, rawRequest, source }: HandleTokenCountOptions<TRequest, TContext>,
-  session: RequestSession,
+  options: HandleTokenCountOptions<TRequest, TContext>,
+  session: RequestTraceSession,
 ): Promise<Response> {
+  const { adapter, context, format, source } = options;
+  let { rawRequest } = options;
+  try {
+    rawRequest = observeInboundRequest(rawRequest, adapter.protocol);
+  } catch (error) {
+    await cancelRetainedRequestBody(rawRequest, error);
+    throw error;
+  }
   if (hasInvalidOrOversizedContentLength(rawRequest)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
-    return adapter.errors.tooLarge();
+    return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
   }
 
   let request: TRequest;
@@ -57,27 +87,43 @@ async function handleTokenCountInContext<TRequest, TContext>(
     invocation = adapter.modelInvocation(request, context);
   } catch (error) {
     await cancelRetainedRequestBody(rawRequest, error);
-    if (error instanceof RequestBodyTooLargeError) return adapter.errors.tooLarge();
-    if (error instanceof UnsupportedContentEncodingError) return adapter.errors.unsupportedContentEncoding();
+    if (error instanceof RequestBodyTooLargeError) {
+      return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
+    }
+    if (error instanceof UnsupportedContentEncodingError) {
+      return finishRejected(session, adapter.errors.unsupportedContentEncoding(), 'unsupported_content_encoding');
+    }
     const mapped = adapter.errors.requestError(error);
-    if (mapped !== undefined) return mapped;
+    if (mapped !== undefined) {
+      return finishRejected(session, mapped, mapped.status === 501 ? 'unsupported_feature' : 'invalid_request');
+    }
     throw error;
   }
 
   try {
     const requestedModel = adapter.model(request, context);
-    session.identify({ requestedModelId: requestedModel });
-    const logicalRequest = source.logicalSessionStore.begin({
+    const resolution = source.logicalSessionStore.begin({
+      requestedModelId: requestedModel,
+      requestId: session.requestId,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });
+    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: false });
+    if (resolution.responseStatus === 'ambiguous') {
+      return finishRejected(session, adapter.errors.previousResponseConflict(), 'previous_response_conflict');
+    }
     const lease = source.acquireProviderSnapshot();
     try {
       const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+      const affinityOrdered =
+        resolution.affinity?.active === true
+          ? prioritizeAffinity(candidates, resolution.affinity.providerId)
+          : candidates;
+      const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
       return await countCandidates({
         adapter,
-        candidates,
-        context: logicalRequest,
+        candidates: ordered,
+        context: resolution.context,
         format,
         invocation,
         rawRequest,
@@ -85,7 +131,9 @@ async function handleTokenCountInContext<TRequest, TContext>(
         session,
       });
     } catch (error) {
-      if (error instanceof RouterModelNotFoundError) return adapter.errors.modelNotFound(error.message);
+      if (error instanceof RouterModelNotFoundError) {
+        return finishRejected(session, adapter.errors.modelNotFound(error.message), 'model_not_found');
+      }
       throw error;
     } finally {
       lease.release();
@@ -93,6 +141,14 @@ async function handleTokenCountInContext<TRequest, TContext>(
   } finally {
     void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
   }
+}
+
+// Client errors (oversized body, unparseable request, unsupported encoding)
+// return before any provider attempt. begin() already persisted a running root,
+// so finish it as a terminal failure instead of leaving it running forever.
+function finishRejected(session: RequestTraceSession, response: Response, errorCode: string): Response {
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, errorCode });
+  return response;
 }
 
 type CountCandidatesOptions<TRequest, TContext> = {
@@ -103,7 +159,13 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
   readonly request: TRequest;
-  readonly session: RequestSession;
+  readonly session: RequestTraceSession;
+};
+
+type CountAttempt = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly providerKind: RuntimeProviderInstance['kind'];
 };
 
 async function countCandidates<TRequest, TContext>({
@@ -132,7 +194,9 @@ async function countCandidates<TRequest, TContext>({
     }
     if (lacksProviderTool(provider, candidateInvocation)) continue;
     throwIfCountAborted(session, rawRequest.signal);
-    const startedAt = performance.now();
+    const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
+    const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
+    let inputTokens: number;
     try {
       const result = await withAttemptLogContext(
         { attemptIndex, providerId: provider.id, modelId: candidate.modelId },
@@ -149,71 +213,64 @@ async function countCandidates<TRequest, TContext>({
       if (!Number.isInteger(result.inputTokens) || result.inputTokens < 0) {
         throw new TypeError('Provider token count must be a non-negative integer');
       }
-      session.finish({
-        outcome: 'success',
-        finalProviderId: provider.id,
-        finalModelId: candidate.modelId,
-        finalStatusCode: 200,
-        attempt: { ...attemptBase(provider, candidate.modelId, startedAt), outcome: 'success', statusCode: 200 },
-      });
-      return Response.json(format(result.inputTokens));
+      inputTokens = result.inputTokens;
     } catch (error) {
-      if (rawRequest.signal.aborted) {
-        finishCancelled(session, failedCountAttempt(provider, candidate.modelId, startedAt, undefined));
+      if (
+        (rawRequest.signal.aborted && error === rawRequest.signal.reason) ||
+        isInboundAbort(error, rawRequest.signal)
+      ) {
+        attemptSpan.end({ outcome: 'cancelled' });
+        session.finish({ outcome: 'cancelled', finalProviderId: provider.id, finalModelId: candidate.modelId });
         throw rawRequest.signal.reason;
       }
+      if (rawRequest.signal.aborted) {
+        attemptSpan.end({ outcome: 'failure' });
+        throw error;
+      }
       const mapped = adapter.errors.provider(error);
-      const attempt = failedCountAttempt(provider, candidate.modelId, startedAt, mapped?.status);
-      session.attempt(attempt);
+      attemptSpan.end(failureTerminal(mapped?.status));
+      if (mapped === undefined) throw error;
+      continue;
     }
+    attemptSpan.span.setAttribute(attributeName.httpStatusCode, 200);
+    attemptSpan.end();
+    const response = Response.json(format(inputTokens));
+    session.finish({
+      outcome: 'success',
+      finalProviderId: provider.id,
+      finalModelId: candidate.modelId,
+      finalHttpStatus: 200,
+    });
+    return response;
   }
 
   throwIfCountAborted(session, rawRequest.signal);
   const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
-  session.finish({ outcome: 'success', finalStatusCode: 200 });
-  return Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
+  const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
+  session.finish({ outcome: 'success', finalHttpStatus: 200 });
+  return response;
 }
 
 function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelInvocation): boolean {
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
 }
 
-function failedCountAttempt(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  startedAt: number,
-  statusCode: number | undefined,
-): RequestAttemptInput {
-  return {
-    ...attemptBase(provider, modelId, startedAt),
-    outcome: 'failure',
-    ...(statusCode === undefined ? {} : { statusCode }),
-  };
-}
-
-function finishCancelled(session: RequestSession, attempt: RequestAttemptInput): void {
-  session.finish({
-    outcome: 'cancelled',
-    finalProviderId: attempt.providerId,
-    finalModelId: attempt.modelId,
-    attempt: { ...attempt, outcome: 'cancelled' },
+function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
+  return startPipelineSpan(session.rootContext, spanName.attempt, {
+    attributes: {
+      [attributeName.attemptIndex]: index,
+      [attributeName.providerId]: attempt.providerId,
+      [attributeName.providerKind]: attempt.providerKind,
+      [attributeName.genAiResponseModel]: attempt.modelId,
+    },
   });
 }
 
-function throwIfCountAborted(session: RequestSession, signal: AbortSignal): void {
+function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
   try {
     signal.throwIfAborted();
   } catch (error) {
     session.finish({ outcome: 'cancelled' });
     throw error;
   }
-}
-
-function attemptBase(provider: RuntimeProviderInstance, modelId: string, startedAt: number) {
-  return {
-    providerId: provider.id,
-    modelId,
-    providerKind: provider.kind,
-    durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-  };
 }

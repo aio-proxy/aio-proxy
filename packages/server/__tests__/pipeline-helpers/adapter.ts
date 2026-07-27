@@ -60,7 +60,7 @@ export function defineProtocolAdapter(
     modelSse(stream, ...args: unknown[]) {
       options.onModelEgress?.(args[0]);
       const encoder = new TextEncoder();
-      return stream.pipeThrough(
+      const body = stream.pipeThrough(
         new TransformStream<ModelPart, Uint8Array>({
           transform(part, controller) {
             if (part.type === 'text-delta') {
@@ -69,11 +69,13 @@ export function defineProtocolAdapter(
           },
         }),
       );
+      return Object.assign(body, { completion: Promise.resolve() });
     },
     errors: {
       requestError: (error) =>
         error instanceof SyntaxError ? errorResponse(400, 'request_error', 'Invalid test request') : undefined,
       modelNotFound: (message) => errorResponse(404, 'model_not_found', message),
+      previousResponseConflict: () => errorResponse(409, 'previous_response_conflict', 'ambiguous previous response'),
       tooLarge: () => errorResponse(413, 'too_large', 'Request body too large'),
       unsupported: (feature) => errorResponse(501, 'unsupported', feature),
       provider: (error) => (error instanceof Error ? errorResponse(502, 'provider_error', error.message) : undefined),

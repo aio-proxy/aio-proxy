@@ -16,5 +16,6 @@ describe('formatExactTokenCount', () => {
   test('formats the full integer with locale grouping', () => {
     expect(formatExactTokenCount(1_200, 'en-US')).toBe('1,200');
     expect(formatExactTokenCount(1_234_567, 'en-US')).toBe('1,234,567');
+    expect(formatExactTokenCount(9_007_199_254_740_993n, 'en-US')).toBe('9,007,199,254,740,993');
   });
 });

@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ApiProviderInstance, TextStreamPart, ToolSet } from '@aio-proxy/core';
-import { openDb, requestLog } from '@aio-proxy/core/db';
 import { createServer } from '@aio-proxy/server';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../src/runtime';
+import { recorded } from './trace-recording.test-support';
 
 const protocols = [
   ProviderProtocol.OpenAICompatible,
@@ -265,14 +265,8 @@ function tempHome(): string {
 }
 
 async function recordedAttempts(home: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const handle = openDb({ home });
-    const rows = handle.db.select().from(requestLog).all();
-    handle.close();
-    if (rows[0] !== undefined) return rows[0].attempts;
-    await Bun.sleep(1);
-  }
-  throw new Error('request row was not recorded');
+  const { requests } = await recorded(home);
+  return requests[0]?.attempts ?? [];
 }
 
 function expectModelResponse(protocol: ProviderProtocol, body: unknown, text: string): void {

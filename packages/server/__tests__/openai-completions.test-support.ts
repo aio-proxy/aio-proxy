@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache } from '@aio-proxy/core';
-import { openDb, requestLog, usage } from '@aio-proxy/core/db';
 import type { createServer } from '@aio-proxy/server';
 import type { TextStreamPart, ToolSet } from 'ai';
 
@@ -100,7 +99,7 @@ export async function waitForUsageRow(app: ReturnType<typeof createServer>): Pro
       typeof body.summary === 'object' &&
       body.summary !== null &&
       'requestCount' in body.summary &&
-      body.summary.requestCount === 1
+      body.summary.requestCount === '1'
     ) {
       return body;
     }
@@ -109,14 +108,4 @@ export async function waitForUsageRow(app: ReturnType<typeof createServer>): Pro
   return usageJson(app);
 }
 
-export async function recorded(home: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const handle = openDb({ home });
-    const requests = handle.db.select().from(requestLog).all();
-    const usages = handle.db.select().from(usage).all();
-    handle.close();
-    if (requests.length > 0) return { requests, usages };
-    await new Promise((resolve) => setTimeout(resolve, 1));
-  }
-  throw new Error('request row was not recorded');
-}
+export { recorded } from './trace-recording.test-support';

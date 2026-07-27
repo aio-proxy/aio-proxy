@@ -19,7 +19,9 @@ export function terminalCompletion(
   completion: Promise<UsageCompletion>,
   signal: AbortSignal,
 ): Promise<UsageCompletion> {
-  return completion.then((value) =>
-    value.outcome === 'cancelled' && !signal.aborted ? { ...value, outcome: 'failure' } : value,
+  return completion.then(
+    (value) => (value.outcome === 'cancelled' && !signal.aborted ? { ...value, outcome: 'failure' } : value),
+    (error) =>
+      isInboundAbort(error, signal) ? { outcome: 'cancelled' } : { outcome: 'failure', errorCode: 'internal_error' },
   );
 }

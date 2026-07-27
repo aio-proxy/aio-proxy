@@ -67,6 +67,55 @@ test.each(cases)('maps invalid compressed bodies for %s', async (_name, mapper, 
   expect(JSON.stringify(expected)).not.toContain('native decoder detail');
 });
 
+test.each([
+  [
+    'OpenAI Chat Completions',
+    openAICompletionsErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
+    'OpenAI Responses',
+    openAIResponsesErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
+    'Anthropic Messages',
+    anthropicMessagesErrors,
+    {
+      type: 'error',
+      error: { type: 'invalid_request_error', message: 'previous_response_id matches multiple providers' },
+    },
+  ],
+  [
+    'Gemini generateContent',
+    geminiGenerateContentErrors,
+    {
+      error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
+    },
+  ],
+] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
+  const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
+    .previousResponseConflict;
+
+  expect(conflict).toBeFunction();
+  if (conflict === undefined) return;
+  const response = conflict();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual(expected);
+});
+
 test('maps image compatibility errors into every inbound protocol shape', async () => {
   const error = new ImageInputUnsupportedError('gemini-tool-url', 'messages.2.content.0.output.value.1');
   const cases = [

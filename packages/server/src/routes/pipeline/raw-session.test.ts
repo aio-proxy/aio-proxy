@@ -9,6 +9,7 @@ import {
   jsonRequest,
   REQUESTED_MODEL,
   rawProvider,
+  settleRecording,
 } from '../../../__tests__/pipeline-helpers';
 import type { ProviderRouteSource } from '../../runtime';
 import { createUsageCapture } from '../../usage-capture';
@@ -46,7 +47,11 @@ test.each([
   await response.text();
   const resumed = previous(source, responseId);
 
-  expect(resumed.session).toEqual({ key: logicalRequest?.session.key, source: 'previous-response' });
+  // The resumed session mirrors the original logical session's key and source
+  // (generated here), matching the persisted path; resolvedBy proves the commit
+  // was resolved through previous-response lookup.
+  expect(resumed.session).toEqual({ key: logicalRequest?.session.key, source: 'generated' });
+  expect(resumed.resolvedBy).toBe('previous-response');
 });
 
 test.each([
@@ -64,7 +69,8 @@ test.each([
     protocol: ProviderProtocol.OpenAIResponse,
     invoke: async () => new Response(body, { headers: { 'content-type': contentType } }),
   });
-  const source = realUsageSource(defineProviderRouteSource([provider]).source);
+  const route = defineProviderRouteSource([provider]);
+  const source = realUsageSource(route.source);
 
   const response = await handleProtocolRequest({
     adapter: openAIResponsesAdapter,
@@ -73,8 +79,14 @@ test.each([
     source,
   });
   await response.text();
+  await settleRecording(route.recording);
 
-  expect(previous(source, responseId).session.source).toBe('generated');
+  const notCommitted = previous(source, responseId);
+  expect(notCommitted.session.source).toBe('generated');
+  expect(notCommitted.resolvedBy).toBe('generated');
+  expect(route.recording.finals).toEqual([
+    expect.objectContaining({ outcome: 'failure', finalProviderId: 'raw', finalStatusCode: 200 }),
+  ]);
 });
 
 test('does not commit a completed raw response event when the client cancels before EOF', async () => {
@@ -109,7 +121,9 @@ test('does not commit a completed raw response event when the client cancels bef
   await reader?.read();
   await reader?.cancel('client stopped');
 
-  expect(previous(source, 'resp_cancelled').session.source).toBe('generated');
+  const notCommitted = previous(source, 'resp_cancelled');
+  expect(notCommitted.session.source).toBe('generated');
+  expect(notCommitted.resolvedBy).toBe('generated');
 });
 
 function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {

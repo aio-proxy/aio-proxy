@@ -1,13 +1,12 @@
-import type { DashboardUsageOverviewResponse } from '@aio-proxy/types';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { requestLog } from '../schema/request-log';
 import { usage } from '../schema/usage';
 import { bucketKeys, buildChart, chartRows, resolveRange } from './chart';
-import type { UsageOverviewQuery } from './types';
+import type { LegacyUsageOverviewResponse, UsageOverviewQuery } from './types';
 
-export function overviewRequestLogs(db: BunSQLiteDatabase, query: UsageOverviewQuery): DashboardUsageOverviewResponse {
+export function overviewRequestLogs(db: BunSQLiteDatabase, query: UsageOverviewQuery): LegacyUsageOverviewResponse {
   const now = query.now ?? new Date();
   const { start, end, bucketUnit } = resolveRange(query.range, now);
   const rangeFilter = and(gte(requestLog.completedAt, start), lte(requestLog.completedAt, end));

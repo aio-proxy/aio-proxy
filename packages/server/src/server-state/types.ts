@@ -7,7 +7,7 @@ import type {
   Router,
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
-import type { RequestLogStore } from '@aio-proxy/core/db';
+import type { TraceStore } from '@aio-proxy/core/db';
 import type {
   Config,
   DashboardEvent,
@@ -76,7 +76,7 @@ export type ServerState = ProviderRouteSource & {
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
-  readonly requestLog: RequestLogStore;
+  readonly traceStore: TraceStore;
 };
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };

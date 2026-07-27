@@ -3,7 +3,7 @@ import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability 
 import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from '@aio-proxy/types';
 
 import type { LogicalSessionStore } from './logical-session-store';
-import type { RequestRecorder } from './request-recorder';
+import type { RequestTraceRecorder } from './request-tracing';
 import type { ServerLogSink } from './server-log';
 import type { UsageCapture } from './usage-capture';
 
@@ -75,6 +75,6 @@ export type ProviderRouteSource = {
   readonly debugLogging?: boolean;
   readonly logger: ServerLogSink;
   readonly logicalSessionStore: LogicalSessionStore;
-  readonly requestRecorder: RequestRecorder;
+  readonly requestRecorder: RequestTraceRecorder;
   readonly usageCapture: UsageCapture;
 };

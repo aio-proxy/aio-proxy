@@ -47,7 +47,10 @@ describe('OAuth plugin raw pipeline Antigravity fallback', () => {
     expect(response.status).toBe(200);
     expect(seen).toHaveLength(2);
     expect(seen[0]).toBe(seen[1]);
-    expect(seen[0]?.requestId).toMatch(/^[0-9a-f-]{36}$/u);
+    // The logical context now reuses the trace requestId (LogicalSessionStore
+    // begin in the pipeline) instead of minting a second UUID; the helper
+    // recorder issues request-<n>.
+    expect(seen[0]?.requestId).toBe('request-1');
     expect(seen[0]?.session.key).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(seen[0]?.session.key).toBe(seen[1]?.session.key);
   });

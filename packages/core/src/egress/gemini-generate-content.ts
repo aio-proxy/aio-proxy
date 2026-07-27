@@ -7,7 +7,7 @@ import type {
 } from '@google/genai';
 
 import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
-import type { ModelEgressContext } from '../protocol/adapter';
+import type { ModelEgressContext, ModelSseStream } from '../protocol/adapter';
 import { createCancellableEgressStream } from './cancellable-stream';
 
 const encoder = new TextEncoder();
@@ -82,7 +82,7 @@ export async function writeGeminiGenerateContentResponse(
 export function writeGeminiGenerateContentSSE(
   stream: ReadableStream<GeminiGenerateContentStreamPart>,
   context: ModelEgressContext,
-): ReadableStream<Uint8Array> {
+): ModelSseStream {
   const metadata = fallbackMetadata(context.modelId);
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
     const tools = new Map<string, ToolState>();

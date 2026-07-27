@@ -52,7 +52,7 @@ function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): Req
 
 export const createDashboardRequestLogsRoute = (state: ServerState) =>
   new Hono().get('/', requestLogsValidator, async (context) => {
-    const data = state.requestLog.list(context.req.valid('query'));
+    const data = state.traceStore.listRequestLogs(context.req.valid('query'));
     const providerNames = new Map(state.currentConfig().providers.map((provider) => [provider.id, provider.name]));
     const runtimeProviders = new Map(
       state.currentProviderSnapshot().providers.map((provider) => [provider.id, provider]),

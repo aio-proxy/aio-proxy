@@ -1,0 +1,87 @@
+import { attributeName } from '../../../request-tracing';
+import { terminalCompletion } from '../../../route-observation';
+import type { RawTransport } from '../../../runtime';
+import { attemptBase } from '../attempt-base';
+import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
+import { retainResponseBody } from '../stream';
+import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import { attemptLog } from './emit';
+
+// Raw passthrough for one candidate. The attempt span opens before the provider
+// call so its duration covers the upstream request, not just post-response work.
+export async function attemptRawCandidate<TRequest, TContext>(
+  ctx: AttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+  raw: RawTransport,
+): Promise<AttemptStep> {
+  const { adapter, context, rawRequest, request, session, source, logicalRequest, release, deferRelease, logFailure } =
+    ctx;
+  const { index, candidate, startedAt, hasNext, inAttempt } = slot;
+  const provider = candidate.provider;
+  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
+  slot.spanRef.current = attemptSpan;
+
+  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
+  const response = await inAttempt(() => raw.invoke(upstream, logicalRequest));
+  if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
+
+  const fallback = hasNext && shouldFallbackStatus(response.status);
+  if (fallback || response.status < 200 || response.status >= 400) {
+    const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
+    logFailure(index, attemptLog(base, response.status), 'response', fallback, { response });
+    slot.spanRef.current = undefined;
+    attemptSpan.end(failureTerminal(response.status));
+    if (fallback) {
+      try {
+        void response.body?.cancel().catch(() => undefined);
+      } catch {}
+      return { kind: 'fallback', lastFailure: response };
+    }
+    session.finish(finalFailure(base, response.status));
+    const retained = retainedFailure(response, ctx);
+    return { kind: 'return', response: retained };
+  }
+
+  attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
+  slot.spanRef.current = undefined;
+  let capturedResponseId: string | undefined;
+  const captured = source.usageCapture.passthrough({
+    response,
+    protocol: adapter.protocol,
+    providerId: provider.id,
+    modelId: candidate.modelId,
+    ...(ctx.streamRequested ? { startedAt } : {}),
+    ...(adapter.session === undefined
+      ? {}
+      : {
+          onResponseId: (responseId: string) => {
+            capturedResponseId = responseId;
+            source.logicalSessionStore.commitResponse(
+              responseId,
+              logicalRequest.session.key,
+              ctx.sessionIdentity,
+              provider.id,
+            );
+          },
+        }),
+  });
+  session.finishFrom(
+    ctx.emitter.settleSuccess(
+      attemptSpan,
+      terminalCompletion(captured.completion, rawRequest.signal).finally(release),
+      { providerId: provider.id, modelId: candidate.modelId },
+      () => capturedResponseId,
+    ),
+  );
+  deferRelease();
+  return { kind: 'return', response: captured.value };
+}
+
+function retainedFailure<TRequest, TContext>(
+  response: Response,
+  ctx: AttemptLoopContext<TRequest, TContext>,
+): Response {
+  const retained = retainResponseBody(response, ctx.release);
+  if (retained !== response) ctx.deferRelease();
+  return retained;
+}

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
 import { clearPriceCatalog, seedPriceCatalog } from './test-support';
 
@@ -80,5 +81,64 @@ describe('usage capture passthrough observation', () => {
       statusCode: 200,
       usage: expect.objectContaining({ inputTokens: 3, outputTokens: 2, totalTokens: 5 }),
     });
+  });
+
+  test('invalid JSON usage is dropped without altering response bytes', async () => {
+    const body = '{"usage":{"prompt_tokens":1.5,"completion_tokens":2,"total_tokens":3.5}}';
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      logger: (entry) => logs.push(entry),
+    }).passthrough({
+      response: new Response(body, { headers: { 'content-type': 'application/json' } }),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    expect(await captured.value.text()).toBe(body);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success', statusCode: 200 });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'passthrough',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
+  });
+
+  test('invalid Anthropic SSE usage remains invalid after later valid events', async () => {
+    const body = [
+      'data: {"message":{"usage":{"input_tokens":1.5}}}',
+      '',
+      'data: {"message":{"usage":{"input_tokens":11}}}',
+      '',
+      'data: {"usage":{"output_tokens":13}}',
+      '',
+    ].join('\n');
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      logger: (entry) => logs.push(entry),
+    }).passthrough({
+      response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+      protocol: ProviderProtocol.Anthropic,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    expect(await captured.value.text()).toBe(body);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success', statusCode: 200 });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'passthrough',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
   });
 });

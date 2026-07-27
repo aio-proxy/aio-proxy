@@ -4,9 +4,12 @@ import {
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
+import type { ProviderProtocol } from '@aio-proxy/types';
+import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
-import type { RequestSession } from '../../request-recorder';
+import type { RequestTraceSession } from '../../request-tracing';
+import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource } from '../../runtime';
 import { attemptCandidates } from './attempt';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
@@ -22,82 +25,39 @@ export type HandleProtocolRequestOptions<TRequest, TContext> = {
 export async function handleProtocolRequest<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
 ): Promise<Response> {
-  const session = options.source.requestRecorder.begin({ inboundProtocol: options.adapter.protocol });
-  return await withRequestLogContext(
-    {
-      requestId: session.requestId,
-      debug: options.source.debugLogging === true,
-      logger: options.source.logger,
-    },
-    async () => {
-      const rawRequest = observeInboundRequest(options.rawRequest, options.adapter.protocol);
-      return await handleProtocolRequestInContext({ ...options, rawRequest }, session);
-    },
+  const inboundProtocol = options.adapter.protocol;
+  const session = options.source.requestRecorder.begin({
+    headers: options.rawRequest.headers,
+    inboundProtocol,
+  });
+  return await context.with(session.rootContext, () =>
+    withRequestLogContext(
+      {
+        requestId: session.requestId,
+        debug: options.source.debugLogging === true,
+        logger: options.source.logger,
+      },
+      () => handleProtocolRequestInContext(options, session, inboundProtocol),
+    ),
   );
-}
-
-async function parseInboundRequest<TRequest, TContext>(
-  { adapter, context, source }: HandleProtocolRequestOptions<TRequest, TContext>,
-  session: RequestSession,
-  rawRequest: Request,
-): Promise<{ readonly request: TRequest } | { readonly rejection: Response }> {
-  try {
-    return { request: await adapter.parse(rawRequest, context) };
-  } catch (error) {
-    await cancelRetainedRequestBody(rawRequest, error);
-    if (error instanceof RequestBodyTooLargeError) {
-      return {
-        rejection: rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol: adapter.protocol,
-          response: adapter.errors.tooLarge(),
-          errorCode: 'request_too_large',
-          error,
-        }),
-      };
-    }
-    if (error instanceof UnsupportedContentEncodingError) {
-      return {
-        rejection: rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol: adapter.protocol,
-          response: adapter.errors.unsupportedContentEncoding(),
-          errorCode: 'unsupported_content_encoding',
-          error,
-        }),
-      };
-    }
-    const mapped = adapter.errors.requestError(error);
-    if (mapped !== undefined) {
-      const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
-      return {
-        rejection: rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol: adapter.protocol,
-          response: mapped,
-          errorCode,
-          error,
-        }),
-      };
-    }
-    throw error;
-  }
 }
 
 async function handleProtocolRequestInContext<TRequest, TContext>(
   options: HandleProtocolRequestOptions<TRequest, TContext>,
-  session: RequestSession,
+  session: RequestTraceSession,
+  inboundProtocol: ProviderProtocol,
 ): Promise<Response> {
-  const { adapter, context, rawRequest, source } = options;
+  const { adapter, context, source } = options;
+  let { rawRequest } = options;
   let requestedModelId: string | undefined;
   let releaseRetainedBody = false;
   try {
+    try {
+      rawRequest = observeInboundRequest(rawRequest, inboundProtocol);
+    } catch (error) {
+      await cancelRetainedRequestBody(rawRequest, error);
+      throw error;
+    }
     if (hasInvalidOrOversizedContentLength(rawRequest)) {
       const error = new RequestBodyTooLargeError('Request body too large');
       await cancelRetainedRequestBody(rawRequest, error);
@@ -105,30 +65,84 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         source,
         session,
         rawRequest,
-        inboundProtocol: adapter.protocol,
+        inboundProtocol,
         response: adapter.errors.tooLarge(),
         errorCode: 'request_too_large',
         error,
       });
     }
 
-    const parsed = await parseInboundRequest(options, session, rawRequest);
-    if ('rejection' in parsed) return parsed.rejection;
-    const request = parsed.request;
+    let request: TRequest;
+    try {
+      request = await adapter.parse(rawRequest, context);
+    } catch (error) {
+      await cancelRetainedRequestBody(rawRequest, error);
+      if (error instanceof RequestBodyTooLargeError) {
+        return rejectRequest({
+          source,
+          session,
+          rawRequest,
+          inboundProtocol,
+          response: adapter.errors.tooLarge(),
+          errorCode: 'request_too_large',
+          error,
+        });
+      }
+      if (error instanceof UnsupportedContentEncodingError) {
+        return rejectRequest({
+          source,
+          session,
+          rawRequest,
+          inboundProtocol,
+          response: adapter.errors.unsupportedContentEncoding(),
+          errorCode: 'unsupported_content_encoding',
+          error,
+        });
+      }
+      const mapped = adapter.errors.requestError(error);
+      if (mapped !== undefined) {
+        const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
+        return rejectRequest({
+          source,
+          session,
+          rawRequest,
+          inboundProtocol,
+          response: mapped,
+          errorCode,
+          error,
+        });
+      }
+      throw error;
+    }
     releaseRetainedBody = true;
 
-    const logicalRequest = source.logicalSessionStore.begin({
+    const requestedModel = adapter.model(request, context);
+    requestedModelId = requestedModel;
+    const resolution = source.logicalSessionStore.begin({
+      requestedModelId: requestedModel,
+      requestId: session.requestId,
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });
-    const requestedModel = adapter.model(request, context);
-    requestedModelId = requestedModel;
-    session.identify({ requestedModelId: requestedModel });
+    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: true });
+    if (resolution.responseStatus === 'ambiguous') {
+      const error = new Error('Ambiguous previous response ownership');
+      return rejectRequest({
+        source,
+        session,
+        rawRequest,
+        inboundProtocol,
+        requestedModelId: requestedModel,
+        response: adapter.errors.previousResponseConflict(),
+        errorCode: 'previous_response_conflict',
+        error,
+      });
+    }
     logRequestDiagnostics({
       source,
-      session,
+      requestId: session.requestId,
       rawRequest,
-      inboundProtocol: adapter.protocol,
+      inboundProtocol,
       requestedModelId: requestedModel,
       diagnostics: adapter.requestDiagnostics(request, context),
     });
@@ -143,13 +157,14 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       return await attemptCandidates({
         adapter,
         candidates,
+        config: lease.snapshot.config,
         context,
         deferRelease,
-        logicalRequest,
         rawRequest,
         release: lease.release,
         request,
         requestedModelId: requestedModel,
+        resolution,
         session,
         source,
       });
@@ -160,7 +175,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
           source,
           session,
           rawRequest,
-          inboundProtocol: adapter.protocol,
+          inboundProtocol,
           requestedModelId: requestedModel,
           response,
           errorCode: 'model_not_found',
@@ -172,12 +187,16 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       if (!deferred) lease.release();
     }
   } catch (error) {
-    if (session.finish({ outcome: 'failure', errorCode: 'internal_error' })) {
+    const cancelled = isInboundAbort(error, rawRequest.signal);
+    if (
+      session.finish(cancelled ? { outcome: 'cancelled' } : { outcome: 'failure', errorCode: 'internal_error' }) &&
+      !cancelled
+    ) {
       logRequestFailed({
         source,
-        session,
+        requestId: session.requestId,
         rawRequest,
-        inboundProtocol: adapter.protocol,
+        inboundProtocol,
         ...(requestedModelId === undefined ? {} : { requestedModelId }),
         error,
       });
@@ -192,7 +211,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
 
 function rejectRequest(options: {
   readonly source: ProviderRouteSource;
-  readonly session: RequestSession;
+  readonly session: RequestTraceSession;
   readonly rawRequest: Request;
   readonly inboundProtocol: string;
   readonly requestedModelId?: string;
@@ -200,13 +219,13 @@ function rejectRequest(options: {
   readonly errorCode: string;
   readonly error: unknown;
 }): Response {
-  const { response, ...rejection } = options;
-  rejection.session.finish({
+  const { response, session, ...rejection } = options;
+  session.finish({
     outcome: 'failure',
-    finalStatusCode: response.status,
+    finalHttpStatus: response.status,
     errorCode: rejection.errorCode,
   });
-  logRequestRejected({ ...rejection, statusCode: response.status });
+  logRequestRejected({ ...rejection, requestId: session.requestId, statusCode: response.status });
   return response;
 }
 

@@ -17,7 +17,7 @@ export const requestedModel = 'count-model';
 
 export function countFixture(
   providers: readonly RuntimeProviderInstance[],
-  options: { readonly debugLogging?: boolean } = {},
+  options: { readonly debugLogging?: boolean; readonly logicalSessionStore?: LogicalSessionStore } = {},
 ) {
   const router = new Router(providers);
   const recording = createRecording();
@@ -33,7 +33,7 @@ export function countFixture(
     currentProviderSnapshot: () => ({ providers, router }),
     ...(options.debugLogging === undefined ? {} : { debugLogging: options.debugLogging }),
     logger: (entry) => logs.push(entry),
-    logicalSessionStore: new LogicalSessionStore(),
+    logicalSessionStore: options.logicalSessionStore ?? new LogicalSessionStore(),
     requestRecorder: recording.recorder,
     usageCapture: {
       passthrough(): never {
@@ -135,7 +135,7 @@ export function geminiRequest(): Request {
   });
 }
 
-export function openAIResponsesRequest(): Request {
+export function openAIResponsesRequest(overrides: Readonly<Record<string, unknown>> = {}): Request {
   return jsonRequest('https://proxy.test/v1/responses/input_tokens', {
     model: requestedModel,
     input: [
@@ -143,6 +143,7 @@ export function openAIResponsesRequest(): Request {
       { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
     ],
     tools: [{ type: 'custom', name: 'exec', description: 'shell', format: { type: 'text' } }],
+    ...overrides,
   });
 }
 

@@ -6,6 +6,7 @@ import { formatCompactTokenCount, TokenCount } from '@/components/token-count';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type { UsageOverviewSummary } from '../services/usage-service';
+import { formatNanoUsd } from '../services/usage-value-formatter';
 
 interface UsageSummaryGridProps {
   readonly summary: UsageOverviewSummary;
@@ -19,14 +20,10 @@ interface UsageSummaryCard {
 }
 
 export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) => {
-  const numberFormatter = new Intl.NumberFormat(getLocale());
-  const decimalFormatter = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
-  const costFormatter = new Intl.NumberFormat(getLocale(), {
-    currency: 'USD',
-    maximumFractionDigits: 6,
-    style: 'currency',
-  });
-  const percentFormatter = new Intl.NumberFormat(getLocale(), {
+  const locale = getLocale();
+  const numberFormatter = new Intl.NumberFormat(locale);
+  const decimalFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  const percentFormatter = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 1,
     style: 'percent',
   });
@@ -35,7 +32,7 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
     {
       icon: CircleDollarSign,
       label: m['dashboard.usage.summary_cost'](),
-      value: costFormatter.format(summary.estimatedCostUsd),
+      value: formatNanoUsd(summary.estimatedCostNanoUsd, locale),
       detail:
         summary.pricingCoverage === null
           ? m['dashboard.usage.pricing_coverage']({ coverage: notAvailable })

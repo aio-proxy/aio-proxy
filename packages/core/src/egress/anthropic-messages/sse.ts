@@ -1,5 +1,5 @@
 import type { LanguageModelV2StreamPart, TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
-import type { ModelEgressContext } from '../../protocol/adapter';
+import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
 import { createCancellableEgressStream } from '../cancellable-stream';
 import {
   anthropicStopReason,
@@ -33,7 +33,7 @@ type BlockState = {
 export function writeAnthropicMessagesSSE(
   stream: ReadableStream<AnthropicMessagesStreamPart>,
   context: ModelEgressContext,
-): ReadableStream<Uint8Array> {
+): ModelSseStream {
   const id = messageId();
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
     const state: BlockState = {

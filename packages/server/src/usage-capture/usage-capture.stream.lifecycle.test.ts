@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
+import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
 import { clearPriceCatalog, drain, finishPart, seedPriceCatalog, textStream } from './test-support';
 
@@ -92,6 +93,34 @@ describe('usage capture stream lifecycle', () => {
     await expect(captured.completion).resolves.toEqual({ outcome: 'cancelled' });
   });
 
+  test('records ttft from startedAt to the first content delta when streaming', async () => {
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: performance.now(),
+      stream: textStream([{ type: 'text-delta', id: 'text-1', text: 'hi' }, finishPart()]),
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    const ttftMs = 'ttftMs' in completion ? completion.ttftMs : undefined;
+    expect(typeof ttftMs).toBe('number');
+    expect(ttftMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test('omits ttft when startedAt is not provided', async () => {
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream([{ type: 'text-delta', id: 'text-1', text: 'hi' }, finishPart()]),
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+  });
+
   test('pricing failures do not alter stream parts', async () => {
     const parts = [{ type: 'text-delta', id: 'text-1', text: 'hello' }, finishPart()] as const;
     const captured = createUsageCapture().stream({
@@ -105,5 +134,61 @@ describe('usage capture stream lifecycle', () => {
       outcome: 'success',
       usage: expect.objectContaining({ providerId: 'provider', modelId: 'model', inputTokens: 4 }),
     });
+  });
+});
+
+describe('usage capture stream validation', () => {
+  test('invalid finish usage is dropped without altering stream parts', async () => {
+    const finish = finishPart();
+    const invalidFinish = {
+      ...finish,
+      totalUsage: { ...finish.totalUsage, inputTokens: Number.MAX_SAFE_INTEGER + 1 },
+    } satisfies TextStreamPart<ToolSet>;
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      logger: (entry) => logs.push(entry),
+    }).stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream([invalidFinish]),
+    });
+
+    expect(await drain(captured.value)).toEqual([invalidFinish]);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success' });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'ai-sdk',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
+  });
+
+  test('invalid priced usage is dropped and logged', async () => {
+    await seedPriceCatalog([{ id: 'priced/model', input: -1, output: 0 }]);
+    const logs: ServerLog[] = [];
+    const captured = createUsageCapture({
+      logger: (entry) => logs.push(entry),
+    }).stream({
+      providerId: 'provider',
+      modelId: 'model',
+      stream: textStream([finishPart()]),
+    });
+
+    expect(await drain(captured.value)).toEqual([finishPart()]);
+    await expect(captured.completion).resolves.toEqual({ outcome: 'success' });
+    expect(logs).toEqual([
+      {
+        event: 'usage.accounting_dropped',
+        source: 'ai-sdk',
+        providerId: 'provider',
+        modelId: 'model',
+        reason: 'invalid_usage',
+        issues: expect.any(Array),
+      },
+    ]);
   });
 });

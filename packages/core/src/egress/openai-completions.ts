@@ -6,7 +6,7 @@ import type {
 import type { CompletionUsage } from 'openai/resources/completions';
 
 import type { LanguageModelV2FinishReason, LanguageModelV2StreamPart, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
-import type { ModelEgressContext } from '../protocol/adapter';
+import type { ModelEgressContext, ModelSseStream } from '../protocol/adapter';
 import { createCancellableEgressStream } from './cancellable-stream';
 
 const encoder = new TextEncoder();
@@ -37,7 +37,7 @@ type ResponseMetadata = {
 export function writeOpenAICompletionsSSE(
   stream: ReadableStream<OpenAICompletionsStreamPart>,
   context: ModelEgressContext,
-): ReadableStream<Uint8Array> {
+): ModelSseStream {
   const metadata = fallbackMetadata(context.modelId);
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
     const tools = new Map<string, ToolState>();

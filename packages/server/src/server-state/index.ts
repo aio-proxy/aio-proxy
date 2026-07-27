@@ -9,7 +9,7 @@ import {
   Router,
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
-import { createRequestLogStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
+import { createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import { createAccountRemovalCoordinator } from '../account-removal';
@@ -21,7 +21,7 @@ import { LogicalSessionStore } from '../logical-session-store';
 import { createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
-import { createRequestRecorder } from '../request-recorder';
+import { createRequestTraceRecorder } from '../request-tracing';
 import type { RuntimeProviderInstance } from '../runtime';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
@@ -130,10 +130,14 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
   } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
-  const requestLog = createRequestLogStore(dbHandle.db);
-  const usageCapture = createUsageCapture();
-  const requestRecorder = createRequestRecorder({ store: requestLog, logger });
-  const logicalSessionStore = new LogicalSessionStore();
+  const traceStore = createTraceStore(dbHandle.db);
+  const usageCapture = createUsageCapture({ logger });
+  const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
+  const requestRecorder = createRequestTraceRecorder({
+    store: traceStore,
+    logger,
+    onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
+  });
 
   const configStore = await startRecovery(runtime, {
     recoverAccounts,
@@ -159,7 +163,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     oauthLoginSessions,
     providerSummaries,
     reload,
-    requestLog,
+    traceStore,
     requestRecorder,
     usageCapture,
     watcher,

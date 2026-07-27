@@ -6,11 +6,13 @@ import type { ProtocolSessionHints } from './session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
 export type ModelEventStream = ReadableStream<TextStreamPart<ToolSet>>;
+export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion: Promise<void> };
 
 export type ProtocolErrorMapper = Readonly<{
   requestError: (error: unknown) => Response | undefined;
   modelUnsupported?: (error: unknown) => Response | undefined;
   modelNotFound: (message: string) => Response;
+  previousResponseConflict: () => Response;
   tooLarge: () => Response;
   unsupportedContentEncoding: () => Response;
   unsupported: (feature: string) => Response;
@@ -50,7 +52,7 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
     targetProtocol: ProviderProtocol | undefined,
   ) => ModelInvocation;
   modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
-  modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ReadableStream<Uint8Array>;
+  modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
   errors: ProtocolErrorMapper;
 }>;
 
