@@ -39,6 +39,8 @@ describe('trace search', () => {
     { terminationReason: 'success' },
     { finalHttpStatus: '99' },
     { finalHttpStatus: '600' },
+    { traceId: 'abc' },
+    { traceId: 'ABCDEF0123456789ABCDEF0123456789' },
   ])('resets malformed search values to the current-day defaults: %j', (raw) => {
     expect(parseTraceSearch(raw, now)).toEqual(createDefaultTraceSearch(now));
   });

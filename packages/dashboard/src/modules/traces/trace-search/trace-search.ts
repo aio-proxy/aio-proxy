@@ -25,6 +25,7 @@ type RawTraceSearch = Record<string, unknown> & Partial<Record<keyof TraceSearch
 const pageSizes = new Set([10, 20, 50, 100]);
 const otelStatusCodes = new Set(['UNSET', 'OK', 'ERROR']);
 const terminationReasons = new Set(['failure', 'cancelled', 'interrupted']);
+const traceIdPattern = /^[0-9a-f]{32}$/u;
 
 export const createDefaultTraceSearch = (now = new Date()): TraceSearch => ({
   page: 1,
@@ -42,6 +43,7 @@ export const parseTraceSearch = (raw: RawTraceSearch, now = new Date()): TraceSe
   const finalHttpStatus = integer(raw.finalHttpStatus);
   const otelStatusCode = string(raw.otelStatusCode);
   const terminationReason = string(raw.terminationReason);
+  const traceId = typeof raw.traceId === 'string' && traceIdPattern.test(raw.traceId) ? raw.traceId : undefined;
   if (
     (raw.startedAfter !== undefined && startedAfter === undefined) ||
     (raw.startedBefore !== undefined && startedBefore === undefined) ||
@@ -51,7 +53,8 @@ export const parseTraceSearch = (raw: RawTraceSearch, now = new Date()): TraceSe
       (finalHttpStatus === undefined || finalHttpStatus < 100 || finalHttpStatus > 599)) ||
     (raw.otelStatusCode !== undefined && (otelStatusCode === undefined || !otelStatusCodes.has(otelStatusCode))) ||
     (raw.terminationReason !== undefined &&
-      (terminationReason === undefined || !terminationReasons.has(terminationReason)))
+      (terminationReason === undefined || !terminationReasons.has(terminationReason))) ||
+    (raw.traceId !== undefined && traceId === undefined)
   ) {
     return defaults;
   }
@@ -61,7 +64,7 @@ export const parseTraceSearch = (raw: RawTraceSearch, now = new Date()): TraceSe
     pageSize: (pageSize ?? defaults.pageSize) as DashboardTracePageSize,
     startedAfter: startedAfter ?? defaults.startedAfter,
     startedBefore: startedBefore ?? defaults.startedBefore,
-    ...optionalString('traceId', raw.traceId),
+    ...(traceId === undefined ? {} : { traceId }),
     ...optionalString('requestId', raw.requestId),
     ...optionalString('sessionSource', raw.sessionSource),
     ...optionalString('sessionId', raw.sessionId),
