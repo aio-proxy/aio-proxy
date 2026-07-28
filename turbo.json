@@ -45,11 +45,13 @@
     "dev": {
       "persistent": true,
       "cache": false,
+      "env": ["AIO_PROXY_PORT"],
       "outputs": []
     },
     "serve:dev": {
       "persistent": true,
       "cache": false,
+      "env": ["AIO_PROXY_PORT"],
       "outputs": []
     }
   }
