@@ -101,7 +101,28 @@ describe('openAIResponsesAdapter', () => {
     });
   });
 
-  test('clones the raw request when the resolved model is unchanged', async () => {
+  test('clones an uncompressed raw request when the resolved model is unchanged', async () => {
+    const body = '{"model":"same", "input":"hello", "beta_field":true}';
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: {
+        'content-length': String(new TextEncoder().encode(body).byteLength),
+        'content-type': 'application/json',
+        'x-sentinel': 'preserved',
+      },
+      body,
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', {});
+
+    expect(forwarded).not.toBe(raw);
+    expect(forwarded.headers.get('content-encoding')).toBeNull();
+    expect(forwarded.headers.get('x-sentinel')).toBe('preserved');
+    expect(await forwarded.text()).toBe(body);
+  });
+
+  test('normalizes a compressed same-model request before raw forwarding', async () => {
     const body = Bun.zstdCompressSync(
       new TextEncoder().encode(JSON.stringify({ model: 'same', input: 'hello', beta_field: true })),
     );
@@ -119,11 +140,10 @@ describe('openAIResponsesAdapter', () => {
 
     const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', {});
 
-    expect(forwarded).not.toBe(raw);
-    expect(forwarded.headers.get('content-encoding')).toBe('zstd');
-    expect(forwarded.headers.get('content-length')).toBe(String(body.byteLength));
+    expect(forwarded.headers.get('content-encoding')).toBeNull();
+    expect(forwarded.headers.get('content-length')).toBeNull();
     expect(forwarded.headers.get('x-sentinel')).toBe('preserved');
-    expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(body);
+    expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
   });
 });
 

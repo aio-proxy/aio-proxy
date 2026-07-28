@@ -35,7 +35,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   }),
   wantsStream: (request) => request.stream === true,
   rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel && request.background === undefined
+    return request.model === resolvedModel && request.background === undefined && !raw.headers.has('content-encoding')
       ? Promise.resolve(raw.clone())
       : rewriteOpenAIResponsesRequest(raw, resolvedModel);
   },
