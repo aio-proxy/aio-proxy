@@ -1,11 +1,16 @@
 import type { DashboardTraceDetail } from '@aio-proxy/types';
-import { beforeEach, describe, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, rs, test } from '@rstest/core';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TraceDetailPage } from './trace-detail-page';
 
-const mocks = rs.hoisted(() => ({ mode: 'terminal', refetch: rs.fn() }));
+const mocks = rs.hoisted(() => ({
+  mode: 'terminal',
+  refetch: rs.fn(),
+  navigate: rs.fn(),
+  data: undefined as DashboardTraceDetail | undefined,
+}));
 const traceId = 'a'.repeat(32);
 const detail: DashboardTraceDetail = {
   trace: {
@@ -102,15 +107,21 @@ rs.mock('../../hooks/use-trace-query', () => ({
         refetch: mocks.refetch,
       };
     }
-    return { data: detail, isLoading: false, isError: false, refetch: mocks.refetch };
+    return { data: mocks.data ?? detail, isLoading: false, isError: false, refetch: mocks.refetch };
   },
 }));
+
+rs.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
 
 describe('trace detail page', () => {
   beforeEach(() => {
     mocks.mode = 'terminal';
     mocks.refetch.mockReset();
+    mocks.navigate.mockReset();
+    mocks.data = undefined;
   });
+
+  afterEach(() => rs.restoreAllMocks());
 
   test('renders a terminal summary, usage, and every span in API order', () => {
     render(<TraceDetailPage traceId={traceId} />);
@@ -129,7 +140,7 @@ describe('trace detail page', () => {
 
   test('renders the root Span ID in the complete summary', () => {
     render(<TraceDetailPage traceId={traceId} />);
-    expect(screen.getByText('b'.repeat(16))).toBeTruthy();
+    expect(within(screen.getByTestId('trace-summary')).getByText('b'.repeat(16))).toBeTruthy();
   });
 
   test('renders the price model ID in the usage summary', () => {
@@ -138,12 +149,48 @@ describe('trace detail page', () => {
   });
 
   test('renders a running root and manually refreshes it', () => {
+    const interval = rs.spyOn(globalThis, 'setInterval');
     mocks.mode = 'running';
     render(<TraceDetailPage traceId={traceId} />);
 
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新/u }));
     expect(mocks.refetch).toHaveBeenCalledTimes(1);
+    expect(interval).not.toHaveBeenCalled();
+  });
+
+  test('selects the root, preserves a selected Span across refresh, and falls back when it disappears', async () => {
+    const { rerender } = render(<TraceDetailPage traceId={traceId} />);
+    const panel = screen.getByTestId('span-detail-panel');
+    expect(within(panel).getByText('aio_proxy.request')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /aio_proxy\.provider\.attempt/u }));
+    expect(within(panel).getByText('aio_proxy.provider.attempt')).toBeTruthy();
+
+    mocks.data = { ...detail, spans: detail.spans.map((span) => ({ ...span })) };
+    rerender(<TraceDetailPage traceId={traceId} />);
+    expect(within(panel).getByText('aio_proxy.provider.attempt')).toBeTruthy();
+
+    mocks.data = { ...detail, spans: [detail.spans[0]!] };
+    rerender(<TraceDetailPage traceId={traceId} />);
+    await waitFor(() => expect(within(panel).getByText('aio_proxy.request')).toBeTruthy());
+  });
+
+  test('navigates from Session identity to page one with exact source and ID filters', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /openai-prompt-cache.*cache-a/u }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '/traces',
+        search: expect.objectContaining({
+          page: 1,
+          sessionSource: 'openai-prompt-cache',
+          sessionId: 'cache-a',
+        }),
+      }),
+    );
   });
 
   test.each([
