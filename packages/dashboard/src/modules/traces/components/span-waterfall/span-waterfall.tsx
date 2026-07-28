@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { formatTraceDuration } from '../../trace-formatters';
 import { layoutTraceSpans } from '../../trace-layout';
-import { renderTraceStatus } from '../trace-spans-table';
+import { TraceStatus } from '../trace-status';
 
 interface SpanWaterfallProps {
   readonly spans: readonly DashboardTraceSpan[];
@@ -41,12 +41,6 @@ export const SpanWaterfall: React.FC<SpanWaterfallProps> = ({ spans, selectedSpa
               aria-pressed={row.spanId === selectedSpanId}
               data-testid="trace-span"
               onClick={() => onSelect(row.spanId)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelect(row.spanId);
-                }
-              }}
             >
               <span className="min-w-0" style={{ paddingInlineStart: `${row.depth * 16}px` }}>
                 <span className="block truncate font-medium">{row.name}</span>
@@ -64,7 +58,7 @@ export const SpanWaterfall: React.FC<SpanWaterfallProps> = ({ spans, selectedSpa
                   style={{ left: `${row.offsetRatio * 100}%`, width: `${row.widthRatio * 100}%` }}
                 />
               </span>
-              {renderTraceStatus(row)}
+              <TraceStatus item={row} className="justify-end" />
               <span className="text-right font-mono text-xs tabular-nums">{formatTraceDuration(row.durationMs)}</span>
             </Button>
           ))}

@@ -81,11 +81,6 @@ export const withTraceFilters = (search: TraceSearch, patch: TraceFilterPatch): 
   return next as TraceSearch;
 };
 
-export const isWithinTraceRetention = (value: string, now = new Date()) => {
-  const time = Date.parse(value);
-  return !Number.isNaN(time) && time >= now.getTime() - 45 * 24 * 60 * 60 * 1_000;
-};
-
 const integer = (value: unknown) => {
   const parsed =
     typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : undefined;

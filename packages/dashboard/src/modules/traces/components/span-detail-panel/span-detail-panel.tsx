@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { formatTraceDuration } from '../../trace-formatters';
-import { renderTraceStatus } from '../trace-spans-table';
+import { TraceStatus } from '../trace-status';
 
 interface SpanDetailPanelProps {
   readonly span: DashboardTraceSpan | undefined;
@@ -34,7 +34,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
                   [m['dashboard.traces.trace_id'](), span.traceId],
                   [m['dashboard.traces.span_id'](), span.spanId],
                   [m['dashboard.traces.parent_span_id'](), span.parentSpanId],
-                  [m['dashboard.traces.status'](), renderTraceStatus(span)],
+                  [m['dashboard.traces.status'](), <TraceStatus key="status" item={span} className="justify-end" />],
                   [m['dashboard.traces.started_at'](), new Date(span.startedAt).toLocaleString()],
                   [
                     m['dashboard.traces.ended_at'](),

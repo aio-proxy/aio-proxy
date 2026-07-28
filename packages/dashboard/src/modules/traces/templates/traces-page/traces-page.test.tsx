@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { createDefaultTraceSearch } from '../../trace-search';
 import { TracesPage } from './traces-page';
 
-const mocks = rs.hoisted(() => ({ refetch: rs.fn() }));
+const mocks = rs.hoisted(() => ({ refetch: rs.fn(), querySearch: rs.fn() }));
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
   rootSpanId: 'b'.repeat(16),
@@ -46,13 +46,16 @@ const runningTrace: DashboardTraceSummary = {
 };
 
 rs.mock('../../hooks/use-traces-query', () => ({
-  useTracesQuery: () => ({
-    data: { items: [runningTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
-    isLoading: false,
-    isError: false,
-    isFetching: false,
-    refetch: mocks.refetch,
-  }),
+  useTracesQuery: (search: unknown, autoRefresh: boolean) => {
+    mocks.querySearch(search, autoRefresh);
+    return {
+      data: { items: [runningTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: mocks.refetch,
+    };
+  },
 }));
 
 describe('traces page', () => {
@@ -107,6 +110,30 @@ describe('traces page', () => {
     expect(onSearchChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 1, sessionId: 'cache-exact', otelStatusCode: 'ERROR' }),
     );
+  });
+
+  test('keeps an incomplete Trace ID as a draft until it is valid', async () => {
+    const onSearchChange = rs.fn();
+    mocks.querySearch.mockClear();
+    const initialSearch = { ...createDefaultTraceSearch(), page: 3 };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    const traceIdInput = await screen.findByRole('textbox', { name: /Trace ID|追踪 ID/u });
+    fireEvent.change(traceIdInput, { target: { value: 'abc' } });
+
+    expect(onSearchChange).not.toHaveBeenCalled();
+    expect(mocks.querySearch).toHaveBeenCalledTimes(1);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(initialSearch, true);
+    expect(screen.getByRole('alert')).toHaveTextContent(/32-character lowercase hexadecimal|32 位小写十六进制/u);
+
+    const traceId = 'a'.repeat(32);
+    fireEvent.change(traceIdInput, { target: { value: traceId } });
+
+    const validSearch = onSearchChange.mock.calls.at(-1)?.[0];
+    expect(validSearch).toEqual(expect.objectContaining({ page: 1, traceId }));
+    view.rerender(<TracesPage search={validSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, traceId }), true);
   });
 
   test('navigates a keyboard-selected row to its trace detail', () => {

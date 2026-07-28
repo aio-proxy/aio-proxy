@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Field, FieldLabel } from '@/components/ui/field';
+import { Field, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,16 +19,8 @@ interface TracesAdvancedFiltersProps {
   readonly onChange: (patch: TraceFilterPatch) => void;
 }
 
-const schema = z.object({
-  traceId: z.string(),
-  requestId: z.string(),
-  sessionSource: z.string(),
-  sessionId: z.string(),
-  terminationReason: z.string(),
-  finalProviderId: z.string(),
-  finalModelId: z.string(),
-  finalHttpStatus: z.string(),
-});
+const traceIdPattern = /^[0-9a-f]{32}$/u;
+const traceIdSchema = z.string().refine((value) => value === '' || traceIdPattern.test(value));
 
 export const TracesAdvancedFilters: React.FC<TracesAdvancedFiltersProps> = ({ search, onChange }) => {
   const form = useForm({
@@ -42,7 +34,6 @@ export const TracesAdvancedFilters: React.FC<TracesAdvancedFiltersProps> = ({ se
       finalModelId: search.finalModelId ?? '',
       finalHttpStatus: search.finalHttpStatus?.toString() ?? '',
     },
-    validators: { onChange: schema },
   });
   useEffect(() => {
     form.setFieldValue('traceId', search.traceId ?? '');
@@ -65,7 +56,7 @@ export const TracesAdvancedFilters: React.FC<TracesAdvancedFiltersProps> = ({ se
     search.finalHttpStatus,
   ].filter((value) => value !== undefined).length;
   const textField = (
-    name: 'traceId' | 'requestId' | 'sessionSource' | 'sessionId' | 'finalProviderId' | 'finalModelId',
+    name: 'requestId' | 'sessionSource' | 'sessionId' | 'finalProviderId' | 'finalModelId',
     label: string,
   ) => (
     <form.Field name={name}>
@@ -116,7 +107,32 @@ export const TracesAdvancedFilters: React.FC<TracesAdvancedFiltersProps> = ({ se
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]">
         <div className="grid gap-3">
-          {textField('traceId', m['dashboard.traces.trace_id']())}
+          <form.Field
+            name="traceId"
+            validators={{
+              onChange: ({ value }) => {
+                const result = traceIdSchema.safeParse(value);
+                return result.success ? undefined : m['dashboard.traces.trace_id_invalid']();
+              },
+            }}
+          >
+            {(field) => (
+              <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                <FieldLabel htmlFor="traces-traceId">{m['dashboard.traces.trace_id']()}</FieldLabel>
+                <Input
+                  id="traces-traceId"
+                  aria-invalid={field.state.meta.errors.length > 0 || undefined}
+                  value={field.state.value}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    field.handleChange(value);
+                    if (traceIdSchema.safeParse(value).success) onChange({ traceId: value || undefined });
+                  }}
+                />
+                <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
+              </Field>
+            )}
+          </form.Field>
           {textField('requestId', m['dashboard.traces.request_id']())}
           {textField('sessionSource', m['dashboard.traces.session_source']())}
           {textField('sessionId', m['dashboard.traces.session_id']())}

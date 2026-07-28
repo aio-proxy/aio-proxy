@@ -93,38 +93,41 @@ function summary(durations: readonly number[]): string {
 }
 
 const home = mkdtempSync(join(tmpdir(), 'aio-proxy-trace-store-benchmark-'));
-const handle = openDb({ home });
 try {
-  const store = createTraceStore(handle.db);
-  for (let index = 0; index < WARMUP_REQUESTS; index += 1) {
-    const input = requestWrites(index);
-    store.startRoot(input.start);
-    store.complete(input.completion);
-  }
+  const handle = openDb({ home });
+  try {
+    const store = createTraceStore(handle.db);
+    for (let index = 0; index < WARMUP_REQUESTS; index += 1) {
+      const input = requestWrites(index);
+      store.startRoot(input.start);
+      store.complete(input.completion);
+    }
 
-  const requests = Array.from({ length: MEASURED_REQUESTS }, (_, index) => requestWrites(WARMUP_REQUESTS + index));
-  const rootStartDurations: number[] = [];
-  const terminalDurations: number[] = [];
-  const combinedStartedAt = performance.now();
-  for (const input of requests) {
-    const startedAt = performance.now();
-    store.startRoot(input.start);
-    rootStartDurations.push(performance.now() - startedAt);
-  }
-  for (const input of requests) {
-    const startedAt = performance.now();
-    store.complete(input.completion);
-    terminalDurations.push(performance.now() - startedAt);
-  }
-  const combinedElapsedMs = performance.now() - combinedStartedAt;
+    const requests = Array.from({ length: MEASURED_REQUESTS }, (_, index) => requestWrites(WARMUP_REQUESTS + index));
+    const rootStartDurations: number[] = [];
+    const terminalDurations: number[] = [];
+    const combinedStartedAt = performance.now();
+    for (const input of requests) {
+      const startedAt = performance.now();
+      store.startRoot(input.start);
+      rootStartDurations.push(performance.now() - startedAt);
+    }
+    for (const input of requests) {
+      const startedAt = performance.now();
+      store.complete(input.completion);
+      terminalDurations.push(performance.now() - startedAt);
+    }
+    const combinedElapsedMs = performance.now() - combinedStartedAt;
 
-  console.log(
-    `TraceStore benchmark: ${WARMUP_REQUESTS} warmup, ${MEASURED_REQUESTS} measured, ${CHILD_SPANS} child spans`,
-  );
-  console.log(`root-start ${summary(rootStartDurations)}`);
-  console.log(`terminal ${summary(terminalDurations)}`);
-  console.log(`combined requests/s=${((MEASURED_REQUESTS * 1_000) / combinedElapsedMs).toFixed(1)}`);
+    console.log(
+      `TraceStore benchmark: ${WARMUP_REQUESTS} warmup, ${MEASURED_REQUESTS} measured, ${CHILD_SPANS} child spans`,
+    );
+    console.log(`root-start ${summary(rootStartDurations)}`);
+    console.log(`terminal ${summary(terminalDurations)}`);
+    console.log(`combined requests/s=${((MEASURED_REQUESTS * 1_000) / combinedElapsedMs).toFixed(1)}`);
+  } finally {
+    handle.close();
+  }
 } finally {
-  handle.close();
   rmSync(home, { recursive: true, force: true });
 }

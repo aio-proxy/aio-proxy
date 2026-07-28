@@ -507,6 +507,7 @@
       "range_3d": "Last 3 days",
       "range_7d": "Last 7 days",
       "trace_id": "Trace ID",
+      "trace_id_invalid": "Enter a 32-character lowercase hexadecimal Trace ID.",
       "root_span_id": "Root Span ID",
       "request_id": "Request ID",
       "session": "Session",

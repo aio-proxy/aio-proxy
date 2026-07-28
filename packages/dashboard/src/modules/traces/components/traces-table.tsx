@@ -1,15 +1,15 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceSummary, OtelSpanStatusCode, TraceTerminationReason } from '@aio-proxy/types';
+import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 
 import { DataTablePagination } from '@/components/data-table-pagination';
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../trace-formatters';
 import type { TraceSearch } from '../trace-search';
+import { TraceStatus } from './trace-status';
 
 interface TracesTableProps {
   readonly data: {
@@ -21,12 +21,6 @@ interface TracesTableProps {
   readonly onSelect: (traceId: string) => void;
 }
 
-const statusVariants = {
-  UNSET: 'outline',
-  OK: 'default',
-  ERROR: 'destructive',
-} as const satisfies Record<OtelSpanStatusCode, 'outline' | 'default' | 'destructive'>;
-const terminationLabel = (reason: TraceTerminationReason) => m[`dashboard.traces.${reason}`]();
 const columns: ColumnDef<DashboardTraceSummary>[] = [
   {
     accessorKey: 'startedAt',
@@ -37,19 +31,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
     id: 'status',
     header: () => m['dashboard.traces.status'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
-      const trace = row.original;
-      return (
-        <div className="flex min-w-24 flex-wrap gap-1">
-          {trace.endedAt === null ? (
-            <Badge variant="secondary">{m['dashboard.traces.running']()}</Badge>
-          ) : (
-            <Badge variant={statusVariants[trace.otelStatusCode]}>{trace.otelStatusCode}</Badge>
-          )}
-          {trace.terminationReason === undefined ? null : (
-            <Badge variant="outline">{terminationLabel(trace.terminationReason)}</Badge>
-          )}
-        </div>
-      );
+      return <TraceStatus item={row.original} className="min-w-24" />;
     },
   },
   {

@@ -2,7 +2,9 @@ import { createFileRoute, useParams } from '@tanstack/react-router';
 
 import { TraceDetailPage } from '@/modules/traces/templates/trace-detail-page';
 
-const TraceDetailRoute: React.FC = () => {
+interface TraceDetailRouteProps extends Record<string, never> {}
+
+const TraceDetailRoute: React.FC<TraceDetailRouteProps> = () => {
   const { traceId } = useParams({ from: '/traces/$traceId' });
   return <TraceDetailPage traceId={traceId} />;
 };

@@ -135,7 +135,7 @@ describe('trace detail page', () => {
       expect.stringContaining('gen_ai.inference'),
     ]);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/SERVER/u);
-    expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/ERROR/u);
+    expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/ERROR|错误/u);
   });
 
   test('renders the root Span ID in the complete summary', () => {

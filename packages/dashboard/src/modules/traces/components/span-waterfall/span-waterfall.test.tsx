@@ -37,7 +37,7 @@ const spans: readonly DashboardTraceSpan[] = [
   },
 ];
 
-test('keeps server order and selects Span rows with pointer and keyboard input', () => {
+test('keeps server order and selects Span rows through native button activation', () => {
   const onSelect = rs.fn();
   render(
     <SpanWaterfall
@@ -55,7 +55,7 @@ test('keeps server order and selects Span rows with pointer and keyboard input',
   expect(screen.getByRole('button', { name: /aio_proxy\.request/u })).toHaveAttribute('aria-pressed', 'true');
 
   fireEvent.click(screen.getByRole('button', { name: /aio_proxy\.provider\.attempt/u }));
-  fireEvent.keyDown(screen.getByRole('button', { name: /aio_proxy\.request/u }), { key: 'Enter' });
+  fireEvent.click(screen.getByRole('button', { name: /aio_proxy\.request/u }));
 
   expect(onSelect).toHaveBeenNthCalledWith(1, childSpanId);
   expect(onSelect).toHaveBeenNthCalledWith(2, rootSpanId);

@@ -4,7 +4,9 @@ import { useEffect, useRef } from 'react';
 import { TracesPage } from '@/modules/traces/templates/traces-page';
 import { parseTraceSearch } from '@/modules/traces/trace-search';
 
-const TracesRoute: React.FC = () => {
+interface TracesRouteProps extends Record<string, never> {}
+
+const TracesRoute: React.FC<TracesRouteProps> = () => {
   const search = useSearch({ from: '/traces/' });
   const navigate = useNavigate({ from: '/traces/' });
   const canonicalized = useRef(false);

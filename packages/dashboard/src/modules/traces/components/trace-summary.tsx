@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../trace-formatters';
-import { renderTraceStatus } from './trace-spans-table';
+import { TraceStatus } from './trace-status';
 
 interface TraceSummaryProps {
   readonly trace: DashboardTraceSummary;
@@ -21,7 +21,7 @@ export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSele
     [m['dashboard.traces.trace_id'](), trace.traceId],
     [m['dashboard.traces.root_span_id'](), trace.rootSpanId],
     [m['dashboard.traces.request_id'](), trace.requestId],
-    [m['dashboard.traces.status'](), renderTraceStatus(trace)],
+    [m['dashboard.traces.status'](), <TraceStatus key="status" item={trace} className="justify-end" />],
     [
       m['dashboard.traces.session'](),
       trace.session === undefined ? undefined : (
