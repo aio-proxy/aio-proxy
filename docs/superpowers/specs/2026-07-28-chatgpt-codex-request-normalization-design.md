@@ -9,7 +9,7 @@ Keep the client-facing OpenAI Responses contract while satisfying the stricter C
 Normalize only requests rewritten by `@aio-proxy/plugin-openai-chatgpt` to the internal Codex `/responses` endpoint:
 
 - Always send `store: false`.
-- Convert string `input` to `[{ role: "user", content: input }]`.
+- Convert string `input` to the AI SDK-compatible message shape `[{ role: "user", content: [{ type: "input_text", text: input }] }]`.
 - Preserve array `input` and every unrelated request field.
 - Leave GET, HEAD, and non-Responses requests unchanged.
 

@@ -54,15 +54,42 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('Originator', 'codex-tui');
     headers.set('User-Agent', CHATGPT_USER_AGENT);
     headers.set('session-id', crypto.randomUUID());
+    const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
 
     return await fetchOpenAIResponses(rewriteCodexUrl(request.url), {
       method: request.method,
       headers,
-      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body: request.body }),
+      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
       signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
       redirect: request.redirect,
     });
   };
+}
+
+function shouldRewriteResponsesBody(request: Request): boolean {
+  return (
+    request.method !== 'GET' &&
+    request.method !== 'HEAD' &&
+    request.body !== null &&
+    new URL(request.url).pathname.endsWith('/responses')
+  );
+}
+
+async function rewriteResponsesBody(request: Request, headers: Headers): Promise<string> {
+  const value: unknown = await request.json();
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError('ChatGPT Codex Responses request body must be an object');
+  }
+  const body = value as Record<string, unknown>;
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  return JSON.stringify({
+    ...body,
+    store: false,
+    ...(typeof body['input'] === 'string'
+      ? { input: [{ role: 'user', content: [{ type: 'input_text', text: body['input'] }] }] }
+      : {}),
+  });
 }
 
 export async function currentCredential(

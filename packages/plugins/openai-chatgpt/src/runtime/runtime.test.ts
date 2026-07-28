@@ -85,7 +85,12 @@ describe('OpenAI ChatGPT runtime', () => {
     );
     const controller = new AbortController();
 
-    const body = JSON.stringify({ input: 'hello', model: 'gpt-5.5', stream: true });
+    const body = JSON.stringify({
+      input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
+      model: 'gpt-5.5',
+      store: false,
+      stream: true,
+    });
     await dynamicFetch('https://api.openai.com/v1/responses?foo=bar&foo=baz', {
       body,
       headers: {
@@ -118,6 +123,30 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get('session-id')).not.toBe(first.headers.get('session-id'));
   });
+});
+
+test('normalizes Responses requests for the Codex backend', async () => {
+  const calls: FetchCall[] = [];
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+
+  await dynamicFetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'content-encoding': 'identity',
+      'content-length': '1',
+    },
+    body: JSON.stringify({ model: 'gpt-5.6-luna', input: 'hello', store: true, stream: true }),
+  });
+
+  const call = requiredCall(calls, 0);
+  expect(JSON.parse(call.body)).toEqual({
+    model: 'gpt-5.6-luna',
+    input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
+    store: false,
+    stream: true,
+  });
+  expect(call.headers.get('content-encoding')).toBeNull();
+  expect(call.headers.get('content-length')).toBeNull();
 });
 
 function credential(overrides: Partial<ChatGPTCredential> = {}): ChatGPTCredential {
