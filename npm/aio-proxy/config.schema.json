@@ -1,0 +1,558 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "server": {
+      "description": "Local server settings.",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "port": {
+          "default": 9317,
+          "description": "HTTP port for the proxy API server.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "password": {
+          "description": "Dashboard password or Argon2id PHC hash.",
+          "type": "string",
+          "minLength": 1
+        },
+        "host": {
+          "default": "127.0.0.1",
+          "description": "Loopback host for the proxy API server.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+            }
+          ]
+        },
+        "logging": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "retentionDays": {
+              "default": 14,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365
+            },
+            "dir": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "string",
+                  "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                }
+              ]
+            },
+            "level": {
+              "default": "info",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": ["debug", "info", "warn", "error"]
+                },
+                {
+                  "type": "string",
+                  "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*\\/)?[a-z0-9][a-z0-9._~-]*$"
+              },
+              {
+                "type": "string",
+                "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+              }
+            ]
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*\\/)?[a-z0-9][a-z0-9._~-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ]
+              },
+              {}
+            ]
+          }
+        ]
+      }
+    },
+    "proxy": {
+      "description": "Default HTTP(S) proxy URL inherited by providers that omit their own proxy.",
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uri"
+        },
+        {
+          "type": "string",
+          "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+        }
+      ]
+    },
+    "providers": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "api",
+                "description": "Provider backed by a raw HTTP API."
+              },
+              "enabled": {
+                "default": true,
+                "description": "Whether this provider participates in routing.",
+                "type": "boolean"
+              },
+              "weight": {
+                "description": "Provider priority; higher weights are tried first.",
+                "type": "number"
+              },
+              "alias": {
+                "description": "Client-facing model aliases.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Upstream model id exposed by a provider."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Default upstream model id for this alias target."
+                        },
+                        "preserve": {
+                          "default": false,
+                          "description": "Expose the target model under its original id as well.",
+                          "type": "boolean"
+                        },
+                        "variants": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Upstream model id exposed by a provider."
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Default upstream model id for this alias target."
+                                  },
+                                  "preserve": {
+                                    "default": false,
+                                    "description": "Expose the target model under its original id as well.",
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["model"]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["model"]
+                    }
+                  ]
+                }
+              },
+              "name": {
+                "description": "Display name shown in the dashboard.",
+                "type": "string"
+              },
+              "models": {
+                "description": "Upstream model ids available through this provider.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Upstream model id exposed by a provider."
+                }
+              },
+              "apiKey": {
+                "description": "Bearer token or API key for the provider.",
+                "type": "string"
+              },
+              "headers": {
+                "description": "Headers applied to upstream requests; configured values win.",
+                "readOnly": true,
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "protocol": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["openai-response", "openai-compatible", "anthropic", "gemini"],
+                    "description": "Wire protocol supported by this provider base URL."
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ]
+              },
+              "baseURL": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ],
+                "description": "Provider API base URL."
+              },
+              "proxy": {
+                "description": "HTTP(S) proxy URL; inherits the top-level proxy when omitted, false disables it.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  },
+                  {
+                    "type": "boolean",
+                    "const": false
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "protocol", "baseURL"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "oauth",
+                "description": "Provider backed by a plugin OAuth account."
+              },
+              "enabled": {
+                "default": true,
+                "description": "Whether this provider participates in routing.",
+                "type": "boolean"
+              },
+              "weight": {
+                "description": "Provider priority; higher weights are tried first.",
+                "type": "number"
+              },
+              "alias": {
+                "description": "Client-facing model aliases.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Upstream model id exposed by a provider."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Default upstream model id for this alias target."
+                        },
+                        "preserve": {
+                          "default": false,
+                          "description": "Expose the target model under its original id as well.",
+                          "type": "boolean"
+                        },
+                        "variants": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Upstream model id exposed by a provider."
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Default upstream model id for this alias target."
+                                  },
+                                  "preserve": {
+                                    "default": false,
+                                    "description": "Expose the target model under its original id as well.",
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["model"]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["model"]
+                    }
+                  ]
+                }
+              },
+              "name": {
+                "description": "Display name shown in the dashboard.",
+                "type": "string"
+              },
+              "options": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "plugin": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*\\/)?[a-z0-9][a-z0-9._~-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ]
+              },
+              "capability": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "plugin", "capability"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ai-sdk",
+                "description": "Provider loaded from an AI SDK provider package."
+              },
+              "enabled": {
+                "default": true,
+                "description": "Whether this provider participates in routing.",
+                "type": "boolean"
+              },
+              "weight": {
+                "description": "Provider priority; higher weights are tried first.",
+                "type": "number"
+              },
+              "alias": {
+                "description": "Client-facing model aliases.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Upstream model id exposed by a provider."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Default upstream model id for this alias target."
+                        },
+                        "preserve": {
+                          "default": false,
+                          "description": "Expose the target model under its original id as well.",
+                          "type": "boolean"
+                        },
+                        "variants": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Upstream model id exposed by a provider."
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Default upstream model id for this alias target."
+                                  },
+                                  "preserve": {
+                                    "default": false,
+                                    "description": "Expose the target model under its original id as well.",
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["model"]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["model"]
+                    }
+                  ]
+                }
+              },
+              "name": {
+                "description": "Display name shown in the dashboard.",
+                "type": "string"
+              },
+              "models": {
+                "description": "Upstream model ids available through this provider.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Upstream model id exposed by a provider."
+                }
+              },
+              "options": {
+                "description": "Options passed through to the AI SDK provider package.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "parseReasoningContent": {
+                "description": "Parse reasoning content from OpenAI-compatible stream chunks.",
+                "type": "boolean"
+              },
+              "packageName": {
+                "default": "@ai-sdk/openai-compatible",
+                "description": "npm package name that exports the AI SDK provider factory.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  }
+                ]
+              },
+              "proxy": {
+                "description": "HTTP(S) proxy URL; inherits the top-level proxy when omitted, false disables it.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{[\\s\\S]*\\}\\}"
+                  },
+                  {
+                    "type": "boolean",
+                    "const": false
+                  }
+                ]
+              }
+            },
+            "required": ["kind"]
+          }
+        ]
+      }
+    }
+  },
+  "required": ["providers"]
+}

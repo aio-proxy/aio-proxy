@@ -14,8 +14,9 @@ test('bootstrap writes a versioned $schema reference the config schema accepts',
     const path = join(home, 'config.jsonc');
     await readOrBootstrapConfig(path, 'http://127.0.0.1:22078/dashboard');
     const raw = readFileSync(path, 'utf8');
-    const parsed = JSON.parse(raw) as { $schema?: string };
+    const parsed = JSON.parse(raw) as { $schema?: string; server?: { port?: number } };
     expect(parsed.$schema).toBe(`https://cdn.jsdelivr.net/npm/aio-proxy@${packageJson.version}/config.schema.json`);
+    expect(parsed.server?.port).toBe(9_317);
     expect(ConfigSchema.safeParse(parsed).success).toBe(true);
   } finally {
     rmSync(home, { recursive: true, force: true });
