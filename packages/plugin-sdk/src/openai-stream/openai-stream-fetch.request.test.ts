@@ -16,6 +16,25 @@ describe('createOpenAIStreamFetch', () => {
     expect(seenDecompress).toBe(false);
   });
 
+  test('allows a caller to request an identity upstream response', async () => {
+    let seenHeaders: Headers | undefined;
+    let seenDecompress: unknown;
+    const fetch = createOpenAIStreamFetch(
+      'openai-response',
+      async (_input, init) => {
+        seenHeaders = new Headers(init?.headers);
+        seenDecompress = (init as { decompress?: boolean } | undefined)?.decompress;
+        return new Response('{}', { headers: { 'content-type': 'application/json' } });
+      },
+      { acceptEncoding: 'identity' },
+    );
+
+    await fetch('https://example.test/v1');
+
+    expect(seenHeaders?.get('accept-encoding')).toBe('identity');
+    expect(seenDecompress).toBe(false);
+  });
+
   test('preserves method, body, signal, redirect, and caller headers other than Accept-Encoding', async () => {
     const signal = AbortSignal.timeout(5_000);
     let seen: Request | undefined;

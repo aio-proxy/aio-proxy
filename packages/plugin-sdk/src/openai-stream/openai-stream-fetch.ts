@@ -9,6 +9,7 @@ const OPENAI_ACCEPT_ENCODING = 'gzip, deflate, br, zstd' as const;
 type BunFetchInit = RequestInit & { decompress?: boolean };
 
 export type OpenAIStreamFetchOptions = {
+  readonly acceptEncoding?: string;
   readonly rewriteToolImages?: boolean;
 };
 
@@ -30,7 +31,7 @@ export function createOpenAIStreamFetch(
         ? await rewriteCompatibleToolImages(initialRequest)
         : initialRequest;
     const headers = new Headers(request.headers);
-    headers.set('accept-encoding', OPENAI_ACCEPT_ENCODING);
+    headers.set('accept-encoding', resolvedOptions.acceptEncoding ?? OPENAI_ACCEPT_ENCODING);
 
     const response = await (fetcher as (input: RequestInfo | URL, init?: BunFetchInit) => Promise<Response>)(request, {
       headers,

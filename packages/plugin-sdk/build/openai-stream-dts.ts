@@ -7,6 +7,7 @@ import type { RsbuildPlugin } from '@aio-proxy/infra/rslib';
 export const OPENAI_STREAM_DTS = `export type OpenAIStreamProtocol = "openai-response" | "openai-compatible";
 
 export type OpenAIStreamFetchOptions = {
+  readonly acceptEncoding?: string;
   readonly rewriteToolImages?: boolean;
 };
 
