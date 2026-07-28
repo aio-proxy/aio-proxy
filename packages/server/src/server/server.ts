@@ -118,11 +118,12 @@ const createRoutes = (
     routes
       .get('/dashboard', dashboardIndex)
       .get('/dashboard/', dashboardIndex)
-      .get(
-        '/dashboard/static/*',
-        async (context) =>
-          (await dashboardAssets(context.req.path.replace(/^\/dashboard\//u, ''))) ?? context.notFound(),
-      )
+      .get('/dashboard/static/*', async (context) => {
+        const asset = await dashboardAssets(context.req.path.replace(/^\/dashboard\//u, ''));
+        if (asset === null || asset === undefined) return context.notFound();
+        asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
+        return asset;
+      })
       .all('/dashboard/static/*', (context) => context.notFound())
       .all('/dashboard/api', (context) => context.notFound())
       .all('/dashboard/api/*', (context) => context.notFound())

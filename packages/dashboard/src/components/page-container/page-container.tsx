@@ -20,8 +20,8 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
   children,
 }) => {
   return (
-    <>
-      <header className="flex h-16 items-center justify-between px-4">
+    <ScrollArea className="h-full min-h-0 flex-1">
+      <header className="container mx-auto flex min-h-16 items-center justify-between px-4 pt-8 pb-4">
         <div className="flex min-w-0 items-center gap-1">
           {!!backTo && (
             <Link
@@ -40,10 +40,8 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
         </div>
         {extra && <div className="ml-2">{extra}</div>}
       </header>
-      <ScrollArea className="h-full min-h-0 flex-1">
-        <div className="container mx-auto p-3">{children}</div>
-        <ScrollBar orientation="vertical" />
-      </ScrollArea>
-    </>
+      <main className="container mx-auto p-3">{children}</main>
+      <ScrollBar orientation="vertical" />
+    </ScrollArea>
   );
 };
