@@ -49,7 +49,7 @@ export function handleAttemptError<TRequest, TContext>(
   const { index, candidate, startedAt, hasNext } = slot;
   const provider = candidate.provider;
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
-  const logBase = { ...base, protocol: undefined };
+  const { protocol: _protocol, ...logBase } = base;
   const mapped = adapter.errors.provider(error);
   if (mapped === undefined) {
     endAttemptSpan(ctx, slot, base, { outcome: 'failure' });

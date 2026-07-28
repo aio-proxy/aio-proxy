@@ -85,7 +85,7 @@ async function promptFieldValue(field: FormField, args: PromptFieldArgs): Promis
             ...(field.placeholder === undefined
               ? {}
               : { placeholder: resolveLocalizedText(field.placeholder, locale) }),
-            ...(promptDefault === undefined ? {} : { default: String(promptDefault) }),
+            ...(promptDefault === undefined ? {} : { default: String(promptDefault as number) }),
           },
           context,
         )
@@ -142,7 +142,10 @@ type BoundaryArgs = {
   readonly publicInputSnapshot: Readonly<Record<string, unknown>>;
 };
 
-function collectBoundaryIssues(validatedEntries: readonly [string, unknown][], args: BoundaryArgs): FormSchemaIssue[] {
+function collectBoundaryIssues(
+  validatedEntries: readonly (readonly [string, unknown])[],
+  args: BoundaryArgs,
+): FormSchemaIssue[] {
   const { formKeys, secretKeys, secretInputKeys, publicInputSnapshot } = args;
   const validatedKeys = new Set(validatedEntries.map(([key]) => key));
   const boundaryIssues: FormSchemaIssue[] = [];

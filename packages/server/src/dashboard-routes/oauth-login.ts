@@ -1,8 +1,14 @@
 import { DashboardOAuthCallbackSubmissionSchema, DashboardOAuthSessionStartSchema } from '@aio-proxy/types';
 import { Hono } from 'hono';
+import { validator } from 'hono/validator';
 
 import { OAuthCallbackError } from '../oauth-login-session/callback';
 import type { ServerState } from '../server-state';
+
+const callbackSubmissionValidator = validator('json', (raw, context) => {
+  const parsed = DashboardOAuthCallbackSubmissionSchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
+});
 
 export const createDashboardOAuthLoginRoutes = (state: ServerState) =>
   new Hono()
@@ -18,12 +24,11 @@ export const createDashboardOAuthLoginRoutes = (state: ServerState) =>
         ? context.json({ error: 'OAuth session not found' }, 404)
         : context.json({ session });
     })
-    .post('/sessions/:id/callback', async (context) => {
-      const parsed = DashboardOAuthCallbackSubmissionSchema.safeParse(await context.req.json().catch(() => undefined));
-      if (!parsed.success) return context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
+    .post('/sessions/:id/callback', callbackSubmissionValidator, async (context) => {
+      const body = context.req.valid('json');
       try {
         return context.json({
-          session: state.oauthLoginSessions.submitCallback(context.req.param('id'), parsed.data.callbackUrl),
+          session: state.oauthLoginSessions.submitCallback(context.req.param('id'), body.callbackUrl),
         });
       } catch (error) {
         if (error instanceof OAuthCallbackError) return context.json({ error: error.code }, 400);

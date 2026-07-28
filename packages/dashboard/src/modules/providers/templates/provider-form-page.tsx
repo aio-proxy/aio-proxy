@@ -78,7 +78,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
   };
 
   return (
-    <PageContainer title={title} subtitle={subtitle} backTo="/providers">
+    <PageContainer title={title} {...(subtitle === undefined ? {} : { subtitle })} backTo="/providers">
       <div className="mx-auto max-w-4xl space-y-6 px-1 pb-4 sm:p-4">
         <form
           className="space-y-8"

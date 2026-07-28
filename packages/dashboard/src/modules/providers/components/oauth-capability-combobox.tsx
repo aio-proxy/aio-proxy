@@ -1,5 +1,4 @@
-import { getLocale, m } from '@aio-proxy/i18n';
-import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
+import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability } from '@aio-proxy/types';
 
 import {
@@ -12,6 +11,8 @@ import {
 } from '@/components/ui/combobox';
 import { Field } from '@/components/ui/field';
 import { Label } from '@/components/ui/label';
+
+import { resolveDashboardText } from '../localized-text';
 
 interface OAuthCapabilityComboboxProps {
   readonly capabilities: readonly DashboardOAuthCapability[];
@@ -30,7 +31,7 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
       items={capabilities}
       value={value}
       onValueChange={onValueChange}
-      itemToStringValue={(item) => resolveLocalizedText(item.label, getLocale())}
+      itemToStringValue={(item) => resolveDashboardText(item.label)}
     >
       <ComboboxInput
         id="oauth-capability"
@@ -43,11 +44,9 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
           {capabilities.map((capability) => (
             <ComboboxItem key={`${capability.plugin}:${capability.capability}`} value={capability}>
               <div>
-                <div>{resolveLocalizedText(capability.label, getLocale())}</div>
+                <div>{resolveDashboardText(capability.label)}</div>
                 {capability.description === undefined ? null : (
-                  <div className="text-xs text-muted-foreground">
-                    {resolveLocalizedText(capability.description, getLocale())}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{resolveDashboardText(capability.description)}</div>
                 )}
               </div>
             </ComboboxItem>

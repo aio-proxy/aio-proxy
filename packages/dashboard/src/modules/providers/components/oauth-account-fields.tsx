@@ -1,20 +1,21 @@
 import type { DashboardOAuthFormField } from '@aio-proxy/types';
+import type { AnyFieldApi } from '@tanstack/react-form';
 
-import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import type { OAuthProviderForm } from '../hooks/use-oauth-provider-form';
 import { OAuthAccountField } from './oauth-account-field';
 
 interface OAuthAccountFieldsProps {
   readonly fields: readonly DashboardOAuthFormField[];
-  readonly form: ReturnType<typeof useOAuthProviderForm>;
+  readonly form: OAuthProviderForm;
 }
 
 export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, form }) => (
   <form.Field name="publicValues">
-    {(publicField) => (
+    {(publicField: AnyFieldApi) => (
       <form.Field name="secrets">
-        {(secretField) => (
+        {(secretField: AnyFieldApi) => (
           <form.Field name="jsonValues">
-            {(jsonField) => {
+            {(jsonField: AnyFieldApi) => {
               const combined = { ...publicField.state.value, ...secretField.state.value };
               return (
                 <div className="space-y-4">

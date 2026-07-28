@@ -11,11 +11,11 @@ import type { DateTimeRange, DateTimeRangePreset } from './date-time-range-picke
 import { useDateTimeRangeDraft } from './use-date-time-range-draft';
 
 interface DateTimeRangePickerPanelProps {
-  value?: DateTimeRange;
+  value?: DateTimeRange | undefined;
   pattern: string;
   locale: Locale;
-  min?: Date;
-  max?: Date;
+  min?: Date | undefined;
+  max?: Date | undefined;
   presets: readonly DateTimeRangePreset[];
   mobile: boolean;
   onChange: (value: DateTimeRange) => void;
@@ -50,8 +50,8 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
             mode="range"
             numberOfMonths={1}
             excludeDisabled
-            defaultMonth={selected?.from}
-            selected={selected}
+            {...(selected?.from === undefined ? {} : { defaultMonth: selected.from })}
+            {...(selected === undefined ? {} : { selected })}
             disabled={disabledDates}
             locale={locale}
             onSelect={selectRange}

@@ -36,6 +36,7 @@ export function materializeRuntimeProvider(
     return provider;
   }
 
+  const { apiBridge } = options;
   if (provider.kind === ProviderKind.Api) {
     return {
       id: provider.id,
@@ -47,17 +48,13 @@ export function materializeRuntimeProvider(
       raw: {
         resolve: ({ protocol }) => (protocol === provider.protocol ? { invoke: provider.passthrough } : undefined),
       },
-      ...(options.apiBridge === undefined
+      ...(apiBridge === undefined
         ? {}
         : {
             model: {
-              ...(options.apiBridge.ensureAvailable === undefined
-                ? {}
-                : { ensureAvailable: options.apiBridge.ensureAvailable }),
-              invoke: options.apiBridge.invoke,
-              ...(options.apiBridge.targetProtocol === undefined
-                ? {}
-                : { targetProtocol: () => options.apiBridge.targetProtocol }),
+              ...(apiBridge.ensureAvailable === undefined ? {} : { ensureAvailable: apiBridge.ensureAvailable }),
+              invoke: apiBridge.invoke,
+              ...(apiBridge.targetProtocol === undefined ? {} : { targetProtocol: () => apiBridge.targetProtocol }),
             },
           }),
     };

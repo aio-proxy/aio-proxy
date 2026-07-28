@@ -11,7 +11,7 @@ const streamSuffix = ':streamGenerateContent';
 const countSuffix = ':countTokens';
 
 export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
-  return new Hono().post('/v1beta/models/*', (context) => {
+  return new Hono().post('/v1beta/models/*', async (context) => {
     const target = routeTarget(new URL(context.req.url).pathname);
     if (target === undefined) {
       return context.text('404 Not Found', 404);

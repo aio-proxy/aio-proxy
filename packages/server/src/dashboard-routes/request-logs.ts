@@ -1,6 +1,7 @@
 import { getModels, type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
 import type { RequestLogsQuery } from '@aio-proxy/core/db';
 import { DashboardRequestLogsPageSizeSchema, RequestOutcomeSchema } from '@aio-proxy/types';
+import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
@@ -27,12 +28,30 @@ const RequestLogsQuerySchema = z.object({
   finalStatusCode: z.coerce.number().int().min(100).max(599).optional(),
 });
 
-const requestLogsValidator = validator('query', (raw, context) => {
+type RequestLogsQueryWire = {
+  page?: string;
+  pageSize?: string;
+  startedAfter?: string;
+  completedBefore?: string;
+  requestId?: string;
+  outcome?: string;
+  inboundProtocol?: string;
+  requestedModelId?: string;
+  finalProviderId?: string;
+  finalModelId?: string;
+  finalStatusCode?: string;
+};
+
+const requestLogsValidator = validator('query', (raw: RequestLogsQueryWire, context) => {
   const parsed = RequestLogsQuerySchema.safeParse(raw);
   return parsed.success
     ? toRequestLogsQuery(parsed.data)
     : context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
-});
+}) as unknown as MiddlewareHandler<
+  Record<string, never>,
+  string,
+  { in: { query: RequestLogsQueryWire }; out: { query: RequestLogsQuery } }
+>;
 
 function toRequestLogsQuery(query: z.output<typeof RequestLogsQuerySchema>): RequestLogsQuery {
   return {

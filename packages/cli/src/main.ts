@@ -227,7 +227,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
-    setLocale(resolveLocaleFromArgv(process.argv));
+    void setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {

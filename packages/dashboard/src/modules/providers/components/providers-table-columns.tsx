@@ -68,7 +68,8 @@ const providerColumn: ColumnDef<DashboardProviderSummary> = {
 
 const statusColumn: ColumnDef<DashboardProviderSummary> = {
   id: 'status',
-  accessorFn: (provider) => `${provider.enabled} ${provider.state.status} ${provider.state.catalog ?? ''}`,
+  accessorFn: (provider) =>
+    `${provider.enabled} ${provider.state.status} ${provider.state.status === 'ready' ? (provider.state.catalog ?? '') : ''}`,
   header: () => m['dashboard.providers.table.col_status'](),
   cell: ({ row }) => (
     <div className="flex min-w-0 flex-col items-start gap-1 sm:min-w-32 sm:flex-row sm:gap-2">

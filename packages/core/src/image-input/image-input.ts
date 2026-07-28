@@ -135,7 +135,8 @@ export function assertImageInputSupported(
         assertFileSupported(part, targetProtocol, path, message.role === 'assistant' ? 'assistant' : 'user');
       }
       if (part.type === 'tool-result' && part.output.type === 'content') {
-        for (const [outputIndex, outputPart] of part.output.value.entries()) {
+        const outputParts = part.output.value as readonly ImageFilePart[];
+        for (const [outputIndex, outputPart] of outputParts.entries()) {
           if (outputPart.type === 'file' && isImageMediaType(outputPart.mediaType)) {
             assertFileSupported(outputPart, targetProtocol, `${path}.output.value.${outputIndex}`, 'tool-result');
           }

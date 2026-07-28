@@ -35,7 +35,10 @@ export const ProviderStateCell: React.FC<{
       ) : null}
       {diagnostic === undefined ? null : (
         <>
-          <DiagnosticDetails diagnostic={diagnostic} suggestedCommand={command} />
+          <DiagnosticDetails
+            diagnostic={diagnostic}
+            {...(command === undefined ? {} : { suggestedCommand: command })}
+          />
         </>
       )}
     </fieldset>

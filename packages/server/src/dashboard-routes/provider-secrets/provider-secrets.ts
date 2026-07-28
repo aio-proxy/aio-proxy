@@ -38,13 +38,14 @@ export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = f
   }
 
   if (isPlainObject(value)) {
-    return mapValues(value, (entryValue, entryKey) =>
-      redactSecrets(
+    return mapValues(value, (entryValue, entryKey) => {
+      const keyStr = typeof entryKey === 'string' ? entryKey : '';
+      return redactSecrets(
         entryValue,
-        entryKey,
-        insideSecretBoundary || entryKey.toLowerCase() === 'headers' || entryKey.toLowerCase() === 'proxy',
-      ),
-    );
+        keyStr,
+        insideSecretBoundary || keyStr.toLowerCase() === 'headers' || keyStr.toLowerCase() === 'proxy',
+      );
+    });
   }
 
   return value;

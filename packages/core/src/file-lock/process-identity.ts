@@ -24,7 +24,7 @@ export async function withinProcessStarttimeDeadline<T>(
   promise: Promise<T>,
   timeoutMs: number,
 ): Promise<T | typeof PROCESS_STARTTIME_TIMEOUT> {
-  observe(promise);
+  void observe(promise);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

@@ -1,6 +1,5 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasTarget } from '@aio-proxy/types';
-import type { useForm } from '@tanstack/react-form';
 import type { Dispatch, FC, SetStateAction } from 'react';
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -8,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 
-import type { AliasDraft } from '../alias-editor';
+import type { AliasDraftForm } from '../alias-editor';
 import type { VisibleEditError } from '../alias-editor-copy';
 
 type Props = {
-  readonly form: ReturnType<typeof useForm<AliasDraft>>;
+  readonly form: AliasDraftForm;
   readonly target: AliasTarget;
   readonly models: readonly string[];
   readonly nameId: string;

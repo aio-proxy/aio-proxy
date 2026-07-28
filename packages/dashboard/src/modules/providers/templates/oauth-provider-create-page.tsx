@@ -51,6 +51,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
     startMutation.mutate({
       capability: { plugin: capability.plugin, capability: capability.capability },
       ...account,
+      clearSecrets: [...account.clearSecrets],
     });
   });
   const session: DashboardOAuthSession | undefined =

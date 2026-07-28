@@ -36,6 +36,7 @@ export const createDashboardAuthRoutes = (auth: DashboardAuthentication) =>
         context.header('retry-after', String(result.retryAfterSeconds));
         return context.json({ error: 'rate_limited', retryAfterSeconds: result.retryAfterSeconds }, 429);
       }
+      if (result.status !== 'authenticated') return context.json({ error: 'authentication_failed' }, 500);
       setCookie(context, COOKIE_NAME, result.token, {
         expires: new Date(result.expiresAt),
         httpOnly: true,

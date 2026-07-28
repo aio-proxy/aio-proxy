@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
@@ -43,8 +44,8 @@ const EditProviderPage: React.FC = () => {
     }
     return (
       <OAuthProviderEditPage
-        provider={provider}
-        oauth={data.oauth}
+        provider={provider as unknown as OAuthProvider}
+        oauth={data.oauth as unknown as DashboardOAuthProviderEdit}
         sessionId={session}
         onSessionIdChange={(next) =>
           void navigate({ search: next === undefined ? {} : { session: next }, replace: true })

@@ -24,7 +24,7 @@ export default defineLibraryConfig({
       dts: {
         bundle: true,
       },
+      banner: { dts: lobeIconBuild.declaration },
     },
   ],
-  banner: { dts: lobeIconBuild.declaration },
 });

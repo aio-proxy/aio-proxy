@@ -53,7 +53,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
         highlightedItemRef.current = item ?? null;
       }}
       onValueChange={(nextItems) => {
-        const created = nextItems.find((item) => item.isNew);
+        const created = nextItems.find((item) => 'isNew' in item && item.isNew);
         if (created !== undefined) {
           addMany([created.value]);
           return;

@@ -43,8 +43,8 @@ export const DashboardTraceSummarySchema = z.object({
   traceId: z.string().regex(/^[0-9a-f]{32}$/u),
   rootSpanId: z.string().regex(/^[0-9a-f]{16}$/u),
   requestId: z.string().min(1),
-  startedAt: z.string().datetime(),
-  endedAt: z.string().datetime().nullable(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime().nullable(),
   durationMs: z.number().min(0),
   otelStatusCode: OtelSpanStatusCodeSchema,
   terminationReason: TraceTerminationReasonSchema.optional(),
@@ -62,10 +62,10 @@ export const DashboardTraceSummarySchema = z.object({
 
 const SpanAttributeValueSchema = z.union([
   z.string(),
-  z.number().finite(),
+  z.number(),
   z.boolean(),
   z.array(z.string()),
-  z.array(z.number().finite()),
+  z.array(z.number()),
   z.array(z.boolean()),
 ]);
 const SpanAttributesSchema = z.record(z.string(), SpanAttributeValueSchema);
@@ -79,8 +79,8 @@ export const DashboardTraceSpanSchema = z.object({
     .optional(),
   name: z.string().min(1),
   kind: TraceSpanKindSchema,
-  startedAt: z.string().datetime(),
-  endedAt: z.string().datetime().nullable(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime().nullable(),
   durationMs: z.number().min(0),
   otelStatusCode: OtelSpanStatusCodeSchema,
   terminationReason: TraceTerminationReasonSchema.optional(),
@@ -90,7 +90,7 @@ export const DashboardTraceSpanSchema = z.object({
   events: z.array(
     z.object({
       name: z.string().min(1),
-      timestamp: z.string().datetime(),
+      timestamp: z.iso.datetime(),
       attributes: SpanAttributesSchema,
     }),
   ),

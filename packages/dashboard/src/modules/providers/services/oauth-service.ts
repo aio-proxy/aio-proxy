@@ -15,7 +15,7 @@ export const oauthCapabilitiesQueryOptions = () =>
     queryFn: async (): Promise<DashboardOAuthCapabilitiesResponse> => {
       const response = await dashboardClient.dashboard.api.oauth.capabilities.$get();
       if (!response.ok) throw new Error(`load OAuth capabilities failed: ${response.status}`);
-      return response.json();
+      return (await response.json()) as unknown as DashboardOAuthCapabilitiesResponse;
     },
   });
 

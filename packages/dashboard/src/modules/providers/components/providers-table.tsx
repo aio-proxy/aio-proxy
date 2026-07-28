@@ -18,7 +18,7 @@ import { canEditProvider, createProviderColumns } from './providers-table-column
 
 interface ProvidersTableProps {
   readonly providers: readonly DashboardProviderSummary[];
-  readonly focusProviderId?: string;
+  readonly focusProviderId?: string | undefined;
 }
 
 export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focusProviderId }) => {

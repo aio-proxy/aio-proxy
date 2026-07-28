@@ -12,12 +12,12 @@ export function setDashboardUnavailableHandler(handler: () => void): void {
   handleDashboardUnavailable = handler;
 }
 
-const dashboardFetch: typeof fetch = async (input, init) => {
+const dashboardFetch = (async (input, init) => {
   const response = await fetch(input, init);
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;
-};
+}) as typeof fetch;
 
 async function isDashboardUnavailable(response: Response): Promise<boolean> {
   if (response.status !== 503) return false;
