@@ -75,7 +75,7 @@ describe('server routes', () => {
 
   test('server defaults bind to localhost api port when inspected', () => {
     // Given / When / Then
-    expect(serverDefaults).toEqual({ host: '127.0.0.1', port: 22_078 });
+    expect(serverDefaults).toEqual({ host: '127.0.0.1', port: 9_317 });
   });
 
   test('server config rejects non-loopback binding', () => {

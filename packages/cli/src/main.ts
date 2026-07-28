@@ -38,7 +38,7 @@ const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/con
 
 const DEFAULT_CONFIG = {
   $schema: CONFIG_SCHEMA_URL,
-  server: { port: 22_078 },
+  server: { port: 9_317 },
   providers: {},
 } as const;
 

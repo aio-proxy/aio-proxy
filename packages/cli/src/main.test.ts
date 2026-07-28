@@ -90,8 +90,8 @@ describe('cli', () => {
       await server.exited;
       const outputText = await stdout;
       expect(outputText).toContain(`http://127.0.0.1:${port}/dashboard`);
-      if (port !== 22_078) {
-        expect(outputText).not.toContain('http://127.0.0.1:22078/dashboard');
+      if (port !== 9_317) {
+        expect(outputText).not.toContain('http://127.0.0.1:9317/dashboard');
       }
     } finally {
       server.kill();

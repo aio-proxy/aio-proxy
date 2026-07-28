@@ -12,7 +12,7 @@ import { config } from './server.test-support';
 describe('server routes', () => {
   let dir: string;
   const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
-    createBaseServer({ ...options, dbHome: dir });
+    createBaseServer({ ...options, dbHome: dir, port: 22_078 });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-server-'));

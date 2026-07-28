@@ -31,7 +31,7 @@ export type ProviderListOptions = {
   readonly url?: string;
 };
 
-const defaultDashboardUrl = 'http://127.0.0.1:22078';
+const defaultDashboardUrl = 'http://127.0.0.1:9317';
 
 export const providerErrors = [
   NpmInstallError,

@@ -20,7 +20,7 @@ describe('dashboard provider package metadata', () => {
   let home: string;
   let previousHome: string | undefined;
   const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
-    createBaseServer({ ...options, dbHome: home });
+    createBaseServer({ ...options, dbHome: home, port: 22_078 });
 
   beforeEach(() => {
     previousHome = process.env.AIO_PROXY_HOME;

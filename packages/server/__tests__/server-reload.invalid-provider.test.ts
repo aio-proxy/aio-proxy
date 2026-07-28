@@ -26,6 +26,7 @@ describe('server invalid provider reload', () => {
     const app = await createServer({
       config: initialConfig,
       configPath,
+      port: 22_078,
       watchConfig: false,
     });
 

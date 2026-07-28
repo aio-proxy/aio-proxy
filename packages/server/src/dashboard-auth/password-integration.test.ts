@@ -3,10 +3,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createServer } from '../server';
+import { createServer as createBaseServer } from '../server';
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';
+const createServer = (options: Parameters<typeof createBaseServer>[0]) =>
+  createBaseServer({ ...options, port: 22_078 });
 
 async function login(app: Awaited<ReturnType<typeof createServer>>, password: string): Promise<Response> {
   return app.request(
