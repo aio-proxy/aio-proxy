@@ -111,7 +111,28 @@ rs.mock('../../hooks/use-trace-query', () => ({
   },
 }));
 
-rs.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
+rs.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    children,
+    preload: _preload,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    readonly to: string;
+    readonly preload?: string;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+  useNavigate: () => mocks.navigate,
+}));
+
+const summaryRow = (label: RegExp): HTMLElement => {
+  const row = within(screen.getByTestId('trace-summary')).getByText(label).closest('div');
+  if (row === null) throw new Error(`Missing summary row: ${label.source}`);
+  return row;
+};
 
 describe('trace detail page', () => {
   beforeEach(() => {
@@ -136,6 +157,51 @@ describe('trace detail page', () => {
     ]);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/SERVER/u);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/Failure|失败/u);
+  });
+
+  test.each(['terminal', 'loading', 'not-found', 'error'])('links the %s state back to the Trace list', (mode) => {
+    mocks.mode = mode;
+    render(<TraceDetailPage traceId={traceId} />);
+    expect(screen.getByRole('link', { name: /Back|返回/u })).toHaveAttribute('href', '/traces');
+  });
+
+  test('shows only the Session ID and discloses its source in a tooltip', async () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    const session = screen.getByRole('button', { name: 'cache-a' });
+    expect(within(screen.getByTestId('trace-summary')).queryByText('openai-prompt-cache')).toBeNull();
+
+    fireEvent.focus(session);
+    expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
+  });
+
+  test('shows the requested model and discloses a different upstream model', async () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    const row = summaryRow(/^Model$|^模型$/u);
+    const requestedModel = within(row).getByText('gpt-5');
+    expect(within(row).queryByText('gpt-5.1')).toBeNull();
+
+    fireEvent.focus(requestedModel);
+    expect(await screen.findByText(/Upstream model: gpt-5.1|上游模型：gpt-5.1/u)).toBeTruthy();
+  });
+
+  test('does not add an upstream-model tooltip when models match', () => {
+    mocks.data = { ...detail, trace: { ...detail.trace, finalModelId: 'gpt-5' } };
+    render(<TraceDetailPage traceId={traceId} />);
+
+    fireEvent.focus(within(summaryRow(/^Model$|^模型$/u)).getByText('gpt-5'));
+    expect(screen.queryByText(/Upstream model|上游模型/u)).toBeNull();
+  });
+
+  test('combines HTTP and error metadata into one result row', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    const row = summaryRow(/Result details|结果详情/u);
+    expect(within(row).getByText('HTTP 503 · upstream_error · provider_unavailable')).toBeTruthy();
+    expect(screen.queryByText(/Final HTTP status|最终 HTTP 状态码/u)).toBeNull();
+    expect(screen.queryByText(/Error type|错误类型/u)).toBeNull();
+    expect(screen.queryByText(/Error code|错误码/u)).toBeNull();
   });
 
   test('renders a completed UNSET Trace as successful', () => {
@@ -203,7 +269,7 @@ describe('trace detail page', () => {
   test('navigates from Session identity to page one with exact source and ID filters', () => {
     render(<TraceDetailPage traceId={traceId} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /openai-prompt-cache.*cache-a/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'cache-a' }));
 
     expect(mocks.navigate).toHaveBeenCalledWith(
       expect.objectContaining({

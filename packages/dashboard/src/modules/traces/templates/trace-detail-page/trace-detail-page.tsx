@@ -45,7 +45,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
 
   if (query.isLoading) {
     return (
-      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh}>
+      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh} backTo="/traces">
         <div className="space-y-3" role="status" aria-label={m['dashboard.traces.detail_loading']()}>
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -57,7 +57,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   if (query.isError || query.data === undefined) {
     const notFound = query.error instanceof DashboardTracesRequestError && query.error.status === 404;
     return (
-      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh}>
+      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh} backTo="/traces">
         <Empty>
           <EmptyTitle>
             {notFound ? m['dashboard.traces.not_found_title']() : m['dashboard.traces.detail_error_title']()}
@@ -76,7 +76,12 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const { trace, spans } = query.data;
 
   return (
-    <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={trace.traceId} extra={refresh}>
+    <PageContainer
+      title={m['dashboard.traces.detail_title']()}
+      subtitle={trace.traceId}
+      extra={refresh}
+      backTo="/traces"
+    >
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
         <div className="min-w-0 space-y-4">
           <TraceSummary

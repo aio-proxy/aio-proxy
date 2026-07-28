@@ -6,8 +6,14 @@ import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../trace-formatters';
+import {
+  displayTotalTokens,
+  formatTraceCost,
+  formatTraceDuration,
+  formatTraceResultDetails,
+} from '../trace-formatters';
 import { TraceStatus } from './trace-status';
 
 interface TraceSummaryProps {
@@ -17,36 +23,59 @@ interface TraceSummaryProps {
 
 export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSelect }) => {
   const missing = m['dashboard.traces.not_available']();
+  const sessionValue =
+    trace.session === undefined ? undefined : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto max-w-full justify-end px-0 py-0 text-right whitespace-normal"
+              onClick={() => onSessionSelect(trace.session!)}
+            />
+          }
+        >
+          {trace.session.id}
+        </TooltipTrigger>
+        <TooltipContent>{m['dashboard.traces.session_source_value']({ source: trace.session.source })}</TooltipContent>
+      </Tooltip>
+    );
+  const displayedModel = trace.requestedModelId ?? trace.finalModelId;
+  const upstreamModel =
+    trace.requestedModelId !== undefined &&
+    trace.finalModelId !== undefined &&
+    trace.requestedModelId !== trace.finalModelId
+      ? trace.finalModelId
+      : undefined;
+  const modelValue =
+    displayedModel === undefined || upstreamModel === undefined ? (
+      displayedModel
+    ) : (
+      <Tooltip>
+        <TooltipTrigger
+          render={<span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-4" />}
+        >
+          {displayedModel}
+        </TooltipTrigger>
+        <TooltipContent>{m['dashboard.traces.upstream_model_value']({ model: upstreamModel })}</TooltipContent>
+      </Tooltip>
+    );
+  const resultDetails = formatTraceResultDetails({
+    httpStatus: trace.finalHttpStatus,
+    errorType: trace.errorType,
+    errorCode: trace.errorCode,
+  });
   const summaryRows: readonly (readonly [string, ReactNode])[] = [
     [m['dashboard.traces.trace_id'](), trace.traceId],
     [m['dashboard.traces.root_span_id'](), trace.rootSpanId],
     [m['dashboard.traces.request_id'](), trace.requestId],
     [m['dashboard.traces.status'](), <TraceStatus key="status" item={trace} className="justify-end" />],
-    [
-      m['dashboard.traces.session'](),
-      trace.session === undefined ? undefined : (
-        <Button
-          key="session"
-          type="button"
-          variant="link"
-          className="h-auto max-w-full justify-end px-0 py-0 text-right whitespace-normal"
-          onClick={() => onSessionSelect(trace.session!)}
-        >
-          <span>
-            {trace.session.source}
-            <span className="block text-xs text-muted-foreground">{trace.session.id}</span>
-          </span>
-        </Button>
-      ),
-    ],
-    [m['dashboard.traces.session_resolved_by'](), trace.sessionResolvedBy],
+    [m['dashboard.traces.session'](), sessionValue],
     [m['dashboard.traces.protocol'](), <ProtocolLabel key="protocol" protocol={trace.inboundProtocol} />],
-    [m['dashboard.traces.requested_model'](), trace.requestedModelId],
+    [m['dashboard.traces.model'](), modelValue],
     [m['dashboard.traces.final_provider'](), trace.finalProviderId],
-    [m['dashboard.traces.final_model'](), trace.finalModelId],
-    [m['dashboard.traces.final_http_status'](), trace.finalHttpStatus],
-    [m['dashboard.traces.error_type'](), trace.errorType],
-    [m['dashboard.traces.error_code'](), trace.errorCode],
+    [m['dashboard.traces.result_details'](), resultDetails],
     [m['dashboard.traces.started_at'](), new Date(trace.startedAt).toLocaleString()],
     [m['dashboard.traces.ended_at'](), trace.endedAt === null ? undefined : new Date(trace.endedAt).toLocaleString()],
     [m['dashboard.traces.duration'](), formatTraceDuration(trace.durationMs)],

@@ -4,7 +4,7 @@ import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { formatTraceDuration } from '../../trace-formatters';
+import { formatTraceDuration, formatTraceResultDetails } from '../../trace-formatters';
 import { TraceStatus } from '../trace-status';
 
 interface SpanDetailPanelProps {
@@ -13,6 +13,8 @@ interface SpanDetailPanelProps {
 
 export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
   const missing = m['dashboard.traces.not_available']();
+  const resultDetails =
+    span === undefined ? undefined : formatTraceResultDetails({ errorType: span.errorType, errorCode: span.errorCode });
 
   return (
     <Card data-testid="span-detail-panel" className="min-w-0">
@@ -41,8 +43,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
                     span.endedAt === null ? undefined : new Date(span.endedAt).toLocaleString(),
                   ],
                   [m['dashboard.traces.duration'](), formatTraceDuration(span.durationMs)],
-                  [m['dashboard.traces.error_type'](), span.errorType],
-                  [m['dashboard.traces.error_code'](), span.errorCode],
+                  [m['dashboard.traces.result_details'](), resultDetails],
                 ].map(([label, value]) => (
                   <div className="contents" key={label as string}>
                     <dt className="text-muted-foreground">{label}</dt>

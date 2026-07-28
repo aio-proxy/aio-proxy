@@ -42,7 +42,11 @@ test('shows the selected Span identity, status, attributes, events, and links', 
   expect(within(panel).getByText(span.traceId)).toBeTruthy();
   expect(within(panel).getByText(span.spanId)).toBeTruthy();
   expect(within(panel).getByText(span.parentSpanId!)).toBeTruthy();
-  expect(within(panel).getByText('ERROR')).toBeTruthy();
+  expect(within(panel).getByText(/Failure|失败/u)).toBeTruthy();
+  expect(within(panel).getByText(/Result details|结果详情/u)).toBeTruthy();
+  expect(within(panel).getByText('upstream_error · provider_unavailable')).toBeTruthy();
+  expect(within(panel).queryByText(/Error type|错误类型/u)).toBeNull();
+  expect(within(panel).queryByText(/Error code|错误码/u)).toBeNull();
   expect(within(panel).getByText(/provider-a/u)).toBeTruthy();
 
   fireEvent.click(within(panel).getByRole('tab', { name: /Events|事件/u }));
