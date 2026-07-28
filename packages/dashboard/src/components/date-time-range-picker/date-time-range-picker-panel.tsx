@@ -33,83 +33,81 @@ export const DateTimeRangePickerPanel: React.FC<DateTimeRangePickerPanelProps> =
 }) => {
   const { draft, setDraft, validation, errors, selected, disabledDates, selectRange, selectPreset, endpoints } =
     useDateTimeRangeDraft({ value, pattern, locale, min, max, onChange });
+  const hasPresets = presets.length > 0;
 
   return (
     <div
       data-testid="date-time-range-panel"
-      className={cn('grid', mobile ? 'w-full gap-4' : 'w-128 max-w-[calc(100vw-2rem)]')}
+      className={cn(
+        'grid',
+        mobile ? 'w-full gap-4' : cn('w-auto max-w-[calc(100vw-2rem)] gap-4', hasPresets && 'grid-cols-[auto_11rem]'),
+      )}
     >
       <div
         data-slot="date-time-range-primary"
-        className={cn('grid gap-4', !mobile && 'grid-cols-[minmax(0,1fr)_11rem] border-b pb-4')}
+        className={cn('grid min-w-0 gap-4', mobile ? 'order-2' : cn('w-64', hasPresets && 'border-r pr-4'))}
       >
-        <div className={cn('min-w-0', mobile && 'order-2')}>
-          <Calendar
-            data-testid="date-time-range-calendar"
-            className={cn('p-0', mobile && 'w-full')}
-            mode="range"
-            numberOfMonths={1}
-            excludeDisabled
-            {...(selected?.from === undefined ? {} : { defaultMonth: selected.from })}
-            {...(selected === undefined ? {} : { selected })}
-            disabled={disabledDates}
-            locale={locale}
-            onSelect={selectRange}
-          />
-        </div>
-        {presets.length > 0 && (
-          <div
-            data-slot="date-time-range-presets"
-            className={cn(
-              'grid',
-              mobile ? 'order-1 grid-cols-2 gap-2' : 'max-h-72 content-start gap-1 overflow-y-auto',
-            )}
-          >
-            {presets.map((preset) => (
-              <Button
-                key={preset.id}
-                type="button"
-                variant={mobile ? 'outline' : 'ghost'}
-                className={mobile ? undefined : 'justify-start'}
-                onClick={() => selectPreset(preset)}
-              >
-                {preset.label}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div data-slot="date-time-range-fields" className={cn('grid gap-4', !mobile && 'grid-cols-2 border-b py-4')}>
-        {endpoints.map((endpoint) => {
-          const fieldErrors = errors.filter((error) => error.path[0] === endpoint.name);
-          return (
-            <Field key={endpoint.name} data-invalid={fieldErrors.length > 0}>
-              <FieldLabel htmlFor={endpoint.id}>{endpoint.label}</FieldLabel>
-              <Input
-                id={endpoint.id}
-                value={draft[endpoint.name]}
-                aria-invalid={fieldErrors.length > 0}
-                onChange={(event) => setDraft({ ...draft, [endpoint.name]: event.target.value })}
-              />
-              <FieldError errors={fieldErrors} />
-            </Field>
-          );
-        })}
-        <FieldError
-          className={mobile ? undefined : 'col-span-full'}
-          errors={errors.filter((error) => error.path.length === 0)}
+        <Calendar
+          data-testid="date-time-range-calendar"
+          className="w-full p-0"
+          classNames={{ root: 'w-full' }}
+          mode="range"
+          numberOfMonths={1}
+          excludeDisabled
+          {...(selected?.from === undefined ? {} : { defaultMonth: selected.from })}
+          {...(selected === undefined ? {} : { selected })}
+          disabled={disabledDates}
+          locale={locale}
+          onSelect={selectRange}
         />
+        <div data-slot="date-time-range-fields" className="grid gap-3">
+          {endpoints.map((endpoint) => {
+            const fieldErrors = errors.filter((error) => error.path[0] === endpoint.name);
+            return (
+              <Field key={endpoint.name} data-invalid={fieldErrors.length > 0}>
+                <FieldLabel htmlFor={endpoint.id}>{endpoint.label}</FieldLabel>
+                <Input
+                  id={endpoint.id}
+                  type="datetime-local"
+                  value={draft[endpoint.name]}
+                  aria-invalid={fieldErrors.length > 0}
+                  onChange={(event) => setDraft({ ...draft, [endpoint.name]: event.target.value })}
+                />
+                <FieldError errors={fieldErrors} />
+              </Field>
+            );
+          })}
+          <FieldError errors={errors.filter((error) => error.path.length === 0)} />
+        </div>
+        <div data-slot="date-time-range-actions" className={mobile ? 'bg-popover pt-2' : 'flex justify-end'}>
+          <Button
+            type="button"
+            className={mobile ? 'w-full' : undefined}
+            disabled={!validation.success}
+            onClick={() => validation.success && onChange(validation.data)}
+          >
+            {m['dashboard.date_time_range_picker.apply']()}
+          </Button>
+        </div>
       </div>
-      <div data-slot="date-time-range-actions" className={mobile ? 'bg-popover pt-2' : 'flex justify-end pt-4'}>
-        <Button
-          type="button"
-          className={mobile ? 'w-full' : undefined}
-          disabled={!validation.success}
-          onClick={() => validation.success && onChange(validation.data)}
+      {hasPresets && (
+        <div
+          data-slot="date-time-range-presets"
+          className={cn('grid', mobile ? 'order-1 grid-cols-2 gap-2' : 'max-h-72 content-start gap-1 overflow-y-auto')}
         >
-          {m['dashboard.date_time_range_picker.apply']()}
-        </Button>
-      </div>
+          {presets.map((preset) => (
+            <Button
+              key={preset.id}
+              type="button"
+              variant={mobile ? 'outline' : 'ghost'}
+              className={mobile ? undefined : 'justify-start'}
+              onClick={() => selectPreset(preset)}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
