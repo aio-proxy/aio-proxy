@@ -1,18 +1,16 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardTraceSpan, DashboardTraceSummary, TraceTerminationReason } from '@aio-proxy/types';
 import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+import { renderTraceStatus, TraceSpansTable } from '../../components/trace-spans-table';
 import { useTraceQuery } from '../../hooks/use-trace-query';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../../trace-formatters';
@@ -20,26 +18,6 @@ import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../../
 interface TraceDetailPageProps {
   readonly traceId: string;
 }
-
-const terminationLabel = (reason: TraceTerminationReason) => m[`dashboard.traces.${reason}`]();
-const renderStatus = (
-  item: Pick<DashboardTraceSummary | DashboardTraceSpan, 'endedAt' | 'otelStatusCode' | 'terminationReason'>,
-) => (
-  <div className="flex flex-wrap justify-end gap-1">
-    {item.endedAt === null ? (
-      <Badge variant="secondary">{m['dashboard.traces.running']()}</Badge>
-    ) : (
-      <Badge
-        variant={item.otelStatusCode === 'ERROR' ? 'destructive' : item.otelStatusCode === 'OK' ? 'default' : 'outline'}
-      >
-        {item.otelStatusCode}
-      </Badge>
-    )}
-    {item.terminationReason === undefined ? null : (
-      <Badge variant="outline">{terminationLabel(item.terminationReason)}</Badge>
-    )}
-  </div>
-);
 
 export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => {
   const query = useTraceQuery(traceId);
@@ -84,8 +62,9 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const missing = m['dashboard.traces.not_available']();
   const summaryRows: readonly (readonly [string, ReactNode])[] = [
     [m['dashboard.traces.trace_id'](), trace.traceId],
+    [m['dashboard.traces.root_span_id'](), trace.rootSpanId],
     [m['dashboard.traces.request_id'](), trace.requestId],
-    [m['dashboard.traces.status'](), renderStatus(trace)],
+    [m['dashboard.traces.status'](), renderTraceStatus(trace)],
     [m['dashboard.traces.session_source'](), trace.session?.source],
     [m['dashboard.traces.session_id'](), trace.session?.id],
     [m['dashboard.traces.session_resolved_by'](), trace.sessionResolvedBy],
@@ -104,6 +83,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const usageRows: readonly (readonly [string, ReactNode])[] = [
     [m['dashboard.traces.usage_provider'](), trace.usage?.providerId],
     [m['dashboard.traces.usage_model'](), trace.usage?.modelId],
+    [m['dashboard.traces.price_model_id'](), trace.usage?.priceModelId],
     [m['dashboard.traces.input_tokens'](), trace.usage?.inputTokens],
     [m['dashboard.traces.output_tokens'](), trace.usage?.outputTokens],
     [
@@ -146,36 +126,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
             <CardTitle>{m['dashboard.traces.spans']()}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-2xl border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{m['dashboard.traces.span_name']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.span_kind']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.span_start']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.span_end']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.span_status']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.attributes']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.events']()}</TableHead>
-                    <TableHead>{m['dashboard.traces.links']()}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {spans.map((span) => (
-                    <TableRow key={span.spanId} data-testid="trace-span">
-                      <TableCell className="font-medium">{span.name}</TableCell>
-                      <TableCell>{span.kind}</TableCell>
-                      <TableCell>{new Date(span.startedAt).toLocaleString()}</TableCell>
-                      <TableCell>{span.endedAt === null ? missing : new Date(span.endedAt).toLocaleString()}</TableCell>
-                      <TableCell>{renderStatus(span)}</TableCell>
-                      <TableCell>{Object.keys(span.attributes).length}</TableCell>
-                      <TableCell>{span.events.length}</TableCell>
-                      <TableCell>{span.links.length}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <TraceSpansTable spans={spans} />
           </CardContent>
         </Card>
       </div>

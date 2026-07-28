@@ -26,7 +26,14 @@ const detail: DashboardTraceDetail = {
     finalProviderId: 'provider-a',
     finalModelId: 'gpt-5.1',
     finalHttpStatus: 503,
-    usage: { providerId: 'provider-a', modelId: 'gpt-5.1', inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    usage: {
+      providerId: 'provider-a',
+      modelId: 'gpt-5.1',
+      priceModelId: 'priced-gpt-5.1',
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+    },
   },
   spans: [
     {
@@ -118,6 +125,16 @@ describe('trace detail page', () => {
     ]);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/SERVER/u);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/ERROR/u);
+  });
+
+  test('renders the root Span ID in the complete summary', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+    expect(screen.getByText('b'.repeat(16))).toBeTruthy();
+  });
+
+  test('renders the price model ID in the usage summary', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+    expect(screen.getByText('priced-gpt-5.1')).toBeTruthy();
   });
 
   test('renders a running root and manually refreshes it', () => {

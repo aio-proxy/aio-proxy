@@ -507,6 +507,7 @@
       "range_3d": "最近 3 天",
       "range_7d": "最近 7 天",
       "trace_id": "追踪 ID",
+      "root_span_id": "根 Span ID",
       "request_id": "请求 ID",
       "session": "会话",
       "session_source": "会话来源",
@@ -573,7 +574,8 @@
       "duration_ms": "{value} 毫秒",
       "duration_s": "{value} 秒",
       "usage_provider": "用量提供商",
-      "usage_model": "用量模型"
+      "usage_model": "用量模型",
+      "price_model_id": "计价模型 ID"
     }
   }
 }

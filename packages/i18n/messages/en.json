@@ -507,6 +507,7 @@
       "range_3d": "Last 3 days",
       "range_7d": "Last 7 days",
       "trace_id": "Trace ID",
+      "root_span_id": "Root Span ID",
       "request_id": "Request ID",
       "session": "Session",
       "session_source": "Session source",
@@ -573,7 +574,8 @@
       "duration_ms": "{value} ms",
       "duration_s": "{value} s",
       "usage_provider": "Usage provider",
-      "usage_model": "Usage model"
+      "usage_model": "Usage model",
+      "price_model_id": "Price model ID"
     }
   }
 }
