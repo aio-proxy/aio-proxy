@@ -126,6 +126,50 @@ test('does not commit a completed raw response event when the client cancels bef
   expect(notCommitted.resolvedBy).toBe('generated');
 });
 
+test.each([
+  ['streaming response without content type', true, undefined, 200, 'text/event-stream; charset=utf-8'],
+  ['buffered response without content type', false, undefined, 200, null],
+  [
+    'streaming response with an existing content type',
+    true,
+    'application/octet-stream',
+    200,
+    'application/octet-stream',
+  ],
+  ['streaming error response without content type', true, undefined, 400, null],
+] as const)('normalizes raw response content type for a %s', async (_case, stream, contentType, status, expected) => {
+  const body = stream
+    ? 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"OK"}\n\n' +
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+    : '{"status":"completed"}';
+  const provider = rawProvider({
+    id: 'raw',
+    modelId: REQUESTED_MODEL,
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async () =>
+      new Response(
+        new TextEncoder().encode(body),
+        contentType === undefined ? { status } : { headers: { 'content-type': contentType }, status },
+      ),
+  });
+  const route = defineProviderRouteSource([provider]);
+  const source = realUsageSource(route.source);
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: jsonRequest({ input: 'ping', model: REQUESTED_MODEL, stream }),
+    source,
+  });
+
+  expect(response.headers.get('content-type')).toBe(expected);
+  await response.text();
+  await settleRecording(route.recording);
+  if (stream && contentType === undefined && status === 200) {
+    expect(typeof route.recording.attempts[0]?.ttftMs).toBe('number');
+  }
+});
+
 function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {
   return { ...source, usageCapture: createUsageCapture() };
 }

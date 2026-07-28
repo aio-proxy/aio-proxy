@@ -46,6 +46,8 @@ export const DashboardTraceSummarySchema = z.object({
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
   durationMs: z.number().min(0),
+  stream: z.boolean().optional(),
+  ttftMs: z.number().min(0).optional(),
   otelStatusCode: OtelSpanStatusCodeSchema,
   terminationReason: TraceTerminationReasonSchema.optional(),
   errorType: z.string().optional(),

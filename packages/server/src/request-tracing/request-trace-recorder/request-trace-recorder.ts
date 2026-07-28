@@ -159,6 +159,7 @@ export function createRequestTraceRecorder(options: {
         rootContext,
         identify(input) {
           if (state !== 'pending') return;
+          if (input.streamRequested !== undefined) root.setAttribute(attributeName.stream, input.streamRequested);
           if (identity.resolution === undefined) {
             identity.requestedModelId = input.requestedModelId;
             identity.resolution = input.resolution;

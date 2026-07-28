@@ -23,6 +23,7 @@ export function applyTerminalAttributes(root: Span, finish: RequestTraceFinishIn
   if (finalProviderId !== undefined) root.setAttribute(attributeName.finalProviderId, finalProviderId);
   if (finalModelId !== undefined) root.setAttribute(attributeName.genAiResponseModel, finalModelId);
   if (finish.finalHttpStatus !== undefined) root.setAttribute(attributeName.httpStatusCode, finish.finalHttpStatus);
+  if (finish.ttftMs !== undefined) root.setAttribute(attributeName.ttftMs, finish.ttftMs);
   if (finish.outcome === 'success' && finish.usage !== undefined) applyUsageAttributes(root, finish.usage);
 
   if (finish.outcome === 'failure') {

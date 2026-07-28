@@ -124,7 +124,12 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });
-    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: true });
+    session.identify({
+      requestedModelId: requestedModel,
+      resolution,
+      mutateSessionState: true,
+      streamRequested: adapter.wantsStream(request, context),
+    });
     if (resolution.responseStatus === 'ambiguous') {
       const error = new Error('Ambiguous previous response ownership');
       return rejectRequest({

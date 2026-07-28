@@ -1,6 +1,6 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { createDefaultTraceSearch } from '../../trace-search';
 import { TracesPage } from './traces-page';
@@ -13,6 +13,8 @@ const terminalTrace: DashboardTraceSummary = {
   startedAt: '2026-07-12T08:00:00.000Z',
   endedAt: '2026-07-12T08:00:00.125Z',
   durationMs: 125,
+  stream: true,
+  ttftMs: 42,
   otelStatusCode: 'ERROR',
   terminationReason: 'failure',
   session: { source: 'openai-prompt-cache', id: 'cache-a' },
@@ -25,9 +27,11 @@ const terminalTrace: DashboardTraceSummary = {
   usage: {
     providerId: 'provider-a',
     modelId: 'gpt-5.1',
-    inputTokens: 100,
-    outputTokens: 50,
-    totalTokens: 150,
+    inputTokens: 26_600,
+    outputTokens: 318,
+    totalTokens: 26_918,
+    cacheReadTokens: 1_024,
+    cacheWriteTokens: 64,
     estimatedCostUsd: 0.25,
   },
 };
@@ -38,6 +42,7 @@ const runningTrace: DashboardTraceSummary = {
   startedAt: '2026-07-12T08:01:00.000Z',
   endedAt: null,
   durationMs: 80,
+  stream: false,
   otelStatusCode: 'UNSET',
   session: { source: 'header-session', id: 'session-b' },
   sessionResolvedBy: 'header-session',
@@ -59,7 +64,7 @@ rs.mock('../../hooks/use-traces-query', () => ({
 }));
 
 describe('traces page', () => {
-  test('renders running and terminal trace rows with operational summary values', () => {
+  test('renders detailed trace list values and only shows TTFT for streaming requests', async () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
@@ -70,10 +75,28 @@ describe('traces page', () => {
 
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
     expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
-    expect(screen.getByText('openai-prompt-cache')).toBeTruthy();
-    expect(screen.getByText('cache-a')).toBeTruthy();
-    expect(screen.getByText('provider-a')).toBeTruthy();
-    expect(screen.getByText('150')).toBeTruthy();
+    expect(screen.queryByText(/Final|最终/u)).toBeNull();
+    const sessionId = screen.getByText('cache-a');
+    expect(screen.queryByText('openai-prompt-cache')).toBeNull();
+    fireEvent.focus(sessionId);
+    expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /^(Provider|提供商)$/u })).toBeTruthy();
+    expect(screen.queryByText('gpt-5.1')).toBeNull();
+    const terminalCells = within(
+      screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
+    ).getAllByRole('cell');
+    expect(terminalCells[5]).toHaveTextContent('provider-a');
+    expect(terminalCells[8]).toHaveTextContent('26.6K');
+    expect(terminalCells[8]).toHaveTextContent('318');
+    expect(terminalCells[8]).toHaveTextContent('1K');
+    expect(terminalCells[8]).toHaveTextContent('64');
+    const runningTokenCell = within(
+      screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }),
+    ).getAllByRole('cell')[8];
+    expect(runningTokenCell).toHaveTextContent('—');
+    expect(runningTokenCell).not.toHaveTextContent('N/A');
+    expect(screen.getByText(/42 (ms|毫秒)/u)).toBeTruthy();
+    expect(screen.getAllByText(/TTFT/u)).toHaveLength(1);
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 

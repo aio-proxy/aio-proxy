@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router';
 import { ArrowLeftIcon } from 'lucide-react';
 
 import { buttonVariants } from '@/components/ui/button';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 interface PageContainerProps {
   readonly title: string;
@@ -20,28 +19,27 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
   children,
 }) => {
   return (
-    <ScrollArea className="h-full min-h-0 flex-1">
-      <header className="container mx-auto flex min-h-16 items-center justify-between px-4 pt-8 pb-4">
-        <div className="flex min-w-0 items-center gap-1">
+    <div className="h-full min-h-0 flex-1 overflow-y-auto">
+      <header className="container mx-auto flex min-h-16 items-start justify-between px-4 pt-8 pb-4">
+        <div className="flex min-w-0 items-start gap-1">
           {!!backTo && (
             <Link
               to={backTo}
               preload="intent"
               aria-label={m['dashboard.navigation.back']()}
-              className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+              className={buttonVariants({ variant: 'ghost', size: 'icon-lg' })}
             >
               <ArrowLeftIcon />
             </Link>
           )}
           <div className="min-w-0">
-            <h1 className="truncate font-heading text-xl font-semibold">{title}</h1>
+            <h1 className="truncate font-heading text-2xl font-semibold">{title}</h1>
             {subtitle === undefined ? null : <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
           </div>
         </div>
         {extra && <div className="ml-2">{extra}</div>}
       </header>
       <main className="container mx-auto p-3">{children}</main>
-      <ScrollBar orientation="vertical" />
-    </ScrollArea>
+    </div>
   );
 };

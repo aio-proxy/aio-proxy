@@ -60,7 +60,10 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         const ttftMs = 'ttftMs' in value ? value.ttftMs : undefined;
         if (ttftMs !== undefined) attemptSpan.span.setAttribute(attributeName.ttftMs, ttftMs);
         attemptSpan.end(completionTerminal(value));
-        return completionFinish(value, ids, getResponseId?.());
+        return {
+          ...completionFinish(value, ids, getResponseId?.()),
+          ...(ttftMs === undefined ? {} : { ttftMs }),
+        };
       });
     },
   };

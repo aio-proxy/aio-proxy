@@ -108,7 +108,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       }
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
       responseId = completedResponseId(protocol, parsed) ?? responseId;
-      if (!sawContent && hasContentDelta(protocol, parsed)) {
+      if (!sawContent && hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
       }
     },

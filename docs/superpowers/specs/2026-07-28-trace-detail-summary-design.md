@@ -55,10 +55,33 @@ The selected Span panel uses the same Result details label and formatting for it
 
 1. `endedAt === null` → Running
 2. `terminationReason` is present → Failure, Cancelled, or Interrupted
-3. `otelStatusCode === ERROR` → Error
+3. `otelStatusCode === ERROR` → Failure
 4. completed `OK` or `UNSET` → Success
 
-This mapping applies consistently to Trace list rows, the Trace summary, and Span displays. Raw OTel values remain available to API consumers and filters.
+The presentation therefore has five statuses:
+
+| Status | Presentation | Meaning |
+| --- | --- | --- |
+| Success | Soft Teal fill | Completed expected outcome |
+| Running | Soft semantic running fill | Active request |
+| Interrupted | Existing `outline` Badge styling | Incomplete request without a failure outcome |
+| Cancelled | Existing `outline` Badge styling | Expected user or client cancellation |
+| Failure | Existing destructive colors | Failed termination or completed OTel `ERROR` |
+
+There is no separate user-facing Error status. OTel `ERROR` without a termination reason is presented as Failure. This mapping applies consistently to Trace list rows, the Trace summary, and Span displays. Raw OTel values and the existing OTel status and termination-reason filters remain unchanged.
+
+### Trace Status Styling
+
+Keep the shared shadcn `Badge` and its variants unchanged. `TraceStatus` remains the only business component and renders the shared `Badge` with Trace-specific classes produced by a local `cva` status variant.
+
+The underlying Badge uses `outline` as its neutral base. The local `cva` variant applies:
+
+- Success: Teal 50 / Teal 700 in light mode and Teal 950 / Teal 300 in dark mode;
+- Running: Sky 50 / Sky 700 in light mode and Sky 950 / Sky 300 in dark mode;
+- Cancelled and Interrupted: no override, preserving the neutral outline style;
+- Failure: the existing soft destructive background and destructive foreground colors.
+
+Write the Teal and Sky Tailwind color classes directly in the Trace-local `cva` variant. Do not add or reuse Dashboard color tokens for these two statuses, and do not change `styles.css`. No warning color, global business Badge, or new shared Badge variant is added.
 
 ## Data Flow
 
@@ -82,7 +105,15 @@ Extend the existing Trace detail page behavior tests using TDD:
 - HTTP status and error metadata render in one summary row;
 - Span error type and error code render in one result-details row;
 - a completed trace with OTel `UNSET` renders as Success;
+- a completed trace or Span with OTel `ERROR` and no termination reason renders as Failure;
+- Success selects the semantic success presentation;
+- Running selects the semantic running presentation;
+- Cancelled and Interrupted retain the neutral outline presentation;
+- Failure retains the destructive presentation;
+- raw OTel status and termination-reason filters remain unchanged;
 - existing Session-filter navigation remains intact.
+
+Focused component tests cover the five status-to-presentation selections without asserting the full literal Tailwind class list. Theme colors are verified through light- and dark-theme visual inspection.
 
 Run the focused Dashboard tests first, then `bun run preflight` before completion.
 
@@ -90,5 +121,7 @@ Run the focused Dashboard tests first, then `bun run preflight` before completio
 
 - Changing OpenTelemetry status persistence.
 - Removing raw OTel status filters.
+- Adding a global business Badge or changing the shared shadcn Badge variants.
+- Adding an unused warning status or warning color token.
 - Changing TraceStore, Dashboard API DTOs, or database migrations.
 - Redesigning the Span waterfall or usage summary.

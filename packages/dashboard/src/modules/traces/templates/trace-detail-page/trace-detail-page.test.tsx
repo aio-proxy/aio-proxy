@@ -238,6 +238,32 @@ describe('trace detail page', () => {
     expect(screen.getByText('priced-gpt-5.1')).toBeTruthy();
   });
 
+  test('renders every token usage field with compact token formatting', () => {
+    mocks.data = {
+      ...detail,
+      trace: {
+        ...detail.trace,
+        usage: {
+          ...detail.trace.usage!,
+          inputTokens: 1_200,
+          outputTokens: 2_300,
+          totalTokens: 13_600,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 4_500,
+          reasoningTokens: 5_600,
+        },
+      },
+    };
+
+    render(<TraceDetailPage traceId={traceId} />);
+
+    expect(within(summaryRow(/Input tokens|输入 Token/u)).getByText('1.2K')).toHaveClass('tabular-nums');
+    expect(within(summaryRow(/Output tokens|输出 Token/u)).getByText('2.3K')).toHaveClass('tabular-nums');
+    expect(within(summaryRow(/Cache read tokens|缓存读取 Token/u)).getByText('0')).toHaveClass('tabular-nums');
+    expect(within(summaryRow(/Cache write tokens|缓存写入 Token/u)).getByText('4.5K')).toHaveClass('tabular-nums');
+    expect(within(summaryRow(/Reasoning tokens|推理 Token/u)).getByText('5.6K')).toHaveClass('tabular-nums');
+  });
+
   test('renders a running root and manually refreshes it', () => {
     const interval = rs.spyOn(globalThis, 'setInterval');
     mocks.mode = 'running';

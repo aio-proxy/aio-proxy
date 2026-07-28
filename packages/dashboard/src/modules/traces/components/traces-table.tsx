@@ -6,8 +6,9 @@ import { DataTablePagination } from '@/components/data-table-pagination';
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../trace-formatters';
+import { formatTraceCost, formatTraceDuration } from '../trace-formatters';
 import type { TraceSearch } from '../trace-search';
 import { TraceStatus } from './trace-status';
 
@@ -43,10 +44,19 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
         m['dashboard.traces.not_available']()
       ) : (
         <div className="min-w-28">
-          <div>{session.source}</div>
-          <div className="max-w-48 truncate text-xs text-muted-foreground" title={session.id}>
-            {session.id}
-          </div>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  tabIndex={0}
+                  className="block max-w-48 cursor-help truncate underline decoration-dotted underline-offset-4"
+                />
+              }
+            >
+              {session.id}
+            </TooltipTrigger>
+            <TooltipContent>{m['dashboard.traces.session_source_value']({ source: session.source })}</TooltipContent>
+          </Tooltip>
         </div>
       );
     },
@@ -65,34 +75,69 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
       row.original.requestedModelId ?? m['dashboard.traces.not_available'](),
   },
   {
-    id: 'finalTarget',
-    header: () => m['dashboard.traces.final_provider_model'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
-      <div className="min-w-28">
-        <div>{row.original.finalProviderId ?? m['dashboard.traces.not_available']()}</div>
-        <div className="text-xs text-muted-foreground">
-          {row.original.finalModelId ?? m['dashboard.traces.not_available']()}
-        </div>
-      </div>
-    ),
+    id: 'finalProvider',
+    header: () => m['dashboard.traces.provider'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
+      row.original.finalProviderId ?? m['dashboard.traces.not_available'](),
   },
   {
     accessorKey: 'finalHttpStatus',
-    header: () => m['dashboard.traces.final_http_status'](),
+    header: () => m['dashboard.traces.http_status'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
       row.original.finalHttpStatus ?? m['dashboard.traces.not_available'](),
   },
   {
     accessorKey: 'durationMs',
     header: () => m['dashboard.traces.duration'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => formatTraceDuration(row.original.durationMs),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+      <div className="min-w-24">
+        <div>{formatTraceDuration(row.original.durationMs)}</div>
+        {row.original.stream === true ? (
+          <div className="text-xs text-muted-foreground">
+            {m['dashboard.traces.ttft']()}{' '}
+            {row.original.ttftMs === undefined
+              ? m['dashboard.traces.ttft_unavailable']()
+              : formatTraceDuration(row.original.ttftMs)}
+          </div>
+        ) : null}
+      </div>
+    ),
   },
   {
     id: 'tokens',
     header: () => m['dashboard.traces.tokens'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
-      const tokens = displayTotalTokens(row.original.usage);
-      return tokens === undefined ? m['dashboard.traces.not_available']() : <TokenCount value={tokens} />;
+      const usage = row.original.usage;
+      if (
+        usage?.inputTokens === undefined &&
+        usage?.outputTokens === undefined &&
+        usage?.cacheReadTokens === undefined &&
+        usage?.cacheWriteTokens === undefined
+      ) {
+        return m['dashboard.traces.not_available']();
+      }
+      return (
+        <div className="min-w-32">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-baseline">
+              ↑<TokenCount value={usage.inputTokens} />
+            </span>
+            <span className="inline-flex items-baseline">
+              ↓<TokenCount value={usage.outputTokens} />
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-baseline gap-1">
+              {m['dashboard.traces.cache_read_short']()}
+              <TokenCount value={usage.cacheReadTokens} />
+            </span>
+            <span className="inline-flex items-baseline gap-1">
+              {m['dashboard.traces.cache_write_short']()}
+              <TokenCount value={usage.cacheWriteTokens} />
+            </span>
+          </div>
+        </div>
+      );
     },
   },
   {
@@ -124,7 +169,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({ data, search, onSearch
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-2xl border">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (

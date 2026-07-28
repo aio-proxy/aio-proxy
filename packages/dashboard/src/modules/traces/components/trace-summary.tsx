@@ -85,15 +85,15 @@ export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSele
     [m['dashboard.traces.usage_provider'](), trace.usage?.providerId],
     [m['dashboard.traces.usage_model'](), trace.usage?.modelId],
     [m['dashboard.traces.price_model_id'](), trace.usage?.priceModelId],
-    [m['dashboard.traces.input_tokens'](), trace.usage?.inputTokens],
-    [m['dashboard.traces.output_tokens'](), trace.usage?.outputTokens],
+    [m['dashboard.traces.input_tokens'](), <TokenCount key="input" value={trace.usage?.inputTokens} />],
+    [m['dashboard.traces.output_tokens'](), <TokenCount key="output" value={trace.usage?.outputTokens} />],
+    [m['dashboard.traces.tokens'](), <TokenCount key="total" value={totalTokens} />],
+    [m['dashboard.traces.cache_read_tokens'](), <TokenCount key="cache-read" value={trace.usage?.cacheReadTokens} />],
     [
-      m['dashboard.traces.tokens'](),
-      totalTokens === undefined ? undefined : <TokenCount key="total" value={totalTokens} />,
+      m['dashboard.traces.cache_write_tokens'](),
+      <TokenCount key="cache-write" value={trace.usage?.cacheWriteTokens} />,
     ],
-    [m['dashboard.traces.cache_read_tokens'](), trace.usage?.cacheReadTokens],
-    [m['dashboard.traces.cache_write_tokens'](), trace.usage?.cacheWriteTokens],
-    [m['dashboard.traces.reasoning_tokens'](), trace.usage?.reasoningTokens],
+    [m['dashboard.traces.reasoning_tokens'](), <TokenCount key="reasoning" value={trace.usage?.reasoningTokens} />],
     [m['dashboard.traces.cost'](), formatTraceCost(trace.usage?.estimatedCostUsd)],
   ];
 
