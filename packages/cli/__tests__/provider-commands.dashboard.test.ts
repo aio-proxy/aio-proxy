@@ -88,10 +88,12 @@ describe('provider commands dashboard', () => {
       ],
       async (url) => {
         // When
-        const list = await runCliAsync(['provider', 'list', '--url', url]);
-        const testProvider = await runCliAsync(['provider', 'test', 'openai', '--url', url]);
-        const failedProvider = await runCliAsync(['provider', 'test', 'slow-ai', '--url', url]);
-        const localized = await runCliAsync(['--lang', 'zh-Hans', 'provider', 'list', '--url', url]);
+        const [list, testProvider, failedProvider, localized] = await Promise.all([
+          runCliAsync(['provider', 'list', '--url', url]),
+          runCliAsync(['provider', 'test', 'openai', '--url', url]),
+          runCliAsync(['provider', 'test', 'slow-ai', '--url', url]),
+          runCliAsync(['--lang', 'zh-Hans', 'provider', 'list', '--url', url]),
+        ]);
 
         // Then
         expect(list.exitCode).toBe(0);

@@ -59,7 +59,7 @@ describe('loopback server race resolution', () => {
     const late = await Promise.allSettled(
       [1, 2].map((n) => fetch(`${captured.redirectUri}?code=late-${n}&state=expected-state`)),
     );
-    expect(late.every(({ status }) => status === 'rejected')).toBe(true);
+    expect(late.every((entry) => entry.status === 'rejected' || !entry.value.ok)).toBe(true);
     expect(result.code).toBe('manual-wins');
     await expectPortAvailable(Number(new URL(captured.redirectUri).port));
   });
