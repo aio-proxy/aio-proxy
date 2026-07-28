@@ -10,7 +10,7 @@ const RESPONSES_TERMINAL =
 
 describe('OpenAI ChatGPT runtime stream protection', () => {
   test('model path finishes a zstd terminal without a late decode error', async () => {
-    const { fetch, secondPulls, cancelled } = terminalThenErrorUpstream(RESPONSES_TERMINAL);
+    const { fetch, secondPulls, cancelled, acceptEncoding } = terminalThenErrorUpstream(RESPONSES_TERMINAL);
     const runtime = await runtimeWithFetch(fetch);
 
     const result = await runtime.provider.languageModel('gpt-5.5').doStream({
@@ -22,9 +22,10 @@ describe('OpenAI ChatGPT runtime stream protection', () => {
     expect(parts.some((part) => part.type === 'error')).toBe(false);
     expect(secondPulls()).toBe(0);
     expect(cancelled()).toBe(true);
+    expect(acceptEncoding()).toBe('identity');
   });
 
-  test('raw path rewrites auth and closes at compressed terminal', async () => {
+  test('raw path requests identity and tolerates a compressed terminal response', async () => {
     let acceptEncoding: string | null = null;
     let decompress: boolean | undefined;
     let pulls = 0;
@@ -74,7 +75,7 @@ describe('OpenAI ChatGPT runtime stream protection', () => {
 
     const response = await raw!.invoke(new Request('https://api.openai.com/v1/responses?stream=true'));
     expect(decompress).toBe(false);
-    expect(acceptEncoding).toBe('gzip, deflate, br, zstd');
+    expect(acceptEncoding).toBe('identity');
     expect(await response.text()).toBe(RESPONSES_TERMINAL);
     expect(Math.max(0, pulls - 1)).toBe(0);
     expect(wasCancelled).toBe(true);
@@ -87,7 +88,9 @@ function terminalThenErrorUpstream(terminal: string) {
   let pulls = 0;
   let wasCancelled = false;
 
-  const fetch = (async () => {
+  let seenAcceptEncoding: string | null = null;
+  const fetch = (async (input, init) => {
+    seenAcceptEncoding = new Request(input, init).headers.get('accept-encoding');
     return new Response(
       new ReadableStream<Uint8Array>(
         {
@@ -118,6 +121,7 @@ function terminalThenErrorUpstream(terminal: string) {
     fetch,
     secondPulls: () => Math.max(0, pulls - 1),
     cancelled: () => wasCancelled,
+    acceptEncoding: () => seenAcceptEncoding,
   };
 }
 

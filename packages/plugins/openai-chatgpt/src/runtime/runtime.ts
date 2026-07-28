@@ -42,7 +42,9 @@ export function createOpenAIChatGPTDynamicFetch(
   fetcher: typeof fetch = globalThis.fetch,
   credentialFetcher: typeof fetch = fetcher,
 ): typeof fetch {
-  const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher);
+  const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
+    acceptEncoding: 'identity',
+  });
   return async (input, init) => {
     const credential = await currentCredential(credentials, credentialFetcher);
     const request = new Request(input, init);

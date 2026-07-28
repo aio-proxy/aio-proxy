@@ -117,7 +117,7 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.headers.get('session-id')).toBeString();
     expect(first.headers.get('host')).toBeNull();
     expect(first.headers.get('x-keep')).toBe('1');
-    expect(first.headers.get('accept-encoding')).toBe('gzip, deflate, br, zstd');
+    expect(first.headers.get('accept-encoding')).toBe('identity');
     expect(first.decompress).toBe(false);
     expect(first.body).toBe(body);
     expect(first.signal).toBe(controller.signal);
