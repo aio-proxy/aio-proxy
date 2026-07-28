@@ -16,7 +16,7 @@ describe('dashboard static routes', () => {
     mkdirSync(join(dir, 'static'));
     writeFileSync(join(dir, 'index.html'), '<div id="root"></div><script src="/dashboard/static/app.js"></script>');
     writeFileSync(join(dir, 'static', 'app.js'), "console.log('dashboard');");
-    const app = await createServer({ config, dashboardAssets: directoryDashboardAssets(dir) });
+    const app = await createServer({ config, dashboardAssets: directoryDashboardAssets(dir), dbHome: dir });
 
     try {
       // When
@@ -27,6 +27,7 @@ describe('dashboard static routes', () => {
       const frontendRoute = await app.request('/dashboard/providers', undefined, loopbackServer);
       const api = await app.request('/dashboard/api/config', undefined, loopbackServer);
       const missingApi = await app.request('/dashboard/api/missing', undefined, loopbackServer);
+      const retiredLogsApi = await app.request(['', 'dashboard', 'api', 'logs'].join('/'), undefined, loopbackServer);
       const oldApi = await app.request('/dashboard/config', undefined, loopbackServer);
 
       // Then
@@ -43,6 +44,7 @@ describe('dashboard static routes', () => {
       expect(api.status).toBe(200);
       expect(await api.json()).toMatchObject({ providers: expect.any(Array) });
       expect(missingApi.status).toBe(404);
+      expect(retiredLogsApi.status).toBe(404);
       expect(oldApi.status).toBe(200);
       expect(await oldApi.text()).toContain('root');
     } finally {

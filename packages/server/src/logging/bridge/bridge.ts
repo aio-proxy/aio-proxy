@@ -14,7 +14,6 @@ export const SERVER_LOG_LEVEL = {
   'request.inbound_snapshot': 'debug',
   'request.provider_attempt_failed': 'warn',
   'request.recorder_invariant': 'warn',
-  'request.recorder_persistence_failed': 'error',
   'request.rejected': 'warn',
   'trace.persistence_failed': 'error',
   'request.upstream_result': 'debug',

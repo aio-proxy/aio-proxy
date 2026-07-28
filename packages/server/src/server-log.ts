@@ -115,13 +115,6 @@ export type RequestFeatureDowngradedLog = {
   readonly effectiveMode: 'synchronous';
 };
 
-export type RequestRecorderPersistenceFailedLog = {
-  readonly event: 'request.recorder_persistence_failed';
-  readonly operation: 'insert_final' | 'prune';
-  readonly requestId?: string;
-  readonly errorType: string;
-};
-
 export type TracePersistenceFailedLog = {
   readonly event: 'trace.persistence_failed';
   readonly operation:
@@ -182,7 +175,6 @@ export type ServerLog =
   | RequestInboundSnapshotLog
   | RequestProviderAttemptFailedLog
   | RequestRecorderInvariantLog
-  | RequestRecorderPersistenceFailedLog
   | RequestRejectedLog
   | TracePersistenceFailedLog
   | UsageAccountingDroppedLog

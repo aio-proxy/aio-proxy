@@ -1,15 +1,7 @@
 export type { OpenDbHandle, OpenDbOptions } from './open-db';
 export { openDb } from './open-db';
-export {
-  createRequestLogStore,
-  type RequestLogFinal,
-  type RequestLogInsert,
-  type RequestLogStore,
-  type UsageOverviewQuery,
-} from './request-log';
 export { createTraceStore } from './trace-store';
 export type {
-  RequestLogsQuery,
   SessionAffinityObservation,
   SessionIdentity,
   SessionResponseOwner,
@@ -20,6 +12,7 @@ export type {
   TraceStore,
   TraceTerminalSummary,
   TracesQuery,
+  UsageOverviewQuery,
 } from './trace-store';
 export {
   oauthAccount,
@@ -28,7 +21,4 @@ export {
   oauthPendingOperation,
   oauthRefreshLease,
   pluginSecret,
-  type RequestAttemptLog,
-  requestLog,
-  usage,
 } from './schema';

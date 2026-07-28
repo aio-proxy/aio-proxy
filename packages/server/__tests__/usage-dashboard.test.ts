@@ -25,7 +25,7 @@ function tempHome(): string {
 
 // Seeds three completed root traces (success+usage, failure, cancelled) so the
 // dashboard /usage overview has data to aggregate. The pipeline writes traces,
-// not the legacy request_log, so tests seed the trace store the route reads.
+// The dashboard reads TraceStore usage, so tests seed the same persistence path.
 function seed(
   store: ReturnType<typeof createTraceStore>,
   spec: {

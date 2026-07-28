@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { providerLoginCommand } from './commands';
 import { IdSchema } from './common';
 import { type DiagnosticCode, ProviderStateSchema } from './plugin';
-import { ProviderKind, ProviderProtocolSchema } from './provider';
+import { ProviderKind } from './provider';
 import {
-  RequestOutcomeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
@@ -76,52 +75,6 @@ export const DashboardUsageOverviewResponseSchema = z.object({
   summary: DashboardUsageSummarySchema,
   series: z.array(DashboardUsageSeriesSchema),
   buckets: z.array(DashboardUsageBucketSchema),
-});
-
-export const DashboardRequestLogsPageSizeSchema = z.union([
-  z.literal(10),
-  z.literal(20),
-  z.literal(50),
-  z.literal(100),
-]);
-
-export const DashboardRequestAttemptSchema = z.object({
-  index: z.number().int().min(0),
-  providerId: z.string().min(1),
-  modelId: z.string().min(1),
-  providerKind: z.enum(ProviderKind),
-  protocol: ProviderProtocolSchema.optional(),
-  outcome: RequestOutcomeSchema,
-  statusCode: z.number().int().optional(),
-  errorCode: z.string().optional(),
-  durationMs: z.number().int().min(0),
-});
-
-export const DashboardRequestLogSchema = z.object({
-  requestId: z.string().min(1),
-  inboundProtocol: z.string().min(1),
-  requestedModelId: z.string().min(1),
-  requestedModelDisplayName: z.string().min(1).optional(),
-  outcome: RequestOutcomeSchema,
-  finalProviderId: z.string().optional(),
-  finalProviderName: z.string().min(1).optional(),
-  finalModelId: z.string().optional(),
-  finalModelDisplayName: z.string().min(1).optional(),
-  finalStatusCode: z.number().int().optional(),
-  errorCode: z.string().optional(),
-  attempts: z.array(DashboardRequestAttemptSchema),
-  startedAt: z.iso.datetime(),
-  completedAt: z.iso.datetime(),
-  durationMs: z.number().int().min(0),
-  usage: UsageRowSchema.optional(),
-});
-
-export const DashboardRequestLogsResponseSchema = z.object({
-  items: z.array(DashboardRequestLogSchema),
-  page: z.number().int().min(1),
-  pageSize: DashboardRequestLogsPageSizeSchema,
-  total: z.number().int().min(0),
-  pageCount: z.number().int().min(0),
 });
 
 export const DashboardEventSchema = z.discriminatedUnion('event', [
@@ -203,9 +156,5 @@ export type DashboardUsageBucketInput = z.input<typeof DashboardUsageBucketSchem
 export type DashboardUsageBucket = z.output<typeof DashboardUsageBucketSchema>;
 export type DashboardUsageOverviewResponseInput = z.input<typeof DashboardUsageOverviewResponseSchema>;
 export type DashboardUsageOverviewResponse = z.output<typeof DashboardUsageOverviewResponseSchema>;
-export type DashboardRequestLogsPageSize = z.output<typeof DashboardRequestLogsPageSizeSchema>;
-export type DashboardRequestAttempt = z.output<typeof DashboardRequestAttemptSchema>;
-export type DashboardRequestLog = z.output<typeof DashboardRequestLogSchema>;
-export type DashboardRequestLogsResponse = z.output<typeof DashboardRequestLogsResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;

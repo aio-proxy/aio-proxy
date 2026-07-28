@@ -1,13 +1,10 @@
 import type { LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 import type {
-  DashboardRequestLogsPageSize,
-  DashboardRequestLogsResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
   DashboardTracesResponse,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
-  RequestOutcome,
   TraceTerminationReason,
   UsageOverviewGroupBy,
   UsageOverviewMetric,
@@ -116,27 +113,10 @@ export type UsageOverviewQuery = {
   readonly now?: Date;
 };
 
-// Query for the legacy /logs projection built from trace roots. Mirrors the
-// old request_log list filters so the dashboard route and UI stay unchanged.
-export type RequestLogsQuery = {
-  readonly page: number;
-  readonly pageSize: DashboardRequestLogsPageSize;
-  readonly startedAfter?: Date;
-  readonly completedBefore?: Date;
-  readonly requestId?: string;
-  readonly outcome?: RequestOutcome;
-  readonly inboundProtocol?: string;
-  readonly requestedModelId?: string;
-  readonly finalProviderId?: string;
-  readonly finalModelId?: string;
-  readonly finalStatusCode?: number;
-};
-
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
   readonly list: (query: TracesQuery) => DashboardTracesResponse;
-  readonly listRequestLogs: (query: RequestLogsQuery) => DashboardRequestLogsResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
