@@ -36,6 +36,7 @@ describe('dashboard static routes', () => {
       expect(await dashboardSlash.text()).toContain('root');
       expect(asset.status).toBe(200);
       expect(await asset.text()).toContain('dashboard');
+      expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
       expect(missingAsset.status).toBe(404);
       expect(frontendRoute.status).toBe(200);
       expect(await frontendRoute.text()).toContain('root');
