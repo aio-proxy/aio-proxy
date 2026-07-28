@@ -1,0 +1,126 @@
+import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { describe, expect, rs, test } from '@rstest/core';
+import { fireEvent, render, screen } from '@testing-library/react';
+
+import { createDefaultTraceSearch } from '../../trace-search';
+import { TracesPage } from './traces-page';
+
+const mocks = rs.hoisted(() => ({ refetch: rs.fn() }));
+const terminalTrace: DashboardTraceSummary = {
+  traceId: 'a'.repeat(32),
+  rootSpanId: 'b'.repeat(16),
+  requestId: 'request-terminal',
+  startedAt: '2026-07-12T08:00:00.000Z',
+  endedAt: '2026-07-12T08:00:00.125Z',
+  durationMs: 125,
+  otelStatusCode: 'ERROR',
+  terminationReason: 'failure',
+  session: { source: 'openai-prompt-cache', id: 'cache-a' },
+  sessionResolvedBy: 'openai-prompt-cache',
+  inboundProtocol: 'openai-response',
+  requestedModelId: 'gpt-5',
+  finalProviderId: 'provider-a',
+  finalModelId: 'gpt-5.1',
+  finalHttpStatus: 503,
+  usage: {
+    providerId: 'provider-a',
+    modelId: 'gpt-5.1',
+    inputTokens: 100,
+    outputTokens: 50,
+    totalTokens: 150,
+    estimatedCostUsd: 0.25,
+  },
+};
+const runningTrace: DashboardTraceSummary = {
+  traceId: 'c'.repeat(32),
+  rootSpanId: 'd'.repeat(16),
+  requestId: 'request-running',
+  startedAt: '2026-07-12T08:01:00.000Z',
+  endedAt: null,
+  durationMs: 80,
+  otelStatusCode: 'UNSET',
+  session: { source: 'header-session', id: 'session-b' },
+  sessionResolvedBy: 'header-session',
+  inboundProtocol: 'anthropic',
+  requestedModelId: 'claude-sonnet',
+};
+
+rs.mock('../../hooks/use-traces-query', () => ({
+  useTracesQuery: () => ({
+    data: { items: [runningTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
+    isLoading: false,
+    isError: false,
+    isFetching: false,
+    refetch: mocks.refetch,
+  }),
+}));
+
+describe('traces page', () => {
+  test('renders running and terminal trace rows with operational summary values', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
+    expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
+    expect(screen.getByText('openai-prompt-cache')).toBeTruthy();
+    expect(screen.getByText('cache-a')).toBeTruthy();
+    expect(screen.getByText('provider-a')).toBeTruthy();
+    expect(screen.getByText('150')).toBeTruthy();
+    expect(screen.getByText('$0.25')).toBeTruthy();
+  });
+
+  test('drives server pagination through URL search state', () => {
+    const onSearchChange = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Next|下一页/u }));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, pageSize: 20 }));
+  });
+
+  test('resets pagination when a trace filter changes', async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 3, pageSize: 20, otelStatusCode: 'ERROR' }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /Session ID|会话 ID/u }), {
+      target: { value: 'cache-exact' },
+    });
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, sessionId: 'cache-exact', otelStatusCode: 'ERROR' }),
+    );
+  });
+
+  test('navigates a keyboard-selected row to its trace detail', () => {
+    const onTraceSelect = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={onTraceSelect}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }), { key: 'Enter' });
+
+    expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
+  });
+});

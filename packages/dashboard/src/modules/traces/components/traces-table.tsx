@@ -1,0 +1,185 @@
+import { m } from '@aio-proxy/i18n';
+import type { DashboardTraceSummary, OtelSpanStatusCode, TraceTerminationReason } from '@aio-proxy/types';
+import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
+
+import { DataTablePagination } from '@/components/data-table-pagination';
+import { ProtocolLabel } from '@/components/protocol-label';
+import { TokenCount } from '@/components/token-count';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+import { displayTotalTokens, formatTraceCost, formatTraceDuration } from '../trace-formatters';
+import type { TraceSearch } from '../trace-search';
+
+interface TracesTableProps {
+  readonly data: {
+    readonly items: readonly DashboardTraceSummary[];
+    readonly pageCount: number;
+  };
+  readonly search: TraceSearch;
+  readonly onSearchChange: (search: TraceSearch) => void;
+  readonly onSelect: (traceId: string) => void;
+}
+
+const statusVariants = {
+  UNSET: 'outline',
+  OK: 'default',
+  ERROR: 'destructive',
+} as const satisfies Record<OtelSpanStatusCode, 'outline' | 'default' | 'destructive'>;
+const terminationLabel = (reason: TraceTerminationReason) => m[`dashboard.traces.${reason}`]();
+const columns: ColumnDef<DashboardTraceSummary>[] = [
+  {
+    accessorKey: 'startedAt',
+    header: () => m['dashboard.traces.started_at'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => new Date(row.original.startedAt).toLocaleString(),
+  },
+  {
+    id: 'status',
+    header: () => m['dashboard.traces.status'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
+      const trace = row.original;
+      return (
+        <div className="flex min-w-24 flex-wrap gap-1">
+          {trace.endedAt === null ? (
+            <Badge variant="secondary">{m['dashboard.traces.running']()}</Badge>
+          ) : (
+            <Badge variant={statusVariants[trace.otelStatusCode]}>{trace.otelStatusCode}</Badge>
+          )}
+          {trace.terminationReason === undefined ? null : (
+            <Badge variant="outline">{terminationLabel(trace.terminationReason)}</Badge>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    id: 'session',
+    header: () => m['dashboard.traces.session'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
+      const session = row.original.session;
+      return session === undefined ? (
+        m['dashboard.traces.not_available']()
+      ) : (
+        <div className="min-w-28">
+          <div>{session.source}</div>
+          <div className="max-w-48 truncate text-xs text-muted-foreground" title={session.id}>
+            {session.id}
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: 'inboundProtocol',
+    header: () => m['dashboard.traces.protocol'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+      <ProtocolLabel protocol={row.original.inboundProtocol} />
+    ),
+  },
+  {
+    accessorKey: 'requestedModelId',
+    header: () => m['dashboard.traces.requested_model'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
+      row.original.requestedModelId ?? m['dashboard.traces.not_available'](),
+  },
+  {
+    id: 'finalTarget',
+    header: () => m['dashboard.traces.final_provider_model'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+      <div className="min-w-28">
+        <div>{row.original.finalProviderId ?? m['dashboard.traces.not_available']()}</div>
+        <div className="text-xs text-muted-foreground">
+          {row.original.finalModelId ?? m['dashboard.traces.not_available']()}
+        </div>
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'finalHttpStatus',
+    header: () => m['dashboard.traces.final_http_status'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
+      row.original.finalHttpStatus ?? m['dashboard.traces.not_available'](),
+  },
+  {
+    accessorKey: 'durationMs',
+    header: () => m['dashboard.traces.duration'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => formatTraceDuration(row.original.durationMs),
+  },
+  {
+    id: 'tokens',
+    header: () => m['dashboard.traces.tokens'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
+      const tokens = displayTotalTokens(row.original.usage);
+      return tokens === undefined ? m['dashboard.traces.not_available']() : <TokenCount value={tokens} />;
+    },
+  },
+  {
+    id: 'cost',
+    header: () => m['dashboard.traces.cost'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
+      formatTraceCost(row.original.usage?.estimatedCostUsd),
+  },
+];
+
+export const TracesTable: React.FC<TracesTableProps> = ({ data, search, onSearchChange, onSelect }) => {
+  const table = useReactTable({
+    data: [...data.items],
+    columns,
+    state: { pagination: { pageIndex: search.page - 1, pageSize: search.pageSize } },
+    manualPagination: true,
+    pageCount: data.pageCount,
+    onPaginationChange: (updater) => {
+      const current = { pageIndex: search.page - 1, pageSize: search.pageSize };
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      onSearchChange({
+        ...search,
+        page: next.pageSize === current.pageSize ? next.pageIndex + 1 : 1,
+        pageSize: next.pageSize as TraceSearch['pageSize'],
+      });
+    },
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-2xl border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((group) => (
+              <TableRow key={group.id}>
+                {group.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`${m['dashboard.traces.details']()}: ${row.original.traceId}`}
+                className="cursor-pointer"
+                onClick={() => onSelect(row.original.traceId)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect(row.original.traceId);
+                  }
+                }}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <DataTablePagination table={table} pageSizeOptions={[10, 20, 50, 100]} />
+    </div>
+  );
+};
