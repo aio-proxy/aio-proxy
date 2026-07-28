@@ -8,6 +8,7 @@ test('Given slow Dashboard event consumer When queue overflows Then dropped even
   const app = await createServer({
     config: { providers: {} },
     eventLimits: { maxEvents: 1, maxBytes: 1_024 },
+    port: 22_078,
   });
   const stream = await app.request('/dashboard/api/events', undefined, loopbackServer);
 
