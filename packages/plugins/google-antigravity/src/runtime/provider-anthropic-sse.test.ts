@@ -117,7 +117,7 @@ test('preserves raw Google chunks only when the caller requests them', async () 
 
 test('propagates ProviderV4 stream cancellation through the signature bridge', async () => {
   const reason = { kind: 'provider-stream-cancel' };
-  let cancelled: unknown;
+  const cancellation = Promise.withResolvers<unknown>();
   const model = createAntigravityProviderV4({
     call: (context: LogicalRequestContext) => ({
       context,
@@ -133,7 +133,7 @@ test('propagates ProviderV4 stream cancellation through the signature bridge', a
                 );
               },
               cancel(value) {
-                cancelled = value;
+                cancellation.resolve(value);
               },
             }),
             { headers: { 'Content-Type': 'text/event-stream' } },
@@ -149,7 +149,7 @@ test('propagates ProviderV4 stream cancellation through the signature bridge', a
 
   await reader.cancel(reason);
 
-  expect(cancelled).toBe(reason);
+  expect(await cancellation.promise).toBe(reason);
 });
 
 function provider(events: readonly unknown[]) {
