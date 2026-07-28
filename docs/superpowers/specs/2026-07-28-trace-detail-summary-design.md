@@ -10,6 +10,7 @@ Make the Trace detail page easier to scan by removing duplicate technical fields
 - Show one Session field instead of separate Session and resolution-source fields.
 - Show one Model field instead of separate requested and final model fields.
 - Combine HTTP status, error type, and error code into one result-detail field.
+- Combine Span error type and error code into the same result-detail presentation.
 - Display successful completed traces and spans as successful instead of exposing OpenTelemetry `UNSET` as the user-facing status.
 
 ## Chosen Approach
@@ -46,6 +47,8 @@ The summary contains one Result details row assembled from the available values 
 
 Missing values are omitted. Present values use one compact line such as `HTTP 503 · upstream_error · provider_unavailable`. If all three values are absent, the existing not-available value is shown. The overall request status remains a separate Badge.
 
+The selected Span panel uses the same Result details label and formatting for its available error type and error code. Span status remains a separate Badge, and Span-specific attributes, events, and links are unchanged.
+
 ### User-Facing Status
 
 `TraceStatus` derives one operational label with this precedence:
@@ -77,6 +80,7 @@ Extend the existing Trace detail page behavior tests using TDD:
 - the redundant resolution-source row is absent;
 - one Model value is shown and the upstream-model tooltip appears only for mismatches;
 - HTTP status and error metadata render in one summary row;
+- Span error type and error code render in one result-details row;
 - a completed trace with OTel `UNSET` renders as Success;
 - existing Session-filter navigation remains intact.
 

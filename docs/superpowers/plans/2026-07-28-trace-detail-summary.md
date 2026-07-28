@@ -157,12 +157,15 @@ git commit -m "fix(dashboard): display operational trace status" -m "Co-authored
 - Modify: `packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.test.tsx`
 - Modify: `packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.tsx`
 - Modify: `packages/dashboard/src/modules/traces/components/trace-summary.tsx`
+- Modify: `packages/dashboard/src/modules/traces/components/span-detail-panel/span-detail-panel.tsx`
+- Modify: `packages/dashboard/src/modules/traces/components/span-detail-panel/span-detail-panel.test.tsx`
+- Modify: `packages/dashboard/src/modules/traces/trace-formatters/trace-formatters.ts`
 - Modify: `packages/i18n/messages/en.json`
 - Modify: `packages/i18n/messages/zh-Hans.json`
 
 **Interfaces:**
 - Consumes: the existing `DashboardTraceSummary` fields and `onSessionSelect({ source, id })` callback.
-- Produces: the existing `TraceSummary` component with one Session row, one Model row, one Result details row, and unchanged Session-filter navigation.
+- Produces: the existing `TraceSummary` component with one Session row, one Model row, one Result details row, unchanged Session-filter navigation, and a Span detail panel with one consolidated Result details row.
 
 - [ ] **Step 1: Extend the router mock and add failing behavior tests**
 
@@ -248,6 +251,18 @@ test('combines HTTP and error metadata into one result row', () => {
   expect(screen.queryByText(/Error code|错误码/u)).toBeNull();
 });
 ```
+
+Update `span-detail-panel.test.tsx` so it catches both the Task 1 status integration and split Span error metadata:
+
+```tsx
+expect(within(panel).getByText(/Failure|失败/u)).toBeTruthy();
+expect(within(panel).getByText(/Result details|结果详情/u)).toBeTruthy();
+expect(within(panel).getByText('upstream_error · provider_unavailable')).toBeTruthy();
+expect(within(panel).queryByText(/Error type|错误类型/u)).toBeNull();
+expect(within(panel).queryByText(/Error code|错误码/u)).toBeNull();
+```
+
+Run the focused Span detail test before implementation and confirm it fails because the panel still renders raw `ERROR` plus separate Error type and Error code rows.
 
 Update the existing Session-navigation test to click `screen.getByRole('button', { name: 'cache-a' })`; retain its exact `sessionSource` and `sessionId` navigation assertion.
 
@@ -336,15 +351,11 @@ const modelValue =
     </Tooltip>
   );
 
-const resultDetails = [
-  trace.finalHttpStatus === undefined
-    ? undefined
-    : m['dashboard.traces.http_status_value']({ status: trace.finalHttpStatus }),
-  trace.errorType,
-  trace.errorCode,
-]
-  .filter((value): value is string => value !== undefined)
-  .join(' · ');
+const resultDetails = formatTraceResultDetails({
+  httpStatus: trace.finalHttpStatus,
+  errorType: trace.errorType,
+  errorCode: trace.errorCode,
+});
 ```
 
 Replace the duplicate rows with:
@@ -354,10 +365,31 @@ Replace the duplicate rows with:
 [m['dashboard.traces.protocol'](), <ProtocolLabel key="protocol" protocol={trace.inboundProtocol} />],
 [m['dashboard.traces.model'](), modelValue],
 [m['dashboard.traces.final_provider'](), trace.finalProviderId],
-[m['dashboard.traces.result_details'](), resultDetails === '' ? undefined : resultDetails],
+[m['dashboard.traces.result_details'](), resultDetails],
 ```
 
 Remove the `sessionResolvedBy`, requested-model, final-model, final-HTTP-status, error-type, and error-code rows. Keep all identifiers, timing rows, Provider, protocol, usage, and Session navigation behavior.
+
+Add the shared business formatter to `trace-formatters.ts` and import it from both summary components:
+
+```tsx
+export const formatTraceResultDetails = (input: {
+  readonly httpStatus?: number;
+  readonly errorType?: string;
+  readonly errorCode?: string;
+}): string | undefined => {
+  const values = [
+    input.httpStatus === undefined
+      ? undefined
+      : m['dashboard.traces.http_status_value']({ status: input.httpStatus }),
+    input.errorType,
+    input.errorCode,
+  ].filter((value): value is string => value !== undefined);
+  return values.length === 0 ? undefined : values.join(' · ');
+};
+```
+
+In `span-detail-panel.tsx`, derive `resultDetails` with `formatTraceResultDetails({ errorType: span.errorType, errorCode: span.errorCode })`, replace the separate Error type and Error code rows with one `dashboard.traces.result_details` row, and leave status, timing, attributes, events, and links unchanged.
 
 - [ ] **Step 5: Enable the existing back action in every page state**
 
@@ -407,6 +439,6 @@ Expected: type-aware lint, formatting, builds, unit tests, and artifact tests co
 - [ ] **Step 8: Commit the summary refinement**
 
 ```bash
-git add packages/dashboard/src/modules/traces/components/trace-summary.tsx packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.tsx packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.test.tsx packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json
+git add packages/dashboard/src/modules/traces/components/trace-summary.tsx packages/dashboard/src/modules/traces/components/span-detail-panel/span-detail-panel.tsx packages/dashboard/src/modules/traces/components/span-detail-panel/span-detail-panel.test.tsx packages/dashboard/src/modules/traces/trace-formatters/trace-formatters.ts packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.tsx packages/dashboard/src/modules/traces/templates/trace-detail-page/trace-detail-page.test.tsx packages/i18n/messages/en.json packages/i18n/messages/zh-Hans.json
 git commit -m "refactor(dashboard): distill trace detail summary" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
