@@ -15,6 +15,13 @@
       "when": 1785152235298,
       "tag": "0001_easy_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785223653286,
+      "tag": "0002_orange_leper_queen",
+      "breakpoints": true
     }
   ]
 }

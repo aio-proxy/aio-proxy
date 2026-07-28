@@ -107,12 +107,6 @@ test('createServerLogSink forwards the complete entry at the mapped level', () =
       upstreamRequestId: 'upstream-request',
     },
     {
-      event: 'request.recorder_persistence_failed',
-      operation: 'insert_final',
-      requestId: 'persistence',
-      errorType: 'DatabaseError',
-    },
-    {
       event: 'request.rejected',
       requestId: 'rejected',
       inboundProtocol: 'openai',

@@ -27,10 +27,10 @@ describe('DateTimeRangePicker validation', () => {
     render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
     openPicker();
     fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
-      target: { value: '2026-07-21 00:00' },
+      target: { value: '2026-07-21T00:00' },
     });
     fireEvent.change(screen.getByLabelText(/End|结束时间/u), {
-      target: { value: '2026-07-20 23:59' },
+      target: { value: '2026-07-20T23:59' },
     });
 
     expect(screen.getByRole('button', { name: /Apply|应用/u })).toBeDisabled();
@@ -42,7 +42,7 @@ describe('DateTimeRangePicker validation', () => {
     openPicker();
     const start = await screen.findByLabelText(/Start|开始时间/u);
     const end = screen.getByLabelText(/End|结束时间/u);
-    fireEvent.change(end, { target: { value: '2026-07-21 00:00' } });
+    fireEvent.change(end, { target: { value: '2026-07-21T00:00' } });
 
     const startField = start.closest('[data-slot="field"]');
     const endField = end.closest('[data-slot="field"]');

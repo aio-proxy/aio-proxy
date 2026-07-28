@@ -8,7 +8,7 @@ import type { ServerLog } from '../../server-log';
 import { getTraceRuntime } from '../runtime';
 import { attributeName, spanName } from '../semantic';
 import { createRequestTraceRecorder } from './request-trace-recorder';
-import type { RequestTraceIdentityInput } from './types';
+import type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types';
 
 function collector() {
   const roots: TraceRootStart[] = [];
@@ -211,6 +211,21 @@ describe('createRequestTraceRecorder', () => {
       identity: identityInput.resolution.identity,
       requestedModelId: identityInput.requestedModelId,
       resolvedBy: identityInput.resolution.resolvedBy,
+    });
+  });
+
+  test('projects stream intent and final TTFT onto the root span', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+
+    session.identify({ ...identityInput, streamRequested: true } as RequestTraceIdentityInput);
+    session.finish({ outcome: 'success', ttftMs: 42 } as RequestTraceFinishInput);
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.attributes).toMatchObject({
+      [attributeName.stream]: true,
+      [attributeName.ttftMs]: 42,
     });
   });
 });

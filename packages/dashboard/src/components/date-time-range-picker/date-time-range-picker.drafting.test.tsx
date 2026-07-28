@@ -21,7 +21,7 @@ describe('DateTimeRangePicker drafting', () => {
 
     openPicker();
     fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
-      target: { value: '2026-07-20 08:15' },
+      target: { value: '2026-07-20T08:15' },
     });
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /Apply|应用/u }));
@@ -33,10 +33,10 @@ describe('DateTimeRangePicker drafting', () => {
     render(<DateTimeRangePicker value={value} onChange={rs.fn()} />);
     openPicker();
     fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
-      target: { value: '2026-07-21 00:00' },
+      target: { value: '2026-07-21T00:00' },
     });
     fireEvent.change(screen.getByLabelText(/End|结束时间/u), {
-      target: { value: '2026-07-21 23:59' },
+      target: { value: '2026-07-21T23:59' },
     });
 
     expect(
@@ -71,7 +71,7 @@ describe('DateTimeRangePicker drafting', () => {
     render(<DateTimeRangePicker value={value} onChange={onChange} />);
     openPicker();
     fireEvent.change(await screen.findByLabelText(/Start|开始时间/u), {
-      target: { value: '2026-07-20 08:15' },
+      target: { value: '2026-07-20T08:15' },
     });
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByLabelText(/Start|开始时间/u)).not.toBeInTheDocument());
@@ -85,8 +85,12 @@ describe('DateTimeRangePicker drafting', () => {
     expect(within(calendar).getAllByRole('grid')).toHaveLength(1);
 
     fireEvent.click(within(calendar).getByRole('button', { name: /Tuesday, July 21st, 2026/u }));
-    expect(screen.getByLabelText(/Start|开始时间/u)).toHaveValue('2026-07-20 00:00');
-    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue('2026-07-21 23:59');
+    const start = screen.getByLabelText(/Start|开始时间/u);
+    const end = screen.getByLabelText(/End|结束时间/u);
+    expect(start).toHaveAttribute('type', 'datetime-local');
+    expect(end).toHaveAttribute('type', 'datetime-local');
+    expect(start).toHaveValue('2026-07-20T00:00');
+    expect(end).toHaveValue('2026-07-21T23:59');
   });
 
   test('uses a custom trigger', () => {
@@ -102,7 +106,7 @@ describe('DateTimeRangePicker drafting', () => {
     render(<DateTimeRangePicker value={{ from: new Date(Number.NaN), to: value.to }} onChange={rs.fn()} />);
     openPicker();
     expect(await screen.findByLabelText(/Start|开始时间/u)).toHaveValue('');
-    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue('2026-07-20 23:59');
+    expect(screen.getByLabelText(/End|结束时间/u)).toHaveValue('2026-07-20T23:59');
     expect(screen.getByRole('button', { name: /Apply|应用/u })).toBeDisabled();
   });
 });

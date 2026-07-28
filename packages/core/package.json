@@ -22,6 +22,7 @@
     }
   },
   "scripts": {
+    "benchmark:trace-store": "bun scripts/benchmark-trace-store.ts",
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "build:migrations": "bun scripts/build-migrations.ts",

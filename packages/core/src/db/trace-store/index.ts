@@ -1,6 +1,5 @@
 export { createTraceStore } from './trace-store';
 export type {
-  RequestLogsQuery,
   SessionAffinityObservation,
   SessionIdentity,
   SessionResponseOwner,

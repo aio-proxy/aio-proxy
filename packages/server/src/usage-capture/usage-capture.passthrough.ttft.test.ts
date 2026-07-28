@@ -35,6 +35,22 @@ describe('usage capture passthrough ttft', () => {
     expect(ttftMs).toBeGreaterThanOrEqual(0);
   });
 
+  test('records ttft from an OpenAI Responses SSE event name when data omits type', async () => {
+    const captured = ssePassthrough(
+      'event: response.output_text.delta\n' +
+        'data: {"delta":"OK"}\n\n' +
+        'event: response.completed\n' +
+        'data: {"response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ProviderProtocol.OpenAIResponse,
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    const ttftMs = 'ttftMs' in completion ? completion.ttftMs : undefined;
+    expect(typeof ttftMs).toBe('number');
+  });
+
   test('omits ttft when the stream carries no content delta', async () => {
     const captured = ssePassthrough(
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n' +

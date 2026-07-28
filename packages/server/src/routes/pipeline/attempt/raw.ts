@@ -45,8 +45,9 @@ export async function attemptRawCandidate<TRequest, TContext>(
   attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
+  const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);
   const captured = source.usageCapture.passthrough({
-    response,
+    response: normalizedResponse,
     protocol: adapter.protocol,
     providerId: provider.id,
     modelId: candidate.modelId,
@@ -75,6 +76,15 @@ export async function attemptRawCandidate<TRequest, TContext>(
   );
   deferRelease();
   return { kind: 'return', response: captured.value };
+}
+
+function withEventStreamContentType(response: Response, streamRequested: boolean): Response {
+  if (!streamRequested || !response.ok || response.body === null || response.headers.has('content-type')) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set('content-type', 'text/event-stream; charset=utf-8');
+  return new Response(response.body, { headers, status: response.status, statusText: response.statusText });
 }
 
 function retainedFailure<TRequest, TContext>(

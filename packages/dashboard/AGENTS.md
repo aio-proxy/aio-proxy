@@ -51,8 +51,11 @@ This file is the frontend authority for `packages/dashboard`.
 
 ## Copy And i18n
 
-- All user-facing copy must come from i18n messages.
-- Do not hardcode labels, placeholders, helper text, empty states, error messages, success messages, button text, table headers, badges, ARIA labels, page titles, or page descriptions in components, templates, routes, or hooks.
+- User-facing natural-language copy must come from i18n messages.
+- Do not hardcode translatable labels, placeholders, helper text, empty states, error messages, success messages, button text, table headers, badges, ARIA labels, page titles, or page descriptions in components, templates, routes, or hooks.
+- A literal may stay inline only when it is a standardized abbreviation, identifier, or deliberately untranslated product or domain term whose exact spelling is intentionally shared by every supported locale. Current examples include `N/A`, `TTFT`, `HTTP`, `Token`, protocol names, API names, model IDs, and Provider IDs.
+- If any supported locale may need different wording, grammar, pluralization, or terminology, use i18n. Surrounding labels and sentences still use i18n even when they contain an untranslated term.
+- Do not add identical message values in every locale solely to wrap an intentionally untranslated literal.
 - Add or update keys in `packages/i18n/messages/*.json` before using them.
 - Import messages as `import { m } from "@aio-proxy/i18n"` and call keys with `m.some_key()`.
 - Run `bun run i18n:compile` after changing message files.

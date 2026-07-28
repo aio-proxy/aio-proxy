@@ -3,7 +3,7 @@ import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types
 
 // Legacy projection of the trace store back into the {requests, usages} shape
 // the protocol HTTP tests assert on. The pipeline now writes traces (spans)
-// instead of the old request_log/usage tables, so this reads root traces +
+// from TraceStore persistence, so this reads root traces +
 // their attempt spans and reshapes them to the historical row layout. Kept as
 // one shared helper so each protocol test-support file stays tiny.
 

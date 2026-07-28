@@ -1,12 +1,13 @@
 import { getLocale, m } from '@aio-proxy/i18n';
 import { enUS, zhCN } from 'date-fns/locale';
-import { CalendarIcon } from 'lucide-react';
+import { ChevronDownIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 import { cloneValidDate, createDateTimeRangeDraft } from './date-time-range';
 import { DateTimeRangePickerPanel } from './date-time-range-picker-panel';
@@ -23,7 +24,9 @@ export interface DateTimeRangePickerProps {
   onChange: (value: DateTimeRange) => void;
 }
 
-const DEFAULT_PATTERN = 'yyyy-MM-dd HH:mm';
+const DEFAULT_PATTERN = "yyyy-MM-dd'T'HH:mm";
+
+const formatTriggerEndpoint = (text: string) => text.replace('T', ' ');
 
 export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   value,
@@ -41,21 +44,23 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   const minimum = cloneValidDate(min);
   const maximum = cloneValidDate(max);
   const draft = createDateTimeRangeDraft(value, pattern, locale);
-  const summary =
-    draft.from && draft.to ? `${draft.from} – ${draft.to}` : m['dashboard.date_time_range_picker.title']();
+  const hasRange = Boolean(draft.from && draft.to);
+  const summary = hasRange
+    ? `${formatTriggerEndpoint(draft.from)} – ${formatTriggerEndpoint(draft.to)}`
+    : m['dashboard.date_time_range_picker.title']();
   const triggerElement = trigger ?? (
     <Button
       type="button"
-      variant="outline"
-      className="w-full justify-start overflow-hidden"
+      variant="ghost"
+      className="w-full justify-between overflow-hidden border-transparent bg-input/50 bg-clip-border font-normal hover:bg-input/50 aria-expanded:bg-input/50"
       aria-label={m['dashboard.date_time_range_picker.title']()}
     />
   );
   const triggerChildren =
     trigger === undefined ? (
       <>
-        <CalendarIcon className="shrink-0" />
-        <span className="truncate">{summary}</span>
+        <span className={cn('min-w-0 flex-1 truncate text-left', !hasRange && 'text-muted-foreground')}>{summary}</span>
+        <ChevronDownIcon className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
       </>
     ) : undefined;
   const pickerTrigger = mobile ? (
@@ -94,7 +99,7 @@ export const DateTimeRangePicker: React.FC<DateTimeRangePickerProps> = ({
   ) : (
     <Popover open={open} onOpenChange={setOpen}>
       {pickerTrigger}
-      <PopoverContent className="w-auto" align="start">
+      <PopoverContent className="w-auto" align="start" sideOffset={-32}>
         {panel}
       </PopoverContent>
     </Popover>

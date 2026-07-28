@@ -5,12 +5,12 @@ import { assertNever, isRecord, nonEmptyString } from './shared';
 // Whether one parsed SSE event carries generated content (text or reasoning),
 // aligned with the streaming path's text-delta/reasoning-delta TTFT trigger.
 // Lifecycle/metadata frames (response.created, message_start, ping) return false.
-export function hasContentDelta(protocol: ProviderProtocol, value: unknown): boolean {
+export function hasContentDelta(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
   switch (protocol) {
     case ProviderProtocol.OpenAICompatible:
       return openAICompatibleContent(value);
     case ProviderProtocol.OpenAIResponse:
-      return openAIResponsesContent(value);
+      return openAIResponsesContent(eventType, value);
     case ProviderProtocol.Anthropic:
       return anthropicContent(value);
     case ProviderProtocol.Gemini:
@@ -43,9 +43,8 @@ function openAICompatibleContent(value: unknown): boolean {
   });
 }
 
-function openAIResponsesContent(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const type = value['type'];
+function openAIResponsesContent(eventType: string | undefined, value: unknown): boolean {
+  const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
   return (
     type === 'response.output_text.delta' ||
     type === 'response.reasoning_text.delta' ||

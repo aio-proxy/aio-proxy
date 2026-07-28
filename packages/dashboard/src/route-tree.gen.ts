@@ -9,25 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LogsRouteImport } from './routes/logs'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TracesIndexRouteImport } from './routes/traces/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
+import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
 import { Route as ProvidersNewKindRouteImport } from './routes/providers/new.$kind'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
 
-const LogsRoute = LogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TracesIndexRoute = TracesIndexRouteImport.update({
+  id: '/traces/',
+  path: '/traces/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
   id: '/providers/',
   path: '/providers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TracesTraceIdRoute = TracesTraceIdRouteImport.update({
+  id: '/traces/$traceId',
+  path: '/traces/$traceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersNewKindRoute = ProvidersNewKindRouteImport.update({
@@ -43,23 +49,26 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/logs': typeof LogsRoute
+  '/traces/$traceId': typeof TracesTraceIdRoute
   '/providers/': typeof ProvidersIndexRoute
+  '/traces/': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/logs': typeof LogsRoute
+  '/traces/$traceId': typeof TracesTraceIdRoute
   '/providers': typeof ProvidersIndexRoute
+  '/traces': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/logs': typeof LogsRoute
+  '/traces/$traceId': typeof TracesTraceIdRoute
   '/providers/': typeof ProvidersIndexRoute
+  '/traces/': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
   '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
@@ -67,43 +76,40 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/logs'
+    | '/traces/$traceId'
     | '/providers/'
+    | '/traces/'
     | '/providers/$id/edit'
     | '/providers/new/$kind'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/logs'
+    | '/traces/$traceId'
     | '/providers'
+    | '/traces'
     | '/providers/$id/edit'
     | '/providers/new/$kind'
   id:
     | '__root__'
     | '/'
-    | '/logs'
+    | '/traces/$traceId'
     | '/providers/'
+    | '/traces/'
     | '/providers/$id/edit'
     | '/providers/new/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LogsRoute: typeof LogsRoute
+  TracesTraceIdRoute: typeof TracesTraceIdRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
+  TracesIndexRoute: typeof TracesIndexRoute
   ProvidersIdEditRoute: typeof ProvidersIdEditRoute
   ProvidersNewKindRoute: typeof ProvidersNewKindRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/logs': {
-      id: '/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof LogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -111,11 +117,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/traces/': {
+      id: '/traces/'
+      path: '/traces'
+      fullPath: '/traces/'
+      preLoaderRoute: typeof TracesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/providers/': {
       id: '/providers/'
       path: '/providers'
       fullPath: '/providers/'
       preLoaderRoute: typeof ProvidersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traces/$traceId': {
+      id: '/traces/$traceId'
+      path: '/traces/$traceId'
+      fullPath: '/traces/$traceId'
+      preLoaderRoute: typeof TracesTraceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers/new/$kind': {
@@ -137,8 +157,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LogsRoute: LogsRoute,
+  TracesTraceIdRoute: TracesTraceIdRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
+  TracesIndexRoute: TracesIndexRoute,
   ProvidersIdEditRoute: ProvidersIdEditRoute,
   ProvidersNewKindRoute: ProvidersNewKindRoute,
 }

@@ -84,10 +84,12 @@ foo/
 
 ### File Size
 
-- Handwritten code files, including tests, should not exceed 300 lines.
-- At 240 lines, evaluate whether the file has accumulated multiple responsibilities and split it before adding more.
+- The 300-line limit applies to handwritten non-test implementation files.
+- At 240 lines, evaluate whether a non-test implementation file has accumulated multiple responsibilities and split it before adding more.
+- Test files have no hard line limit. Keep tests for one module or feature together when splitting would scatter shared fixtures or obscure the behavior under test.
+- Split a test file when it covers multiple independent responsibilities and those behavior groups can be separated without substantial duplicated setup. Do not split a cohesive test file solely to satisfy a line count.
 - Generated files, externally managed files, migrations, and declarative fixtures are exempt.
-- New files must follow these limits. Existing files over 300 lines must not grow and should be split when materially modified.
+- New non-test implementation files must follow these limits. Existing non-test implementation files over 300 lines must not grow and should be split when materially modified.
 
 ### File Splitting
 

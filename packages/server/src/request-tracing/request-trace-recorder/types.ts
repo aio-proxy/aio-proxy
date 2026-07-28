@@ -6,12 +6,14 @@ export type RequestTraceIdentityInput = {
   readonly requestedModelId: string;
   readonly resolution: LogicalSessionResolution;
   readonly mutateSessionState: boolean;
+  readonly streamRequested?: boolean;
 };
 
 type RequestTraceFinishBase = {
   readonly finalProviderId?: string;
   readonly finalModelId?: string;
   readonly finalHttpStatus?: number;
+  readonly ttftMs?: number;
 };
 
 export type RequestTraceFinishInput =

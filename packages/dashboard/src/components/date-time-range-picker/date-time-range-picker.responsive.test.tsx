@@ -75,16 +75,22 @@ describe('DateTimeRangePicker responsive layout', () => {
       throw new Error('Expected desktop picker regions');
     }
 
-    expect(panel).toHaveClass('w-128', 'max-w-[calc(100vw-2rem)]');
-    expect(primary).toHaveClass('grid-cols-[minmax(0,1fr)_11rem]');
+    const calendar = within(panel).getByTestId('date-time-range-calendar');
+    expect(panel).toHaveClass('w-auto', 'max-w-[calc(100vw-2rem)]', 'grid-cols-[auto_11rem]');
+    expect(primary).toHaveClass('w-64', 'border-r', 'pr-4');
+    expect(calendar).toHaveClass('w-full', 'p-0');
     expect(presets).toHaveClass('grid', 'content-start');
     expect(presets).not.toHaveClass('flex-wrap');
     expect(within(presets as HTMLElement).getByRole('button', { name: 'Today' })).toHaveClass(
       'hover:bg-muted',
       'justify-start',
     );
-    expect(fields).toHaveClass('grid-cols-2');
+    expect(fields).toHaveClass('grid');
+    expect(fields).not.toHaveClass('grid-cols-2');
     expect(actions).toHaveClass('justify-end');
+    expect(primary.contains(fields)).toBe(true);
+    expect(primary.contains(actions)).toBe(true);
+    expect(primary.contains(presets)).toBe(false);
     expect(document.querySelector('[data-slot="popover-content"]')).not.toBeNull();
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
   });
