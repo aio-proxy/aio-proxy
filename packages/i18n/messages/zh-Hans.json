@@ -531,6 +531,7 @@
       "otel_ok": "正常",
       "otel_error": "错误",
       "running": "运行中",
+      "success": "成功",
       "failure": "失败",
       "cancelled": "已取消",
       "interrupted": "已中断",

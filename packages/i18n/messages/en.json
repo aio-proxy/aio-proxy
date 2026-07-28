@@ -531,6 +531,7 @@
       "otel_ok": "OK",
       "otel_error": "ERROR",
       "running": "Running",
+      "success": "Success",
       "failure": "Failure",
       "cancelled": "Cancelled",
       "interrupted": "Interrupted",

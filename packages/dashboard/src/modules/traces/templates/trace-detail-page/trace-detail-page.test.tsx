@@ -135,7 +135,31 @@ describe('trace detail page', () => {
       expect.stringContaining('gen_ai.inference'),
     ]);
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/SERVER/u);
-    expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/ERROR|错误/u);
+    expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/Failure|失败/u);
+  });
+
+  test('renders a completed UNSET Trace as successful', () => {
+    mocks.data = {
+      ...detail,
+      trace: {
+        ...detail.trace,
+        otelStatusCode: 'UNSET',
+        terminationReason: undefined,
+        errorType: undefined,
+        errorCode: undefined,
+        finalHttpStatus: 200,
+      },
+      spans: detail.spans.map((span) => ({
+        ...span,
+        otelStatusCode: 'UNSET',
+        terminationReason: undefined,
+      })),
+    };
+
+    render(<TraceDetailPage traceId={traceId} />);
+
+    expect(screen.getAllByText(/Success|成功/u).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/UNSET|未设置/u)).toBeNull();
   });
 
   test('renders the root Span ID in the complete summary', () => {
