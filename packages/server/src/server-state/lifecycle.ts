@@ -19,6 +19,7 @@ import type { FifoQueue } from '../fifo-queue';
 import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
+import type { SnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
 import type { ServerLogSink } from '../server-log';
@@ -101,7 +102,9 @@ export function reloadNow(
     configFile: runtime.configFile,
     logger: runtime.logger,
     manager: runtime.manager,
-    onDashboardAuthHealthChanged: runtime.internalOptions.__dashboardAuthHealthChanged,
+    ...(runtime.internalOptions.__dashboardAuthHealthChanged === undefined
+      ? {}
+      : { onDashboardAuthHealthChanged: runtime.internalOptions.__dashboardAuthHealthChanged }),
     retainedOperations,
   });
 }
@@ -145,7 +148,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     configPath: options.configPath,
     configStore: parts.configStore,
     currentProviderSnapshot: manager.current,
-    debugLogging: options.config.server.logging.level === 'debug',
+    debugLogging: options.config.server.logging?.level === 'debug',
     events,
     logicalSessionStore: parts.logicalSessionStore,
     oauthCapabilities: () => oauthCapabilities(manager),
@@ -221,7 +224,7 @@ export function startLoginSessions(
     diagnostics,
     logger: pluginLogger,
     reload,
-    now: testHooks?.oauthSessionNow,
-    terminalSessionTtlMs: testHooks?.oauthSessionTtlMs,
+    ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
+    ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),
   });
 }

@@ -11,8 +11,8 @@ export interface DateTimeRangeDraft {
 export interface DateTimeRangeDraftSchemaOptions {
   readonly pattern: string;
   readonly locale: Locale;
-  readonly min?: Date;
-  readonly max?: Date;
+  readonly min?: Date | undefined;
+  readonly max?: Date | undefined;
   readonly messages: {
     readonly invalid: string;
     readonly order: string;

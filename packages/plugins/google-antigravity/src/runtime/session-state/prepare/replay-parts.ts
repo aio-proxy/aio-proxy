@@ -116,7 +116,10 @@ function canonicalValueKey(value: unknown): string {
     symbol: 'y',
     undefined: 'u',
   }[typeof value];
-  return framedValue(tag, String(value));
+  return framedValue(
+    tag,
+    String(value as string | number | bigint | boolean | symbol | undefined | ((...args: never[]) => unknown)),
+  );
 }
 
 function framedValue(tag: string, payload: string): string {

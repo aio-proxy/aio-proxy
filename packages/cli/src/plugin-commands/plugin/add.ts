@@ -23,7 +23,7 @@ export async function pluginAdd(
     const installAndUse =
       deps.withInstalledNpmPackage ??
       (async (name, registry, use) => use(await deps.npmAdd(name, registry), async () => {}));
-    await installAndUse(packageName, options.registry, async (installed, assertOwnership = async () => {}) => {
+    await installAndUse(packageName, options.registry, async (installed, assertOwnership) => {
       const descriptor = await loadDescriptor(packageName, installed, deps);
       const rendered =
         descriptor.metadata.options === undefined

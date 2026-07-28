@@ -1,5 +1,6 @@
 import type { AliasConfig } from '@aio-proxy/types';
 import { normalizeAliasName, normalizeVariantKey } from '@aio-proxy/types';
+import type { ReactFormExtendedApi } from '@tanstack/react-form';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
@@ -8,6 +9,8 @@ export type AliasDraft = {
   readonly model: string;
   readonly preserve: boolean;
 };
+
+export type AliasDraftForm = ReactFormExtendedApi<AliasDraft, any, any, any, any, any, any, any, any, any, any, any>;
 
 export type AliasEditResult =
   | { readonly ok: true; readonly alias: ProviderAlias }

@@ -40,7 +40,7 @@ export type PluginRegistrySnapshot = {
   readonly registry: PluginRegistry;
   readonly plugins: ReadonlyMap<string, LoadedPluginState>;
 };
-export type PluginSecretReader = { readonly readPluginSecret: (plugin: string) => unknown | undefined };
+export type PluginSecretReader = { readonly readPluginSecret: (plugin: string) => unknown };
 export type LoadPluginRegistryOptions = {
   readonly enablements: readonly PluginEnablement[];
   readonly builtIns: readonly BuiltInPluginDefinition[];

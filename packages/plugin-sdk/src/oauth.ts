@@ -34,6 +34,7 @@ export class CredentialRefreshError extends Error {
 
 export type LobeIconKey = AioProxyLobeIconKey;
 
+// oxlint-disable-next-line typescript/no-redundant-type-constituents -- LobeIconKey is a literal-key union at build time (a `string` placeholder only during lint), so the URL/data-URI members are not redundant and are required to reject arbitrary strings.
 export type OAuthIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
 
 export type DeviceCodePresentation = {

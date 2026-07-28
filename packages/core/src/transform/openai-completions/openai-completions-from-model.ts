@@ -4,6 +4,12 @@ import { openAIImageDetail, type ImageInputDetail } from '../../image-input';
 import type { OpenAICompletionsRequest } from '../../ingress/openai-completions';
 import type { OpenAICompletionsFromModelMessages } from './openai-completions';
 
+type ToolResultPart = Extract<Extract<ModelMessage, { role: 'tool' }>['content'][number], { type: 'tool-result' }>;
+type ContentToolOutputPart = Extract<
+  Extract<ToolResultPart['output'], { type: 'content' }>['value'][number],
+  { type: 'text' | 'file' }
+>;
+
 export function modelMessagesToOpenAICompletions({
   model,
   messages,
@@ -106,13 +112,11 @@ function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
   };
 }
 
-function toolContent(
-  part: Extract<Extract<ModelMessage, { role: 'tool' }>['content'][number], { type: 'tool-result' }>,
-  path: string,
-): string | OpenAIUserContentPart[] {
+function toolContent(part: ToolResultPart, path: string): string | OpenAIUserContentPart[] {
   if (part.output.type === 'text') return part.output.value;
   if (part.output.type === 'content') {
-    return part.output.value.map((value, index): OpenAIUserContentPart => {
+    const values = part.output.value as readonly ContentToolOutputPart[];
+    return values.map((value, index): OpenAIUserContentPart => {
       if (value.type === 'text') return { type: 'text', text: value.text };
       if (value.type === 'file') return imageUrlContent(value, `${path}.${index}`);
       throw new OpenAICompletionsTransformError(`${path}.${index}.type`);

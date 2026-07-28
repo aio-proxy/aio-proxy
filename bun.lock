@@ -197,6 +197,7 @@
         "@logtape/logtape": "2.1.1",
       },
       "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },

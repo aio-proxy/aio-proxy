@@ -133,9 +133,9 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
       <JsonEditor
         id={field.name}
         value={editorValue}
-        schema={schemaState.schema}
+        {...(schemaState.schema === undefined ? {} : { schema: schemaState.schema })}
         externalInvalid={!rootValid || requiredRootMissing || schemaState.schemaResolution === 'error'}
-        errorDescriptionId={error === null ? undefined : errorId}
+        {...(error === null ? {} : { errorDescriptionId: errorId })}
         onValueChange={(value) => {
           setEditorValue(value);
           const nextRootValid = isProviderOptionsObject(value);

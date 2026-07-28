@@ -138,9 +138,10 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
   let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {
+    const error: unknown = prepared.error;
     logServerEvent(options.logger ?? defaultLogger, {
-      error: prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
-      errorType: serverErrorType(prepared.error),
+      error: error instanceof Error ? error.message : String(error),
+      errorType: serverErrorType(error),
       event: 'dashboard.auth_unavailable',
     });
   }

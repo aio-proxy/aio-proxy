@@ -1,8 +1,8 @@
-import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 
 export const providerStub = (overrides: Partial<DashboardProviderSummary> = {}): DashboardProviderSummary => ({
   id: 'provider-id',
-  kind: 'oauth',
+  kind: ProviderKind.OAuth,
   enabled: true,
   passthrough: false,
   last_status: 'unknown',

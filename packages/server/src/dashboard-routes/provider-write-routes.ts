@@ -8,6 +8,8 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from '@aio-proxy/core';
+import type { ProviderMutationBody } from '@aio-proxy/types';
+import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { ZodError, z } from 'zod';
@@ -31,10 +33,17 @@ const ProviderInstallRequestSchema = z.object({
   registry: z.url().optional(),
 });
 
-const providerMutationValidator = validator('json', (raw, context): ParsedProviderMutation | Response => {
-  const parsed = parseProviderMutation(raw);
-  return parsed.ok ? parsed.body : context.json(parsed.payload, parsed.status);
-});
+const providerMutationValidator = validator(
+  'json',
+  (raw: ProviderMutationBody, context): ParsedProviderMutation | Response => {
+    const parsed = parseProviderMutation(raw);
+    return parsed.ok ? parsed.body : context.json(parsed.payload, parsed.status);
+  },
+) as unknown as MiddlewareHandler<
+  Record<string, never>,
+  string,
+  { in: { json: ProviderMutationBody }; out: { json: ParsedProviderMutation } }
+>;
 
 export const createDashboardProviderWriteRoutes = (state: ServerState) =>
   new Hono()

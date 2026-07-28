@@ -77,6 +77,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     startupDiagnosticRebuildPending: false,
     accountRemovals: undefined as unknown as AccountRemovalCoordinator,
     scheduler: undefined as unknown as CatalogScheduler,
+    recovery: undefined,
     configFile,
   };
 

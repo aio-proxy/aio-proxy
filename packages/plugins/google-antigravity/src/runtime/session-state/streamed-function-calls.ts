@@ -133,7 +133,7 @@ function replayPart(
 }
 
 type ParsedFunctionCall = {
-  readonly args: unknown | undefined;
+  readonly args: unknown;
   readonly id: string | undefined;
   readonly name: string | undefined;
   readonly partialArgs: readonly PartialArg[] | undefined;

@@ -103,7 +103,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       mergeJsonValidation({
         syntaxValid: parseResult.ok,
         markers: validationState.markers,
-        schema,
+        ...(schema === undefined ? {} : { schema }),
         pending:
           externalValuePending ||
           validationState.pending ||
@@ -145,7 +145,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       {...(className === undefined ? {} : { className })}
       height={height ?? 240}
       invalid={externalInvalid || !validation.valid}
-      ariaDescribedBy={errorDescriptionId}
+      {...(errorDescriptionId === undefined ? {} : { ariaDescribedBy: errorDescriptionId })}
       language="json"
       onChange={handleChange}
       onMount={handleMount}

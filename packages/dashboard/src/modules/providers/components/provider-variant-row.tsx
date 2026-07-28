@@ -48,7 +48,8 @@ export const ProviderVariantRow: FC<Props> = ({
   const issue = issues[0];
   const issueMessage = issue === undefined ? null : aliasIssueMessage(issue);
   const errorMessage = editError === null ? issueMessage : aliasEditErrorMessage(editError);
-  const nameInvalid = editError === 'name-required' || editError === 'name-duplicate' || issue?.code.includes('name-');
+  const nameInvalid =
+    editError === 'name-required' || editError === 'name-duplicate' || (issue?.code.includes('name-') ?? false);
   const targetInvalid = editError === 'target-required' || issue?.code === 'target-missing';
   const preserveCount = preserveReferenceCount(alias, target.model) - (target.preserve ? 1 : 0);
   const nameId = aliasControlId(aliasName, variantName);

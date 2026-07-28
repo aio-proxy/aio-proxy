@@ -118,7 +118,7 @@ function safeIssues(
     if (typeof issue !== 'object' || issue === null || !('code' in issue) || typeof issue.code !== 'string') return [];
     if (!('path' in issue) || !Array.isArray(issue.path)) return [];
     const path = issue.path.filter(
-      (part): part is string | number => typeof part === 'string' || typeof part === 'number',
+      (part: unknown): part is string | number => typeof part === 'string' || typeof part === 'number',
     );
     return [{ code: issue.code, path }];
   });

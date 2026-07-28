@@ -1,12 +1,17 @@
-import type { DashboardOAuthSessionStart, OAuthProviderMutationBody, ProviderAlias } from '@aio-proxy/types';
+import {
+  type DashboardOAuthSessionStart,
+  type OAuthProviderMutationBody,
+  ProviderKind,
+  type ProviderAlias,
+} from '@aio-proxy/types';
 import { isEqual } from 'es-toolkit';
 
 export interface OAuthProviderEditValues {
   readonly id: string;
-  readonly name?: string;
+  readonly name?: string | undefined;
   readonly enabled: boolean;
-  readonly weight?: number;
-  readonly alias?: ProviderAlias;
+  readonly weight?: number | undefined;
+  readonly alias?: ProviderAlias | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
@@ -47,5 +52,5 @@ export const oauthProviderEditAction = (
     };
   }
 
-  return { kind: 'update', body: { kind: 'oauth', id: values.id, ...providerPatch } };
+  return { kind: 'update', body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch } };
 };

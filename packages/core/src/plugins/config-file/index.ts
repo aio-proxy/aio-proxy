@@ -149,7 +149,7 @@ export class AtomicConfigFile {
     await this.transaction(async (current) => ({ next: await mutate(current), result: undefined }), options);
   }
 
-  async providerEntry(providerId: string): Promise<unknown | undefined> {
+  async providerEntry(providerId: string): Promise<unknown> {
     const providers = (await this.read())['providers'];
     return isPlainObject(providers) ? providers[providerId] : undefined;
   }

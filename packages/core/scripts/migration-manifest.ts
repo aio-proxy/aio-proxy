@@ -66,7 +66,7 @@ export async function writeMigrationManifestFromJournal(root: string): Promise<M
     await Bun.write(manifestPath, output);
     return { changed: true, migrations: migrations.length };
   } finally {
-    api.close();
+    void api.close();
   }
 }
 

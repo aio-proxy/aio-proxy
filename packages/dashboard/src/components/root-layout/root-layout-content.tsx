@@ -26,7 +26,8 @@ export const RootLayoutContent: React.FC = () => {
     );
   }
   if (session.isError || session.data.status === 'unavailable') return <DashboardUnavailable />;
-  if (session.data.status === 'unauthenticated') return <LoginPage reason={session.data.reason} />;
+  if (session.data.status === 'unauthenticated')
+    return session.data.reason === undefined ? <LoginPage /> : <LoginPage reason={session.data.reason} />;
 
   return (
     <SidebarProvider className="bg-olive-50 dark:bg-olive-950">

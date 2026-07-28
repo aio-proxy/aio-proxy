@@ -15,6 +15,10 @@ type GeminiPart = GeminiGenerateContentRequest['contents'][number]['parts'][numb
 type GeminiContent = GeminiGenerateContentRequest['contents'][number];
 type GeminiFunctionResponse = NonNullable<GeminiPart['functionResponse']>;
 type NonContentToolOutput = Exclude<ToolPart['output'], { type: 'content' }>;
+type ContentToolOutputPart = Extract<
+  Extract<ToolPart['output'], { type: 'content' }>['value'][number],
+  { type: 'text' | 'file' }
+>;
 
 export function modelMessagesToGeminiGenerateContent({
   model,
@@ -139,8 +143,9 @@ function functionResponseOutput(
   readonly parts?: GeminiFunctionResponse['parts'];
 } {
   if (output.type !== 'content') return { response: toolOutput(output) };
-  const text = output.value.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('');
-  const parts = output.value.flatMap((part, index) => {
+  const value = output.value as readonly ContentToolOutputPart[];
+  const text = value.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('');
+  const parts = value.flatMap((part, index) => {
     if (part.type === 'text') return [];
     if (part.type !== 'file') {
       throw new GeminiGenerateContentTransformError(`${path}.value.${index}.type`);

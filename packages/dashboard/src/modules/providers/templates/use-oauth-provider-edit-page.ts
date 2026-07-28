@@ -1,4 +1,9 @@
-import type { DashboardOAuthProviderEdit, DashboardOAuthSession, OAuthProvider } from '@aio-proxy/types';
+import type {
+  DashboardOAuthProviderEdit,
+  DashboardOAuthSession,
+  DashboardOAuthSessionStart,
+  OAuthProvider,
+} from '@aio-proxy/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -63,7 +68,7 @@ export const useOAuthProviderEditPage = ({
     },
     (value) => {
       const account = oauthAccountSubmission(oauth.form, {
-        publicValues: accountForm.getFieldValue('publicValues'),
+        publicValues: accountForm.getFieldValue('publicValues') as DashboardOAuthSessionStart['publicValues'],
         secrets: accountForm.getFieldValue('secrets'),
         clearSecrets: accountForm.getFieldValue('clearSecrets'),
       });

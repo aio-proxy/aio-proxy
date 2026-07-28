@@ -13,13 +13,13 @@ import { DateTimeRangePickerPanel } from './date-time-range-picker-panel';
 import type { DateTimeRange, DateTimeRangePreset } from './date-time-range-picker.types';
 
 export interface DateTimeRangePickerProps {
-  value?: DateTimeRange;
-  presets?: readonly DateTimeRangePreset[];
-  pattern?: string;
-  min?: Date;
-  max?: Date;
-  disabled?: boolean;
-  trigger?: React.ReactElement;
+  value?: DateTimeRange | undefined;
+  presets?: readonly DateTimeRangePreset[] | undefined;
+  pattern?: string | undefined;
+  min?: Date | undefined;
+  max?: Date | undefined;
+  disabled?: boolean | undefined;
+  trigger?: React.ReactElement | undefined;
   onChange: (value: DateTimeRange) => void;
 }
 

@@ -13,11 +13,11 @@ import {
 import type { DateTimeRange, DateTimeRangePreset } from './date-time-range-picker.types';
 
 interface UseDateTimeRangeDraftOptions {
-  value?: DateTimeRange;
+  value?: DateTimeRange | undefined;
   pattern: string;
   locale: Locale;
-  min?: Date;
-  max?: Date;
+  min?: Date | undefined;
+  max?: Date | undefined;
   onChange: (value: DateTimeRange) => void;
 }
 

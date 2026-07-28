@@ -36,7 +36,7 @@ export function iconKeysFromFileNames(fileNames: readonly string[]): readonly st
     seen.add(key);
     return key;
   });
-  return keys.toSorted();
+  return [...keys].sort();
 }
 
 export function readLobeIconKeys(iconsDirectory: string): readonly string[] {
