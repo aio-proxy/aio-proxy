@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import type { LogLevel } from '@aio-proxy/plugin-sdk';
 import { getTimeRotatingFileSink } from '@logtape/file';
 import { ansiColorFormatter, configure, getConsoleSink, jsonLinesFormatter, type Sink } from '@logtape/logtape';
@@ -45,6 +47,7 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
       },
       { category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: ['console'] },
     ],
+    contextLocalStorage: new AsyncLocalStorage(),
   });
   loggingConfigured = true;
 }
