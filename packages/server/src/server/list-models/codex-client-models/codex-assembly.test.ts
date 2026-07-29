@@ -19,8 +19,57 @@ const model = (overrides: Partial<ModelsDevModel>): ModelsDevModel => ({
   ...overrides,
 });
 
+const TEMPLATE = {
+  slug: 'gpt-5.5',
+  display_name: 'GPT-5.5',
+  priority: 7,
+  supported_in_api: true,
+  visibility: 'list',
+  shell_type: 'shell_command',
+  truncation_policy: { mode: 'tokens', limit: 10_000 },
+  support_verbosity: true,
+  default_verbosity: 'low',
+  supports_parallel_tool_calls: true,
+  experimental_supported_tools: [],
+  apply_patch_tool_type: 'freeform',
+  availability_nux: { message: 'promo' },
+  upgrade: { model: 'gpt-6', migration_markdown: 'x' },
+  default_reasoning_level: 'medium',
+};
+
+test('synthesized entry inherits required ModelInfo fields from the template and drops promo fields', () => {
+  const entry = assembleCodexModel({ slug: 'x', displayName: 'X', metadata: undefined, template: TEMPLATE });
+  // Required (non-Option, no serde default) Codex ModelInfo fields must be present
+  // or the client rejects the whole Vec<ModelInfo> and shows an empty picker.
+  expect(entry.shell_type).toBe('shell_command');
+  expect(entry.truncation_policy).toEqual({ mode: 'tokens', limit: 10_000 });
+  expect(entry.support_verbosity).toBe(true);
+  expect(entry.supports_parallel_tool_calls).toBe(true);
+  expect(entry.experimental_supported_tools).toEqual([]);
+  // Model-specific promo/routing fields must not leak from the template.
+  expect('availability_nux' in entry).toBe(false);
+  expect('upgrade' in entry).toBe(false);
+  // A synthesized model overrides identity and priority regardless of template.
+  expect(entry.slug).toBe('x');
+  expect(entry.priority).toBe(999);
+});
+
+test('synthesized entry carries required fields even with no template (offline)', () => {
+  const entry = assembleCodexModel({ slug: 'x', displayName: 'X', metadata: undefined, template: undefined });
+  expect(entry.shell_type).toBe('shell_command');
+  expect(entry.truncation_policy).toEqual({ mode: 'tokens', limit: 10_000 });
+  expect(entry.support_verbosity).toBe(true);
+  expect(entry.supports_parallel_tool_calls).toBe(true);
+  expect(entry.experimental_supported_tools).toEqual([]);
+});
+
 test('synthesized entry substitutes model name and omits availability_nux', () => {
-  const entry = assembleCodexModel({ slug: 'my-alias', displayName: 'My Alias', metadata: undefined });
+  const entry = assembleCodexModel({
+    slug: 'my-alias',
+    displayName: 'My Alias',
+    metadata: undefined,
+    template: undefined,
+  });
   expect(entry.slug).toBe('my-alias');
   expect(entry.id).toBe('my-alias');
   expect(entry.display_name).toBe('My Alias');
@@ -57,6 +106,7 @@ test('reasoning levels derive from the models-dev effort option values', () => {
       reasoning_options: [{ type: 'effort', values: ['low', 'medium'] }],
       description: 'A synthesized model description',
     }),
+    template: undefined,
   });
   expect((entry.supported_reasoning_levels as { effort: string }[]).map((l) => l.effort)).toEqual(['low', 'medium']);
   expect(entry.default_reasoning_level).toBe('low');
@@ -74,6 +124,7 @@ test('a non-reasoning model advertises no reasoning levels and no default', () =
       reasoning: false,
       modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
     }),
+    template: undefined,
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
   expect(entry).not.toHaveProperty('default_reasoning_level');
@@ -90,6 +141,7 @@ test('an effort option missing its values does not crash and yields no levels', 
       // Upstream JSON can omit `values` even though the type marks it required.
       reasoning_options: [{ type: 'effort' } as unknown as { type: 'effort'; values: [] }],
     }),
+    template: undefined,
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
   expect(entry).not.toHaveProperty('default_reasoning_level');

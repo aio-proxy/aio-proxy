@@ -69,3 +69,33 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect('availability_nux' in caseBEntry).toBe(false);
   expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
 });
+
+test('synthesized entries get deterministic priorities past the max template priority, ordered by display name', async () => {
+  const multi = {
+    id: 'p1',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    alias: {
+      'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
+      zebra: { model: 'third-party-z', preserve: false },
+      apple: { model: 'third-party-a', preserve: false },
+    },
+    modelMetadata: {},
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+  const state = {
+    acquireProviderSnapshot: () => ({ snapshot: { providers: [multi] }, release() {} }),
+  } as unknown as ServerState;
+
+  // Template gpt-5.6-sol has priority 1; synthesized entries must sort after it
+  // and be spaced 100 apart in display-name order (apple before zebra).
+  const fetchImpl = (async () => Response.json({ models: [{ ...upstream, priority: 1 }] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(state, { fetchImpl });
+
+  const bySlug = new Map(models.map((m) => [m.slug as string, m]));
+  expect(bySlug.get('gpt-5')?.priority).toBe(1);
+  expect(bySlug.get('apple')?.priority).toBe(101);
+  expect(bySlug.get('zebra')?.priority).toBe(201);
+  // Response is ordered by ascending priority.
+  expect(models.map((m) => m.slug)).toEqual(['gpt-5', 'apple', 'zebra']);
+});

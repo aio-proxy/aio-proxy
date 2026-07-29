@@ -1,5 +1,5 @@
 import type { ModelsDevModel } from '@aio-proxy/core';
-import { zod } from '@aio-proxy/plugin-sdk';
+import type { CodexUpstreamModel } from '@aio-proxy/types';
 
 import instructions from './default-instructions.md' with { type: 'text' };
 
@@ -16,25 +16,28 @@ const REASONING_DESCRIPTIONS = {
 const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
-// Constant scaffold fields are materialized from zod defaults per the design decision.
-const ScaffoldSchema = zod.object({
-  // CodexModelBaseSchema requires priority/supported_in_api/visibility; a
-  // synthesized entry that omits them is rejected by the Codex client. Synthesized
-  // entries already sort after the template group, so priority only needs a stable
-  // large default rather than gpt-5.6-sol's 1.
-  priority: zod.number().default(999),
-  supported_in_api: zod.boolean().default(true),
-  visibility: zod.string().default('list'),
-  description: zod.string().default(''),
-  supports_search_tool: zod.boolean().default(false),
-  instructions_variables: zod.record(zod.string(), zod.unknown()).default({}),
-  approvals: zod.null().default(null),
-});
+// Codex's ModelInfo struct requires these fields (no serde default, non-Option);
+// a synthesized entry that omits any one makes the client reject the whole
+// `Vec<ModelInfo>` and show an empty picker. When a cached upstream template is
+// available these come from the clone, so this only backstops the offline
+// (empty-cache) path. Values mirror the upstream gpt-5.5 template.
+const REQUIRED_DEFAULTS = {
+  shell_type: 'shell_command',
+  truncation_policy: { mode: 'tokens', limit: 10_000 },
+  support_verbosity: true,
+  default_verbosity: 'low',
+  supports_parallel_tool_calls: true,
+  experimental_supported_tools: [] as string[],
+  apply_patch_tool_type: 'freeform',
+} as const;
 
 type AssembleInput = {
   slug: string;
   displayName: string;
   metadata: ModelsDevModel | undefined;
+  // A complete upstream ModelInfo cloned as the base so every required field is
+  // present. Undefined only when the catalog cache is empty (first-run offline).
+  template: CodexUpstreamModel | undefined;
 };
 
 function reasoningLevel(effort: ReasoningLevel) {
@@ -69,30 +72,44 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
   const levels = reasoningLevelsFor(input.metadata);
   const supportedReasoningLevels = levels.map(reasoningLevel);
   // Empty levels (an explicit non-reasoning model) must omit the field entirely;
-  // Codex rejects an empty-string default and would drop the whole catalog.
+  // Codex rejects a default that is not listed and would drop the whole catalog.
   const defaultReasoningLevel = levels.includes('low') ? 'low' : levels[0];
 
-  const scaffold = ScaffoldSchema.parse({});
+  // Clone a complete template so every required field is inherited; fall back to
+  // REQUIRED_DEFAULTS offline. Template values win where present, defaults fill gaps.
+  const base: Record<string, unknown> = {
+    ...REQUIRED_DEFAULTS,
+    ...(input.template ? structuredClone(input.template) : {}),
+  };
+  // Model-specific promo/routing fields from the template must not leak onto a
+  // synthesized third-party model. default_reasoning_level is re-set below only
+  // when there are levels, so drop the inherited one to avoid an unlisted default.
+  delete base['availability_nux'];
+  delete base['upgrade'];
+  delete base['default_reasoning_level'];
 
   return {
+    ...base,
     slug: input.slug,
     id: input.slug,
     display_name: input.displayName,
-    description: input.metadata?.description || scaffold.description,
-    priority: scaffold.priority,
-    supported_in_api: scaffold.supported_in_api,
-    visibility: scaffold.visibility,
+    description: input.metadata?.description || '',
+    priority: 999,
+    supported_in_api: true,
+    visibility: 'list',
     context_window: contextWindow,
     max_context_window: contextWindow,
     input_modalities: inputModalities,
     supported_reasoning_levels: supportedReasoningLevels,
     ...(defaultReasoningLevel === undefined ? {} : { default_reasoning_level: defaultReasoningLevel }),
-    supports_search_tool: scaffold.supports_search_tool,
+    supports_search_tool: false,
+    prefer_websockets: false,
+    service_tiers: [],
     base_instructions: text,
     model_messages: {
       instructions_template: text,
-      instructions_variables: scaffold.instructions_variables,
-      approvals: scaffold.approvals,
+      instructions_variables: {},
+      approvals: null,
     },
   };
 }
