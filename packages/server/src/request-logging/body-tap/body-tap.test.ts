@@ -74,6 +74,23 @@ test('reports the source error without changing it', async () => {
   expect(terminals).toEqual([{ byteLength: 0, error: failure, outcome: 'error' }]);
 });
 
+test('classifies an upstream abort as cancellation, not error', async () => {
+  const terminals: BodyTapTerminal[] = [];
+  const aborted = new DOMException('The operation was aborted', 'AbortError');
+  const tapped = tapTextBody(
+    new ReadableStream({
+      pull(controller) {
+        controller.error(aborted);
+      },
+    }),
+    'text/event-stream',
+    { chunk() {}, terminal: (value) => terminals.push(value) },
+  );
+
+  await expect(new Response(tapped).text()).rejects.toBe(aborted);
+  expect(terminals).toEqual([{ byteLength: 0, outcome: 'cancelled' }]);
+});
+
 test('observer failure never changes returned bytes', async () => {
   const bytes = encoder.encode('visible');
   const returned = await new Response(

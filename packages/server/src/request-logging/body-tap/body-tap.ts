@@ -1,3 +1,5 @@
+import { isAbortError } from '../../route-observation';
+
 export type BodyTapOutcome = 'complete' | 'cancelled' | 'error';
 
 export type BodyTapTerminal = {
@@ -70,7 +72,7 @@ export function tapTextBody(
           controller.enqueue(next.value);
           emit(decoder.decode(next.value, { stream: true }));
         } catch (error) {
-          terminal({ outcome: 'error', error });
+          terminal(isAbortError(error) ? { outcome: 'cancelled' } : { outcome: 'error', error });
           try {
             reader?.releaseLock();
           } catch {}
