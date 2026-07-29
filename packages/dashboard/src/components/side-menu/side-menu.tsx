@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { Link, useLocation } from '@tanstack/react-router';
-import { Boxes, ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
+import { ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
 import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
@@ -64,14 +64,14 @@ export const SideMenu: React.FC = () => {
           to: '/providers',
           isActive: (pathname) => pathname.startsWith('/providers'),
         },
-        {
-          id: 'models',
-          label: m['dashboard.menus.models'](),
-          icon: Boxes,
-          to: '/models',
-          badge: '1', // todo: fetch the number of models from the backend
-          isActive: (pathname) => pathname.startsWith('/models'),
-        },
+        // {
+        //   id: 'models',
+        //   label: m['dashboard.menus.models'](),
+        //   icon: Boxes,
+        //   to: '/models',
+        //   badge: '1', // todo: fetch the number of models from the backend
+        //   isActive: (pathname) => pathname.startsWith('/models'),
+        // },
       ],
     },
   ];
