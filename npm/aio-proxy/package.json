@@ -2,7 +2,11 @@
   "name": "aio-proxy",
   "version": "0.0.0",
   "description": "All-in-one LLM API proxy",
-  "repository": "github:aio-proxy/aio-proxy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aio-proxy/aio-proxy.git",
+    "directory": "npm/aio-proxy"
+  },
   "bin": {
     "aio-proxy": "bin/aio-proxy.js"
   },
