@@ -40,11 +40,15 @@ function accessLoggedApp(seen: { requestId?: string }): Hono {
         },
         include: ['requestId'],
       },
-      skip: (context) => context.req.path === '/health' || context.req.path.startsWith('/dashboard/'),
+      skip: (context) =>
+        context.req.path === '/health' ||
+        context.req.path === '/dashboard' ||
+        context.req.path.startsWith('/dashboard/'),
     }),
   );
   // Stand-in for requestRecorder.begin(): it reuses the request-scoped id.
   app.get('/health', (context) => context.json({ status: 'ok' }));
+  app.get('/dashboard', (context) => context.text('dash-entry'));
   app.get('/dashboard/index', (context) => context.text('dash'));
   app.post('/v1/responses', (context) => {
     seen.requestId = currentRequestId() ?? crypto.randomUUID();
@@ -71,11 +75,12 @@ describe('access logging middleware', () => {
     expect(record.properties['requestId']).toBe(seen.requestId);
   });
 
-  test('skips /health and /dashboard/*', async () => {
+  test('skips /health and the whole /dashboard tree', async () => {
     const records = await captureRecords();
     const app = accessLoggedApp({});
 
     await app.request('/health');
+    await app.request('/dashboard');
     await app.request('/dashboard/index');
 
     expect(records).toHaveLength(0);

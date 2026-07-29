@@ -30,7 +30,7 @@
     "@aio-proxy/infra": "workspace:*",
     "@aio-proxy/plugin-google-antigravity": "workspace:*",
     "@anthropic-ai/sdk": "catalog:",
-    "@logtape/logtape": "2.2.4",
+    "@logtape/logtape": "catalog:",
     "@types/bun": "catalog:",
     "ai": "catalog:",
     "openai": "catalog:",

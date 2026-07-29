@@ -70,7 +70,10 @@ const createRoutes = (
         },
         include: ['requestId'],
       },
-      skip: (context) => context.req.path === '/health' || context.req.path.startsWith('/dashboard/'),
+      skip: (context) =>
+        context.req.path === '/health' ||
+        context.req.path === '/dashboard' ||
+        context.req.path.startsWith('/dashboard/'),
     }),
   );
   app.get('/health', (context) =>
