@@ -133,7 +133,11 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
     host,
     port,
   });
-  const server = Bun.serve({ hostname: host, port, fetch: app.fetch });
+  // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
+  // pauses). Bun's default 10s idle timeout would close the client connection
+  // mid-stream, surfacing to clients as "stream disconnected"/decode errors.
+  // 255s is Bun's maximum idle window.
+  const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
   console.error(
     m.cli_serve_started({
       apiUrl: `http://${server.hostname}:${server.port}`,

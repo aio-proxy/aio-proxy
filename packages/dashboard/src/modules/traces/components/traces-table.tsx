@@ -70,9 +70,22 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   },
   {
     accessorKey: 'requestedModelId',
-    header: () => m['dashboard.traces.requested_model'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
-      row.original.requestedModelId ?? m['dashboard.traces.not_available'](),
+    header: () => m['dashboard.traces.model'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
+      const { requestedModelId, finalModelId } = row.original;
+      const model = requestedModelId ?? finalModelId;
+      if (model === undefined) return m['dashboard.traces.not_available']();
+      const originalModel =
+        requestedModelId !== undefined && finalModelId !== undefined && requestedModelId !== finalModelId
+          ? finalModelId
+          : undefined;
+      return (
+        <>
+          <div>{model}</div>
+          {originalModel === undefined ? null : <div className="text-xs text-muted-foreground">{originalModel}</div>}
+        </>
+      );
+    },
   },
   {
     id: 'finalProvider',

@@ -51,6 +51,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     protocol: adapter.protocol,
     providerId: provider.id,
     modelId: candidate.modelId,
+    requestedModelId: ctx.requestedModelId,
     ...(ctx.streamRequested ? { startedAt } : {}),
     ...(adapter.session === undefined
       ? {}

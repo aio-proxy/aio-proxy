@@ -28,6 +28,9 @@ export type StreamUsageOptions = {
   readonly stream: ReadableStream<TextStreamPart<ToolSet>>;
   readonly providerId: string;
   readonly modelId: string;
+  // Requested inbound alias, used as a pricing fallback when the routed
+  // upstream modelId is an opaque relay id absent from the price catalog.
+  readonly requestedModelId?: string;
   // performance.now() at attempt dispatch; present only when streaming, so
   // ttft is recorded for streamed responses and skipped for buffered JSON.
   readonly startedAt?: number;
@@ -38,6 +41,7 @@ export type PassthroughUsageOptions = {
   readonly protocol: ProviderProtocol;
   readonly providerId: string;
   readonly modelId: string;
+  readonly requestedModelId?: string;
   readonly onResponseId?: (responseId: string) => void;
   // performance.now() at attempt dispatch; ttft is recorded only for SSE bodies.
   readonly startedAt?: number;
@@ -56,7 +60,7 @@ export function createUsageCapture(options: { readonly logger?: ServerLogSink } 
 }
 
 function streamCapture(
-  { stream, providerId, modelId, startedAt }: StreamUsageOptions,
+  { stream, providerId, modelId, requestedModelId, startedAt }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -91,6 +95,7 @@ function streamCapture(
                       await finalizeUsage({
                         usage: finishUsage,
                         accounting: { source: 'ai-sdk' },
+                        ...(requestedModelId === undefined ? {} : { requestedModelId }),
                         ...(logger === undefined ? {} : { logger }),
                       }),
                     ),
@@ -140,7 +145,7 @@ function streamCapture(
 }
 
 function passthroughCapture(
-  { response, protocol, providerId, modelId, onResponseId, startedAt }: PassthroughUsageOptions,
+  { response, protocol, providerId, modelId, requestedModelId, onResponseId, startedAt }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
   if (response.status < 200 || response.status >= 400) {
@@ -212,6 +217,7 @@ function passthroughCapture(
               ? undefined
               : { ...observation.usage, providerId, modelId },
           accounting: { source: 'passthrough', protocol },
+          ...(requestedModelId === undefined ? {} : { requestedModelId }),
           ...(logger === undefined ? {} : { logger }),
           ...(observation.issues === undefined ? {} : { issues: observation.issues }),
         });

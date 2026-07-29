@@ -34,10 +34,17 @@ export function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelI
 export async function priceUsage(
   usage: UsageRow | undefined,
   accounting: UsageAccounting,
+  requestedModelId?: string,
 ): Promise<UsageRow | undefined> {
   if (usage === undefined) return undefined;
   try {
-    const price = findModelPrice(await getProviders(), usage.modelId);
+    const providers = await getProviders();
+    // Bill against the model the client requested, not whatever the upstream
+    // relay reports: usage.modelId is the routed upstream id (often an opaque
+    // relay id), so a matching-but-wrong catalog hit there would mis-price.
+    // Only fall back to usage.modelId when no requested model was captured.
+    const priceModel = requestedModelId ?? usage.modelId;
+    const price = findModelPrice(providers, priceModel);
     const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price, accounting);
     return cost === undefined ? usage : { ...usage, ...cost };
   } catch {

@@ -76,4 +76,70 @@ describe('usage capture pricing stream', () => {
       }),
     });
   });
+
+  test('prices by the requested model even when the upstream modelId also resolves to a different price', async () => {
+    await seedPriceCatalog([
+      // Both resolve, but the client asked for the requested model; the routed
+      // upstream id must never win pricing.
+      { id: 'vendor/requested-model', input: 2, output: 10 },
+      { id: 'relay/upstream-model', input: 99, output: 99 },
+    ]);
+    const finish: TextStreamPart<ToolSet> = {
+      type: 'finish',
+      finishReason: 'stop',
+      rawFinishReason: 'stop',
+      totalUsage: {
+        inputTokenDetails: { cacheReadTokens: undefined, cacheWriteTokens: undefined, noCacheTokens: 100 },
+        inputTokens: 100,
+        outputTokenDetails: { reasoningTokens: undefined, textTokens: 10 },
+        outputTokens: 10,
+        totalTokens: 110,
+      },
+    };
+    const captured = createUsageCapture().stream({
+      providerId: 'relay',
+      // Routed upstream id: resolves to a price, but must be ignored.
+      modelId: 'relay/upstream-model',
+      requestedModelId: 'vendor/requested-model',
+      stream: textStream([finish]),
+    });
+    await drain(captured.value);
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      usage: expect.objectContaining({
+        // (100*2 + 10*10) / 1e6 — priced by the requested model, not upstream-model
+        estimatedCostUsd: 0.0003,
+        priceModelId: 'vendor/requested-model',
+      }),
+    });
+  });
+
+  test('falls back to the upstream modelId when no requested model was captured', async () => {
+    await seedPriceCatalog([{ id: 'anthropic/claude', input: 2, output: 10 }]);
+    const finish: TextStreamPart<ToolSet> = {
+      type: 'finish',
+      finishReason: 'stop',
+      rawFinishReason: 'stop',
+      totalUsage: {
+        inputTokenDetails: { cacheReadTokens: undefined, cacheWriteTokens: undefined, noCacheTokens: 100 },
+        inputTokens: 100,
+        outputTokenDetails: { reasoningTokens: undefined, textTokens: 10 },
+        outputTokens: 10,
+        totalTokens: 110,
+      },
+    };
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'claude',
+      stream: textStream([finish]),
+    });
+    await drain(captured.value);
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      usage: expect.objectContaining({
+        estimatedCostUsd: 0.0003,
+        priceModelId: 'anthropic/claude',
+      }),
+    });
+  });
 });
