@@ -11,6 +11,10 @@ export async function codexClientModels(
 ): Promise<{ readonly models: readonly Record<string, unknown>[] }> {
   const [resolved, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
+  // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
+  // required Codex ModelInfo field is inherited; else any cached row; else
+  // undefined (empty cache) and assembleCodexModel backstops with static defaults.
+  const template = bySlug.get('gpt-5.5') ?? upstream[0];
 
   const templated: { entry: Record<string, unknown>; priority: number }[] = [];
   const synthesized: Record<string, unknown>[] = [];
@@ -28,6 +32,7 @@ export async function codexClientModels(
         slug: model.slug,
         displayName: model.displayName,
         metadata: model.metadata,
+        template,
       }),
     );
   }
