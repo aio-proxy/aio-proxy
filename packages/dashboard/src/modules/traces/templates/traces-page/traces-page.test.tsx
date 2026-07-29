@@ -49,12 +49,25 @@ const runningTrace: DashboardTraceSummary = {
   inboundProtocol: 'anthropic',
   requestedModelId: 'claude-sonnet',
 };
+const toolOnlyTrace: DashboardTraceSummary = {
+  traceId: 'e'.repeat(32),
+  rootSpanId: 'f'.repeat(16),
+  requestId: 'request-tool-only',
+  startedAt: '2026-07-12T08:02:00.000Z',
+  endedAt: '2026-07-12T08:02:00.250Z',
+  durationMs: 250,
+  stream: true,
+  otelStatusCode: 'UNSET',
+  inboundProtocol: 'openai-response',
+  requestedModelId: 'gpt-5',
+  finalHttpStatus: 200,
+};
 
 rs.mock('../../hooks/use-traces-query', () => ({
   useTracesQuery: (search: unknown, autoRefresh: boolean) => {
     mocks.querySearch(search, autoRefresh);
     return {
-      data: { items: [runningTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
+      data: { items: [runningTrace, toolOnlyTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -64,7 +77,7 @@ rs.mock('../../hooks/use-traces-query', () => ({
 }));
 
 describe('traces page', () => {
-  test('renders detailed trace list values and only shows TTFT for streaming requests', async () => {
+  test('renders TTFT only when a streamed trace has a first content token', async () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
@@ -99,6 +112,11 @@ describe('traces page', () => {
     ).getAllByRole('cell')[8];
     expect(runningTokenCell).toHaveTextContent('—');
     expect(runningTokenCell).not.toHaveTextContent('N/A');
+    const toolOnlyDurationCell = within(
+      screen.getByRole('button', { name: new RegExp(toolOnlyTrace.traceId, 'u') }),
+    ).getAllByRole('cell')[7];
+    expect(toolOnlyDurationCell).not.toHaveTextContent('TTFT');
+    expect(toolOnlyDurationCell).not.toHaveTextContent('N/A');
     expect(screen.getByText(/42 (ms|毫秒)/u)).toBeTruthy();
     expect(screen.getAllByText(/TTFT/u)).toHaveLength(1);
     expect(screen.getByText('$0.25')).toBeTruthy();

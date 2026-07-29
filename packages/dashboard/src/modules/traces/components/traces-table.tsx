@@ -105,14 +105,11 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
       <div className="min-w-24">
         <div>{formatTraceDuration(row.original.durationMs)}</div>
-        {row.original.stream === true ? (
+        {row.original.ttftMs === undefined ? null : (
           <div className="text-xs text-muted-foreground">
-            {m['dashboard.traces.ttft']()}{' '}
-            {row.original.ttftMs === undefined
-              ? m['dashboard.traces.ttft_unavailable']()
-              : formatTraceDuration(row.original.ttftMs)}
+            {m['dashboard.traces.ttft']()} {formatTraceDuration(row.original.ttftMs)}
           </div>
-        ) : null}
+        )}
       </div>
     ),
   },
