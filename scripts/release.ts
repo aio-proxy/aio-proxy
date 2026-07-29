@@ -94,17 +94,31 @@ const invalid = versions.find((v) => !semver.valid(v));
 if (invalid) throw new Error(`Unparseable version: ${invalid}`);
 const highest = semver.rsort([...versions])[0]!;
 
-// Resume, don't re-bump: if HEAD already carries a release tag (a prior run pushed
-// the bump commit + tag but a later publish failed), reuse that version so the
-// registry-skip loop targets the partially-published release instead of vX+1.
-const headTag = (await $`git tag --points-at HEAD`.nothrow().quiet().text())
+// Resume vs. bump. A prior run may have pushed the bump commit + tag but failed
+// mid-publish; GitHub "Re-run" then checks out the original dispatch SHA (not the
+// pushed commit), so `git tag --points-at HEAD` can't see it. Instead, look at the
+// highest existing v* tag (fetch-tags makes it visible) and, if any publishable
+// package is still missing from the registry at that version, resume it rather
+// than bumping to a version whose siblings would be published while the prior one
+// stays permanently half-released.
+async function isFullyPublished(ver: string): Promise<boolean> {
+  for (const { json } of publishable) {
+    const seen = await $`npm view ${`${json.name}@${ver}`} version`.nothrow().quiet();
+    if (!(seen.exitCode === 0 && seen.text().trim() === ver)) return false;
+  }
+  return true;
+}
+
+const highestTag = (await $`git tag --list v*`.nothrow().quiet().text())
   .split('\n')
-  .map((t) => t.trim())
-  .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
-const version = headTag && !DRY_RUN ? headTag.slice(1) : semver.inc(highest, level)!;
+  .map((t) => t.trim().replace(/^v/, ''))
+  .filter((v) => semver.valid(v))
+  .sort((a, b) => semver.rcompare(a, b))[0];
+const resuming = !DRY_RUN && highestTag !== undefined && !(await isFullyPublished(highestTag));
+const version = resuming ? highestTag! : semver.inc(highest, level)!;
 
 console.log(
-  `Bump: ${level}  (${highest} -> ${version})${headTag && !DRY_RUN ? '  [resuming tagged release]' : ''}${DRY_RUN ? '  [dry-run]' : ''}\n`,
+  `Bump: ${level}  (${highest} -> ${version})${resuming ? '  [resuming incomplete release]' : ''}${DRY_RUN ? '  [dry-run]' : ''}\n`,
 );
 
 // --- generate the changelog section for this release ---
@@ -134,15 +148,30 @@ for (const { path } of allPackages) {
 const restoreManifests = () => Promise.all([...originals].map(([path, text]) => Bun.write(path, text)));
 
 // Refresh bun.lock's recorded workspace versions so `bun pm pack` resolves
-// workspace: siblings (e.g. the aio-proxy launcher's optionalDependencies) to the
-// bumped version. A plain `bun install` reports "no changes" and leaves them at
-// the pre-bump version; `bun update` (without --latest) re-resolves within the
-// existing package.json ranges, so catalog pins are not drifted.
+// workspace: siblings (e.g. the launcher's optionalDependencies, plugin-sdk's
+// catalog: deps) to the bumped version. A plain `bun install` reports "no changes"
+// and leaves the lock's workspace versions stale; only `bun update` re-resolves
+// them. But `bun update` also bumps any external devDependency with a newer
+// in-range release (e.g. @commitlint 21.2.0 -> 21.2.1, oxlint bindings), which
+// would silently ship a release built against an untested dependency set.
+//
+// bun.lock is a segmented JSON-ish document: the `workspaces` block (top) holds
+// sibling versions; `catalog` and `packages` (from the `patchedDependencies`
+// marker onward) hold external resolutions. Splice the two locks — keep the
+// updated `workspaces` block, restore everything from the marker onward from the
+// pre-run lock — so workspace versions refresh with zero external drift. The
+// result stays frozen-install clean because the root manifest is restored too.
+const pristineLock = originals.get('bun.lock')!;
 await $`bun update`;
-// Discard bun update's incidental rewrite of the root manifest's devDependency
-// ranges; the lockfile stays self-consistent (frozen install still passes) since
-// only the workspace sibling versions materially changed.
 await Bun.write('package.json', rootOriginal);
+const LOCK_TAIL_MARKER = '\n  "patchedDependencies":';
+const updatedLock = await Bun.file('bun.lock').text();
+const headEnd = updatedLock.indexOf(LOCK_TAIL_MARKER);
+const tailStart = pristineLock.indexOf(LOCK_TAIL_MARKER);
+if (headEnd < 0 || tailStart < 0) {
+  throw new Error(`bun.lock layout changed: "patchedDependencies" marker not found; update the lock-splice logic.`);
+}
+await Bun.write('bun.lock', updatedLock.slice(0, headEnd) + pristineLock.slice(tailStart));
 
 // --- build: library (rslib) + CLI binaries (bun build --compile, all targets) ---
 if (!DRY_RUN) {
@@ -192,10 +221,10 @@ if (DRY_RUN) {
 }
 
 // --- persist the release first, so a mid-publish failure is resumable ---
-// On a resume (HEAD already carries this tag) the changelog and release commit
-// already exist — don't rewrite them (that would move HEAD off the tag and break
-// a further retry's resume detection). Just re-push and fall through to publish.
-if (!headTag) {
+// Skip entirely when resuming: the bump commit and tag were already pushed by the
+// prior run, and this checkout (a re-run uses the original dispatch SHA) neither
+// has them nor should rewrite them. Go straight to the registry-skip publish loop.
+if (!resuming) {
   // Prepend the new section after the "# Changelog" H1 (kept at the top).
   const changelogFile = Bun.file('CHANGELOG.md');
   const H1 = '# Changelog';
@@ -206,11 +235,11 @@ if (!headTag) {
   await $`git add -A`;
   await $`git commit -m ${`chore: release v${version}`}`;
   await $`git tag -a v${version} -m ${`v${version}`}`;
+  // Push to the concrete branch this workflow ran on (not the literal ref "HEAD"),
+  // and push the tag explicitly (a lightweight tag would be skipped by --follow-tags).
+  const branch = process.env['GITHUB_REF_NAME'] ?? (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
+  await $`git push origin ${`HEAD:${branch}`} ${`refs/tags/v${version}`}`;
 }
-// Push to the concrete branch this workflow ran on (not the literal ref "HEAD"),
-// and push the tag explicitly (a lightweight tag would be skipped by --follow-tags).
-const branch = process.env['GITHUB_REF_NAME'] ?? (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
-await $`git push origin ${`HEAD:${branch}`} ${`refs/tags/v${version}`}`;
 
 // --- publish; skip versions already on the registry so a rerun resumes cleanly ---
 for (const { json } of publishable) {
