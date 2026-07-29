@@ -94,10 +94,11 @@ const changelog = await changelogSection(version);
 console.log(changelog);
 
 // --- write the new version to every publishable package.json ---
-// Done before packing so the launcher's optionalDependencies resolve to it.
+// Written before packing (even in dry-run) so bun pm pack resolves
+// optionalDependencies/workspace: to the real release version; dry-run restores below.
 for (const { path, json } of publishable) {
   json.version = version;
-  if (!DRY_RUN) await Bun.write(path, `${JSON.stringify(json, null, 2)}\n`);
+  await Bun.write(path, `${JSON.stringify(json, null, 2)}\n`);
 }
 
 // --- build: library (rslib) + CLI binaries (bun build --compile, all targets) ---
@@ -130,27 +131,43 @@ for (const tgz of tarballs) {
 }
 
 if (DRY_RUN) {
+  // Manifests were written to validate packing; restore them so dry-run leaves no diff.
+  await $`git checkout -- ${publishable.map((p) => p.path)}`;
   console.log(`\n[dry-run] Would publish ${tarballs.length} tarball(s) with --provenance. Stopping.`);
   process.exit(0);
 }
 
-for (const tgz of tarballs) {
-  console.log(`\nPublishing ${tgz}`);
-  await $`npm publish ${tgz} --provenance --access public`;
-}
-
-// --- prepend the section to CHANGELOG.md, commit the bump, tag, push ---
+// --- persist the release first, so a mid-publish failure is resumable ---
+// Prepend the new section after the "# Changelog" H1 (kept at the top).
 const changelogFile = Bun.file('CHANGELOG.md');
-const prior = (await changelogFile.exists()) ? await changelogFile.text() : '# Changelog\n';
-await Bun.write(changelogFile, `${changelog}\n${prior}`);
+const H1 = '# Changelog';
+const prior = (await changelogFile.exists()) ? await changelogFile.text() : `${H1}\n`;
+const body = prior.startsWith(H1) ? prior.slice(H1.length).replace(/^\n+/, '') : prior;
+await Bun.write(changelogFile, `${H1}\n\n${changelog}\n${body}`);
 
 await $`git add -A`;
 await $`git commit -m ${`chore: release v${version}`}`;
 await $`git tag v${version}`;
-await $`git push origin HEAD --tags`;
+// Push to the concrete branch this workflow ran on, not the literal ref "HEAD".
+const branch = process.env['GITHUB_REF_NAME'] ?? (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
+await $`git push origin ${`HEAD:${branch}`} --follow-tags`;
 
-// GitHub Release with the same notes (gh is available on GitHub-hosted runners).
+// --- publish; skip versions already on the registry so a rerun resumes cleanly ---
+for (const { json } of publishable) {
+  const name = json.name;
+  const dest = join(outDir, name.replace(/[@/]/g, '-'));
+  const [tgz] = await Array.fromAsync(new Bun.Glob('*.tgz').scan({ cwd: dest, absolute: true }));
+  const existing = await $`npm view ${`${name}@${version}`} version`.nothrow().quiet();
+  if (existing.exitCode === 0 && existing.text().trim() === version) {
+    console.log(`\nSkipping ${name}@${version}: already published`);
+    continue;
+  }
+  console.log(`\nPublishing ${tgz}`);
+  await $`npm publish ${tgz} --provenance --access public`;
+}
+
+// --- GitHub Release with the same notes; failure must fail the job ---
 const notesFile = join(outDir, 'RELEASE_NOTES.md');
 await Bun.write(notesFile, changelog);
-await $`gh release create v${version} --title ${`v${version}`} --notes-file ${notesFile}`.nothrow();
+await $`gh release create v${version} --title ${`v${version}`} --notes-file ${notesFile}`;
 console.log(`\nReleased v${version}`);
