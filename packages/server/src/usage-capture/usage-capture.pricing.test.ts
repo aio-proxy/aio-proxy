@@ -77,12 +77,12 @@ describe('usage capture pricing stream', () => {
     });
   });
 
-  test('prices by the requested model even when the upstream modelId also resolves to a different price', async () => {
+  test('prices the resolved target model, not the requested alias, when the target has a catalog entry', async () => {
     await seedPriceCatalog([
-      // Both resolve, but the client asked for the requested model; the routed
-      // upstream id must never win pricing.
-      { id: 'vendor/requested-model', input: 2, output: 10 },
-      { id: 'relay/upstream-model', input: 99, output: 99 },
+      // Both resolve; the Router-selected target (usage.modelId) is the billed
+      // model, so an alias/variant that maps to a priced target uses it.
+      { id: 'vendor/requested-alias', input: 2, output: 10 },
+      { id: 'vendor/resolved-target', input: 5, output: 20 },
     ]);
     const finish: TextStreamPart<ToolSet> = {
       type: 'finish',
@@ -97,19 +97,51 @@ describe('usage capture pricing stream', () => {
       },
     };
     const captured = createUsageCapture().stream({
-      providerId: 'relay',
-      // Routed upstream id: resolves to a price, but must be ignored.
-      modelId: 'relay/upstream-model',
-      requestedModelId: 'vendor/requested-model',
+      providerId: 'vendor',
+      // Router-resolved target: this is the authoritative billed model.
+      modelId: 'vendor/resolved-target',
+      requestedModelId: 'vendor/requested-alias',
       stream: textStream([finish]),
     });
     await drain(captured.value);
     await expect(captured.completion).resolves.toEqual({
       outcome: 'success',
       usage: expect.objectContaining({
-        // (100*2 + 10*10) / 1e6 — priced by the requested model, not upstream-model
+        // (100*5 + 10*20) / 1e6 — priced by the resolved target, not the alias
+        estimatedCostUsd: 0.0007,
+        priceModelId: 'vendor/resolved-target',
+      }),
+    });
+  });
+
+  test('falls back to the requested model when the resolved target has no catalog entry', async () => {
+    await seedPriceCatalog([{ id: 'vendor/requested-alias', input: 2, output: 10 }]);
+    const finish: TextStreamPart<ToolSet> = {
+      type: 'finish',
+      finishReason: 'stop',
+      rawFinishReason: 'stop',
+      totalUsage: {
+        inputTokenDetails: { cacheReadTokens: undefined, cacheWriteTokens: undefined, noCacheTokens: 100 },
+        inputTokens: 100,
+        outputTokenDetails: { reasoningTokens: undefined, textTokens: 10 },
+        outputTokens: 10,
+        totalTokens: 110,
+      },
+    };
+    const captured = createUsageCapture().stream({
+      providerId: 'relay',
+      // Opaque relay id absent from the catalog.
+      modelId: 'relay/opaque-upstream-id',
+      requestedModelId: 'vendor/requested-alias',
+      stream: textStream([finish]),
+    });
+    await drain(captured.value);
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      usage: expect.objectContaining({
+        // (100*2 + 10*10) / 1e6 — priced by the requested alias
         estimatedCostUsd: 0.0003,
-        priceModelId: 'vendor/requested-model',
+        priceModelId: 'vendor/requested-alias',
       }),
     });
   });

@@ -39,12 +39,13 @@ export async function priceUsage(
   if (usage === undefined) return undefined;
   try {
     const providers = await getProviders();
-    // Bill against the model the client requested, not whatever the upstream
-    // relay reports: usage.modelId is the routed upstream id (often an opaque
-    // relay id), so a matching-but-wrong catalog hit there would mis-price.
-    // Only fall back to usage.modelId when no requested model was captured.
-    const priceModel = requestedModelId ?? usage.modelId;
-    const price = findModelPrice(providers, priceModel);
+    // Price the resolved target first: usage.modelId is the alias/variant the
+    // Router selected, so it is the authoritative billed model. Fall back to
+    // the requested alias only when the resolved target has no catalog entry
+    // (e.g. an opaque upstream relay id), so relayed models still get priced.
+    const price =
+      findModelPrice(providers, usage.modelId) ??
+      (requestedModelId === undefined ? undefined : findModelPrice(providers, requestedModelId));
     const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price, accounting);
     return cost === undefined ? usage : { ...usage, ...cost };
   } catch {
