@@ -25,36 +25,36 @@
     },
     "npm/aio-proxy": {
       "name": "aio-proxy",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "bin": {
         "aio-proxy": "bin/aio-proxy.js",
       },
       "optionalDependencies": {
-        "@aio-proxy/cli-darwin-arm64": "0.0.0",
-        "@aio-proxy/cli-darwin-x64": "0.0.0",
-        "@aio-proxy/cli-linux-arm64": "0.0.0",
-        "@aio-proxy/cli-linux-x64": "0.0.0",
+        "@aio-proxy/cli-darwin-arm64": "workspace:*",
+        "@aio-proxy/cli-darwin-x64": "workspace:*",
+        "@aio-proxy/cli-linux-arm64": "workspace:*",
+        "@aio-proxy/cli-linux-x64": "workspace:*",
       },
     },
     "npm/cli-darwin-arm64": {
       "name": "@aio-proxy/cli-darwin-arm64",
-      "version": "0.0.0",
+      "version": "0.0.1",
     },
     "npm/cli-darwin-x64": {
       "name": "@aio-proxy/cli-darwin-x64",
-      "version": "0.0.0",
+      "version": "0.0.1",
     },
     "npm/cli-linux-arm64": {
       "name": "@aio-proxy/cli-linux-arm64",
-      "version": "0.0.0",
+      "version": "0.0.1",
     },
     "npm/cli-linux-x64": {
       "name": "@aio-proxy/cli-linux-x64",
-      "version": "0.0.0",
+      "version": "0.0.1",
     },
     "packages/cli": {
       "name": "@aio-proxy/cli",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
@@ -75,7 +75,7 @@
     },
     "packages/core": {
       "name": "@aio-proxy/core",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/google": "catalog:",
@@ -116,7 +116,7 @@
     },
     "packages/dashboard": {
       "name": "@aio-proxy/dashboard",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -172,7 +172,7 @@
     },
     "packages/i18n": {
       "name": "@aio-proxy/i18n",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@inlang/paraglide-js": "catalog:",
         "hono": "catalog:",
@@ -185,7 +185,7 @@
     },
     "packages/infra": {
       "name": "@aio-proxy/infra",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@rslib/core": "catalog:",
       },
@@ -195,7 +195,7 @@
     },
     "packages/logger": {
       "name": "@aio-proxy/logger",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@logtape/file": "2.2.4",
@@ -209,7 +209,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "ai": "catalog:",
@@ -226,7 +226,7 @@
     },
     "packages/plugins/github-copilot": {
       "name": "@aio-proxy/plugin-github-copilot",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "catalog:",
@@ -242,7 +242,7 @@
     },
     "packages/plugins/google-antigravity": {
       "name": "@aio-proxy/plugin-google-antigravity",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
@@ -260,7 +260,7 @@
     },
     "packages/plugins/kimi-code": {
       "name": "@aio-proxy/plugin-kimi-code",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
@@ -275,7 +275,7 @@
     },
     "packages/plugins/openai-chatgpt": {
       "name": "@aio-proxy/plugin-openai-chatgpt",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -292,7 +292,7 @@
     },
     "packages/plugins/xai-grok": {
       "name": "@aio-proxy/plugin-xai-grok",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -306,7 +306,7 @@
     },
     "packages/server": {
       "name": "@aio-proxy/server",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
@@ -336,7 +336,7 @@
     },
     "packages/types": {
       "name": "@aio-proxy/types",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "es-toolkit": "catalog:",
         "zod": "catalog:",

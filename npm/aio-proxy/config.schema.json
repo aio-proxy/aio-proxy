@@ -63,7 +63,12 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "enum": ["debug", "info", "warn", "error"]
+                  "enum": [
+                    "debug",
+                    "info",
+                    "warn",
+                    "error"
+                  ]
                 },
                 {
                   "type": "string",
@@ -204,13 +209,17 @@
                                     "type": "boolean"
                                   }
                                 },
-                                "required": ["model"]
+                                "required": [
+                                  "model"
+                                ]
                               }
                             ]
                           }
                         }
                       },
-                      "required": ["model"]
+                      "required": [
+                        "model"
+                      ]
                     }
                   ]
                 }
@@ -247,7 +256,12 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "enum": ["openai-response", "openai-compatible", "anthropic", "gemini"],
+                    "enum": [
+                      "openai-response",
+                      "openai-compatible",
+                      "anthropic",
+                      "gemini"
+                    ],
                     "description": "Wire protocol supported by this provider base URL."
                   },
                   {
@@ -287,7 +301,11 @@
                 ]
               }
             },
-            "required": ["kind", "protocol", "baseURL"]
+            "required": [
+              "kind",
+              "protocol",
+              "baseURL"
+            ]
           },
           {
             "type": "object",
@@ -360,13 +378,17 @@
                                     "type": "boolean"
                                   }
                                 },
-                                "required": ["model"]
+                                "required": [
+                                  "model"
+                                ]
                               }
                             ]
                           }
                         }
                       },
-                      "required": ["model"]
+                      "required": [
+                        "model"
+                      ]
                     }
                   ]
                 }
@@ -407,7 +429,11 @@
                 ]
               }
             },
-            "required": ["kind", "plugin", "capability"]
+            "required": [
+              "kind",
+              "plugin",
+              "capability"
+            ]
           },
           {
             "type": "object",
@@ -480,13 +506,17 @@
                                     "type": "boolean"
                                   }
                                 },
-                                "required": ["model"]
+                                "required": [
+                                  "model"
+                                ]
                               }
                             ]
                           }
                         }
                       },
-                      "required": ["model"]
+                      "required": [
+                        "model"
+                      ]
                     }
                   ]
                 }
@@ -548,11 +578,15 @@
                 ]
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           }
         ]
       }
     }
   },
-  "required": ["providers"]
+  "required": [
+    "providers"
+  ]
 }
