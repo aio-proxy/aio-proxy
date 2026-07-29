@@ -10,10 +10,11 @@ export async function finalizeUsage(input: {
   readonly accounting: UsageAccounting;
   readonly logger?: ServerLogSink;
   readonly issues?: readonly UsageIssue[];
+  readonly requestedModelId?: string;
 }): Promise<UsageRow | undefined> {
   const normalized = validUsage(input.usage, input.accounting, input.logger, input.issues);
   if (normalized === undefined) return undefined;
-  const priced = await priceUsage(normalized, input.accounting);
+  const priced = await priceUsage(normalized, input.accounting, input.requestedModelId);
   return validUsage(priced, input.accounting, input.logger, undefined, true);
 }
 

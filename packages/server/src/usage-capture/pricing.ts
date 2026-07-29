@@ -34,10 +34,18 @@ export function normalizeAiSdkUsage(part: FinishPart, providerId: string, modelI
 export async function priceUsage(
   usage: UsageRow | undefined,
   accounting: UsageAccounting,
+  requestedModelId?: string,
 ): Promise<UsageRow | undefined> {
   if (usage === undefined) return undefined;
   try {
-    const price = findModelPrice(await getProviders(), usage.modelId);
+    const providers = await getProviders();
+    // Price the resolved target first: usage.modelId is the alias/variant the
+    // Router selected, so it is the authoritative billed model. Fall back to
+    // the requested alias only when the resolved target has no catalog entry
+    // (e.g. an opaque upstream relay id), so relayed models still get priced.
+    const price =
+      findModelPrice(providers, usage.modelId) ??
+      (requestedModelId === undefined ? undefined : findModelPrice(providers, requestedModelId));
     const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price, accounting);
     return cost === undefined ? usage : { ...usage, ...cost };
   } catch {

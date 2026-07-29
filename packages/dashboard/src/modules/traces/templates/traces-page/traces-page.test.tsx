@@ -81,7 +81,11 @@ describe('traces page', () => {
     fireEvent.focus(sessionId);
     expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /^(Provider|提供商)$/u })).toBeTruthy();
-    expect(screen.queryByText('gpt-5.1')).toBeNull();
+    const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
+      'cell',
+    )[4];
+    expect(modelCell).toHaveTextContent('gpt-5');
+    expect(modelCell).toHaveTextContent('gpt-5.1');
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');

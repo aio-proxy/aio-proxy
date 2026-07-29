@@ -46,6 +46,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const captured = source.usageCapture.stream({
     providerId: provider.id,
     modelId: candidate.modelId,
+    requestedModelId: ctx.requestedModelId,
     ...(ctx.streamRequested ? { startedAt } : {}),
     stream: inAttempt(() =>
       model.invoke({
