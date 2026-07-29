@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import { $ } from 'bun';
 import { ConventionalChangelog } from 'conventional-changelog';
 import { Bumper } from 'conventional-recommended-bump';
+import * as semver from 'semver';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const bumpArg = process.argv.find((a) => a.startsWith('--bump='))?.slice('--bump='.length);
@@ -68,16 +69,6 @@ if (!['major', 'minor', 'patch'].includes(level)) {
   throw new Error(`Invalid --bump=${bumpArg}; expected major|minor|patch`);
 }
 
-// --- compute the next lockstep version from the highest current version ---
-function nextVersion(current: string, bump: 'major' | 'minor' | 'patch'): string {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(current);
-  if (!m) throw new Error(`Unparseable version: ${current}`);
-  const [maj, min, pat] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (bump === 'major') return `${maj + 1}.0.0`;
-  if (bump === 'minor') return `${maj}.${min + 1}.0`;
-  return `${maj}.${min}.${pat + 1}`;
-}
-
 // --- generate a changelog section for the new version (same preset as bump) ---
 async function changelogSection(nextVer: string): Promise<string> {
   const generator = new ConventionalChangelog(process.cwd())
@@ -89,11 +80,12 @@ async function changelogSection(nextVer: string): Promise<string> {
   return out;
 }
 
-const highest = publishable
-  .map((p) => p.json.version)
-  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  .at(-1)!;
-const version = nextVersion(highest, level);
+// Highest current version via semver ordering (localeCompare mis-sorts 1.9 vs 1.10).
+const versions = publishable.map((p) => p.json.version);
+const invalid = versions.find((v) => !semver.valid(v));
+if (invalid) throw new Error(`Unparseable version: ${invalid}`);
+const highest = semver.rsort([...versions])[0]!;
+const version = semver.inc(highest, level)!;
 
 console.log(`Bump: ${level}  (${highest} -> ${version})${DRY_RUN ? '  [dry-run]' : ''}\n`);
 
