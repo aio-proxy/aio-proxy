@@ -145,12 +145,17 @@ const prior = (await changelogFile.exists()) ? await changelogFile.text() : `${H
 const body = prior.startsWith(H1) ? prior.slice(H1.length).replace(/^\n+/, '') : prior;
 await Bun.write(changelogFile, `${H1}\n\n${changelog}\n${body}`);
 
+// Idempotent so a re-run after a mid-publish failure resumes instead of erroring:
+// commit only if the bump isn't already committed, tag only if absent.
 await $`git add -A`;
-await $`git commit -m ${`chore: release v${version}`}`;
-await $`git tag v${version}`;
-// Push to the concrete branch this workflow ran on, not the literal ref "HEAD".
+const staged = await $`git diff --cached --quiet`.nothrow();
+if (staged.exitCode !== 0) await $`git commit -m ${`chore: release v${version}`}`;
+const tagged = await $`git rev-parse -q --verify ${`refs/tags/v${version}`}`.nothrow().quiet();
+if (tagged.exitCode !== 0) await $`git tag -a v${version} -m ${`v${version}`}`;
+// Push to the concrete branch this workflow ran on (not the literal ref "HEAD"),
+// and push the tag explicitly (a lightweight tag would be skipped by --follow-tags).
 const branch = process.env['GITHUB_REF_NAME'] ?? (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
-await $`git push origin ${`HEAD:${branch}`} --follow-tags`;
+await $`git push origin ${`HEAD:${branch}`} ${`refs/tags/v${version}`}`;
 
 // --- publish; skip versions already on the registry so a rerun resumes cleanly ---
 for (const { json } of publishable) {
