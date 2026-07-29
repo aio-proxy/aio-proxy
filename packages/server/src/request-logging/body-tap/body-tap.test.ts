@@ -74,21 +74,34 @@ test('reports the source error without changing it', async () => {
   expect(terminals).toEqual([{ byteLength: 0, error: failure, outcome: 'error' }]);
 });
 
-test('classifies an upstream abort as cancellation, not error', async () => {
-  const terminals: BodyTapTerminal[] = [];
-  const aborted = new DOMException('The operation was aborted', 'AbortError');
-  const tapped = tapTextBody(
-    new ReadableStream({
-      pull(controller) {
-        controller.error(aborted);
-      },
-    }),
-    'text/event-stream',
-    { chunk() {}, terminal: (value) => terminals.push(value) },
-  );
+test('classifies an abort as cancellation only when the inbound signal aborted', async () => {
+  const abortWith = async (signal?: AbortSignal) => {
+    const terminals: BodyTapTerminal[] = [];
+    const aborted = new DOMException('The operation was aborted', 'AbortError');
+    const tapped = tapTextBody(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(aborted);
+        },
+      }),
+      'text/event-stream',
+      { chunk() {}, terminal: (value) => terminals.push(value) },
+      signal,
+    );
+    await expect(new Response(tapped).text()).rejects.toBe(aborted);
+    return { terminals, aborted };
+  };
 
-  await expect(new Response(tapped).text()).rejects.toBe(aborted);
-  expect(terminals).toEqual([{ byteLength: 0, outcome: 'cancelled' }]);
+  const controller = new AbortController();
+  controller.abort();
+  const clientDisconnect = await abortWith(controller.signal);
+  expect(clientDisconnect.terminals).toEqual([{ byteLength: 0, outcome: 'cancelled' }]);
+
+  const upstreamAbort = await abortWith(new AbortController().signal);
+  expect(upstreamAbort.terminals).toEqual([{ byteLength: 0, error: upstreamAbort.aborted, outcome: 'error' }]);
+
+  const noSignal = await abortWith(undefined);
+  expect(noSignal.terminals).toEqual([{ byteLength: 0, error: noSignal.aborted, outcome: 'error' }]);
 });
 
 test('observer failure never changes returned bytes', async () => {

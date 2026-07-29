@@ -46,7 +46,12 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
         outcome: 'response',
         ...responseMetadata(response),
       });
-      return responseWithObservedBody(response, { ...identity, direction: 'upstream_response' }, scope.logger);
+      return responseWithObservedBody(
+        response,
+        { ...identity, direction: 'upstream_response' },
+        scope.logger,
+        request.signal,
+      );
     } catch (error) {
       logServerEvent(scope.logger, {
         event: 'request.upstream_result',
@@ -77,23 +82,29 @@ function observedBody(
   contentType: string | null,
   identity: BodyIdentity,
   logger: ServerLogSink,
+  signal: AbortSignal | undefined,
 ): ReadableStream<Uint8Array> {
   let sequence = 0;
-  return tapTextBody(body, contentType, {
-    chunk(text) {
-      logServerEvent(logger, { event: 'request.body_chunk', ...identity, sequence: sequence++, text });
+  return tapTextBody(
+    body,
+    contentType,
+    {
+      chunk(text) {
+        logServerEvent(logger, { event: 'request.body_chunk', ...identity, sequence: sequence++, text });
+      },
+      terminal({ byteLength, error, outcome }) {
+        logServerEvent(logger, {
+          event: 'request.body_terminal',
+          ...identity,
+          sequence,
+          byteLength,
+          outcome,
+          ...(error === undefined ? {} : { errorType: serverErrorType(error) }),
+        });
+      },
     },
-    terminal({ byteLength, error, outcome }) {
-      logServerEvent(logger, {
-        event: 'request.body_terminal',
-        ...identity,
-        sequence,
-        byteLength,
-        outcome,
-        ...(error === undefined ? {} : { errorType: serverErrorType(error) }),
-      });
-    },
-  });
+    signal,
+  );
 }
 
 function requestWithObservedBody(request: Request, identity: BodyIdentity, logger: ServerLogSink): Request {
@@ -114,13 +125,21 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
       referrerPolicy: request.referrerPolicy,
       signal: request.signal,
     };
-    return new Request(request.url, { ...init, body: observedBody(body, contentType, identity, logger) });
+    return new Request(request.url, {
+      ...init,
+      body: observedBody(body, contentType, identity, logger, request.signal),
+    });
   } catch {
     return request;
   }
 }
 
-function responseWithObservedBody(response: Response, identity: BodyIdentity, logger: ServerLogSink): Response {
+function responseWithObservedBody(
+  response: Response,
+  identity: BodyIdentity,
+  logger: ServerLogSink,
+  signal: AbortSignal | undefined,
+): Response {
   let source: ReadableStream<Uint8Array>;
   let contentType: string | null;
   let metadata: ResponseMetadata;
@@ -140,7 +159,7 @@ function responseWithObservedBody(response: Response, identity: BodyIdentity, lo
   } catch {
     return response;
   }
-  return responseWithBody(response, observedBody(source, contentType, identity, logger), metadata);
+  return responseWithBody(response, observedBody(source, contentType, identity, logger, signal), metadata);
 }
 
 function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, metadata: ResponseMetadata): Response {
