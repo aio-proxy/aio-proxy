@@ -35,17 +35,21 @@ type PackageJson = {
   optionalDependencies?: Record<string, string>;
 };
 
-// --- discover publishable packages (non-private, in the two product roots) ---
+// --- discover every workspace package; bump them all to one lockstep version ---
+// All packages are versioned (private ones too — e.g. packages/cli's version is
+// compiled into the CLI binary), but only non-private packages are published.
 const scan = (pattern: string) => Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: process.cwd(), absolute: true }));
 const globbed = [...(await scan('packages/**/package.json')), ...(await scan('npm/*/package.json'))];
-const publishable = (
+const allPackages = (
   await Promise.all(
     globbed
       .filter((p) => !p.includes('/node_modules/') && !p.includes('/dist/'))
       .map(async (path) => ({ path, json: (await Bun.file(path).json()) as PackageJson })),
   )
-)
-  .filter(({ json }) => json.private !== true && typeof json.name === 'string')
+).filter(({ json }) => typeof json.name === 'string');
+
+const publishable = allPackages
+  .filter(({ json }) => json.private !== true)
   // Publish per-platform binary packages before the launcher that lists them in
   // optionalDependencies, so the launcher's resolved versions already exist.
   .sort((a, b) => Number(!!a.json.optionalDependencies) - Number(!!b.json.optionalDependencies));
@@ -53,7 +57,9 @@ const publishable = (
 if (publishable.length === 0) {
   throw new Error('No publishable packages found');
 }
-console.log(`Publishable packages:\n${publishable.map((p) => `  ${p.json.name}`).join('\n')}\n`);
+console.log(
+  `Bumping ${allPackages.length} packages; publishing:\n${publishable.map((p) => `  ${p.json.name}`).join('\n')}\n`,
+);
 
 // --- resolve the bump level from conventional commits since the last v* tag ---
 async function detectBump(): Promise<'major' | 'minor' | 'patch'> {
@@ -81,25 +87,44 @@ async function changelogSection(nextVer: string): Promise<string> {
 }
 
 // Highest current version via semver ordering (localeCompare mis-sorts 1.9 vs 1.10).
-const versions = publishable.map((p) => p.json.version);
+const versions = allPackages.map((p) => p.json.version);
 const invalid = versions.find((v) => !semver.valid(v));
 if (invalid) throw new Error(`Unparseable version: ${invalid}`);
 const highest = semver.rsort([...versions])[0]!;
-const version = semver.inc(highest, level)!;
 
-console.log(`Bump: ${level}  (${highest} -> ${version})${DRY_RUN ? '  [dry-run]' : ''}\n`);
+// Resume, don't re-bump: if HEAD already carries a release tag (a prior run pushed
+// the bump commit + tag but a later publish failed), reuse that version so the
+// registry-skip loop targets the partially-published release instead of vX+1.
+const headTag = (await $`git tag --points-at HEAD`.nothrow().quiet().text())
+  .split('\n')
+  .map((t) => t.trim())
+  .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
+const version = headTag && !DRY_RUN ? headTag.slice(1) : semver.inc(highest, level)!;
+
+console.log(
+  `Bump: ${level}  (${highest} -> ${version})${headTag && !DRY_RUN ? '  [resuming tagged release]' : ''}${DRY_RUN ? '  [dry-run]' : ''}\n`,
+);
 
 // --- generate the changelog section for this release ---
 const changelog = await changelogSection(version);
 console.log(changelog);
 
-// --- write the new version to every publishable package.json ---
+// --- write the new version to every workspace package (published and private) ---
 // Written before packing (even in dry-run) so bun pm pack resolves
-// optionalDependencies/workspace: to the real release version; dry-run restores below.
-for (const { path, json } of publishable) {
+// optionalDependencies/workspace: to the real release version, and so private
+// packages like packages/cli (whose version is compiled into the CLI binary and
+// the config schema URL) ship the right version. Original bytes are snapshotted
+// so a dry-run (or failure) restores them exactly, preserving any pre-existing
+// unstaged edits rather than reverting to the git index.
+const originals = new Map<string, string>();
+for (const { path } of allPackages) {
+  const text = await Bun.file(path).text();
+  originals.set(path, text);
+  const json = JSON.parse(text) as PackageJson;
   json.version = version;
   await Bun.write(path, `${JSON.stringify(json, null, 2)}\n`);
 }
+const restoreManifests = () => Promise.all([...originals].map(([path, text]) => Bun.write(path, text)));
 
 // --- build: library (rslib) + CLI binaries (bun build --compile, all targets) ---
 if (!DRY_RUN) {
@@ -131,8 +156,8 @@ for (const tgz of tarballs) {
 }
 
 if (DRY_RUN) {
-  // Manifests were written to validate packing; restore them so dry-run leaves no diff.
-  await $`git checkout -- ${publishable.map((p) => p.path)}`;
+  // Restore the exact pre-run manifest bytes so dry-run leaves no diff.
+  await restoreManifests();
   console.log(`\n[dry-run] Would publish ${tarballs.length} tarball(s) with --provenance. Stopping.`);
   process.exit(0);
 }
