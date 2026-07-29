@@ -1,11 +1,19 @@
 import type { Model, ProviderMap } from '@opencode-ai/models';
+import { Glob } from 'bun';
 
-// A model id whose prefix pins it to a single models.dev provider.
-const PREFIX_PROVIDERS: Record<string, string> = {
-  'gpt-': 'openai',
-  'claude-': 'anthropic',
-  'gemini-': 'google',
+// models.dev provider id -> glob patterns whose model ids pin to that provider.
+// Add a pattern (or provider) here to extend prefix-based resolution.
+const PROVIDER_MODEL_PATTERNS: Record<string, readonly string[]> = {
+  openai: ['gpt-*'],
+  anthropic: ['claude-*'],
+  google: ['gemini-*'],
 };
+
+// Precompiled once: each provider's patterns flattened into [providerId, Glob]
+// pairs, matched in declaration order.
+const PROVIDER_GLOBS: readonly (readonly [string, Glob])[] = Object.entries(PROVIDER_MODEL_PATTERNS).flatMap(
+  ([providerId, patterns]) => patterns.map((pattern) => [providerId, new Glob(pattern)] as const),
+);
 
 export function resolveModel(providerMap: ProviderMap, modelId: string): Model | undefined {
   // Explicit provider/model id wins. Split on the first slash only, so a
@@ -18,9 +26,9 @@ export function resolveModel(providerMap: ProviderMap, modelId: string): Model |
     const hit = providerMap[providerId]?.models[providerModelId];
     if (hit) return hit;
   }
-  // A known prefix pins the provider.
-  for (const [prefix, providerId] of Object.entries(PREFIX_PROVIDERS)) {
-    if (modelId.startsWith(prefix)) {
+  // A model id matching a known provider pattern pins that provider.
+  for (const [providerId, glob] of PROVIDER_GLOBS) {
+    if (glob.match(modelId)) {
       const hit = providerMap[providerId]?.models[modelId];
       if (hit) return hit;
       break;
