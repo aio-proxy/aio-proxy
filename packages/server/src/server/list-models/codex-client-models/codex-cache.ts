@@ -7,8 +7,6 @@ const CACHE_KEY = 'codex-models';
 const DEFAULT_TTL_MS = 6 * 60 * 60_000;
 const FETCH_TIMEOUT_MS = 3_000;
 
-// The stored value is a JSON string (fileCacheStorage.setItem only accepts a
-// string); its inner shape is just the models array we downloaded.
 const CacheEnvelopeSchema = zod.object({ models: zod.array(zod.unknown()) });
 
 type ReadOptions = {
@@ -26,14 +24,10 @@ function keepValidModels(rows: readonly unknown[]): readonly CodexUpstreamModel[
   });
 }
 
-function readEnvelope(raw: string | null): readonly CodexUpstreamModel[] | undefined {
+function readEnvelope(raw: unknown): readonly CodexUpstreamModel[] | undefined {
   if (raw === null) return undefined;
-  try {
-    const parsed = CacheEnvelopeSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? keepValidModels(parsed.data.models) : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = CacheEnvelopeSchema.safeParse(raw);
+  return parsed.success ? keepValidModels(parsed.data.models) : undefined;
 }
 
 // Undefined signals a failed download (network error, non-200, malformed body);
@@ -58,9 +52,9 @@ async function downloadValidModels(
 // getItem rethrows non-ENOENT/SyntaxError failures (e.g. EACCES in a read-only
 // container). Treat any read failure as a cache miss so the endpoint downloads
 // or synthesizes instead of 500ing.
-async function readCache(ttlMs?: number): Promise<string | null> {
+async function readCache(ttlMs?: number): Promise<unknown> {
   try {
-    return await fileCacheStorage.getItem<string>(CACHE_KEY, ttlMs === undefined ? undefined : { ttl: ttlMs });
+    return await fileCacheStorage.getItem(CACHE_KEY, ttlMs === undefined ? undefined : { ttl: ttlMs });
   } catch {
     return null;
   }
@@ -87,7 +81,7 @@ export async function readCodexModelsCache(options: ReadOptions = {}): Promise<r
   // Persisting is best-effort. A read-only dir or full disk must not discard a
   // good download and downgrade every route to synthesized Case B.
   try {
-    await fileCacheStorage.setItem(CACHE_KEY, JSON.stringify({ models: valid }));
+    await fileCacheStorage.setItem(CACHE_KEY, { models: valid });
   } catch {
     /* keep serving the fresh download even when the cache write fails */
   }

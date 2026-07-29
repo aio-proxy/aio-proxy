@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,15 +22,14 @@ afterEach(() => {
   else process.env.AIO_PROXY_HOME = original;
 });
 
-// fileCacheStorage stores `{ value, updatedAt }`; codex-cache stores the models
-// array as the JSON-string `value`. Writing the file directly lets us forge an
-// old `updatedAt` to exercise the stale-fallback path.
+// Writing the file directly lets us forge an old `updatedAt` to exercise the
+// stale-fallback path.
 function seedCache(models: readonly unknown[], updatedAt: string): void {
   const dir = join(home, 'tmp', 'cache-storage');
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, `${encodeURIComponent(CACHE_KEY)}.json`),
-    JSON.stringify({ value: JSON.stringify({ models }), updatedAt }),
+    JSON.stringify({ value: { models }, updatedAt }),
     'utf8',
   );
 }
@@ -54,6 +53,8 @@ test('downloads and writes cache when file missing, then serves it fresh', async
   const models = await readCodexModelsCache({ fetchImpl });
   expect(models.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
   expect(calls).toBe(1);
+  const entry = JSON.parse(readFileSync(join(home, 'tmp', 'cache-storage', 'codex-models.json'), 'utf8'));
+  expect(entry.value).toEqual({ models: [upstreamItem] });
 
   const again = await readCodexModelsCache({ fetchImpl });
   expect(again.map((m) => m.slug)).toEqual(['gpt-5.6-sol']);
