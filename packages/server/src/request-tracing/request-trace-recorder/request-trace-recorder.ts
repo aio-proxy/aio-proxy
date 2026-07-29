@@ -1,4 +1,5 @@
 import type { TraceStore } from '@aio-proxy/core/db';
+import { currentRequestId } from '@aio-proxy/logger';
 import {
   ROOT_CONTEXT,
   SpanKind,
@@ -69,7 +70,7 @@ export function createRequestTraceRecorder(options: {
         runPrune(options.store, options.logger, current);
       }
 
-      const requestId = crypto.randomUUID();
+      const requestId = currentRequestId() ?? crypto.randomUUID();
       const { tracer, processor } = getTraceRuntime();
       const links = extractIncomingLinks(input.headers);
 

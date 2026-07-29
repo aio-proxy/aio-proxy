@@ -1,4 +1,6 @@
 import { parseRuntimeConfig } from '@aio-proxy/core';
+import { currentRequestId, withRequestId } from '@aio-proxy/logger';
+import { honoLogger } from '@logtape/hono';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 
@@ -53,7 +55,28 @@ const createRoutes = (
   dashboardAssets?: DashboardAssets,
   dashboardAuthAvailable: () => boolean = () => true,
 ) => {
-  const app = new Hono().get('/health', (context) =>
+  const app = new Hono();
+  app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
+  app.use(
+    honoLogger({
+      category: ['aio-proxy', 'server', 'http'],
+      level: 'info',
+      format: 'structured-combined',
+      context: {
+        requestId: {
+          headerNames: [],
+          responseHeader: false,
+          generate: () => currentRequestId() ?? crypto.randomUUID(),
+        },
+        include: ['requestId'],
+      },
+      skip: (context) =>
+        context.req.path === '/health' ||
+        context.req.path === '/dashboard' ||
+        context.req.path.startsWith('/dashboard/'),
+    }),
+  );
+  app.get('/health', (context) =>
     context.json({
       status: 'ok',
       uptime: performance.now() / 1_000,

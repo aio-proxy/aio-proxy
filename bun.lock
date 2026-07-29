@@ -193,8 +193,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@logtape/file": "2.1.1",
-        "@logtape/logtape": "2.1.1",
+        "@logtape/file": "2.2.4",
+        "@logtape/logtape": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -308,6 +308,7 @@
         "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
+        "@logtape/hono": "2.2.4",
         "@opentelemetry/api": "1.9.1",
         "@opentelemetry/sdk-trace-node": "2.10.0",
         "@opentelemetry/semantic-conventions": "1.43.0",
@@ -321,6 +322,7 @@
         "@aio-proxy/infra": "workspace:*",
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
+        "@logtape/logtape": "catalog:",
         "@types/bun": "catalog:",
         "ai": "catalog:",
         "openai": "catalog:",
@@ -357,6 +359,7 @@
     "@google/genai": "2.11.0",
     "@inlang/paraglide-js": "2.22.0",
     "@lobehub/icons-static-svg": "1.93.0",
+    "@logtape/logtape": "2.2.4",
     "@opencode-ai/models": "0.0.11",
     "@openrouter/ai-sdk-provider": "2.10.0",
     "@rslib/core": "^0.23.1",
@@ -696,11 +699,13 @@
 
     "@lobehub/icons-static-svg": ["@lobehub/icons-static-svg@1.93.0", "", {}, "sha512-in3w3Epepw4h/Opw0zIyOSVrABioI/QDDyxINRl/kaVkIfKlGms+RVtRH3rXtnALpCEIRVm/kJo8bphoT59Bow=="],
 
-    "@logtape/file": ["@logtape/file@2.1.1", "", { "peerDependencies": { "@logtape/logtape": "^2.1.1" } }, "sha512-AlT69oM1MEe1TV04go9s50/orHxc9n4fPu9MW7P5sG+hH55EDHJALd6D9zTEIm0PP4znR+XgTeml2ANnY2bkNw=="],
+    "@logtape/file": ["@logtape/file@2.2.4", "", { "peerDependencies": { "@logtape/logtape": "^2.2.4" } }, "sha512-f+1g4VvB+HegOYwt8GAhYFk1OO9nbi5l0hn7hkKxjnyedE9CBEoKgN36nIYIt58asRms2GDXLtxeK0OStYjnsQ=="],
+
+    "@logtape/hono": ["@logtape/hono@2.2.4", "", { "peerDependencies": { "@logtape/logtape": "^2.2.4", "hono": "^4.0.0" } }, "sha512-y0iKPQ4vOS+s3C2sj40juY7DtyYGnylvdWi1s6J7+5hE3RyW5jBNDax+XiXPEJnVBMg5zU5MHR7dbqGvmPu1hg=="],
 
     "@logtape/lint": ["@logtape/lint@2.2.4", "", { "peerDependencies": { "eslint": ">=8.0.0" }, "optionalPeers": ["eslint"] }, "sha512-WE2tDV1VG79vKgOkXoJRlyHreSyWsYwhYK7pdyhei87F34x5YMluQ7lRiRPvAxhDiE5KtG8msPP4eNSOI47nfA=="],
 
-    "@logtape/logtape": ["@logtape/logtape@2.1.1", "", {}, "sha512-aULbCqUQGerfOsZ3CMvcKtueKzmdchluXYUd3bIHKmOIS93fx1ko0+hyRQ4flloGZ8EiyRPydZXiy8n1J/eAQA=="],
+    "@logtape/logtape": ["@logtape/logtape@2.2.4", "", {}, "sha512-2rALzv9m4ibE5FyB8/FMm5MPMMlK7ujgy3ufricVKIxj6e7SZbw4w6J16/fRAsXgdDlOXPUA0aa6XoEQvdlKxw=="],
 
     "@microsoft/api-extractor": ["@microsoft/api-extractor@7.58.11", "", { "dependencies": { "@microsoft/api-extractor-model": "7.33.10", "@microsoft/tsdoc": "~0.16.0", "@microsoft/tsdoc-config": "~0.18.1", "@rushstack/node-core-library": "5.23.3", "@rushstack/rig-package": "0.7.3", "@rushstack/terminal": "0.24.2", "@rushstack/ts-command-line": "5.3.12", "diff": "~8.0.2", "minimatch": "10.2.3", "resolve": "~1.22.1", "semver": "~7.7.4", "source-map": "~0.6.1", "typescript": "5.9.3" }, "bin": { "api-extractor": "bin/api-extractor" } }, "sha512-ngeL7gd6HYwmq9VRWBh4mUBSM6mXlIK5hwyVXxJ9go5Xf70ohx9M57t+8LIgZTARmsyN5sk/q+RUBkD9Bgq5yA=="],
 
