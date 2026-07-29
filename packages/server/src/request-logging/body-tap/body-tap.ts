@@ -1,3 +1,5 @@
+import { isInboundAbort } from '../../route-observation';
+
 export type BodyTapOutcome = 'complete' | 'cancelled' | 'error';
 
 export type BodyTapTerminal = {
@@ -15,6 +17,7 @@ export function tapTextBody(
   source: ReadableStream<Uint8Array>,
   contentType: string | null,
   observer: BodyTapObserver,
+  signal?: AbortSignal,
 ): ReadableStream<Uint8Array> {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const decoder = new TextDecoder();
@@ -70,7 +73,8 @@ export function tapTextBody(
           controller.enqueue(next.value);
           emit(decoder.decode(next.value, { stream: true }));
         } catch (error) {
-          terminal({ outcome: 'error', error });
+          const cancelled = signal !== undefined && isInboundAbort(error, signal);
+          terminal(cancelled ? { outcome: 'cancelled' } : { outcome: 'error', error });
           try {
             reader?.releaseLock();
           } catch {}
