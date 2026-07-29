@@ -32,7 +32,9 @@ type PackageJson = {
   name: string;
   version: string;
   private?: boolean;
+  dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
 // --- discover every workspace package; bump them all to one lockstep version ---
@@ -110,13 +112,18 @@ const changelog = await changelogSection(version);
 console.log(changelog);
 
 // --- write the new version to every workspace package (published and private) ---
-// Written before packing (even in dry-run) so bun pm pack resolves
-// optionalDependencies/workspace: to the real release version, and so private
-// packages like packages/cli (whose version is compiled into the CLI binary and
-// the config schema URL) ship the right version. Original bytes are snapshotted
-// so a dry-run (or failure) restores them exactly, preserving any pre-existing
-// unstaged edits rather than reverting to the git index.
+// Written before packing (even in dry-run) so private packages like packages/cli
+// (whose version is compiled into the CLI binary and the config schema URL) ship
+// the right version. Original bytes (incl. bun.lock, which `bun update` rewrites)
+// are snapshotted so a dry-run (or failure) restores them exactly, preserving any
+// pre-existing unstaged edits.
+const workspaceNames = new Set(allPackages.map((p) => p.json.name));
+const DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const;
 const originals = new Map<string, string>();
+originals.set('bun.lock', await Bun.file('bun.lock').text());
+// Snapshot the root manifest too: every `bun update` variant (incl. --workspaces
+// / --filter) re-resolves its devDependency ranges, which is release noise.
+const rootOriginal = await Bun.file('package.json').text();
 for (const { path } of allPackages) {
   const text = await Bun.file(path).text();
   originals.set(path, text);
@@ -125,6 +132,17 @@ for (const { path } of allPackages) {
   await Bun.write(path, `${JSON.stringify(json, null, 2)}\n`);
 }
 const restoreManifests = () => Promise.all([...originals].map(([path, text]) => Bun.write(path, text)));
+
+// Refresh bun.lock's recorded workspace versions so `bun pm pack` resolves
+// workspace: siblings (e.g. the aio-proxy launcher's optionalDependencies) to the
+// bumped version. A plain `bun install` reports "no changes" and leaves them at
+// the pre-bump version; `bun update` (without --latest) re-resolves within the
+// existing package.json ranges, so catalog pins are not drifted.
+await $`bun update`;
+// Discard bun update's incidental rewrite of the root manifest's devDependency
+// ranges; the lockfile stays self-consistent (frozen install still passes) since
+// only the workspace sibling versions materially changed.
+await Bun.write('package.json', rootOriginal);
 
 // --- build: library (rslib) + CLI binaries (bun build --compile, all targets) ---
 if (!DRY_RUN) {
@@ -145,13 +163,24 @@ for (const { path, json } of publishable) {
   tarballs.push(tgz);
 }
 
-// Fail loudly if any tarball still carries an unresolved protocol.
+// Fail loudly if any tarball carries an unresolved protocol or a sibling
+// workspace dependency pinned to anything other than this release version.
 for (const tgz of tarballs) {
   const files = await new Bun.Archive(await Bun.file(tgz).bytes()).files();
-  const pkgJson = await files.get('package/package.json')?.text();
-  if (!pkgJson) throw new Error(`${tgz} has no package/package.json`);
-  if (/catalog:|workspace:/.test(pkgJson)) {
+  const raw = await files.get('package/package.json')?.text();
+  if (!raw) throw new Error(`${tgz} has no package/package.json`);
+  if (/catalog:|workspace:/.test(raw)) {
     throw new Error(`${tgz} still contains catalog:/workspace: — pack did not resolve protocols`);
+  }
+  const packed = JSON.parse(raw) as PackageJson;
+  for (const field of DEP_FIELDS) {
+    for (const [dep, range] of Object.entries(packed[field] ?? {})) {
+      if (workspaceNames.has(dep) && range !== version) {
+        throw new Error(
+          `${packed.name}: ${field}.${dep} is "${range}", expected "${version}" (stale workspace resolution)`,
+        );
+      }
+    }
   }
 }
 
@@ -163,20 +192,21 @@ if (DRY_RUN) {
 }
 
 // --- persist the release first, so a mid-publish failure is resumable ---
-// Prepend the new section after the "# Changelog" H1 (kept at the top).
-const changelogFile = Bun.file('CHANGELOG.md');
-const H1 = '# Changelog';
-const prior = (await changelogFile.exists()) ? await changelogFile.text() : `${H1}\n`;
-const body = prior.startsWith(H1) ? prior.slice(H1.length).replace(/^\n+/, '') : prior;
-await Bun.write(changelogFile, `${H1}\n\n${changelog}\n${body}`);
+// On a resume (HEAD already carries this tag) the changelog and release commit
+// already exist — don't rewrite them (that would move HEAD off the tag and break
+// a further retry's resume detection). Just re-push and fall through to publish.
+if (!headTag) {
+  // Prepend the new section after the "# Changelog" H1 (kept at the top).
+  const changelogFile = Bun.file('CHANGELOG.md');
+  const H1 = '# Changelog';
+  const prior = (await changelogFile.exists()) ? await changelogFile.text() : `${H1}\n`;
+  const body = prior.startsWith(H1) ? prior.slice(H1.length).replace(/^\n+/, '') : prior;
+  await Bun.write(changelogFile, `${H1}\n\n${changelog}\n${body}`);
 
-// Idempotent so a re-run after a mid-publish failure resumes instead of erroring:
-// commit only if the bump isn't already committed, tag only if absent.
-await $`git add -A`;
-const staged = await $`git diff --cached --quiet`.nothrow();
-if (staged.exitCode !== 0) await $`git commit -m ${`chore: release v${version}`}`;
-const tagged = await $`git rev-parse -q --verify ${`refs/tags/v${version}`}`.nothrow().quiet();
-if (tagged.exitCode !== 0) await $`git tag -a v${version} -m ${`v${version}`}`;
+  await $`git add -A`;
+  await $`git commit -m ${`chore: release v${version}`}`;
+  await $`git tag -a v${version} -m ${`v${version}`}`;
+}
 // Push to the concrete branch this workflow ran on (not the literal ref "HEAD"),
 // and push the tag explicitly (a lightweight tag would be skipped by --follow-tags).
 const branch = process.env['GITHUB_REF_NAME'] ?? (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
