@@ -36,13 +36,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26' # bundles npm 11.17+, which supports OIDC trusted publishing
           registry-url: 'https://registry.npmjs.org'
-
-      # setup-bun's bundled npm is too old for OIDC trusted publishing; the
-      # publish step shells out to `npm publish`, so upgrade the global npm.
-      - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@11
 
       - run: bun install --frozen-lockfile
 
