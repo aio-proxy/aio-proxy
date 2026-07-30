@@ -7,6 +7,7 @@ import { normalizeAiSdkUsage } from './pricing';
 import {
   type Captured,
   deferred,
+  observeContentAt,
   type StreamUsageOptions,
   ttftProperty,
   type UsageCompletion,
@@ -66,7 +67,7 @@ export function streamCapture(
         } else if (next.value.type === 'abort') {
           aborted = true;
         } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
-          const contentAt = observation?.observeContent() ?? performance.now();
+          const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
         }
         controller.enqueue(next.value);

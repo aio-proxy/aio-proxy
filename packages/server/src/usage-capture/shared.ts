@@ -57,6 +57,14 @@ export function ttftProperty(
   return { ttftMs: Math.max(0, Math.round(firstTokenAt - startedAt)) };
 }
 
+export function observeContentAt(observation: AttemptResponseObservation | undefined): number {
+  try {
+    return observation?.observeContent() ?? performance.now();
+  } catch {
+    return performance.now();
+  }
+}
+
 export function deferred<T>() {
   let settled = false;
   let resolvePromise!: (value: T) => void;

@@ -27,8 +27,36 @@ describe('usage capture stream', () => {
     });
 
     await drain(captured.value);
+    const completion = await captured.completion;
 
     expect(observation.snapshot().contentGapP95Ms).toBe(5);
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBe(10);
+  });
+
+  test('continues when content observation throws', async () => {
+    const base = createAttemptResponseObservation({ startedAt: 0 });
+    const observation = {
+      ...base,
+      observeContent: () => {
+        throw new Error('observer failed');
+      },
+    };
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: 0,
+      observation,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'hello' });
+          controller.close();
+        },
+      }),
+    });
+
+    await expect(drain(captured.value)).resolves.toEqual([{ type: 'text-delta', id: 'text-1', text: 'hello' }]);
+    const completion = await captured.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
   test('model stream reads stay bounded by downstream demand', async () => {

@@ -47,7 +47,31 @@ describe('usage capture passthrough ttft', () => {
     expect(observation.snapshot().firstSseEventMs).toBe(10);
     expect(observation.snapshot().contentGapP95Ms).toBe(5);
     expect(completion.outcome).toBe('success');
-    expect(typeof ('ttftMs' in completion ? completion.ttftMs : undefined)).toBe('number');
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBe(20);
+  });
+
+  test('continues when content observation throws', async () => {
+    const body = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n';
+    const base = createAttemptResponseObservation({ startedAt: 0 });
+    const observation = {
+      ...base,
+      observeContent: () => {
+        throw new Error('observer failed');
+      },
+    };
+    const captured = createUsageCapture().passthrough({
+      response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: 0,
+      observation,
+    });
+
+    expect(await captured.value.text()).toBe(body);
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
   test('records ttft only once a content delta arrives, not on the first byte', async () => {

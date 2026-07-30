@@ -10,6 +10,7 @@ import {
   type Captured,
   deferred,
   MAX_PASSTHROUGH_JSON_BYTES,
+  observeContentAt,
   type PassthroughUsageOptions,
   ttftProperty,
   type UsageCompletion,
@@ -46,7 +47,7 @@ export function passthroughCapture(
     ? createPassthroughSseUsageObserver(protocol, {
         onEvent: observation?.observeSseEvent,
         onContent() {
-          const contentAt = observation?.observeContent() ?? performance.now();
+          const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
         },
       })

@@ -93,7 +93,6 @@ export function createAttemptResponseObservation(options: {
       }
     },
     observeContent(at = now()) {
-      const contentAt = elapsed(at);
       if (lastContentAt !== undefined) {
         const gap = Math.max(0, at - lastContentAt);
         const bucket = gapBucket(gap);
@@ -102,7 +101,7 @@ export function createAttemptResponseObservation(options: {
         if (bucket === GAP_BUCKET_UPPER_BOUNDS.length) overflowMax = Math.max(overflowMax, gap);
       }
       lastContentAt = at;
-      return contentAt;
+      return at;
     },
     snapshot() {
       const raw = responseCount === 1;

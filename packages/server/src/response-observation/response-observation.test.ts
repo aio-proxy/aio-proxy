@@ -85,6 +85,13 @@ test('keeps semantic gaps but removes raw metrics after two responses', () => {
   expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10 });
 });
 
+test('returns the sampled absolute content timestamp while tracking relative gaps', () => {
+  const observation = createAttemptResponseObservation({ startedAt: 90, now: () => 110 });
+  expect(observation.observeContent()).toBe(110);
+  expect(observation.observeContent(115)).toBe(115);
+  expect(observation.snapshot().contentGapP95Ms).toBe(5);
+});
+
 test('records headers but omits controlled-body metrics for a platform-managed response', () => {
   const observation = createAttemptResponseObservation({ startedAt: 10, now: () => 10 });
   observation.observeFetchStart();
