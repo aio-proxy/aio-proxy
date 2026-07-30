@@ -64,4 +64,32 @@ describe('request transform condition codec', () => {
 
     expect(roundTrip(when)).toEqual(when);
   });
+
+  test('rejects unsupported operators and unsafe paths before parsing', () => {
+    expect(() => parseRequestTransformCondition({ $where: 'true' })).toThrow();
+    expect(() => parseRequestTransformCondition({ ['request.body.__proto__.x']: 1 })).toThrow();
+  });
+
+  test('keeps Header Pattern distinct from Header Regex', () => {
+    const input = { $getField: { field: 'x.team', input: '$request.headers' } };
+    const pattern = {
+      $expr: { $regexMatch: { input, regex: '^(?:platform-.*)$' } },
+    } satisfies Condition;
+    const regex = {
+      $expr: { $regexMatch: { input, regex: '^(?:platform-.*)$', options: '' } },
+    } satisfies Condition;
+
+    expect(roundTrip(pattern)).toEqual(pattern);
+    expect(roundTrip(regex)).toEqual(regex);
+  });
+
+  test('round-trips Header comparison literals beginning with $', () => {
+    const when = {
+      $expr: {
+        $eq: [{ $getField: { field: 'x.aio.route', input: '$request.headers' } }, { $literal: '$blue' }],
+      },
+    } satisfies Condition;
+
+    expect(roundTrip(when)).toEqual(when);
+  });
 });

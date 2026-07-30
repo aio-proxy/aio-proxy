@@ -181,13 +181,13 @@ export const replaceMongoHeaderReferences = (value: unknown): unknown => {
         return { $expr: { [condition['$exists'] ? '$ne' : '$eq']: [{ $ifNull: [input, null] }, null] } };
       }
       if (isDocument(condition) && typeof condition['$regex'] === 'string') {
+        const regexMatch: Document = { input, regex: condition['$regex'] };
+        if (Object.hasOwn(condition, '$options')) {
+          regexMatch['options'] = normalizeMongoRegexOptions(condition['$options']);
+        }
         return {
           $expr: {
-            $regexMatch: {
-              input,
-              regex: condition['$regex'],
-              options: normalizeMongoRegexOptions(condition['$options']),
-            },
+            $regexMatch: regexMatch,
           },
         };
       }

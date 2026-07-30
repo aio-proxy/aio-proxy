@@ -1,4 +1,4 @@
-import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { formatQuery } from '@react-querybuilder/core/formatQuery';
 import { parseMongoDB } from '@react-querybuilder/core/parseMongoDB';
 import type {
@@ -146,20 +146,16 @@ const rewriteHeaderExpressionCondition = (expression: unknown): Document | undef
     const match = expression['$regexMatch'];
     const header = readGetField(match['input']);
     if (header !== undefined && typeof match['regex'] === 'string') {
-      return {
-        [headerSentinel(header.scope, header.name)]: {
-          $__aioRegex: { regex: match['regex'], options: match['options'] ?? '' },
-        },
-      };
+      const pattern = Object.hasOwn(match, 'options') ? undefined : regexToPattern(match['regex']);
+      const operation =
+        pattern === undefined
+          ? { $__aioRegex: { regex: match['regex'], options: match['options'] ?? '' } }
+          : { $__aioPattern: pattern };
+      return { [headerSentinel(header.scope, header.name)]: operation };
     }
   }
   const [operator, operands] = Object.entries(expression)[0]!;
-  if (
-    !['$eq', '$ne', '$gt', '$gte', '$lt', '$lte'].includes(operator) ||
-    !Array.isArray(operands) ||
-    operands.length !== 2
-  )
-    return undefined;
+  if (!(operator in mongoComparison) || !Array.isArray(operands) || operands.length !== 2) return undefined;
   const first = readGetField(operands[0]);
   if (first !== undefined) return { [headerSentinel(first.scope, first.name)]: { [operator]: operands[1] } };
   const ifNull = isDocument(operands[0]) && Array.isArray(operands[0]['$ifNull']) ? operands[0]['$ifNull'] : undefined;
@@ -258,8 +254,11 @@ const mapQuery = (
   }),
 });
 export const parseRequestTransformCondition = (when: Condition): DefaultRuleGroupType => {
+  const validated = ProviderRequestTransformRulesSchema.parse([
+    { when, update: [{ $unset: 'request.body.__codec_probe__' }] },
+  ])[0]!.when!;
   const literals = new Map<string, unknown>();
-  const query = parseMongoDB(rewriteConditionInput(when, literals) as Document, {
+  const query = parseMongoDB(rewriteConditionInput(validated, literals) as Document, {
     additionalOperators: additionalOperators(literals),
     getExpression: parseExpression,
     listsAsArrays: true,
@@ -279,6 +278,10 @@ const ruleProcessor: RuleProcessor = (rule, options) => {
   }
   if (rule.operator === 'exists' || rule.operator === 'doesNotExist') {
     return { [rule.field]: { $exists: rule.operator === 'exists' } };
+  }
+  const operator = Object.entries(mongoComparison).find(([, value]) => value === rule.operator)?.[0];
+  if (parseHeaderSentinel(rule.field) !== undefined && operator !== undefined) {
+    return { [rule.field]: { [operator]: rule.value } };
   }
   return baseRuleProcessor(rule, options);
 };
