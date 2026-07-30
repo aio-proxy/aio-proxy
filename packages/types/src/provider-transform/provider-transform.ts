@@ -78,6 +78,8 @@ function validateQuery(document: Document, path: IssuePath, context: z.Refinemen
       validateCondition(value, next, context);
     } else if (key.startsWith('$')) {
       add(context, next, issue.queryOperator);
+    } else if (headerPath(key)) {
+      add(context, next, issue.header);
     } else if (!safePath(key) || !roots.has(key.split('.')[0] ?? '')) {
       add(context, next, issue.path);
     } else {
@@ -128,7 +130,8 @@ function validateExpression(value: Json, path: IssuePath, context: z.RefinementC
   if (typeof value === 'string' && value.startsWith('$')) {
     const reference = value.slice(1);
     const supported = ['provider.', 'request.', 'original.'].some((prefix) => reference.startsWith(prefix));
-    if (!safePath(reference) || !supported)
+    if (headerPath(reference)) add(context, path, issue.header);
+    else if (!safePath(reference) || !supported)
       add(context, path, safePath(reference) ? issue.expressionOperator : issue.path);
     return;
   }
@@ -258,6 +261,9 @@ function safePath(path: string): boolean {
 }
 function bodyTarget(path: string): boolean {
   return path === 'request.body' || path.startsWith('request.body.');
+}
+function headerPath(path: string): boolean {
+  return ['request.headers', 'original.headers'].some((root) => path === root || path.startsWith(`${root}.`));
 }
 function add(context: z.RefinementCtx, path: IssuePath, message: (typeof issue)[keyof typeof issue]): void {
   context.addIssue({ code: 'custom', path, message });

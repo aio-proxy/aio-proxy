@@ -186,6 +186,34 @@ describe('ProviderTransformsSchema', () => {
   });
 
   test.each([
+    {
+      label: 'current query path',
+      when: { 'request.headers.x-tenant': { $eq: 'team-a' } },
+    },
+    {
+      label: 'original query path',
+      when: { 'original.headers.x-tenant': { $eq: 'team-a' } },
+    },
+    {
+      label: 'current expression reference',
+      when: { $expr: { $eq: ['$request.headers.x-tenant', 'team-a'] } },
+    },
+    {
+      label: 'original expression reference',
+      when: { $expr: { $eq: ['$original.headers.x-tenant', 'team-a'] } },
+    },
+  ])('rejects direct header reads through $label', ({ when }) => {
+    const result = ProviderTransformsSchema.safeParse({
+      request: [{ when, update: [unsetBodyField] }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.message)).toContain('REQUEST_TRANSFORM_HEADER_INVALID');
+    }
+  });
+
+  test.each([
     { $expr: { $getField: { field: 'x-tenant', input: '$request.headers' } } },
     {
       $expr: {
