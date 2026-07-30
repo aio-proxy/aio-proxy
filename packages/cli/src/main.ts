@@ -22,7 +22,7 @@ import { ServeListenError } from './errors';
 import { CliExit, isKnownCliUserError, toExitCode } from './exit';
 import { openBrowser } from './open-browser';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
-import { providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
+import { providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
 import { statusCommand } from './status';
 
@@ -200,12 +200,6 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
       throw new CliExit(1, m.cli_dashboard_not_yet_implemented());
     });
   const provider = program.command('provider').description(m.cli_provider_description());
-  provider
-    .command('install <package>')
-    .description(m.cli_provider_install_description())
-    .option('--yes', m.cli_provider_install_option_yes_description())
-    .option('--registry <url>', m.cli_provider_install_option_registry_description())
-    .action(providerInstall);
   provider
     .command('list')
     .description(m.cli_provider_list_description())

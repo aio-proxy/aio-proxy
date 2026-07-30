@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { output, runCli, runCliUntilOutput } from './cli-test-helpers';
+import { runCli, runCliUntilOutput } from './cli-test-helpers';
 
 describe('provider commands', () => {
   test('provider login exposes an optional capability and explicit provider target', () => {
@@ -58,44 +58,6 @@ describe('provider commands', () => {
       expect(result.stdout.toString()).toContain(packageDir);
     } finally {
       rmSync(home, { recursive: true, force: true });
-    }
-  });
-
-  test('provider install reports a failed explicit install', () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-home-'));
-
-    try {
-      // When
-      const result = runCli(
-        ['provider', 'install', 'aio-proxy-missing-package', '--yes', '--registry', 'http://127.0.0.1:9'],
-        { AIO_PROXY_HOME: dir },
-      );
-
-      // Then
-      expect(result.exitCode).toBe(1);
-      expect(output(result)).toContain('aio-proxy-missing-package');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('provider install requires explicit confirmation before installing', () => {
-    // Given
-    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-home-'));
-
-    try {
-      // When
-      const result = runCli(['provider', 'install', 'aio-proxy-missing-package', '--registry', 'http://127.0.0.1:9'], {
-        AIO_PROXY_HOME: dir,
-      });
-
-      // Then
-      expect(result.exitCode).toBe(1);
-      expect(output(result)).toContain('requires --yes');
-      expect(existsSync(join(dir, 'packages'))).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
