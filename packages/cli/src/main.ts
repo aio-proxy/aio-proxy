@@ -33,6 +33,7 @@ import {
 import { isProviderLoginUserError } from './plugin-commands/provider-login';
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
+import { statusCommand } from './status';
 
 const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
@@ -172,6 +173,15 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option('--host <host>', m.cli_run_option_host_description())
     .option('--port <port>', m.cli_run_option_port_description())
     .action(reloadCommand);
+
+  program
+    .command('status')
+    .description(m.cli_status_description())
+    .option('--host <host>', m.cli_run_option_host_description())
+    .option('--port <port>', m.cli_run_option_port_description())
+    .option('--deep', m.cli_status_option_deep_description())
+    .option('--json')
+    .action((options) => statusCommand(options));
 
   program
     .command('dashboard')
