@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 
 import packageJson from '../package.json' with { type: 'json' };
-
 import { kimiIdentityHeaders } from './headers';
 
 test('builds stable printable Kimi identity headers around the credential device ID', () => {
