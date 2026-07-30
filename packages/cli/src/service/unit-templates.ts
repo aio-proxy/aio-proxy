@@ -31,9 +31,13 @@ WantedBy=default.target
 `;
 }
 
-// launchd user agent. ProgramArguments = [<exec>, run]. KeepAlive.SuccessfulExit
-// = false mirrors the exit-code contract: relaunch unless the process exited
-// cleanly (exit 0). RunAtLoad starts it as soon as it is loaded.
+// launchd user agent. launchd has no RestartPreventExitStatus equivalent, so a
+// /bin/sh wrapper remaps exit 1 (unrecoverable: bad config/input) to 0. With
+// KeepAlive.SuccessfulExit=false, exit 0 is treated as a clean stop and is NOT
+// relaunched, while transient exits (2+) pass through and are relaunched. This
+// mirrors the systemd unit's RestartPreventExitStatus=1. RunAtLoad starts it on load.
+const LAUNCHD_EXEC_WRAPPER = '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+
 export function renderLaunchdPlist({ exec, configPath }: UnitOptions): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,8 +47,10 @@ export function renderLaunchdPlist({ exec, configPath }: UnitOptions): string {
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>${LAUNCHD_EXEC_WRAPPER}</string>
     <string>${exec}</string>
-    <string>run</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

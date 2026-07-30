@@ -164,6 +164,8 @@
   "cli_service_command_failed": "Service command failed: {command} (exit {code}).",
   "cli_service_unsupported_platform": "The service command does not support this platform: {platform}.",
   "cli_service_system_unsupported": "System-scope install is not yet supported; install as a per-user service instead.",
+  "cli_service_exec_not_found": "Cannot find the \"aio-proxy\" executable on PATH. Install aio-proxy globally (e.g. `npm i -g aio-proxy`) before installing the service.",
+  "cli_status_deep_probe_failed": "Provider health probe failed ({status}).",
   "cli_doctor_description": "Diagnose the AIO Proxy environment.",
   "cli_doctor_config_path": "Config file: {path}",
   "cli_doctor_server_reachable": "Server reachable at {url} (version {version}).",

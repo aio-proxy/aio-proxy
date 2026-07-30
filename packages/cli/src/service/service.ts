@@ -22,10 +22,14 @@ function requirePlatform(): SupportedPlatform {
 }
 
 // Resolve the single executable the service manager should launch. A globally
-// installed npm package exposes an `aio-proxy` bin on PATH; fall back to the
-// interpreter path when it is not found (dev/uninstalled).
-export function resolveExec(): string {
-  return Bun.which('aio-proxy') ?? process.execPath;
+// installed npm package exposes an `aio-proxy` bin on PATH. If it is missing we
+// fail fast rather than fall back to the interpreter path: `ExecStart=<bun> run`
+// would invoke bun's own `run` subcommand (which needs a file argument) and the
+// service would never start. `which` is injectable to keep the guard testable.
+export function resolveExec(which: (cmd: string) => string | null = Bun.which): string {
+  const exec = which('aio-proxy');
+  if (exec === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
+  return exec;
 }
 
 function launchdPlistPath(): string {

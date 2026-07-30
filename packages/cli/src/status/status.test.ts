@@ -50,3 +50,43 @@ test('--deep notes the limitation when the providers endpoint is password-gated'
     server.stop(true);
   }
 });
+
+test('--deep reports a generic probe failure for non-auth errors', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const path = new URL(req.url).pathname;
+      if (path === '/health') return Response.json({ status: 'ok', uptime: 1, version: '1.2.3' });
+      // Not auth-gated: a 500 must NOT be reported as password-gated.
+      return new Response('boom', { status: 500 });
+    },
+  });
+  try {
+    const lines: string[] = [];
+    await statusCommand({ port: String(server.port), deep: true }, (l) => lines.push(l));
+    const out = lines.join('\n');
+    expect(out).toContain('500');
+    expect(out.toLowerCase()).not.toContain('password');
+  } finally {
+    server.stop(true);
+  }
+});
+
+test('--deep --json distinguishes an auth failure from a generic probe failure', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const path = new URL(req.url).pathname;
+      if (path === '/health') return Response.json({ status: 'ok', uptime: 1, version: '1.2.3' });
+      return new Response('nope', { status: 403 });
+    },
+  });
+  try {
+    const lines: string[] = [];
+    await statusCommand({ port: String(server.port), deep: true, json: true }, (l) => lines.push(l));
+    const parsed = JSON.parse(lines.join('\n')) as { deepFailure?: { reason: string } };
+    expect(parsed.deepFailure?.reason).toBe('auth');
+  } finally {
+    server.stop(true);
+  }
+});

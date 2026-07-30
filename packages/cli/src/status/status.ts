@@ -9,13 +9,15 @@ export type StatusOptions = {
 
 type Health = { readonly status?: string; readonly uptime?: number; readonly version?: string };
 
+type DeepProbeFailure = { readonly reason: 'auth' | 'probe-failed'; readonly status?: number };
+
 type StatusResult = {
   readonly running: boolean;
   readonly url: string;
   readonly version?: string;
   readonly uptime?: number;
   readonly providers?: unknown;
-  readonly deepUnavailable?: boolean;
+  readonly deepFailure?: DeepProbeFailure;
 };
 
 const probeHealth = async (base: string): Promise<Health | null> => {
@@ -28,10 +30,15 @@ const probeHealth = async (base: string): Promise<Health | null> => {
   }
 };
 
-const probeProviders = async (base: string): Promise<{ ok: true; data: unknown } | { ok: false }> => {
+type ProbeResult = { readonly ok: true; readonly data: unknown } | { readonly ok: false; readonly status?: number };
+
+// Returns the HTTP status on a non-2xx response so the caller can tell an
+// auth-gated dashboard (401/403) apart from other failures (404/500/network).
+// A network error / timeout has no status and omits it.
+const probeProviders = async (base: string): Promise<ProbeResult> => {
   try {
     const res = await fetch(`${base}/dashboard/api/providers?probe=true`, { signal: AbortSignal.timeout(5_000) });
-    if (!res.ok) return { ok: false };
+    if (!res.ok) return { ok: false, status: res.status };
     return { ok: true, data: await res.json() };
   } catch {
     return { ok: false };
@@ -60,12 +67,15 @@ export async function statusCommand(
     return;
   }
 
-  let deepUnavailable = false;
+  let deepFailure: DeepProbeFailure | undefined;
   let providers: unknown;
   if (options.deep === true) {
     const probe = await probeProviders(url);
     if (probe.ok) providers = probe.data;
-    else deepUnavailable = true;
+    // 401/403 means the dashboard is password-gated; any other status (or a
+    // network error with no status) is a generic probe failure.
+    else if (probe.status === 401 || probe.status === 403) deepFailure = { reason: 'auth' };
+    else deepFailure = { reason: 'probe-failed', ...(probe.status === undefined ? {} : { status: probe.status }) };
   }
 
   if (options.json === true) {
@@ -74,7 +84,7 @@ export async function statusCommand(
         {
           ...result,
           ...(providers === undefined ? {} : { providers }),
-          ...(deepUnavailable ? { deepUnavailable: true } : {}),
+          ...(deepFailure === undefined ? {} : { deepFailure }),
         },
         undefined,
         2,
@@ -85,7 +95,8 @@ export async function statusCommand(
 
   print(m.cli_status_running({ url, version: health.version ?? 'unknown' }));
   if (options.deep === true) {
-    if (deepUnavailable) print(m.cli_status_deep_unavailable());
-    else print(JSON.stringify(providers, undefined, 2));
+    if (deepFailure === undefined) print(JSON.stringify(providers, undefined, 2));
+    else if (deepFailure.reason === 'auth') print(m.cli_status_deep_unavailable());
+    else print(m.cli_status_deep_probe_failed({ status: String(deepFailure.status ?? 'network error') }));
   }
 }
