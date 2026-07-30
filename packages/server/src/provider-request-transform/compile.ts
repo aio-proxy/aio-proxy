@@ -94,7 +94,13 @@ function normalizeMissingFieldComparisons(document: Record<string, unknown>): Re
 function requiresExistingField(condition: unknown): boolean {
   if (!isDocument(condition)) return false;
   const operators = Object.keys(condition).filter((key) => key.startsWith('$'));
-  return operators.some((operator) => operator !== '$exists');
+  return operators.length > 0 && !containsExistsOperator(condition);
+}
+
+function containsExistsOperator(condition: Record<string, unknown>): boolean {
+  if (Object.hasOwn(condition, '$exists')) return true;
+  const not = condition['$not'];
+  return isDocument(not) && containsExistsOperator(not);
 }
 
 function bodyReference(value: string): boolean {

@@ -179,6 +179,27 @@ describe('provider request transform query behavior', () => {
     );
     expect(existsOutput.request.headers['x-match']).toBe('$exists');
   });
+
+  test('lets explicit existence predicates control missing-field behavior', async () => {
+    const cases: readonly [string, Record<string, unknown>][] = [
+      ['$not-$exists', { $not: { $exists: true } }],
+      ['$exists-and-$ne', { $exists: false, $ne: 5 }],
+    ];
+
+    for (const [name, condition] of cases) {
+      const output = await evaluateProviderRequestTransforms(
+        compileProviderRequestTransforms([
+          {
+            when: { 'request.body.missing': condition },
+            update: [{ $set: { 'request.headers': headerSet('x-match', { $literal: name }) } }],
+          },
+        ]),
+        fixture({ headers: {} }),
+        async () => ({}),
+      );
+      expect(output.request.headers['x-match']).toBe(name);
+    }
+  });
 });
 
 describe('provider request transform errors', () => {
@@ -229,6 +250,15 @@ describe('provider request transform errors', () => {
       transformStageIndex: 0,
     });
     expect(providerRequestTransformDiagnostic(new Error('unsafe'))).toBeUndefined();
+  });
+
+  test('supports safe transform errors before a rule location exists', () => {
+    const error = new ProviderRequestTransformError({ code: 'REQUEST_TRANSFORM_REQUEST_REBUILD_FAILED' });
+
+    expect(error.message).toBe('Provider request transform failed');
+    expect(Object.keys(error)).toEqual(['code']);
+    expect('cause' in error).toBe(false);
+    expect(providerRequestTransformDiagnostic(error)).toEqual({});
   });
 });
 

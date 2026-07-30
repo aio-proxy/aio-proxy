@@ -11,13 +11,13 @@ export type ProviderRequestTransformLocation = {
   readonly stageIndex?: number;
 };
 
-type ProviderRequestTransformErrorOptions = ProviderRequestTransformLocation & {
+type ProviderRequestTransformErrorOptions = Partial<ProviderRequestTransformLocation> & {
   readonly code: ProviderRequestTransformErrorCode;
 };
 
 export class ProviderRequestTransformError extends Error {
   declare readonly code: ProviderRequestTransformErrorCode;
-  declare readonly ruleIndex: number;
+  declare readonly ruleIndex?: number;
   declare readonly ruleName?: string;
   declare readonly stageIndex?: number;
 
@@ -25,7 +25,7 @@ export class ProviderRequestTransformError extends Error {
     super('Provider request transform failed');
     Object.defineProperty(this, 'name', { value: 'ProviderRequestTransformError' });
     this.code = options.code;
-    this.ruleIndex = options.ruleIndex;
+    if (options.ruleIndex !== undefined) this.ruleIndex = options.ruleIndex;
     if (options.ruleName !== undefined) this.ruleName = options.ruleName;
     if (options.stageIndex !== undefined) this.stageIndex = options.stageIndex;
   }
@@ -33,14 +33,14 @@ export class ProviderRequestTransformError extends Error {
 
 export function providerRequestTransformDiagnostic(error: unknown):
   | {
-      readonly transformRuleIndex: number;
+      readonly transformRuleIndex?: number;
       readonly transformRuleName?: string;
       readonly transformStageIndex?: number;
     }
   | undefined {
   if (!(error instanceof ProviderRequestTransformError)) return undefined;
   return {
-    transformRuleIndex: error.ruleIndex,
+    ...(error.ruleIndex === undefined ? {} : { transformRuleIndex: error.ruleIndex }),
     ...(error.ruleName === undefined ? {} : { transformRuleName: error.ruleName }),
     ...(error.stageIndex === undefined ? {} : { transformStageIndex: error.stageIndex }),
   };
