@@ -16,13 +16,14 @@ export async function attemptRawCandidate<TRequest, TContext>(
 ): Promise<AttemptStep> {
   const { adapter, context, rawRequest, request, session, source, logicalRequest, release, deferRelease, logFailure } =
     ctx;
-  const { index, candidate, startedAt, hasNext, inAttempt } = slot;
+  const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
   const provider = candidate.provider;
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
 
   const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
-  const response = await inAttempt(() => raw.invoke(upstream, logicalRequest));
+  observation.markTransportUnavailable();
+  const response = await inAttempt(() => raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }));
   if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
 
   const fallback = hasNext && shouldFallbackStatus(response.status);
@@ -30,7 +31,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
     logFailure(index, attemptLog(base, response.status), 'response', fallback, { response });
     slot.spanRef.current = undefined;
-    attemptSpan.end(failureTerminal(response.status));
+    ctx.emitter.endAttempt(attemptSpan, observation, failureTerminal(response.status));
     if (fallback) {
       try {
         void response.body?.cancel().catch(() => undefined);
@@ -52,6 +53,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     providerId: provider.id,
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
+    observation,
     ...(ctx.streamRequested ? { startedAt } : {}),
     ...(adapter.session === undefined
       ? {}
@@ -70,6 +72,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   session.finishFrom(
     ctx.emitter.settleSuccess(
       attemptSpan,
+      observation,
       terminalCompletion(captured.completion, rawRequest.signal).finally(release),
       { providerId: provider.id, modelId: candidate.modelId },
       () => capturedResponseId,

@@ -3,6 +3,7 @@ import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
 import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
+import type { AttemptResponseObservation } from '../../../response-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import type { AttemptTraceMetadata } from '../attempt-base';
 import type { AttemptLog } from '../logging';
@@ -55,6 +56,7 @@ export type CandidateSlot = {
   readonly index: number;
   readonly candidate: RouterResolution<RuntimeProviderInstance>;
   readonly startedAt: number;
+  readonly observation: AttemptResponseObservation;
   readonly hasNext: boolean;
   readonly trace: {
     providerWeight?: AttemptTraceMetadata['providerWeight'];

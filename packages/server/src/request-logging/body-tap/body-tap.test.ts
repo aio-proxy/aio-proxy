@@ -38,6 +38,23 @@ test('emits complete SSE frames across mixed line endings', async () => {
   expect(chunks).toEqual(['event: first\r\ndata: 1\r\n\r\n', 'data: 2\n\n', 'data: tail']);
 });
 
+test('reports a split SSE frame on the source read that completes it', async () => {
+  const sourceReads: number[] = [];
+  const sseFrames: number[] = [];
+  const first = encoder.encode('data: fir');
+  const second = encoder.encode('st\n\n');
+  const tapped = tapTextBody(streamOf(first, second), 'text/event-stream', {
+    chunk() {},
+    terminal() {},
+    sourceRead: (byteLength) => sourceReads.push(byteLength),
+    sseFrames: (count) => sseFrames.push(count),
+  });
+
+  expect(await new Response(tapped).text()).toBe('data: first\n\n');
+  expect(sourceReads).toEqual([first.byteLength, second.byteLength]);
+  expect(sseFrames).toEqual([0, 1]);
+});
+
 test('reports cancellation and preserves the source cancel reason', async () => {
   const terminals: BodyTapTerminal[] = [];
   let reason: unknown;
@@ -55,6 +72,24 @@ test('reports cancellation and preserves the source cancel reason', async () => 
 
   expect(reason).toBe('client-left');
   expect(terminals).toEqual([{ byteLength: 0, outcome: 'cancelled' }]);
+});
+
+test('cancels the source only once when cancellation is repeated', async () => {
+  let cancellations = 0;
+  const tapped = tapTextBody(
+    new ReadableStream({
+      cancel() {
+        cancellations++;
+      },
+    }),
+    'application/json',
+    { chunk() {}, terminal() {} },
+  );
+
+  await tapped.cancel('client-left');
+  await tapped.cancel('client-left-again');
+
+  expect(cancellations).toBe(1);
 });
 
 test('reports the source error without changing it', async () => {

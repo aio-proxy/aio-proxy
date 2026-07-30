@@ -96,13 +96,13 @@ describe('createApiProvider streaming and trace behavior', () => {
     }
   });
 
-  test('preserves request encoding while stripping decoded zstd response headers', async () => {
+  test('strips client request encoding while stripping decoded zstd response headers', async () => {
     const body = JSON.stringify({ ok: true });
     const compressed = Bun.zstdCompressSync(new TextEncoder().encode(body));
     const upstream = Bun.serve({
       port: 0,
       fetch(req) {
-        expect(req.headers.get('accept-encoding')).toBe('gzip, deflate, br, zstd');
+        expect(req.headers.get('accept-encoding')).toBe('identity');
         return new Response(compressed, {
           headers: {
             'content-encoding': 'zstd',

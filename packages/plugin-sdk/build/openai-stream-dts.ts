@@ -9,6 +9,19 @@ export const OPENAI_STREAM_DTS = `export type OpenAIStreamProtocol = "openai-res
 export type OpenAIStreamFetchOptions = {
   readonly acceptEncoding?: string;
   readonly rewriteToolImages?: boolean;
+  readonly upstreamStream?: boolean;
+};
+
+export type OpenAIStreamFetchCallOptions = {
+  readonly upstreamStream?: boolean;
+};
+
+export type OpenAIStreamFetch = typeof globalThis.fetch & {
+  (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    options?: OpenAIStreamFetchCallOptions,
+  ): Promise<Response>;
 };
 
 export type ToolImageMarker = {
@@ -20,7 +33,7 @@ export declare function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
   fetcher?: typeof globalThis.fetch,
   options?: OpenAIStreamFetchOptions,
-): typeof globalThis.fetch;
+): OpenAIStreamFetch;
 
 export declare function createToolImageMarker(): ToolImageMarker;
 `;

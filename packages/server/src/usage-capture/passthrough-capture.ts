@@ -44,13 +44,7 @@ export function passthroughCapture(
   const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
   const sseObserver = isSse
-    ? createPassthroughSseUsageObserver(protocol, {
-        onEvent: observation?.observeSseEvent,
-        onContent() {
-          const contentAt = observeContentAt(observation);
-          firstTokenAt ??= contentAt;
-        },
-      })
+    ? createSseUsageObserver(protocol, observation, (contentAt) => (firstTokenAt ??= contentAt))
     : undefined;
   const decoder = isSse ? new TextDecoder() : undefined;
   const chunks: Uint8Array[] = [];
@@ -149,6 +143,18 @@ export function passthroughCapture(
 function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
   observer.feed(decoder.decode());
   return observer.finish();
+}
+
+function createSseUsageObserver(
+  protocol: PassthroughUsageOptions['protocol'],
+  observation: PassthroughUsageOptions['observation'],
+  onContent: (at: number) => void,
+): PassthroughSseUsageObserver {
+  const onEvent = observation?.observeSseEvent;
+  return createPassthroughSseUsageObserver(protocol, {
+    ...(onEvent === undefined ? {} : { onEvent }),
+    onContent: () => onContent(observeContentAt(observation)),
+  });
 }
 
 function decodeChunks(chunks: readonly Uint8Array[], byteLength: number): string {

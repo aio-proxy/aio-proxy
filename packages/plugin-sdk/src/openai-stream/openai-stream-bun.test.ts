@@ -59,7 +59,7 @@ describe('createOpenAIStreamFetch Bun transport', () => {
           throw new Error('timed out waiting for OpenAI stream body');
         }),
       ]);
-      expect(acceptEncoding).toBe('gzip, deflate, br, zstd');
+      expect(acceptEncoding).toBe('identity');
       expect(text).toBe(terminal);
       expect(continuationReleased).toBe(false);
     } finally {

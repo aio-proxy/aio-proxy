@@ -5,6 +5,7 @@ import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import { reconstructed, waitFor } from '../request-logging/test-support';
+import { createAttemptResponseObservation, withAttemptResponseObservation } from '../response-observation';
 import type { ServerLog } from '../server-log';
 import { materializeProviders } from './materialize';
 
@@ -165,4 +166,18 @@ test('materialized provider fetches observe final upstream requests only inside 
     reconstructed(logs, 'upstream_request', 0),
     reconstructed(logs, 'upstream_request', 1),
   ]);
+});
+
+test('materialized provider fetches record transport headers without debug logging', async () => {
+  const fixture = observedFetchFixture();
+  const apiFetch = fixture.apiFetch();
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+
+  const response = await withAttemptResponseObservation(observation, () =>
+    apiFetch!('https://final-api.test/v1/models'),
+  );
+
+  expect(response.status).toBe(204);
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10 });
+  expect(fixture.logs).toEqual([]);
 });

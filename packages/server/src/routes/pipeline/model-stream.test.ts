@@ -51,6 +51,9 @@ describe('shared protocol routing pipeline model commit fallback', () => {
         { outcome: 'failure', providerId: 'primary', statusCode: 502 },
         { outcome: 'success', providerId: 'backup', statusCode: undefined },
       ]);
+      if (stage === 'ensure') {
+        expect(harness.recording.attempts[0]?.transportObservation).toBeUndefined();
+      }
       if (stage === 'first-event') {
         expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
       }

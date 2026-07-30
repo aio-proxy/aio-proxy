@@ -24,6 +24,7 @@ export async function probeApi(
         method: 'POST',
         signal: AbortSignal.timeout(1_000),
       }),
+      { upstreamStream: false },
     );
     if (response.body !== null) {
       await response.body.cancel();

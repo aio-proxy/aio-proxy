@@ -1,6 +1,10 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
-import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
+import {
+  createOpenAIStreamFetch,
+  type OpenAIStreamFetch,
+  type OpenAIStreamFetchCallOptions,
+} from '@aio-proxy/plugin-sdk/openai-stream';
 
 import { refreshAccessToken } from '../oauth-flow';
 import type { ChatGPTCredential } from '../schema';
@@ -33,7 +37,9 @@ export async function createOpenAIChatGPTRuntime(
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
     raw: ({ protocol }) =>
-      protocol === 'openai-response' ? { invoke: (request) => dynamicFetch(request) } : undefined,
+      protocol === 'openai-response'
+        ? { invoke: (request, _context, options) => dynamicFetch(request, undefined, options) }
+        : undefined,
   };
 }
 
@@ -41,15 +47,21 @@ export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   fetcher: typeof fetch = globalThis.fetch,
   credentialFetcher: typeof fetch = fetcher,
-): typeof fetch {
+): OpenAIStreamFetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
     acceptEncoding: 'identity',
+    upstreamStream: true,
   });
-  return async (input, init) => {
+  const dynamicFetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    options?: OpenAIStreamFetchCallOptions,
+  ): Promise<Response> => {
     const credential = await currentCredential(credentials, credentialFetcher);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete('authorization');
+    headers.delete('accept-encoding');
     headers.delete('host');
     headers.set('authorization', `Bearer ${credential.accessToken}`);
     headers.set('ChatGPT-Account-Id', credential.accountId);
@@ -58,14 +70,19 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('session-id', crypto.randomUUID());
     const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
 
-    return await fetchOpenAIResponses(rewriteCodexUrl(request.url), {
-      method: request.method,
-      headers,
-      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
-      signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
-      redirect: request.redirect,
-    });
+    return await fetchOpenAIResponses(
+      rewriteCodexUrl(request.url),
+      {
+        method: request.method,
+        headers,
+        ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
+        signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
+        redirect: request.redirect,
+      },
+      options,
+    );
   };
+  return dynamicFetch as OpenAIStreamFetch;
 }
 
 function shouldRewriteResponsesBody(request: Request): boolean {
