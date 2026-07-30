@@ -17,7 +17,7 @@ import { Command } from 'commander';
 import packageJson from '../package.json' with { type: 'json' };
 import { bootProxyServer } from './boot-proxy-server';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
-import { ServeListenError } from './errors';
+import { ReloadError, ServeListenError } from './errors';
 import { openBrowser } from './open-browser';
 import {
   FormJsonInvalidError,
@@ -32,6 +32,7 @@ import {
 } from './plugin-commands';
 import { isProviderLoginUserError } from './plugin-commands/provider-login';
 import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
+import { reloadCommand } from './reload';
 
 const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
@@ -166,6 +167,13 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .action(run(deps));
 
   program
+    .command('reload')
+    .description(m.cli_reload_description())
+    .option('--host <host>', m.cli_run_option_host_description())
+    .option('--port <port>', m.cli_run_option_port_description())
+    .action(reloadCommand);
+
+  program
     .command('dashboard')
     .description(m.cli_dashboard_description())
     .action(() => {
@@ -245,6 +253,7 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
 export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
   if (
     err instanceof ServeListenError ||
+    err instanceof ReloadError ||
     isProviderLoginUserError(err) ||
     (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
     err instanceof FormNumberInvalidError ||

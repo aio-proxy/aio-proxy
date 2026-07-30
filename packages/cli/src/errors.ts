@@ -22,3 +22,9 @@ export class ServeListenError extends AioProxyError {
     );
   }
 }
+
+export class ReloadError extends AioProxyError {
+  constructor(message: string) {
+    super('ReloadError', message);
+  }
+}
