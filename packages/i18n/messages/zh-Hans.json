@@ -93,6 +93,7 @@
   "cli_plugin_prune_prompt": "是否删除未使用的插件包缓存？",
   "cli_plugin_already_builtin": "{plugin} 已是内置插件。",
   "cli_plugin_added": "已添加插件 {plugin}。",
+  "cli_provider_package_installed": "已安装 provider 包 {package}。请在配置中通过 `ai-sdk` 类型的 provider 引用它。",
   "cli_plugin_configured": "已配置插件 {plugin}。",
   "cli_plugin_removed_secrets_retained": "已移除插件 {plugin}；其密钥仍被保留。",
   "cli_plugin_removed_secrets_purged": "已移除插件 {plugin} 并清除其密钥。",

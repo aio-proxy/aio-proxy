@@ -130,6 +130,7 @@ export {
   BUNDLED_PROVIDER_VERSIONS,
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
+  isAiSdkProviderModule,
   type LoadedAiSdkProvider,
   loadAiSdkProvider,
 } from './provider/ai-sdk-loader/index';

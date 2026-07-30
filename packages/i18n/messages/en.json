@@ -97,6 +97,7 @@
   "cli_plugin_prune_prompt": "Remove unused plugin package cache entries?",
   "cli_plugin_already_builtin": "{plugin} is already built in.",
   "cli_plugin_added": "Added plugin {plugin}.",
+  "cli_provider_package_installed": "Installed provider package {package}. Reference it from an `ai-sdk` provider in your config.",
   "cli_plugin_configured": "Configured plugin {plugin}.",
   "cli_plugin_removed_secrets_retained": "Removed plugin {plugin}; its stored secrets were retained.",
   "cli_plugin_removed_secrets_purged": "Removed plugin {plugin} and purged its stored secrets.",

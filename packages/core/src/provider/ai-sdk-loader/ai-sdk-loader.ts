@@ -105,6 +105,17 @@ function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
   return typeof value === 'function';
 }
 
+// An AI SDK provider package (e.g. @ai-sdk/anthropic) has no default PluginDescriptor;
+// it is identified solely by a `create*` factory export, which is the same rule
+// loadCachedProvider uses to invoke it. Exported so the CLI installer classifies a
+// package by the exact rule the runtime loader will later apply.
+export function isAiSdkProviderModule(imported: unknown): boolean {
+  return (
+    isRecord(imported) &&
+    Object.entries(imported).some(([name, value]) => name.startsWith('create') && isProviderLoader(value))
+  );
+}
+
 async function loadCachedProvider(
   packageName: string,
   options?: AiSdkProviderLoadOptions,
