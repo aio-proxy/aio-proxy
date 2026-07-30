@@ -10,6 +10,7 @@ import {
   REQUESTED_MODEL,
   settleRecording,
   textStream,
+  withSnapshotConfigs,
 } from '../../../__tests__/pipeline-helpers';
 import { LogicalSessionStore } from '../../logical-session-store';
 import type { ProviderRouteSource } from '../../runtime';
@@ -119,15 +120,6 @@ function request(source: ProviderRouteSource, body: Record<string, unknown>): Pr
     }),
     source,
   });
-}
-
-function withSnapshotConfigs(source: ProviderRouteSource, acquired: Config, current = acquired): ProviderRouteSource {
-  const snapshot = source.currentProviderSnapshot();
-  return {
-    ...source,
-    acquireProviderSnapshot: () => ({ snapshot: { ...snapshot, config: acquired }, release() {} }),
-    currentProviderSnapshot: () => ({ ...snapshot, config: current }),
-  };
 }
 
 function apiConfig(weight: number): Config {
