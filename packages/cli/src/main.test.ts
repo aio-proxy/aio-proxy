@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
+import { cliRunArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
 import packageJson from '../package.json' with { type: 'json' };
 
 describe('cli', () => {
@@ -31,7 +31,7 @@ describe('cli', () => {
     expect(chinese.stdout.toString()).toContain('AIO Proxy 命令行界面');
   }, 15_000);
 
-  test('rejects out-of-range serve ports', () => {
+  test('rejects out-of-range run ports', () => {
     // Given / When
     const result = runCli(['--port', '99999']);
 
@@ -40,7 +40,7 @@ describe('cli', () => {
     expect(output(result)).toContain('Port 99999 is out of range');
   });
 
-  test('reports serve port conflicts with the bound address', () => {
+  test('reports run port conflicts with the bound address', () => {
     // Given
     const blocker = Bun.listen({
       hostname: '127.0.0.1',
@@ -50,7 +50,7 @@ describe('cli', () => {
 
     try {
       // When
-      const result = runCli(['serve', '--port', String(blocker.port)]);
+      const result = runCli(['run', '--port', String(blocker.port)]);
 
       // Then
       expect(result.exitCode).toBe(1);
@@ -67,7 +67,7 @@ describe('cli', () => {
     const home = join(dir, 'nested');
     const configFile = join(home, 'config.jsonc');
     const port = freePort();
-    const server = Bun.spawn(cliServeArgs(port), {
+    const server = Bun.spawn(cliRunArgs(port), {
       cwd: repoCwd,
       env: { ...process.env, AIO_PROXY_HOME: home },
       stderr: 'pipe',
@@ -100,9 +100,9 @@ describe('cli', () => {
     }
   });
 
-  test('serve --help advertises --open and drops --config and --dashboard', () => {
+  test('run --help advertises --open and drops --config and --dashboard', () => {
     // Given / When
-    const result = runCli(['serve', '--help']);
+    const result = runCli(['run', '--help']);
 
     // Then
     expect(result.exitCode).toBe(0);

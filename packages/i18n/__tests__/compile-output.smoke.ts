@@ -35,7 +35,7 @@ describe('paraglide compile output', () => {
     // When / Then
     expect(declaration).toContain('export * as m');
     expect(indexDeclaration).toContain('cli_error_port_out_of_range');
-    expect(typeof m.cli_serve_description).toBe('function');
+    expect(typeof m.cli_run_description).toBe('function');
     expect(typeof m.error_provider_not_installed).toBe('function');
     expect(m.cli_error_port_out_of_range({ port: 99_999 })).toContain('99999');
   });

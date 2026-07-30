@@ -83,7 +83,7 @@ export const runCliUntilOutput = async (args: readonly string[], expected: reado
 export const output = (result: Bun.SpawnSyncReturns<Uint8Array>) =>
   `${result.stdout.toString()}${result.stderr.toString()}`;
 
-export const cliServeArgs = (port: number): readonly string[] => [...cli, 'serve', '--port', String(port)];
+export const cliRunArgs = (port: number): readonly string[] => [...cli, 'run', '--port', String(port)];
 
 export const repoCwd = repoRoot;
 

@@ -10,8 +10,8 @@
     "build:binary": "bun scripts/build-binary.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test --preload=./__tests__/setup.ts --timeout 20000",
-    "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun --watch src/main.dev.ts serve --port $AIO_PROXY_PORT",
-    "start": "bun src/main.ts serve"
+    "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun --watch src/main.dev.ts run --port $AIO_PROXY_PORT",
+    "start": "bun src/main.ts run"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",

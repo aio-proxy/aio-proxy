@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
   providers: {},
 } as const;
 
-type ServeOptions = {
+type RunOptions = {
   readonly host?: string;
   readonly port?: string;
   readonly open?: boolean;
@@ -117,7 +117,7 @@ const assertPortAvailable = (host: string, port: number) => {
   }
 };
 
-const serve = (deps: CliDeps) => async (options: ServeOptions) => {
+const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const host = options.host ?? '127.0.0.1';
   const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
@@ -139,7 +139,7 @@ const serve = (deps: CliDeps) => async (options: ServeOptions) => {
   // 255s is Bun's maximum idle window.
   const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
   console.error(
-    m.cli_serve_started({
+    m.cli_run_started({
       apiUrl: `http://${server.hostname}:${server.port}`,
       dashboardUrl,
     }),
@@ -157,12 +157,12 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option('--lang <locale>', m.cli_option_lang_description());
 
   program
-    .command('serve')
-    .description(m.cli_serve_description())
-    .option('--host <host>', m.cli_serve_option_host_description())
-    .option('--port <port>', m.cli_serve_option_port_description())
-    .option('--open', m.cli_serve_option_open_description())
-    .action(serve(deps));
+    .command('run')
+    .description(m.cli_run_description())
+    .option('--host <host>', m.cli_run_option_host_description())
+    .option('--port <port>', m.cli_run_option_port_description())
+    .option('--open', m.cli_run_option_open_description())
+    .action(run(deps));
 
   program
     .command('dashboard')

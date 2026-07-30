@@ -9,7 +9,7 @@ test('development entry advertises the Rsbuild Dashboard', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-dev-'));
   writeFileSync(join(home, 'config.jsonc'), '{ server: { port: 22078, }, providers: {}, }\n');
   const port = freePort();
-  const child = Bun.spawn([process.execPath, 'run', 'packages/cli/src/main.dev.ts', 'serve', '--port', String(port)], {
+  const child = Bun.spawn([process.execPath, 'run', 'packages/cli/src/main.dev.ts', 'run', '--port', String(port)], {
     cwd: repoCwd,
     env: { ...process.env, AIO_PROXY_HOME: home },
     stderr: 'pipe',
