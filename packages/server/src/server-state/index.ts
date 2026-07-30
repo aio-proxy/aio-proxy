@@ -22,6 +22,7 @@ import { createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
+import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RuntimeProviderInstance } from '../runtime';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
@@ -134,6 +135,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const traceStore = createTraceStore(dbHandle.db);
   const usageCapture = createUsageCapture({ logger });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
+  const cooldown = new ProviderCooldownStore();
   const requestRecorder = createRequestTraceRecorder({
     store: traceStore,
     logger,
@@ -160,6 +162,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configStore,
     events,
     logicalSessionStore,
+    cooldown,
     oauthQuota,
     oauthLoginSessions,
     providerSummaries,

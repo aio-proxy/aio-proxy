@@ -4,6 +4,7 @@ import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, Prov
 
 import type { LogicalSessionStore } from './logical-session-store';
 import type { RequestTraceRecorder } from './request-tracing';
+import type { ProviderCooldownStore } from './routes/pipeline/provider-cooldown';
 import type { ServerLogSink } from './server-log';
 import type { UsageCapture } from './usage-capture';
 
@@ -71,6 +72,7 @@ export type RetiredProviderSnapshot = {
 
 export type ProviderRouteSource = {
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
+  readonly cooldown: ProviderCooldownStore;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
   readonly debugLogging?: boolean;
   readonly logger: ServerLogSink;
