@@ -196,6 +196,6 @@ function normalizeOpenAIStreamResponse(response: Response, protocol: OpenAIStrea
   // Throws before a Response is returned when Content-Encoding is unsupported.
   const source = response.body ?? new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
   const decoded = createContentDecodedReader(source, encoding);
-  const body = eventStream ? createOpenAISseBody(decoded, protocol) : createPlainDecodedBody(decoded);
+  const body = eventStream && response.ok ? createOpenAISseBody(decoded, protocol) : createPlainDecodedBody(decoded);
   return rebuildResponse(response, body);
 }

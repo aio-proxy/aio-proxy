@@ -27,6 +27,21 @@ describe('createOpenAIStreamFetch', () => {
     );
   });
 
+  test('passes through an error-status event stream without enforcing a terminal event', async () => {
+    const fetch = createOpenAIStreamFetch(
+      'openai-response',
+      async () =>
+        new Response('data: {"error":"upstream 503"}\n\n', {
+          status: 503,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+    );
+
+    const response = await fetch('https://example.test/error-stream');
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe('data: {"error":"upstream 503"}\n\n');
+  });
+
   test('preserves representation headers on an unencoded non-SSE response', async () => {
     const fetch = createOpenAIStreamFetch(
       'openai-response',
