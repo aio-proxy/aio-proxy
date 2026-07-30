@@ -4,7 +4,7 @@ import {
   ProviderRequestTransformRulesSchema,
   type ProviderRequestTransformRule,
 } from '@aio-proxy/types';
-import { useCallback, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { JsonEditor } from '@/components/json-editor/json-editor';
 import type { JsonEditorValidation, JsonValue } from '@/components/json-editor/json-editor-state';
@@ -21,6 +21,11 @@ interface SemanticIssue {
   readonly code: string;
 }
 
+interface ValidCandidate {
+  readonly draft: string;
+  readonly value: readonly ProviderRequestTransformRule[];
+}
+
 const jsonPath = (path: readonly PropertyKey[]) =>
   path.reduce<string>(
     (result, segment) => (typeof segment === 'number' ? `${result}[${segment}]` : `${result}.${String(segment)}`),
@@ -34,12 +39,32 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 }) => {
   const errorId = useId();
   const [semanticIssue, setSemanticIssue] = useState<SemanticIssue>();
-  const semanticValid = useRef(true);
+  const initialCandidate = useRef<ValidCandidate>({ draft: JSON.stringify(value, null, 2), value }).current;
+  const latestDraft = useRef(initialCandidate.draft);
+  const candidate = useRef<ValidCandidate | undefined>(initialCandidate);
+  const lastEmitted = useRef<ValidCandidate>(initialCandidate);
+
+  useEffect(() => {
+    const next: ValidCandidate = { draft: JSON.stringify(value, null, 2), value };
+    latestDraft.current = next.draft;
+    candidate.current = next;
+    lastEmitted.current = next;
+    setSemanticIssue(undefined);
+  }, [value]);
+
+  const handleDraftChange = useCallback(
+    (draft: string) => {
+      latestDraft.current = draft;
+      candidate.current = undefined;
+      onValidityChange(false);
+    },
+    [onValidityChange],
+  );
 
   const handleValueChange = useCallback(
-    (nextValue: JsonValue | undefined) => {
+    (nextValue: JsonValue | undefined, draft: string) => {
       const result = ProviderRequestTransformRulesSchema.safeParse(nextValue);
-      semanticValid.current = result.success;
+      candidate.current = result.success ? { draft, value: result.data } : undefined;
       setSemanticIssue(
         result.success
           ? undefined
@@ -49,14 +74,20 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
             },
       );
       onValidityChange(false);
-      if (result.success) onChange(result.data);
     },
-    [onChange, onValidityChange],
+    [onValidityChange],
   );
 
   const handleValidationChange = useCallback(
-    (validation: JsonEditorValidation) => onValidityChange(validation.valid && semanticValid.current),
-    [onValidityChange],
+    (validation: JsonEditorValidation, draft: string) => {
+      const current = candidate.current;
+      const valid = validation.valid && latestDraft.current === draft && current?.draft === draft;
+      onValidityChange(valid);
+      if (!valid || current === lastEmitted.current) return;
+      lastEmitted.current = current;
+      onChange(current.value);
+    },
+    [onChange, onValidityChange],
   );
 
   return (
@@ -67,6 +98,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
         ariaLabel={m['dashboard.providers.transforms.json_label']()}
         externalInvalid={semanticIssue !== undefined}
         {...(semanticIssue === undefined ? {} : { errorDescriptionId: errorId })}
+        onDraftChange={handleDraftChange}
         onValueChange={handleValueChange}
         onValidationChange={handleValidationChange}
       />

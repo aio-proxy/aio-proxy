@@ -19,8 +19,9 @@ import { registerJsonSchema, validateJsonModel } from './json-schema-registry';
 export type JsonEditorProps = {
   readonly value: JsonValue | undefined;
   readonly schema?: JsonSchema;
-  readonly onValueChange: (value: JsonValue | undefined) => void;
-  readonly onValidationChange?: (validation: JsonEditorValidation) => void;
+  readonly onValueChange: (value: JsonValue | undefined, draft: string) => void;
+  readonly onDraftChange?: (draft: string) => void;
+  readonly onValidationChange?: (validation: JsonEditorValidation, draft: string) => void;
   readonly externalInvalid?: boolean;
   readonly errorDescriptionId?: string;
   readonly ariaLabel?: string;
@@ -35,6 +36,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   value,
   schema,
   onValueChange,
+  onDraftChange,
   onValidationChange,
   externalInvalid,
   errorDescriptionId,
@@ -100,37 +102,42 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
   const parseResult = parseJsonDraft(draft);
   const externalValuePending = !Object.is(value, lastEmittedValue.current);
-  const validation = useMemo(
+  const draftValidation = useMemo(
     () =>
       mergeJsonValidation({
         syntaxValid: parseResult.ok,
         markers: validationState.markers,
         ...(schema === undefined ? {} : { schema }),
-        pending:
-          externalValuePending ||
-          validationState.pending ||
-          validationState.draft !== draft ||
-          validationState.schema !== schema,
+        pending: validationState.pending || validationState.draft !== draft || validationState.schema !== schema,
       }),
-    [draft, externalValuePending, parseResult.ok, schema, validationState],
+    [draft, parseResult.ok, schema, validationState],
+  );
+  const validation = useMemo(
+    () => ({
+      ...draftValidation,
+      valid: draftValidation.valid && !externalValuePending,
+      pending: draftValidation.pending || externalValuePending,
+    }),
+    [draftValidation, externalValuePending],
   );
 
   useEffect(() => {
-    onValidationChange?.(validation);
-  }, [onValidationChange, validation]);
+    onValidationChange?.(draftValidation, draft);
+  }, [draft, draftValidation, onValidationChange]);
 
   const handleChange = useCallback(
     (nextDraft: string | undefined) => {
       const nextValue = nextDraft ?? '';
+      onDraftChange?.(nextValue);
       setDraft(nextValue);
       setValidationState((current) => beginJsonValidation(current, nextValue, schema));
       const parsed = parseJsonDraft(nextValue);
       if (!parsed.ok) return;
 
       lastEmittedValue.current = parsed.value;
-      onValueChange(parsed.value);
+      onValueChange(parsed.value, nextValue);
     },
-    [onValueChange, schema],
+    [onDraftChange, onValueChange, schema],
   );
 
   const handleMount = useCallback<OnMount>((nextEditor, nextMonaco) => {
