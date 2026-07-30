@@ -17,6 +17,7 @@ export type ProtocolErrorMapper = Readonly<{
   unsupportedContentEncoding: () => Response;
   unsupported: (feature: string) => Response;
   provider: (error: unknown) => Response | undefined;
+  rateLimited: (retryAfterSeconds: number) => Response;
 }>;
 
 export type ModelInvocation = {

@@ -35,6 +35,7 @@ export const openAICompletionsErrors: ProtocolErrorMapper = {
   unsupported: () =>
     openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Completions transform dispatch'),
   provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
 };
 
 export const openAIResponsesErrors: ProtocolErrorMapper = {
@@ -59,6 +60,7 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: openAIUnsupported,
   provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
 };
 
 export const anthropicMessagesErrors: ProtocolErrorMapper = {
@@ -81,6 +83,7 @@ export const anthropicMessagesErrors: ProtocolErrorMapper = {
     anthropicError(501, 'invalid_request_error', 'Provider does not support Anthropic Messages transform dispatch'),
   provider: (error) =>
     genericProviderError(error, (status, message) => anthropicError(status, 'invalid_request_error', message)),
+  rateLimited: anthropicRateLimited,
 };
 
 export const geminiGenerateContentErrors: ProtocolErrorMapper = {
@@ -109,6 +112,7 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
     genericProviderError(error, (status, message) =>
       status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
     ),
+  rateLimited: geminiRateLimited,
 };
 
 function openAIProviderError(error: unknown): Response | undefined {
@@ -201,7 +205,7 @@ function anthropicError(status: number, type: 'invalid_request_error' | 'not_fou
 }
 
 function geminiError(
-  code: 400 | 404 | 409 | 413 | 415 | 499 | 500 | 501 | 503,
+  code: 400 | 404 | 409 | 413 | 415 | 429 | 499 | 500 | 501 | 503,
   status:
     | 'ABORTED'
     | 'CANCELLED'
@@ -213,4 +217,42 @@ function geminiError(
   message: string,
 ): Response {
   return Response.json({ error: { code, message, status } }, { status: code });
+}
+
+function withRetryAfter(response: Response, retryAfterSeconds: number): Response {
+  response.headers.set('retry-after', String(Math.max(1, Math.trunc(retryAfterSeconds))));
+  return response;
+}
+
+function openAIRateLimited(retryAfterSeconds: number): Response {
+  return withRetryAfter(
+    Response.json(
+      {
+        error: {
+          code: 'rate_limit_exceeded',
+          message: 'All providers for this model are cooling down',
+          type: 'rate_limit_error',
+        },
+      },
+      { status: 429 },
+    ),
+    retryAfterSeconds,
+  );
+}
+
+function anthropicRateLimited(retryAfterSeconds: number): Response {
+  return withRetryAfter(
+    Response.json(
+      { type: 'error', error: { type: 'rate_limit_error', message: 'All providers for this model are cooling down' } },
+      { status: 429 },
+    ),
+    retryAfterSeconds,
+  );
+}
+
+function geminiRateLimited(retryAfterSeconds: number): Response {
+  return withRetryAfter(
+    geminiError(429, 'RESOURCE_EXHAUSTED', 'All providers for this model are cooling down'),
+    retryAfterSeconds,
+  );
 }
