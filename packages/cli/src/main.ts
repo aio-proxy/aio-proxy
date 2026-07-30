@@ -16,8 +16,9 @@ import { Command } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { bootProxyServer } from './boot-proxy-server';
+import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
-import { ReloadError, ServeListenError } from './errors';
+import { ConfigValidationError, ReloadError, ServeListenError } from './errors';
 import { openBrowser } from './open-browser';
 import {
   FormJsonInvalidError,
@@ -183,6 +184,25 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option('--json')
     .action((options) => statusCommand(options));
 
+  const config = program.command('config').description(m.cli_config_description());
+  config
+    .command('show')
+    .description(m.cli_config_show_description())
+    .option('--json')
+    .action((options) => configShow(options));
+  config
+    .command('edit')
+    .description(m.cli_config_edit_description())
+    .action(() => configEdit());
+  config
+    .command('validate [path]')
+    .description(m.cli_config_validate_description())
+    .action((path) => configValidate(path));
+  config
+    .command('path')
+    .description(m.cli_config_path_description())
+    .action(() => configPathCommand());
+
   program
     .command('dashboard')
     .description(m.cli_dashboard_description())
@@ -264,6 +284,7 @@ export function formatCliError(err: unknown, locale: Parameters<typeof formatUse
   if (
     err instanceof ServeListenError ||
     err instanceof ReloadError ||
+    err instanceof ConfigValidationError ||
     isProviderLoginUserError(err) ||
     (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
     err instanceof FormNumberInvalidError ||

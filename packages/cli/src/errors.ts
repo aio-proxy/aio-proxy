@@ -28,3 +28,9 @@ export class ReloadError extends AioProxyError {
     super('ReloadError', message);
   }
 }
+
+export class ConfigValidationError extends AioProxyError {
+  constructor(message: string) {
+    super('ConfigValidationError', message);
+  }
+}
