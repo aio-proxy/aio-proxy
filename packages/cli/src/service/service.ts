@@ -1,12 +1,18 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../exit';
-import { LAUNCHD_LABEL, renderLaunchdPlist, renderSystemdUnit, SYSTEMD_UNIT_NAME } from './unit-templates';
+import {
+  LAUNCHD_LABEL,
+  renderLaunchdPlist,
+  renderSystemdUnit,
+  serviceEnvFile,
+  SYSTEMD_UNIT_NAME,
+} from './unit-templates';
 
 export { renderLaunchdPlist, renderSystemdUnit } from './unit-templates';
 
@@ -21,12 +27,23 @@ function requirePlatform(): SupportedPlatform {
   throw new CliExit(EXIT.unrecoverable, m.cli_service_unsupported_platform({ platform: current }));
 }
 
-// Resolve the single executable the service manager should launch. A globally
-// installed npm package exposes an `aio-proxy` bin on PATH. If it is missing we
-// fail fast rather than fall back to the interpreter path: `ExecStart=<bun> run`
-// would invoke bun's own `run` subcommand (which needs a file argument) and the
-// service would never start. `which` is injectable to keep the guard testable.
-export function resolveExec(which: (cmd: string) => string | null = Bun.which): string {
+// Resolve the single executable the service manager should launch. The npm
+// `aio-proxy` bin on PATH is a Node shim (`#!/usr/bin/env node`) that spawns the
+// platform-native binary; a managed run (launchd/systemd) has a minimal PATH
+// without node, so pointing ExecStart at the shim fails before the real binary
+// starts. When invoked via npm we already ARE the compiled native binary, so
+// process.execPath is the correct self-contained target. Fall back to `which`
+// only when execPath is not our binary (e.g. dev `bun run`), and fail fast if
+// even that is missing rather than render `ExecStart=<bun> run`, which would
+// invoke bun's own `run` subcommand and never start. execPath/which are
+// injectable to keep this testable.
+// ponytail: no AVX2/musl variant probing like opencode — we ship one binary per
+// platform with no variants, so execPath basename is enough.
+export function resolveExec(
+  which: (cmd: string) => string | null = Bun.which,
+  execPath: string = process.execPath,
+): string {
+  if (basename(execPath) === 'aio-proxy') return execPath;
   const exec = which('aio-proxy');
   if (exec === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
   return exec;
@@ -71,6 +88,7 @@ export async function serviceInstall(options: ServiceInstallOptions = {}, print:
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, renderLaunchdPlist({ exec, configPath: cfg }), { mode: 0o644 });
     print(m.cli_service_installed({ path: target }));
+    print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
     return;
   }
   const target = systemdUnitPath();
@@ -79,6 +97,7 @@ export async function serviceInstall(options: ServiceInstallOptions = {}, print:
   await runManager(['systemctl', '--user', 'daemon-reload']);
   await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   print(m.cli_service_installed({ path: target }));
+  print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
 }
 
 export async function serviceUninstall(print: Printer = console.log): Promise<void> {
@@ -91,7 +110,7 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
     return;
   }
   const target = systemdUnitPath();
-  await runManager(['systemctl', '--user', 'disable', SYSTEMD_UNIT_NAME], true);
+  await runManager(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
   rmSync(target, { force: true });
   await runManager(['systemctl', '--user', 'daemon-reload']);
   print(m.cli_service_uninstalled({ path: target }));

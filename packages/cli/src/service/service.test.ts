@@ -8,6 +8,9 @@ test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   expect(unit).toContain('ExecStart="/usr/local/bin/aio-proxy" run');
   expect(unit).toContain('Restart=on-failure');
   expect(unit).toContain('RestartPreventExitStatus=1');
+  // A managed unit has a clean env, so provider secrets in config ({{env.*}})
+  // must come from an optional env file next to the config; `-` makes it optional.
+  expect(unit).toContain('EnvironmentFile=-"/home/u/.aio-proxy/service.env"');
 });
 
 test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit', () => {
@@ -24,6 +27,10 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   // remap exit 1 (unrecoverable) to 0 to prevent a bad-config restart loop.
   expect(plist).toContain('SuccessfulExit');
   expect(plist).toContain('if [ "$status" -eq 1 ]; then exit 0; fi');
+  // launchd has no EnvironmentFile, so the wrapper sources an optional env file
+  // passed as $1 (exec is $0); this is how provider secrets reach the `run` child.
+  expect(plist).toContain('[ -f "$1" ] &amp;&amp; . "$1"');
+  expect(plist).toContain('<string>/Users/u/.aio-proxy/service.env</string>');
 });
 
 test('systemd unit quotes an ExecStart path containing spaces', () => {
@@ -35,6 +42,9 @@ test('systemd unit quotes an ExecStart path containing spaces', () => {
   });
   expect(unit).toContain('ExecStart="/home/a user/bin/aio-proxy" run');
   expect(unit).toContain('Environment="AIO_PROXY_HOME=/home/a user/.aio-proxy"');
+  // EnvironmentFile= unquotes its value (systemd EXTRACT_UNQUOTE), so a path with
+  // a space must be double-quoted too; the `-` sits outside the quotes.
+  expect(unit).toContain('EnvironmentFile=-"/home/a user/.aio-proxy/service.env"');
 });
 
 test('launchd plist XML-escapes an ampersand in the exec path', () => {
@@ -47,18 +57,30 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).toContain('<string>/home/a&amp;b/bin/aio-proxy</string>');
   expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy</string>');
   expect(plist).not.toContain('a&b/bin/aio-proxy');
+  expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy/service.env</string>');
 });
 
-test('resolveExec returns the aio-proxy bin found on PATH', () => {
-  expect(resolveExec(() => '/usr/local/bin/aio-proxy')).toBe('/usr/local/bin/aio-proxy');
+test('resolveExec targets the native binary when invoked as the compiled binary', () => {
+  // A managed run has a minimal PATH without node, so the ExecStart target must be
+  // the self-contained native binary. When invoked via npm we already ARE it, so
+  // process.execPath is used directly without consulting PATH.
+  const which = () => {
+    throw new Error('which must not be called when execPath is the native binary');
+  };
+  expect(resolveExec(which, '/opt/homebrew/bin/aio-proxy')).toBe('/opt/homebrew/bin/aio-proxy');
 });
 
-test('resolveExec fails fast when aio-proxy is not on PATH', () => {
+test('resolveExec falls back to PATH when execPath is not the native binary', () => {
+  // e.g. dev `bun run`: execPath is the bun interpreter, so resolve via PATH.
+  expect(resolveExec(() => '/usr/local/bin/aio-proxy', '/opt/homebrew/bin/bun')).toBe('/usr/local/bin/aio-proxy');
+});
+
+test('resolveExec fails fast when the native binary is not found', () => {
   // Falling back to the interpreter path would render `ExecStart=<bun> run`, an
   // invalid unit that never starts; installing must refuse instead.
   let caught: unknown;
   try {
-    resolveExec(() => null);
+    resolveExec(() => null, '/opt/homebrew/bin/bun');
   } catch (err) {
     caught = err;
   }

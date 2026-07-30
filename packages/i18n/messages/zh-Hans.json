@@ -161,6 +161,7 @@
   "cli_service_unsupported_platform": "service 命令不支持当前平台：{platform}。",
   "cli_service_system_unsupported": "暂不支持系统级安装，请改用用户级服务安装。",
   "cli_service_exec_not_found": "在 PATH 中找不到 “aio-proxy” 可执行文件。请先全局安装 aio-proxy（例如 `npm i -g aio-proxy`）再安装服务。",
+  "cli_service_env_hint": "配置中通过 env 模板引用的 provider 环境变量将从 {path} 读取。请在其中按 `KEY=value` 逐行填写；托管服务不会继承你的 shell 环境。",
   "cli_status_deep_probe_failed": "探测 provider 健康状态失败（{status}）。",
   "cli_doctor_description": "诊断 AIO Proxy 运行环境。",
   "cli_doctor_config_path": "配置文件：{path}",
