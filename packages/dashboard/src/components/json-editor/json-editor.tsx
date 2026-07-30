@@ -31,6 +31,7 @@ export type JsonEditorProps = {
 };
 
 const formatJsonValue = (value: JsonValue | undefined) => (value === undefined ? '' : JSON.stringify(value, null, 2));
+const serializeJsonValue = (value: JsonValue | undefined) => (value === undefined ? '' : JSON.stringify(value));
 
 export const JsonEditor: React.FC<JsonEditorProps> = ({
   value,
@@ -53,11 +54,14 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   const [validationState, setValidationState] = useState(() =>
     createJsonValidationState(formatJsonValue(value), schema),
   );
-  const lastEmittedValue = useRef(value);
+  const controlledContent = useRef(serializeJsonValue(value));
+  const emittedContent = useRef(controlledContent.current);
 
   useEffect(() => {
-    if (Object.is(value, lastEmittedValue.current)) return;
-    lastEmittedValue.current = value;
+    const nextContent = serializeJsonValue(value);
+    if (nextContent === controlledContent.current) return;
+    controlledContent.current = nextContent;
+    emittedContent.current = nextContent;
     const nextDraft = formatJsonValue(value);
     setDraft(nextDraft);
     setValidationState((current) => beginJsonValidation(current, nextDraft, schema));
@@ -101,7 +105,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   }, [draft, editor, modelUri, monaco, schema, validationState]);
 
   const parseResult = parseJsonDraft(draft);
-  const externalValuePending = !Object.is(value, lastEmittedValue.current);
+  const externalValuePending = serializeJsonValue(value) !== emittedContent.current;
   const draftValidation = useMemo(
     () =>
       mergeJsonValidation({
@@ -112,14 +116,11 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       }),
     [draft, parseResult.ok, schema, validationState],
   );
-  const validation = useMemo(
-    () => ({
-      ...draftValidation,
-      valid: draftValidation.valid && !externalValuePending,
-      pending: draftValidation.pending || externalValuePending,
-    }),
-    [draftValidation, externalValuePending],
-  );
+  const validation = {
+    ...draftValidation,
+    valid: draftValidation.valid && !externalValuePending,
+    pending: draftValidation.pending || externalValuePending,
+  };
 
   useEffect(() => {
     onValidationChange?.(draftValidation, draft);
@@ -134,7 +135,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       const parsed = parseJsonDraft(nextValue);
       if (!parsed.ok) return;
 
-      lastEmittedValue.current = parsed.value;
+      emittedContent.current = serializeJsonValue(parsed.value);
       onValueChange(parsed.value, nextValue);
     },
     [onDraftChange, onValueChange, schema],

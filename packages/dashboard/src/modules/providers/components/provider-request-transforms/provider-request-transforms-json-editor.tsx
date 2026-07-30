@@ -39,18 +39,21 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 }) => {
   const errorId = useId();
   const [semanticIssue, setSemanticIssue] = useState<SemanticIssue>();
-  const initialCandidate = useRef<ValidCandidate>({ draft: JSON.stringify(value, null, 2), value }).current;
+  const canonicalDraft = JSON.stringify(value, null, 2);
+  const canonicalValue = useRef(value);
+  canonicalValue.current = value;
+  const initialCandidate = useRef<ValidCandidate>({ draft: canonicalDraft, value }).current;
   const latestDraft = useRef(initialCandidate.draft);
   const candidate = useRef<ValidCandidate | undefined>(initialCandidate);
   const lastEmitted = useRef<ValidCandidate>(initialCandidate);
 
   useEffect(() => {
-    const next: ValidCandidate = { draft: JSON.stringify(value, null, 2), value };
+    const next: ValidCandidate = { draft: canonicalDraft, value: canonicalValue.current };
     latestDraft.current = next.draft;
     candidate.current = next;
     lastEmitted.current = next;
     setSemanticIssue(undefined);
-  }, [value]);
+  }, [canonicalDraft]);
 
   const handleDraftChange = useCallback(
     (draft: string) => {

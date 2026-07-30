@@ -53,7 +53,7 @@ const resolveNextValidation = async (markers: readonly { readonly severity: 'err
 const renderEditor = async () => {
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
-  render(
+  const view = render(
     <ProviderRequestTransformsEditor value={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
   const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
@@ -61,7 +61,7 @@ const renderEditor = async () => {
   if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
   onChange.mockClear();
-  return { editor, onChange, onValidityChange };
+  return { editor, onChange, onValidityChange, view };
 };
 
 test('edits the request rule array without exposing the transforms wrapper', async () => {
@@ -114,5 +114,59 @@ test('does not let an older valid result emit a newer schema-invalid candidate',
   await act(async () => older?.resolve([]));
 
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('preserves the first draft when validity rerenders supply a fresh empty array', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  let rerenderOnInvalid = false;
+  let remainingRerenders = 1;
+  let view: ReturnType<typeof render>;
+  const handleValidityChange = (valid: boolean) => {
+    onValidityChange(valid);
+    if (!rerenderOnInvalid || valid || remainingRerenders === 0) return;
+    remainingRerenders -= 1;
+    queueMicrotask(() =>
+      view.rerender(
+        <ProviderRequestTransformsEditor value={[]} onChange={onChange} onValidityChange={handleValidityChange} />,
+      ),
+    );
+  };
+  view = render(
+    <ProviderRequestTransformsEditor value={[]} onChange={onChange} onValidityChange={handleValidityChange} />,
+  );
+  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  await resolveNextValidation();
+  if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
+  rerenderOnInvalid = true;
+  onChange.mockClear();
+
+  const nextValue = '[{"update":[{"$set":{"request.body.first":true}}]}]';
+  fireEvent.change(editor, { target: { value: nextValue } });
+  await waitFor(() => expect(remainingRerenders).toBe(0));
+  await resolveNextValidation();
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith([{ update: [{ $set: { 'request.body.first': true } }] }]));
+  expect(onChange).toHaveBeenCalledTimes(1);
+});
+
+test('resynchronizes the draft when external canonical content changes', async () => {
+  const { editor, onChange, onValidityChange, view } = await renderEditor();
+  const externalValue: readonly ProviderRequestTransformRule[] = [
+    { update: [{ $unset: 'request.body.externally-replaced' }] },
+  ];
+
+  view.rerender(
+    <ProviderRequestTransformsEditor value={externalValue} onChange={onChange} onValidityChange={onValidityChange} />,
+  );
+
+  await waitFor(() =>
+    expect((editor as HTMLTextAreaElement).value).toContain('"$unset": "request.body.externally-replaced"'),
+  );
+  await resolveNextValidation();
+  if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
   expect(onChange).not.toHaveBeenCalled();
 });
