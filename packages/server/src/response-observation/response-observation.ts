@@ -81,12 +81,8 @@ export function createAttemptResponseObservation(options: {
         observeRead(byteLength, sseFrames) {
           if (responseCount !== 1) return;
           if (byteLength > 0 && firstUpstreamByteMs === undefined) firstUpstreamByteMs = elapsed(now());
-          if (
-            transportObservation === 'sse' &&
-            contentEncoding === 'identity' &&
-            sseFrames > (maxSseFramesPerRead ?? 0)
-          ) {
-            maxSseFramesPerRead = sseFrames;
+          if (byteLength > 0 && transportObservation === 'sse' && contentEncoding === 'identity') {
+            maxSseFramesPerRead = Math.max(maxSseFramesPerRead ?? 0, sseFrames);
           }
         },
       };

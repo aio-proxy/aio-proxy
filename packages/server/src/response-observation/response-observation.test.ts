@@ -68,6 +68,7 @@ test('keeps meaningful zero timings and ignores empty reads', () => {
     firstUpstreamByteMs: 0,
     firstSseEventMs: 0,
     contentGapP95Ms: 0,
+    maxSseFramesPerRead: 0,
     contentEncoding: 'identity',
   });
 });
