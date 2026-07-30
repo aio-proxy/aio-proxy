@@ -201,9 +201,14 @@ They serialize to the corresponding Mingo aggregation operators such as
 `$add`, `$multiply`, `$min`, `$concat`, `$cond`, `$ifNull`, `$concatArrays`, and
 `$mergeObjects`.
 
-`$getField`, `$setField`, and `$unsetField` are reserved for generated header
-operations so header names containing `.` or other Mongo path-significant
-characters remain valid.
+`$getField`, `$setField`, `$unsetField`, and `$regexMatch` are reserved for
+generated header operations so header names containing `.` or other Mongo
+path-significant characters remain valid. Header equality uses `$expr` with
+`$getField`; Header Pattern and Regex use the canonical generated
+`$getField`/`$regexMatch` shape. Header Exists and Does not exist use `$expr`
+with `$getField` wrapped by `$ifNull` and compared with `null`, which is safe
+because Fetch header values are strings. These operators are not exposed as
+arbitrary expression functions.
 
 Static values and expressions are distinct in the visual editor. The serializer
 uses `$literal` whenever a static string or object would otherwise be interpreted
@@ -434,7 +439,10 @@ the Dashboard unless a later local dry-run feature is approved.
 
 - Add `mingo` to `@aio-proxy/server`, which owns the Fetch decorator and is the
   only package that executes transforms.
-- Add `react-querybuilder` and `@react-querybuilder/expr` to the Dashboard.
+- Add `react-querybuilder`, `@react-querybuilder/core`, and
+  `@react-querybuilder/expr` to the Dashboard. `@react-querybuilder/core` is a
+  direct dependency because `parseMongoDB` is imported from its documented
+  subpath.
 - Copy the official MIT-licensed shadcn registry controls into the Dashboard and
   adapt them to local components instead of adding another UI framework.
 - Do not add Node-API bindings, dynamic libraries, WASM, or Bun FFI.
