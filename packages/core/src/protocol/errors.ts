@@ -1,3 +1,5 @@
+import { APICallError } from '@ai-sdk/provider';
+import { RetryError } from 'ai';
 import { ZodError } from 'zod';
 
 import {
@@ -255,4 +257,34 @@ function geminiRateLimited(retryAfterSeconds: number): Response {
     geminiError(429, 'RESOURCE_EXHAUSTED', 'All providers for this model are cooling down'),
     retryAfterSeconds,
   );
+}
+
+// Walks AiSdkProviderError.cause → RetryError.lastError/errors → nested cause
+// chains to the terminal APICallError, using APICallError.isInstance as the
+// robust guard (works across duplicated @ai-sdk/provider copies).
+function findApiCallError(error: unknown, depth = 0): APICallError | undefined {
+  if (depth > 6 || error === null || typeof error !== 'object') return undefined;
+  if (APICallError.isInstance(error)) return error;
+  if (error instanceof AiSdkProviderError) return findApiCallError(error.cause, depth + 1);
+  if (RetryError.isInstance(error)) {
+    const fromLast = findApiCallError(error.lastError, depth + 1);
+    if (fromLast !== undefined) return fromLast;
+    for (const inner of error.errors ?? []) {
+      const found = findApiCallError(inner, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if ('cause' in error) return findApiCallError((error as { cause?: unknown }).cause, depth + 1);
+  return undefined;
+}
+
+// The upstream status and Retry-After of a thrown provider error, or undefined
+// status when no APICallError is found. Used to decide/size a cooldown.
+export function upstreamRetryInfo(error: unknown): { status: number | undefined; retryAfter: string | null } {
+  const api = findApiCallError(error);
+  if (api === undefined) return { status: undefined, retryAfter: null };
+  const headers = api.responseHeaders ?? {};
+  const retryAfter = headers['retry-after'] ?? headers['Retry-After'] ?? null;
+  return { status: api.statusCode, retryAfter: typeof retryAfter === 'string' ? retryAfter : null };
 }

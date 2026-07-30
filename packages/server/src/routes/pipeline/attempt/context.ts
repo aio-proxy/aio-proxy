@@ -6,6 +6,7 @@ import type { RequestTraceSession } from '../../../request-tracing';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import type { AttemptTraceMetadata } from '../attempt-base';
 import type { AttemptLog } from '../logging';
+import type { ProviderCooldownStore } from '../provider-cooldown';
 import type { OpenSpan } from '../tracing';
 import type { AttemptEmitter } from './emit';
 
@@ -48,6 +49,8 @@ export type AttemptLoopContext<TRequest, TContext> = {
   readonly release: () => void;
   readonly deferRelease: () => void;
   readonly logFailure: LogAttemptFailure;
+  readonly cooldown: ProviderCooldownStore;
+  readonly retryAfterCapMs: number;
 };
 
 // Per-candidate facts.

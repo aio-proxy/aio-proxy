@@ -8,6 +8,7 @@ import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runt
 import { prioritizeAffinity } from '../affinity';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
 import type { AttemptLoopContext, CandidateSlot, InvocationHolder } from './context';
+import { selectLiveCandidates } from './cooldown-write';
 import { createAttemptEmitter } from './emit';
 import { handleAttemptError, unsupportedDispatch } from './error';
 import { attemptModelCandidate } from './model';
@@ -49,6 +50,7 @@ export async function attemptCandidates<TRequest, TContext>(
   const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
   const weightByProviderId =
     config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
+  const retryAfterCapMs = config?.server.retry.retryAfterCapMs ?? 30_000;
 
   const streamRequested = adapter.wantsStream(request, context);
   const logContext = {
@@ -74,18 +76,31 @@ export async function attemptCandidates<TRequest, TContext>(
     deferRelease,
     logFailure: (index, attempt: AttemptLog, failureKind, fallback, detail = {}) =>
       logProviderAttemptFailed({ ...logContext, attemptIndex: index, attempt, failureKind, fallback, ...detail }),
+    cooldown: source.cooldown,
+    retryAfterCapMs,
   };
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
 
-  for (const [index, candidate] of ordered.entries()) {
+  const selection = selectLiveCandidates(ctx.cooldown, ordered);
+  if (selection.kind === 'all-cooled') {
+    const response = adapter.errors.rateLimited(selection.retryAfterSeconds);
+    // Request-level finalization: no provider was attempted, so do NOT use finalFailure
+    // (it requires/records a provider+model). Snapshot lease + body cleanup are handled
+    // by the outer finally blocks in index.ts.
+    session.finish({ outcome: 'failure', finalHttpStatus: 429, errorCode: 'rate_limited' });
+    return response;
+  }
+  const { live } = selection;
+
+  for (const [index, candidate] of live.entries()) {
     const provider = candidate.provider;
     const slot: CandidateSlot = {
       index,
       candidate,
       startedAt: performance.now(),
-      hasNext: index < ordered.length - 1,
+      hasNext: index < live.length - 1,
       trace: {
         ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
         sourceProtocol: adapter.protocol,
