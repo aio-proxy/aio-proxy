@@ -21,6 +21,21 @@ test.each(['127.0.0.1', '::1', 'localhost'])('accepts loopback host %s', (host) 
   expect(ConfigSchema.parse({ server: { host }, providers: {} }).server.host).toBe(host);
 });
 
+test('defaults server.retry.retryAfterCapMs', () => {
+  expect(ConfigSchema.parse({ server: {}, providers: {} }).server.retry).toEqual({ retryAfterCapMs: 30_000 });
+});
+test('accepts a custom retryAfterCapMs', () => {
+  expect(ConfigSchema.parse({ server: { retry: { retryAfterCapMs: 5_000 } }, providers: {} }).server.retry).toEqual({
+    retryAfterCapMs: 5_000,
+  });
+});
+test('rejects out-of-range retryAfterCapMs', () => {
+  expect(ConfigSchema.safeParse({ server: { retry: { retryAfterCapMs: -1 } }, providers: {} }).success).toBe(false);
+  expect(ConfigSchema.safeParse({ server: { retry: { retryAfterCapMs: 400_000 } }, providers: {} }).success).toBe(
+    false,
+  );
+});
+
 test('normalizes plugin enablements while degrading legacy OAuth provider config', () => {
   const config = ConfigSchema.parse({
     plugins: [['@example/enterprise', { baseURL: 'https://example.test' }]],
