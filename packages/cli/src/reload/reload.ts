@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 
+import { controlBaseUrl } from '../control-plane';
 import { ReloadError } from '../errors';
 
 export type ReloadOptions = {
@@ -10,7 +11,7 @@ export type ReloadOptions = {
 export async function reloadCommand(options: ReloadOptions = {}): Promise<void> {
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? '9317';
-  const url = `http://${host}:${port}/admin/reload`;
+  const url = `${controlBaseUrl(host, port)}/admin/reload`;
   let response: Response;
   try {
     response = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(5_000) });

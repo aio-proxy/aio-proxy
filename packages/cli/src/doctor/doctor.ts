@@ -1,20 +1,12 @@
 import { configPath, listInstalledNpmPackages } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
+import { controlBaseUrl, probeHealth } from '../control-plane';
+
 export type DoctorOptions = {
   readonly host?: string;
   readonly port?: string;
 };
-
-async function probeHealth(base: string): Promise<{ readonly version?: string } | null> {
-  try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3_000) });
-    if (!res.ok) return null;
-    return (await res.json()) as { version?: string };
-  } catch {
-    return null;
-  }
-}
 
 // Read-only environment report: config path, whether a server answers /health
 // on the given address, and how many plugin packages are installed. Never
@@ -25,7 +17,7 @@ export async function doctorCommand(
 ): Promise<void> {
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? '9317';
-  const url = `http://${host}:${port}`;
+  const url = controlBaseUrl(host, port);
 
   print(m.cli_doctor_config_path({ path: configPath() }));
 

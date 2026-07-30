@@ -8,6 +8,18 @@ export type UnitOptions = {
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
 export const SYSTEMD_UNIT_NAME = 'aio-proxy.service';
 
+// systemd splits command lines on whitespace unless a token is double-quoted, and
+// treats `%` as a specifier and `\` / `"` as escapes. Quote the value and escape
+// those metacharacters so an exec or config-home path containing spaces (or any of
+// them) is passed as a single literal argument instead of being truncated.
+const systemdQuote = (value: string): string =>
+  `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%')}"`;
+
+// launchd plist strings are XML element text, so a `&`, `<`, or `>` in a path would
+// produce a malformed plist that the LaunchAgent cannot load. Escape them.
+const xmlEscape = (value: string): string =>
+  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
 // systemd user unit. `ExecStart=<exec> run` starts the long-running proxy.
 // Restart=on-failure + RestartPreventExitStatus=1 honors the CLI exit-code
 // contract: exit 1 is unrecoverable (bad config/input), so systemd must not
@@ -20,11 +32,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${exec} run
+ExecStart=${systemdQuote(exec)} run
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=1
-Environment=AIO_PROXY_HOME=${dirname(configPath)}
+Environment=${systemdQuote(`AIO_PROXY_HOME=${dirname(configPath)}`)}
 
 [Install]
 WantedBy=default.target
@@ -49,13 +61,13 @@ export function renderLaunchdPlist({ exec, configPath }: UnitOptions): string {
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>${LAUNCHD_EXEC_WRAPPER}</string>
-    <string>${exec}</string>
+    <string>${xmlEscape(LAUNCHD_EXEC_WRAPPER)}</string>
+    <string>${xmlEscape(exec)}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>AIO_PROXY_HOME</key>
-    <string>${dirname(configPath)}</string>
+    <string>${xmlEscape(dirname(configPath))}</string>
   </dict>
   <key>KeepAlive</key>
   <dict>

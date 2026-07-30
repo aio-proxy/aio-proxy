@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import { redactSecrets } from '@aio-proxy/server';
 
 import { ConfigValidationError } from '../errors';
+import { DEFAULT_CONFIG } from '../run';
 
 export type ConfigShowOptions = { readonly json?: boolean };
 
@@ -39,7 +42,13 @@ export function configPathCommand(print: (line: string) => void = console.log): 
 export function configEdit(): void {
   const editor = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'vi';
   const path = configPath();
-  // Hand the raw file to the editor so comments/formatting survive — we never
-  // rewrite the file ourselves (that would strip JSONC comments).
+  // On a fresh install `~/.aio-proxy` does not exist yet, so the editor would
+  // have nowhere to save. Create the dir (and seed the default config) before
+  // launching. We only bootstrap when the file is absent, so an existing file's
+  // comments/formatting survive untouched — we never rewrite it ourselves.
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    writeFileSync(path, `${JSON.stringify(DEFAULT_CONFIG, undefined, 2)}\n`, { mode: 0o600 });
+  }
   spawn(editor, [path], { stdio: 'inherit' });
 }

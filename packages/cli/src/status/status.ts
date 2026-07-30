@@ -1,13 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 
+import { controlBaseUrl, probeHealth } from '../control-plane';
+
 export type StatusOptions = {
   readonly host?: string;
   readonly port?: string;
   readonly deep?: boolean;
   readonly json?: boolean;
 };
-
-type Health = { readonly status?: string; readonly uptime?: number; readonly version?: string };
 
 type DeepProbeFailure = { readonly reason: 'auth' | 'probe-failed'; readonly status?: number };
 
@@ -18,16 +18,6 @@ type StatusResult = {
   readonly uptime?: number;
   readonly providers?: unknown;
   readonly deepFailure?: DeepProbeFailure;
-};
-
-const probeHealth = async (base: string): Promise<Health | null> => {
-  try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3_000) });
-    if (!res.ok) return null;
-    return (await res.json()) as Health;
-  } catch {
-    return null;
-  }
 };
 
 type ProbeResult = { readonly ok: true; readonly data: unknown } | { readonly ok: false; readonly status?: number };
@@ -51,7 +41,7 @@ export async function statusCommand(
 ): Promise<void> {
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? '9317';
-  const url = `http://${host}:${port}`;
+  const url = controlBaseUrl(host, port);
   const health = await probeHealth(url);
 
   const result: StatusResult = {

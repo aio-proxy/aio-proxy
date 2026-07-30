@@ -5,7 +5,7 @@ import { renderLaunchdPlist, renderSystemdUnit, resolveExec } from './service';
 
 test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   const unit = renderSystemdUnit({ exec: '/usr/local/bin/aio-proxy', configPath: '/home/u/.aio-proxy/config.jsonc' });
-  expect(unit).toContain('ExecStart=/usr/local/bin/aio-proxy run');
+  expect(unit).toContain('ExecStart="/usr/local/bin/aio-proxy" run');
   expect(unit).toContain('Restart=on-failure');
   expect(unit).toContain('RestartPreventExitStatus=1');
 });
@@ -24,6 +24,29 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   // remap exit 1 (unrecoverable) to 0 to prevent a bad-config restart loop.
   expect(plist).toContain('SuccessfulExit');
   expect(plist).toContain('if [ "$status" -eq 1 ]; then exit 0; fi');
+});
+
+test('systemd unit quotes an ExecStart path containing spaces', () => {
+  // Unquoted, systemd would split `/home/a user/bin/aio-proxy` and try to run
+  // `/home/a`, so the daemon never starts. The value must be double-quoted.
+  const unit = renderSystemdUnit({
+    exec: '/home/a user/bin/aio-proxy',
+    configPath: '/home/a user/.aio-proxy/config.jsonc',
+  });
+  expect(unit).toContain('ExecStart="/home/a user/bin/aio-proxy" run');
+  expect(unit).toContain('Environment="AIO_PROXY_HOME=/home/a user/.aio-proxy"');
+});
+
+test('launchd plist XML-escapes an ampersand in the exec path', () => {
+  // A raw `&` produces an invalid plist that the LaunchAgent cannot load; it
+  // must be escaped to `&amp;` in every dynamic string.
+  const plist = renderLaunchdPlist({
+    exec: '/home/a&b/bin/aio-proxy',
+    configPath: '/Users/a&b/.aio-proxy/config.jsonc',
+  });
+  expect(plist).toContain('<string>/home/a&amp;b/bin/aio-proxy</string>');
+  expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy</string>');
+  expect(plist).not.toContain('a&b/bin/aio-proxy');
 });
 
 test('resolveExec returns the aio-proxy bin found on PATH', () => {
