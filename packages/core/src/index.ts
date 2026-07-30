@@ -116,7 +116,7 @@ export {
   withNpmPackageLifecycle,
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
-export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from './paths/index';
+export { aioHome, configPath, dbPath, packagesDir } from './paths/index';
 export * from './plugins';
 export * from './protocol';
 export {

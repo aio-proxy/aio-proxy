@@ -1,1 +1,1 @@
-export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath, tmpDir } from './paths';
+export { aioHome, configPath, dbPath, packagesDir, tmpDir } from './paths';
