@@ -9,6 +9,10 @@ import { createAttemptResponseObservation, withAttemptResponseObservation } from
 import type { ServerLog } from '../server-log';
 import { materializeProviders } from './materialize';
 
+const headerSet = (field: string, value: unknown) => ({
+  $setField: { field, input: '$request.headers', value },
+});
+
 function observedFetchFixture() {
   const config = ConfigSchema.parse({
     proxy: 'http://global.proxy.test:8080',
@@ -18,12 +22,32 @@ function observedFetchFixture() {
         kind: ProviderKind.Api,
         models: ['api-model'],
         protocol: ProviderProtocol.OpenAICompatible,
+        transforms: {
+          request: [
+            {
+              update: [
+                { $set: { 'request.headers': headerSet('x-provider-route', 'api') } },
+                { $set: { 'request.body.route': 'api' } },
+              ],
+            },
+          ],
+        },
       },
       sdk: {
         kind: ProviderKind.AiSdk,
         models: ['sdk-model'],
         packageName: '@ai-sdk/openai-compatible',
         proxy: 'http://sdk.proxy.test:9090',
+        transforms: {
+          request: [
+            {
+              update: [
+                { $set: { 'request.headers': headerSet('x-provider-route', 'sdk') } },
+                { $set: { 'request.body.route': 'sdk' } },
+              ],
+            },
+          ],
+        },
       },
     },
   });
@@ -100,27 +124,45 @@ test('materialized provider fetches observe final upstream requests only inside 
   await withRequestLogContext(
     { requestId: 'request-1', debug: true, logger: (entry) => logs.push(entry) },
     async () => {
-      await withAttemptLogContext({ attemptIndex: 0, providerId: 'api', modelId: 'api-model' }, () =>
-        apiFetch!('https://final-api.test/v1/responses?api_key=api-query-secret', {
-          body: JSON.stringify({ apiKey: 'api-body-secret', model: 'api-model', prompt: 'api-prompt-secret' }),
-          headers: {
-            'content-type': 'application/json',
-            'user-agent': 'api-generated-agent',
-            'x-api-key': 'api-header-secret',
-          },
-          method: 'POST',
-        }),
+      await withAttemptLogContext(
+        {
+          attemptIndex: 0,
+          providerId: 'api',
+          modelId: 'api-model',
+          requestedModelId: 'client-api-model',
+          sourceProtocol: ProviderProtocol.OpenAIResponse,
+          targetProtocol: ProviderProtocol.OpenAICompatible,
+        },
+        () =>
+          apiFetch!('https://final-api.test/v1/responses?api_key=api-query-secret', {
+            body: JSON.stringify({ apiKey: 'api-body-secret', model: 'api-model', prompt: 'api-prompt-secret' }),
+            headers: {
+              'content-type': 'application/json',
+              'user-agent': 'api-generated-agent',
+              'x-api-key': 'api-header-secret',
+            },
+            method: 'POST',
+          }),
       );
-      await withAttemptLogContext({ attemptIndex: 1, providerId: 'sdk', modelId: 'sdk-model' }, () =>
-        aiSdkFetch!('https://final-sdk.test/v1/chat/completions?token=sdk-query-secret', {
-          body: JSON.stringify({ messages: [{ content: 'sdk-content-secret', role: 'user' }], model: 'sdk-model' }),
-          headers: {
-            accept: 'application/json',
-            authorization: 'Bearer sdk-header-secret',
-            'content-type': 'application/json',
-          },
-          method: 'POST',
-        }),
+      await withAttemptLogContext(
+        {
+          attemptIndex: 1,
+          providerId: 'sdk',
+          modelId: 'sdk-model',
+          requestedModelId: 'client-sdk-model',
+          sourceProtocol: ProviderProtocol.OpenAIResponse,
+          targetProtocol: ProviderProtocol.OpenAICompatible,
+        },
+        () =>
+          aiSdkFetch!('https://final-sdk.test/v1/chat/completions?token=sdk-query-secret', {
+            body: JSON.stringify({ messages: [{ content: 'sdk-content-secret', role: 'user' }], model: 'sdk-model' }),
+            headers: {
+              accept: 'application/json',
+              authorization: 'Bearer sdk-header-secret',
+              'content-type': 'application/json',
+            },
+            method: 'POST',
+          }),
       );
     },
   );
@@ -140,6 +182,7 @@ test('materialized provider fetches observe final upstream requests only inside 
       headers: {
         'content-type': 'application/json',
         'user-agent': 'api-generated-agent',
+        'x-provider-route': 'api',
         'x-api-key': '[REDACTED]',
       },
     }),
@@ -153,12 +196,15 @@ test('materialized provider fetches observe final upstream requests only inside 
         accept: 'application/json',
         authorization: '[REDACTED]',
         'content-type': 'application/json',
+        'x-provider-route': 'sdk',
       },
     }),
   ]);
   expect(reconstructed(logs, 'upstream_request', 0)).toContain('api-body-secret');
   expect(reconstructed(logs, 'upstream_request', 0)).toContain('api-prompt-secret');
+  expect(reconstructed(logs, 'upstream_request', 0)).toContain('"route":"api"');
   expect(reconstructed(logs, 'upstream_request', 1)).toContain('sdk-content-secret');
+  expect(reconstructed(logs, 'upstream_request', 1)).toContain('"route":"sdk"');
   expect(JSON.stringify(logs)).not.toContain('api-header-secret');
   expect(JSON.stringify(logs)).not.toContain('sdk-header-secret');
   expect(delegated).toHaveLength(4);

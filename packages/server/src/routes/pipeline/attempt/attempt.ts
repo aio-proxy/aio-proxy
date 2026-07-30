@@ -116,10 +116,17 @@ export async function attemptCandidates<TRequest, TContext>(
               ? 'affinity'
               : 'weight',
       },
-      inAttempt: <T>(operation: () => T): T =>
+      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
         withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
-            { attemptIndex: index, providerId: provider.id, modelId: candidate.modelId },
+            {
+              attemptIndex: index,
+              providerId: provider.id,
+              modelId: candidate.modelId,
+              requestedModelId: options.requestedModelId,
+              sourceProtocol: adapter.protocol,
+              ...(targetProtocol === undefined ? {} : { targetProtocol }),
+            },
             operation,
           ),
         ),

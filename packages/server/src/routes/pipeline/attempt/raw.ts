@@ -24,7 +24,9 @@ export async function attemptRawCandidate<TRequest, TContext>(
 
   const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
   observation.markTransportUnavailable();
-  const response = await inAttempt(() => raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }));
+  const response = await inAttempt(adapter.protocol, () =>
+    raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }),
+  );
   if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
 
   const fallback = hasNext && shouldFallbackStatus(response.status);

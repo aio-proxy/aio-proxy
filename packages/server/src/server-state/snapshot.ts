@@ -24,6 +24,7 @@ import {
   type PluginRuntimeCacheEntry,
   pluginOptionsIdentityDigest,
 } from '../plugin-runtime';
+import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import {
   materializeProviders,
   materializeRuntimeProvider,
@@ -91,7 +92,7 @@ export async function buildSnapshot(
         onDiagnosticChanged,
         pluginOptionsDigest,
         runtimeFetch,
-        runtimeModelFetch,
+        runtimeModelFetch: createProviderRequestTransformFetch(provider, runtimeModelFetch),
         ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),

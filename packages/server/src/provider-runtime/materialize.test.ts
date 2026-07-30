@@ -6,9 +6,36 @@ import { join } from 'node:path';
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
+import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
 import { createServerState } from '../server-state';
 import { materializeProviders, materializeRuntimeProvider } from './materialize';
+
+const headerSet = (field: string, value: unknown) => ({
+  $setField: { field, input: '$request.headers', value },
+});
+
+function withModelAttempt<T>(
+  providerId: string,
+  modelId: string,
+  sourceProtocol: ProviderProtocol,
+  targetProtocol: ProviderProtocol | undefined,
+  operation: () => T,
+): T {
+  return withRequestLogContext({ requestId: 'request', debug: false, logger: () => {} }, () =>
+    withAttemptLogContext(
+      {
+        attemptIndex: 0,
+        providerId,
+        modelId,
+        requestedModelId: 'client-model',
+        sourceProtocol,
+        ...(targetProtocol === undefined ? {} : { targetProtocol }),
+      },
+      operation,
+    ),
+  );
+}
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
   // @ts-expect-error a materialized runtime provider must expose raw or model
@@ -52,6 +79,122 @@ test('materializes a configured API provider with raw and bridged model capabili
     }),
   ).toBeDefined();
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
+});
+
+test('materializes one transformed Fetch for raw API, API bridge, and direct AI SDK model traffic', async () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['api-model'],
+        protocol: ProviderProtocol.OpenAICompatible,
+        transforms: {
+          request: [
+            {
+              update: [
+                { $set: { 'request.headers': headerSet('x-provider-route', 'api') } },
+                { $set: { 'request.body.route': 'api' } },
+              ],
+            },
+          ],
+        },
+      },
+      sdk: {
+        kind: ProviderKind.AiSdk,
+        models: ['sdk-model'],
+        packageName: '@ai-sdk/openai-compatible',
+        transforms: {
+          request: [
+            {
+              update: [
+                { $set: { 'request.headers': headerSet('x-provider-route', 'sdk') } },
+                { $set: { 'request.body.route': 'sdk' } },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const baseCalls: Request[][] = [];
+  let apiFetch: typeof globalThis.fetch | undefined;
+  let bridgeFetch: typeof globalThis.fetch | undefined;
+  let sdkFetch: typeof globalThis.fetch | undefined;
+  const runtime = materializeProviders(config, {
+    createProxyFetch() {
+      const calls: Request[] = [];
+      baseCalls.push(calls);
+      return (async (input, init) => {
+        calls.push(input instanceof Request ? input : new Request(input, init));
+        return Response.json({ ok: true });
+      }) as typeof globalThis.fetch;
+    },
+    createApiProvider(provider, options) {
+      apiFetch = options.fetch;
+      return {
+        ...provider,
+        passthrough: (request) => options.fetch(request),
+      } satisfies ApiProviderInstance;
+    },
+    bridgeApiProvider(provider, options) {
+      bridgeFetch = options.fetch;
+      return {
+        enabled: true,
+        id: `${provider.id}:bridge`,
+        invoke: () => new ReadableStream(),
+        kind: ProviderKind.AiSdk,
+      } satisfies AiSdkProviderInstance;
+    },
+    createAiSdkProvider(provider, options) {
+      sdkFetch = options.fetch;
+      return {
+        enabled: true,
+        id: provider.id,
+        invoke: () => new ReadableStream(),
+        kind: ProviderKind.AiSdk,
+      } satisfies AiSdkProviderInstance;
+    },
+  });
+  const api = runtime.providers.find(({ id }) => id === 'api');
+  const raw = api?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'api-model' });
+  if (raw === undefined || bridgeFetch === undefined || sdkFetch === undefined)
+    throw new Error('missing fetch fixture');
+
+  await withModelAttempt('api', 'api-model', ProviderProtocol.OpenAICompatible, ProviderProtocol.OpenAICompatible, () =>
+    raw.invoke(
+      new Request('https://api.example.com/v1/chat/completions', {
+        body: '{"route":"client"}',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+      { session: { key: 'session' } } as never,
+    ),
+  );
+  await withModelAttempt('api', 'api-model', ProviderProtocol.OpenAIResponse, ProviderProtocol.OpenAICompatible, () =>
+    bridgeFetch!('https://api.example.com/v1/chat/completions', {
+      body: '{"route":"client"}',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    }),
+  );
+  await withModelAttempt('sdk', 'sdk-model', ProviderProtocol.OpenAIResponse, ProviderProtocol.OpenAICompatible, () =>
+    sdkFetch!('https://sdk.example.com/v1/chat/completions', {
+      body: '{"route":"client"}',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    }),
+  );
+
+  expect(apiFetch).toBe(bridgeFetch);
+  expect(baseCalls.map((calls) => calls.length)).toEqual([2, 1]);
+  expect(baseCalls[0]?.map((request) => request.headers.get('x-provider-route'))).toEqual(['api', 'api']);
+  expect(baseCalls[1]?.map((request) => request.headers.get('x-provider-route'))).toEqual(['sdk']);
+  expect(await Promise.all(baseCalls.flat().map((request) => request.json()))).toEqual([
+    { route: 'api' },
+    { route: 'api' },
+    { route: 'sdk' },
+  ]);
 });
 
 test('materializes AI SDK inputs with model capabilities only', () => {
