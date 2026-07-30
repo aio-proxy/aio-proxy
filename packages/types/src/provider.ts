@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantKey } from './common';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { type ProviderAlias, validateAliasTargets } from './provider-alias';
+import { ProviderTransformsSchema } from './provider-transform/index';
 
 export { type ProviderAlias, validateAliasTargets } from './provider-alias';
 
@@ -58,6 +59,7 @@ const SharedProviderSchemaBase = {
   weight: z.number().optional().describe('Provider priority; higher weights are tried first.'),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   name: z.string().optional().describe('Display name shown in the dashboard.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 const modelsField = {
@@ -147,6 +149,7 @@ const ApiProviderMutationSharedFields = {
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 export const ApiProviderMutationBodySchema = z.object({
@@ -176,6 +179,7 @@ const AiSdkProviderMutationSharedFields = {
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 export const AiSdkProviderMutationBodySchema = z.object({
@@ -198,6 +202,7 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });
 
 export const ProviderMutationBodySchema = z

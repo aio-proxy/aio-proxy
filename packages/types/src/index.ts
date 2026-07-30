@@ -8,5 +8,6 @@ export * from './dashboard-localized-text';
 export * from './dashboard-oauth';
 export * from './plugin';
 export * from './provider';
+export * from './provider-transform/index';
 export * from './trace';
 export * from './usage';

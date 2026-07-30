@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
+import { ProviderTransformsSchema } from './provider-transform/index';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
   key: z.string().min(1),
@@ -68,6 +69,7 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   enabled: z.boolean(),
   weight: z.number().optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });
 
 export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [

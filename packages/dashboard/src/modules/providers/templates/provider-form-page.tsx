@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from '@aio-proxy/types';
+import type { ProviderKind } from '@aio-proxy/types';
 import { useNavigate } from '@tanstack/react-router';
 import { type FC, useRef, useState } from 'react';
 
@@ -11,13 +11,13 @@ import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../component
 import { ProviderFormFieldsAiSdk } from '../components/provider-form-fields-ai-sdk';
 import { ProviderFormFieldsApi } from '../components/provider-form-fields-api';
 import { ProviderFormMode } from '../constants';
-import { useProviderForm } from '../hooks/use-provider-form';
+import { type ProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
 
 type Props = {
   mode: ProviderFormMode;
   kind: ProviderKind;
-  initial?: Partial<ApiProviderMutationBody> | Partial<AiSdkProviderMutationBody>;
+  initial?: ProviderFormInitial;
   providerId?: string;
 };
 
