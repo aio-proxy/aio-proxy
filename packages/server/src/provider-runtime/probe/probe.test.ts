@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { createApiProvider } from '@aio-proxy/core';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { probeApi } from './probe';
+import { probeApi } from '.';
 
 test.each([
   { expected: 'OK', status: 200 },
