@@ -43,13 +43,9 @@ test('reserved identities always load embedded descriptors without package looku
   expect(BUILT_IN_PLUGIN_PACKAGE_NAMES).toEqual(expectedBuiltIns);
   expect(imported).toEqual([]);
   expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true, true]);
-  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual([
-    '0.0.0',
-    '0.0.0',
-    '0.0.0',
-    '0.0.0',
-    '0.0.0',
-  ]);
+  expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(
+    createEmbeddedBuiltIns().map(({ version }) => version),
+  );
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-google-antigravity', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-kimi-code', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default')).toBeDefined();
