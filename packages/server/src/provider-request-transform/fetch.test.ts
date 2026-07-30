@@ -152,6 +152,72 @@ describe('createProviderRequestTransformFetch', () => {
     expect(sent.headers.get('x-provider-route')).toBe('primary');
   });
 
+  test('reuses a Request input body for Header-only transforms with or without init overrides', async () => {
+    const calls: FetchCall[] = [];
+    const transformedFetch = createProviderRequestTransformFetch(
+      provider([{ update: [{ $set: { 'request.headers': headerSet('x-provider-route', 'primary') } }] }]),
+      recordingFetch(calls),
+    );
+    const cases: readonly (BunFetchInit | undefined)[] = [
+      undefined,
+      { decompress: false, headers: { 'x-init-override': 'kept' } },
+    ];
+
+    for (const [index, init] of cases.entries()) {
+      let bodyPulls = 0;
+      const controller = new AbortController();
+      const originalRequest = new Request(`https://provider.test/v1/chat/completions?case=${index}`, {
+        body: bodyStream('{"limit":20}', () => {
+          bodyPulls += 1;
+        }),
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json', 'x-original': 'present' },
+        integrity: 'sha256-request-input',
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'manual',
+        referrer: 'https://client.test/source',
+        referrerPolicy: 'origin',
+        signal: controller.signal,
+      });
+
+      await withProviderAttempt(() => transformedFetch(originalRequest, init));
+
+      const delegated = sentRequest(calls, index);
+      expect(delegated.headers.get('x-provider-route')).toBe('primary');
+      expect(delegated.headers.get(init === undefined ? 'x-original' : 'x-init-override')).toBe(
+        init === undefined ? 'present' : 'kept',
+      );
+      expect(delegated.body).toBe(originalRequest.body);
+      expect(bodyPulls).toBe(0);
+      expect({
+        cache: delegated.cache,
+        credentials: delegated.credentials,
+        integrity: delegated.integrity,
+        method: delegated.method,
+        mode: delegated.mode,
+        redirect: delegated.redirect,
+        referrer: delegated.referrer,
+        referrerPolicy: delegated.referrerPolicy,
+        url: delegated.url,
+      }).toEqual({
+        cache: originalRequest.cache,
+        credentials: originalRequest.credentials,
+        integrity: originalRequest.integrity,
+        method: originalRequest.method,
+        mode: originalRequest.mode,
+        redirect: originalRequest.redirect,
+        referrer: originalRequest.referrer,
+        referrerPolicy: originalRequest.referrerPolicy,
+        url: originalRequest.url,
+      });
+      controller.abort();
+      expect(delegated.signal.aborted).toBe(true);
+      expect(calls[index]?.init).toEqual(init?.decompress === false ? { decompress: false } : undefined);
+    }
+  });
+
   test('parses and serializes a body once and drops its stale content length', async () => {
     const calls: FetchCall[] = [];
     let bodyReads = 0;

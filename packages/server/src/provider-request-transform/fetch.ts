@@ -38,7 +38,7 @@ export function createProviderRequestTransformFetch(
 
     let request: Request;
     try {
-      request = new Request(input, init);
+      request = normalizeRequest(input, init);
     } catch {
       throw rebuildError();
     }
@@ -68,6 +68,26 @@ export function createProviderRequestTransformFetch(
     const decompress = (init as BunFetchInit | undefined)?.decompress;
     return fetcher(transformed, decompress === undefined ? undefined : { decompress });
   }) as typeof globalThis.fetch;
+}
+
+function normalizeRequest(input: RequestInfo | URL, init: RequestInit | undefined): Request {
+  if (!(input instanceof Request)) return new Request(input, init);
+  if (init === undefined) return input;
+  const body = init.body === undefined ? input.body : init.body;
+  return new Request(input.url, {
+    cache: init.cache ?? input.cache,
+    credentials: init.credentials ?? input.credentials,
+    headers: init.headers ?? input.headers,
+    integrity: init.integrity ?? input.integrity,
+    keepalive: init.keepalive ?? input.keepalive,
+    method: init.method ?? input.method,
+    mode: init.mode ?? input.mode,
+    redirect: init.redirect ?? input.redirect,
+    referrer: init.referrer ?? input.referrer,
+    referrerPolicy: init.referrerPolicy ?? input.referrerPolicy,
+    signal: init.signal === undefined ? input.signal : init.signal,
+    ...(body === null ? {} : { body }),
+  });
 }
 
 async function loadJsonBody(
