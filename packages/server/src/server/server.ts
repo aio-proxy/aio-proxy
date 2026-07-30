@@ -47,6 +47,7 @@ export type CreateServerOptions = {
   readonly dashboardAssets?: DashboardAssets;
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
+  readonly version?: string;
 };
 
 const createRoutes = (
@@ -54,6 +55,7 @@ const createRoutes = (
   dashboardOriginPort: number = serverDefaults.port,
   dashboardAssets?: DashboardAssets,
   dashboardAuthAvailable: () => boolean = () => true,
+  version: string = '0.0.0',
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -80,7 +82,7 @@ const createRoutes = (
     context.json({
       status: 'ok',
       uptime: performance.now() / 1_000,
-      version: '0.0.0',
+      version,
     }),
   );
   app.get('/v1/models', async (context) => {
@@ -88,6 +90,15 @@ const createRoutes = (
       return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
     }
     return context.json(await listModels(state));
+  });
+  // Loopback-only admin control plane. Unlike /dashboard/api/*, this is not CSRF-
+  // or password-gated, so the CLI can call it directly. It reuses state.reload().
+  app.use('/admin/*', requireDashboardLoopback);
+  app.post('/admin/reload', async (context) => {
+    const result = await state.reload();
+    return result.ok
+      ? context.json({ ok: true, diff: result.diff })
+      : context.json({ ok: false, error: result.error, stage: result.stage }, 409);
   });
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
   const dashboardAuth = createDashboardAuthentication(
@@ -187,5 +198,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     options.port ?? config.server.port,
     options.dashboardAssets,
     () => dashboardAuthAvailable,
+    options.version,
   );
 };

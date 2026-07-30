@@ -132,6 +132,7 @@ const run = (deps: CliDeps) => async (options: RunOptions) => {
     dashboardAssets,
     host,
     port,
+    version: VERSION,
   });
   // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
   // pauses). Bun's default 10s idle timeout would close the client connection
