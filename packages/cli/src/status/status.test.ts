@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { StatusNotRunningError } from '../errors';
 import { statusCommand } from './status';
@@ -109,6 +112,31 @@ test('--deep --json distinguishes an auth failure from a generic probe failure',
     const parsed = JSON.parse(lines.join('\n')) as { deepFailure?: { reason: string } };
     expect(parsed.deepFailure?.reason).toBe('auth');
   } finally {
+    server.stop(true);
+  }
+});
+
+test('status honors a config-only port when no --port flag is given', async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => Response.json({ status: 'ok', uptime: 1, version: '9.9.9' }),
+  });
+  const home = mkdtempSync(join(tmpdir(), 'aio-status-'));
+  const prev = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+  try {
+    // A managed run binds the config port; a bare `status` (no flags) must probe
+    // that port, not the hard-coded 9317, or it wrongly reports the daemon down.
+    writeFileSync(join(home, 'config.jsonc'), `{ "server": { "port": ${server.port} }, "providers": {} }\n`);
+    const lines: string[] = [];
+    await statusCommand({}, (l) => lines.push(l));
+    const out = lines.join('\n');
+    expect(out).toContain('9.9.9');
+    expect(out).toContain(String(server.port));
+  } finally {
+    if (prev === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = prev;
+    rmSync(home, { recursive: true, force: true });
     server.stop(true);
   }
 });

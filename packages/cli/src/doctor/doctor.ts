@@ -1,7 +1,7 @@
 import { configPath, listInstalledNpmPackages } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
-import { controlBaseUrl, probeHealth } from '../control-plane';
+import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 
 export type DoctorOptions = {
   readonly host?: string;
@@ -15,8 +15,7 @@ export async function doctorCommand(
   options: DoctorOptions = {},
   print: (line: string) => void = console.log,
 ): Promise<void> {
-  const host = options.host ?? '127.0.0.1';
-  const port = options.port ?? '9317';
+  const { host, port } = await resolveControlAddress(options);
   const url = controlBaseUrl(host, port);
 
   print(m.cli_doctor_config_path({ path: configPath() }));

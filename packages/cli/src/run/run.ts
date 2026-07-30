@@ -6,6 +6,7 @@ import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { bootProxyServer } from '../boot-proxy-server';
+import { controlBaseUrl } from '../control-plane';
 import type { CliDeps } from '../dashboard-assets';
 import { ServeListenError } from '../errors';
 import { CliExit, EXIT } from '../exit';
@@ -123,7 +124,9 @@ const assertPortAvailable = (host: string, port: number) => {
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const dashboardUrlFor = (host: string, port: number) => {
-    const apiUrl = `http://${host}:${port}`;
+    // Reuse controlBaseUrl so an IPv6 host (`::1`) is bracketed — a raw
+    // `http://::1:<port>` is an invalid URL and breaks the dashboard / `run --open`.
+    const apiUrl = controlBaseUrl(host, String(port));
     return deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
   };
   // Resolve the flag values first: they are the only bind info available on a
@@ -155,7 +158,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
   console.error(
     m.cli_run_started({
-      apiUrl: `http://${server.hostname}:${server.port}`,
+      apiUrl: controlBaseUrl(server.hostname ?? host, String(server.port)),
       dashboardUrl,
     }),
   );

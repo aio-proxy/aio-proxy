@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 
-import { controlBaseUrl, probeHealth } from '../control-plane';
+import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { StatusNotRunningError } from '../errors';
 
 export type StatusOptions = {
@@ -40,8 +40,7 @@ export async function statusCommand(
   options: StatusOptions = {},
   print: (line: string) => void = console.log,
 ): Promise<void> {
-  const host = options.host ?? '127.0.0.1';
-  const port = options.port ?? '9317';
+  const { host, port } = await resolveControlAddress(options);
   const url = controlBaseUrl(host, port);
   const health = await probeHealth(url);
 

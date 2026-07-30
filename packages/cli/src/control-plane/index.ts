@@ -1,1 +1,8 @@
-export { controlBaseUrl, type Health, probeHealth } from './control-plane';
+export {
+  controlBaseUrl,
+  DEFAULT_CONTROL_HOST,
+  DEFAULT_CONTROL_PORT,
+  type Health,
+  probeHealth,
+  resolveControlAddress,
+} from './control-plane';
