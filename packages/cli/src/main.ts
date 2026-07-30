@@ -18,21 +18,11 @@ import packageJson from '../package.json' with { type: 'json' };
 import { bootProxyServer } from './boot-proxy-server';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
-import { ConfigValidationError, ReloadError, ServeListenError } from './errors';
+import { ServeListenError } from './errors';
+import { CliExit, isKnownCliUserError, toExitCode } from './exit';
 import { openBrowser } from './open-browser';
-import {
-  FormJsonInvalidError,
-  FormNumberInvalidError,
-  FormSchemaValidationError,
-  pluginAdd,
-  pluginConfig,
-  pluginErrors,
-  pluginList,
-  pluginPrune,
-  pluginRemove,
-} from './plugin-commands';
-import { isProviderLoginUserError } from './plugin-commands/provider-login';
-import { providerErrors, providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
+import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
+import { providerInstall, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
 import { statusCommand } from './status';
 
@@ -207,8 +197,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .command('dashboard')
     .description(m.cli_dashboard_description())
     .action(() => {
-      console.error(m.cli_dashboard_not_yet_implemented());
-      process.exitCode = 2;
+      throw new CliExit(1, m.cli_dashboard_not_yet_implemented());
     });
   const provider = program.command('provider').description(m.cli_provider_description());
   provider
@@ -276,22 +265,12 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
   } catch (err) {
     const formatted = formatCliError(err, getLocale());
     console.error(formatted.message);
-    process.exitCode = 1;
+    process.exitCode = toExitCode(err);
   }
 };
 
 export function formatCliError(err: unknown, locale: Parameters<typeof formatUserError>[1]) {
-  if (
-    err instanceof ServeListenError ||
-    err instanceof ReloadError ||
-    err instanceof ConfigValidationError ||
-    isProviderLoginUserError(err) ||
-    (err instanceof Error && providerErrors.some((errorType) => err instanceof errorType)) ||
-    err instanceof FormNumberInvalidError ||
-    err instanceof FormJsonInvalidError ||
-    err instanceof FormSchemaValidationError ||
-    (err instanceof Error && pluginErrors.some((errorType) => err instanceof errorType))
-  ) {
+  if (isKnownCliUserError(err)) {
     return { message: err.message };
   }
   return formatUserError(err, locale);

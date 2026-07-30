@@ -57,12 +57,12 @@ describe('cli rendering', () => {
     expect(formatted.message).not.toContain('attacker.invalid');
   });
 
-  test('dashboard command reports not-yet-implemented on stderr and exits 2', () => {
+  test('dashboard command reports not-yet-implemented on stderr and exits 1', () => {
     // Given / When
     const result = runCli(['dashboard']);
 
     // Then
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain('not yet implemented');
     expect(result.stdout.toString()).not.toContain('not yet implemented');
   });
