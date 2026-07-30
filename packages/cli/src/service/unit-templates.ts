@@ -1,4 +1,4 @@
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 
 export type UnitOptions = {
   readonly exec: string;
@@ -7,16 +7,6 @@ export type UnitOptions = {
 
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
 export const SYSTEMD_UNIT_NAME = 'aio-proxy.service';
-
-// A managed run (systemd/launchd) starts from a clean environment and does not
-// inherit the installing shell. Provider secrets referenced in config via
-// {{env.*}} would otherwise resolve to empty strings, so both unit templates
-// source this optional env file (`KEY=value` per line) that lives next to the
-// config. ponytail: convention file mirrors systemd EnvironmentFile / tailscale
-// TS_AUTHKEY practice; move to systemd LoadCredential=/launchd Keychain if a
-// maintainer wants secrets kept out of a readable env file.
-export const SERVICE_ENV_FILENAME = 'service.env';
-export const serviceEnvFile = (configPath: string): string => join(dirname(configPath), SERVICE_ENV_FILENAME);
 
 // systemd splits command lines on whitespace unless a token is double-quoted, and
 // treats `%` as a specifier and `\` / `"` as escapes. Quote the value and escape
@@ -34,6 +24,9 @@ const xmlEscape = (value: string): string =>
 // Restart=on-failure + RestartPreventExitStatus=1 honors the CLI exit-code
 // contract: exit 1 is unrecoverable (bad config/input), so systemd must not
 // restart on it; any other non-zero exit is transient and gets restarted.
+// The daemon loads the optional service.env itself (see service-env), so no
+// EnvironmentFile= is needed and the env file is parsed identically on both
+// platforms without a shell.
 export function renderSystemdUnit({ exec, configPath }: UnitOptions): string {
   return `[Unit]
 Description=AIO Proxy
@@ -47,7 +40,6 @@ Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=1
 Environment=${systemdQuote(`AIO_PROXY_HOME=${dirname(configPath)}`)}
-EnvironmentFile=-${systemdQuote(serviceEnvFile(configPath))}
 
 [Install]
 WantedBy=default.target
@@ -58,9 +50,10 @@ WantedBy=default.target
 // /bin/sh wrapper remaps exit 1 (unrecoverable: bad config/input) to 0. With
 // KeepAlive.SuccessfulExit=false, exit 0 is treated as a clean stop and is NOT
 // relaunched, while transient exits (2+) pass through and are relaunched. This
-// mirrors the systemd unit's RestartPreventExitStatus=1. RunAtLoad starts it on load.
-const LAUNCHD_EXEC_WRAPPER =
-  'set -a; [ -f "$1" ] && . "$1"; set +a; "$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+// mirrors the systemd unit's RestartPreventExitStatus=1. RunAtLoad starts it on
+// load. The wrapper only remaps the exit code; it never sources the env file
+// (the daemon loads service.env itself), so no shell touches provider secrets.
+const LAUNCHD_EXEC_WRAPPER = '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
 
 export function renderLaunchdPlist({ exec, configPath }: UnitOptions): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -75,7 +68,6 @@ export function renderLaunchdPlist({ exec, configPath }: UnitOptions): string {
     <string>-c</string>
     <string>${xmlEscape(LAUNCHD_EXEC_WRAPPER)}</string>
     <string>${xmlEscape(exec)}</string>
-    <string>${xmlEscape(serviceEnvFile(configPath))}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

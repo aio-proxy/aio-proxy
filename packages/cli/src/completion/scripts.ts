@@ -37,7 +37,10 @@ const SCRIPTS = { bash, zsh, fish };
 export type Shell = keyof typeof SCRIPTS;
 
 export function isSupportedShell(shell: string): shell is Shell {
-  return shell in SCRIPTS;
+  // Own-property check, not `in`: `in` walks the prototype chain, so `toString`,
+  // `constructor`, or `__proto__` would be accepted as a shell and print a
+  // prototype value instead of reporting an unsupported shell.
+  return Object.hasOwn(SCRIPTS, shell);
 }
 
 export const SUPPORTED_SHELLS = Object.keys(SCRIPTS);

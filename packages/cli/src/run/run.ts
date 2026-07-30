@@ -10,6 +10,7 @@ import type { CliDeps } from '../dashboard-assets';
 import { ServeListenError } from '../errors';
 import { CliExit, EXIT } from '../exit';
 import { openBrowser } from '../open-browser';
+import { loadServiceEnv } from '../service-env';
 
 const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
@@ -120,6 +121,9 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const apiUrl = `http://${host}:${port}`;
   const dashboardUrl = deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
+  // Load the optional service.env before config parsing so provider secrets
+  // referenced via {{env.*}} resolve under a managed run's clean environment.
+  loadServiceEnv(resolvedConfigPath);
   const config = await loadConfigForRun(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
   const app = await bootProxyServer({

@@ -20,3 +20,10 @@ test('fish completion lists subcommands as completions', () => {
 test('rejects an unsupported shell with an unrecoverable exit', () => {
   expect(() => completionCommand('powershell')).toThrow(CliExit);
 });
+
+test('rejects an inherited Object property as a shell', () => {
+  // Regression: `shell in SCRIPTS` walked the prototype chain, so `toString`
+  // printed a prototype value and exited 0. An own-property check must reject it.
+  expect(() => completionCommand('toString')).toThrow(CliExit);
+  expect(() => completionCommand('constructor')).toThrow(CliExit);
+});

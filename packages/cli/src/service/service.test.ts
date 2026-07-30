@@ -8,9 +8,9 @@ test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   expect(unit).toContain('ExecStart="/usr/local/bin/aio-proxy" run');
   expect(unit).toContain('Restart=on-failure');
   expect(unit).toContain('RestartPreventExitStatus=1');
-  // A managed unit has a clean env, so provider secrets in config ({{env.*}})
-  // must come from an optional env file next to the config; `-` makes it optional.
-  expect(unit).toContain('EnvironmentFile=-"/home/u/.aio-proxy/service.env"');
+  // The daemon loads service.env itself (data-only, no shell), so the unit no
+  // longer delegates env loading to systemd's EnvironmentFile.
+  expect(unit).not.toContain('EnvironmentFile');
 });
 
 test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit', () => {
@@ -27,10 +27,10 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   // remap exit 1 (unrecoverable) to 0 to prevent a bad-config restart loop.
   expect(plist).toContain('SuccessfulExit');
   expect(plist).toContain('if [ "$status" -eq 1 ]; then exit 0; fi');
-  // launchd has no EnvironmentFile, so the wrapper sources an optional env file
-  // passed as $1 (exec is $0); this is how provider secrets reach the `run` child.
-  expect(plist).toContain('[ -f "$1" ] &amp;&amp; . "$1"');
-  expect(plist).toContain('<string>/Users/u/.aio-proxy/service.env</string>');
+  // The daemon loads service.env itself, so the wrapper must NOT source any env
+  // file — no shell ever touches provider secrets (avoids $/backtick expansion).
+  expect(plist).not.toContain('. "$1"');
+  expect(plist).not.toContain('service.env');
 });
 
 test('systemd unit quotes an ExecStart path containing spaces', () => {
@@ -42,9 +42,6 @@ test('systemd unit quotes an ExecStart path containing spaces', () => {
   });
   expect(unit).toContain('ExecStart="/home/a user/bin/aio-proxy" run');
   expect(unit).toContain('Environment="AIO_PROXY_HOME=/home/a user/.aio-proxy"');
-  // EnvironmentFile= unquotes its value (systemd EXTRACT_UNQUOTE), so a path with
-  // a space must be double-quoted too; the `-` sits outside the quotes.
-  expect(unit).toContain('EnvironmentFile=-"/home/a user/.aio-proxy/service.env"');
 });
 
 test('launchd plist XML-escapes an ampersand in the exec path', () => {
@@ -57,7 +54,6 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).toContain('<string>/home/a&amp;b/bin/aio-proxy</string>');
   expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy</string>');
   expect(plist).not.toContain('a&b/bin/aio-proxy');
-  expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy/service.env</string>');
 });
 
 test('resolveExec targets the native binary when invoked as the compiled binary', () => {

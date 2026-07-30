@@ -6,13 +6,8 @@ import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../exit';
-import {
-  LAUNCHD_LABEL,
-  renderLaunchdPlist,
-  renderSystemdUnit,
-  serviceEnvFile,
-  SYSTEMD_UNIT_NAME,
-} from './unit-templates';
+import { serviceEnvFile } from '../service-env';
+import { LAUNCHD_LABEL, renderLaunchdPlist, renderSystemdUnit, SYSTEMD_UNIT_NAME } from './unit-templates';
 
 export { renderLaunchdPlist, renderSystemdUnit } from './unit-templates';
 
@@ -147,9 +142,13 @@ export async function serviceRestart(): Promise<void> {
 
 export async function serviceStatus(): Promise<void> {
   const os = requirePlatform();
-  if (os === 'darwin') {
-    await runManager(['launchctl', 'list', LAUNCHD_LABEL], true);
-    return;
-  }
-  await runManager(['systemctl', '--user', 'status', SYSTEMD_UNIT_NAME], true);
+  // A stopped/missing unit (or an unavailable manager) makes launchctl/systemctl
+  // exit nonzero. Forward that code so scripts and health checks can tell an active
+  // service from an inactive one; the manager already printed the human-readable
+  // result, so signal with an empty message and only the exit code (`transient`
+  // maps to a nonzero exit).
+  const cmd =
+    os === 'darwin' ? ['launchctl', 'list', LAUNCHD_LABEL] : ['systemctl', '--user', 'status', SYSTEMD_UNIT_NAME];
+  const code = await runManager(cmd, true);
+  if (code !== 0) throw new CliExit(EXIT.transient, '');
 }
