@@ -18,10 +18,12 @@ part of this release.
 - The execution engine is a restricted Mingo profile.
 - Conditions and updates are stored as Mongo-style JSON AST, not source code.
 - Conditions support field-to-field comparisons and computed expressions.
-- Updates are ordered and may compute values from request or Provider context.
-- Every condition evaluates against the original outbound request.
-- Matched updates execute in configuration order against a mutable current
-  request.
+- Rules execute in configuration order against the current outbound request,
+  matching CPA `payload.override` semantics.
+- A matched rule applies immediately, so later rules see earlier changes and
+  the last matching write to a field wins.
+- Conditions and updates may explicitly read the immutable original request
+  when a rule needs a pre-transform value.
 - A transform failure fails only the current Provider attempt and participates
   in the existing Provider fallback loop.
 - The runtime remains pure JavaScript. Node-API, WASM, and Bun FFI are excluded
@@ -40,6 +42,9 @@ part of this release.
 - Streaming/SSE response-body transforms.
 - A general-purpose policy engine or decision graph editor.
 - Runtime-selectable JS/native executors.
+- CPA `payload.default`, `default-raw`, and `override-raw` as separate config
+  sections. Static JSON values already cover the raw distinction; missing-only
+  defaults can be designed later if requested.
 - Copy, Move, Append, or Merge as separate visual action types. These remain
   expressible through Set expressions when needed.
 
@@ -66,6 +71,7 @@ transforms:
               $min:
                 - "$request.body.max_output_tokens"
                 - 8192
+        - $set:
             request.headers:
               $setField:
                 field: x-upstream-model
@@ -77,7 +83,7 @@ transforms:
                 field: x-internal-token
                 input: "$request.headers"
         - $unset:
-            - request.body.store
+            request.body.store
 ```
 
 `transforms.request` is optional. Each rule has:
@@ -89,11 +95,10 @@ transforms:
 Rule array order is significant. No separate `enabled` field is needed in the
 first release; removing a rule or an empty transform list disables it.
 
-## Evaluation Documents
+## Evaluation Document
 
-The runtime builds two related documents.
-
-The match document is immutable and is used for every `when`:
+The runtime captures the outbound request as an immutable snapshot before any
+rule executes:
 
 ```ts
 {
@@ -104,7 +109,9 @@ The match document is immutable and is used for every `when`:
   },
   request: {
     model: string,
-    protocol?: string,
+    requestedModel: string,
+    sourceProtocol: string,
+    targetProtocol?: string,
     method: string,
     url: string,
     headers: Record<string, string>,
@@ -113,25 +120,31 @@ The match document is immutable and is used for every `when`:
 }
 ```
 
-The transform document is used for update expressions:
+Before each condition or update stage, the runtime builds a fresh Mingo
+evaluation document:
 
 ```ts
 {
-  provider: MatchDocument["provider"],
-  original: MatchDocument["request"],
-  request: MatchDocument["request"],
+  provider: ProviderContext,
+  original: OutboundRequest,
+  request: OutboundRequest,
 }
 ```
 
-`original` never changes. `request` starts as a deep JSON-safe copy of
-`original` and becomes the current request as matched rules execute.
+The immutable snapshot is kept outside Mingo. `original` and `request` are
+separate `structuredClone()` results, so copying an object from `$original`
+into `$request` cannot create a reference that mutates the snapshot. After an
+update stage, only a cloned `request` is retained as current; the evaluation
+document and any mutations to its `original` copy are discarded.
 
-The Provider ID and kind come from the materialized Provider. The model ID and
-target protocol come from the attempt-scoped runtime context rather than being
-guessed from a protocol-specific body. The existing attempt context already
-carries Provider ID and model ID for outbound logging; it is extended with
-target protocol metadata rather than introducing protocol branching into route
-handlers.
+The Provider ID and kind come from the materialized Provider. `model` is the
+candidate model ID for the current Provider attempt, while `requestedModel` is
+the client-facing model ID before Provider selection. Source protocol comes
+from the active protocol adapter, and target protocol comes from the
+attempt-scoped runtime context rather than being guessed from a
+protocol-specific body. The existing attempt context already carries Provider
+ID and model ID for outbound logging; it is extended with target protocol
+metadata rather than introducing protocol branching into route handlers.
 
 Headers are represented with lowercase names. Repeated request header values
 follow the Fetch `Headers` combined-value behavior. The body is present only
@@ -139,15 +152,15 @@ when it is a JSON payload that the transform needs to inspect or modify.
 
 ## Match Semantics
 
-All rules are matched before any update is applied. Consequently:
+Rules follow CPA `payload.override` ordering:
 
-- Reordering update stages changes the resulting request but not which rules
-  match.
-- A rule cannot make a later rule start or stop matching.
-- The Dashboard can explain the complete matched rule set without simulating
-  intermediate mutations.
-- Update expressions may read the current value through `$request...` or the
-  immutable value through `$original...`.
+1. Evaluate the next rule's `when` against the current `$request`.
+2. If it matches, apply its stages immediately in order.
+3. Continue to the next rule with the resulting current request.
+
+A rule can therefore make a later rule start or stop matching, and later writes
+win. Conditions and update expressions use `$request...` for current values and
+may use `$original...` when they intentionally need the pre-transform value.
 
 Missing fields use Mingo query semantics. A missing field normally causes a
 comparison not to match. `$exists` is available when absence itself is the
@@ -168,6 +181,10 @@ The initial condition builder supports:
 
 The Dashboard may expose friendly names such as Equals, Contains, Starts with,
 or Ends with, but serialization must produce only this canonical query subset.
+CPA-style model and header patterns use `*` as a wildcard in the visual editor
+and serialize to an escaped `$regex`. JSON mode may use the general `$regex`
+form directly; Provider configuration is trusted operational configuration, so
+the initial release does not add a second regex engine or timeout layer.
 
 ### Expression functions
 
@@ -194,20 +211,26 @@ as a field reference or operator expression.
 
 ### Update stages
 
-Only `$set` and `$unset` pipeline stages are allowed.
+Only `$set` and `$unset` pipeline stages are allowed. Each stage represents one
+visual action and must have exactly one target.
 
 - `$set` creates or replaces body fields and may use any allowed expression.
-- `$unset` removes body fields and treats a missing path as a no-op.
+- `$unset` contains one string path, removes that body field, and treats a
+  missing path as a no-op.
 - Header Set and Remove actions serialize as `$set` of the entire
-  `request.headers` object using `$setField` or `$unsetField`.
-- A `$set` targeting `request.headers` must be a validated `$setField` or
-  `$unsetField` chain rooted at `$request.headers`; arbitrary replacement of the
-  header object is rejected.
+  `request.headers` object using exactly one `$setField` or `$unsetField` whose
+  input is directly `$request.headers`.
+- A `$set` targeting `request.headers` must contain exactly that one generated
+  header operation. Nested `$setField` or `$unsetField` chains and arbitrary
+  replacement of the header object are rejected.
 - Direct dot-path updates below `request.headers` are rejected so header names
   retain case-insensitive HTTP semantics and support literal dots.
 - Update targets outside `request.body` and `request.headers` are rejected.
 - Body update targets use Mongo dot-path semantics. Literal body keys containing
   `.` or beginning with `$` are outside the initial visual profile.
+- Multi-target `$set` objects and `$unset` arrays are rejected. This preserves
+  stage ordering exactly when switching between cards and JSON instead of
+  splitting one Mongo stage into several stages with different semantics.
 - `$project`, `$replaceRoot`, `$replaceWith`, classic modifier documents, and
   collection update operations are not part of the profile.
 
@@ -244,11 +267,14 @@ The transform therefore runs first, and outbound logging observes the actual
 request sent upstream. A transform failure occurs before the observed network
 Fetch and is reported by the normal Provider-attempt exception path.
 
-Each compiled `when` uses `Query.test()` against the immutable match document.
-After all matches are known, each matched rule applies its stage array through
-`updateOne([transformDocument], {}, stages)` and retains the resulting document
-at index zero. The update condition is empty because rule matching has already
-been completed against original.
+Each compiled `when` uses `Query.test()` against a fresh evaluation document
+containing the immutable original snapshot and the current request. A matched
+rule applies one stage at a time through
+`updateOne([stageDocument], {}, [stage])`. Before every stage, `original` and
+`request` are cloned separately; after it succeeds, only a detached clone of
+`stageDocument.request` becomes current. This preserves Mingo pipeline ordering
+without allowing object references returned from `$original` to mutate the
+snapshot or affect later conditions.
 
 ## Body Handling and Performance
 
@@ -293,8 +319,10 @@ redacted from diagnostics and are never copied into Dashboard previews or
 validation errors.
 
 After the pipeline completes, the runtime validates every resulting header name
-and rejects forbidden connection-managed headers even if an allowed expression
-computed the final header object dynamically.
+and compares connection-managed headers with the pre-transform headers. An
+unchanged forbidden header is allowed; a user rule that adds, removes, or
+changes one is rejected. Removing `content-length` after a body rewrite is an
+engine-owned operation and is allowed.
 
 ## Validation and Safety
 
@@ -324,6 +352,11 @@ Runtime failures include:
 - a type error in a computed expression;
 - an invalid runtime value for a supported operator;
 - request reconstruction failure.
+
+Mingo and reconstruction errors are wrapped in a dedicated transform error
+that exposes only the safe error code and rule/stage coordinates. The original
+error message, cause, expression, and resolved operands are not forwarded to
+the existing Provider-attempt logging path.
 
 Any such failure:
 
@@ -358,6 +391,15 @@ of one React component per `.tsx` file.
 `formatQuery(..., "mongodb_query")` writes it back. Expression-aware MongoDB
 processors handle `$expr` round trips.
 
+Model and header fields additionally offer a CPA-style Matches Pattern operator
+where `*` matches zero or more characters. The serializer escapes every other
+regex-significant character before generating `$regex`.
+
+A separate Regex operator edits the raw pattern and the supported `i`, `m`,
+`s`, and `u` flags. It maps directly to `$regex` plus `$options`, so a general
+regex entered in JSON mode remains representable when switching to Visual mode
+without being interpreted as a CPA wildcard pattern.
+
 React Query Builder's built-in expression registry covers arithmetic, min/max,
 absolute value, and case conversion. The Dashboard adds matching metadata,
 Mongo serializers, and Mongo inverse mappings for the remaining allowed
@@ -374,14 +416,16 @@ The update editor is a reorderable list with two visual action types:
 Set switches between static value and computed expression. Computed values
 reuse `ExpressionEditor` and `serializeMongoAgg()` from
 `@react-querybuilder/expr`, with the static-literal escaping described above.
-The editor serializes only the allowed `$set` and `$unset` stages.
+Every card maps one-to-one to a single-target `$set` or `$unset` stage.
 
 ### JSON mode
 
 The existing Monaco `JsonEditor` edits the same canonical rule array with a
-generated JSON Schema. Switching modes is lossless because both modes accept
-only the restricted, reversible profile. Invalid JSON or unsupported operators
-block saving and display path-specific diagnostics.
+generated JSON Schema. Switching modes is lossless for the canonical profile:
+one action per stage and the documented query shapes. Semantically equivalent
+MongoDB spellings outside that canonical shape are rejected rather than
+silently normalized. Invalid JSON or unsupported operators block saving and
+display path-specific diagnostics.
 
 The Dashboard dependencies are UI-only. Mingo does not need to be bundled into
 the Dashboard unless a later local dry-run feature is approved.
@@ -420,13 +464,19 @@ the request transformer.
 
 - Query operators match and reject as specified.
 - `$expr` compares fields and evaluates allowed functions.
-- Every rule matches against original while updates read and modify current.
-- Matched rules and stages preserve configuration order.
+- Rules match and update current sequentially; an earlier write can affect a
+  later match and the last matching write wins.
+- Conditions and expressions can explicitly read immutable original values.
+- Copying an object from original and modifying it in a later stage does not
+  mutate original.
+- Matched rules and single-target stages preserve configuration order.
 - Set and Remove cover body fields and headers, including header names with
   dots.
 - Static strings beginning with `$` remain literals.
 - Header-only rules do not consume the body.
 - Body rules parse and serialize once and clear stale content length.
+- Existing connection-managed headers survive when unchanged, while rule-owned
+  changes to them are rejected.
 - Script operators, unsupported stages, out-of-bound paths, and prototype paths
   are rejected.
 
@@ -444,7 +494,10 @@ the request transformer.
 
 - Visual conditions round-trip through MongoDB query format.
 - Field-to-field and nested expressions round-trip through `$expr`.
-- Set and Remove stages round-trip between cards and JSON.
+- Single-target Set and Remove stages round-trip between cards and JSON.
+- CPA-style `*` model and header patterns round-trip through escaped `$regex`.
+- General regex patterns and supported flags round-trip through the distinct
+  Regex condition.
 - Visual and JSON modes preserve the same canonical AST.
 - Invalid or unsupported AST blocks save with a path-specific issue.
 
