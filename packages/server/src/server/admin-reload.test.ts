@@ -34,6 +34,39 @@ describe('admin control plane', () => {
     expect(body).toHaveProperty('ok');
   });
 
+  test('POST /admin/reload rejects a cross-origin browser request', async () => {
+    const app = await createServer();
+    // A drive-by page on another origin submits a cross-origin POST; even though
+    // the browser connects from loopback, the foreign Origin must be refused.
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'https://evil.example' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /admin/reload rejects a cross-site fetch-metadata request', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /admin/reload allows a same-origin browser request', async () => {
+    const app = await createServer();
+    // The bundled dashboard (same origin) legitimately reloads; it must pass.
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' } },
+      loopbackServer,
+    );
+    expect([200, 409]).toContain(res.status);
+  });
+
   test('GET /health reports the injected version', async () => {
     const app = await createServer('9.9.9-test');
     const res = await app.request('/health', undefined, loopbackServer);

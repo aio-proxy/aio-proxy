@@ -36,6 +36,33 @@ const dashboardOrigins = (port: number) =>
 
 const csrfMethods = new Set(['POST', 'PUT', 'DELETE']);
 
+// Mount the loopback-only admin control plane. Unlike /dashboard/api/*, it is not
+// CSRF- or password-gated, so the CLI can call it directly. The loopback check
+// alone is insufficient: a browser on an untrusted page can POST to this loopback
+// URL (the request still originates from 127.0.0.1). Browsers attach a cross-origin
+// marker to such requests — a foreign Origin and a cross-site Sec-Fetch-Site — while
+// the CLI sends neither, so reject any request carrying one.
+const mountAdminControlPlane = (app: Hono, allowedOrigins: ReadonlySet<string>, state: ServerState): void => {
+  app.use('/admin/*', requireDashboardLoopback);
+  app.use('/admin/*', async (context, next) => {
+    const origin = context.req.header('origin');
+    if (origin !== undefined && !allowedOrigins.has(origin)) {
+      return context.text('Forbidden', 403);
+    }
+    const fetchSite = context.req.header('sec-fetch-site');
+    if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+      return context.text('Forbidden', 403);
+    }
+    await next();
+  });
+  app.post('/admin/reload', async (context) => {
+    const result = await state.reload();
+    return result.ok
+      ? context.json({ ok: true, diff: result.diff })
+      : context.json({ ok: false, error: result.error, stage: result.stage }, 409);
+  });
+};
+
 export type CreateServerOptions = {
   readonly config: unknown;
   readonly configPath?: string;
@@ -91,16 +118,8 @@ const createRoutes = (
     }
     return context.json(await listModels(state));
   });
-  // Loopback-only admin control plane. Unlike /dashboard/api/*, this is not CSRF-
-  // or password-gated, so the CLI can call it directly. It reuses state.reload().
-  app.use('/admin/*', requireDashboardLoopback);
-  app.post('/admin/reload', async (context) => {
-    const result = await state.reload();
-    return result.ok
-      ? context.json({ ok: true, diff: result.diff })
-      : context.json({ ok: false, error: result.error, stage: result.stage }, 409);
-  });
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
+  mountAdminControlPlane(app, allowedDashboardOrigins, state);
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
     Date.now,
