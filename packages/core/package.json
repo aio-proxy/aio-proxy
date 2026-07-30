@@ -56,7 +56,7 @@
     "ai": "catalog:",
     "drizzle-orm": "catalog:",
     "es-toolkit": "catalog:",
-    "lru-cache": "^11.5.2",
+    "lru-cache": "catalog:",
     "openai": "catalog:",
     "zod": "catalog:"
   },

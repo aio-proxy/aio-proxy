@@ -26,6 +26,7 @@
       "@inlang/paraglide-js": "2.22.0",
       "@lobehub/icons-static-svg": "1.93.0",
       "es-toolkit": "^1.49.0",
+      "lru-cache": "^11.5.2",
       "jose": "^6.2.3",
       "zod": "^4.4.3",
       "hono": "^4.12.27",

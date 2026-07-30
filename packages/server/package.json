@@ -24,6 +24,7 @@
     "es-toolkit": "catalog:",
     "eventsource-parser": "catalog:",
     "hono": "catalog:",
+    "lru-cache": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
