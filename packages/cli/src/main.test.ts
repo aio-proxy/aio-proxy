@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,6 +58,21 @@ describe('cli', () => {
       expect(output(result)).not.toContain('Unexpected internal error');
     } finally {
       blocker.stop(true);
+    }
+  });
+
+  test('exits unrecoverable (1) when startup config is schema-invalid', () => {
+    // A schema-invalid config can never succeed on retry; the daemon must exit 1
+    // (unrecoverable) so a service manager does not restart it in a loop.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-badcfg-'));
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'config.jsonc'), '{ "server": { "port": "not-a-number" }, "providers": {} }\n');
+      const result = runCli(['run', '--port', String(freePort())], { AIO_PROXY_HOME: dir });
+      expect(result.exitCode).toBe(1);
+      expect(output(result)).not.toContain('Unexpected internal error');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

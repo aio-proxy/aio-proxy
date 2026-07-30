@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { AtomicConfigFile, configPath } from '@aio-proxy/core';
-import { ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
+import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
+import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { bootProxyServer } from '../boot-proxy-server';
 import type { CliDeps } from '../dashboard-assets';
 import { ServeListenError } from '../errors';
+import { CliExit, EXIT } from '../exit';
 import { openBrowser } from '../open-browser';
 
 const VERSION = packageJson.version;
@@ -76,6 +77,24 @@ export const readOrBootstrapConfig = async (path: string, dashboardUrl: string) 
   return new AtomicConfigFile(path).read();
 };
 
+// Retrying an unchanged bad configuration is futile, so malformed-syntax and
+// schema-invalid configs must exit unrecoverable (1), not transient (2) — else
+// a service manager restarts the daemon in a loop. Already-classified errors
+// (AppError such as ConfigWriteError, or a CliExit) keep their own code/message.
+const loadConfigForRun = async (path: string, dashboardUrl: string) => {
+  try {
+    const raw = await readOrBootstrapConfig(path, dashboardUrl);
+    parseRuntimeConfig(raw);
+    return raw;
+  } catch (cause) {
+    if (cause instanceof AppError || cause instanceof CliExit) throw cause;
+    throw new CliExit(
+      EXIT.unrecoverable,
+      m.cli_config_invalid({ error: cause instanceof Error ? cause.message : String(cause) }),
+    );
+  }
+};
+
 const assertPortAvailable = (host: string, port: number) => {
   let probe: { stop(force?: boolean): void } | undefined;
   try {
@@ -101,7 +120,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const apiUrl = `http://${host}:${port}`;
   const dashboardUrl = deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
   assertPortAvailable(host, port);
-  const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
+  const config = await loadConfigForRun(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
   const app = await bootProxyServer({
     config,

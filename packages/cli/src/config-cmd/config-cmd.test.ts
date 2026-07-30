@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { ConfigValidationError } from '../errors';
 import { configPathCommand, configShow, configValidate } from './config-cmd';
 
 let home: string;
@@ -44,7 +45,19 @@ test('validate throws a user-facing error for malformed config', async () => {
   await configValidate(undefined, () => {}).catch((err) => {
     caught = err;
   });
-  expect(caught).toBeInstanceOf(Error);
+  expect(caught).toBeInstanceOf(ConfigValidationError);
+});
+
+test('validate reports syntax errors as a user-facing validation error', async () => {
+  // Invalid JSONC (unclosed brace) makes AtomicConfigFile.read() throw before
+  // parseRuntimeConfig runs; it must still surface as ConfigValidationError so
+  // the exit-code contract classifies it unrecoverable (1), not transient (2).
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "port": 9317 ');
+  let caught: unknown;
+  await configValidate(undefined, () => {}).catch((err) => {
+    caught = err;
+  });
+  expect(caught).toBeInstanceOf(ConfigValidationError);
 });
 
 test('path prints the resolved config file path', async () => {

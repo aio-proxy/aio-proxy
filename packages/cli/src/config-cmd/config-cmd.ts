@@ -22,9 +22,8 @@ export async function configValidate(
   print: (line: string) => void = console.log,
 ): Promise<void> {
   const resolved = path ?? configPath();
-  const raw = await new AtomicConfigFile(resolved).read();
   try {
-    parseRuntimeConfig(raw);
+    parseRuntimeConfig(await new AtomicConfigFile(resolved).read());
   } catch (cause) {
     throw new ConfigValidationError(
       m.cli_config_invalid({ error: cause instanceof Error ? cause.message : String(cause) }),
