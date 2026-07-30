@@ -1,146 +1,52 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-
-import { AtomicConfigFile, configPath } from '@aio-proxy/core';
-import {
-  ConfigWriteError,
-  formatUserError,
-  getLocale,
-  m,
-  PortOutOfRangeError,
-  resolveLocaleFromArgv,
-  setLocale,
-} from '@aio-proxy/i18n';
+import { formatUserError, getLocale, m, resolveLocaleFromArgv, setLocale } from '@aio-proxy/i18n';
 import { Command } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
-import { bootProxyServer } from './boot-proxy-server';
+import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
-import { ServeListenError } from './errors';
+import { doctorCommand } from './doctor';
 import { CliExit, isKnownCliUserError, toExitCode } from './exit';
-import { openBrowser } from './open-browser';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
 import { providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
+import { run, validatePortArgv } from './run';
+import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
 
+export { readOrBootstrapConfig } from './run';
+
 const VERSION = packageJson.version;
-const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
 
-const DEFAULT_CONFIG = {
-  $schema: CONFIG_SCHEMA_URL,
-  server: { port: 9_317 },
-  providers: {},
-} as const;
-
-type RunOptions = {
-  readonly host?: string;
-  readonly port?: string;
-  readonly open?: boolean;
-};
-
-const parsePort = (value: string | undefined, fallback: number) => {
-  if (value === undefined) {
-    return fallback;
-  }
-  const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new PortOutOfRangeError(value);
-  }
-  return port;
-};
-
-const validatePortArgv = (argv: readonly string[]) => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === '--port') {
-      parsePort(argv[index + 1], DEFAULT_CONFIG.server.port);
-      return;
-    }
-    if (arg?.startsWith('--port=')) {
-      parsePort(arg.slice('--port='.length), DEFAULT_CONFIG.server.port);
-      return;
-    }
-  }
-};
-
-export const readOrBootstrapConfig = async (path: string, dashboardUrl: string) => {
-  if (!existsSync(path)) {
-    try {
-      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-      writeFileSync(path, `${JSON.stringify(DEFAULT_CONFIG, undefined, 2)}\n`, {
-        mode: 0o600,
-      });
-    } catch (err) {
-      if (err instanceof Error) {
-        throw new ConfigWriteError(path);
-      }
-      throw err;
-    }
-    if (process.stdin.isTTY !== true) {
-      console.log(
-        m.cli_bootstrap_empty_config({
-          path,
-          dashboardUrl,
-        }),
-      );
-    }
-  }
-
-  return new AtomicConfigFile(path).read();
-};
-
-const assertPortAvailable = (host: string, port: number) => {
-  let probe: { stop(force?: boolean): void } | undefined;
-  try {
-    probe = Bun.serve({
-      hostname: host,
-      port,
-      fetch: () => new Response(null, { status: 204 }),
-    });
-  } catch (err) {
-    if (err instanceof Error) {
-      throw new ServeListenError(host, port, { cause: err });
-    }
-    throw err;
-  } finally {
-    probe?.stop(true);
-  }
-};
-
-const run = (deps: CliDeps) => async (options: RunOptions) => {
-  const resolvedConfigPath = configPath();
-  const host = options.host ?? '127.0.0.1';
-  const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
-  const apiUrl = `http://${host}:${port}`;
-  const dashboardUrl = deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
-  assertPortAvailable(host, port);
-  const config = await readOrBootstrapConfig(resolvedConfigPath, dashboardUrl);
-  const dashboardAssets = deps.dashboardAssets();
-  const app = await bootProxyServer({
-    config,
-    configPath: resolvedConfigPath,
-    dashboardAssets,
-    host,
-    port,
-    version: VERSION,
-  });
-  // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
-  // pauses). Bun's default 10s idle timeout would close the client connection
-  // mid-stream, surfacing to clients as "stream disconnected"/decode errors.
-  // 255s is Bun's maximum idle window.
-  const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
-  console.error(
-    m.cli_run_started({
-      apiUrl: `http://${server.hostname}:${server.port}`,
-      dashboardUrl,
-    }),
-  );
-  if (options.open === true) {
-    openBrowser(dashboardUrl);
-  }
+const registerServiceCommands = (program: Command): void => {
+  const service = program.command('service').description(m.cli_service_description());
+  service
+    .command('install')
+    .description(m.cli_service_install_description())
+    .option('--user', m.cli_service_install_option_user_description())
+    .option('--system', m.cli_service_install_option_system_description())
+    .action((options) => serviceInstall(options));
+  service
+    .command('uninstall')
+    .description(m.cli_service_uninstall_description())
+    .action(() => serviceUninstall());
+  service
+    .command('start')
+    .description(m.cli_service_start_description())
+    .action(() => serviceStart());
+  service
+    .command('stop')
+    .description(m.cli_service_stop_description())
+    .action(() => serviceStop());
+  service
+    .command('restart')
+    .description(m.cli_service_restart_description())
+    .action(() => serviceRestart());
+  service
+    .command('status')
+    .description(m.cli_service_status_description())
+    .action(() => serviceStatus());
 };
 
 export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
@@ -245,8 +151,19 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .description(m.cli_plugin_prune_description())
     .option('--yes', m.cli_plugin_prune_option_yes_description())
     .action((options) => pluginPrune(options));
-  program.command('model').description(m.cli_model_description());
-  program.command('trace').description(m.cli_trace_description());
+  registerServiceCommands(program);
+
+  program
+    .command('doctor')
+    .description(m.cli_doctor_description())
+    .option('--host <host>', m.cli_run_option_host_description())
+    .option('--port <port>', m.cli_run_option_port_description())
+    .action((options) => doctorCommand(options));
+
+  program
+    .command('completion <shell>')
+    .description(m.cli_completion_description())
+    .action((shell) => completionCommand(shell));
 
   return program;
 };
