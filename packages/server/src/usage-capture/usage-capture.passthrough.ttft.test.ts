@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { createAttemptResponseObservation } from '../response-observation';
 import { createUsageCapture } from './index';
 
 function ssePassthrough(body: string, protocol: ProviderProtocol = ProviderProtocol.OpenAICompatible) {
@@ -19,6 +20,36 @@ async function drain(response: Response): Promise<void> {
 }
 
 describe('usage capture passthrough ttft', () => {
+  test('records every SSE event and only generated content deltas', async () => {
+    const times = [91, 100, 101, 102, 110, 103, 115, 104];
+    const observation = createAttemptResponseObservation({ startedAt: 90, now: () => times.shift() ?? 115 });
+    const response = new Response(
+      'data: {"type":"message_start","message":{"id":"msg-1"}}\n\n' +
+        'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}\n\n' +
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n' +
+        'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"why"}}\n\n' +
+        'data: {"type":"message_stop"}\n\n',
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+    observation.observeResponse(response, { controlledStream: false });
+    const captured = createUsageCapture().passthrough({
+      response,
+      protocol: ProviderProtocol.Anthropic,
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: 90,
+      observation,
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(observation.snapshot().firstSseEventMs).toBe(10);
+    expect(observation.snapshot().contentGapP95Ms).toBe(5);
+    expect(completion.outcome).toBe('success');
+    expect(typeof ('ttftMs' in completion ? completion.ttftMs : undefined)).toBe('number');
+  });
+
   test('records ttft only once a content delta arrives, not on the first byte', async () => {
     const captured = ssePassthrough(
       // Lifecycle/role frame first (no generated content), then a content delta.
