@@ -23,6 +23,7 @@ export type JsonEditorProps = {
   readonly onValidationChange?: (validation: JsonEditorValidation) => void;
   readonly externalInvalid?: boolean;
   readonly errorDescriptionId?: string;
+  readonly ariaLabel?: string;
   readonly id?: string;
   readonly className?: string;
   readonly height?: string | number;
@@ -37,6 +38,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   onValidationChange,
   externalInvalid,
   errorDescriptionId,
+  ariaLabel,
   id,
   className,
   height,
@@ -147,6 +149,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       invalid={externalInvalid || !validation.valid}
       {...(errorDescriptionId === undefined ? {} : { ariaDescribedBy: errorDescriptionId })}
       language="json"
+      {...(ariaLabel === undefined ? {} : { options: { ariaLabel } })}
       onChange={handleChange}
       onMount={handleMount}
       onValidate={handleValidationReady}

@@ -12,16 +12,24 @@ import { ProviderFormMode } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
+import { ProviderRequestTransformsFormField } from './provider-request-transforms';
 
-type Props = {
+interface ProviderFormFieldsApiProps {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   providerId?: string | undefined;
   aliasOpen: boolean;
   onAliasOpenChange: (open: boolean) => void;
-};
+  onTransformsValidityChange: (valid: boolean) => void;
+}
 
-export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, onAliasOpenChange }) => {
+export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
+  form,
+  mode,
+  aliasOpen,
+  onAliasOpenChange,
+  onTransformsValidityChange,
+}) => {
   return (
     <div className="space-y-8">
       <section className="space-y-4" aria-labelledby="provider-api-basic-heading">
@@ -110,6 +118,8 @@ export const ProviderFormFieldsApi: React.FC<Props> = ({ form, mode, aliasOpen, 
           </div>
         </div>
       </section>
+
+      <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
 
       <section className="space-y-4" aria-labelledby="provider-api-models-heading">
         <h2 id="provider-api-models-heading" className="text-base font-semibold">

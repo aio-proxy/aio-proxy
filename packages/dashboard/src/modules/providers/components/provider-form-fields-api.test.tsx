@@ -6,6 +6,10 @@ import { ProviderFormMode } from '../constants';
 import { useProviderForm } from '../hooks/use-provider-form';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
+rs.mock('./provider-request-transforms/provider-request-transforms-editor', () => ({
+  ProviderRequestTransformsEditor: () => null,
+}));
+
 describe('API provider form fields', () => {
   test('shows a protocol placeholder and icons in the options and selected value', async () => {
     const { result } = renderHook(() => useProviderForm({ mode: ProviderFormMode.Create, kind: ProviderKind.Api }));
@@ -16,6 +20,7 @@ describe('API provider form fields', () => {
         mode={ProviderFormMode.Create}
         aliasOpen={false}
         onAliasOpenChange={rs.fn()}
+        onTransformsValidityChange={rs.fn()}
       />,
     );
 
@@ -56,6 +61,7 @@ describe('API provider form fields', () => {
         providerId="openrouter"
         aliasOpen={false}
         onAliasOpenChange={rs.fn()}
+        onTransformsValidityChange={rs.fn()}
       />,
     );
 
@@ -89,6 +95,7 @@ describe('API provider form fields', () => {
         providerId="openrouter"
         aliasOpen={false}
         onAliasOpenChange={rs.fn()}
+        onTransformsValidityChange={rs.fn()}
       />,
     );
 

@@ -1,8 +1,16 @@
 import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { render, screen, within } from '@testing-library/react';
+import { useEffect } from 'react';
 
 import { OAuthProviderEditPage } from './oauth-provider-edit-page';
+
+rs.mock('../components/provider-request-transforms/provider-request-transforms-editor', () => ({
+  ProviderRequestTransformsEditor: ({ onValidityChange }: { onValidityChange: (valid: boolean) => void }) => {
+    useEffect(() => onValidityChange(mocks.transformsValid), [onValidityChange]);
+    return null;
+  },
+}));
 
 const provider: OAuthProvider = {
   kind: 'oauth',
@@ -26,7 +34,7 @@ const oauth: DashboardOAuthProviderEdit = {
   models: ['model-1', 'model-2'],
 };
 
-const mocks = rs.hoisted(() => ({ sessionError: false }));
+const mocks = rs.hoisted(() => ({ sessionError: false, transformsValid: true }));
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
@@ -42,6 +50,7 @@ rs.mock('@tanstack/react-router', () => ({
 
 afterEach(() => {
   mocks.sessionError = false;
+  mocks.transformsValid = true;
 });
 
 test('OAuth edit page groups terminal actions in the intended order', () => {
@@ -82,6 +91,16 @@ test('OAuth edit page hides edit actions while an existing session loads', () =>
   );
 
   expect(screen.queryByRole('button', { name: /Reauthorize|重新授权/u })).toBeNull();
+});
+
+test('OAuth edit page disables save and reauthorization while transforms are invalid', () => {
+  mocks.transformsValid = false;
+  render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+  const save = screen.getByRole('button', { name: /Save|保存/u });
+  const reauthorize = screen.getByRole('button', { name: /Reauthorize|重新授权/u });
+  expect(save.hasAttribute('disabled')).toBe(true);
+  expect(reauthorize.hasAttribute('disabled')).toBe(true);
 });
 
 test('OAuth edit page offers a restart when an existing session cannot be loaded', () => {

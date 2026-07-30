@@ -14,18 +14,19 @@ import { ProviderFormMode } from '../constants';
 import { type ProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
 
-type Props = {
+interface ProviderFormPageProps {
   mode: ProviderFormMode;
   kind: ProviderKind;
   initial?: ProviderFormInitial;
   providerId?: string;
-};
+}
 
-export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId }) => {
+export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initial, providerId }) => {
   const navigate = useNavigate();
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const [aliasOpen, setAliasOpen] = useState(false);
   const [optionsValid, setOptionsValid] = useState(kind === 'api');
+  const [transformsValid, setTransformsValid] = useState(true);
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const isPending = isCreating || isUpdating;
@@ -62,7 +63,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
       : undefined;
 
   const submit = () => {
-    if (!optionsValid) {
+    if (!optionsValid || !transformsValid) {
       return;
     }
     const issues = aliasEditorIssues(form.getFieldValue('alias') ?? {}, form.getFieldValue('models'));
@@ -95,6 +96,7 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
               providerId={providerId}
               aliasOpen={aliasOpen}
               onAliasOpenChange={setAliasOpen}
+              onTransformsValidityChange={setTransformsValid}
             />
           ) : (
             <ProviderFormFieldsAiSdk
@@ -104,11 +106,16 @@ export const ProviderFormPage: FC<Props> = ({ mode, kind, initial, providerId })
               aliasOpen={aliasOpen}
               onAliasOpenChange={setAliasOpen}
               onOptionsValidityChange={setOptionsValid}
+              onTransformsValidityChange={setTransformsValid}
             />
           )}
           <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
             <div className="flex gap-3">
-              <Button type="submit" disabled={!optionsValid || isPending} data-testid="provider-save">
+              <Button
+                type="submit"
+                disabled={!optionsValid || !transformsValid || isPending}
+                data-testid="provider-save"
+              >
                 {m['dashboard.providers.actions.save']()}
               </Button>
               <Button

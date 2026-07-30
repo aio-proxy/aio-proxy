@@ -10,7 +10,7 @@ type ProviderFormShape = ProviderFormValues extends infer Provider
     ? Omit<Provider, 'transforms'> & { readonly transforms?: unknown }
     : never
   : never;
-export type ProviderFormInitial = Partial<ProviderFormShape>;
+export type ProviderFormInitial = Partial<ProviderFormValues>;
 
 export type ProviderForm = ReactFormExtendedApi<
   ProviderFormShape,

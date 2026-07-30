@@ -368,6 +368,13 @@
         "models_title": "Discovered models",
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds."
       },
+      "transforms": {
+        "section": "Request transforms",
+        "description": "Modify the outbound request for this Provider before it is sent upstream.",
+        "json_label": "Request transforms JSON",
+        "invalid": "Invalid transform at {path}: {code}",
+        "empty": "No request transforms configured."
+      },
       "form": {
         "label_id": "Provider ID",
         "label_name": "Display Name",

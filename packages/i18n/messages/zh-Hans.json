@@ -368,6 +368,13 @@
         "models_title": "已发现模型",
         "reauthorize_helper": "账户设置变更只会在授权成功后保存。"
       },
+      "transforms": {
+        "section": "请求修改",
+        "description": "在请求发送到上游之前，按当前 Provider 的配置修改出站请求。",
+        "json_label": "请求修改 JSON",
+        "invalid": "修改配置无效（{path}）：{code}",
+        "empty": "尚未配置请求修改。"
+      },
       "form": {
         "label_id": "提供商 ID",
         "label_name": "显示名称",

@@ -30,6 +30,8 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
     accountForm,
     aliasOpen,
     setAliasOpen,
+    transformsValid,
+    setTransformsValid,
     session,
     sessionQuery,
     submit,
@@ -63,10 +65,12 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
               onAliasOpenChange={setAliasOpen}
               onReauthorize={() => submit(true)}
               isReauthorizing={isUpdating || startMutation.isPending}
+              transformsValid={transformsValid}
+              onTransformsValidityChange={setTransformsValid}
             />
             <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
               <div className="flex gap-3">
-                <Button type="submit" disabled={isUpdating || startMutation.isPending}>
+                <Button type="submit" disabled={!transformsValid || isUpdating || startMutation.isPending}>
                   {m['dashboard.providers.actions.save']()}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => void navigate({ to: '/providers' })}>
