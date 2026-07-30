@@ -39,8 +39,47 @@ export function configPathCommand(print: (line: string) => void = console.log): 
   print(configPath());
 }
 
+// Split an `$EDITOR`/`$VISUAL` string into argv. A configured editor commonly carries
+// arguments (`code --wait`) or a quoted path with spaces (macOS `"/Applications/Visual
+// Studio Code.app/.../code" --wait`); spawning the whole string as one filename would
+// fail with ENOENT. Handles single/double quotes and backslash escapes; no shell runs,
+// so nothing in the value is interpreted as a shell metacharacter.
+export function parseEditorCommand(command: string): readonly string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+  let hasToken = false;
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i];
+    if (quote === "'") {
+      if (char === "'") quote = undefined;
+      else current += char;
+    } else if (quote === '"') {
+      if (char === '"') quote = undefined;
+      else if (char === '\\' && (command[i + 1] === '"' || command[i + 1] === '\\')) current += command[++i];
+      else current += char;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+    } else if (char === '\\' && i + 1 < command.length) {
+      current += command[++i];
+      hasToken = true;
+    } else if (char === ' ' || char === '\t') {
+      if (hasToken) tokens.push(current);
+      current = '';
+      hasToken = false;
+    } else {
+      current += char;
+      hasToken = true;
+    }
+  }
+  if (hasToken) tokens.push(current);
+  return tokens;
+}
+
 export function configEdit(): void {
-  const editor = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'vi';
+  const configured = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'vi';
+  const [editor, ...editorArgs] = parseEditorCommand(configured);
   const path = configPath();
   // On a fresh install `~/.aio-proxy` does not exist yet, so the editor would
   // have nowhere to save. Create the dir (and seed the default config) before
@@ -50,5 +89,6 @@ export function configEdit(): void {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     writeFileSync(path, `${JSON.stringify(DEFAULT_CONFIG, undefined, 2)}\n`, { mode: 0o600 });
   }
-  spawn(editor, [path], { stdio: 'inherit' });
+  // A whitespace-only `$EDITOR` parses to nothing; fall back to vi.
+  spawn(editor ?? 'vi', [...editorArgs, path], { stdio: 'inherit' });
 }

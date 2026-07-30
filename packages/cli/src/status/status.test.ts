@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { StatusNotRunningError } from '../errors';
 import { statusCommand } from './status';
 
 test('status reports running + version from /health', async () => {
@@ -18,16 +19,37 @@ test('status reports running + version from /health', async () => {
   }
 });
 
-test('status reports not-running when the server is unreachable', async () => {
+test('status prints the result then throws so an unreachable daemon exits nonzero', async () => {
   // Reserve then release a port so nothing is listening.
   const probe = Bun.serve({ port: 0, fetch: () => new Response('x') });
   const deadPort = probe.port;
   probe.stop(true);
 
   const lines: string[] = [];
-  await statusCommand({ port: String(deadPort) }, (l) => lines.push(l));
+  // The human-readable result must still be printed before the throw...
+  let caught: unknown;
+  await statusCommand({ port: String(deadPort) }, (l) => lines.push(l)).catch((err) => {
+    caught = err;
+  });
   expect(lines.join('\n')).toContain(String(deadPort));
-  // Not-running is a normal (non-throwing) outcome; the exit-code contract is Task 6.
+  // ...and the command must signal "down" so the exit code is nonzero (transient),
+  // letting a health check tell an unreachable daemon apart from a running one.
+  expect(caught).toBeInstanceOf(StatusNotRunningError);
+});
+
+test('--json still emits the machine result before signaling a down daemon', async () => {
+  const probe = Bun.serve({ port: 0, fetch: () => new Response('x') });
+  const deadPort = probe.port;
+  probe.stop(true);
+
+  const lines: string[] = [];
+  let caught: unknown;
+  await statusCommand({ port: String(deadPort), json: true }, (l) => lines.push(l)).catch((err) => {
+    caught = err;
+  });
+  const parsed = JSON.parse(lines.join('\n')) as { running: boolean };
+  expect(parsed.running).toBe(false);
+  expect(caught).toBeInstanceOf(StatusNotRunningError);
 });
 
 test('--deep notes the limitation when the providers endpoint is password-gated', async () => {

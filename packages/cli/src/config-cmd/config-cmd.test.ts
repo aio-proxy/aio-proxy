@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ConfigValidationError } from '../errors';
-import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
+import { configEdit, configPathCommand, configShow, configValidate, parseEditorCommand } from './config-cmd';
 
 let home: string;
 let prevHome: string | undefined;
@@ -91,4 +91,23 @@ test('edit bootstraps the config dir and a default config on a fresh install', a
     else process.env.EDITOR = prevEditor;
     if (prevVisual !== undefined) process.env.VISUAL = prevVisual;
   }
+});
+
+test('parseEditorCommand splits an editor command with arguments (code --wait)', () => {
+  // The common `EDITOR="code --wait"` case must not be treated as one filename.
+  expect(parseEditorCommand('code --wait')).toEqual(['code', '--wait']);
+});
+
+test('parseEditorCommand keeps a quoted path with spaces as a single token', () => {
+  // macOS VS Code lives under a path with spaces; only the trailing flag is separate.
+  const command = '"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --wait';
+  expect(parseEditorCommand(command)).toEqual([
+    '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+    '--wait',
+  ]);
+});
+
+test('parseEditorCommand collapses surrounding whitespace to no tokens', () => {
+  // A whitespace-only value yields nothing; configEdit then falls back to vi.
+  expect(parseEditorCommand('   ')).toEqual([]);
 });

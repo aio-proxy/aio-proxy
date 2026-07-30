@@ -1,6 +1,6 @@
 import { AppError } from '@aio-proxy/i18n';
 
-import { ConfigValidationError, ReloadError, ServeListenError } from '../errors';
+import { ConfigValidationError, ReloadError, ServeListenError, StatusNotRunningError } from '../errors';
 import {
   FormJsonInvalidError,
   FormNumberInvalidError,
@@ -33,6 +33,7 @@ export function isKnownCliUserError(err: unknown): err is Error {
     err instanceof CliExit ||
     err instanceof ServeListenError ||
     err instanceof ReloadError ||
+    err instanceof StatusNotRunningError ||
     err instanceof ConfigValidationError ||
     isProviderLoginUserError(err) ||
     err instanceof FormNumberInvalidError ||
@@ -48,6 +49,11 @@ export function isKnownCliUserError(err: unknown): err is Error {
 // not restart on them. Anything else is transient.
 export function toExitCode(err: unknown): number {
   if (err instanceof CliExit) return err.code;
+  // An unreachable daemon (status) is retryable, and a reload flagged transient
+  // (transport failure / 5xx) must stay retryable — both map to a nonzero transient
+  // code even though they are "known" CLI errors.
+  if (err instanceof StatusNotRunningError) return EXIT.transient;
+  if (err instanceof ReloadError) return err.transient ? EXIT.transient : EXIT.unrecoverable;
   if (isKnownCliUserError(err) || err instanceof AppError) return EXIT.unrecoverable;
   return EXIT.transient;
 }

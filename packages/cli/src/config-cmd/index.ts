@@ -1,1 +1,8 @@
-export { configShow, configValidate, configPathCommand, configEdit, type ConfigShowOptions } from './config-cmd';
+export {
+  configShow,
+  configValidate,
+  configPathCommand,
+  configEdit,
+  parseEditorCommand,
+  type ConfigShowOptions,
+} from './config-cmd';

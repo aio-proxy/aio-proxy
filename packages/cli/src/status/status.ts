@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 
 import { controlBaseUrl, probeHealth } from '../control-plane';
+import { StatusNotRunningError } from '../errors';
 
 export type StatusOptions = {
   readonly host?: string;
@@ -54,7 +55,10 @@ export async function statusCommand(
   if (health === null) {
     if (options.json === true) print(JSON.stringify({ ...result }, undefined, 2));
     else print(m.cli_status_not_running({ url }));
-    return;
+    // Result already printed; signal "down" with a nonzero exit so health checks and
+    // service scripts can tell an unreachable daemon apart from a running one without
+    // parsing localized output.
+    throw new StatusNotRunningError();
   }
 
   let deepFailure: DeepProbeFailure | undefined;

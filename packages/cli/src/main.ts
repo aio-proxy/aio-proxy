@@ -175,7 +175,9 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
     await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {
     const formatted = formatCliError(err, getLocale());
-    console.error(formatted.message);
+    // A signal-only error (e.g. `status` on a down daemon) already printed its result
+    // and carries an empty message; only its exit code matters, so skip the blank line.
+    if (formatted.message !== '') console.error(formatted.message);
     process.exitCode = toExitCode(err);
   }
 };
