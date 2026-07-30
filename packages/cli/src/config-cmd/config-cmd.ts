@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -7,7 +6,9 @@ import { m } from '@aio-proxy/i18n';
 import { redactSecrets } from '@aio-proxy/server';
 
 import { ConfigValidationError } from '../errors';
+import { CliExit, EXIT } from '../exit';
 import { DEFAULT_CONFIG } from '../run';
+import { loadServiceEnv } from '../service-env';
 
 export type ConfigShowOptions = { readonly json?: boolean };
 
@@ -26,6 +27,10 @@ export async function configValidate(
 ): Promise<void> {
   const resolved = path ?? configPath();
   try {
+    // `run` loads service.env before parsing, so a template referencing a var
+    // defined only there resolves at runtime. Mirror that here or validate would
+    // falsely reject a config that `run` accepts.
+    loadServiceEnv(resolved);
     parseRuntimeConfig(await new AtomicConfigFile(resolved).read());
   } catch (cause) {
     throw new ConfigValidationError(
@@ -77,7 +82,7 @@ export function parseEditorCommand(command: string): readonly string[] {
   return tokens;
 }
 
-export function configEdit(): void {
+export async function configEdit(): Promise<void> {
   const configured = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'vi';
   const [editor, ...editorArgs] = parseEditorCommand(configured);
   const path = configPath();
@@ -89,6 +94,15 @@ export function configEdit(): void {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     writeFileSync(path, `${JSON.stringify(DEFAULT_CONFIG, undefined, 2)}\n`, { mode: 0o600 });
   }
-  // A whitespace-only `$EDITOR` parses to nothing; fall back to vi.
-  spawn(editor ?? 'vi', [...editorArgs, path], { stdio: 'inherit' });
+  // A whitespace-only `$EDITOR` parses to nothing; fall back to vi. Await the
+  // editor and propagate a nonzero exit (e.g. `EDITOR=false` or the editor
+  // failing to open the file) instead of reporting success while nothing was
+  // edited. stdio inherit keeps the editor interactive on the terminal.
+  const proc = Bun.spawn([editor ?? 'vi', ...editorArgs, path], {
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const code = await proc.exited;
+  if (code !== 0) throw new CliExit(EXIT.unrecoverable, m.cli_config_edit_failed({ editor: editor ?? 'vi', code }));
 }

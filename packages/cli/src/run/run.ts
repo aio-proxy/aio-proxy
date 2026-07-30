@@ -80,13 +80,19 @@ export const readOrBootstrapConfig = async (path: string, dashboardUrl: string) 
 
 // Retrying an unchanged bad configuration is futile, so malformed-syntax and
 // schema-invalid configs must exit unrecoverable (1), not transient (2) — else
-// a service manager restarts the daemon in a loop. Already-classified errors
-// (AppError such as ConfigWriteError, or a CliExit) keep their own code/message.
+// a service manager restarts the daemon in a loop. A service.env that exists but
+// cannot be read (bad perms, is-a-directory) is equally unrecoverable: retrying
+// the same broken file loops forever, so classify it as exit 1 too. Already-
+// classified errors (AppError such as ConfigWriteError, or a CliExit) keep their
+// own code/message. Returns the raw envelope plus the parsed config so the caller
+// can honor config-provided host/port without a second parse failing separately.
 const loadConfigForRun = async (path: string, dashboardUrl: string) => {
   try {
+    // Load the optional service.env before parsing so provider secrets referenced
+    // via {{env.*}} resolve under a managed run's clean environment.
+    loadServiceEnv(path);
     const raw = await readOrBootstrapConfig(path, dashboardUrl);
-    parseRuntimeConfig(raw);
-    return raw;
+    return { raw, config: parseRuntimeConfig(raw) };
   } catch (cause) {
     if (cause instanceof AppError || cause instanceof CliExit) throw cause;
     throw new CliExit(
@@ -116,18 +122,26 @@ const assertPortAvailable = (host: string, port: number) => {
 
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
-  const host = options.host ?? '127.0.0.1';
-  const port = parsePort(options.port, DEFAULT_CONFIG.server.port);
-  const apiUrl = `http://${host}:${port}`;
-  const dashboardUrl = deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
+  const dashboardUrlFor = (host: string, port: number) => {
+    const apiUrl = `http://${host}:${port}`;
+    return deps.dashboardUrl?.(apiUrl) ?? `${apiUrl}/dashboard`;
+  };
+  // Resolve the flag values first: they are the only bind info available on a
+  // fresh install (no config to read yet), so the bootstrap hint must use them.
+  const flagHost = options.host;
+  const flagPort = options.port === undefined ? undefined : parsePort(options.port, DEFAULT_CONFIG.server.port);
+  // The bootstrap hint (fresh install, no config) can only reflect flags/defaults.
+  const bootstrapUrl = dashboardUrlFor(flagHost ?? '127.0.0.1', flagPort ?? DEFAULT_CONFIG.server.port);
+  const { raw, config } = await loadConfigForRun(resolvedConfigPath, bootstrapUrl);
+  // A bare `run` (managed service, no flags) must honor the config's server.host/
+  // server.port; CLI flags still win when present.
+  const host = flagHost ?? config.server.host;
+  const port = flagPort ?? config.server.port;
+  const dashboardUrl = dashboardUrlFor(host, port);
   assertPortAvailable(host, port);
-  // Load the optional service.env before config parsing so provider secrets
-  // referenced via {{env.*}} resolve under a managed run's clean environment.
-  loadServiceEnv(resolvedConfigPath);
-  const config = await loadConfigForRun(resolvedConfigPath, dashboardUrl);
   const dashboardAssets = deps.dashboardAssets();
   const app = await bootProxyServer({
-    config,
+    config: raw,
     configPath: resolvedConfigPath,
     dashboardAssets,
     host,

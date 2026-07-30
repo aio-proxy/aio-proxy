@@ -147,6 +147,7 @@
   "cli_config_path_description": "打印配置文件路径。",
   "cli_config_invalid": "配置无效：{error}",
   "cli_config_valid": "配置有效：{path}",
+  "cli_config_edit_failed": "编辑器 {editor} 以退出码 {code} 结束；配置未保存。",
   "cli_service_description": "管理 AIO Proxy 后台服务。",
   "cli_service_install_description": "安装后台服务（用户级）。",
   "cli_service_install_option_user_description": "以当前用户身份安装服务（默认）。",

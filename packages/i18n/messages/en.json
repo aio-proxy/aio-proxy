@@ -151,6 +151,7 @@
   "cli_config_path_description": "Print the configuration file path.",
   "cli_config_invalid": "Invalid configuration: {error}",
   "cli_config_valid": "Configuration is valid: {path}",
+  "cli_config_edit_failed": "Editor {editor} exited with code {code}; configuration was not saved.",
   "cli_service_description": "Manage the AIO Proxy background service.",
   "cli_service_install_description": "Install the background service (user scope).",
   "cli_service_install_option_user_description": "Install as a per-user service (default).",

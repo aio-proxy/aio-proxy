@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ConfigValidationError } from '../errors';
+import { CliExit } from '../exit';
 import { configEdit, configPathCommand, configShow, configValidate, parseEditorCommand } from './config-cmd';
 
 let home: string;
@@ -81,7 +82,7 @@ test('edit bootstraps the config dir and a default config on a fresh install', a
   try {
     const target = join(freshHome, 'config.jsonc');
     expect(existsSync(target)).toBe(false);
-    configEdit();
+    await configEdit();
     expect(existsSync(target)).toBe(true);
     // The seeded file must be a parseable default config, not an empty stub.
     const seeded = JSON.parse(readFileSync(target, 'utf8')) as { providers?: unknown };
@@ -93,6 +94,49 @@ test('edit bootstraps the config dir and a default config on a fresh install', a
   }
 });
 
+test('edit surfaces a nonzero editor exit instead of reporting success', async () => {
+  // `EDITOR=false` exits 1 without touching the file. configEdit must await the
+  // editor and propagate that failure (CliExit) so `config edit` does not exit 0
+  // while nothing was saved.
+  writeFileSync(join(home, 'config.jsonc'), '{ "providers": {} }\n');
+  const prevEditor = process.env.EDITOR;
+  const prevVisual = process.env.VISUAL;
+  process.env.EDITOR = 'false';
+  delete process.env.VISUAL;
+  try {
+    let caught: unknown;
+    await configEdit().catch((err) => {
+      caught = err;
+    });
+    expect(caught).toBeInstanceOf(CliExit);
+    expect((caught as CliExit).code).toBe(1);
+  } finally {
+    if (prevEditor === undefined) delete process.env.EDITOR;
+    else process.env.EDITOR = prevEditor;
+    if (prevVisual !== undefined) process.env.VISUAL = prevVisual;
+  }
+});
+
+test('validate resolves env templates defined only in service.env', async () => {
+  // `run` loads service.env before parsing, so a proxy URL built from a var that
+  // lives only in service.env resolves at runtime. validate must load it too, or
+  // it would falsely reject a config that `run` accepts.
+  writeFileSync(
+    join(home, 'config.jsonc'),
+    '{ "providers": {}, "proxy": "http://{{env.AIO_TEST_PROXY_HOST}}:8080" }\n',
+  );
+  writeFileSync(join(home, 'service.env'), 'AIO_TEST_PROXY_HOST=127.0.0.1\n');
+  const prev = process.env.AIO_TEST_PROXY_HOST;
+  delete process.env.AIO_TEST_PROXY_HOST;
+  try {
+    const lines: string[] = [];
+    await expect(configValidate(undefined, (l) => lines.push(l))).resolves.toBeUndefined();
+    expect(lines.join('\n')).toContain('valid');
+  } finally {
+    if (prev === undefined) delete process.env.AIO_TEST_PROXY_HOST;
+    else process.env.AIO_TEST_PROXY_HOST = prev;
+  }
+});
 test('parseEditorCommand splits an editor command with arguments (code --wait)', () => {
   // The common `EDITOR="code --wait"` case must not be treated as one filename.
   expect(parseEditorCommand('code --wait')).toEqual(['code', '--wait']);

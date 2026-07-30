@@ -89,7 +89,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   config
     .command('edit')
     .description(m.cli_config_edit_description())
-    .action(() => configEdit());
+    .action(async () => await configEdit());
   config
     .command('validate [path]')
     .description(m.cli_config_validate_description())

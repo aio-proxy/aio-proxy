@@ -115,6 +115,51 @@ describe('cli', () => {
     }
   });
 
+  test('bare run honors the configured server.port when no flag is given', async () => {
+    // A managed service starts `run` with no flags; it must bind the config's
+    // server.port instead of the hardcoded default, or the configured port is
+    // silently ignored.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-cfgport-'));
+    const port = freePort();
+    writeFileSync(join(dir, 'config.jsonc'), `{ "server": { "port": ${port} }, "providers": {} }\n`);
+    const server = Bun.spawn([process.execPath, 'run', 'packages/cli/src/main.ts', 'run'], {
+      cwd: repoCwd,
+      env: { ...process.env, AIO_PROXY_HOME: dir, LANG: 'en_US.UTF-8' },
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    const stderr = new Response(server.stderr).text();
+    try {
+      const response = await waitForOk(`http://127.0.0.1:${port}/health`, {
+        probeTimeoutMs: 1_000,
+        readinessTimeoutMs: 5_000,
+      });
+      expect(response.status).toBe(200);
+      server.kill();
+      await server.exited;
+      expect(await stderr).toContain(`127.0.0.1:${port}`);
+    } finally {
+      server.kill();
+      await server.exited;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('exits unrecoverable (1) when service.env exists but cannot be read', () => {
+    // A service.env that cannot be read (here, a directory in its place) can never
+    // succeed on retry; the daemon must exit 1 so a service manager does not restart
+    // it in a loop, matching the malformed-config contract.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-badenv-'));
+    try {
+      writeFileSync(join(dir, 'config.jsonc'), '{ "providers": {} }\n');
+      mkdirSync(join(dir, 'service.env'));
+      const result = runCli(['run', '--port', String(freePort())], { AIO_PROXY_HOME: dir });
+      expect(result.exitCode).toBe(1);
+      expect(output(result)).not.toContain('Unexpected internal error');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('run --help advertises --open and drops --config and --dashboard', () => {
     // Given / When
     const result = runCli(['run', '--help']);
