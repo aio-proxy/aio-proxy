@@ -1,4 +1,18 @@
-import type { OAuthAdapter, OAuthQuotaItem, PluginApi } from '.';
+import type { OAuthAdapter, OAuthQuotaItem, PluginApi, RuntimeFetch, RuntimeRequestInit } from '.';
+
+declare const runtimeFetch: RuntimeFetch;
+
+const standardFetch: typeof globalThis.fetch = runtimeFetch;
+const runtimeFetchFromStandard: RuntimeFetch = globalThis.fetch;
+const controlInit: RuntimeRequestInit = { aioProxy: { traffic: 'control' } };
+void standardFetch;
+void runtimeFetchFromStandard;
+void runtimeFetch('https://provider.example/model');
+void runtimeFetch('https://provider.example/token', controlInit);
+void runtimeFetch('https://provider.example/model', { aioProxy: { traffic: 'model' } });
+
+// @ts-expect-error runtime traffic is a closed union
+void runtimeFetch('https://provider.example/model', { aioProxy: { traffic: 'background' } });
 
 type MyOptions = {
   readonly baseURL: string;

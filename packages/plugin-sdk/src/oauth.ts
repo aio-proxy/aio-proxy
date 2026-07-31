@@ -128,6 +128,18 @@ export type OAuthQuotaCapability<AccountOptions, Credential> = {
   readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 
+export type RuntimeFetchTraffic = 'model' | 'control';
+
+export type RuntimeRequestInit = RequestInit & {
+  readonly aioProxy?: {
+    readonly traffic?: RuntimeFetchTraffic;
+  };
+};
+
+export type RuntimeFetch = typeof globalThis.fetch & {
+  (input: RequestInfo | URL, init?: RuntimeRequestInit): Promise<Response>;
+};
+
 export type RuntimeContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
