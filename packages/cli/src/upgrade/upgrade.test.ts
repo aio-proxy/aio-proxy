@@ -113,3 +113,15 @@ test('sweepStaleBackups removes only timestamped .bak siblings', async () => {
   expect(existsSync(join(root, 'aio-proxy.123.456.bak'))).toBe(false);
   expect(existsSync(join(root, 'aio-proxy.unrelated.txt'))).toBe(true);
 });
+
+import { fetchLatestVersion } from './registry';
+
+test('fetchLatestVersion reads version from registry /latest', async () => {
+  const fake = (async () => Response.json({ version: '2.3.4' })) as unknown as typeof fetch;
+  expect(await fetchLatestVersion(NPM_REGISTRY, fake)).toBe('2.3.4');
+});
+
+test('fetchLatestVersion throws on non-ok', async () => {
+  const fake = (async () => new Response('x', { status: 500 })) as unknown as typeof fetch;
+  await expect(fetchLatestVersion(NPM_REGISTRY, fake)).rejects.toThrow();
+});
