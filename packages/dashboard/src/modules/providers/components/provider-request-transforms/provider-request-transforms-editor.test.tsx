@@ -188,7 +188,12 @@ test('acknowledges an accepted emitted value without resetting the draft', async
 test('restores the controlled value when the parent rejects an emitted value', async () => {
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
+  let actionsDisabled = true;
   let view: ReturnType<typeof render>;
+  const handleValidityChange = (valid: boolean) => {
+    onValidityChange(valid);
+    actionsDisabled = !valid;
+  };
   const handleChange = (value: readonly ProviderRequestTransformRule[]) => {
     onChange(value);
     queueMicrotask(() =>
@@ -196,7 +201,7 @@ test('restores the controlled value when the parent rejects an emitted value', a
         <ProviderRequestTransformsEditor
           value={[...initialValue]}
           onChange={handleChange}
-          onValidityChange={onValidityChange}
+          onValidityChange={handleValidityChange}
         />,
       ),
     );
@@ -205,7 +210,7 @@ test('restores the controlled value when the parent rejects an emitted value', a
     <ProviderRequestTransformsEditor
       value={initialValue}
       onChange={handleChange}
-      onValidityChange={onValidityChange}
+      onValidityChange={handleValidityChange}
     />,
   );
   const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
@@ -219,6 +224,11 @@ test('restores the controlled value when the parent rejects an emitted value', a
 
   await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
   await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('"$unset": "request.body.store"'));
+  await waitFor(() => expect(actionsDisabled).toBe(true));
+  await resolveNextValidation();
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
+  expect(actionsDisabled).toBe(false);
+  expect(onChange).toHaveBeenCalledTimes(1);
 });
 
 test('resynchronizes the draft when external canonical content changes', async () => {

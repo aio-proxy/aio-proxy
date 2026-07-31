@@ -41,6 +41,8 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
   const errorId = useId();
   const [semanticIssue, setSemanticIssue] = useState<SemanticIssue>();
   const canonicalDraft = JSON.stringify(value, null, 2);
+  const canonicalDraftRef = useRef(canonicalDraft);
+  canonicalDraftRef.current = canonicalDraft;
   const canonicalValue = useRef(value);
   canonicalValue.current = value;
   const initialCandidate = useRef<ValidCandidate>({ draft: canonicalDraft, value }).current;
@@ -84,10 +86,17 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 
   const handleValidationChange = useCallback(
     (validation: JsonEditorValidation, draft: string) => {
-      const current = candidate.current;
+      let current = candidate.current;
+      if (draft === canonicalDraftRef.current && latestDraft.current !== draft) {
+        current = { draft, value: canonicalValue.current };
+        latestDraft.current = draft;
+        candidate.current = current;
+        lastEmitted.current = current;
+        setSemanticIssue(undefined);
+      }
       const valid = validation.valid && latestDraft.current === draft && current?.draft === draft;
       onValidityChange(valid);
-      if (!valid || current === lastEmitted.current) return;
+      if (!valid || current === undefined || current === lastEmitted.current) return;
       current.expectValueAcknowledgement?.(current.value as unknown as JsonValue);
       lastEmitted.current = current;
       onChange(current.value);
