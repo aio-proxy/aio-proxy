@@ -65,38 +65,75 @@ const normalizeOperatorTransitions = (
   return normalizeGroup(nextQuery);
 };
 
-const numericBodyOperators = new Set(['=', '!=', '>', '>=', '<', '<=']);
+const numericBodyOperators = new Set(['>', '>=', '<', '<=']);
+const numericExpressionFunctions = new Set(['add', 'subtract', 'multiply', 'divide', 'min', 'max', 'abs', 'mod']);
 
 const numericLiteral = (value: unknown): unknown =>
   typeof value === 'string' ? parseNumber(value, { parseNumbers: true }) : value;
 
-const normalizeNumericExpression = (node: ExpressionNode): ExpressionNode =>
-  node.kind === 'value'
-    ? { ...node, value: numericLiteral(node.value) }
-    : node.kind === 'func'
-      ? { ...node, args: node.args.map(normalizeNumericExpression) }
-      : node;
+const normalizeNumericExpressionEdit = (
+  previousNode: ExpressionNode | undefined,
+  nextNode: ExpressionNode,
+  numericValue: boolean,
+): ExpressionNode => {
+  if (isEqual(previousNode, nextNode)) return nextNode;
+  if (nextNode.kind === 'value') {
+    return numericValue ? { ...nextNode, value: numericLiteral(nextNode.value) } : nextNode;
+  }
+  if (nextNode.kind !== 'func') return nextNode;
+  const previousArgs = previousNode?.kind === 'func' && previousNode.fn === nextNode.fn ? previousNode.args : [];
+  const numericArgs = numericExpressionFunctions.has(nextNode.fn);
+  return {
+    ...nextNode,
+    args: nextNode.args.map((argument, index) =>
+      normalizeNumericExpressionEdit(previousArgs[index], argument, numericArgs),
+    ),
+  };
+};
 
-const normalizeNumericBodyLiterals = (query: DefaultRuleGroupType): DefaultRuleGroupType => ({
-  ...query,
-  rules: query.rules.map((item) => {
-    if ('rules' in item) return normalizeNumericBodyLiterals(item);
-    if (
-      (!item.field.startsWith('request.body:') && !item.field.startsWith('original.body:')) ||
-      !numericBodyOperators.has(item.operator)
-    ) {
-      return item;
-    }
-    return {
-      ...item,
-      ...(item.lhs === undefined ? {} : { lhs: normalizeNumericExpression(item.lhs as ExpressionNode) }),
-      value:
-        item.valueSource === 'expression'
-          ? normalizeNumericExpression(item.value as ExpressionNode)
-          : numericLiteral(item.value),
-    };
-  }),
-});
+const normalizeNumericBodyLiterals = (
+  previousQuery: DefaultRuleGroupType,
+  nextQuery: DefaultRuleGroupType,
+): DefaultRuleGroupType => {
+  const previousRules = collectRules(previousQuery);
+  const normalizeGroup = (group: DefaultRuleGroupType): DefaultRuleGroupType => ({
+    ...group,
+    rules: group.rules.map((item) => {
+      if ('rules' in item) return normalizeGroup(item);
+      const previousRule = item.id === undefined ? undefined : previousRules.get(item.id);
+      if (previousRule === undefined || isEqual(previousRule, item)) return item;
+      if (
+        (!item.field.startsWith('request.body:') && !item.field.startsWith('original.body:')) ||
+        !numericBodyOperators.has(item.operator)
+      ) {
+        return item;
+      }
+      return {
+        ...item,
+        ...(item.lhs === undefined
+          ? {}
+          : {
+              lhs: normalizeNumericExpressionEdit(
+                previousRule.lhs as ExpressionNode | undefined,
+                item.lhs as ExpressionNode,
+                false,
+              ),
+            }),
+        value:
+          item.valueSource === 'expression'
+            ? normalizeNumericExpressionEdit(
+                previousRule.valueSource === 'expression' ? (previousRule.value as ExpressionNode) : undefined,
+                item.value as ExpressionNode,
+                true,
+              )
+            : isEqual(previousRule.value, item.value)
+              ? item.value
+              : numericLiteral(item.value),
+      };
+    }),
+  });
+  return normalizeGroup(nextQuery);
+};
 
 const prepareConditionQuery = (value: Condition): DefaultRuleGroupType =>
   prepareRuleGroup(normalizeRequestTransformQuery(parseRequestTransformCondition(value)));
@@ -117,7 +154,7 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
   }, [value]);
 
   const handleQueryChange = (nextQuery: DefaultRuleGroupType) => {
-    const normalizedQuery = normalizeNumericBodyLiterals(normalizeOperatorTransitions(query, nextQuery));
+    const normalizedQuery = normalizeNumericBodyLiterals(query, normalizeOperatorTransitions(query, nextQuery));
     setQuery(normalizedQuery);
     const nextValue = serializeRequestTransformCondition(normalizedQuery);
     try {

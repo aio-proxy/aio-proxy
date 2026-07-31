@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { useId } from 'react';
 import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
-import { getFirstOption, useValueEditor } from 'react-querybuilder';
+import { getFirstOption, joinWith, toArray, useValueEditor } from 'react-querybuilder';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -88,6 +88,7 @@ const renderStandardEditor = (allProps: QueryBuilderValueEditorProps, state: Val
   const testID = allProps.testID ?? 'value-editor';
   const placeholder = allProps.fieldData?.placeholder ?? '';
   const title = editorTitle(allProps);
+  const listEditor = allProps.listsAsArrays && ['in', 'notIn'].includes(allProps.operator);
   if (allProps.type === 'select' || allProps.type === 'multiselect') {
     const SelectorComponent = allProps.selectorComponent ?? allProps.schema.controls.valueSelector;
     const selectorProps = {
@@ -159,12 +160,12 @@ const renderStandardEditor = (allProps: QueryBuilderValueEditorProps, state: Val
       data-testid={testID}
       type={state.inputTypeCoerced}
       placeholder={placeholder}
-      value={allProps.value ?? ''}
+      value={listEditor ? joinWith(state.valueAsArray) : (allProps.value ?? '')}
       title={title}
       aria-label={title}
       className={allProps.className}
       disabled={allProps.disabled}
-      onChange={(event) => allProps.handleOnChange(event.target.value)}
+      onChange={(event) => allProps.handleOnChange(listEditor ? toArray(event.target.value) : event.target.value)}
       {...allProps.extraProps}
     />
   );

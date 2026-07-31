@@ -275,6 +275,60 @@ test('keeps numeric-looking provider, model, URL, Pattern, and Regex values as s
   );
 });
 
+test('keeps body equality strings unchanged after an unrelated rule edit', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness
+      initialValue={{ $and: [{ 'request.body.code': '001' }, { 'request.model': 'gpt-4' }] }}
+      onChange={onChange}
+    />,
+  );
+
+  const modelRule = screen.getAllByTestId('rule')[1]!;
+  fireEvent.change(within(modelRule).getByTestId('value-editor'), { target: { value: 'gpt-5' } });
+
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $and: [{ 'request.body.code': '001' }, { 'request.model': 'gpt-5' }],
+    }),
+  );
+});
+
+test('keeps string literals inside body expressions unchanged after an unrelated rule edit', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness
+      initialValue={{
+        $and: [
+          {
+            $expr: {
+              $eq: [{ $concat: ['$request.body.code', '001'] }, 'prefix-001'],
+            },
+          },
+          { 'request.model': 'gpt-4' },
+        ],
+      }}
+      onChange={onChange}
+    />,
+  );
+
+  const modelRule = screen.getAllByTestId('rule')[1]!;
+  fireEvent.change(within(modelRule).getByTestId('value-editor'), { target: { value: 'gpt-5' } });
+
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $and: [
+        {
+          $expr: {
+            $eq: [{ $concat: ['$request.body.code', '001'] }, 'prefix-001'],
+          },
+        },
+        { 'request.model': 'gpt-5' },
+      ],
+    }),
+  );
+});
+
 test('resets incompatible values when switching between Pattern, Regex, and Equals', async () => {
   const onChange = rs.fn();
   render(
@@ -354,7 +408,16 @@ test('serializes Header Pattern, existence, and list operators to canonical Mong
   expect(within(rules[3]!).getByTestId('operators')).toHaveTextContent(/In|包含/u);
   expect(within(rules[4]!).getByTestId('operators')).toHaveTextContent(/Not in|不包含/u);
 
-  fireEvent.change(within(rules[0]!).getByTestId('value-editor'), { target: { value: 'platform-*' } });
+  fireEvent.change(within(rules[3]!).getByTestId('value-editor'), { target: { value: 'gpt-5, claude-4' } });
+  await waitFor(() =>
+    expect(andClauses(latestValue(onChange))[3]).toEqual({
+      'request.model': { $in: ['gpt-5', 'claude-4'] },
+    }),
+  );
+
+  fireEvent.change(within(screen.getAllByTestId('rule')[4]!).getByTestId('value-editor'), {
+    target: { value: 'https://c.example, https://d.example' },
+  });
 
   await waitFor(() =>
     expect(latestValue(onChange)).toEqual({
@@ -363,14 +426,14 @@ test('serializes Header Pattern, existence, and list operators to canonical Mong
           $expr: {
             $regexMatch: {
               input: requestHeader('x-team'),
-              regex: '^(?:platform-.*)$',
+              regex: '^(?:team-.*)$',
             },
           },
         },
         { $expr: { $ne: [{ $ifNull: [requestHeader('x-present'), null] }, null] } },
         { $expr: { $eq: [{ $ifNull: [requestHeader('x-missing'), null] }, null] } },
-        { 'request.model': { $in: ['gpt-4', 'claude-3'] } },
-        { 'request.url': { $nin: ['https://a.example', 'https://b.example'] } },
+        { 'request.model': { $in: ['gpt-5', 'claude-4'] } },
+        { 'request.url': { $nin: ['https://c.example', 'https://d.example'] } },
       ],
     }),
   );
