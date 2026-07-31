@@ -16,7 +16,7 @@ import {
 
 import { RequestTransformFieldSelector } from '../request-transform-field-selector';
 
-export const REQUEST_TRANSFORM_SET_EXPRESSION_TEST_ID = 'request-transform-set-expression';
+export const REQUEST_TRANSFORM_SET_EXPRESSION_TEST_ID = 'transform-set-expression';
 
 export interface QueryBuilderValueSelectorProps extends VersatileSelectorProps {}
 

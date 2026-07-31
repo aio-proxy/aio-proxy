@@ -374,6 +374,45 @@
         "json_label": "请求修改 JSON",
         "invalid": "修改配置无效（{path}）：{code}",
         "empty": "尚未配置请求修改。",
+        "mode": {
+          "visual": "可视化",
+          "json": "JSON"
+        },
+        "rule": {
+          "label": "规则 {index}",
+          "name": "规则 {index} 名称",
+          "add": "添加规则",
+          "remove": "删除规则 {index}",
+          "move_up": "上移规则 {index}",
+          "move_down": "下移规则 {index}",
+          "condition": "条件",
+          "match_all": "匹配所有请求"
+        },
+        "action": {
+          "label": "操作 {index}",
+          "type": "操作",
+          "set": "设置",
+          "remove": "移除",
+          "add_set": "添加 Set 操作",
+          "add_remove": "添加 Remove 操作",
+          "remove_button": "删除操作 {index}",
+          "move_up": "上移操作 {index}",
+          "move_down": "下移操作 {index}"
+        },
+        "target": {
+          "label": "目标",
+          "header": "请求头",
+          "body": "请求体",
+          "header_name": "请求头名称",
+          "body_path": "请求体路径"
+        },
+        "value": {
+          "mode": "值模式",
+          "static": "静态",
+          "computed": "计算",
+          "static_label": "静态值",
+          "computed_label": "计算值"
+        },
         "condition": {
           "editor_title": "请求条件编辑器",
           "field": {

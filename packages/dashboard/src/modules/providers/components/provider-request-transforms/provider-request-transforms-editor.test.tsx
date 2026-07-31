@@ -50,13 +50,18 @@ const resolveNextValidation = async (markers: readonly { readonly severity: 'err
   await act(async () => request?.resolve(markers));
 };
 
+const openJsonEditor = async () => {
+  fireEvent.click(screen.getByRole('tab', { name: /JSON/u }));
+  return await screen.findByRole('textbox', { name: /request transforms json/i });
+};
+
 const renderEditor = async () => {
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
   const view = render(
     <ProviderRequestTransformsEditor value={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
-  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const editor = await openJsonEditor();
   await resolveNextValidation();
   if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
@@ -66,12 +71,14 @@ const renderEditor = async () => {
 
 test('edits the request rule array without exposing the transforms wrapper', async () => {
   const { editor, onChange, onValidityChange } = await renderEditor();
+  const visualTab = screen.getByRole('tab', { name: /Visual|可视化/u });
   expect((editor as HTMLTextAreaElement).value).toContain('"$unset": "request.body.store"');
   expect((editor as HTMLTextAreaElement).value).not.toContain('"request"');
 
   fireEvent.change(editor, { target: { value: '{' } });
   await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  expect(visualTab).toHaveAttribute('aria-disabled', 'true');
   expect(onChange).not.toHaveBeenCalled();
 
   fireEvent.change(editor, { target: { value: '[{"update":[{"$project":{"request.body":1}}]}]' } });
@@ -86,6 +93,7 @@ test('edits the request rule array without exposing the transforms wrapper', asy
     expect(onChange).toHaveBeenLastCalledWith([{ update: [{ $set: { 'request.body.store': false } }] }]),
   );
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
+  expect(visualTab).not.toHaveAttribute('aria-disabled', 'true');
 });
 
 test('does not emit a Zod-valid candidate rejected by Monaco schema validation', async () => {
@@ -136,7 +144,7 @@ test('preserves the first draft when validity rerenders supply a fresh empty arr
   view = render(
     <ProviderRequestTransformsEditor value={[]} onChange={onChange} onValidityChange={handleValidityChange} />,
   );
-  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const editor = await openJsonEditor();
   await resolveNextValidation();
   if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
@@ -171,7 +179,7 @@ test('acknowledges an accepted emitted value without resetting the draft', async
       onValidityChange={onValidityChange}
     />,
   );
-  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const editor = await openJsonEditor();
   await resolveNextValidation();
   if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
@@ -213,7 +221,7 @@ test('restores the controlled value when the parent rejects an emitted value', a
       onValidityChange={handleValidityChange}
     />,
   );
-  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const editor = await openJsonEditor();
   await resolveNextValidation();
   if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));

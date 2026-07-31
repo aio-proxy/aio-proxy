@@ -374,6 +374,45 @@
         "json_label": "Request transforms JSON",
         "invalid": "Invalid transform at {path}: {code}",
         "empty": "No request transforms configured.",
+        "mode": {
+          "visual": "Visual",
+          "json": "JSON"
+        },
+        "rule": {
+          "label": "Rule {index}",
+          "name": "Rule {index} name",
+          "add": "Add rule",
+          "remove": "Remove rule {index}",
+          "move_up": "Move rule {index} up",
+          "move_down": "Move rule {index} down",
+          "condition": "Condition",
+          "match_all": "Match all requests"
+        },
+        "action": {
+          "label": "Action {index}",
+          "type": "Action",
+          "set": "Set",
+          "remove": "Remove",
+          "add_set": "Add Set action",
+          "add_remove": "Add Remove action",
+          "remove_button": "Remove action {index}",
+          "move_up": "Move action {index} up",
+          "move_down": "Move action {index} down"
+        },
+        "target": {
+          "label": "Target",
+          "header": "Header",
+          "body": "Body",
+          "header_name": "Header name",
+          "body_path": "Body path"
+        },
+        "value": {
+          "mode": "Value mode",
+          "static": "Static",
+          "computed": "Computed",
+          "static_label": "Static value",
+          "computed_label": "Computed value"
+        },
         "condition": {
           "editor_title": "Request condition editor",
           "field": {
