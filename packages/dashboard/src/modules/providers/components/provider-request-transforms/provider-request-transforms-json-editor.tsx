@@ -62,6 +62,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
     (draft: string) => {
       latestDraft.current = draft;
       candidate.current = undefined;
+      setSemanticIssue(undefined);
       onValidityChange(false);
     },
     [onValidityChange],

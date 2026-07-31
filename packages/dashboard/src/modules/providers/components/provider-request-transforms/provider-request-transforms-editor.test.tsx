@@ -143,6 +143,22 @@ test('edits the request rule array without exposing the transforms wrapper', asy
   expect(visualTab).not.toHaveAttribute('aria-disabled', 'true');
 });
 
+test('clears a semantic issue when the JSON draft becomes malformed', async () => {
+  const { editor, onChange, onValidityChange } = await renderEditor();
+
+  fireEvent.change(editor, { target: { value: '[{"update":[{"$project":{"request.body":1}}]}]' } });
+  await resolveNextValidation();
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('REQUEST_TRANSFORM_STAGE_INVALID'));
+  expect(onChange).not.toHaveBeenCalled();
+
+  fireEvent.change(editor, { target: { value: '{' } });
+
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect((editor as HTMLTextAreaElement).value).toBe('{');
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 test('does not emit a Zod-valid candidate rejected by Monaco schema validation', async () => {
   const { editor, onChange, onValidityChange } = await renderEditor();
 
