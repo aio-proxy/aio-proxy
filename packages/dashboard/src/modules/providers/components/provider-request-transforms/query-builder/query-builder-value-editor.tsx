@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { useId } from 'react';
 import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
-import { getFirstOption, parseNumber, useValueEditor } from 'react-querybuilder';
+import { getFirstOption, useValueEditor } from 'react-querybuilder';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -164,9 +164,7 @@ const renderStandardEditor = (allProps: QueryBuilderValueEditorProps, state: Val
       aria-label={title}
       className={allProps.className}
       disabled={allProps.disabled}
-      onChange={(event) =>
-        allProps.handleOnChange(parseNumber(event.target.value, { parseNumbers: state.parseNumberMethod }))
-      }
+      onChange={(event) => allProps.handleOnChange(event.target.value)}
       {...allProps.extraProps}
     />
   );

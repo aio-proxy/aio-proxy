@@ -1,8 +1,16 @@
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import type { ExpressionNode } from '@react-querybuilder/expr';
 import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { isEqual } from 'es-toolkit/predicate';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
-import { QueryBuilder, type DefaultRuleGroupType } from 'react-querybuilder';
+import {
+  prepareRuleGroup,
+  parseNumber,
+  QueryBuilder,
+  type DefaultRuleGroupType,
+  type DefaultRuleType,
+} from 'react-querybuilder';
 
 import 'react-querybuilder/dist/query-builder.css';
 
@@ -30,25 +38,94 @@ export interface RequestTransformConditionEditorProps {
   readonly onChange: (value: Condition) => void;
 }
 
+const collectRules = (query: DefaultRuleGroupType, rules = new Map<string, DefaultRuleType>()) => {
+  for (const item of query.rules) {
+    if ('rules' in item) collectRules(item, rules);
+    else if (item.id !== undefined) rules.set(item.id, item);
+  }
+  return rules;
+};
+
+const normalizeOperatorTransitions = (
+  previousQuery: DefaultRuleGroupType,
+  nextQuery: DefaultRuleGroupType,
+): DefaultRuleGroupType => {
+  const previousRules = collectRules(previousQuery);
+  const normalizeGroup = (group: DefaultRuleGroupType): DefaultRuleGroupType => ({
+    ...group,
+    rules: group.rules.map((item) => {
+      if ('rules' in item) return normalizeGroup(item);
+      const previousRule = item.id === undefined ? undefined : previousRules.get(item.id);
+      if (previousRule === undefined || previousRule.operator === item.operator) return item;
+      if (String(item.operator) === 'regex') return { ...item, value: { regex: '', options: '' } };
+      if (String(previousRule.operator) === 'regex') return { ...item, value: '' };
+      return item;
+    }),
+  });
+  return normalizeGroup(nextQuery);
+};
+
+const numericBodyOperators = new Set(['=', '!=', '>', '>=', '<', '<=']);
+
+const numericLiteral = (value: unknown): unknown =>
+  typeof value === 'string' ? parseNumber(value, { parseNumbers: true }) : value;
+
+const normalizeNumericExpression = (node: ExpressionNode): ExpressionNode =>
+  node.kind === 'value'
+    ? { ...node, value: numericLiteral(node.value) }
+    : node.kind === 'func'
+      ? { ...node, args: node.args.map(normalizeNumericExpression) }
+      : node;
+
+const normalizeNumericBodyLiterals = (query: DefaultRuleGroupType): DefaultRuleGroupType => ({
+  ...query,
+  rules: query.rules.map((item) => {
+    if ('rules' in item) return normalizeNumericBodyLiterals(item);
+    if (
+      (!item.field.startsWith('request.body:') && !item.field.startsWith('original.body:')) ||
+      !numericBodyOperators.has(item.operator)
+    ) {
+      return item;
+    }
+    return {
+      ...item,
+      ...(item.lhs === undefined ? {} : { lhs: normalizeNumericExpression(item.lhs as ExpressionNode) }),
+      value:
+        item.valueSource === 'expression'
+          ? normalizeNumericExpression(item.value as ExpressionNode)
+          : numericLiteral(item.value),
+    };
+  }),
+});
+
+const prepareConditionQuery = (value: Condition): DefaultRuleGroupType =>
+  prepareRuleGroup(normalizeRequestTransformQuery(parseRequestTransformCondition(value)));
+
 export const RequestTransformConditionEditor: React.FC<RequestTransformConditionEditorProps> = ({
   value,
   onChange,
 }) => {
-  const canonicalQuery = useMemo(() => normalizeRequestTransformQuery(parseRequestTransformCondition(value)), [value]);
-  const [query, setQuery] = useState(canonicalQuery);
+  const [query, setQuery] = useState(() => prepareConditionQuery(value));
+  const expectedValue = useRef(value);
   const fields = getRequestTransformFields();
   const operators = getRequestTransformOperators();
 
-  useEffect(() => setQuery(canonicalQuery), [canonicalQuery]);
+  useEffect(() => {
+    if (isEqual(value, expectedValue.current)) return;
+    expectedValue.current = value;
+    setQuery(prepareConditionQuery(value));
+  }, [value]);
 
   const handleQueryChange = (nextQuery: DefaultRuleGroupType) => {
-    setQuery(nextQuery);
-    const nextValue = serializeRequestTransformCondition(nextQuery);
+    const normalizedQuery = normalizeNumericBodyLiterals(normalizeOperatorTransitions(query, nextQuery));
+    setQuery(normalizedQuery);
+    const nextValue = serializeRequestTransformCondition(normalizedQuery);
     try {
       parseRequestTransformCondition(nextValue);
     } catch {
       return;
     }
+    expectedValue.current = nextValue;
     onChange(nextValue);
   };
 
@@ -83,7 +160,6 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
             showNotToggle
             showShiftActions
             listsAsArrays
-            parseNumbers
             resetOnFieldChange={false}
             enableMountQueryChange={false}
           />

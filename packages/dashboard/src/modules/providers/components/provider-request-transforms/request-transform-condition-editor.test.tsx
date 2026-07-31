@@ -1,3 +1,5 @@
+/* oxlint-disable max-lines */
+
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -38,6 +40,8 @@ const andClauses = (condition: Condition): unknown[] => {
   const clauses = (condition as Record<string, unknown>)['$and'];
   return Array.isArray(clauses) ? clauses : [];
 };
+
+const requestHeader = (name: string) => ({ $getField: { field: name, input: '$request.headers' } });
 
 test('decodes and edits Pattern, Header, Regex, and arithmetic conditions without changing their AST forms', async () => {
   const initialValue = {
@@ -182,4 +186,192 @@ test('builds a numeric comparison for an arbitrary current body path', async () 
   fireEvent.change(within(screen.getByTestId('rule')).getByTestId('value-editor'), { target: { value: '8192' } });
 
   await waitFor(() => expect(latestValue(onChange)).toEqual({ 'request.body.max_output_tokens': { $gt: 8192 } }));
+});
+
+test('preserves the active value editor while accepting controlled character-by-character updates', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness initialValue={{ $expr: { $eq: [requestHeader('x-route'), ''] } }} onChange={onChange} />,
+  );
+
+  const input = screen.getByTestId('value-editor');
+  input.focus();
+  let typed = '';
+  for (const character of 'blue') {
+    typed += character;
+    fireEvent.change(input, { target: { value: typed } });
+    await waitFor(() => expect(screen.getByTestId('value-editor')).toBe(input));
+    expect(document.activeElement).toBe(input);
+  }
+
+  expect(latestValue(onChange)).toEqual({ $expr: { $eq: [requestHeader('x-route'), 'blue'] } });
+});
+
+test('replaces the local query when the controlled condition changes externally', async () => {
+  const onChange = rs.fn();
+  const { rerender } = render(
+    <RequestTransformConditionEditor
+      value={{ $expr: { $eq: [requestHeader('x-route'), 'blue'] } }}
+      onChange={onChange}
+    />,
+  );
+
+  rerender(
+    <RequestTransformConditionEditor
+      value={{ $expr: { $eq: [requestHeader('x-route'), 'green'] } }}
+      onChange={onChange}
+    />,
+  );
+
+  await waitFor(() => expect(screen.getByTestId('value-editor')).toHaveValue('green'));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('keeps numeric-looking header equality values as strings', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness initialValue={{ $expr: { $eq: [requestHeader('x-route'), ''] } }} onChange={onChange} />,
+  );
+
+  fireEvent.change(screen.getByTestId('value-editor'), { target: { value: '001' } });
+
+  await waitFor(() => expect(latestValue(onChange)).toEqual({ $expr: { $eq: [requestHeader('x-route'), '001'] } }));
+});
+
+test('keeps numeric-looking provider, model, URL, Pattern, and Regex values as strings', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness
+      initialValue={{
+        $and: [
+          { 'provider.id': '' },
+          { 'request.model': '' },
+          { 'request.url': '' },
+          { 'request.requestedModel': { $regex: '^(?:)$' } },
+          { 'request.method': { $regex: '', $options: '' } },
+        ],
+      }}
+      onChange={onChange}
+    />,
+  );
+
+  const rules = screen.getAllByTestId('rule');
+  fireEvent.change(within(rules[0]!).getByTestId('value-editor'), { target: { value: '001' } });
+  fireEvent.change(within(rules[1]!).getByTestId('value-editor'), { target: { value: '001' } });
+  fireEvent.change(within(rules[2]!).getByTestId('value-editor'), { target: { value: '001' } });
+  fireEvent.change(within(rules[3]!).getByTestId('value-editor'), { target: { value: '001' } });
+  fireEvent.change(within(rules[4]!).getByTestId('value-editor-regex'), { target: { value: '001' } });
+
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $and: [
+        { 'provider.id': '001' },
+        { 'request.model': '001' },
+        { 'request.url': '001' },
+        { 'request.requestedModel': { $regex: '^(?:001)$' } },
+        { 'request.method': { $regex: '001', $options: '' } },
+      ],
+    }),
+  );
+});
+
+test('resets incompatible values when switching between Pattern, Regex, and Equals', async () => {
+  const onChange = rs.fn();
+  render(
+    <ConditionEditorHarness
+      initialValue={{
+        $expr: {
+          $regexMatch: {
+            input: requestHeader('x-route'),
+            regex: '^(?:team-.*)$',
+          },
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+
+  await selectOption(screen.getByTestId('operators'), /^(Regex|正则)$/u);
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $expr: {
+        $regexMatch: {
+          input: requestHeader('x-route'),
+          regex: '',
+          options: '',
+        },
+      },
+    }),
+  );
+  expect(screen.getByTestId('value-editor-regex')).toHaveValue('');
+  expect(screen.getByTestId('value-editor-options')).toHaveValue('');
+
+  fireEvent.change(screen.getByTestId('value-editor-regex'), { target: { value: '^team-' } });
+  await selectOption(screen.getByTestId('operators'), /^(Matches pattern|匹配模式)$/u);
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $expr: {
+        $regexMatch: {
+          input: requestHeader('x-route'),
+          regex: '^(?:)$',
+        },
+      },
+    }),
+  );
+  expect(screen.getByTestId('value-editor')).toHaveValue('');
+
+  await selectOption(screen.getByTestId('operators'), /^(Regex|正则)$/u);
+  fireEvent.change(screen.getByTestId('value-editor-regex'), { target: { value: '^team-' } });
+  await selectOption(screen.getByTestId('operators'), /^(Equals|等于)$/u);
+  await waitFor(() => expect(latestValue(onChange)).toEqual({ $expr: { $eq: [requestHeader('x-route'), ''] } }));
+  expect(screen.getByTestId('value-editor')).toHaveValue('');
+});
+
+test('serializes Header Pattern, existence, and list operators to canonical Mongo conditions', async () => {
+  const initialValue = {
+    $and: [
+      {
+        $expr: {
+          $regexMatch: {
+            input: requestHeader('x-team'),
+            regex: '^(?:team-.*)$',
+          },
+        },
+      },
+      { $expr: { $ne: [{ $ifNull: [requestHeader('x-present'), null] }, null] } },
+      { $expr: { $eq: [{ $ifNull: [requestHeader('x-missing'), null] }, null] } },
+      { 'request.model': { $in: ['gpt-4', 'claude-3'] } },
+      { 'request.url': { $nin: ['https://a.example', 'https://b.example'] } },
+    ],
+  } satisfies Condition;
+  const onChange = rs.fn();
+  render(<ConditionEditorHarness initialValue={initialValue} onChange={onChange} />);
+
+  const rules = screen.getAllByTestId('rule');
+  expect(within(rules[0]!).getByTestId('operators')).toHaveTextContent(/Matches pattern|匹配模式/u);
+  expect(within(rules[1]!).getByTestId('operators')).toHaveTextContent(/Exists|存在/u);
+  expect(within(rules[2]!).getByTestId('operators')).toHaveTextContent(/Does not exist|不存在/u);
+  expect(within(rules[3]!).getByTestId('operators')).toHaveTextContent(/In|包含/u);
+  expect(within(rules[4]!).getByTestId('operators')).toHaveTextContent(/Not in|不包含/u);
+
+  fireEvent.change(within(rules[0]!).getByTestId('value-editor'), { target: { value: 'platform-*' } });
+
+  await waitFor(() =>
+    expect(latestValue(onChange)).toEqual({
+      $and: [
+        {
+          $expr: {
+            $regexMatch: {
+              input: requestHeader('x-team'),
+              regex: '^(?:platform-.*)$',
+            },
+          },
+        },
+        { $expr: { $ne: [{ $ifNull: [requestHeader('x-present'), null] }, null] } },
+        { $expr: { $eq: [{ $ifNull: [requestHeader('x-missing'), null] }, null] } },
+        { 'request.model': { $in: ['gpt-4', 'claude-3'] } },
+        { 'request.url': { $nin: ['https://a.example', 'https://b.example'] } },
+      ],
+    }),
+  );
 });
