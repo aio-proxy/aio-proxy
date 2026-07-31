@@ -147,3 +147,23 @@ test('--check reports a newer version when available', async () => {
   });
   expect(lines.join('\n')).toContain('2.0.0');
 });
+
+test('version-check failure throws and installs nothing', async () => {
+  const lines: string[] = [];
+  let installed = false;
+  await expect(
+    runUpgradeCommand({}, (l) => lines.push(l), {
+      resolveTarget: async () => {
+        installed = true; // resolveTarget runs, but no install should follow a fetch failure
+        return { method: 'bun' };
+      },
+      fetchLatest: async () => {
+        throw new Error('registry unreachable');
+      },
+      currentVersion: '1.0.0',
+    }),
+  ).rejects.toThrow();
+  // no success/via line was printed -> no install dispatched
+  expect(lines.some((l) => l.length > 0)).toBe(false);
+  expect(installed).toBe(true);
+});

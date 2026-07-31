@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
+import { CliExit, EXIT } from '../exit';
 import { serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
@@ -35,7 +36,12 @@ export const runUpgradeCommand = async (
 ): Promise<void> => {
   const registry = options.registry ?? NPM_REGISTRY;
   const target = await deps.resolveTarget();
-  const latest = await deps.fetchLatest(registry);
+  let latest: string;
+  try {
+    latest = await deps.fetchLatest(registry);
+  } catch {
+    throw new CliExit(EXIT.transient, m.cli_upgrade_check_failed());
+  }
   const current = deps.currentVersion;
   print(m.cli_upgrade_current_version({ version: current }));
 
