@@ -125,3 +125,25 @@ test('fetchLatestVersion throws on non-ok', async () => {
   const fake = (async () => new Response('x', { status: 500 })) as unknown as typeof fetch;
   await expect(fetchLatestVersion(NPM_REGISTRY, fake)).rejects.toThrow();
 });
+
+import { runUpgradeCommand } from './upgrade';
+
+test('--check reports up-to-date without installing', async () => {
+  const lines: string[] = [];
+  await runUpgradeCommand({ check: true }, (l) => lines.push(l), {
+    resolveTarget: async () => ({ method: 'bun' }),
+    fetchLatest: async () => '1.0.0',
+    currentVersion: '1.0.0',
+  });
+  expect(lines.join('\n')).toContain('1.0.0');
+});
+
+test('--check reports a newer version when available', async () => {
+  const lines: string[] = [];
+  await runUpgradeCommand({ check: true }, (l) => lines.push(l), {
+    resolveTarget: async () => ({ method: 'bun' }),
+    fetchLatest: async () => '2.0.0',
+    currentVersion: '1.0.0',
+  });
+  expect(lines.join('\n')).toContain('2.0.0');
+});
