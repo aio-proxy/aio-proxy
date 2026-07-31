@@ -1,13 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, ModelCatalog, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import type { KimiCredential } from '../oauth';
 import { createKimiRuntime } from './runtime';
 
 test('routes the final Kimi Code request through the host fetch', async () => {
   const originalFetch = globalThis.fetch;
-  const requests: Request[] = [];
+  const controlRequests: Request[] = [];
+  const modelRequests: Request[] = [];
   globalThis.fetch = async () => {
     throw new Error('unexpected global fetch');
   };
@@ -17,13 +18,16 @@ test('routes the final Kimi Code request through the host fetch', async () => {
       credentials: credentialPort(),
       options: {},
       catalog: catalog(),
-      fetch: async () => {
-        throw new Error('unexpected control fetch');
-      },
-      modelFetch: async (input, init) => {
-        requests.push(new Request(input, init));
+      fetch: (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        const traffic = init?.aioProxy?.traffic ?? 'model';
+        const request = new Request(input, init);
+        if (traffic === 'control') {
+          controlRequests.push(request);
+          throw new Error('unexpected control fetch');
+        }
+        modelRequests.push(request);
         return Response.json({ ok: true });
-      },
+      }) as RuntimeFetch,
     });
     const transport = runtime.raw?.({ protocol: 'openai-compatible', modelId: 'kimi-model' });
     if (transport === undefined) throw new Error('missing Kimi Code raw transport');
@@ -39,8 +43,9 @@ test('routes the final Kimi Code request through the host fetch', async () => {
     globalThis.fetch = originalFetch;
   }
 
-  expect(requests).toHaveLength(1);
-  const request = requests[0];
+  expect(controlRequests).toEqual([]);
+  expect(modelRequests).toHaveLength(1);
+  const request = modelRequests[0];
   expect(request?.url).toBe('https://api.kimi.com/coding/v1/chat/completions');
   expect(request?.headers.get('authorization')).toBe('Bearer access-token');
   expect(request?.headers.get('x-msh-platform')).toBe('AIO-Proxy');

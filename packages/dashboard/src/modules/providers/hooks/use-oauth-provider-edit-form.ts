@@ -1,4 +1,4 @@
-import { OAuthProviderMutationBodySchema, type ProviderAlias } from '@aio-proxy/types';
+import { OAuthProviderMutationBodySchema, type ProviderAlias, type ProviderTransforms } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
 export interface OAuthProviderCommonFormValues {
@@ -7,11 +7,16 @@ export interface OAuthProviderCommonFormValues {
   readonly enabled: boolean;
   readonly weight?: number | undefined;
   readonly alias?: ProviderAlias | undefined;
+  readonly transforms?: ProviderTransforms | undefined;
   readonly models: readonly string[];
 }
 
+type OAuthProviderEditFormShape = Omit<OAuthProviderCommonFormValues, 'transforms'> & {
+  readonly transforms?: unknown;
+};
+
 export type OAuthProviderEditForm = ReactFormExtendedApi<
-  OAuthProviderCommonFormValues,
+  OAuthProviderEditFormShape,
   any,
   any,
   any,
@@ -25,24 +30,32 @@ export type OAuthProviderEditForm = ReactFormExtendedApi<
   any
 >;
 
+const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) =>
+  OAuthProviderMutationBodySchema.safeParse({
+    kind: 'oauth',
+    id: value.id,
+    name: value.name,
+    enabled: value.enabled,
+    weight: value.weight,
+    alias: value.alias,
+    transforms: value.transforms,
+  });
+
 export const useOAuthProviderEditForm = (
   initial: OAuthProviderCommonFormValues,
   onSubmit: (value: OAuthProviderCommonFormValues) => void,
 ) =>
   useForm({
-    defaultValues: initial,
+    // TanStack Form cannot instantiate the recursive JSON shape; Zod narrows it again on submit.
+    defaultValues: initial as OAuthProviderEditFormShape,
     validators: {
       onChange: ({ value }) => {
-        const result = OAuthProviderMutationBodySchema.safeParse({
-          kind: 'oauth',
-          id: value.id,
-          name: value.name,
-          enabled: value.enabled,
-          weight: value.weight,
-          alias: value.alias,
-        });
+        const result = parseOAuthProviderEditValue(value);
         return result.success ? undefined : result.error.issues.map((issue) => issue.message).join(', ');
       },
     },
-    onSubmit: ({ value }) => onSubmit(value),
-  });
+    onSubmit: ({ value }) => {
+      const result = parseOAuthProviderEditValue(value);
+      if (result.success) onSubmit({ ...value, transforms: result.data.transforms });
+    },
+  }) as unknown as OAuthProviderEditForm;

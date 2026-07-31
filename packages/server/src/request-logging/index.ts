@@ -1,7 +1,9 @@
 export {
   currentDebugRequestLogScope,
+  currentProviderAttemptContext,
   currentRequestLogContext,
   type AttemptLogContext,
+  type ProviderAttemptContext,
   type RequestLogContext,
   type RequestLogScope,
   withAttemptLogContext,

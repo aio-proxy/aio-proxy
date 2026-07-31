@@ -1,3 +1,4 @@
+import type { ProviderTransforms } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
 import { type OAuthProviderEditValues, oauthProviderEditAction } from './oauth-provider-edit';
@@ -12,6 +13,8 @@ const values: OAuthProviderEditValues = {
   secrets: {},
   clearSecrets: [],
 };
+
+const transforms: ProviderTransforms = { request: [{ update: [{ $unset: 'request.body.store' }] }] };
 
 test('common-only OAuth edits use the normal provider update', () => {
   expect(oauthProviderEditAction(values, { tenant: 'work' })).toEqual({
@@ -57,4 +60,18 @@ test('account edits start locked reauthorization and omit blank replacement secr
 
 test('explicit reauthorization keeps the current draft atomic', () => {
   expect(oauthProviderEditAction(values, { tenant: 'work' }, true).kind).toBe('reauthorize');
+});
+
+test('normal OAuth edits preserve request transforms', () => {
+  expect(oauthProviderEditAction({ ...values, transforms }, { tenant: 'work' })).toEqual({
+    kind: 'update',
+    body: expect.objectContaining({ transforms }),
+  });
+});
+
+test('OAuth reauthorization preserves request transforms in the provider patch', () => {
+  expect(oauthProviderEditAction({ ...values, transforms }, { tenant: 'work' }, true)).toEqual({
+    kind: 'reauthorize',
+    input: expect.objectContaining({ providerPatch: expect.objectContaining({ transforms }) }),
+  });
 });

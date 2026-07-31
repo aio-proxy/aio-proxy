@@ -1,0 +1,212 @@
+import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import type { ExpressionNode } from '@react-querybuilder/expr';
+import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
+import { isEqual } from 'es-toolkit/predicate';
+import { useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import {
+  prepareRuleGroup,
+  parseNumber,
+  QueryBuilder,
+  type DefaultRuleGroupType,
+  type DefaultRuleType,
+} from 'react-querybuilder';
+
+import 'react-querybuilder/dist/query-builder.css';
+
+import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../request-transforms';
+import { QueryBuilderShadcn } from './query-builder';
+import {
+  allowRequestTransformFunctionsOnLhs,
+  getLocalizedRequestTransformFunctionMeta,
+  getRequestTransformAccessibleDescription,
+  getRequestTransformCombinators,
+  getRequestTransformExpressionTranslations,
+  getRequestTransformFields,
+  getRequestTransformOperators,
+  getRequestTransformOperatorsForField,
+  getRequestTransformTranslations,
+  getRequestTransformValueSources,
+  normalizeRequestTransformQuery,
+} from './request-transform-condition-metadata';
+import { RequestTransformFieldSelector } from './request-transform-field-selector';
+
+type Condition = NonNullable<ProviderRequestTransformRule['when']>;
+
+export interface RequestTransformConditionEditorProps {
+  readonly value: Condition;
+  readonly onChange: (value: Condition) => void;
+  readonly onValidityChange?: (valid: boolean) => void;
+}
+
+const collectRules = (query: DefaultRuleGroupType, rules = new Map<string, DefaultRuleType>()) => {
+  for (const item of query.rules) {
+    if ('rules' in item) collectRules(item, rules);
+    else if (item.id !== undefined) rules.set(item.id, item);
+  }
+  return rules;
+};
+
+const normalizeOperatorTransitions = (
+  previousQuery: DefaultRuleGroupType,
+  nextQuery: DefaultRuleGroupType,
+): DefaultRuleGroupType => {
+  const previousRules = collectRules(previousQuery);
+  const normalizeGroup = (group: DefaultRuleGroupType): DefaultRuleGroupType => ({
+    ...group,
+    rules: group.rules.map((item) => {
+      if ('rules' in item) return normalizeGroup(item);
+      const previousRule = item.id === undefined ? undefined : previousRules.get(item.id);
+      if (previousRule === undefined || previousRule.operator === item.operator) return item;
+      if (String(item.operator) === 'regex') return { ...item, value: { regex: '', options: '' } };
+      if (String(previousRule.operator) === 'regex') return { ...item, value: '' };
+      return item;
+    }),
+  });
+  return normalizeGroup(nextQuery);
+};
+
+const numericBodyOperators = new Set(['>', '>=', '<', '<=']);
+const numericExpressionFunctions = new Set(['add', 'subtract', 'multiply', 'divide', 'min', 'max', 'abs', 'mod']);
+
+const numericLiteral = (value: unknown): unknown =>
+  typeof value === 'string' ? parseNumber(value, { parseNumbers: true }) : value;
+
+const normalizeNumericExpressionEdit = (
+  previousNode: ExpressionNode | undefined,
+  nextNode: ExpressionNode,
+  numericValue: boolean,
+): ExpressionNode => {
+  if (isEqual(previousNode, nextNode)) return nextNode;
+  if (nextNode.kind === 'value') {
+    return numericValue ? { ...nextNode, value: numericLiteral(nextNode.value) } : nextNode;
+  }
+  if (nextNode.kind !== 'func') return nextNode;
+  const previousArgs = previousNode?.kind === 'func' && previousNode.fn === nextNode.fn ? previousNode.args : [];
+  const numericArgs = numericExpressionFunctions.has(nextNode.fn);
+  return {
+    ...nextNode,
+    args: nextNode.args.map((argument, index) =>
+      normalizeNumericExpressionEdit(previousArgs[index], argument, numericArgs),
+    ),
+  };
+};
+
+const normalizeNumericBodyLiterals = (
+  previousQuery: DefaultRuleGroupType,
+  nextQuery: DefaultRuleGroupType,
+): DefaultRuleGroupType => {
+  const previousRules = collectRules(previousQuery);
+  const normalizeGroup = (group: DefaultRuleGroupType): DefaultRuleGroupType => ({
+    ...group,
+    rules: group.rules.map((item) => {
+      if ('rules' in item) return normalizeGroup(item);
+      const previousRule = item.id === undefined ? undefined : previousRules.get(item.id);
+      if (previousRule === undefined || isEqual(previousRule, item)) return item;
+      if (
+        (!item.field.startsWith('request.body:') && !item.field.startsWith('original.body:')) ||
+        !numericBodyOperators.has(item.operator)
+      ) {
+        return item;
+      }
+      return {
+        ...item,
+        ...(item.lhs === undefined
+          ? {}
+          : {
+              lhs: normalizeNumericExpressionEdit(
+                previousRule.lhs as ExpressionNode | undefined,
+                item.lhs as ExpressionNode,
+                false,
+              ),
+            }),
+        value:
+          item.valueSource === 'expression'
+            ? normalizeNumericExpressionEdit(
+                previousRule.valueSource === 'expression' ? (previousRule.value as ExpressionNode) : undefined,
+                item.value as ExpressionNode,
+                true,
+              )
+            : isEqual(previousRule.value, item.value)
+              ? item.value
+              : numericLiteral(item.value),
+      };
+    }),
+  });
+  return normalizeGroup(nextQuery);
+};
+
+const prepareConditionQuery = (value: Condition): DefaultRuleGroupType =>
+  prepareRuleGroup(normalizeRequestTransformQuery(parseRequestTransformCondition(value)));
+
+export const RequestTransformConditionEditor: React.FC<RequestTransformConditionEditorProps> = ({
+  value,
+  onChange,
+  onValidityChange,
+}) => {
+  const [query, setQuery] = useState(() => prepareConditionQuery(value));
+  const expectedValue = useRef(value);
+  const fields = getRequestTransformFields();
+  const operators = getRequestTransformOperators();
+
+  useEffect(() => {
+    if (isEqual(value, expectedValue.current)) return;
+    expectedValue.current = value;
+    setQuery(prepareConditionQuery(value));
+    onValidityChange?.(true);
+  }, [onValidityChange, value]);
+
+  const handleQueryChange = (nextQuery: DefaultRuleGroupType) => {
+    const normalizedQuery = normalizeNumericBodyLiterals(query, normalizeOperatorTransitions(query, nextQuery));
+    setQuery(normalizedQuery);
+    const nextValue = serializeRequestTransformCondition(normalizedQuery);
+    try {
+      parseRequestTransformCondition(nextValue);
+    } catch {
+      onValidityChange?.(false);
+      return;
+    }
+    onValidityChange?.(true);
+    expectedValue.current = nextValue;
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <QueryBuilderShadcn
+        controlElements={{ fieldSelector: RequestTransformFieldSelector }}
+        controlClassnames={{
+          queryBuilder: 'min-w-3xl space-y-3',
+          ruleGroup: 'space-y-3 rounded-2xl border p-3',
+          header: 'flex flex-wrap items-center gap-2',
+          body: 'space-y-2',
+          rule: 'flex flex-wrap items-center gap-2',
+          shiftActions: 'inline-flex items-center',
+        }}
+      >
+        <QueryBuilderExpressions
+          functions={getLocalizedRequestTransformFunctionMeta()}
+          translations={getRequestTransformExpressionTranslations()}
+          allowFunctionsOnLHS={allowRequestTransformFunctionsOnLhs}
+        >
+          <QueryBuilder
+            fields={fields}
+            operators={operators}
+            combinators={getRequestTransformCombinators()}
+            query={query}
+            onQueryChange={handleQueryChange}
+            translations={getRequestTransformTranslations()}
+            getOperators={(field) => getRequestTransformOperatorsForField(field, operators)}
+            getValueSources={getRequestTransformValueSources}
+            accessibleDescriptionGenerator={getRequestTransformAccessibleDescription}
+            showNotToggle
+            showShiftActions
+            listsAsArrays
+            resetOnFieldChange={false}
+            enableMountQueryChange={false}
+          />
+        </QueryBuilderExpressions>
+      </QueryBuilderShadcn>
+    </div>
+  );
+};

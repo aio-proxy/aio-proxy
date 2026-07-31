@@ -14,6 +14,7 @@ import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderOptionsEditor } from './provider-options-editor';
+import { ProviderRequestTransformsFormField } from './provider-request-transforms';
 
 const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
 
@@ -30,21 +31,23 @@ export const commitProviderPackageOnce = (
   return true;
 };
 
-type Props = {
+interface ProviderFormFieldsAiSdkProps {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   providerId?: string | undefined;
   aliasOpen: boolean;
   onAliasOpenChange: (open: boolean) => void;
   onOptionsValidityChange: (valid: boolean) => void;
-};
+  onTransformsValidityChange: (valid: boolean) => void;
+}
 
-export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
+export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({
   form,
   mode,
   aliasOpen,
   onAliasOpenChange,
   onOptionsValidityChange,
+  onTransformsValidityChange,
 }) => {
   const schemaState = useProviderOptionsSchema();
   const initialPackageName = useRef(form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE).current;
@@ -131,6 +134,7 @@ export const ProviderFormFieldsAiSdk: React.FC<Props> = ({
           </div>
         </div>
       </section>
+      <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
       <section className="space-y-4" aria-labelledby="provider-ai-sdk-models-heading">
         <h2 id="provider-ai-sdk-models-heading" className="text-base font-semibold">
           {m['dashboard.providers.form.section_models_aliases']()}

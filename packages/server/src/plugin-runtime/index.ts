@@ -5,6 +5,7 @@ import { pluginProtocol } from './capabilities';
 
 export { pluginOptionsIdentityDigest } from './identity';
 export { materializePluginProvider } from './materialize';
+export { createRuntimeFetch, type RuntimeFetchInput } from './runtime-fetch';
 export {
   type CatalogJobDescriptor,
   type MaterializePluginProviderOptions,

@@ -39,6 +39,7 @@ export const useOAuthProviderEditPage = ({
   const popup = useRef<Window | null>(null);
   const forceReauthorization = useRef(false);
   const [aliasOpen, setAliasOpen] = useState(false);
+  const [transformsValid, setTransformsValid] = useState(true);
   const accountForm = useOAuthProviderForm(() => undefined, {
     capabilityKey: `${provider.plugin}\0${provider.capability}`,
     publicValues: oauth.publicValues,
@@ -64,6 +65,7 @@ export const useOAuthProviderEditPage = ({
       enabled: provider.enabled,
       weight: provider.weight,
       alias: provider.alias,
+      transforms: provider.transforms,
       models: oauth.models,
     },
     (value) => {
@@ -116,6 +118,7 @@ export const useOAuthProviderEditPage = ({
   }, [navigate, queryClient, session]);
 
   const submit = (reauthorize: boolean) => {
+    if (!transformsValid) return;
     const issue = aliasEditorIssues(form.getFieldValue('alias') ?? {}, oauth.models)[0];
     if (issue !== undefined) {
       setAliasOpen(true);
@@ -134,6 +137,8 @@ export const useOAuthProviderEditPage = ({
     accountForm,
     aliasOpen,
     setAliasOpen,
+    transformsValid,
+    setTransformsValid,
     session,
     sessionQuery,
     submit,

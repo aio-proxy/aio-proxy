@@ -3,6 +3,7 @@ import {
   type OAuthProviderMutationBody,
   ProviderKind,
   type ProviderAlias,
+  type ProviderTransforms,
 } from '@aio-proxy/types';
 import { isEqual } from 'es-toolkit';
 
@@ -12,6 +13,7 @@ export interface OAuthProviderEditValues {
   readonly enabled: boolean;
   readonly weight?: number | undefined;
   readonly alias?: ProviderAlias | undefined;
+  readonly transforms?: ProviderTransforms | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
@@ -31,6 +33,7 @@ export const oauthProviderEditAction = (
     enabled: values.enabled,
     ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.alias === undefined ? {} : { alias: values.alias }),
+    ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
   };
   const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));
   const requiresReauthorization =

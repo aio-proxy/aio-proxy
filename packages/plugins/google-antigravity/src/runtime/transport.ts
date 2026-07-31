@@ -1,4 +1,4 @@
-import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
 import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/replay-cache';
@@ -30,7 +30,7 @@ export type AntigravityExecuteInput = {
 export type AntigravityTransportDependencies = {
   readonly credentials: AntigravityCredentialSource;
   readonly options?: GoogleAntigravityAccountOptions;
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly replayCache?: ReasoningReplayCache;
   readonly sleep?: (milliseconds: number) => Promise<void>;
 };
@@ -42,7 +42,7 @@ export type CcaTransport = {
 export class AntigravityTransport implements CcaTransport {
   readonly #credentials: AntigravityCredentialSource;
   readonly #options: GoogleAntigravityAccountOptions;
-  readonly #fetch: typeof globalThis.fetch;
+  readonly #fetch: RuntimeFetch;
   readonly #replayCache: ReasoningReplayCache;
   readonly #sleep: (milliseconds: number) => Promise<void>;
 

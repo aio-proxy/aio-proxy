@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthLoginContext } from '@aio-proxy/plugin-sdk';
+import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { kimiIdentityHeaders } from './headers';
 import { KIMI_OAUTH_BASE_URL } from './oauth/constants';
@@ -17,7 +17,7 @@ export type KimiCredential = {
 };
 
 export type KimiOAuthDependencies = {
-  readonly fetch?: typeof fetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly deviceId?: () => string;
@@ -98,7 +98,7 @@ export async function loginKimi(
 }
 
 async function requestDeviceAuthorization(
-  fetcher: typeof fetch,
+  fetcher: RuntimeFetch,
   deviceId: string,
   signal: AbortSignal,
 ): Promise<DeviceAuthorization> {
@@ -123,7 +123,7 @@ async function requestDeviceAuthorization(
 }
 
 async function requestToken(
-  fetcher: typeof fetch,
+  fetcher: RuntimeFetch,
   deviceId: string,
   signal: AbortSignal,
   form: Readonly<Record<string, string>>,
@@ -139,7 +139,7 @@ async function requestToken(
 }
 
 async function postForm(
-  fetcher: typeof fetch,
+  fetcher: RuntimeFetch,
   url: string,
   deviceId: string,
   signal: AbortSignal,
@@ -153,6 +153,7 @@ async function postForm(
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...kimiIdentityHeaders(deviceId) },
       body: new URLSearchParams({ client_id: __AIO_PROXY_KIMI_CLIENT_ID__, ...form }),
       signal,
+      aioProxy: { traffic: 'control' },
     });
   } catch {
     signal.throwIfAborted();

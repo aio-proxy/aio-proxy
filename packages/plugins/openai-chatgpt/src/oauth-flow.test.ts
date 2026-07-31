@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
+
 import { CHATGPT_CLIENT_ID, ChatGPTTokenExchangeError, exchangeCodeForTokens, refreshAccessToken } from './oauth-flow';
 import { base64url } from './pkce';
-
-type TokenFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 describe('OpenAI ChatGPT OAuth flow', () => {
   test('posts the host-selected redirect URI during authorization code exchange', async () => {
@@ -71,6 +71,7 @@ describe('OpenAI ChatGPT OAuth flow', () => {
     await exchangeCodeForTokens('code-123', 'verifier-123', {
       fetch: async (_input, init) => {
         observedSignal = init?.signal;
+        expect((init as RuntimeRequestInit | undefined)?.aioProxy).toEqual({ traffic: 'control' });
         return Response.json({
           access_token: buildJwt({ chatgpt_account_id: 'account' }),
           refresh_token: 'refresh',
@@ -85,7 +86,7 @@ describe('OpenAI ChatGPT OAuth flow', () => {
 
   test('surfaces non-successful token responses without leaking tokens', async () => {
     const secrets = ['secret-code', 'secret-verifier', 'secret-access-token', 'secret-refresh-token'];
-    const fetchMock: TokenFetch = async () =>
+    const fetchMock: RuntimeFetch = async () =>
       Response.json(
         {
           error: 'invalid_grant',
@@ -144,13 +145,14 @@ function encodeBase64Url(input: string): string {
   return base64url(new TextEncoder().encode(input));
 }
 
-function createTokenFetchMock(responseBody: Record<string, unknown>, expectedBody: URLSearchParams): TokenFetch {
+function createTokenFetchMock(responseBody: Record<string, unknown>, expectedBody: URLSearchParams): RuntimeFetch {
   return async (input, init) => {
     expect(input).toBe('https://auth.openai.com/oauth/token');
     expect(init?.method).toBe('POST');
     expect(new Headers(init?.headers).get('accept')).toBe('application/json');
     expect(new Headers(init?.headers).get('content-type')).toBe('application/x-www-form-urlencoded');
     expect(String(init?.body)).toBe(expectedBody.toString());
+    expect((init as RuntimeRequestInit | undefined)?.aioProxy).toEqual({ traffic: 'control' });
     return Response.json(responseBody);
   };
 }

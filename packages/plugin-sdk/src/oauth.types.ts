@@ -1,4 +1,18 @@
-import type { OAuthAdapter, OAuthQuotaItem, PluginApi } from '.';
+import type { OAuthAdapter, OAuthQuotaItem, PluginApi, RuntimeContext, RuntimeFetch, RuntimeRequestInit } from '.';
+
+declare const runtimeFetch: RuntimeFetch;
+
+const standardFetch: typeof globalThis.fetch = runtimeFetch;
+const runtimeFetchFromStandard: RuntimeFetch = globalThis.fetch;
+const controlInit: RuntimeRequestInit = { aioProxy: { traffic: 'control' } };
+void standardFetch;
+void runtimeFetchFromStandard;
+void runtimeFetch('https://provider.example/model');
+void runtimeFetch('https://provider.example/token', controlInit);
+void runtimeFetch('https://provider.example/model', { aioProxy: { traffic: 'model' } });
+
+// @ts-expect-error runtime traffic is a closed union
+void runtimeFetch('https://provider.example/model', { aioProxy: { traffic: 'background' } });
 
 type MyOptions = {
   readonly baseURL: string;
@@ -7,6 +21,13 @@ type MyOptions = {
 type MyCredential = {
   readonly accessToken: string;
 };
+
+declare const runtimeContext: RuntimeContext<MyCredential, MyOptions>;
+const requiredRuntimeFetch: RuntimeFetch = runtimeContext.fetch;
+void requiredRuntimeFetch;
+
+// @ts-expect-error RuntimeContext exposes one fetch only
+void runtimeContext.modelFetch;
 
 declare const api: PluginApi;
 declare const adapter: OAuthAdapter<MyOptions, MyCredential>;

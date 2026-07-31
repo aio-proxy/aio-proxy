@@ -1,4 +1,4 @@
-import type { CredentialPort, CredentialSnapshot } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, CredentialSnapshot, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { copilotTokenResponseSchema } from '../schema';
 import { authHeaders, fetchJson } from './http';
@@ -7,7 +7,7 @@ import { getGitHubCopilotBaseURL, githubApiBase } from './urls';
 
 export async function currentGitHubCopilotCredential(
   credentials: CredentialPort<GitHubCopilotCredential>,
-  fetcher: typeof globalThis.fetch = globalThis.fetch,
+  fetcher: RuntimeFetch = globalThis.fetch,
 ): Promise<GitHubCopilotCredential> {
   const current = await credentials.read();
   if (current.value.expiresAt > Date.now()) return current.value;
@@ -22,11 +22,11 @@ export async function fetchCopilotToken(
   apiBase: string,
   githubToken: string,
   signal: AbortSignal,
-  fetcher: typeof globalThis.fetch = globalThis.fetch,
+  fetcher: RuntimeFetch = globalThis.fetch,
 ) {
   const body = await fetchJson(
     `${apiBase}/copilot_internal/v2/token`,
-    { headers: authHeaders(githubToken), signal },
+    { headers: authHeaders(githubToken), signal, aioProxy: { traffic: 'control' } },
     copilotTokenResponseSchema,
     fetcher,
   );
@@ -39,7 +39,7 @@ export async function fetchCopilotToken(
 async function refreshGitHubCopilotCredential(
   current: CredentialSnapshot<GitHubCopilotCredential>,
   signal: AbortSignal,
-  fetcher: typeof globalThis.fetch,
+  fetcher: RuntimeFetch,
 ): Promise<{
   readonly value: GitHubCopilotCredential;
   readonly metadata: { readonly expiresAt: number };

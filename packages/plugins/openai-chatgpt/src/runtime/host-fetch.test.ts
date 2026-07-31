@@ -1,13 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import type { ChatGPTCredential } from '../schema';
 
 test('routes the final ChatGPT request through the host fetch', async () => {
   const originalFetch = globalThis.fetch;
   const clientId = Reflect.get(globalThis, '__AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__');
-  const requests: Request[] = [];
+  const controlRequests: Request[] = [];
+  const modelRequests: Request[] = [];
   Reflect.set(globalThis, '__AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__', clientId ?? 'test-client-id');
   globalThis.fetch = async () => {
     throw new Error('unexpected global fetch');
@@ -19,13 +20,16 @@ test('routes the final ChatGPT request through the host fetch', async () => {
       credentials: credentialPort(),
       options: {},
       catalog: emptyCatalog(),
-      fetch: async () => {
-        throw new Error('unexpected control fetch');
-      },
-      modelFetch: async (input, init) => {
-        requests.push(new Request(input, init));
+      fetch: (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        const traffic = init?.aioProxy?.traffic ?? 'model';
+        const request = new Request(input, init);
+        if (traffic === 'control') {
+          controlRequests.push(request);
+          throw new Error('unexpected control fetch');
+        }
+        modelRequests.push(request);
         return Response.json({ ok: true });
-      },
+      }) as RuntimeFetch,
     });
     const transport = runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' });
     if (transport === undefined) throw new Error('missing ChatGPT raw transport');
@@ -42,8 +46,9 @@ test('routes the final ChatGPT request through the host fetch', async () => {
     restoreGlobal('__AIO_PROXY_OPENAI_CHATGPT_CLIENT_ID__', clientId);
   }
 
-  expect(requests).toHaveLength(1);
-  const request = requests[0];
+  expect(controlRequests).toEqual([]);
+  expect(modelRequests).toHaveLength(1);
+  const request = modelRequests[0];
   expect(request?.url).toBe('https://chatgpt.com/backend-api/codex/responses');
   expect(request?.headers.get('authorization')).toBe('Bearer access-token');
   expect(request?.headers.get('chatgpt-account-id')).toBe('acct-123');

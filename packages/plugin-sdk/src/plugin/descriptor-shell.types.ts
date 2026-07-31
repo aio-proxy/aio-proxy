@@ -28,7 +28,7 @@ void descriptorShell;
 const staleAuthoredDescriptor: PluginDescriptor<MyOptions> = {
   ...typedDescriptor,
   // @ts-expect-error Authored descriptors must advertise the current API version.
-  apiVersion: 1,
+  apiVersion: 2,
 };
 void staleAuthoredDescriptor;
 

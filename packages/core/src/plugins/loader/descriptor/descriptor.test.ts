@@ -64,7 +64,7 @@ test('apiVersion mismatch fails with incompatibility', async () => {
   });
 });
 
-test('apiVersion 1 remains loadable after host supports v2', async () => {
+test('apiVersion 1 is loadable', async () => {
   const descriptor = {
     [PLUGIN_DESCRIPTOR_BRAND]: true,
     apiVersion: 1,
@@ -74,10 +74,9 @@ test('apiVersion 1 remains loadable after host supports v2', async () => {
   expect(validateDescriptor(descriptor).apiVersion).toBe(1);
 });
 
-test('apiVersion 2 is loadable', async () => {
-  const descriptor = definePlugin(() => {});
-  expect(descriptor.apiVersion).toBe(2);
-  expect(validateDescriptor(descriptor).apiVersion).toBe(2);
+test('apiVersion 2 fails with incompatibility', () => {
+  const descriptor = { ...definePlugin(() => {}), apiVersion: 2 };
+  expect(() => validateDescriptor(descriptor)).toThrow(expect.objectContaining({ code: 'PLUGIN_API_INCOMPATIBLE' }));
 });
 
 test('apiVersion 3 fails with incompatibility', async () => {

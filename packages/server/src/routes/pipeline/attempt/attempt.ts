@@ -31,43 +31,36 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly release: () => void;
 };
 
-export async function attemptCandidates<TRequest, TContext>(
+function createAttemptLoopContext<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
-): Promise<Response> {
+): AttemptLoopContext<TRequest, TContext> {
   const {
     adapter,
-    candidates,
     config,
     context,
     deferRelease,
-    resolution,
     rawRequest,
     release,
     request,
+    requestedModelId,
+    resolution,
     session,
     source,
     streamRequested,
   } = options;
-  const affinityOrdered =
-    resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
-  const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
-  const weightByProviderId =
-    config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
-  const retryAfterCapMs = config?.server.retry.retryAfterCapMs ?? 30_000;
-
   const logContext = {
     source,
     requestId: session.requestId,
     rawRequest,
     inboundProtocol: adapter.protocol,
-    requestedModelId: options.requestedModelId,
+    requestedModelId,
   };
-  const ctx: AttemptLoopContext<TRequest, TContext> = {
+  return {
     adapter,
     context,
     rawRequest,
     request,
-    requestedModelId: options.requestedModelId,
+    requestedModelId,
     session,
     source,
     logicalRequest: resolution.context,
@@ -79,8 +72,20 @@ export async function attemptCandidates<TRequest, TContext>(
     logFailure: (index, attempt: AttemptLog, failureKind, fallback, detail = {}) =>
       logProviderAttemptFailed({ ...logContext, attemptIndex: index, attempt, failureKind, fallback, ...detail }),
     cooldown: source.cooldown,
-    retryAfterCapMs,
+    retryAfterCapMs: config?.server.retry.retryAfterCapMs ?? 30_000,
   };
+}
+
+export async function attemptCandidates<TRequest, TContext>(
+  options: AttemptCandidatesOptions<TRequest, TContext>,
+): Promise<Response> {
+  const { adapter, candidates, config, resolution, session } = options;
+  const affinityOrdered =
+    resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
+  const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
+  const weightByProviderId =
+    config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
+  const ctx = createAttemptLoopContext(options);
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
@@ -116,10 +121,17 @@ export async function attemptCandidates<TRequest, TContext>(
               ? 'affinity'
               : 'weight',
       },
-      inAttempt: <T>(operation: () => T): T =>
+      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
         withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
-            { attemptIndex: index, providerId: provider.id, modelId: candidate.modelId },
+            {
+              attemptIndex: index,
+              providerId: provider.id,
+              modelId: candidate.modelId,
+              requestedModelId: options.requestedModelId,
+              sourceProtocol: adapter.protocol,
+              ...(targetProtocol === undefined ? {} : { targetProtocol }),
+            },
             operation,
           ),
         ),

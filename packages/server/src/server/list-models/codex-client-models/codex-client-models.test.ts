@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { clearModelsCache, fileCacheStorage } from '@aio-proxy/core';
 import { ProviderKind } from '@aio-proxy/types';
+import type { Model, ProviderMap } from '@opencode-ai/models';
 
 import type { RuntimeProviderInstance } from '../../../runtime';
 import type { ServerState } from '../../../server-state';
@@ -37,15 +39,55 @@ const upstream = {
   availability_nux: { message: 'keep me' },
 };
 
+const model = (id: string, name: string): Model => ({
+  attachment: false,
+  description: '',
+  id,
+  last_updated: '2026-01-15',
+  limit: { context: 128_000, output: 8_000 },
+  modalities: { input: ['text'], output: ['text'] },
+  name,
+  open_weights: false,
+  reasoning: false,
+  release_date: '2026-01-15',
+  tool_call: false,
+});
+
+const providerMap: ProviderMap = {
+  openai: {
+    doc: 'https://example.com/openai',
+    env: [],
+    id: 'openai',
+    models: { 'gpt-5': model('gpt-5', 'GPT-5') },
+    name: 'OpenAI',
+    npm: '@ai-sdk/openai',
+  },
+  openrouter: {
+    doc: 'https://example.com/openrouter',
+    env: [],
+    id: 'openrouter',
+    models: {
+      apple: model('apple', 'Apple'),
+      'my-alias': model('my-alias', 'My Alias'),
+      zebra: model('zebra', 'Zebra'),
+    },
+    name: 'OpenRouter',
+    npm: '@openrouter/ai-sdk-provider',
+  },
+};
+
 const original = process.env.AIO_PROXY_HOME;
 let home: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   home = mkdtempSync(join(tmpdir(), 'codex-client-models-'));
   process.env.AIO_PROXY_HOME = home;
+  clearModelsCache();
+  await fileCacheStorage.setItem('models-dev-providers', providerMap);
 });
 
 afterEach(() => {
+  clearModelsCache();
   rmSync(home, { recursive: true, force: true });
   if (original === undefined) delete process.env.AIO_PROXY_HOME;
   else process.env.AIO_PROXY_HOME = original;
@@ -66,6 +108,7 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect(caseB).toBeDefined();
   const caseBEntry = caseB as Record<string, unknown>;
   expect(caseBEntry.slug).toBe('my-alias');
+  expect(caseBEntry.display_name).toBe('My Alias');
   expect('availability_nux' in caseBEntry).toBe(false);
   expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
 });

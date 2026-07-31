@@ -6,6 +6,7 @@ import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/re
 import { PageContainer } from '@/components/page-container';
 import { Empty } from '@/components/ui/empty';
 import { ProviderFormMode } from '@/modules/providers/constants';
+import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
 import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';
 import { OAuthProviderEditPage } from '@/modules/providers/templates/oauth-provider-edit-page';
 import { ProviderFormPage } from '@/modules/providers/templates/provider-form-page';
@@ -54,7 +55,16 @@ const EditProviderPage: React.FC = () => {
     );
   }
 
-  return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={provider} providerId={id} />;
+  const initial = parseProviderFormInitial(provider);
+  if (initial === undefined) {
+    return (
+      <PageContainer title={m['dashboard.providers.edit_title']()} backTo="/providers">
+        <Empty data-testid="not-found">{m['dashboard.providers.edit_not_found']()}</Empty>
+      </PageContainer>
+    );
+  }
+
+  return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={initial} providerId={id} />;
 };
 
 export const Route = createFileRoute('/providers/$id/edit')({

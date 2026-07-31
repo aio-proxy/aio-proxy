@@ -1,7 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { OAuthRuntimeResult, ProtocolId, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
 
 import {
@@ -17,9 +17,7 @@ const PLACEHOLDER_CREDENTIAL = 'dynamic-credential';
 export async function createGitHubCopilotRuntime(
   context: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>,
 ): Promise<OAuthRuntimeResult> {
-  const controlFetch = context.fetch ?? globalThis.fetch;
-  const modelFetch = context.modelFetch ?? controlFetch;
-  const dynamicFetch = createDynamicFetch(context.credentials, modelFetch, controlFetch);
+  const dynamicFetch = createDynamicFetch(context.credentials, context.fetch);
   const compatibleFetch = createOpenAIStreamFetch('openai-compatible', dynamicFetch, {
     rewriteToolImages: true,
   });
@@ -77,8 +75,8 @@ export async function createGitHubCopilotRuntime(
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
       return {
         invoke: async (request) => {
-          const credential = await currentGitHubCopilotCredential(context.credentials, controlFetch);
-          return await fetchWithCredential(request, undefined, credential, modelFetch);
+          const credential = await currentGitHubCopilotCredential(context.credentials, context.fetch);
+          return await fetchWithCredential(request, undefined, credential, context.fetch);
         },
       };
     },
@@ -87,12 +85,11 @@ export async function createGitHubCopilotRuntime(
 
 function createDynamicFetch(
   credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>['credentials'],
-  modelFetch: typeof fetch,
-  controlFetch: typeof fetch,
+  fetcher: RuntimeFetch,
 ): typeof fetch {
   return async (input, init) => {
-    const credential = await currentGitHubCopilotCredential(credentials, controlFetch);
-    return await fetchWithCredential(input, init, credential, modelFetch);
+    const credential = await currentGitHubCopilotCredential(credentials, fetcher);
+    return await fetchWithCredential(input, init, credential, fetcher);
   };
 }
 
@@ -100,7 +97,7 @@ async function fetchWithCredential(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   credential: GitHubCopilotCredential,
-  fetcher: typeof fetch,
+  fetcher: RuntimeFetch,
 ): Promise<Response> {
   const request = new Request(input, init);
   const target = new URL(request.url);

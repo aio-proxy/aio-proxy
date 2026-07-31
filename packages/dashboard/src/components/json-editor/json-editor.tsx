@@ -19,45 +19,82 @@ import { registerJsonSchema, validateJsonModel } from './json-schema-registry';
 export type JsonEditorProps = {
   readonly value: JsonValue | undefined;
   readonly schema?: JsonSchema;
-  readonly onValueChange: (value: JsonValue | undefined) => void;
-  readonly onValidationChange?: (validation: JsonEditorValidation) => void;
+  readonly onValueChange: (
+    value: JsonValue | undefined,
+    draft: string,
+    expectValueAcknowledgement: JsonEditorValueAcknowledgement,
+  ) => void;
+  readonly onDraftChange?: (draft: string) => void;
+  readonly onValidationChange?: (validation: JsonEditorValidation, draft: string) => void;
   readonly externalInvalid?: boolean;
   readonly errorDescriptionId?: string;
+  readonly ariaLabel?: string;
   readonly id?: string;
   readonly className?: string;
   readonly height?: string | number;
 };
 
+export type JsonEditorValueAcknowledgement = (value: JsonValue | undefined) => void;
+
 const formatJsonValue = (value: JsonValue | undefined) => (value === undefined ? '' : JSON.stringify(value, null, 2));
+const serializeJsonValue = (value: JsonValue | undefined) => (value === undefined ? '' : JSON.stringify(value));
+
+const useControlledJsonDraft = (value: JsonValue | undefined, schema: JsonSchema | undefined) => {
+  const [draft, setDraft] = useState(() => formatJsonValue(value));
+  const [validationState, setValidationState] = useState(() =>
+    createJsonValidationState(formatJsonValue(value), schema),
+  );
+  const controlledContent = useRef(serializeJsonValue(value));
+  const awaitingControlledContent = useRef<string | null>(null);
+
+  // Run after every render so a same-content parent rerender can accept or reject an emitted value.
+  useEffect(() => {
+    const nextContent = serializeJsonValue(value);
+    const expectedContent = awaitingControlledContent.current;
+    if (expectedContent !== null) {
+      awaitingControlledContent.current = null;
+      controlledContent.current = nextContent;
+      if (nextContent === expectedContent) return;
+    } else {
+      if (nextContent === controlledContent.current) return;
+      controlledContent.current = nextContent;
+      const parsedDraft = parseJsonDraft(draft);
+      if (parsedDraft.ok && serializeJsonValue(parsedDraft.value) === nextContent) return;
+    }
+
+    const nextDraft = formatJsonValue(value);
+    setDraft(nextDraft);
+    setValidationState((current) => beginJsonValidation(current, nextDraft, schema));
+  });
+
+  const expectValueAcknowledgement = useCallback<JsonEditorValueAcknowledgement>((expectedValue) => {
+    awaitingControlledContent.current = serializeJsonValue(expectedValue);
+  }, []);
+  const externalValuePending =
+    awaitingControlledContent.current !== null && serializeJsonValue(value) !== awaitingControlledContent.current;
+
+  return { draft, setDraft, validationState, setValidationState, externalValuePending, expectValueAcknowledgement };
+};
 
 export const JsonEditor: React.FC<JsonEditorProps> = ({
   value,
   schema,
   onValueChange,
+  onDraftChange,
   onValidationChange,
   externalInvalid,
   errorDescriptionId,
+  ariaLabel,
   id,
   className,
   height,
 }) => {
   const generatedId = useId();
   const modelUri = useMemo(() => createJsonEditorModelUri(generatedId, id), [generatedId, id]);
-  const [draft, setDraft] = useState(() => formatJsonValue(value));
   const [monaco, setMonaco] = useState<Monaco>();
   const [editor, setEditor] = useState<Parameters<OnMount>[0]>();
-  const [validationState, setValidationState] = useState(() =>
-    createJsonValidationState(formatJsonValue(value), schema),
-  );
-  const lastEmittedValue = useRef(value);
-
-  useEffect(() => {
-    if (Object.is(value, lastEmittedValue.current)) return;
-    lastEmittedValue.current = value;
-    const nextDraft = formatJsonValue(value);
-    setDraft(nextDraft);
-    setValidationState((current) => beginJsonValidation(current, nextDraft, schema));
-  }, [schema, value]);
+  const { draft, setDraft, validationState, setValidationState, externalValuePending, expectValueAcknowledgement } =
+    useControlledJsonDraft(value, schema);
 
   useEffect(() => {
     setValidationState((current) => beginJsonValidation(current, current.draft, schema));
@@ -97,38 +134,41 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   }, [draft, editor, modelUri, monaco, schema, validationState]);
 
   const parseResult = parseJsonDraft(draft);
-  const externalValuePending = !Object.is(value, lastEmittedValue.current);
-  const validation = useMemo(
+  const draftValidation = useMemo(
     () =>
       mergeJsonValidation({
         syntaxValid: parseResult.ok,
         markers: validationState.markers,
         ...(schema === undefined ? {} : { schema }),
-        pending:
-          externalValuePending ||
-          validationState.pending ||
-          validationState.draft !== draft ||
-          validationState.schema !== schema,
+        pending: validationState.pending || validationState.draft !== draft || validationState.schema !== schema,
       }),
-    [draft, externalValuePending, parseResult.ok, schema, validationState],
+    [draft, parseResult.ok, schema, validationState],
+  );
+  const validation = useMemo(
+    () => ({
+      ...draftValidation,
+      valid: draftValidation.valid && !externalValuePending,
+      pending: draftValidation.pending || externalValuePending,
+    }),
+    [draftValidation, externalValuePending],
   );
 
   useEffect(() => {
-    onValidationChange?.(validation);
-  }, [onValidationChange, validation]);
+    onValidationChange?.(validation, draft);
+  }, [draft, onValidationChange, validation]);
 
   const handleChange = useCallback(
     (nextDraft: string | undefined) => {
       const nextValue = nextDraft ?? '';
+      onDraftChange?.(nextValue);
       setDraft(nextValue);
       setValidationState((current) => beginJsonValidation(current, nextValue, schema));
       const parsed = parseJsonDraft(nextValue);
       if (!parsed.ok) return;
 
-      lastEmittedValue.current = parsed.value;
-      onValueChange(parsed.value);
+      onValueChange(parsed.value, nextValue, expectValueAcknowledgement);
     },
-    [onValueChange, schema],
+    [expectValueAcknowledgement, onDraftChange, onValueChange, schema],
   );
 
   const handleMount = useCallback<OnMount>((nextEditor, nextMonaco) => {
@@ -147,6 +187,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       invalid={externalInvalid || !validation.valid}
       {...(errorDescriptionId === undefined ? {} : { ariaDescribedBy: errorDescriptionId })}
       language="json"
+      {...(ariaLabel === undefined ? {} : { options: { ariaLabel } })}
       onChange={handleChange}
       onMount={handleMount}
       onValidate={handleValidationReady}

@@ -117,8 +117,7 @@ async function createRuntimeMaterialization(
           credentials: credentials as never,
           options: accountOptions,
           catalog: storedCatalog.catalog,
-          ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
-          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
+          fetch: options.runtimeFetch ?? globalThis.fetch,
         }),
       ),
     );
@@ -210,6 +209,7 @@ export async function materializePluginProvider(
     providerId: config.id,
     pluginOptionsDigest: options.pluginOptionsDigest,
     accountOptionsDigest,
+    requestTransformsDigest: digest(config.transforms?.request ?? []),
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),
     catalogRefreshedAt: storedCatalog.refreshedAt,

@@ -1,5 +1,5 @@
 import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
-import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { JsonValue, OAuthRuntimeResult, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { createAntigravityCredentialSource } from './credential';
@@ -10,7 +10,7 @@ import { createAntigravityTokenCount } from './token-count';
 import { AntigravityTransport } from './transport';
 
 export type GoogleAntigravityRuntimeDependencies = {
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number) => Promise<void>;
 };
@@ -31,22 +31,22 @@ export function createGoogleAntigravityRuntime(
   context: RuntimeContext<GoogleAntigravityCredential, GoogleAntigravityAccountOptions>,
   dependencies: GoogleAntigravityRuntimeDependencies = {},
 ): OAuthRuntimeResult {
-  const fetcher = dependencies.fetch ?? context.fetch;
+  const fetch = dependencies.fetch ?? context.fetch;
   const credentials = createAntigravityCredentialSource(context.credentials, {
-    ...(fetcher === undefined ? {} : { fetch: fetcher }),
+    fetch,
     ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
   });
   const transport = new AntigravityTransport({
     credentials,
     options: context.options,
-    ...(fetcher === undefined ? {} : { fetch: fetcher }),
+    fetch,
     ...(dependencies.sleep === undefined ? {} : { sleep: dependencies.sleep }),
   });
   const modelRuntime: AntigravityLanguageModelRuntime = {
     call: (logicalRequest) => ({
       context: logicalRequest,
       transport,
-      ...(fetcher === undefined ? {} : { fetch: fetcher }),
+      fetch,
     }),
   };
   const metadataByModel = new Map(context.catalog.language.map((descriptor) => [descriptor.id, descriptor.metadata]));

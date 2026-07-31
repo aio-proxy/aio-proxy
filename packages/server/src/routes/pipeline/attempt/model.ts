@@ -42,14 +42,14 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
-  await inAttempt(() => model.ensureAvailable?.());
+  await inAttempt(targetProtocol, () => model.ensureAvailable?.());
   const captured = source.usageCapture.stream({
     providerId: provider.id,
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
     startedAt,
     observation,
-    stream: inAttempt(() => {
+    stream: inAttempt(targetProtocol, () => {
       observation.markTransportUnavailable();
       return model.invoke({
         context: logicalRequest,

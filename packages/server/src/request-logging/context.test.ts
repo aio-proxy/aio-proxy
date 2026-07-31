@@ -1,6 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import { currentDebugRequestLogScope, currentRequestLogContext, withAttemptLogContext, withRequestLogContext } from '.';
+import { ProviderProtocol } from '@aio-proxy/types';
+
+import {
+  currentDebugRequestLogScope,
+  currentProviderAttemptContext,
+  currentRequestLogContext,
+  withAttemptLogContext,
+  withRequestLogContext,
+} from '.';
 
 test('request contexts isolate promise continuations and stream callbacks', async () => {
   const seen = await Promise.all(
@@ -70,4 +78,38 @@ test('debug scopes expose the trusted logger only when debugging is enabled', ()
   });
 
   expect(currentDebugRequestLogScope()).toBeUndefined();
+});
+
+test('provider attempt metadata shares the request scope without changing bridge log context', () => {
+  withRequestLogContext({ requestId: 'request', debug: false, logger: () => {} }, () => {
+    expect(currentProviderAttemptContext()).toBeUndefined();
+
+    withAttemptLogContext(
+      {
+        attemptIndex: 1,
+        providerId: 'provider',
+        modelId: 'upstream-model',
+        requestedModelId: 'client-model',
+        sourceProtocol: ProviderProtocol.OpenAIResponse,
+        targetProtocol: ProviderProtocol.OpenAICompatible,
+      },
+      () => {
+        expect(currentProviderAttemptContext()).toEqual({
+          providerId: 'provider',
+          modelId: 'upstream-model',
+          requestedModelId: 'client-model',
+          sourceProtocol: ProviderProtocol.OpenAIResponse,
+          targetProtocol: ProviderProtocol.OpenAICompatible,
+        });
+        expect(currentRequestLogContext()).toEqual({
+          requestId: 'request',
+          attemptIndex: 1,
+          providerId: 'provider',
+          modelId: 'upstream-model',
+        });
+      },
+    );
+  });
+
+  expect(currentProviderAttemptContext()).toBeUndefined();
 });

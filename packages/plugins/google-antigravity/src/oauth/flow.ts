@@ -1,3 +1,5 @@
+import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
+
 import {
   GOOGLE_ANTIGRAVITY_SCOPES,
   GOOGLE_AUTH_ENDPOINT,
@@ -15,7 +17,7 @@ export type GoogleToken = {
 };
 
 export type OAuthHttpOptions = {
-  readonly fetch?: typeof globalThis.fetch | undefined;
+  readonly fetch?: RuntimeFetch | undefined;
   readonly now?: (() => number) | undefined;
   readonly signal?: AbortSignal | undefined;
 };
@@ -65,11 +67,13 @@ export async function exchangeAuthorizationCode(
 }
 
 async function requestToken(body: URLSearchParams, options: OAuthHttpOptions): Promise<Response> {
+  const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   try {
-    return await (options.fetch ?? globalThis.fetch)(GOOGLE_TOKEN_ENDPOINT, {
+    return await fetcher(GOOGLE_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
+      aioProxy: { traffic: 'control' },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch {

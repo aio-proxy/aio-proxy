@@ -368,6 +368,146 @@
         "models_title": "已发现模型",
         "reauthorize_helper": "账户设置变更只会在授权成功后保存。"
       },
+      "transforms": {
+        "section": "请求修改",
+        "description": "在请求发送到上游之前，按当前 Provider 的配置修改出站请求。",
+        "json_label": "请求修改 JSON",
+        "invalid": "修改配置无效（{path}）：{code}",
+        "empty": "尚未配置请求修改。",
+        "mode": {
+          "visual": "可视化",
+          "json": "JSON"
+        },
+        "rule": {
+          "label": "规则 {index}",
+          "name": "规则 {index} 名称",
+          "add": "添加规则",
+          "remove": "删除规则 {index}",
+          "move_up": "上移规则 {index}",
+          "move_down": "下移规则 {index}",
+          "condition": "条件",
+          "match_all": "匹配所有请求"
+        },
+        "action": {
+          "label": "操作 {index}",
+          "type": "操作",
+          "set": "设置",
+          "remove": "移除",
+          "add_set": "添加 Set 操作",
+          "add_remove": "添加 Remove 操作",
+          "remove_button": "删除操作 {index}",
+          "move_up": "上移操作 {index}",
+          "move_down": "下移操作 {index}"
+        },
+        "target": {
+          "label": "目标",
+          "header": "请求头",
+          "body": "请求体",
+          "header_name": "请求头名称",
+          "body_path": "请求体路径"
+        },
+        "value": {
+          "mode": "值模式",
+          "static": "静态",
+          "computed": "计算",
+          "static_label": "静态值",
+          "computed_label": "计算值"
+        },
+        "condition": {
+          "editor_title": "请求条件编辑器",
+          "field": {
+            "title": "字段",
+            "provider_id": "Provider ID",
+            "provider_kind": "Provider 类型",
+            "provider_protocol": "Provider 协议",
+            "current_model": "当前模型",
+            "requested_model": "请求的模型",
+            "source_protocol": "源协议",
+            "target_protocol": "目标协议",
+            "method": "请求方法",
+            "url": "请求 URL",
+            "current_body": "当前请求体字段",
+            "original_body": "原始请求体字段",
+            "current_header": "当前请求头",
+            "original_header": "原始请求头",
+            "current_body_path": "当前请求体字段路径",
+            "original_body_path": "原始请求体字段路径",
+            "current_header_name": "当前请求头名称",
+            "original_header_name": "原始请求头名称"
+          },
+          "operator": {
+            "title": "运算符",
+            "equals": "等于",
+            "not_equal": "不等于",
+            "greater_than": "大于",
+            "greater_than_or_equal": "大于或等于",
+            "less_than": "小于",
+            "less_than_or_equal": "小于或等于",
+            "in": "属于",
+            "not_in": "不属于",
+            "exists": "存在",
+            "does_not_exist": "不存在",
+            "pattern": "匹配模式",
+            "regex": "正则表达式"
+          },
+          "combinator": {
+            "title": "条件组合方式",
+            "and": "全部满足",
+            "or": "任一满足"
+          },
+          "value": {
+            "title": "值"
+          },
+          "value_source": {
+            "title": "值来源",
+            "value": "值",
+            "field": "字段",
+            "expression": "表达式",
+            "expression_title": "与表达式比较"
+          },
+          "expression_kind": {
+            "title": "表达式类型",
+            "field": "字段",
+            "value": "值",
+            "function": "函数"
+          },
+          "function": {
+            "title": "函数",
+            "wrap_title": "使用函数包装字段",
+            "none": "无函数",
+            "none_title": "直接使用字段",
+            "add": "加法",
+            "subtract": "减法",
+            "multiply": "乘法",
+            "divide": "除法",
+            "min": "最小值",
+            "max": "最大值",
+            "abs": "绝对值",
+            "mod": "取余",
+            "upper": "转大写",
+            "lower": "转小写",
+            "concat": "拼接",
+            "condition": "条件函数",
+            "if_null": "空值替代",
+            "concat_arrays": "拼接数组",
+            "merge_objects": "合并对象"
+          },
+          "action": {
+            "not": "非",
+            "not_title": "反转此条件组",
+            "add_condition": "添加条件",
+            "add_group": "添加条件组",
+            "remove_condition": "删除条件",
+            "remove_group": "删除条件组",
+            "move_up": "上移",
+            "move_down": "下移"
+          },
+          "regex": {
+            "source": "正则表达式",
+            "flags": "正则标志"
+          }
+        }
+      },
       "form": {
         "label_id": "提供商 ID",
         "label_name": "显示名称",

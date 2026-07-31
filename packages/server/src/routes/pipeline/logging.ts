@@ -1,5 +1,6 @@
 import type { ProtocolRequestDiagnostic } from '@aio-proxy/core';
 
+import { providerRequestTransformDiagnostic } from '../../provider-request-transform';
 import type { ProviderRouteSource } from '../../runtime';
 import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
 import type { AttemptInfo } from './attempt-base';
@@ -80,6 +81,7 @@ export function logProviderAttemptFailed(options: {
     failureKind: options.failureKind,
     fallback: options.fallback,
     ...(options.failureKind === 'exception' ? serverErrorDetails(options.error) : {}),
+    ...(options.failureKind === 'exception' ? providerRequestTransformDiagnostic(options.error) : {}),
     ...(upstreamRequestId === undefined ? {} : { upstreamRequestId }),
   });
 }

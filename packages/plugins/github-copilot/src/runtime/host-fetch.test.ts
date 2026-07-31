@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, ModelCatalog, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import { credentialPort as createCredentialPort } from '../../__tests__/test-support';
 import type { GitHubCopilotCredential } from '../github-api';
@@ -8,7 +8,7 @@ import type { GitHubCopilotCredential } from '../github-api';
 test('routes the final GitHub Copilot request through the host fetch', async () => {
   const originalFetch = globalThis.fetch;
   const clientId = Reflect.get(globalThis, '__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__');
-  const requests: Request[] = [];
+  const calls = fetchCalls();
   Reflect.set(globalThis, '__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__', clientId ?? 'test-client-id');
   globalThis.fetch = async () => {
     throw new Error('unexpected global fetch');
@@ -20,13 +20,10 @@ test('routes the final GitHub Copilot request through the host fetch', async () 
       credentials: credentialPort(),
       options: { deploymentType: 'github.com' },
       catalog: catalog(),
-      fetch: async () => {
-        throw new Error('unexpected control fetch');
-      },
-      modelFetch: async (input, init) => {
-        requests.push(new Request(input, init));
+      fetch: hostFetch(calls, async (traffic) => {
+        if (traffic === 'control') throw new Error('unexpected control fetch');
         return Response.json({ ok: true });
-      },
+      }),
     });
     const transport = runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat' });
     if (transport === undefined) throw new Error('missing GitHub Copilot raw transport');
@@ -43,8 +40,9 @@ test('routes the final GitHub Copilot request through the host fetch', async () 
     restoreGlobal('__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__', clientId);
   }
 
-  expect(requests).toHaveLength(1);
-  const request = requests[0];
+  expect(calls.control).toEqual([]);
+  expect(calls.model).toHaveLength(1);
+  const request = calls.model[0];
   expect(request?.url).toBe('https://api.githubcopilot.com/v1/chat/completions');
   expect(request?.headers.get('authorization')).toBe('Bearer copilot-token');
   expect(request?.headers.get('copilot-integration-id')).toBe('vscode-chat');
@@ -56,8 +54,7 @@ test('routes the final GitHub Copilot request through the host fetch', async () 
 test('routes an expired credential refresh and final request through the host fetch', async () => {
   const originalFetch = globalThis.fetch;
   const clientId = Reflect.get(globalThis, '__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__');
-  const controlUrls: string[] = [];
-  const modelUrls: string[] = [];
+  const calls = fetchCalls();
   Reflect.set(globalThis, '__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__', clientId ?? 'test-client-id');
   globalThis.fetch = async () => {
     throw new Error('unexpected global fetch');
@@ -75,19 +72,15 @@ test('routes an expired credential refresh and final request through the host fe
       credentials: credentials.port,
       options: { deploymentType: 'github.com' },
       catalog: catalog(),
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
-        controlUrls.push(request.url);
-        expect(request.url).toBe('https://api.github.com/copilot_internal/v2/token');
-        expect(request.headers.get('authorization')).toBe('Bearer github-token');
-        return Response.json({ token: 'refreshed-copilot-token', expires_at: 9_999_999_999 });
-      },
-      modelFetch: async (input, init) => {
-        const request = new Request(input, init);
-        modelUrls.push(request.url);
+      fetch: hostFetch(calls, async (traffic, request) => {
+        if (traffic === 'control') {
+          expect(request.url).toBe('https://api.github.com/copilot_internal/v2/token');
+          expect(request.headers.get('authorization')).toBe('Bearer github-token');
+          return Response.json({ token: 'refreshed-copilot-token', expires_at: 9_999_999_999 });
+        }
         expect(request.headers.get('authorization')).toBe('Bearer refreshed-copilot-token');
         return Response.json({ ok: true });
-      },
+      }),
     });
     const transport = runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat' });
     if (transport === undefined) throw new Error('missing GitHub Copilot raw transport');
@@ -106,9 +99,27 @@ test('routes an expired credential refresh and final request through the host fe
     restoreGlobal('__AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__', clientId);
   }
 
-  expect(controlUrls).toEqual(['https://api.github.com/copilot_internal/v2/token']);
-  expect(modelUrls).toEqual(['https://api.githubcopilot.com/v1/chat/completions']);
+  expect(calls.control.map(({ url }) => url)).toEqual(['https://api.github.com/copilot_internal/v2/token']);
+  expect(calls.model.map(({ url }) => url)).toEqual(['https://api.githubcopilot.com/v1/chat/completions']);
 });
+
+type FetchTraffic = 'control' | 'model';
+
+function fetchCalls(): Record<FetchTraffic, Request[]> {
+  return { control: [], model: [] };
+}
+
+function hostFetch(
+  calls: Record<FetchTraffic, Request[]>,
+  respond: (traffic: FetchTraffic, request: Request) => Promise<Response>,
+): RuntimeFetch {
+  return (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+    const traffic = init?.aioProxy?.traffic ?? 'model';
+    const request = new Request(input, init);
+    calls[traffic].push(request);
+    return await respond(traffic, request);
+  }) as RuntimeFetch;
+}
 
 function credentialPort(): CredentialPort<GitHubCopilotCredential> {
   const value = {
