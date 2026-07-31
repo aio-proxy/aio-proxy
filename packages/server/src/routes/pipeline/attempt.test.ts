@@ -1,7 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import { openAIResponsesAdapter } from '@aio-proxy/core';
+import { APICallError } from '@ai-sdk/provider';
+import {
+  AiSdkProviderError,
+  anthropicMessagesAdapter,
+  geminiGenerateContentAdapter,
+  openAIResponsesAdapter,
+} from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
+import { RetryError } from 'ai';
 
 import { handleProtocolRequest } from '.';
 import {
@@ -10,9 +17,12 @@ import {
   modelProvider,
   REQUESTED_MODEL,
   rawProvider,
+  retryConfig,
   settleRecording,
   textStream,
+  withSnapshotConfigs,
 } from '../../../__tests__/pipeline-helpers';
+import { LogicalSessionStore } from '../../logical-session-store';
 
 test('converts portable reasoning and uses the model candidate', async () => {
   const model = modelProvider({ id: 'model', invoke: () => textStream('model response') });
@@ -283,4 +293,328 @@ test('fails fast on invalid function arguments without trying raw', async () => 
     route.recording.attempts.map(({ errorCode, providerId, statusCode }) => ({ errorCode, providerId, statusCode })),
   ).toEqual([{ errorCode: 'invalid_request', providerId: 'model', statusCode: 400 }]);
   expect(route.recording.finals[0]).toEqual(expect.objectContaining({ errorCode: 'invalid_request' }));
+});
+
+// --- Provider cooldown on 429 (write / skip / synthesize) ---
+
+function responsesRequest(extra: Record<string, unknown> = {}): Request {
+  return new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: REQUESTED_MODEL, input: 'ping', ...extra }),
+  });
+}
+
+function rawRateLimited(id: string, retryAfter: string) {
+  return rawProvider({
+    id,
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: () => Response.json({ error: id }, { status: 429, headers: { 'retry-after': retryAfter } }),
+  });
+}
+
+test('skips a cooled provider and falls back to the backup without a second call', async () => {
+  const primary = rawRateLimited('primary', '30');
+  const backup = rawProvider({ id: 'backup', protocol: ProviderProtocol.OpenAIResponse });
+  const route = defineProviderRouteSource([primary, backup]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(first.status).toBe(200);
+  expect(primary.calls.raw).toHaveLength(1);
+  expect(backup.calls.raw).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(second.status).toBe(200);
+  expect(primary.calls.raw).toHaveLength(1); // still 1 — cooled, skipped
+  expect(backup.calls.raw).toHaveLength(2);
+});
+
+test('synthesizes a 429 when the only provider is cooled, without hitting upstream', async () => {
+  const only = rawRateLimited('only', '30');
+  const route = defineProviderRouteSource([only]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(first.status).toBe(429);
+  expect(only.calls.raw).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(second.status).toBe(429);
+  expect(only.calls.raw).toHaveLength(1); // not called again — synthesized
+  expect(Number(second.headers.get('retry-after'))).toBeGreaterThan(0);
+});
+
+test('all-cooled synthesized Retry-After reflects the shortest remaining window', async () => {
+  const long = rawRateLimited('long', '30');
+  const short = rawRateLimited('short', '5');
+  const route = defineProviderRouteSource([long, short]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  // First request cools both: `long` falls back (30s), `short` returns terminal 429 (5s).
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(first.status).toBe(429);
+  expect(long.calls.raw).toHaveLength(1);
+  expect(short.calls.raw).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(second.status).toBe(429);
+  expect(long.calls.raw).toHaveLength(1);
+  expect(short.calls.raw).toHaveLength(1);
+  const retryAfter = Number(second.headers.get('retry-after'));
+  expect(retryAfter).toBeGreaterThan(0);
+  expect(retryAfter).toBeLessThanOrEqual(5); // shortest (short=5s) wins, not long=30s
+});
+
+test('all-cooled synthesis uses protocol-native bodies per adapter', async () => {
+  const openai = rawRateLimited('openai', '10');
+  const openaiRoute = defineProviderRouteSource([openai]);
+  const openaiSource = withSnapshotConfigs(openaiRoute.source, retryConfig());
+  await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source: openaiSource,
+  });
+  const openaiSynth = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source: openaiSource,
+  });
+  expect(openaiSynth.status).toBe(429);
+  expect(await openaiSynth.json()).toEqual({
+    error: {
+      code: 'rate_limit_exceeded',
+      message: 'All providers for this model are cooling down',
+      type: 'rate_limit_error',
+    },
+  });
+
+  const anthropic = rawProvider({
+    id: 'anthropic',
+    protocol: ProviderProtocol.Anthropic,
+    invoke: () => Response.json({ error: 'anthropic' }, { status: 429, headers: { 'retry-after': '10' } }),
+  });
+  const anthropicRoute = defineProviderRouteSource([anthropic]);
+  const anthropicSource = withSnapshotConfigs(anthropicRoute.source, retryConfig());
+  const anthropicBody = () =>
+    new Request('https://proxy.test/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: REQUESTED_MODEL, max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] }),
+    });
+  await handleProtocolRequest({
+    adapter: anthropicMessagesAdapter,
+    context: {},
+    rawRequest: anthropicBody(),
+    source: anthropicSource,
+  });
+  const anthropicSynth = await handleProtocolRequest({
+    adapter: anthropicMessagesAdapter,
+    context: {},
+    rawRequest: anthropicBody(),
+    source: anthropicSource,
+  });
+  expect(anthropicSynth.status).toBe(429);
+  expect(await anthropicSynth.json()).toEqual({
+    type: 'error',
+    error: { type: 'rate_limit_error', message: 'All providers for this model are cooling down' },
+  });
+
+  const gemini = rawProvider({
+    id: 'gemini',
+    protocol: ProviderProtocol.Gemini,
+    invoke: () => Response.json({ error: 'gemini' }, { status: 429, headers: { 'retry-after': '10' } }),
+  });
+  const geminiRoute = defineProviderRouteSource([gemini]);
+  const geminiSource = withSnapshotConfigs(geminiRoute.source, retryConfig());
+  const geminiBody = () =>
+    new Request(`https://proxy.test/v1beta/models/${REQUESTED_MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+    });
+  const geminiCtx = { model: REQUESTED_MODEL, stream: false };
+  await handleProtocolRequest({
+    adapter: geminiGenerateContentAdapter,
+    context: geminiCtx,
+    rawRequest: geminiBody(),
+    source: geminiSource,
+  });
+  const geminiSynth = await handleProtocolRequest({
+    adapter: geminiGenerateContentAdapter,
+    context: geminiCtx,
+    rawRequest: geminiBody(),
+    source: geminiSource,
+  });
+  expect(geminiSynth.status).toBe(429);
+  expect(await geminiSynth.json()).toEqual({
+    error: { code: 429, message: 'All providers for this model are cooling down', status: 'RESOURCE_EXHAUSTED' },
+  });
+});
+
+test('cools the pair on a wrapped AI-SDK 429 exception through the real error chain', async () => {
+  const wrapped = new AiSdkProviderError(
+    'p',
+    new RetryError({
+      message: 'failed',
+      reason: 'maxRetriesExceeded',
+      errors: [
+        new APICallError({
+          message: 'limited',
+          url: 'https://u.test',
+          requestBodyValues: {},
+          statusCode: 429,
+          responseHeaders: { 'retry-after': '30' },
+        }),
+      ],
+    }),
+  );
+  const model = modelProvider({ id: 'model', invoke: () => errorStream(wrapped) });
+  const route = defineProviderRouteSource([model]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(first.status).not.toBe(200);
+  expect(model.calls.model).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(second.status).toBe(429); // cooled -> synthesized
+  expect(model.calls.model).toHaveLength(1); // provider not invoked again
+});
+
+test('all-cooled finalizes as a request-level 429 with no attempt spans', async () => {
+  const only = rawRateLimited('only', '30');
+  const route = defineProviderRouteSource([only]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  await handleProtocolRequest({ adapter: openAIResponsesAdapter, context: {}, rawRequest: responsesRequest(), source });
+  await settleRecording(route.recording);
+  const attemptsAfterFirst = route.recording.attempts.length;
+
+  await handleProtocolRequest({ adapter: openAIResponsesAdapter, context: {}, rawRequest: responsesRequest(), source });
+  await settleRecording(route.recording);
+
+  const synthFinal = route.recording.finals.at(-1);
+  expect(synthFinal).toEqual(
+    expect.objectContaining({ outcome: 'failure', finalStatusCode: 429, errorCode: 'rate_limited' }),
+  );
+  expect(synthFinal?.finalProviderId).toBeUndefined();
+  expect(synthFinal?.finalModelId).toBeUndefined();
+  expect(synthFinal?.attempt).toBeUndefined();
+  expect(route.recording.attempts).toHaveLength(attemptsAfterFirst); // synthesis added no attempt span
+});
+
+test('skips a cooled affinity-bound candidate in favor of the next live candidate', async () => {
+  const bound = rawRateLimited('bound', '30');
+  const other = rawProvider({ id: 'other', protocol: ProviderProtocol.OpenAIResponse });
+  const route = defineProviderRouteSource([bound, other]);
+  const source = {
+    ...withSnapshotConfigs(route.source, retryConfig()),
+    logicalSessionStore: new LogicalSessionStore({
+      repository: {
+        resolveResponse: () => undefined,
+        findAffinity: () => ({ providerId: 'bound', revision: 1, active: true }),
+      },
+    }),
+  };
+
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest({ prompt_cache_key: 'session-1' }),
+    source,
+  });
+  expect(first.status).toBe(200); // bound 429s, falls back to other
+  expect(bound.calls.raw).toHaveLength(1);
+  expect(other.calls.raw).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest({ prompt_cache_key: 'session-1' }),
+    source,
+  });
+  expect(second.status).toBe(200);
+  expect(bound.calls.raw).toHaveLength(1); // affinity target cooled -> skipped despite affinity
+  expect(other.calls.raw).toHaveLength(2);
+});
+
+test('re-selects a provider after its cooldown expires', async () => {
+  const provider = rawRateLimited('flappy', '1');
+  const route = defineProviderRouteSource([provider]);
+  const source = withSnapshotConfigs(route.source, retryConfig());
+
+  const first = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(first.status).toBe(429);
+  expect(provider.calls.raw).toHaveLength(1);
+
+  const second = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(second.status).toBe(429);
+  expect(provider.calls.raw).toHaveLength(1); // still cooled -> synthesized
+
+  // Real delay: the cooldown TTL is enforced by lru-cache against its own
+  // internal clock, which fake timers cannot advance. A short 1s window keeps
+  // this deterministic enough while exercising genuine expiry re-entry.
+  await Bun.sleep(1_100);
+
+  const third = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: responsesRequest(),
+    source,
+  });
+  expect(third.status).toBe(429);
+  expect(provider.calls.raw).toHaveLength(2); // cooldown expired -> selected again
 });

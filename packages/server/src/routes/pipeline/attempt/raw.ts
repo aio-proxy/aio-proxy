@@ -5,6 +5,7 @@ import { attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { retainResponseBody } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import { cooldownTtlMs } from './cooldown-write';
 import { attemptLog } from './emit';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
@@ -28,6 +29,8 @@ export async function attemptRawCandidate<TRequest, TContext>(
 
   const fallback = hasNext && shouldFallbackStatus(response.status);
   if (fallback || response.status < 200 || response.status >= 400) {
+    const cooldownMs = cooldownTtlMs(response.status, response.headers.get('retry-after'), ctx.retryAfterCapMs);
+    if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
     const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
     logFailure(index, attemptLog(base, response.status), 'response', fallback, { response });
     slot.spanRef.current = undefined;

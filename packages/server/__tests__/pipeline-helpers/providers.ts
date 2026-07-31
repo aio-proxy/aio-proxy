@@ -2,9 +2,10 @@ import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { aioHome, type ModelEventStream, Router } from '@aio-proxy/core';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, type Config, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { LogicalSessionStore } from '../../src/logical-session-store';
+import { ProviderCooldownStore } from '../../src/routes/pipeline/provider-cooldown';
 import type { ModelTransport, ProviderRouteSource, RawTransport, RuntimeProviderInstance } from '../../src/runtime';
 import {
   createUsageCapture,
@@ -128,6 +129,7 @@ export function defineProviderRouteSource(
       snapshot: { providers, router: new Router(providers) },
       release() {},
     }),
+    cooldown: new ProviderCooldownStore(),
     currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
     ...(debugLogging === undefined ? {} : { debugLogging }),
     logger: (entry) => logs.push(entry),
@@ -184,4 +186,22 @@ function instrumentModel(
 
 function routeAlias(model: string) {
   return { [REQUESTED_MODEL]: { model, preserve: false } };
+}
+
+export function withSnapshotConfigs(
+  source: ProviderRouteSource,
+  acquired: Config,
+  current = acquired,
+): ProviderRouteSource {
+  const snapshot = source.currentProviderSnapshot();
+  return {
+    ...source,
+    acquireProviderSnapshot: () => ({ snapshot: { ...snapshot, config: acquired }, release() {} }),
+    currentProviderSnapshot: () => ({ ...snapshot, config: current }),
+  };
+}
+
+export function retryConfig(overrides: Partial<Config['server']['retry']> = {}): Config {
+  const base = ConfigSchema.parse({ server: {}, providers: {} });
+  return { ...base, server: { ...base.server, retry: { ...base.server.retry, ...overrides } } };
 }

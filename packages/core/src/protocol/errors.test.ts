@@ -134,3 +134,40 @@ test('maps image compatibility errors into every inbound protocol shape', async 
     expect(body).not.toContain('file_');
   }
 });
+
+test('openai completions rateLimited builds a native 429 with Retry-After', async () => {
+  const r = openAICompletionsErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
+  });
+});
+
+test('openai responses rateLimited builds a native 429 with Retry-After', async () => {
+  const r = openAIResponsesErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
+  });
+});
+
+test('anthropic rateLimited builds a native 429 with Retry-After', async () => {
+  const r = anthropicMessagesErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    type: 'error',
+    error: { type: 'rate_limit_error', message: expect.any(String) },
+  });
+});
+
+test('gemini rateLimited builds a native 429 with Retry-After', async () => {
+  const r = geminiGenerateContentErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 429, message: expect.any(String), status: 'RESOURCE_EXHAUSTED' },
+  });
+});

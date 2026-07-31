@@ -1,5 +1,5 @@
 export { createProtocolContext, defineProtocolAdapter } from './adapter';
-export { defineProviderRouteSource, modelProvider, rawProvider } from './providers';
+export { defineProviderRouteSource, modelProvider, rawProvider, retryConfig, withSnapshotConfigs } from './providers';
 export {
   cancellableTextStream,
   emptyStream,

@@ -79,6 +79,11 @@ export function defineProtocolAdapter(
       tooLarge: () => errorResponse(413, 'too_large', 'Request body too large'),
       unsupported: (feature) => errorResponse(501, 'unsupported', feature),
       provider: (error) => (error instanceof Error ? errorResponse(502, 'provider_error', error.message) : undefined),
+      rateLimited: (s) => {
+        const r = errorResponse(429, 'rate_limited', 'cooling down');
+        r.headers.set('retry-after', String(Math.max(1, Math.trunc(s))));
+        return r;
+      },
     },
   });
 }

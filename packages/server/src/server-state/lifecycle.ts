@@ -21,6 +21,7 @@ import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
+import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
@@ -127,6 +128,7 @@ export type ServerStateParts = Pick<
   readonly configStore: ConfigStore;
   readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly logicalSessionStore: LogicalSessionStore;
+  readonly cooldown: ProviderCooldownStore;
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
 };
@@ -135,6 +137,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
   const { events, repository, options, logger } = runtime;
   return {
     acquireProviderSnapshot: manager.acquire,
+    cooldown: parts.cooldown,
     close() {
       if (runtime.closed) return;
       runtime.closed = true;

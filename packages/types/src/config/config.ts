@@ -31,6 +31,16 @@ const ServerLoggingSchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
+const ServerRetrySchema = z.object({
+  retryAfterCapMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(300_000)
+    .default(30_000)
+    .describe('Upper bound on an honored 429 Retry-After cooldown, in milliseconds.'),
+});
+
 const ServerLoggingAuthoringSchema = ServerLoggingSchema.omit({ dir: true, level: true }).extend({
   dir: z.union([z.string().min(1), ConfigTemplateStringSchema]).optional(),
   level: z.union([z.enum(['debug', 'info', 'warn', 'error']), ConfigTemplateStringSchema]).default('info'),
@@ -41,6 +51,7 @@ export const ServerConfigSchema = z.object({
   port: z.number().int().min(1).max(65_535).default(9_317).describe('HTTP port for the proxy API server.'),
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
+  retry: ServerRetrySchema.prefault({}),
 });
 
 const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, logging: true }).extend({

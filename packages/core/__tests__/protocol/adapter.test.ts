@@ -31,6 +31,11 @@ describe('defineProtocolAdapter', () => {
         unsupportedContentEncoding: () => new Response(null, { status: 415 }),
         unsupported: () => new Response(null, { status: 501 }),
         provider: () => undefined,
+        rateLimited: (s) => {
+          const r = new Response(null, { status: 429 });
+          r.headers.set('retry-after', String(s));
+          return r;
+        },
       },
     });
 

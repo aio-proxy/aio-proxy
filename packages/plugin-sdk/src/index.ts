@@ -4,6 +4,7 @@ export type { ZodType } from 'zod';
 export type ZodIssue = z.core.$ZodIssue;
 export { z as zod } from 'zod';
 export * from './config';
+export { retryAfterMilliseconds } from './http/retry-after';
 export * from './json';
 export * from './localized-text';
 export * from './logger';
