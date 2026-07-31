@@ -26,6 +26,10 @@ jobs:
     # Publish only from the default branch; never from a feature branch or tag dispatch.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    env:
+      # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
+      # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
+      LEFTHOOK: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
