@@ -1,8 +1,8 @@
 import type { RouterResolution } from '@aio-proxy/core';
 import { retryAfterMilliseconds } from '@aio-proxy/plugin-sdk';
 
-import type { RuntimeProviderInstance } from '../../../runtime';
-import type { ProviderCooldownStore } from '../provider-cooldown';
+import type { RuntimeProviderInstance } from '../../../../runtime';
+import type { ProviderCooldownStore } from '../../provider-cooldown';
 
 type Candidate = RouterResolution<RuntimeProviderInstance>;
 
