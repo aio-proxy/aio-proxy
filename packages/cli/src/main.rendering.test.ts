@@ -63,13 +63,10 @@ describe('cli rendering', () => {
     expect(formatted.message).not.toContain('attacker.invalid');
   });
 
-  test('dashboard command reports not-yet-implemented on stderr and exits 1', () => {
-    // Given / When
-    const result = runCli(['dashboard']);
-
-    // Then
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain('not yet implemented');
-    expect(result.stdout.toString()).not.toContain('not yet implemented');
+  test('dashboard command help advertises host and port options', () => {
+    const help = runCli(['dashboard', '--help']).stdout.toString();
+    expect(help).toContain('--host');
+    expect(help).toContain('--port');
+    expect(help).not.toContain('not yet implemented');
   });
 });

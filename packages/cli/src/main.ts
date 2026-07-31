@@ -5,9 +5,10 @@ import { Command } from 'commander';
 import packageJson from '../package.json' with { type: 'json' };
 import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
+import { dashboardCommand } from './dashboard';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
 import { doctorCommand } from './doctor';
-import { CliExit, isKnownCliUserError, toExitCode } from './exit';
+import { isKnownCliUserError, toExitCode } from './exit';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
 import { providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
@@ -102,9 +103,9 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
   program
     .command('dashboard')
     .description(m.cli_dashboard_description())
-    .action(() => {
-      throw new CliExit(1, m.cli_dashboard_not_yet_implemented());
-    });
+    .option('--host <host>', m.cli_run_option_host_description())
+    .option('--port <port>', m.cli_run_option_port_description())
+    .action((options) => dashboardCommand(options));
   const provider = program.command('provider').description(m.cli_provider_description());
   provider
     .command('list')
