@@ -373,7 +373,101 @@
         "description": "Modify the outbound request for this Provider before it is sent upstream.",
         "json_label": "Request transforms JSON",
         "invalid": "Invalid transform at {path}: {code}",
-        "empty": "No request transforms configured."
+        "empty": "No request transforms configured.",
+        "condition": {
+          "editor_title": "Request condition editor",
+          "field": {
+            "title": "Field",
+            "provider_id": "Provider ID",
+            "provider_kind": "Provider kind",
+            "provider_protocol": "Provider protocol",
+            "current_model": "Current model",
+            "requested_model": "Requested model",
+            "source_protocol": "Source protocol",
+            "target_protocol": "Target protocol",
+            "method": "Request method",
+            "url": "Request URL",
+            "current_body": "Current body field",
+            "original_body": "Original body field",
+            "current_header": "Current header",
+            "original_header": "Original header",
+            "current_body_path": "Current body field path",
+            "original_body_path": "Original body field path",
+            "current_header_name": "Current header name",
+            "original_header_name": "Original header name"
+          },
+          "operator": {
+            "title": "Operator",
+            "equals": "Equals",
+            "not_equal": "Not equal",
+            "greater_than": "Greater than",
+            "greater_than_or_equal": "Greater than or equal",
+            "less_than": "Less than",
+            "less_than_or_equal": "Less than or equal",
+            "in": "In",
+            "not_in": "Not in",
+            "exists": "Exists",
+            "does_not_exist": "Does not exist",
+            "pattern": "Matches pattern",
+            "regex": "Regex"
+          },
+          "combinator": {
+            "title": "Condition combinator",
+            "and": "All",
+            "or": "Any"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "value_source": {
+            "title": "Value source",
+            "value": "Value",
+            "field": "Field",
+            "expression": "Expression",
+            "expression_title": "Compare against an expression"
+          },
+          "expression_kind": {
+            "title": "Expression kind",
+            "field": "Field",
+            "value": "Value",
+            "function": "Function"
+          },
+          "function": {
+            "title": "Function",
+            "wrap_title": "Wrap the field in a function",
+            "none": "No function",
+            "none_title": "Use the field directly",
+            "add": "Add",
+            "subtract": "Subtract",
+            "multiply": "Multiply",
+            "divide": "Divide",
+            "min": "Minimum",
+            "max": "Maximum",
+            "abs": "Absolute value",
+            "mod": "Remainder",
+            "upper": "Uppercase",
+            "lower": "Lowercase",
+            "concat": "Concatenate",
+            "condition": "Conditional",
+            "if_null": "If null",
+            "concat_arrays": "Concatenate arrays",
+            "merge_objects": "Merge objects"
+          },
+          "action": {
+            "not": "Not",
+            "not_title": "Invert this condition group",
+            "add_condition": "Add condition",
+            "add_group": "Add group",
+            "remove_condition": "Remove condition",
+            "remove_group": "Remove group",
+            "move_up": "Move up",
+            "move_down": "Move down"
+          },
+          "regex": {
+            "source": "Regular expression",
+            "flags": "Regex flags"
+          }
+        }
       },
       "form": {
         "label_id": "Provider ID",
