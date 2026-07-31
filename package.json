@@ -25,6 +25,8 @@
       "@types/bun": "^1.3.14",
       "@inlang/paraglide-js": "2.22.0",
       "@lobehub/icons-static-svg": "1.93.0",
+      "date-fns": "^4.4.0",
+      "@date-fns/tz": "^1.5.0",
       "es-toolkit": "^1.49.0",
       "lru-cache": "^11.5.2",
       "jose": "^6.2.3",

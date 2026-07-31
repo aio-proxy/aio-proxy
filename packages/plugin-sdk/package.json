@@ -33,7 +33,9 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "catalog:",
+    "@date-fns/tz": "catalog:",
     "ai": "catalog:",
+    "date-fns": "catalog:",
     "eventsource-parser": "catalog:",
     "zod": "catalog:"
   },
