@@ -26,6 +26,10 @@ jobs:
     # Publish only from the default branch; never from a feature branch or tag dispatch.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    env:
+      # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
+      # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
+      LEFTHOOK: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,3 +63,24 @@ jobs:
           # every package exists and its trusted publisher is configured on npmjs.com,
           # delete the secret so this resolves to empty and publishing runs on OIDC alone.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # homebrew-tap listens for repository_dispatch aio-proxy-release and opens a
+      # formula update PR. GITHUB_TOKEN cannot dispatch into another repo, so this
+      # uses HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
+      - name: Notify Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo 'HOMEBREW_TAP_TOKEN secret is not configured' >&2
+            exit 1
+          fi
+          version="$(gh release view --json tagName --jq '.tagName')"
+          version="${version#v}"
+          GH_TOKEN="${HOMEBREW_TAP_TOKEN}" gh api --method POST \
+            repos/aio-proxy/homebrew-tap/dispatches \
+            --input - <<EOF
+          {"event_type":"aio-proxy-release","client_payload":{"version":"${version}"}}
+          EOF
