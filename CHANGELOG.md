@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.1.0](compare/v0.0.1...v0.1.0) (2026-07-31)
+
+### Features
+
+* **cli:** add config show/edit/validate/path (no set/get) 363941a
+* **cli:** add reload command hitting /admin/reload b8058f0
+* **cli:** add service subtree, doctor, completion b79a93e
+* **cli:** add status command (shallow + --deep) 572f095
+* **cli:** exit-code contract (0 ok / 1 unrecoverable / 2 transient) 6c4d46a
+* **cli:** let plugin add install ai-sdk provider packages c3bc99b
+* complete streaming compression observability a138755
+* **config:** add retryAfterCapMs and share retryAfterMilliseconds a7ff8c7
+* **dashboard:** add request transform codecs 8b10f12
+* **dashboard:** edit request transforms as json 7ee6014
+* **dashboard:** edit request transforms visually 2cb4672
+* **dashboard:** edit transform conditions visually 271bbe5
+* **pipeline:** add ProviderCooldownStore backed by lru-cache dfb318e
+* **pipeline:** write/skip/synthesize provider cooldown on 429 381c404
+* **plugin-sdk:** define runtime fetch traffic 7cf9a70
+* **protocol:** add adapter.errors.rateLimited native 429 builder 0c4d3d6
+* **server-state:** provide ProviderCooldownStore on the route source a3297e6
+* **server:** add attempt response observation collector e432e7e
+* **server:** add loopback POST /admin/reload and real /health version 2e7c900
+* **server:** apply provider request transforms a4fe743
+* **server:** classify plugin runtime fetch traffic 6f24814
+* **server:** evaluate provider request transforms e11f608
+* **server:** observe attempt stream semantics 64180bf
+* **types:** define provider request transforms 82f85b9
+
+### Bug Fixes
+
+* address provider transform review findings d2425c6
+* align streaming observation metrics 5784585
+* clear stale transform JSON diagnostics ab20e18
+* **cli:** exit unrecoverable on bad startup config 1fdf693
+* **cli:** harden control-plane URLs, unit escaping, and config edit 520f507
+* **cli:** harden service unit and status probe 1a7a89b
+* **cli:** honor config bind for status/reload/doctor and bracket IPv6 URLs 65ae3e2, closes #97
+* **cli:** honor config bind, load service.env in validate, await editor 4985f6a
+* **cli:** load service env as data in the daemon, not via shell 7beb4c4
+* **cli:** make managed service resolve native binary and provider env 3ecb877
+* **cli:** signal daemon-down and transient reload via exit code 2d73ecb
+* **dashboard:** preserve pending transform drafts 9157655
+* **dashboard:** recover transform validity after rollback e3e02fe
+* **dashboard:** refine condition value editing aaa44cc
+* **dashboard:** restore rejected json drafts 00a9c0a
+* **dashboard:** stabilize transform condition editing 0f804ae
+* **dashboard:** validate request transform conditions e376db3
+* **dashboard:** validate request transform drafts 648c8af
+* **dashboard:** wait for transform json validation df5d8d0
+* **github-copilot:** mark credential traffic as control ab5e85f
+* **google-antigravity:** classify runtime fetch traffic e074890
+* keep counting after recoverable SSE errors 995f209
+* **kimi-code:** mark oauth traffic as control 2c78525
+* **kimi-code:** preserve runtime fetch metadata typing e142118
+* **openai-chatgpt:** mark token traffic as control 7111ceb
+* **plugin-sdk:** pass through non-ok event-stream responses without terminal enforcement 9afcc55
+* **plugin-sdk:** restore plugin api version one ace4f61
+* **server:** declare @ai-sdk/provider for attempt cooldown test ff941a5
+* **server:** define null runtime fetch default 82cef19
+* **server:** guard scalar transform conditions ef63587
+* **server:** preserve observed zero SSE frame maximum 8d96be6
+* **server:** preserve transform absence semantics 1c818be
+* **server:** preserve transformed request body identity 3d0aa1c
+* **server:** preserve TTFT observation timestamps d26b62a
+* **server:** reject browser-originated admin reloads 58219f4
+* **server:** split attempt loop context e544a09
+* **types:** require canonical header transform reads 0545679
+* **xai-grok:** mark oauth traffic as control 489ef38
+
 ## 0.0.1 (2026-07-29)
 
 ### ⚠ BREAKING CHANGES
