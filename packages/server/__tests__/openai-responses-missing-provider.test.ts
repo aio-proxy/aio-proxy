@@ -43,6 +43,6 @@ describe('OpenAI Responses missing provider boundary', () => {
     expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).not.toContain('text/event-stream');
     expect(body.error.code).toBe('provider_not_installed');
-    expect(body.error.message).toContain('run aio-proxy provider install @vendor/missing-provider');
+    expect(body.error.message).toContain('run aio-proxy plugin add @vendor/missing-provider');
   });
 });

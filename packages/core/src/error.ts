@@ -49,7 +49,7 @@ export class ProviderNotInstalledError extends AioProxyError {
     readonly providerId: string,
     readonly packageName: string,
   ) {
-    const hint = `run aio-proxy provider install ${packageName}`;
+    const hint = `run aio-proxy plugin add ${packageName}`;
     super(
       'ProviderNotInstalledError',
       `${providerId}: ai-sdk provider package "${packageName}" is not installed; ${hint}`,

@@ -4,6 +4,7 @@ import {
   AtomicConfigCommitUncertainError,
   ConfigSpecValidationError,
   findInstalledNpmPackage,
+  isAiSdkProviderModule,
   loadPluginRegistry,
   type NpmPackageInfo,
   observedPromiseDeadline,
@@ -43,24 +44,51 @@ function descriptorFromModule(packageName: string, imported: unknown): PluginDes
   return typed;
 }
 
+async function importInstalledModule(
+  packageName: string,
+  installed: NpmPackageInfo,
+  deps: PluginLifecycleDeps,
+): Promise<unknown> {
+  const attempt = crypto.randomUUID();
+  const entrypoint = pathToFileURL(installed.entrypoint);
+  entrypoint.searchParams.set('aio_proxy_cli_attempt', attempt);
+  return observedPromiseDeadline(
+    deps.importPackage({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt }),
+    {
+      timeoutMs: deps.importTimeoutMs ?? PLUGIN_IMPORT_TIMEOUT_MS,
+      timeoutError: () => new PluginDescriptorInvalidError(packageName),
+    },
+  );
+}
+
 export async function loadDescriptor(
   packageName: string,
   installed: NpmPackageInfo,
   deps: PluginLifecycleDeps,
 ): Promise<PluginDescriptor<unknown>> {
-  const attempt = crypto.randomUUID();
-  const entrypoint = pathToFileURL(installed.entrypoint);
-  entrypoint.searchParams.set('aio_proxy_cli_attempt', attempt);
-  return descriptorFromModule(
-    packageName,
-    await observedPromiseDeadline(
-      deps.importPackage({ packageName, version: installed.version, entrypoint: entrypoint.href, attempt }),
-      {
-        timeoutMs: deps.importTimeoutMs ?? PLUGIN_IMPORT_TIMEOUT_MS,
-        timeoutError: () => new PluginDescriptorInvalidError(packageName),
-      },
-    ),
-  );
+  return descriptorFromModule(packageName, await importInstalledModule(packageName, installed, deps));
+}
+
+// `plugin add` installs both aio plugins (default PluginDescriptor export) and
+// AI SDK provider packages (e.g. @ai-sdk/anthropic), which expose only a `create*`
+// factory and no descriptor. Classify the freshly installed module by importing it
+// once so the caller can install a provider into the cache without inventing a
+// descriptor, while a package that is neither is still rejected as invalid.
+export type InstalledPackageClassification =
+  | { readonly kind: 'plugin'; readonly descriptor: PluginDescriptor<unknown> }
+  | { readonly kind: 'ai-sdk-provider' };
+
+export async function classifyInstalledPackage(
+  packageName: string,
+  installed: NpmPackageInfo,
+  deps: PluginLifecycleDeps,
+): Promise<InstalledPackageClassification> {
+  const imported = await importInstalledModule(packageName, installed, deps);
+  if (isRecord(imported) && isPluginDescriptor(imported['default'])) {
+    return { kind: 'plugin', descriptor: descriptorFromModule(packageName, imported) };
+  }
+  if (isAiSdkProviderModule(imported)) return { kind: 'ai-sdk-provider' };
+  throw new PluginDescriptorInvalidError(packageName);
 }
 
 export async function stageDescriptor(

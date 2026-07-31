@@ -1,0 +1,157 @@
+import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { ConfigValidationError } from '../errors';
+import { CliExit } from '../exit';
+import { configEdit, configPathCommand, configShow, configValidate, parseEditorCommand } from './config-cmd';
+
+let home: string;
+let prevHome: string | undefined;
+
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), 'aio-cfg-'));
+  prevHome = process.env.AIO_PROXY_HOME;
+  process.env.AIO_PROXY_HOME = home;
+});
+
+afterEach(() => {
+  if (prevHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = prevHome;
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('show redacts secret-like values and keeps comments out of the parsed output', async () => {
+  writeFileSync(
+    join(home, 'config.jsonc'),
+    '{ /* comment */ "server": { "port": 9317, "password": "s3cr3t" }, "providers": {} }\n',
+  );
+  const lines: string[] = [];
+  await configShow({}, (l) => lines.push(l));
+  const out = lines.join('\n');
+  expect(out).not.toContain('s3cr3t');
+});
+
+test('validate resolves for a valid config', async () => {
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "port": 9317 }, "providers": {} }\n');
+  const lines: string[] = [];
+  await expect(configValidate(undefined, (l) => lines.push(l))).resolves.toBeUndefined();
+  expect(lines.join('\n')).toContain('valid');
+});
+
+test('validate throws a user-facing error for malformed config', async () => {
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "port": "not-a-number" }, "providers": {} }\n');
+  let caught: unknown;
+  await configValidate(undefined, () => {}).catch((err) => {
+    caught = err;
+  });
+  expect(caught).toBeInstanceOf(ConfigValidationError);
+});
+
+test('validate reports syntax errors as a user-facing validation error', async () => {
+  // Invalid JSONC (unclosed brace) makes AtomicConfigFile.read() throw before
+  // parseRuntimeConfig runs; it must still surface as ConfigValidationError so
+  // the exit-code contract classifies it unrecoverable (1), not transient (2).
+  writeFileSync(join(home, 'config.jsonc'), '{ "server": { "port": 9317 ');
+  let caught: unknown;
+  await configValidate(undefined, () => {}).catch((err) => {
+    caught = err;
+  });
+  expect(caught).toBeInstanceOf(ConfigValidationError);
+});
+
+test('path prints the resolved config file path', async () => {
+  writeFileSync(join(home, 'config.jsonc'), '{ "providers": {} }\n');
+  const lines: string[] = [];
+  configPathCommand((l) => lines.push(l));
+  expect(lines.join('\n')).toContain(home);
+});
+
+test('edit bootstraps the config dir and a default config on a fresh install', async () => {
+  // Point at a nested dir that does not exist yet — the fresh-install case where
+  // ~/.aio-proxy has never been created. Without bootstrapping, the editor would
+  // have no directory to save into.
+  const freshHome = join(home, 'nested', 'aio-proxy-home');
+  process.env.AIO_PROXY_HOME = freshHome;
+  const prevEditor = process.env.EDITOR;
+  const prevVisual = process.env.VISUAL;
+  // `true` exits 0 immediately, so no interactive editor blocks the test.
+  process.env.EDITOR = 'true';
+  delete process.env.VISUAL;
+  try {
+    const target = join(freshHome, 'config.jsonc');
+    expect(existsSync(target)).toBe(false);
+    await configEdit();
+    expect(existsSync(target)).toBe(true);
+    // The seeded file must be a parseable default config, not an empty stub.
+    const seeded = JSON.parse(readFileSync(target, 'utf8')) as { providers?: unknown };
+    expect(seeded.providers).toBeDefined();
+  } finally {
+    if (prevEditor === undefined) delete process.env.EDITOR;
+    else process.env.EDITOR = prevEditor;
+    if (prevVisual !== undefined) process.env.VISUAL = prevVisual;
+  }
+});
+
+test('edit surfaces a nonzero editor exit instead of reporting success', async () => {
+  // `EDITOR=false` exits 1 without touching the file. configEdit must await the
+  // editor and propagate that failure (CliExit) so `config edit` does not exit 0
+  // while nothing was saved.
+  writeFileSync(join(home, 'config.jsonc'), '{ "providers": {} }\n');
+  const prevEditor = process.env.EDITOR;
+  const prevVisual = process.env.VISUAL;
+  process.env.EDITOR = 'false';
+  delete process.env.VISUAL;
+  try {
+    let caught: unknown;
+    await configEdit().catch((err) => {
+      caught = err;
+    });
+    expect(caught).toBeInstanceOf(CliExit);
+    expect((caught as CliExit).code).toBe(1);
+  } finally {
+    if (prevEditor === undefined) delete process.env.EDITOR;
+    else process.env.EDITOR = prevEditor;
+    if (prevVisual !== undefined) process.env.VISUAL = prevVisual;
+  }
+});
+
+test('validate resolves env templates defined only in service.env', async () => {
+  // `run` loads service.env before parsing, so a proxy URL built from a var that
+  // lives only in service.env resolves at runtime. validate must load it too, or
+  // it would falsely reject a config that `run` accepts.
+  writeFileSync(
+    join(home, 'config.jsonc'),
+    '{ "providers": {}, "proxy": "http://{{env.AIO_TEST_PROXY_HOST}}:8080" }\n',
+  );
+  writeFileSync(join(home, 'service.env'), 'AIO_TEST_PROXY_HOST=127.0.0.1\n');
+  const prev = process.env.AIO_TEST_PROXY_HOST;
+  delete process.env.AIO_TEST_PROXY_HOST;
+  try {
+    const lines: string[] = [];
+    await expect(configValidate(undefined, (l) => lines.push(l))).resolves.toBeUndefined();
+    expect(lines.join('\n')).toContain('valid');
+  } finally {
+    if (prev === undefined) delete process.env.AIO_TEST_PROXY_HOST;
+    else process.env.AIO_TEST_PROXY_HOST = prev;
+  }
+});
+test('parseEditorCommand splits an editor command with arguments (code --wait)', () => {
+  // The common `EDITOR="code --wait"` case must not be treated as one filename.
+  expect(parseEditorCommand('code --wait')).toEqual(['code', '--wait']);
+});
+
+test('parseEditorCommand keeps a quoted path with spaces as a single token', () => {
+  // macOS VS Code lives under a path with spaces; only the trailing flag is separate.
+  const command = '"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --wait';
+  expect(parseEditorCommand(command)).toEqual([
+    '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+    '--wait',
+  ]);
+});
+
+test('parseEditorCommand collapses surrounding whitespace to no tokens', () => {
+  // A whitespace-only value yields nothing; configEdit then falls back to vi.
+  expect(parseEditorCommand('   ')).toEqual([]);
+});

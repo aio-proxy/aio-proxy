@@ -29,14 +29,6 @@ export function packagesDir(): string {
   return join(aioHome(), 'packages');
 }
 
-export function pidPath(): string {
-  return join(aioHome(), 'aio-proxy.pid');
-}
-
-export function logPath(): string {
-  return join(aioHome(), 'aio-proxy.log');
-}
-
 export function tmpDir(): string {
   return join(aioHome(), 'tmp');
 }

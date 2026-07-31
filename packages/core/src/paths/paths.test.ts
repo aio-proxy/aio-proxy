@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { aioHome, configPath, dbPath, logPath, packagesDir, pidPath, tmpDir } from '.';
+import { aioHome, configPath, dbPath, packagesDir, tmpDir } from '.';
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -22,8 +22,6 @@ describe('paths', () => {
     expect(configPath()).toBe('/tmp/foo/config.jsonc');
     expect(dbPath()).toBe('/tmp/foo/aio-proxy.db');
     expect(packagesDir()).toBe('/tmp/foo/packages');
-    expect(pidPath()).toBe('/tmp/foo/aio-proxy.pid');
-    expect(logPath()).toBe('/tmp/foo/aio-proxy.log');
     expect(tmpDir()).toBe('/tmp/foo/tmp');
   });
 
@@ -44,8 +42,6 @@ describe('paths', () => {
     expect(configPath().endsWith('/config.jsonc')).toBe(true);
     expect(dbPath().endsWith('/aio-proxy.db')).toBe(true);
     expect(packagesDir().endsWith('/packages')).toBe(true);
-    expect(pidPath().endsWith('/aio-proxy.pid')).toBe(true);
-    expect(logPath().endsWith('/aio-proxy.log')).toBe(true);
     expect(tmpDir().endsWith('/tmp')).toBe(true);
   });
 
