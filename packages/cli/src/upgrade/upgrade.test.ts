@@ -30,3 +30,35 @@ test('resolveUpgradeMethod: priority brew > bun > npm > pnpm', () => {
   expect(resolveUpgradeMethod('/pnpm/bin/aio-proxy', { pnpm: '/pnpm/bin' })).toBe('pnpm');
   expect(resolveUpgradeMethod('/home/u/.local/bin/aio-proxy', dirs)).toBe('binary');
 });
+
+import { NPM_REGISTRY } from './constants';
+import { buildBunInstallArgs, buildHomebrewUpdateArgs, buildNpmInstallArgs, buildPnpmInstallArgs } from './methods';
+
+test('buildBunInstallArgs pins registry and version', () => {
+  expect(buildBunInstallArgs('1.2.3', NPM_REGISTRY)).toEqual([
+    'add',
+    '-g',
+    `--registry=${NPM_REGISTRY}`,
+    'aio-proxy@1.2.3',
+  ]);
+});
+test('buildNpmInstallArgs pins registry and version', () => {
+  expect(buildNpmInstallArgs('1.2.3', NPM_REGISTRY)).toEqual([
+    'install',
+    '-g',
+    `--registry=${NPM_REGISTRY}`,
+    'aio-proxy@1.2.3',
+  ]);
+});
+test('buildPnpmInstallArgs pins registry and version', () => {
+  expect(buildPnpmInstallArgs('1.2.3', NPM_REGISTRY)).toEqual([
+    'add',
+    '-g',
+    `--registry=${NPM_REGISTRY}`,
+    'aio-proxy@1.2.3',
+  ]);
+});
+test('buildHomebrewUpdateArgs switches on force', () => {
+  expect(buildHomebrewUpdateArgs(false)).toEqual(['upgrade', 'aio-proxy/tap/aio-proxy']);
+  expect(buildHomebrewUpdateArgs(true)).toEqual(['reinstall', 'aio-proxy/tap/aio-proxy']);
+});
