@@ -60,7 +60,7 @@ describe('createApiProvider OpenAI stream protection', () => {
       const response = await provider.passthrough(new Request(`https://proxy.test${path}?stream=true`));
 
       expect(upstream.decompress()).toBe(false);
-      expect(upstream.acceptEncoding()).toBe('gzip, deflate, br, zstd');
+      expect(upstream.acceptEncoding()).toBe('identity');
       expect(await response.text()).toBe(terminal);
       expect(upstream.secondPulls()).toBe(0);
       expect(upstream.cancelled()).toBe(true);

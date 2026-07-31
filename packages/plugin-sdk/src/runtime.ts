@@ -61,8 +61,14 @@ export type TokenCountCapability = {
   readonly countTokens: (input: TokenCountInput) => Promise<TokenCountResult>;
 };
 
+export type RawTransportOptions = { readonly upstreamStream: boolean };
+
 export type RawTransport = {
-  readonly invoke: (request: Request, context?: LogicalRequestContext) => Promise<Response>;
+  readonly invoke: (
+    request: Request,
+    context?: LogicalRequestContext,
+    options?: RawTransportOptions,
+  ) => Promise<Response>;
 };
 
 export type RawResolver = (input: {

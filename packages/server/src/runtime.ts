@@ -12,8 +12,14 @@ export type RuntimeModelMetadata = {
   readonly protocol?: ProviderProtocol;
 };
 
+export type RawTransportOptions = { readonly upstreamStream: boolean };
+
 export type RawTransport = {
-  readonly invoke: (request: Request, context?: LogicalRequestContext) => Promise<Response>;
+  readonly invoke: (
+    request: Request,
+    context?: LogicalRequestContext,
+    options?: RawTransportOptions,
+  ) => Promise<Response>;
 };
 
 export type RuntimeRawCapability = {

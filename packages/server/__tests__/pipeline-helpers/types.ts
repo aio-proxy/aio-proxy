@@ -46,6 +46,13 @@ export type RecordedAttempt = {
   readonly errorCode?: string;
   readonly stream?: boolean;
   readonly ttftMs?: number;
+  readonly transportObservation?: 'sse' | 'body' | 'unavailable' | 'ambiguous';
+  readonly upstreamHeadersMs?: number;
+  readonly firstUpstreamByteMs?: number;
+  readonly firstSseEventMs?: number;
+  readonly contentGapP95Ms?: number;
+  readonly maxSseFramesPerRead?: number;
+  readonly contentEncoding?: 'identity' | 'gzip' | 'deflate' | 'br' | 'zstd' | 'multiple' | 'other';
 };
 
 // Projected terminal summary of one request trace, plus the selected attempt

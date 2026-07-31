@@ -10,6 +10,7 @@ import {
   type Captured,
   deferred,
   MAX_PASSTHROUGH_JSON_BYTES,
+  observeContentAt,
   type PassthroughUsageOptions,
   ttftProperty,
   type UsageCompletion,
@@ -18,7 +19,16 @@ import {
 import { finalizeUsage } from './usage-validation';
 
 export function passthroughCapture(
-  { response, protocol, providerId, modelId, requestedModelId, onResponseId, startedAt }: PassthroughUsageOptions,
+  {
+    response,
+    protocol,
+    providerId,
+    modelId,
+    requestedModelId,
+    onResponseId,
+    startedAt,
+    observation,
+  }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
   if (response.status < 200 || response.status >= 400) {
@@ -32,12 +42,14 @@ export function passthroughCapture(
   const terminal = deferred<UsageCompletion>();
   const reader = response.body.getReader();
   const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
-  const sseObserver = isSse ? createPassthroughSseUsageObserver(protocol) : undefined;
+  let firstTokenAt: number | undefined;
+  const sseObserver = isSse
+    ? createSseUsageObserver(protocol, observation, (contentAt) => (firstTokenAt ??= contentAt))
+    : undefined;
   const decoder = isSse ? new TextDecoder() : undefined;
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
   let captureJson = !isSse;
-  let firstTokenAt: number | undefined;
   let released = false;
   const releaseReader = () => {
     if (released) return;
@@ -52,11 +64,6 @@ export function passthroughCapture(
         if (!next.done) {
           if (sseObserver !== undefined && decoder !== undefined) {
             sseObserver.feed(decoder.decode(next.value, { stream: true }));
-            // Align TTFT with the first content token, not the first byte: only
-            // mark it once the observer has parsed a generated text/reasoning delta.
-            if (firstTokenAt === undefined && startedAt !== undefined && sseObserver.sawContent()) {
-              firstTokenAt = performance.now();
-            }
           } else if (captureJson) {
             const nextByteLength = byteLength + next.value.byteLength;
             if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
@@ -136,6 +143,18 @@ export function passthroughCapture(
 function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
   observer.feed(decoder.decode());
   return observer.finish();
+}
+
+function createSseUsageObserver(
+  protocol: PassthroughUsageOptions['protocol'],
+  observation: PassthroughUsageOptions['observation'],
+  onContent: (at: number) => void,
+): PassthroughSseUsageObserver {
+  const onEvent = observation?.observeSseEvent;
+  return createPassthroughSseUsageObserver(protocol, {
+    ...(onEvent === undefined ? {} : { onEvent }),
+    onContent: () => onContent(observeContentAt(observation)),
+  });
 }
 
 function decodeChunks(chunks: readonly Uint8Array[], byteLength: number): string {

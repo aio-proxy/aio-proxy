@@ -71,6 +71,32 @@ describe('shared protocol routing pipeline raw fallback', () => {
     ]);
   });
 
+  test('keeps self-managed raw transport observations isolated across fallback attempts', async () => {
+    const primary = rawProvider({
+      id: 'primary',
+      invoke: async () => Response.json({ provider: 'primary' }, { status: 503 }),
+    });
+    const backup = rawProvider({
+      id: 'backup',
+      invoke: async () => Response.json({ provider: 'backup' }),
+    });
+    const harness = pipeline([primary, backup]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+    expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
+
+    expect(
+      harness.recording.attempts.map(({ providerId, transportObservation }) => ({
+        providerId,
+        transportObservation,
+      })),
+    ).toEqual([
+      { providerId: 'primary', transportObservation: 'unavailable' },
+      { providerId: 'backup', transportObservation: 'unavailable' },
+    ]);
+  });
+
   test('does not fall back after an ordinary raw 400 response', async () => {
     const primary = rawProvider({
       id: 'primary',

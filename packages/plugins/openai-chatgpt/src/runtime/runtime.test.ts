@@ -95,6 +95,7 @@ describe('OpenAI ChatGPT runtime', () => {
       body,
       headers: {
         authorization: 'Bearer caller-token',
+        'accept-encoding': 'br',
         host: '127.0.0.1:22078',
         'x-keep': '1',
       },

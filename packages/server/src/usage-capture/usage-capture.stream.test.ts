@@ -2,10 +2,63 @@ import { describe, expect, test } from 'bun:test';
 
 import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
+import { createAttemptResponseObservation } from '../response-observation';
 import { createUsageCapture } from './index';
 import { drain, settle } from './test-support';
 
 describe('usage capture stream', () => {
+  test('model capture records every content delta and ignores metadata and tool deltas', async () => {
+    const times = [100, 105];
+    const observation = createAttemptResponseObservation({ startedAt: 90, now: () => times.shift() ?? 105 });
+    const stream = new ReadableStream<TextStreamPart<ToolSet>>({
+      start(controller) {
+        controller.enqueue({ type: 'tool-input-delta', id: 'tool-1', delta: '{' });
+        controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'a' });
+        controller.enqueue({ type: 'reasoning-delta', id: 'reasoning-1', text: 'b' });
+        controller.close();
+      },
+    });
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: 90,
+      observation,
+      stream,
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(observation.snapshot().contentGapP95Ms).toBe(5);
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBe(10);
+  });
+
+  test('continues when content observation throws', async () => {
+    const base = createAttemptResponseObservation({ startedAt: 0 });
+    const observation = {
+      ...base,
+      observeContent: () => {
+        throw new Error('observer failed');
+      },
+    };
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: 0,
+      observation,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'hello' });
+          controller.close();
+        },
+      }),
+    });
+
+    await expect(drain(captured.value)).resolves.toEqual([{ type: 'text-delta', id: 'text-1', text: 'hello' }]);
+    const completion = await captured.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
+  });
+
   test('model stream reads stay bounded by downstream demand', async () => {
     let pulls = 0;
     let index = 0;

@@ -1,3 +1,4 @@
+import type { RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { type ApiProvider, ProviderProtocol } from '@aio-proxy/types';
 
 import { wrapOpenAIProtocolFetch } from '../openai-stream-fetch';
@@ -32,7 +33,7 @@ export type ApiProviderConfig = ApiProvider & {
 };
 
 export type ApiProviderInstance = ApiProvider & {
-  readonly passthrough: (req: Request) => Promise<Response>;
+  readonly passthrough: (req: Request, options?: RawTransportOptions) => Promise<Response>;
 };
 
 export type ApiProviderFactoryOptions = {
@@ -58,16 +59,20 @@ export function createApiProvider(
     ...(config.models === undefined ? {} : { models: config.models }),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     protocol: config.protocol,
-    async passthrough(req) {
+    async passthrough(req, options) {
       const upstreamUrl = rewrittenUrl(baseURL, req.url);
       const headers = upstreamHeaders(req.headers, config);
 
-      const response = await fetchUpstream(upstreamUrl, {
-        body: req.body,
-        headers,
-        method: req.method,
-        signal: req.signal,
-      });
+      const response = await fetchUpstream(
+        upstreamUrl,
+        {
+          body: req.body,
+          headers,
+          method: req.method,
+          signal: req.signal,
+        },
+        options,
+      );
 
       if (trace === undefined || response.body === null) {
         return new Response(response.body, decodedBodyResponseInit(response));
@@ -87,6 +92,7 @@ function upstreamHeaders(
 ): Headers {
   const headers = new Headers(inbound);
   headers.delete('host');
+  headers.delete('accept-encoding');
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
   const apiKey = resolveApiKey(config.apiKey);
   if (apiKey !== undefined) {

@@ -46,7 +46,10 @@ export function materializeRuntimeProvider(
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       hasApiKey: provider.apiKey !== undefined,
       raw: {
-        resolve: ({ protocol }) => (protocol === provider.protocol ? { invoke: provider.passthrough } : undefined),
+        resolve: ({ protocol }) =>
+          protocol === provider.protocol
+            ? { invoke: (request, _context, options) => provider.passthrough(request, options) }
+            : undefined,
       },
       ...(apiBridge === undefined
         ? {}

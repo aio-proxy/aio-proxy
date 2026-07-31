@@ -11,6 +11,8 @@ export type BodyTapTerminal = {
 export type BodyTapObserver = {
   readonly chunk: (text: string) => void;
   readonly terminal: (terminal: BodyTapTerminal) => void;
+  readonly sourceRead?: (byteLength: number) => void;
+  readonly sseFrames?: (count: number) => void;
 };
 
 export function tapTextBody(
@@ -25,6 +27,8 @@ export function tapTextBody(
   let buffered = '';
   let byteLength = 0;
   let diagnosticActive = true;
+  let sourceReadActive = true;
+  let sseFramesActive = true;
   let settled = false;
   const sourceReader = () => (reader ??= source.getReader());
   const terminal = (value: Omit<BodyTapTerminal, 'byteLength'>) => {
@@ -34,23 +38,46 @@ export function tapTextBody(
       observer.terminal({ ...value, byteLength });
     } catch {}
   };
-  const emit = (text: string, final = false) => {
-    if (!diagnosticActive) return;
+  const chunk = (text: string) => {
+    if (!diagnosticActive || text === '') return;
     try {
-      if (!sse) {
-        if (text !== '') observer.chunk(text);
-        return;
-      }
-      buffered += text;
-      let end: number;
-      while ((end = sseEventEnd(buffered)) >= 0) {
-        observer.chunk(buffered.slice(0, end));
-        buffered = buffered.slice(end);
-      }
-      if (final && buffered !== '') observer.chunk(buffered);
+      observer.chunk(text);
     } catch (error) {
       diagnosticActive = false;
       terminal({ outcome: 'error', error });
+    }
+  };
+  const emit = (text: string, final = false): number => {
+    if (!sse) {
+      chunk(text);
+      return 0;
+    }
+    buffered += text;
+    let count = 0;
+    let end: number;
+    while ((end = sseEventEnd(buffered)) >= 0) {
+      const frame = buffered.slice(0, end);
+      buffered = buffered.slice(end);
+      count++;
+      chunk(frame);
+    }
+    if (final) chunk(buffered);
+    return count;
+  };
+  const sourceRead = (value: number) => {
+    if (!sourceReadActive || observer.sourceRead === undefined) return;
+    try {
+      observer.sourceRead(value);
+    } catch {
+      sourceReadActive = false;
+    }
+  };
+  const sseFrames = (value: number) => {
+    if (!sseFramesActive || observer.sseFrames === undefined) return;
+    try {
+      observer.sseFrames(value);
+    } catch {
+      sseFramesActive = false;
     }
   };
 
@@ -71,7 +98,9 @@ export function tapTextBody(
           }
           byteLength += next.value.byteLength;
           controller.enqueue(next.value);
-          emit(decoder.decode(next.value, { stream: true }));
+          if (next.value.byteLength > 0) sourceRead(next.value.byteLength);
+          const frames = emit(decoder.decode(next.value, { stream: true }));
+          if (next.value.byteLength > 0) sseFrames(frames);
         } catch (error) {
           const cancelled = signal !== undefined && isInboundAbort(error, signal);
           terminal(cancelled ? { outcome: 'cancelled' } : { outcome: 'error', error });

@@ -4,6 +4,7 @@ import type { Config } from '@aio-proxy/types';
 import type { LogicalSessionResolution } from '../../../logical-session-store';
 import { withAttemptLogContext } from '../../../request-logging';
 import type { RequestTraceSession } from '../../../request-tracing';
+import { createAttemptResponseObservation, withAttemptResponseObservation } from '../../../response-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import { prioritizeAffinity } from '../affinity';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
@@ -23,6 +24,7 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly requestedModelId: string;
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
+  readonly streamRequested: boolean;
   readonly deferRelease: () => void;
   readonly resolution: LogicalSessionResolution;
   readonly release: () => void;
@@ -43,6 +45,7 @@ export async function attemptCandidates<TRequest, TContext>(
     request,
     session,
     source,
+    streamRequested,
   } = options;
   const affinityOrdered =
     resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
@@ -50,7 +53,6 @@ export async function attemptCandidates<TRequest, TContext>(
   const weightByProviderId =
     config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
 
-  const streamRequested = adapter.wantsStream(request, context);
   const logContext = {
     source,
     requestId: session.requestId,
@@ -81,10 +83,13 @@ export async function attemptCandidates<TRequest, TContext>(
 
   for (const [index, candidate] of ordered.entries()) {
     const provider = candidate.provider;
+    const startedAt = performance.now();
+    const observation = createAttemptResponseObservation({ startedAt });
     const slot: CandidateSlot = {
       index,
       candidate,
-      startedAt: performance.now(),
+      startedAt,
+      observation,
       hasNext: index < ordered.length - 1,
       trace: {
         ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
@@ -97,7 +102,12 @@ export async function attemptCandidates<TRequest, TContext>(
               : 'weight',
       },
       inAttempt: <T>(operation: () => T): T =>
-        withAttemptLogContext({ attemptIndex: index, providerId: provider.id, modelId: candidate.modelId }, operation),
+        withAttemptResponseObservation(observation, () =>
+          withAttemptLogContext(
+            { attemptIndex: index, providerId: provider.id, modelId: candidate.modelId },
+            operation,
+          ),
+        ),
       spanRef: { current: undefined },
     };
     try {

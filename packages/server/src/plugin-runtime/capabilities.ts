@@ -6,6 +6,7 @@ import type {
   ProviderExecutedTool,
   ProviderToolCapability,
   RawResolver,
+  RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
@@ -42,8 +43,12 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
         throw new PluginRawResolverError();
       }
       return {
-        async invoke(request: Request, context?: LogicalRequestContext): Promise<Response> {
-          const response = await transport.invoke(request, context);
+        async invoke(
+          request: Request,
+          context?: LogicalRequestContext,
+          options?: RawTransportOptions,
+        ): Promise<Response> {
+          const response = await transport.invoke(request, context, options);
           if (!(response instanceof Response)) throw new PluginRawTransportError();
           return response;
         },

@@ -85,4 +85,22 @@ describe('createOpenAIStreamFetch', () => {
     expect(response.headers.get('x-request-id')).toBe('req-1');
     expect(await response.text()).toBe(responsesTerminal);
   });
+
+  test('protects a platform-decoded unexpected SSE without decoding its stale encoding again', async () => {
+    const fetch = createOpenAIStreamFetch('openai-response', async () => {
+      return new Response(responsesTerminal, {
+        headers: {
+          'content-type': 'text/event-stream',
+          'content-encoding': 'gzip',
+          'content-length': String(responsesTerminal.length),
+        },
+      });
+    });
+
+    const response = await fetch('https://example.test/non-stream-sse', undefined, { upstreamStream: false });
+
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(response.headers.get('content-length')).toBeNull();
+    expect(await response.text()).toBe(responsesTerminal);
+  });
 });

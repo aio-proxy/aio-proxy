@@ -15,8 +15,8 @@ export async function attemptModelCandidate<TRequest, TContext>(
   model: ModelTransport,
   holder: InvocationHolder,
 ): Promise<AttemptStep> {
-  const { adapter, request, context, rawRequest, session, source, logicalRequest, release, deferRelease } = ctx;
-  const { index, candidate, startedAt, inAttempt } = slot;
+  const { adapter, rawRequest, session, source, logicalRequest, release, deferRelease } = ctx;
+  const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
 
   slot.trace.targetProtocol = model.targetProtocol?.(candidate.modelId);
@@ -47,9 +47,11 @@ export async function attemptModelCandidate<TRequest, TContext>(
     providerId: provider.id,
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
-    ...(ctx.streamRequested ? { startedAt } : {}),
-    stream: inAttempt(() =>
-      model.invoke({
+    startedAt,
+    observation,
+    stream: inAttempt(() => {
+      observation.markTransportUnavailable();
+      return model.invoke({
         context: logicalRequest,
         messages: candidateInvocation.messages,
         modelId: candidate.modelId,
@@ -59,8 +61,8 @@ export async function attemptModelCandidate<TRequest, TContext>(
         ...(candidateInvocation.providerTools === undefined
           ? {}
           : { providerTools: candidateInvocation.providerTools }),
-      }),
-    ),
+      });
+    }),
   });
   let capturedResponseId: string | undefined;
   const egressContext = {
@@ -89,7 +91,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
       return value;
     });
 
-  if (adapter.wantsStream(request, context)) {
+  if (ctx.streamRequested) {
     const stream = await preflightStream(captured.value);
     let response: Response;
     let egressCompletion: typeof captured.completion;
@@ -107,6 +109,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     session.finishFrom(
       ctx.emitter.settleSuccess(
         attemptSpan,
+        observation,
         commitResponseOnSuccess(terminalCompletion(egressCompletion, rawRequest.signal)).finally(release),
         ids,
         () => capturedResponseId,
@@ -125,6 +128,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   session.finishFrom(
     ctx.emitter.settleSuccess(
       attemptSpan,
+      observation,
       terminalCompletion(captured.completion, rawRequest.signal),
       ids,
       () => capturedResponseId,

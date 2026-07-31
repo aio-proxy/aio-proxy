@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 
 import { createObservedFetch, observeInboundRequest } from '.';
+import {
+  createAttemptResponseObservation,
+  type AttemptResponseObservation,
+  withAttemptResponseObservation,
+} from '../../response-observation';
 import type { ServerLog } from '../../server-log';
 import { withRequestLogContext } from '../context';
 import { captureFetch, type FetchCall, inDebugAttempt, reconstructed, terminals } from '../test-support';
@@ -13,6 +18,130 @@ test('non-debug fetch preserves the original input and init', async () => {
   await createObservedFetch(captureFetch(calls, () => new Response(null, { status: 204 })))(originalRequest, init);
 
   expect(calls).toEqual([{ input: originalRequest, init }]);
+});
+
+test('observes controlled identity SSE without enabling debug body logs', async () => {
+  const times = [10, 20, 25];
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => times.shift() ?? 25 });
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: one\n\ndata: two\n\n'));
+      controller.close();
+    },
+  });
+  const fetcher = createObservedFetch(
+    async () => new Response(source, { headers: { 'content-type': 'text/event-stream' } }),
+  );
+
+  const response = await withRequestLogContext({ requestId: 'quiet', debug: false, logger() {} }, () =>
+    withAttemptResponseObservation(observation, () =>
+      fetcher('https://upstream.test', { decompress: false } as RequestInit & { readonly decompress: false }),
+    ),
+  );
+  await response.text();
+
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    firstUpstreamByteMs: 20,
+    firstSseEventMs: 25,
+    maxSseFramesPerRead: 2,
+    contentEncoding: 'identity',
+  });
+});
+
+test('does not map compressed source reads to decoded SSE frames', async () => {
+  const times = [10, 20, 25];
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => times.shift() ?? 25 });
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: encoded bytes\n\n'));
+      controller.close();
+    },
+  });
+  const fetcher = createObservedFetch(
+    async () =>
+      new Response(source, {
+        headers: { 'content-encoding': 'gzip', 'content-type': 'text/event-stream' },
+      }),
+  );
+
+  const response = await withAttemptResponseObservation(observation, () =>
+    fetcher('https://upstream.test', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+  await response.text();
+
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    firstUpstreamByteMs: 20,
+    contentEncoding: 'gzip',
+  });
+});
+
+test('records non-stream headers without controlled body metrics', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(
+    async () => new Response('body', { headers: { 'content-type': 'application/json' } }),
+  );
+
+  const response = await withAttemptResponseObservation(observation, () => fetcher('https://upstream.test'));
+  await response.text();
+
+  expect(observation.snapshot()).toEqual({ transportObservation: 'body', upstreamHeadersMs: 10 });
+});
+
+test('marks two resolved fetch responses as ambiguous', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const fetcher = createObservedFetch(async () => new Response('body'));
+
+  await withAttemptResponseObservation(observation, async () => {
+    await fetcher('https://upstream.test/one');
+    await fetcher('https://upstream.test/two');
+  });
+
+  expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous' });
+});
+
+test('does not let response metric failures alter the fetch response', async () => {
+  const metricFailure = new Error('metric failed');
+  const observation: AttemptResponseObservation = {
+    markTransportUnavailable() {},
+    observeContent: () => 0,
+    observeFetchStart() {},
+    observeResponse() {
+      throw metricFailure;
+    },
+    observeSseEvent() {},
+    snapshot: () => ({}),
+  };
+  const fetcher = createObservedFetch(async () => new Response('visible'));
+
+  const response = await withAttemptResponseObservation(observation, () => fetcher('https://upstream.test'));
+
+  expect(await response.text()).toBe('visible');
+});
+
+test('does not treat empty controlled chunks as the first upstream byte', async () => {
+  const times = [10, 20, 25];
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => times.shift() ?? 25 });
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array());
+      controller.enqueue(new TextEncoder().encode('data: one\n\n'));
+      controller.close();
+    },
+  });
+  const fetcher = createObservedFetch(
+    async () => new Response(source, { headers: { 'content-type': 'text/event-stream' } }),
+  );
+
+  const response = await withAttemptResponseObservation(observation, () =>
+    fetcher('https://upstream.test', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+  await response.text();
+
+  expect(observation.snapshot()).toMatchObject({ firstUpstreamByteMs: 20 });
 });
 
 test('non-debug inbound observation preserves Request identity', () => {

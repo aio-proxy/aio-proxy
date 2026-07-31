@@ -7,6 +7,7 @@ import { normalizeAiSdkUsage } from './pricing';
 import {
   type Captured,
   deferred,
+  observeContentAt,
   type StreamUsageOptions,
   ttftProperty,
   type UsageCompletion,
@@ -15,7 +16,7 @@ import {
 import { finalizeUsage } from './usage-validation';
 
 export function streamCapture(
-  { stream, providerId, modelId, requestedModelId, startedAt }: StreamUsageOptions,
+  { stream, providerId, modelId, requestedModelId, startedAt, observation }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -65,12 +66,9 @@ export function streamCapture(
           finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
         } else if (next.value.type === 'abort') {
           aborted = true;
-        } else if (
-          firstTokenAt === undefined &&
-          startedAt !== undefined &&
-          (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta')
-        ) {
-          firstTokenAt = performance.now();
+        } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
+          const contentAt = observeContentAt(observation);
+          firstTokenAt ??= contentAt;
         }
         controller.enqueue(next.value);
       } catch (error) {

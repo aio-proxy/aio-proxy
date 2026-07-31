@@ -4,6 +4,7 @@ import {
   type RequestTraceSession,
   spanName,
 } from '../../../request-tracing';
+import type { AttemptResponseObservation } from '../../../response-observation';
 import type { UsageCompletion } from '../../../usage-capture';
 import type { AttemptInfo } from '../attempt-base';
 import { completionFinish, completionTerminal } from '../failure';
@@ -22,9 +23,16 @@ export function attemptLog(base: AttemptInfo, statusCode?: number, errorCode?: s
 
 export type AttemptEmitter = {
   readonly startAttempt: (base: AttemptInfo, index: number, httpStatus?: number) => OpenSpan;
-  readonly emitAttempt: (base: AttemptInfo, index: number, terminal: SpanTerminal) => void;
+  readonly endAttempt: (span: OpenSpan, observation: AttemptResponseObservation, terminal: SpanTerminal) => void;
+  readonly emitAttempt: (
+    base: AttemptInfo,
+    index: number,
+    observation: AttemptResponseObservation,
+    terminal: SpanTerminal,
+  ) => void;
   readonly settleSuccess: (
     attemptSpan: OpenSpan,
+    observation: AttemptResponseObservation,
     completion: Promise<UsageCompletion>,
     ids: { readonly providerId: string; readonly modelId: string },
     getResponseId?: () => string | undefined,
@@ -50,16 +58,42 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         ...(httpStatus === undefined ? {} : { [attributeName.httpStatusCode]: httpStatus }),
       },
     });
+  const endAttempt = (attemptSpan: OpenSpan, observation: AttemptResponseObservation, terminal: SpanTerminal): void => {
+    const snapshot = observation.snapshot();
+    if (snapshot.transportObservation !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.transportObservation, snapshot.transportObservation);
+    }
+    if (snapshot.upstreamHeadersMs !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.upstreamHeadersMs, snapshot.upstreamHeadersMs);
+    }
+    if (snapshot.firstUpstreamByteMs !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.firstUpstreamByteMs, snapshot.firstUpstreamByteMs);
+    }
+    if (snapshot.firstSseEventMs !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.firstSseEventMs, snapshot.firstSseEventMs);
+    }
+    if (snapshot.contentGapP95Ms !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.contentGapP95Ms, snapshot.contentGapP95Ms);
+    }
+    if (snapshot.maxSseFramesPerRead !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.maxSseFramesPerRead, snapshot.maxSseFramesPerRead);
+    }
+    if (snapshot.contentEncoding !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.contentEncoding, snapshot.contentEncoding);
+    }
+    attemptSpan.end(terminal);
+  };
   return {
     startAttempt,
-    emitAttempt(base, index, terminal) {
-      startAttempt(base, index).end(terminal);
+    endAttempt,
+    emitAttempt(base, index, observation, terminal) {
+      endAttempt(startAttempt(base, index), observation, terminal);
     },
-    settleSuccess(attemptSpan, completion, ids, getResponseId) {
+    settleSuccess(attemptSpan, observation, completion, ids, getResponseId) {
       return completion.then((value) => {
         const ttftMs = 'ttftMs' in value ? value.ttftMs : undefined;
         if (ttftMs !== undefined) attemptSpan.span.setAttribute(attributeName.ttftMs, ttftMs);
-        attemptSpan.end(completionTerminal(value));
+        endAttempt(attemptSpan, observation, completionTerminal(value));
         return {
           ...completionFinish(value, ids, getResponseId?.()),
           ...(ttftMs === undefined ? {} : { ttftMs }),
