@@ -1,49 +1,18 @@
 import { m } from '@aio-proxy/i18n';
-import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
 import type React from 'react';
-import { QueryBuilderStateProvider } from 'react-querybuilder';
 
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { requestTransformFunctionMeta, type RequestTransformStageDraft } from '../../request-transforms';
-import { QueryBuilderShadcn } from './query-builder';
-import { RequestTransformExpressionEditor } from './request-transform-expression-editor';
-import type { RequestTransformStageForm } from './request-transform-stage-controls';
+import type { RequestTransformStageDraft } from '../../request-transforms';
 import {
   buildRequestTransformStageDraft,
   type RequestTransformStageControlValues,
 } from './request-transform-stage-draft';
-import { RequestTransformStaticValueEditor } from './request-transform-static-value-editor';
+import type { RequestTransformStageForm } from './request-transform-stage-form';
+import { RequestTransformStageValueContent } from './request-transform-stage-value-content';
 
 type SetStage = Extract<RequestTransformStageDraft, { kind: 'set' }>;
-
-const RequestTransformStageValueContent: React.FC<{
-  readonly value: SetStage;
-  readonly onChange: (value: RequestTransformStageDraft) => void;
-  readonly onValidityChange: (valid: boolean) => void;
-}> = ({ value, onChange, onValidityChange }) =>
-  value.value.kind === 'static' ? (
-    <RequestTransformStaticValueEditor
-      value={value.value.value}
-      onChange={(nextValue) => onChange({ ...value, value: { kind: 'static', value: nextValue } })}
-      onValidityChange={onValidityChange}
-    />
-  ) : (
-    <div className="overflow-x-auto" aria-label={m['dashboard.providers.transforms.value.computed_label']()}>
-      <QueryBuilderStateProvider>
-        <QueryBuilderShadcn>
-          <QueryBuilderExpressions functions={requestTransformFunctionMeta}>
-            <RequestTransformExpressionEditor
-              expression={value.value.expression}
-              onChange={(expression) => onChange({ ...value, value: { kind: 'expression', expression } })}
-              onValidityChange={onValidityChange}
-            />
-          </QueryBuilderExpressions>
-        </QueryBuilderShadcn>
-      </QueryBuilderStateProvider>
-    </div>
-  );
 
 interface RequestTransformStageValueEditorProps {
   readonly form: RequestTransformStageForm;

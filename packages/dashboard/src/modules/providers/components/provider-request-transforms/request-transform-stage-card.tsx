@@ -8,16 +8,14 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 
 import type { RequestTransformStageDraft } from '../../request-transforms';
 import {
-  RequestTransformStagePathControl,
-  RequestTransformStagePrimaryControls,
-  useRequestTransformStageForm,
-} from './request-transform-stage-controls';
-import {
   buildRequestTransformStageDraft,
   requestTransformStageControlValues,
   type RequestTransformStageControlValues,
   validateRequestTransformStageDraft,
 } from './request-transform-stage-draft';
+import { useRequestTransformStageForm } from './request-transform-stage-form';
+import { RequestTransformStagePathControl } from './request-transform-stage-path-control';
+import { RequestTransformStagePrimaryControls } from './request-transform-stage-primary-controls';
 import { RequestTransformStageValueEditor } from './request-transform-stage-value-editor';
 
 export interface RequestTransformStageCardProps {

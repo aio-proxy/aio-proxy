@@ -1,21 +1,11 @@
 import { m } from '@aio-proxy/i18n';
-import { useForm } from '@tanstack/react-form';
-import type { RefCallback } from 'react';
+import type React from 'react';
 
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import type { RequestTransformStageDraft } from '../../request-transforms';
-import {
-  requestTransformStageControlValues,
-  type RequestTransformStageControlValues,
-} from './request-transform-stage-draft';
-
-export const useRequestTransformStageForm = (stage: RequestTransformStageDraft) =>
-  useForm({ defaultValues: requestTransformStageControlValues(stage) });
-
-export type RequestTransformStageForm = ReturnType<typeof useRequestTransformStageForm>;
+import type { RequestTransformStageControlValues } from './request-transform-stage-draft';
+import type { RequestTransformStageForm } from './request-transform-stage-form';
 
 interface RequestTransformStagePrimaryControlsProps {
   readonly form: RequestTransformStageForm;
@@ -95,45 +85,4 @@ export const RequestTransformStagePrimaryControls: React.FC<RequestTransformStag
       )}
     </form.Field>
   </div>
-);
-
-interface RequestTransformStagePathControlProps {
-  readonly form: RequestTransformStageForm;
-  readonly pathId: string;
-  readonly pathInputRef?: RefCallback<HTMLInputElement>;
-  readonly onCommit: (controls: RequestTransformStageControlValues, allowRecovery: boolean) => void;
-}
-
-export const RequestTransformStagePathControl: React.FC<RequestTransformStagePathControlProps> = ({
-  form,
-  pathId,
-  pathInputRef,
-  onCommit,
-}) => (
-  <form.Subscribe selector={(state) => state.values.target}>
-    {(target) => (
-      <form.Field name="path">
-        {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={pathId}>
-              {target === 'header'
-                ? m['dashboard.providers.transforms.target.header_name']()
-                : m['dashboard.providers.transforms.target.body_path']()}
-            </Label>
-            <Input
-              ref={pathInputRef}
-              id={pathId}
-              className={target === 'header' ? 'lowercase' : undefined}
-              value={field.state.value}
-              onChange={(event) => {
-                const path = target === 'header' ? event.target.value.toLowerCase() : event.target.value;
-                field.handleChange(path);
-                onCommit({ ...form.state.values, path }, true);
-              }}
-            />
-          </div>
-        )}
-      </form.Field>
-    )}
-  </form.Subscribe>
 );
