@@ -82,6 +82,16 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const errorCode = str(attrs, attributeName.errorCode);
   const stream = bool(attrs, attributeName.stream);
   const ttftMs = num(attrs, attributeName.ttftMs);
+  const transportObservation = str(
+    attrs,
+    attributeName.transportObservation,
+  ) as RecordedAttempt['transportObservation'];
+  const upstreamHeadersMs = num(attrs, attributeName.upstreamHeadersMs);
+  const firstUpstreamByteMs = num(attrs, attributeName.firstUpstreamByteMs);
+  const firstSseEventMs = num(attrs, attributeName.firstSseEventMs);
+  const contentGapP95Ms = num(attrs, attributeName.contentGapP95Ms);
+  const maxSseFramesPerRead = num(attrs, attributeName.maxSseFramesPerRead);
+  const contentEncoding = str(attrs, attributeName.contentEncoding) as RecordedAttempt['contentEncoding'];
   return {
     providerId: str(attrs, attributeName.providerId) ?? '',
     modelId: str(attrs, attributeName.genAiResponseModel) ?? '',
@@ -98,6 +108,13 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
     ...(errorCode === undefined ? {} : { errorCode }),
     ...(stream === undefined ? {} : { stream }),
     ...(ttftMs === undefined ? {} : { ttftMs }),
+    ...(transportObservation === undefined ? {} : { transportObservation }),
+    ...(upstreamHeadersMs === undefined ? {} : { upstreamHeadersMs }),
+    ...(firstUpstreamByteMs === undefined ? {} : { firstUpstreamByteMs }),
+    ...(firstSseEventMs === undefined ? {} : { firstSseEventMs }),
+    ...(contentGapP95Ms === undefined ? {} : { contentGapP95Ms }),
+    ...(maxSseFramesPerRead === undefined ? {} : { maxSseFramesPerRead }),
+    ...(contentEncoding === undefined ? {} : { contentEncoding }),
   };
 }
 

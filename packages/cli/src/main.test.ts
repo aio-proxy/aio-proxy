@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { cliServeArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
+import { cliRunArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
 import packageJson from '../package.json' with { type: 'json' };
 
 describe('cli', () => {
@@ -31,7 +31,7 @@ describe('cli', () => {
     expect(chinese.stdout.toString()).toContain('AIO Proxy 命令行界面');
   }, 15_000);
 
-  test('rejects out-of-range serve ports', () => {
+  test('rejects out-of-range run ports', () => {
     // Given / When
     const result = runCli(['--port', '99999']);
 
@@ -40,7 +40,7 @@ describe('cli', () => {
     expect(output(result)).toContain('Port 99999 is out of range');
   });
 
-  test('reports serve port conflicts with the bound address', () => {
+  test('reports run port conflicts with the bound address', () => {
     // Given
     const blocker = Bun.listen({
       hostname: '127.0.0.1',
@@ -50,7 +50,7 @@ describe('cli', () => {
 
     try {
       // When
-      const result = runCli(['serve', '--port', String(blocker.port)]);
+      const result = runCli(['run', '--port', String(blocker.port)]);
 
       // Then
       expect(result.exitCode).toBe(1);
@@ -61,13 +61,28 @@ describe('cli', () => {
     }
   });
 
+  test('exits unrecoverable (1) when startup config is schema-invalid', () => {
+    // A schema-invalid config can never succeed on retry; the daemon must exit 1
+    // (unrecoverable) so a service manager does not restart it in a loop.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-badcfg-'));
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'config.jsonc'), '{ "server": { "port": "not-a-number" }, "providers": {} }\n');
+      const result = runCli(['run', '--port', String(freePort())], { AIO_PROXY_HOME: dir });
+      expect(result.exitCode).toBe(1);
+      expect(output(result)).not.toContain('Unexpected internal error');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('bootstraps missing non-tty config path and serves health', async () => {
     // Given
     const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-'));
     const home = join(dir, 'nested');
     const configFile = join(home, 'config.jsonc');
     const port = freePort();
-    const server = Bun.spawn(cliServeArgs(port), {
+    const server = Bun.spawn(cliRunArgs(port), {
       cwd: repoCwd,
       env: { ...process.env, AIO_PROXY_HOME: home },
       stderr: 'pipe',
@@ -100,9 +115,54 @@ describe('cli', () => {
     }
   });
 
-  test('serve --help advertises --open and drops --config and --dashboard', () => {
+  test('bare run honors the configured server.port when no flag is given', async () => {
+    // A managed service starts `run` with no flags; it must bind the config's
+    // server.port instead of the hardcoded default, or the configured port is
+    // silently ignored.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-cfgport-'));
+    const port = freePort();
+    writeFileSync(join(dir, 'config.jsonc'), `{ "server": { "port": ${port} }, "providers": {} }\n`);
+    const server = Bun.spawn([process.execPath, 'run', 'packages/cli/src/main.ts', 'run'], {
+      cwd: repoCwd,
+      env: { ...process.env, AIO_PROXY_HOME: dir, LANG: 'en_US.UTF-8' },
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    const stderr = new Response(server.stderr).text();
+    try {
+      const response = await waitForOk(`http://127.0.0.1:${port}/health`, {
+        probeTimeoutMs: 1_000,
+        readinessTimeoutMs: 5_000,
+      });
+      expect(response.status).toBe(200);
+      server.kill();
+      await server.exited;
+      expect(await stderr).toContain(`127.0.0.1:${port}`);
+    } finally {
+      server.kill();
+      await server.exited;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('exits unrecoverable (1) when service.env exists but cannot be read', () => {
+    // A service.env that cannot be read (here, a directory in its place) can never
+    // succeed on retry; the daemon must exit 1 so a service manager does not restart
+    // it in a loop, matching the malformed-config contract.
+    const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-badenv-'));
+    try {
+      writeFileSync(join(dir, 'config.jsonc'), '{ "providers": {} }\n');
+      mkdirSync(join(dir, 'service.env'));
+      const result = runCli(['run', '--port', String(freePort())], { AIO_PROXY_HOME: dir });
+      expect(result.exitCode).toBe(1);
+      expect(output(result)).not.toContain('Unexpected internal error');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('run --help advertises --open and drops --config and --dashboard', () => {
     // Given / When
-    const result = runCli(['serve', '--help']);
+    const result = runCli(['run', '--help']);
 
     // Then
     expect(result.exitCode).toBe(0);

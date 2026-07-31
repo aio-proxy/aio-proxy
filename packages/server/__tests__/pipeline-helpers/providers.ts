@@ -51,9 +51,9 @@ export function rawProvider(options: {
 }): FakeProvider {
   const calls = providerCalls();
   const protocol = options.protocol ?? ProviderProtocol.OpenAICompatible;
-  const rawInvoke: RawTransport['invoke'] = async (request, context) => {
+  const rawInvoke: RawTransport['invoke'] = async (request, context, transportOptions) => {
     calls.raw.push(request);
-    return options.invoke?.(request, context) ?? Response.json({ provider: options.id });
+    return options.invoke?.(request, context, transportOptions) ?? Response.json({ provider: options.id });
   };
   const model = options.model === undefined ? undefined : instrumentModel(options.model, calls);
   const provider = {

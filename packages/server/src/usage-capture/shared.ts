@@ -1,6 +1,8 @@
 import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
+import type { AttemptResponseObservation } from '../response-observation';
+
 export const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
 export type UsageCompletion =
@@ -23,6 +25,7 @@ export type StreamUsageOptions = {
   // performance.now() at attempt dispatch; present only when streaming, so
   // ttft is recorded for streamed responses and skipped for buffered JSON.
   readonly startedAt?: number;
+  readonly observation?: AttemptResponseObservation;
 };
 
 export type PassthroughUsageOptions = {
@@ -34,6 +37,7 @@ export type PassthroughUsageOptions = {
   readonly onResponseId?: (responseId: string) => void;
   // performance.now() at attempt dispatch; ttft is recorded only for SSE bodies.
   readonly startedAt?: number;
+  readonly observation?: AttemptResponseObservation;
 };
 
 export type UsageCapture = {
@@ -51,6 +55,14 @@ export function ttftProperty(
 ): { readonly ttftMs?: number } {
   if (startedAt === undefined || firstTokenAt === undefined) return {};
   return { ttftMs: Math.max(0, Math.round(firstTokenAt - startedAt)) };
+}
+
+export function observeContentAt(observation: AttemptResponseObservation | undefined): number {
+  try {
+    return observation?.observeContent() ?? performance.now();
+  } catch {
+    return performance.now();
+  }
 }
 
 export function deferred<T>() {

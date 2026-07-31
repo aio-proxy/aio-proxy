@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import type { RawResolver } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
@@ -147,6 +147,39 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
   await expect(badResponse?.invoke(new Request('https://example.test'))).rejects.toBeInstanceOf(
     PluginRawTransportError,
   );
+});
+
+test('forwards raw transport options through the plugin runtime boundary', async () => {
+  let upstreamStream: boolean | undefined;
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      createRuntime: async () => ({
+        provider: providerV4(),
+        raw: () => ({
+          invoke: async (
+            _request: Request,
+            _context: LogicalRequestContext | undefined,
+            options?: RawTransportOptions,
+          ) => {
+            upstreamStream = options?.upstreamStream;
+            return Response.json({ ok: true });
+          },
+        }),
+      }),
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const transport = result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.OpenAICompatible,
+    modelId: 'model',
+  });
+
+  expect(
+    await transport?.invoke(new Request('https://example.test'), undefined, { upstreamStream: true }),
+  ).toBeInstanceOf(Response);
+  expect(upstreamStream).toBe(true);
 });
 
 test('materializes an optional plugin token-count capability', async () => {

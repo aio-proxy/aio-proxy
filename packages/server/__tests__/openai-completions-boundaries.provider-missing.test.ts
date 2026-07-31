@@ -44,7 +44,7 @@ describe('POST /v1/chat/completions', () => {
       error: {
         code: 'provider_not_installed',
         message:
-          'missing-ai: ai-sdk provider package "@vendor/missing-provider" is not installed; run aio-proxy provider install @vendor/missing-provider',
+          'missing-ai: ai-sdk provider package "@vendor/missing-provider" is not installed; run aio-proxy plugin add @vendor/missing-provider',
         type: 'invalid_request_error',
       },
     });
@@ -86,7 +86,7 @@ describe('POST /v1/chat/completions', () => {
       error: {
         code: 'provider_not_installed',
         message:
-          'missing-ai: ai-sdk provider package "@vendor/missing-provider" is not installed; run aio-proxy provider install @vendor/missing-provider',
+          'missing-ai: ai-sdk provider package "@vendor/missing-provider" is not installed; run aio-proxy plugin add @vendor/missing-provider',
         type: 'invalid_request_error',
       },
     });

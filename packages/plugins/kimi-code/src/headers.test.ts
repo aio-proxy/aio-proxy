@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import packageJson from '../package.json' with { type: 'json' };
 import { kimiIdentityHeaders } from './headers';
 
 test('builds stable printable Kimi identity headers around the credential device ID', () => {
@@ -11,7 +12,7 @@ test('builds stable printable Kimi identity headers around the credential device
     version: () => 'Darwin 25.0 主机',
   });
   expect(headers).toMatchObject({
-    'User-Agent': 'AIO-Proxy/0.0.0',
+    'User-Agent': `AIO-Proxy/${packageJson.version}`,
     'X-Msh-Platform': 'AIO-Proxy',
     'X-Msh-Device-Id': 'device-1',
     'X-Msh-Device-Name': 'name',

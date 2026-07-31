@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -89,5 +89,27 @@ describe('plugin add', () => {
     );
     expect(npmCalls).toBe(0);
     expect(lines.join('\n')).toContain('already built in');
+  });
+
+  test('installs an ai-sdk provider package into the cache without adding it to plugins', async () => {
+    const { deps, lines, path } = scope.harness();
+    // An AI SDK provider package exposes only a `create*` factory and no default
+    // PluginDescriptor; plugin add must install it rather than reject it as invalid.
+    await pluginAdd(
+      '@ai-sdk/anthropic',
+      { yes: true },
+      { ...deps, importPackage: async () => ({ createAnthropic: (options: unknown) => options }) },
+    );
+    // It is referenced from a `kind: ai-sdk` provider, so it must NOT land in `plugins`.
+    expect(JSON.parse(readFileSync(path, 'utf8')).plugins).toEqual([]);
+    expect(lines.join('\n')).toContain('@ai-sdk/anthropic');
+    expect(lines.join('\n')).not.toContain('Added plugin');
+  });
+
+  test('rejects a package that is neither a plugin nor an ai-sdk provider', async () => {
+    const { deps } = scope.harness();
+    await expect(
+      pluginAdd('junk-package', { yes: true }, { ...deps, importPackage: async () => ({ notAFactory: 1 }) }),
+    ).rejects.toThrow();
   });
 });

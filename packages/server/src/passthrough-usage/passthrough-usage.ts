@@ -32,6 +32,11 @@ export type PassthroughSseUsageObserver = {
   readonly sawContent: () => boolean;
 };
 
+export type PassthroughSseCallbacks = {
+  readonly onEvent?: () => void;
+  readonly onContent?: () => void;
+};
+
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
   return extractPassthroughObservation(protocol, bodyText).usage;
 }
@@ -47,7 +52,10 @@ export function extractPassthroughObservation(protocol: ProviderProtocol, bodyTe
   return observer.finish();
 }
 
-export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): PassthroughSseUsageObserver {
+export function createPassthroughSseUsageObserver(
+  protocol: ProviderProtocol,
+  callbacks: PassthroughSseCallbacks = {},
+): PassthroughSseUsageObserver {
   let active = true;
   let observed: UsageExtraction = { kind: 'absent' };
   let responseId: string | undefined;
@@ -96,6 +104,7 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       }
     },
     onEvent(event) {
+      safely(callbacks.onEvent);
       failed ||= protocolFailure(protocol, event.event, undefined);
       if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
         active = false;
@@ -108,8 +117,9 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
       }
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
       responseId = completedResponseId(protocol, parsed) ?? responseId;
-      if (!sawContent && hasContentDelta(protocol, event.event, parsed)) {
+      if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
+        safely(callbacks.onContent);
       }
     },
   });
@@ -139,6 +149,12 @@ export function createPassthroughSseUsageObserver(protocol: ProviderProtocol): P
     },
     sawContent: () => sawContent,
   };
+}
+
+function safely(callback: (() => void) | undefined): void {
+  try {
+    callback?.();
+  } catch {}
 }
 
 function observationFromJson(protocol: ProviderProtocol, value: unknown): PassthroughObservation {

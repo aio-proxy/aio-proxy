@@ -52,7 +52,7 @@ describe('createAiSdkProvider', () => {
 
     // When / Then
     await expect(collect(provider.invoke({ messages, modelId: 'missing-model' }))).rejects.toThrow(
-      'run aio-proxy provider install @vendor/missing-provider',
+      'run aio-proxy plugin add @vendor/missing-provider',
     );
   });
 

@@ -36,6 +36,33 @@ const dashboardOrigins = (port: number) =>
 
 const csrfMethods = new Set(['POST', 'PUT', 'DELETE']);
 
+// Mount the loopback-only admin control plane. Unlike /dashboard/api/*, it is not
+// CSRF- or password-gated, so the CLI can call it directly. The loopback check
+// alone is insufficient: a browser on an untrusted page can POST to this loopback
+// URL (the request still originates from 127.0.0.1). Browsers attach a cross-origin
+// marker to such requests — a foreign Origin and a cross-site Sec-Fetch-Site — while
+// the CLI sends neither, so reject any request carrying one.
+const mountAdminControlPlane = (app: Hono, allowedOrigins: ReadonlySet<string>, state: ServerState): void => {
+  app.use('/admin/*', requireDashboardLoopback);
+  app.use('/admin/*', async (context, next) => {
+    const origin = context.req.header('origin');
+    if (origin !== undefined && !allowedOrigins.has(origin)) {
+      return context.text('Forbidden', 403);
+    }
+    const fetchSite = context.req.header('sec-fetch-site');
+    if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+      return context.text('Forbidden', 403);
+    }
+    await next();
+  });
+  app.post('/admin/reload', async (context) => {
+    const result = await state.reload();
+    return result.ok
+      ? context.json({ ok: true, diff: result.diff })
+      : context.json({ ok: false, error: result.error, stage: result.stage }, 409);
+  });
+};
+
 export type CreateServerOptions = {
   readonly config: unknown;
   readonly configPath?: string;
@@ -47,6 +74,7 @@ export type CreateServerOptions = {
   readonly dashboardAssets?: DashboardAssets;
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
+  readonly version?: string;
 };
 
 const createRoutes = (
@@ -54,6 +82,7 @@ const createRoutes = (
   dashboardOriginPort: number = serverDefaults.port,
   dashboardAssets?: DashboardAssets,
   dashboardAuthAvailable: () => boolean = () => true,
+  version: string = '0.0.0',
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -80,7 +109,7 @@ const createRoutes = (
     context.json({
       status: 'ok',
       uptime: performance.now() / 1_000,
-      version: '0.0.0',
+      version,
     }),
   );
   app.get('/v1/models', async (context) => {
@@ -90,6 +119,7 @@ const createRoutes = (
     return context.json(await listModels(state));
   });
   const allowedDashboardOrigins = dashboardOrigins(dashboardOriginPort);
+  mountAdminControlPlane(app, allowedDashboardOrigins, state);
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
     Date.now,
@@ -187,5 +217,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     options.port ?? config.server.port,
     options.dashboardAssets,
     () => dashboardAuthAvailable,
+    options.version,
   );
 };

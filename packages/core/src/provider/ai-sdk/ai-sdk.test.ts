@@ -126,6 +126,6 @@ describe('createAiSdkProvider', () => {
     expect(optionsSeen?.apiKey).toBe('test');
     await (optionsSeen!.fetch as ProviderFetch)('https://example.test/v1', { method: 'GET' });
     expect(decompressSeen).toBe(false);
-    expect(acceptEncodingSeen).toBe('gzip, deflate, br, zstd');
+    expect(acceptEncodingSeen).toBe('identity');
   });
 });

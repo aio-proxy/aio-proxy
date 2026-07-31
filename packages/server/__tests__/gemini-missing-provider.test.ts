@@ -41,6 +41,6 @@ describe('Gemini missing provider boundary', () => {
     expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).not.toContain('text/event-stream');
     expect(body.error.status).toBe('UNAVAILABLE');
-    expect(body.error.message).toContain('run aio-proxy provider install @vendor/missing-provider');
+    expect(body.error.message).toContain('run aio-proxy plugin add @vendor/missing-provider');
   });
 });

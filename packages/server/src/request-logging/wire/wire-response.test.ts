@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { createObservedFetch } from '.';
+import { createAttemptResponseObservation, withAttemptResponseObservation } from '../../response-observation';
 import type { ServerLog } from '../../server-log';
 import { captureFetch, inDebugAttempt, reconstructed, terminals } from '../test-support';
 
@@ -48,6 +49,87 @@ test('response cancellation reaches the source and emits cancelled', async () =>
   expect(terminals(logs, 'upstream_response')).toEqual([
     expect.objectContaining({ outcome: 'cancelled', byteLength: 0, sequence: 0 }),
   ]);
+});
+
+test('an unconsumed controlled response does not read its source', async () => {
+  let pulls = 0;
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const source = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        pulls++;
+        controller.close();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const response = await withAttemptResponseObservation(observation, () =>
+    createObservedFetch(
+      captureFetch([], () => new Response(source, { headers: { 'content-type': 'text/event-stream' } })),
+    )('https://upstream.test/v1', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+
+  await Bun.sleep(0);
+
+  expect(response.body).not.toBeNull();
+  expect(pulls).toBe(0);
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    contentEncoding: 'identity',
+  });
+});
+
+test('counts dispatched SSE events instead of comment blocks', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const text = ': keep-alive\n\ndata: one\n\ndata: two\n\n';
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+  const response = await withAttemptResponseObservation(observation, () =>
+    createObservedFetch(
+      captureFetch([], () => new Response(source, { headers: { 'content-type': 'text/event-stream' } })),
+    )('https://upstream.test/v1', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+
+  expect(await response.text()).toBe(text);
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    firstUpstreamByteMs: 10,
+    firstSseEventMs: 10,
+    maxSseFramesPerRead: 2,
+    contentEncoding: 'identity',
+  });
+});
+
+test('continues counting after recoverable SSE parser errors', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const text = 'retry: invalid\n\ndata: visible\n\n';
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+  const response = await withAttemptResponseObservation(observation, () =>
+    createObservedFetch(
+      captureFetch([], () => new Response(source, { headers: { 'content-type': 'text/event-stream' } })),
+    )('https://upstream.test/v1', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+
+  expect(await response.text()).toBe(text);
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    firstUpstreamByteMs: 10,
+    firstSseEventMs: 10,
+    maxSseFramesPerRead: 1,
+    contentEncoding: 'identity',
+  });
 });
 
 test('response errors remain observable and emit error terminal', async () => {

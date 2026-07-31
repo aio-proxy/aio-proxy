@@ -80,6 +80,37 @@ describe('OpenAI ChatGPT runtime stream protection', () => {
     expect(Math.max(0, pulls - 1)).toBe(0);
     expect(wasCancelled).toBe(true);
   });
+
+  test('raw non-stream path strips client encoding and normalizes unexpected SSE once', async () => {
+    let acceptEncoding: string | null = null;
+    let decompress: boolean | undefined;
+    const body = RESPONSES_TERMINAL;
+    const upstreamFetch = (async (input, init) => {
+      const request = new Request(input, init);
+      acceptEncoding = request.headers.get('accept-encoding');
+      decompress = (init as { decompress?: boolean } | undefined)?.decompress;
+      return new Response(body, {
+        headers: {
+          'content-type': 'text/event-stream',
+          'content-encoding': 'zstd',
+          'content-length': String(body.byteLength),
+        },
+      });
+    }) as typeof globalThis.fetch;
+    const runtime = await runtimeWithFetch(upstreamFetch, credential({ accessToken: 'runtime-token' }));
+    const raw = runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' });
+
+    const response = await raw!.invoke(
+      new Request('https://api.openai.com/v1/responses', { headers: { 'accept-encoding': 'br' } }),
+      undefined,
+      { upstreamStream: false },
+    );
+
+    expect(acceptEncoding).toBe('identity');
+    expect(decompress).toBeUndefined();
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(await response.text()).toBe(RESPONSES_TERMINAL);
+  });
 });
 
 function terminalThenErrorUpstream(terminal: string) {

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { openAICompletionsAdapter, openAIResponsesAdapter } from '@aio-proxy/core';
+import {
+  type ModelEventStream,
+  openAICompletionsAdapter,
+  openAIResponsesAdapter,
+  type TextStreamPart,
+  type ToolSet,
+} from '@aio-proxy/core';
 
 import {
   cancellableTextStream,
@@ -172,7 +178,7 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(attempt?.ttftMs).toBeGreaterThanOrEqual(0);
   });
 
-  test('records stream=false and no ttft for a buffered JSON attempt', async () => {
+  test('records stream=false and a numeric ttft for a buffered upstream model stream', async () => {
     const provider = modelProvider({ id: 'provider', invoke: () => textStream('hello') });
     const harness = pipeline([provider]);
 
@@ -182,7 +188,21 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const attempt = harness.recording.attempts[0];
     expect(attempt?.stream).toBe(false);
-    expect(attempt?.ttftMs).toBeUndefined();
+    expect(typeof attempt?.ttftMs).toBe('number');
+    expect(attempt?.ttftMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test.each([true, false])('records content gap p95 for stream=%s model egress', async (stream) => {
+    const provider = modelProvider({ id: 'provider', invoke: contentDeltaStream });
+    const harness = pipeline([provider]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
+    await (stream ? response.text() : response.json());
+    await settleRecording(harness.recording);
+
+    const contentGapP95Ms = harness.recording.attempts[0]?.contentGapP95Ms;
+    expect(typeof contentGapP95Ms).toBe('number');
+    expect(contentGapP95Ms).toBeGreaterThanOrEqual(0);
   });
 
   test('opens the attempt span before the provider call so buffered requests get real duration', async () => {
@@ -204,3 +224,26 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     expect(harness.recording.attempts[0]?.durationMs).toBeGreaterThanOrEqual(10);
   });
 });
+
+function contentDeltaStream(): ModelEventStream {
+  return new ReadableStream<TextStreamPart<ToolSet>>({
+    start(controller) {
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'hello ' });
+      controller.enqueue({ type: 'reasoning-delta', id: 'reasoning-1', text: 'think' });
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'world' });
+      controller.enqueue({
+        type: 'finish',
+        finishReason: 'stop',
+        rawFinishReason: 'stop',
+        totalUsage: {
+          inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
+          inputTokens: 0,
+          outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      });
+      controller.close();
+    },
+  });
+}

@@ -19,10 +19,10 @@ function endAttemptSpan<TRequest, TContext>(
   const open = slot.spanRef.current;
   if (open !== undefined) {
     slot.spanRef.current = undefined;
-    open.end(terminal);
+    ctx.emitter.endAttempt(open, slot.observation, terminal);
     return;
   }
-  ctx.emitter.emitAttempt(base, slot.index, terminal);
+  ctx.emitter.emitAttempt(base, slot.index, slot.observation, terminal);
 }
 
 // No raw or model capability matched the inbound protocol for this candidate.
@@ -33,7 +33,7 @@ export function unsupportedDispatch<TRequest, TContext>(
   const { candidate, startedAt, hasNext, index } = slot;
   const unsupported = ctx.adapter.errors.unsupported('transform_dispatch');
   const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-  ctx.emitter.emitAttempt(base, index, failureTerminal(unsupported.status));
+  ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(unsupported.status));
   if (hasNext) {
     return { kind: 'fallback', lastFailure: unsupported };
   }

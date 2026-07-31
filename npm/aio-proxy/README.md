@@ -7,7 +7,7 @@ All-in-one LLM API proxy with a local dashboard.
 - npm: `npm install -g aio-proxy`
 - curl: `curl -fsSL https://raw.githubusercontent.com/baranwang/aio-proxy/main/install.sh | sh`
 
-Then run `aio-proxy serve`.
+Then run `aio-proxy run`.
 
 ## Security model
 
@@ -47,7 +47,7 @@ providers:
 ## Config schema
 
 Editors that honor the `$schema` field get completion and validation for `config.jsonc`.
-`aio-proxy serve` writes this automatically on first run. To add it by hand:
+`aio-proxy run` writes this automatically on first run. To add it by hand:
 
 ```jsonc
 {

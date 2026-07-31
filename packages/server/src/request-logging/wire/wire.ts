@@ -1,3 +1,7 @@
+import { createParser } from 'eventsource-parser';
+
+import type { ResponseBodyObservation } from '../../response-observation';
+import { currentAttemptResponseObservation } from '../../response-observation';
 import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
 import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
 import { tapTextBody } from '../body-tap';
@@ -20,42 +24,85 @@ type ResponseMetadata = ResponseInit & {
   readonly url: string;
 };
 
+type DebugResponseObservation = {
+  readonly identity: BodyIdentity;
+  readonly logger: ServerLogSink;
+  readonly signal: AbortSignal | undefined;
+};
+
+type ResponseObservationOptions = {
+  readonly bodyObservation?: ResponseBodyObservation;
+  readonly observeSseEvent?: () => void;
+  readonly debug?: DebugResponseObservation;
+  readonly controlledIdentitySse?: boolean;
+};
+
 export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof globalThis.fetch {
   return (async (input, init) => {
     const scope = currentDebugRequestLogScope();
-    if (scope?.attemptIndex === undefined || scope.providerId === undefined || scope.modelId === undefined) {
+    const observation = currentAttemptResponseObservation();
+    const debug =
+      scope?.attemptIndex === undefined || scope.providerId === undefined || scope.modelId === undefined
+        ? undefined
+        : {
+            identity: {
+              requestId: scope.requestId,
+              attemptIndex: scope.attemptIndex,
+              providerId: scope.providerId,
+              modelId: scope.modelId,
+            },
+            logger: scope.logger,
+          };
+    if (debug === undefined && observation === undefined) {
       return fetcher(input, init);
     }
-    const identity = {
-      requestId: scope.requestId,
-      attemptIndex: scope.attemptIndex,
-      providerId: scope.providerId,
-      modelId: scope.modelId,
-    } as const;
+    safely(() => observation?.observeFetchStart());
+    if (debug === undefined) {
+      const response = await fetcher(input, init);
+      const bodyObservation = safely(() =>
+        observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
+      );
+      return bodyObservation === undefined
+        ? response
+        : responseWithObservedBody(response, responseObservationOptions(bodyObservation, observation?.observeSseEvent));
+    }
     const startedAt = performance.now();
     try {
       const request = new Request(input, init);
-      logServerEvent(scope.logger, { event: 'request.upstream_snapshot', ...identity, ...requestMetadata(request) });
-      const delegated = requestWithObservedBody(request, { ...identity, direction: 'upstream_request' }, scope.logger);
+      logServerEvent(debug.logger, {
+        event: 'request.upstream_snapshot',
+        ...debug.identity,
+        ...requestMetadata(request),
+      });
+      const delegated = requestWithObservedBody(
+        request,
+        { ...debug.identity, direction: 'upstream_request' },
+        debug.logger,
+      );
       const decompress = (init as BunFetchInit | undefined)?.decompress;
       const response = await fetcher(delegated, decompress === undefined ? undefined : { decompress });
-      logServerEvent(scope.logger, {
+      const bodyObservation = safely(() =>
+        observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
+      );
+      logServerEvent(debug.logger, {
         event: 'request.upstream_result',
-        ...identity,
+        ...debug.identity,
         durationMs: performance.now() - startedAt,
         outcome: 'response',
         ...responseMetadata(response),
       });
-      return responseWithObservedBody(
-        response,
-        { ...identity, direction: 'upstream_response' },
-        scope.logger,
-        request.signal,
-      );
+      return responseWithObservedBody(response, {
+        ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
+        debug: {
+          identity: { ...debug.identity, direction: 'upstream_response' },
+          logger: debug.logger,
+          signal: request.signal,
+        },
+      });
     } catch (error) {
-      logServerEvent(scope.logger, {
+      logServerEvent(debug.logger, {
         event: 'request.upstream_result',
-        ...identity,
+        ...debug.identity,
         durationMs: performance.now() - startedAt,
         outcome: 'exception',
         ...serverErrorDetails(error),
@@ -80,30 +127,76 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
 function observedBody(
   body: ReadableStream<Uint8Array>,
   contentType: string | null,
-  identity: BodyIdentity,
-  logger: ServerLogSink,
-  signal: AbortSignal | undefined,
+  options: ResponseObservationOptions,
 ): ReadableStream<Uint8Array> {
+  const { bodyObservation, debug, observeSseEvent } = options;
   let sequence = 0;
+  let pendingRead: number | undefined;
+  let pendingSseEvents = 0;
+  let readObservationActive = true;
+  let parserActive = observeSseEvent !== undefined && options.controlledIdentitySse === true;
+  const parser = parserActive
+    ? createParser({
+        onEvent() {
+          if (!parserActive) return;
+          pendingSseEvents++;
+          try {
+            observeSseEvent?.();
+          } catch {
+            parserActive = false;
+          }
+        },
+      })
+    : undefined;
+  const observeRead = (byteLength: number, sseFrames: number) => {
+    if (!readObservationActive || bodyObservation === undefined) return;
+    try {
+      bodyObservation.observeRead(byteLength, sseFrames);
+    } catch {
+      readObservationActive = false;
+    }
+  };
   return tapTextBody(
     body,
     contentType,
     {
       chunk(text) {
-        logServerEvent(logger, { event: 'request.body_chunk', ...identity, sequence: sequence++, text });
+        if (debug !== undefined) {
+          logServerEvent(debug.logger, { event: 'request.body_chunk', ...debug.identity, sequence: sequence++, text });
+        }
+        if (!parserActive || parser === undefined) return;
+        try {
+          parser.feed(text);
+        } catch {
+          parserActive = false;
+        }
       },
       terminal({ byteLength, error, outcome }) {
-        logServerEvent(logger, {
-          event: 'request.body_terminal',
-          ...identity,
-          sequence,
-          byteLength,
-          outcome,
-          ...(error === undefined ? {} : { errorType: serverErrorType(error) }),
-        });
+        if (debug !== undefined) {
+          logServerEvent(debug.logger, {
+            event: 'request.body_terminal',
+            ...debug.identity,
+            sequence,
+            byteLength,
+            outcome,
+            ...(error === undefined ? {} : { errorType: serverErrorType(error) }),
+          });
+        }
+      },
+      sourceRead(byteLength) {
+        observeRead(byteLength, 0);
+        if (parser !== undefined) {
+          pendingRead = byteLength;
+          pendingSseEvents = 0;
+        }
+      },
+      sseFrames() {
+        if (pendingRead === undefined) return;
+        observeRead(pendingRead, pendingSseEvents);
+        pendingRead = undefined;
       },
     },
-    signal,
+    debug?.signal,
   );
 }
 
@@ -127,29 +220,27 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
     };
     return new Request(request.url, {
       ...init,
-      body: observedBody(body, contentType, identity, logger, request.signal),
+      body: observedBody(body, contentType, { debug: { identity, logger, signal: request.signal } }),
     });
   } catch {
     return request;
   }
 }
 
-function responseWithObservedBody(
-  response: Response,
-  identity: BodyIdentity,
-  logger: ServerLogSink,
-  signal: AbortSignal | undefined,
-): Response {
+function responseWithObservedBody(response: Response, options: ResponseObservationOptions): Response {
   let source: ReadableStream<Uint8Array>;
   let contentType: string | null;
+  let contentEncoding: string | null;
   let metadata: ResponseMetadata;
   try {
     const body = response.body;
     if (body === null) return response;
     source = body;
-    contentType = response.headers.get('content-type');
+    const headers = response.headers;
+    contentType = headers.get('content-type');
+    contentEncoding = headers.get('content-encoding');
     metadata = {
-      headers: response.headers,
+      headers,
       status: response.status,
       statusText: response.statusText,
       redirected: response.redirected,
@@ -159,7 +250,49 @@ function responseWithObservedBody(
   } catch {
     return response;
   }
-  return responseWithBody(response, observedBody(source, contentType, identity, logger, signal), metadata);
+  return responseWithBody(
+    response,
+    observedBody(source, contentType, {
+      ...options,
+      controlledIdentitySse:
+        options.bodyObservation !== undefined && isSse(contentType) && isIdentityEncoding(contentEncoding),
+    }),
+    metadata,
+  );
+}
+
+function controlledStream(init: RequestInit | undefined): boolean {
+  return (init as BunFetchInit | undefined)?.decompress === false;
+}
+
+function responseObservationOptions(
+  bodyObservation: ResponseBodyObservation | undefined,
+  observeSseEvent: (() => void) | undefined,
+): ResponseObservationOptions {
+  return {
+    ...(bodyObservation === undefined ? {} : { bodyObservation }),
+    ...(observeSseEvent === undefined ? {} : { observeSseEvent }),
+  };
+}
+
+function safely<T>(operation: () => T): T | undefined {
+  try {
+    return operation();
+  } catch {
+    return undefined;
+  }
+}
+
+function isSse(contentType: string | null): boolean {
+  return contentType?.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
+}
+
+function isIdentityEncoding(value: string | null): boolean {
+  const encodings = (value ?? '')
+    .split(',')
+    .map((encoding) => encoding.trim().toLowerCase())
+    .filter(Boolean);
+  return encodings.length === 0 || (encodings.length === 1 && encodings[0] === 'identity');
 }
 
 function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, metadata: ResponseMetadata): Response {

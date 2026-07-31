@@ -116,7 +116,7 @@ export {
   withNpmPackageLifecycle,
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
-export { aioHome, configPath, dbPath, logPath, packagesDir, pidPath } from './paths/index';
+export { aioHome, configPath, dbPath, packagesDir } from './paths/index';
 export * from './plugins';
 export * from './protocol';
 export {
@@ -130,6 +130,7 @@ export {
   BUNDLED_PROVIDER_VERSIONS,
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
+  isAiSdkProviderModule,
   type LoadedAiSdkProvider,
   loadAiSdkProvider,
 } from './provider/ai-sdk-loader/index';

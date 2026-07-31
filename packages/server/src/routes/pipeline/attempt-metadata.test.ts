@@ -37,6 +37,45 @@ test('records raw attempt metadata from the acquired snapshot config', async () 
   );
 });
 
+test.each([
+  { requested: true, expected: true },
+  { requested: false, expected: false },
+])('passes parsed upstream stream state $expected to raw transport', async ({ requested, expected }) => {
+  let upstreamStream: boolean | undefined;
+  const raw = rawProvider({
+    id: 'raw',
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async (_request, _context, options) => {
+      upstreamStream = options?.upstreamStream;
+      return Response.json({ ok: true });
+    },
+  });
+  const route = defineProviderRouteSource([raw]);
+
+  const response = await request(route.source, { model: REQUESTED_MODEL, input: 'ping', stream: requested });
+  await response.text();
+
+  expect(upstreamStream).toBe(expected);
+});
+
+test('evaluates stream intent once before dispatching attempts', async () => {
+  let wantsStreamCalls = 0;
+  const adapter = {
+    ...openAIResponsesAdapter,
+    wantsStream(...args: Parameters<typeof openAIResponsesAdapter.wantsStream>) {
+      wantsStreamCalls += 1;
+      return openAIResponsesAdapter.wantsStream(...args);
+    },
+  } satisfies typeof openAIResponsesAdapter;
+  const raw = rawProvider({ id: 'raw', protocol: ProviderProtocol.OpenAIResponse });
+  const route = defineProviderRouteSource([raw]);
+
+  const response = await request(route.source, { model: REQUESTED_MODEL, input: 'ping', stream: true }, adapter);
+  await response.text();
+
+  expect(wantsStreamCalls).toBe(1);
+});
+
 test('records active affinity metadata for a model attempt including implicit zero weight', async () => {
   const weighted = modelProvider({
     id: 'weighted',
@@ -109,9 +148,13 @@ test('records response owner when response ownership and affinity select the sam
   );
 });
 
-function request(source: ProviderRouteSource, body: Record<string, unknown>): Promise<Response> {
+function request(
+  source: ProviderRouteSource,
+  body: Record<string, unknown>,
+  adapter = openAIResponsesAdapter,
+): Promise<Response> {
   return handleProtocolRequest({
-    adapter: openAIResponsesAdapter,
+    adapter,
     context: {},
     rawRequest: new Request('https://proxy.test/v1/responses', {
       method: 'POST',

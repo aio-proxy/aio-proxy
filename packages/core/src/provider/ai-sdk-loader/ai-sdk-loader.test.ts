@@ -8,6 +8,7 @@ import {
   BUNDLED_PROVIDER_VERSIONS,
   BUNDLED_PROVIDERS,
   type BundledAiSdkProviderPackage,
+  isAiSdkProviderModule,
   loadAiSdkProvider,
   npmPackageCacheDir,
 } from '../../index';
@@ -154,5 +155,18 @@ describe('loadAiSdkProvider', () => {
       }
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe('isAiSdkProviderModule', () => {
+  test('accepts a module whose only export is a create* factory', () => {
+    expect(isAiSdkProviderModule({ createAnthropic: (options: unknown) => options })).toBe(true);
+  });
+
+  test('rejects a module that has no create* factory export', () => {
+    // A plugin package exports a default descriptor, not a create* factory.
+    expect(isAiSdkProviderModule({ default: { plugin: true } })).toBe(false);
+    expect(isAiSdkProviderModule({ createThing: 'not-a-function' })).toBe(false);
+    expect(isAiSdkProviderModule(null)).toBe(false);
   });
 });

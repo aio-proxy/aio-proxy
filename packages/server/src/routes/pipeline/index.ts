@@ -117,6 +117,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
     releaseRetainedBody = true;
 
     const requestedModel = adapter.model(request, context);
+    const streamRequested = adapter.wantsStream(request, context);
     requestedModelId = requestedModel;
     const resolution = source.logicalSessionStore.begin({
       requestedModelId: requestedModel,
@@ -128,7 +129,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       requestedModelId: requestedModel,
       resolution,
       mutateSessionState: true,
-      streamRequested: adapter.wantsStream(request, context),
+      streamRequested,
     });
     if (resolution.responseStatus === 'ambiguous') {
       const error = new Error('Ambiguous previous response ownership');
@@ -172,6 +173,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
         resolution,
         session,
         source,
+        streamRequested,
       });
     } catch (error) {
       if (error instanceof RouterModelNotFoundError) {

@@ -4,40 +4,57 @@ import { isTrustedToolImageMarker } from './tool-image-trust';
 
 export type { OpenAIStreamProtocol } from './sse-terminal';
 
-const OPENAI_ACCEPT_ENCODING = 'gzip, deflate, br, zstd' as const;
-
 type BunFetchInit = RequestInit & { decompress?: boolean };
+
+export type OpenAIStreamFetchCallOptions = {
+  readonly upstreamStream?: boolean;
+};
+
+export type OpenAIStreamFetch = typeof globalThis.fetch & {
+  (input: RequestInfo | URL, init?: RequestInit, options?: OpenAIStreamFetchCallOptions): Promise<Response>;
+};
 
 export type OpenAIStreamFetchOptions = {
   readonly acceptEncoding?: string;
   readonly rewriteToolImages?: boolean;
+  readonly upstreamStream?: boolean;
 };
 
 export function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
   fetcher?: typeof globalThis.fetch,
   options?: OpenAIStreamFetchOptions,
-): typeof globalThis.fetch;
+): OpenAIStreamFetch;
 export function createOpenAIStreamFetch(
   protocol: OpenAIStreamProtocol,
   fetcher: typeof globalThis.fetch = globalThis.fetch,
   options?: OpenAIStreamFetchOptions,
-): typeof globalThis.fetch {
+): OpenAIStreamFetch {
   const resolvedOptions = options ?? {};
-  const streamFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const streamFetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    callOptions?: OpenAIStreamFetchCallOptions,
+  ): Promise<Response> => {
+    const upstreamStream = callOptions?.upstreamStream ?? resolvedOptions.upstreamStream ?? true;
     const initialRequest = new Request(input, init);
     const request =
       protocol === 'openai-compatible' && resolvedOptions.rewriteToolImages === true
         ? await rewriteCompatibleToolImages(initialRequest)
         : initialRequest;
     const headers = new Headers(request.headers);
-    headers.set('accept-encoding', resolvedOptions.acceptEncoding ?? OPENAI_ACCEPT_ENCODING);
+    if (!headers.has('accept-encoding')) {
+      const acceptEncoding = resolvedOptions.acceptEncoding ?? (upstreamStream ? 'identity' : undefined);
+      if (acceptEncoding !== undefined) headers.set('accept-encoding', acceptEncoding);
+    }
 
-    const response = await (fetcher as (input: RequestInfo | URL, init?: BunFetchInit) => Promise<Response>)(request, {
-      headers,
-      decompress: false,
-    });
-    return normalizeOpenAIStreamResponse(response, protocol);
+    const response = await (fetcher as (input: RequestInfo | URL, init?: BunFetchInit) => Promise<Response>)(
+      request,
+      upstreamStream ? { headers, decompress: false } : { headers },
+    );
+    if (upstreamStream) return normalizeControlledResponse(response, protocol);
+    if (!isEventStream(response.headers.get('content-type'))) return response;
+    return normalizeUnexpectedSse(response, protocol);
   };
 
   // Bun's fetch exposes `preconnect`; DOM lib typings used for DTS may not.
@@ -46,7 +63,7 @@ export function createOpenAIStreamFetch(
   };
   return Object.assign(streamFetch, {
     preconnect: platformFetch.preconnect?.bind(platformFetch),
-  }) as typeof globalThis.fetch;
+  }) as OpenAIStreamFetch;
 }
 
 async function rewriteCompatibleToolImages(request: Request): Promise<Request> {
@@ -182,7 +199,7 @@ function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | 
   });
 }
 
-function normalizeOpenAIStreamResponse(response: Response, protocol: OpenAIStreamProtocol): Response {
+function normalizeControlledResponse(response: Response, protocol: OpenAIStreamProtocol): Response {
   const eventStream = isEventStream(response.headers.get('content-type'));
   if (response.body === null && !eventStream) return response;
 
@@ -198,4 +215,9 @@ function normalizeOpenAIStreamResponse(response: Response, protocol: OpenAIStrea
   const decoded = createContentDecodedReader(source, encoding);
   const body = eventStream && response.ok ? createOpenAISseBody(decoded, protocol) : createPlainDecodedBody(decoded);
   return rebuildResponse(response, body);
+}
+
+function normalizeUnexpectedSse(response: Response, protocol: OpenAIStreamProtocol): Response {
+  const source = response.body ?? new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
+  return rebuildResponse(response, createOpenAISseBody(createContentDecodedReader(source, null), protocol));
 }

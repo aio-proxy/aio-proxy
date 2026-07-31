@@ -110,18 +110,18 @@ OpenAI Responses 和 OpenAI-compatible transport 按以下优先级决定上游 
 
 | Span attribute | 定义 | 缺失条件 |
 | --- | --- | --- |
-| `aio_proxy.response.transport_observation` | `sse`：单一可观测 SSE response；`body`：单一可观测非 SSE response；`unavailable`：未经过可注入 fetch；`ambiguous`：多个 response 无法归因 | attempt 在 transport 建立前失败 |
+| `aio_proxy.response.transport_observation` | `sse`：单一可观测 SSE response；`body`：单一可观测非 SSE response；`unavailable`：provider 已执行但未经过可注入 fetch；`ambiguous`：多个 response 无法归因 | provider 执行前失败，或可注入 fetch 已开始但在 response headers 前失败 |
 | `aio_proxy.response.upstream_headers_ms` | 被观测的上游 fetch 返回 response headers 的时间 | provider 未使用可注入 fetch，或多 response 无法归因 |
-| `aio_proxy.response.first_upstream_byte_ms` | fetch 暴露的 body 第一次读到非空字节的时间；受控流式分支发生在 aio-proxy 手动解压之前 | body 为空、首字节前失败/取消、不可观测、ambiguous，或非流式平台自动解压分支 |
+| `aio_proxy.response.first_upstream_byte_ms` | 仅受控流式分支记录 fetch 暴露的 body 第一次读到非空字节的时间；发生在 aio-proxy 手动解压之前 | body 为空、首字节前失败/取消、不可观测、ambiguous，或非流式平台自动解压分支 |
 | `aio_proxy.response.first_sse_event_ms` | 第一个语法完整 SSE event 可交给协议消费者的时间；metadata/start event 也计入 | 非 SSE、首 event 前终止，或压缩 model transport 无法在 typed stream 前观测 |
 | `aio_proxy.response.ttft_ms` | 现有语义：第一个 text/reasoning content event 的时间 | 纯工具响应、首内容前终止 |
 | `aio_proxy.response.content_gap_p95_ms` | 相邻 content events 时间间隔的在线 p95 估计 | 少于两个 content events |
-| `aio_proxy.response.max_sse_frames_per_read` | 单次底层 source `reader.read()` 完成的 SSE frames 最大值；跨 read 的 carry 计入补全它的 read | 非 SSE、不可见 read 边界、显式压缩且只在 encoded fetch 层可见 |
+| `aio_proxy.response.max_sse_frames_per_read` | 单次底层 source `reader.read()` 完成并由 SSE parser dispatch 的 events 最大值；comment/keep-alive、空块、`retry:` 或仅含 `event:` 的块不计入，跨 read 的 carry 计入补全它的 read | 非 SSE、不可见 read 边界、显式压缩且只在 encoded fetch 层可见 |
 | `aio_proxy.response.content_encoding` | 受控流式 fetch 收到的 `identity`、已知单一 coding、`multiple` 或 `other`；无 header 记为 `identity` | response headers 不可观测、ambiguous，或非流式平台自动解压分支 |
 
 `first_upstream_byte_ms` 不是客户端最终收到的 chunk，也不是一个 token。在本设计关注的受控流式分支中，它是 wrapper 手动解压前的 fetch body 字节；非流式平台分支不记录该属性，避免把平台自动解压后的字节冒充 wire bytes。`first_sse_event_ms` 与 TTFT 有意分开：前者能显示连接已经开始流动但模型尚未产生内容的阶段。
 
-content event 继续只认生成的 text/reasoning delta。tool argument、usage、metadata、stream-start 和 terminal event 不计入 TTFT 或 content gap。一次 source read 批量产生多个 content event 时，它们之间会出现接近 0 的 gap，同时 `max_sse_frames_per_read` 会升高；两项组合用于识别批量交付。
+content event 继续只认生成的 text/reasoning delta。tool argument、usage、metadata、stream-start 和 terminal event 不计入 TTFT 或 content gap。SSE comment/keep-alive 也不计入 frames/read。一次 source read 批量产生多个 content event 时，它们之间会出现接近 0 的 gap，同时 `max_sse_frames_per_read` 会升高；两项组合用于识别批量交付。
 
 ### raw path
 
@@ -131,6 +131,7 @@ raw path 在两个现有接缝采集：
 2. passthrough usage observer 在解码后的 SSE 上记录首个 event、首内容和 content gaps。
 
 observer 必须单路读取并原样 enqueue 同一个 chunk；不得 `tee()` 出观察支路，避免慢支路缓存响应体或改变 backpressure。SSE frame 扫描只保留未完成 carry 和聚合计数，不保留 frame body。
+`eventsource-parser` 的 recoverable parse diagnostics 不得终止后续 event 计数；只有 `feed()` 实际抛错时才关闭该指标维度。
 
 ### model path
 
@@ -149,6 +150,7 @@ AI SDK retry、OAuth refresh 或 provider 内部请求可能让一个 provider a
 
 - 恰好观察到一个 response 时保存其传输指标。
 - 观察到多个 response 且无法建立明确归属时，将 `transport_observation` 记为 `ambiguous`，省略所有 raw transport timing、encoding 和 frames/read。
+- 每个新 response 清空 content-gap 的上一事件基线，不把不同 response 之间的空闲时间计作 gap；已经累计的 response-local gaps 仍然保留。
 - typed content TTFT 与 content-gap 指标仍然保留，因为它们明确属于当前 attempt 的最终 typed stream。
 
 这比把首个失败 response 的 headers 与最终成功 content 拼成一组指标更可靠。后续若确实需要展开 AI SDK 内部 retry，应新增 child HTTP spans，而不是改变本轮聚合字段语义。
@@ -162,6 +164,8 @@ content gaps 不进入数组或 trace events。collector 使用以下固定 buck
 - `1100..10000`：每 100ms 一个 bucket；
 - `11000..60000`：每 1000ms 一个 bucket；
 - `>60000`：一个 overflow bucket，并维护其中实际最大 gap。
+
+每个 gap 进入第一个满足 `upperBound >= gap` 的 bucket；因此 `(250, 260]` 进入 `260` bucket，其他档位边界同理。
 
 终态用 `ceil(count * 0.95)` 的 nearest-rank 找到 p95。普通 bucket 保存其上界；若 rank 落在 overflow，保存 overflow 中实际最大值。因此该值是保守的近似值，且测试可以对完整边界表给出确定预期。
 

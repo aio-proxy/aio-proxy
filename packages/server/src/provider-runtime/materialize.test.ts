@@ -80,8 +80,12 @@ test('rejects an injected runtime provider without raw or model capabilities', (
   ).toThrow('must expose a raw or model capability');
 });
 
-test('materializes an API input whose raw placeholder is undefined', () => {
-  const passthrough = async () => new Response();
+test('materializes an API input whose raw placeholder is undefined', async () => {
+  let upstreamStream: boolean | undefined;
+  const passthrough = async (_request: Request, options?: { readonly upstreamStream: boolean }) => {
+    upstreamStream = options?.upstreamStream;
+    return new Response();
+  };
   const provider = {
     baseURL: 'https://api.example.com',
     enabled: true,
@@ -95,7 +99,10 @@ test('materializes an API input whose raw placeholder is undefined', () => {
   const runtime = materializeRuntimeProvider(provider);
 
   expect(runtime).not.toBe(provider);
-  expect(runtime.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'test' })?.invoke).toBe(passthrough);
+  const raw = runtime.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'test' });
+  expect(raw?.invoke).not.toBe(passthrough);
+  await raw?.invoke(new Request('https://proxy.test/v1/messages'), undefined, { upstreamStream: false });
+  expect(upstreamStream).toBe(false);
   expect(runtime.model).toBeUndefined();
 });
 
@@ -134,7 +141,11 @@ test('materializes an AI SDK input instead of accepting an inherited model capab
 });
 
 test('materializes an injected API test double without baseURL through the snapshot seam', async () => {
-  const passthrough = async () => new Response();
+  let invoked = false;
+  const passthrough = async () => {
+    invoked = true;
+    return new Response();
+  };
   const provider = {
     enabled: true,
     id: 'api-double',
@@ -152,7 +163,9 @@ test('materializes an injected API test double without baseURL through the snaps
   try {
     const runtime = state.currentProviderSnapshot().providers[0];
 
-    expect(runtime?.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'test' })?.invoke).toBe(passthrough);
+    const raw = runtime?.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'test' });
+    await raw?.invoke(new Request('https://proxy.test/v1/messages'));
+    expect(invoked).toBe(true);
     expect(runtime?.model).toBeUndefined();
   } finally {
     state.close();

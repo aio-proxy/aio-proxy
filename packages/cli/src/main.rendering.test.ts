@@ -11,18 +11,24 @@ import { ProviderCapabilityNotFoundError } from './plugin-commands/provider-logi
 describe('cli rendering', () => {
   test('provider subcommands expose unified argument placeholders', () => {
     // Given / When
-    const install = runCli(['provider', 'install', '--help']).stdout.toString();
     const login = runCli(['provider', 'login', '--help']).stdout.toString();
     const probe = runCli(['provider', 'test', '--help']).stdout.toString();
 
     // Then
-    expect(install).toContain('<package>');
-    expect(install).not.toContain('<pkg>');
     expect(login).toContain('[capability]');
     expect(login).toContain('--provider <id>');
     expect(login).toContain('Re-login an existing OAuth provider by id.');
     expect(probe).toContain('<provider-id>');
     expect(probe).not.toContain('<id>');
+  });
+
+  test('provider install is no longer a command (installation is plugin add)', () => {
+    // Given / When
+    const result = runCli(['provider', 'install', 'x']);
+
+    // Then
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain("unknown command 'install'");
   });
 
   test('top-level rendering rejects raw provider-login errors and preserves loopback errors', async () => {
@@ -57,12 +63,12 @@ describe('cli rendering', () => {
     expect(formatted.message).not.toContain('attacker.invalid');
   });
 
-  test('dashboard command reports not-yet-implemented on stderr and exits 2', () => {
+  test('dashboard command reports not-yet-implemented on stderr and exits 1', () => {
     // Given / When
     const result = runCli(['dashboard']);
 
     // Then
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain('not yet implemented');
     expect(result.stdout.toString()).not.toContain('not yet implemented');
   });

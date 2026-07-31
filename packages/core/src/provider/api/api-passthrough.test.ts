@@ -69,7 +69,7 @@ describe('createApiProvider', () => {
       expect(seen).toEqual({
         authorization: 'Bearer env-secret',
         body: '{"model":"gpt-5-mini"}',
-        encoding: 'gzip, deflate, br, zstd',
+        encoding: 'identity',
         forwardedBy: null,
         host: upstream.url.host,
         method: 'POST',
