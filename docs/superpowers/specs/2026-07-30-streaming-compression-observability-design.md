@@ -131,6 +131,7 @@ raw path 在两个现有接缝采集：
 2. passthrough usage observer 在解码后的 SSE 上记录首个 event、首内容和 content gaps。
 
 observer 必须单路读取并原样 enqueue 同一个 chunk；不得 `tee()` 出观察支路，避免慢支路缓存响应体或改变 backpressure。SSE frame 扫描只保留未完成 carry 和聚合计数，不保留 frame body。
+`eventsource-parser` 的 recoverable parse diagnostics 不得终止后续 event 计数；只有 `feed()` 实际抛错时才关闭该指标维度。
 
 ### model path
 

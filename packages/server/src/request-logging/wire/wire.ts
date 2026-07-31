@@ -137,9 +137,6 @@ function observedBody(
   let parserActive = observeSseEvent !== undefined && options.controlledIdentitySse === true;
   const parser = parserActive
     ? createParser({
-        onError() {
-          parserActive = false;
-        },
         onEvent() {
           if (!parserActive) return;
           pendingSseEvents++;
