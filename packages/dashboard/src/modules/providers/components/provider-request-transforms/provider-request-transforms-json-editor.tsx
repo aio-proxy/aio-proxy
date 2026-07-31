@@ -6,7 +6,7 @@ import {
 } from '@aio-proxy/types';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
-import { JsonEditor } from '@/components/json-editor/json-editor';
+import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
 import type { JsonEditorValidation, JsonValue } from '@/components/json-editor/json-editor-state';
 import { FieldError } from '@/components/ui/field';
 
@@ -24,6 +24,7 @@ interface SemanticIssue {
 interface ValidCandidate {
   readonly draft: string;
   readonly value: readonly ProviderRequestTransformRule[];
+  readonly expectValueAcknowledgement?: JsonEditorValueAcknowledgement;
 }
 
 const jsonPath = (path: readonly PropertyKey[]) =>
@@ -65,9 +66,9 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
   );
 
   const handleValueChange = useCallback(
-    (nextValue: JsonValue | undefined, draft: string) => {
+    (nextValue: JsonValue | undefined, draft: string, expectValueAcknowledgement: JsonEditorValueAcknowledgement) => {
       const result = ProviderRequestTransformRulesSchema.safeParse(nextValue);
-      candidate.current = result.success ? { draft, value: result.data } : undefined;
+      candidate.current = result.success ? { draft, value: result.data, expectValueAcknowledgement } : undefined;
       setSemanticIssue(
         result.success
           ? undefined
@@ -87,6 +88,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
       const valid = validation.valid && latestDraft.current === draft && current?.draft === draft;
       onValidityChange(valid);
       if (!valid || current === lastEmitted.current) return;
+      current.expectValueAcknowledgement?.(current.value as unknown as JsonValue);
       lastEmitted.current = current;
       onChange(current.value);
     },

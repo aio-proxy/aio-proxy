@@ -152,6 +152,75 @@ test('preserves the first draft when validity rerenders supply a fresh empty arr
   expect(onChange).toHaveBeenCalledTimes(1);
 });
 
+test('acknowledges an accepted emitted value without resetting the draft', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  let view: ReturnType<typeof render>;
+  const handleChange = (value: readonly ProviderRequestTransformRule[]) => {
+    onChange(value);
+    queueMicrotask(() =>
+      view.rerender(
+        <ProviderRequestTransformsEditor value={value} onChange={handleChange} onValidityChange={onValidityChange} />,
+      ),
+    );
+  };
+  view = render(
+    <ProviderRequestTransformsEditor
+      value={initialValue}
+      onChange={handleChange}
+      onValidityChange={onValidityChange}
+    />,
+  );
+  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  await resolveNextValidation();
+  if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
+  onChange.mockClear();
+
+  const nextDraft = '[{"update":[{"$set":{"request.body.accepted":true}}]}]';
+  fireEvent.change(editor, { target: { value: nextDraft } });
+  await resolveNextValidation();
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((editor as HTMLTextAreaElement).value).toBe(nextDraft));
+});
+
+test('restores the controlled value when the parent rejects an emitted value', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  let view: ReturnType<typeof render>;
+  const handleChange = (value: readonly ProviderRequestTransformRule[]) => {
+    onChange(value);
+    queueMicrotask(() =>
+      view.rerender(
+        <ProviderRequestTransformsEditor
+          value={[...initialValue]}
+          onChange={handleChange}
+          onValidityChange={onValidityChange}
+        />,
+      ),
+    );
+  };
+  view = render(
+    <ProviderRequestTransformsEditor
+      value={initialValue}
+      onChange={handleChange}
+      onValidityChange={onValidityChange}
+    />,
+  );
+  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  await resolveNextValidation();
+  if (onValidityChange.mock.calls.at(-1)?.[0] !== true) await resolveNextValidation();
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
+  onChange.mockClear();
+
+  fireEvent.change(editor, { target: { value: '[{"update":[{"$set":{"request.body.rejected":true}}]}]' } });
+  await resolveNextValidation();
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('"$unset": "request.body.store"'));
+});
+
 test('resynchronizes the draft when external canonical content changes', async () => {
   const { editor, onChange, onValidityChange, view } = await renderEditor();
   const externalValue: readonly ProviderRequestTransformRule[] = [
