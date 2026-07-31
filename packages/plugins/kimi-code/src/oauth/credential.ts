@@ -23,6 +23,7 @@ export async function refreshKimiCredential(
         refresh_token: current.refreshToken,
       }),
       signal: options.signal ?? null,
+      aioProxy: { traffic: 'control' },
     });
   } catch {
     throw refreshError(true, 'network');

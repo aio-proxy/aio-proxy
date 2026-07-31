@@ -1,11 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 
-import { type CredentialPort, CredentialRefreshError, type OAuthLoginContext } from '@aio-proxy/plugin-sdk';
+import {
+  type CredentialPort,
+  CredentialRefreshError,
+  type OAuthLoginContext,
+  type RuntimeRequestInit,
+} from '@aio-proxy/plugin-sdk';
 
 import { kimiClientId } from '../rslib.config';
 import { currentKimiCredential, type KimiCredential, loginKimi, refreshKimiCredential } from './oauth';
 
-type FetchCall = { readonly url: string; readonly init?: RequestInit };
+type FetchCall = { readonly url: string; readonly init?: RuntimeRequestInit };
 type RefreshExchange = Parameters<CredentialPort<KimiCredential>['refresh']>[1];
 
 const presentation = { instructions: 'Open Kimi', waiting: 'Waiting' } as const;
@@ -86,6 +91,7 @@ test('polls pending and slow device authorization in request order', async () =>
     'https://auth.kimi.com/api/oauth/token',
     'https://auth.kimi.com/api/oauth/token',
   ]);
+  expect(calls.every(({ init }) => init?.aioProxy?.traffic === 'control')).toBe(true);
   expect(form(firstCall(calls))).toEqual({ client_id: kimiClientId });
   expect(calls.slice(1).map(form)).toEqual(
     Array.from({ length: 3 }, () => ({
@@ -238,6 +244,7 @@ describe('credential refresh', () => {
       grant_type: 'refresh_token',
       refresh_token: 'old-refresh',
     });
+    expect(firstCall(calls).init?.aioProxy).toEqual({ traffic: 'control' });
   });
 
   test.each([
