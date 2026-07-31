@@ -111,7 +111,8 @@ This design deliberately does not rely on async provider-attempt context to clas
 Built-in plugins follow these rules:
 
 - AI SDK providers, raw transports, inference calls, and token-count model calls receive `context.fetch` directly.
-- OAuth refresh, account APIs, catalog APIs, quota APIs, and auxiliary URL repair calls add `aioProxy: { traffic: 'control' }` where they issue the request.
+- Control requests issued through `RuntimeContext.fetch`, including credential refresh and auxiliary URL repair, add `aioProxy: { traffic: 'control' }` where they issue the request.
+- Login, catalog, and quota callbacks do not receive `RuntimeContext.fetch`; they continue using their existing dedicated dependencies outside provider-attempt execution and require no traffic annotation.
 - A control-plane library that only accepts a standard fetch callback receives a small adapter that adds the control annotation. This exception stays local to that integration; runtime entry points no longer maintain general `controlFetch` and `modelFetch` variables.
 - Test dependency injection may still replace network fetches, but production routing must use `context.fetch`.
 
