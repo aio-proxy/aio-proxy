@@ -117,8 +117,7 @@ async function createRuntimeMaterialization(
           credentials: credentials as never,
           options: accountOptions,
           catalog: storedCatalog.catalog,
-          ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
-          ...(options.runtimeModelFetch === undefined ? {} : { modelFetch: options.runtimeModelFetch }),
+          fetch: options.runtimeFetch ?? globalThis.fetch,
         }),
       ),
     );

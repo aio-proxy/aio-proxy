@@ -31,22 +31,22 @@ export function createGoogleAntigravityRuntime(
   context: RuntimeContext<GoogleAntigravityCredential, GoogleAntigravityAccountOptions>,
   dependencies: GoogleAntigravityRuntimeDependencies = {},
 ): OAuthRuntimeResult {
-  const fetcher = dependencies.fetch ?? context.fetch;
+  const fetch = dependencies.fetch ?? context.fetch;
   const credentials = createAntigravityCredentialSource(context.credentials, {
-    ...(fetcher === undefined ? {} : { fetch: fetcher }),
+    fetch,
     ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
   });
   const transport = new AntigravityTransport({
     credentials,
     options: context.options,
-    ...(fetcher === undefined ? {} : { fetch: fetcher }),
+    fetch,
     ...(dependencies.sleep === undefined ? {} : { sleep: dependencies.sleep }),
   });
   const modelRuntime: AntigravityLanguageModelRuntime = {
     call: (logicalRequest) => ({
       context: logicalRequest,
       transport,
-      ...(fetcher === undefined ? {} : { fetch: fetcher }),
+      fetch,
     }),
   };
   const metadataByModel = new Map(context.catalog.language.map((descriptor) => [descriptor.id, descriptor.metadata]));

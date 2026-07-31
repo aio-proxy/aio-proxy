@@ -1,4 +1,4 @@
-import type { OAuthAdapter, OAuthQuotaItem, PluginApi, RuntimeFetch, RuntimeRequestInit } from '.';
+import type { OAuthAdapter, OAuthQuotaItem, PluginApi, RuntimeContext, RuntimeFetch, RuntimeRequestInit } from '.';
 
 declare const runtimeFetch: RuntimeFetch;
 
@@ -21,6 +21,13 @@ type MyOptions = {
 type MyCredential = {
   readonly accessToken: string;
 };
+
+declare const runtimeContext: RuntimeContext<MyCredential, MyOptions>;
+const requiredRuntimeFetch: RuntimeFetch = runtimeContext.fetch;
+void requiredRuntimeFetch;
+
+// @ts-expect-error RuntimeContext exposes one fetch only
+void runtimeContext.modelFetch;
 
 declare const api: PluginApi;
 declare const adapter: OAuthAdapter<MyOptions, MyCredential>;

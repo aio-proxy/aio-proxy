@@ -18,6 +18,7 @@ import { compact } from 'es-toolkit/array';
 
 import {
   type CatalogJobDescriptor,
+  createRuntimeFetch,
   materializePluginProvider,
   type PluginOptionsIdentityDigest,
   type PluginProviderMaterialization,
@@ -62,8 +63,8 @@ export async function buildSnapshot(
   onDiagnosticChanged: () => void,
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
-  const runtimeFetch = globalThis.fetch;
-  const runtimeModelFetch = createObservedFetch(runtimeFetch);
+  const controlFetch = globalThis.fetch;
+  const observedModelFetch = createObservedFetch(controlFetch);
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
     config,
     options,
@@ -91,8 +92,10 @@ export async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
-        runtimeFetch,
-        runtimeModelFetch: createProviderRequestTransformFetch(provider, runtimeModelFetch),
+        runtimeFetch: createRuntimeFetch({
+          control: controlFetch,
+          model: createProviderRequestTransformFetch(provider, observedModelFetch),
+        }),
         ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),

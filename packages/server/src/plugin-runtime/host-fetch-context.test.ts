@@ -1,36 +1,34 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch, withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import { reconstructed, waitFor } from '../request-logging/test-support';
 import type { ServerLog } from '../server-log';
+import { createRuntimeFetch } from './runtime-fetch';
 import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
 afterEach(cleanup);
 
 test('OAuth runtimes keep control traffic outside observed model fetches', async () => {
   const logs: ServerLog[] = [];
-  const rawBaseFetchCalls: { readonly input: RequestInfo | URL; readonly init: RequestInit | undefined }[] = [];
   const baseFetchCalls: Request[] = [];
   const baseFetchBodies: string[] = [];
   const baseFetch = (async (input, init) => {
-    rawBaseFetchCalls.push({ input, init });
     const request = input instanceof Request ? input : new Request(input, init);
     baseFetchCalls.push(request);
     baseFetchBodies.push(await request.text());
     return new Response(null, { status: 204 });
   }) as typeof globalThis.fetch;
-  let capturedFetch: typeof globalThis.fetch | undefined;
-  let capturedModelFetch: typeof globalThis.fetch | undefined;
+  let capturedFetch: RuntimeFetch | undefined;
   const fixture = runtimeFixture(
     { kind: 'static' },
     {
       providerId: 'oauth',
       async createRuntime(context) {
         capturedFetch = context.fetch;
-        capturedModelFetch = context.modelFetch;
         return {
           provider: {
             specificationVersion: 'v4',
@@ -79,12 +77,15 @@ test('OAuth runtimes keep control traffic outside observed model fetches', async
     diagnostics,
     logger: () => {},
     onDiagnosticChanged: () => {},
-    runtimeFetch: baseFetch,
-    runtimeModelFetch: createProviderRequestTransformFetch(config, createObservedFetch(baseFetch)),
+    runtimeFetch: createRuntimeFetch({
+      control: baseFetch,
+      model: createProviderRequestTransformFetch(config, createObservedFetch(baseFetch)),
+    }),
   });
 
   expect(capturedFetch).toBeFunction();
-  expect(capturedModelFetch).toBeFunction();
+  if (capturedFetch === undefined) throw new Error('runtime fetch was not captured');
+  const runtimeFetch = capturedFetch;
 
   const auxiliaryInput = 'https://oauth-upstream.test/token';
   const auxiliaryInit = { method: 'POST', body: 'refresh-token-secret' };
@@ -99,8 +100,8 @@ test('OAuth runtimes keep control traffic outside observed model fetches', async
         targetProtocol: ProviderProtocol.OpenAICompatible,
       },
       async () => {
-        await capturedFetch?.(auxiliaryInput, auxiliaryInit);
-        await capturedModelFetch?.('https://oauth-upstream.test/v1', {
+        await runtimeFetch(auxiliaryInput, { ...auxiliaryInit, aioProxy: { traffic: 'control' } });
+        await runtimeFetch('https://oauth-upstream.test/v1', {
           method: 'POST',
           body: '{"route":"client"}',
           headers: { 'content-type': 'application/json' },
@@ -111,8 +112,6 @@ test('OAuth runtimes keep control traffic outside observed model fetches', async
 
   await waitFor(() => logs.some(({ event }) => event === 'request.upstream_snapshot'));
   expect(logs).toContainEqual(expect.objectContaining({ event: 'request.upstream_snapshot', providerId: 'oauth' }));
-  expect(rawBaseFetchCalls[0]?.input).toBe(auxiliaryInput);
-  expect(rawBaseFetchCalls[0]?.init).toBe(auxiliaryInit);
   expect(baseFetchCalls).toHaveLength(2);
   expect(baseFetchBodies).toEqual(['refresh-token-secret', '{"route":"oauth"}']);
   expect(baseFetchCalls[1]?.headers.get('x-provider-route')).toBe('oauth');

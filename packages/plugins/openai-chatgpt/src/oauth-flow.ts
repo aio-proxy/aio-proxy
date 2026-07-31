@@ -92,7 +92,8 @@ async function postTokenRequest<T>(
   options: ChatGPTTokenExchangeOptions,
   schema: ZodType<T>,
 ): Promise<T> {
-  const response = await (options.fetch ?? globalThis.fetch)(TOKEN_ENDPOINT, {
+  const fetch: RuntimeFetch = options.fetch ?? globalThis.fetch;
+  const response = await fetch(TOKEN_ENDPOINT, {
     aioProxy: { traffic: 'control' },
     body,
     headers: {
