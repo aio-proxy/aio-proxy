@@ -20,7 +20,7 @@
 - Generic API and built-in openai-chatgpt managed raw transports remove the inbound client `Accept-Encoding` before provider/plugin policy is applied.
 - Explicitly compressed streams retain `decompress: false`, the controlled decoder, backpressure, protocol-terminal cancellation, and error propagation.
 - Observations are attempt-local, use `CandidateSlot.startedAt`, round non-negative milliseconds, omit missing values, and retain semantic content metrics when raw transport observation is `unavailable` or `ambiguous`.
-- The content-gap histogram uses exactly `0..250` by 1 ms, `260..1000` by 10 ms, `1100..10000` by 100 ms, `11000..60000` by 1000 ms, and one `>60000` overflow bucket whose actual maximum is retained.
+- The content-gap histogram uses exactly `0..250` by 1 ms, `260..1000` by 10 ms, `1100..10000` by 100 ms, `11000..60000` by 1000 ms, and one `>60000` overflow bucket whose actual maximum is retained. Each gap enters the first bucket whose upper bound is greater than or equal to it, so `(250, 260]` maps to `260`.
 - Never use `ReadableStream.tee()` for metrics; observers pull one source reader and enqueue the same chunk unchanged.
 - Baseline exception approved by the user: root `CHANGELOG.md` currently fails `oxfmt --check`, and `@aio-proxy/plugin-xai-grok#test:artifact` expects `0.0.0` while the build emits `0.0.1`. Do not modify either unrelated area; final verification must show no new failure beyond those two.
 - Every commit includes `Co-authored-by: Codex <noreply@openai.com>`.
@@ -86,15 +86,17 @@ test('omits unobserved values instead of writing zero', () => {
   expect(observation.snapshot()).toEqual({ transportObservation: 'unavailable' });
 });
 
-test('keeps semantic gaps but removes raw metrics after two responses', () => {
+test('keeps content gaps local to each response after two responses', () => {
   let now = 0;
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => now });
   observation.observeFetchStart();
   observation.observeResponse(new Response('one'), { controlledStream: false });
-  observation.observeFetchStart();
-  observation.observeResponse(new Response('two'), { controlledStream: false });
   observation.observeContent(10);
   observation.observeContent(20);
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('two'), { controlledStream: false });
+  observation.observeContent(100);
+  observation.observeContent(105);
   expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10 });
 });
 ```
@@ -172,7 +174,7 @@ export type AttemptResponseObservation = {
 };
 ```
 
-Store one `Uint32Array` for fixed bucket counts, `lastContentAt`, `gapCount`, and `overflowMax`; use a small binary search over fixed upper bounds. `observeFetchStart()` changes `unavailable` to a pending state so a fetch exception before headers leaves `transportObservation` absent. The second resolved `Response` makes the snapshot `ambiguous` and suppresses headers/byte/event/encoding/frame fields while leaving content gaps.
+Store one `Uint32Array` for fixed bucket counts, `lastContentAt`, `gapCount`, and `overflowMax`; use a small binary search over fixed upper bounds. `observeFetchStart()` changes `unavailable` to a pending state so a fetch exception before headers leaves `transportObservation` absent. The second resolved `Response` makes the snapshot `ambiguous`, resets `lastContentAt` so inter-response idle time is not a content gap, and suppresses headers/byte/event/encoding/frame fields while retaining already accumulated response-local gaps.
 
 Implement scope without coupling it to debug logging:
 
@@ -513,7 +515,7 @@ test('observes controlled identity SSE without enabling debug body logs', async 
 });
 ```
 
-Add tests for: non-stream `decompress` absent records `body`/headers but omits byte/encoding; two resolved fetch responses become `ambiguous`; a split frame is counted on the read that completes it; empty chunks do not set first byte; source cancellation is invoked once; no consumer means no body read.
+Add tests for: non-stream `decompress` absent records `body`/headers but omits byte/encoding; two resolved fetch responses become `ambiguous`; a split event is counted on the read that completes it; comment/keep-alive blocks do not count as dispatched SSE events; empty chunks do not set first byte; source cancellation is invoked once; no consumer means no body read.
 
 - [ ] **Step 2: Run wire/body-tap tests and confirm red**
 
@@ -536,7 +538,7 @@ export type BodyTapObserver = {
 };
 ```
 
-Call `sourceRead` only for a completed non-empty `reader.read()`. Make the existing `emit()` return the number of complete SSE frames found in that specific source read, including a frame whose carry began in an earlier read, then call `sseFrames(count)`. Do not count an unterminated EOF fragment as a frame and keep `{ highWaterMark: 0 }` plus one cancellation path.
+Call `sourceRead` only for a completed non-empty `reader.read()`. Make the existing `emit()` return the number of complete blank-line-delimited SSE blocks found in that specific source read, including a block whose carry began in an earlier read, then call `sseFrames(count)` as the per-read flush signal. The wire metric must use parser-dispatched event count rather than this raw block count. Do not count an unterminated EOF fragment as a block and keep `{ highWaterMark: 0 }` plus one cancellation path.
 
 - [ ] **Step 4: Make `createObservedFetch` active for metrics independently of debug**
 
@@ -556,7 +558,7 @@ const controlledStream = (init as BunFetchInit | undefined)?.decompress === fals
 const bodyObservation = observation?.observeResponse(response, { controlledStream });
 ```
 
-Wrap the response body once when debug logging or `bodyObservation` needs it. For controlled identity SSE, feed each complete frame from the existing body tap into one `eventsource-parser` instance: `onEvent` calls `observation.observeSseEvent()`, and each source read reports its frame count through `bodyObservation.observeRead(byteLength, frames)`. For compressed controlled streams, record non-empty encoded source bytes and encoding; raw passthrough may add the first decoded SSE event later, while `max_sse_frames_per_read` remains absent because encoded read boundaries cannot be mapped to decoded frames. Catch metrics parsing/statistics errors and disable only that dimension.
+Wrap the response body once when debug logging or `bodyObservation` needs it. For controlled identity SSE, feed each complete block from the existing body tap into one `eventsource-parser` instance: `onEvent` calls `observation.observeSseEvent()` and increments the current read's dispatched-event count, while the body tap's per-read callback flushes that count through `bodyObservation.observeRead(byteLength, events)`. Comment/keep-alive and field-only blocks therefore do not count. Recoverable parser diagnostics must not stop later event counting; disable the parser dimension only when `feed()` actually throws. For compressed controlled streams, record non-empty encoded source bytes and encoding; raw passthrough may add the first decoded SSE event later, while `max_sse_frames_per_read` remains absent because encoded read boundaries cannot be mapped to decoded frames. Catch metrics parsing/statistics errors and disable only that dimension.
 
 - [ ] **Step 5: Run transport observer and provider materialization tests**
 
@@ -666,7 +668,7 @@ if (!isEventStream(response.headers.get('content-type'))) return response;
 return normalizeUnexpectedSse(response, protocol); // identity reader only; no Content-Encoding decode
 ```
 
-`normalizeControlledResponse` retains the current decoder and terminal code. `normalizeUnexpectedSse` wraps Bun's exposed body in `createContentDecodedReader(source, undefined)` only to reuse terminal demand/cancellation; it removes stale representation headers but never interprets `response.headers.get('content-encoding')`.
+`normalizeControlledResponse` retains the current decoder and terminal code. `normalizeUnexpectedSse` wraps Bun's exposed body in `createContentDecodedReader(source, null)` only to reuse terminal demand/cancellation; it removes stale representation headers but never interprets `response.headers.get('content-encoding')`.
 
 - [ ] **Step 4: Run all plugin-sdk OpenAI-stream regression tests and artifact/type tests**
 

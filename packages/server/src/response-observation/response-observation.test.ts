@@ -73,15 +73,17 @@ test('keeps meaningful zero timings and ignores empty reads', () => {
   });
 });
 
-test('keeps semantic gaps but removes raw metrics after two responses', () => {
+test('keeps content gaps local to each response after two responses', () => {
   let now = 0;
   const observation = createAttemptResponseObservation({ startedAt: 0, now: () => now });
   observation.observeFetchStart();
   observation.observeResponse(new Response('one'), { controlledStream: false });
-  observation.observeFetchStart();
-  observation.observeResponse(new Response('two'), { controlledStream: false });
   observation.observeContent(10);
   observation.observeContent(20);
+  observation.observeFetchStart();
+  observation.observeResponse(new Response('two'), { controlledStream: false });
+  observation.observeContent(100);
+  observation.observeContent(105);
   expect(observation.snapshot()).toEqual({ transportObservation: 'ambiguous', contentGapP95Ms: 10 });
 });
 
