@@ -258,6 +258,8 @@ rtk git commit -m "fix(plugin-sdk): restore plugin api version one" -m "Co-autho
 - Consumes: `RuntimeFetch` and `RuntimeRequestInit` from Task 1.
 - Produces: `createRuntimeFetch(input: { readonly control: typeof globalThis.fetch; readonly model: typeof globalThis.fetch }): RuntimeFetch`.
 
+An omitted, `undefined`, or `null` runtime traffic value defaults to `model`. Values other than `model`, `control`, `undefined`, and `null` throw `TypeError` before dispatch.
+
 - [ ] **Step 1: Write classifier tests**
 
 Create `runtime-fetch.test.ts` with behavior-level tests equivalent to:
@@ -295,6 +297,28 @@ test('defaults to model traffic and routes explicit control traffic', async () =
   expect(control[0]).toMatchObject({ method: 'POST', decompress: false });
   expect(Reflect.has(control[0] as object, 'aioProxy')).toBe(false);
   expect(init.aioProxy).toEqual({ traffic: 'control' });
+});
+
+test('defaults explicit null runtime traffic to model', async () => {
+  let modelCalls = 0;
+  let controlCalls = 0;
+  const fetch = createRuntimeFetch({
+    model: (async () => {
+      modelCalls++;
+      return new Response('model');
+    }) as typeof globalThis.fetch,
+    control: (async () => {
+      controlCalls++;
+      return new Response('control');
+    }) as typeof globalThis.fetch,
+  });
+
+  await fetch('https://example.test/null', {
+    aioProxy: { traffic: null },
+  } as unknown as RuntimeRequestInit);
+
+  expect(modelCalls).toBe(1);
+  expect(controlCalls).toBe(0);
 });
 
 test('rejects invalid runtime traffic before dispatch', async () => {

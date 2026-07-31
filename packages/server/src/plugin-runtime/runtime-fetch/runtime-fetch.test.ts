@@ -34,6 +34,28 @@ test('defaults to model traffic and routes explicit control traffic', async () =
   expect(init.aioProxy).toEqual({ traffic: 'control' });
 });
 
+test('defaults explicit null runtime traffic to model', async () => {
+  let modelCalls = 0;
+  let controlCalls = 0;
+  const fetch = createRuntimeFetch({
+    model: (async () => {
+      modelCalls++;
+      return new Response('model');
+    }) as typeof globalThis.fetch,
+    control: (async () => {
+      controlCalls++;
+      return new Response('control');
+    }) as typeof globalThis.fetch,
+  });
+
+  await fetch('https://example.test/null', {
+    aioProxy: { traffic: null },
+  } as unknown as RuntimeRequestInit);
+
+  expect(modelCalls).toBe(1);
+  expect(controlCalls).toBe(0);
+});
+
 test('rejects invalid runtime traffic before dispatch', async () => {
   let calls = 0;
   const downstream = (async () => {

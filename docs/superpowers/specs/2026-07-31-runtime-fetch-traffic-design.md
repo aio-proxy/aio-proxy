@@ -68,7 +68,7 @@ The exact callable type may be adjusted during implementation to preserve the re
 await context.fetch(modelUrl, modelInit);
 ```
 
-An omitted `aioProxy.traffic` defaults to `model`. The call passes through provider request transforms, model-request observation, and future policies attached to model traffic.
+An omitted, `undefined`, or `null` `aioProxy.traffic` defaults to `model`. The call passes through provider request transforms, model-request observation, and future policies attached to model traffic.
 
 ```ts
 await context.fetch(refreshUrl, {
@@ -79,7 +79,7 @@ await context.fetch(refreshUrl, {
 
 An explicit `control` value bypasses the model pipeline and uses the host's control fetch directly.
 
-Explicit `traffic: 'model'` is accepted and behaves like the default. Any other runtime value throws a `TypeError` before a network request is issued.
+Explicit `traffic: 'model'` is accepted and behaves like the default. Any runtime value other than `model`, `control`, `undefined`, or `null` throws a `TypeError` before a network request is issued.
 
 The `aioProxy` member is host-only metadata. The runtime fetch wrapper copies the provided init, removes `aioProxy`, and forwards all standard and Bun-supported fetch fields without mutating the caller's object.
 
