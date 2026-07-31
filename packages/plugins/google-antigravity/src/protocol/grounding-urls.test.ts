@@ -12,12 +12,14 @@ test.each(['http://127.0.0.1/private', 'http://169.254.169.254/latest/meta-data'
     const requests: string[] = [];
     const methods: (string | undefined)[] = [];
     const redirectModes: (RequestRedirect | undefined)[] = [];
+    const traffic: ('control' | 'model')[] = [];
     let cancellations = 0;
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
       requests.push(url);
       methods.push(init?.method);
       redirectModes.push(init?.redirect);
+      traffic.push(init?.aioProxy?.traffic ?? 'model');
       if (url !== redirectUrl) return responseAt(url);
       if (init?.redirect === 'follow') return await fetch(location, init);
       const body = new ReadableStream({
@@ -33,6 +35,7 @@ test.each(['http://127.0.0.1/private', 'http://169.254.169.254/latest/meta-data'
     expect(requests).toEqual([redirectUrl]);
     expect(methods).toEqual(['HEAD']);
     expect(redirectModes).toEqual(['manual']);
+    expect(traffic).toEqual(['control']);
     expect(cancellations).toBe(1);
     expect(groundingUris(repaired)).toEqual([location, location]);
     expect(groundingUris(payload)).toEqual([redirectUrl, redirectUrl]);

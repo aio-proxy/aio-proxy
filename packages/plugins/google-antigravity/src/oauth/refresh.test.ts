@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 
-import { type CredentialPort, CredentialRefreshError, type CredentialSnapshot } from '@aio-proxy/plugin-sdk';
+import {
+  type CredentialPort,
+  CredentialRefreshError,
+  type CredentialSnapshot,
+  type RuntimeRequestInit,
+} from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityCredential } from '../schema';
 import { currentGoogleCredential, forceRefreshGoogleCredential, refreshGoogleCredential } from './refresh';
@@ -21,15 +26,18 @@ test('refresh keeps the prior refresh token and project identity', async () => {
 
 test('refresh sends the Google refresh grant as form data', async () => {
   let request: Request | undefined;
+  let traffic: 'control' | 'model' | undefined;
   await refreshGoogleCredential(credentialFixture(), {
     fetch: async (input, init) => {
       request = new Request(input, init);
+      traffic = (init as RuntimeRequestInit | undefined)?.aioProxy?.traffic ?? 'model';
       return Response.json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 });
     },
   });
   const body = new URLSearchParams(await request?.clone().text());
   expect(body.get('grant_type')).toBe('refresh_token');
   expect(body.get('refresh_token')).toBe('refresh-1');
+  expect(traffic).toBe('control');
 });
 
 test('classifies fetch and response-body failures as transient', async () => {

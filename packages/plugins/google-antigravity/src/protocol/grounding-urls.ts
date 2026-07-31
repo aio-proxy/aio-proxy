@@ -1,10 +1,12 @@
+import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
+
 const GROUNDING_REDIRECT_ORIGIN = 'https://vertexaisearch.cloud.google.com';
 const GROUNDING_REDIRECT_PREFIX = '/grounding-api-redirect/';
 const REPAIR_TIMEOUT_MS = 1_500;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export type GroundingRepairDependencies = {
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly signal?: AbortSignal;
   readonly timeoutSignal?: () => AbortSignal;
 };
@@ -142,13 +144,9 @@ async function repairTerminalFrame(frame: string, dependencies: GroundingRepairD
   }
 }
 
-async function resolveGroundingUrl(
-  url: string,
-  signal: AbortSignal,
-  fetch: typeof globalThis.fetch,
-): Promise<string | undefined> {
+async function resolveGroundingUrl(url: string, signal: AbortSignal, fetch: RuntimeFetch): Promise<string | undefined> {
   try {
-    const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal });
+    const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal, aioProxy: { traffic: 'control' } });
     try {
       if (!REDIRECT_STATUSES.has(response.status)) return undefined;
       const location = response.headers.get('location');

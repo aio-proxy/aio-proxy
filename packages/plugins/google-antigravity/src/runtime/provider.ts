@@ -1,5 +1,5 @@
 import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
-import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { JsonValue, OAuthRuntimeResult, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { createAntigravityCredentialSource } from './credential';
@@ -10,7 +10,7 @@ import { createAntigravityTokenCount } from './token-count';
 import { AntigravityTransport } from './transport';
 
 export type GoogleAntigravityRuntimeDependencies = {
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number) => Promise<void>;
 };
