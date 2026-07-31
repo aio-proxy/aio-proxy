@@ -5,6 +5,7 @@ import {
   CredentialRefreshError,
   type LocalizedText,
   type OAuthLoginContext,
+  type RuntimeFetch,
   zod,
 } from '@aio-proxy/plugin-sdk';
 
@@ -42,7 +43,7 @@ const tokenSchema = zod
   })
   .loose();
 
-export type XAIGrokFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type XAIGrokFetch = RuntimeFetch;
 
 export type XAIGrokOAuthOptions = {
   readonly fetch?: XAIGrokFetch;

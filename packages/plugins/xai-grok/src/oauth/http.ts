@@ -39,7 +39,7 @@ export async function postFormResponse(
 
 export async function request(fetcher: XAIGrokFetch, input: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetcher(input, init);
+    return await fetcher(input, { ...init, aioProxy: { traffic: 'control' } });
   } catch {
     if (init.signal?.aborted) throw init.signal.reason;
     throw new XAIOAuthHttpError('xAI OAuth network request failed', true);

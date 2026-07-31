@@ -1,4 +1,6 @@
-import type { OAuthLoginContext } from '@aio-proxy/plugin-sdk';
+import { expect } from 'bun:test';
+
+import type { OAuthLoginContext, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 export const DISCOVERY = 'https://auth.x.ai/.well-known/openid-configuration';
 export const DEVICE = 'https://auth.x.ai/oauth2/device/code';
@@ -19,8 +21,9 @@ export function loginContext(presented: unknown[]): OAuthLoginContext {
   };
 }
 
-export function sequenceFetch(requests: Request[], responses: Response[]): typeof fetch {
+export function sequenceFetch(requests: Request[], responses: Response[]): RuntimeFetch {
   return async (input, init) => {
+    expect((init as RuntimeRequestInit | undefined)?.aioProxy).toEqual({ traffic: 'control' });
     requests.push(new Request(input, init));
     const response = responses.shift();
     if (response === undefined) throw new Error('unexpected request');
