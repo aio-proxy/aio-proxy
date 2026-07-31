@@ -36,7 +36,6 @@ export type ProviderRequestTransformInput = {
 
 export type ProviderRequestTransformResult = {
   readonly request: ProviderRequestTransformRequest;
-  readonly bodyLoaded: boolean;
   readonly bodyModified: boolean;
   readonly lastAppliedLocation: ProviderRequestTransformLocation | undefined;
   readonly headerWriteLocations: ReadonlyMap<string, ProviderRequestTransformLocation>;
@@ -55,12 +54,12 @@ export async function evaluateProviderRequestTransforms(
   let lastAppliedLocation: ProviderRequestTransformLocation | undefined;
   const headerWriteLocations = new Map<string, ProviderRequestTransformLocation>();
 
-  const ensureBody = async (location: ProviderRequestTransformLocation): Promise<boolean> => {
-    if (bodyLoaded) return true;
+  const ensureBody = async (location: ProviderRequestTransformLocation): Promise<void> => {
+    if (bodyLoaded) return;
     const body = await loadBody(location);
     original = { ...original, body: structuredClone(body) };
     current = { ...current, body: structuredClone(body) };
-    return true;
+    bodyLoaded = true;
   };
 
   for (const rule of compiled.rules) {
@@ -68,7 +67,7 @@ export async function evaluateProviderRequestTransforms(
       ruleIndex: rule.ruleIndex,
       ...(rule.name === undefined ? {} : { ruleName: rule.name }),
     };
-    if (rule.whenReadsBody) bodyLoaded = await ensureBody(ruleLocation);
+    if (rule.whenReadsBody) await ensureBody(ruleLocation);
     const conditionDocument = evaluationDocument(provider, original, current);
     let matched: boolean;
     try {
@@ -83,7 +82,7 @@ export async function evaluateProviderRequestTransforms(
 
     for (const stage of rule.stages) {
       const location = { ...ruleLocation, stageIndex: stage.stageIndex };
-      if (stage.readsBody || stage.writesBody) bodyLoaded = await ensureBody(location);
+      if (stage.readsBody || stage.writesBody) await ensureBody(location);
       const stageDocument = evaluationDocument(provider, original, current);
       try {
         updateOne([stageDocument], {}, [stage.document] as Parameters<typeof updateOne>[2], undefined, MINGO_OPTIONS);
@@ -100,7 +99,7 @@ export async function evaluateProviderRequestTransforms(
     }
   }
 
-  return { request: current, bodyLoaded, bodyModified, lastAppliedLocation, headerWriteLocations };
+  return { request: current, bodyModified, lastAppliedLocation, headerWriteLocations };
 }
 
 function evaluationDocument(

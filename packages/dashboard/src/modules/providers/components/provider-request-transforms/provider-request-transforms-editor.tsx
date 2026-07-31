@@ -1,11 +1,24 @@
 import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { parseRequestTransformCondition, parseRequestTransformStages } from '../../request-transforms';
 import { ProviderRequestTransformsJsonEditor } from './provider-request-transforms-json-editor';
 import { ProviderRequestTransformsVisualEditor } from './provider-request-transforms-visual-editor';
+
+const canEditVisually = (rules: readonly ProviderRequestTransformRule[]): boolean => {
+  try {
+    for (const rule of rules) {
+      if (rule.when !== undefined) parseRequestTransformCondition(rule.when);
+      parseRequestTransformStages(rule.update);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export interface ProviderRequestTransformsEditorProps {
   readonly value: readonly ProviderRequestTransformRule[];
@@ -21,14 +34,20 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   const [mode, setMode] = useState<'visual' | 'json'>('visual');
   const [visualValid, setVisualValid] = useState(true);
   const [jsonValid, setJsonValid] = useState(true);
+  const visualCompatible = useMemo(() => canEditVisually(value), [value]);
+  const activeMode = visualCompatible ? mode : 'json';
 
   useEffect(() => {
-    onValidityChange(mode === 'visual' ? visualValid : jsonValid);
-  }, [jsonValid, mode, onValidityChange, visualValid]);
+    if (!visualCompatible) setMode('json');
+  }, [visualCompatible]);
+
+  useEffect(() => {
+    onValidityChange(activeMode === 'visual' ? visualValid : jsonValid);
+  }, [activeMode, jsonValid, onValidityChange, visualValid]);
 
   const changeMode = (nextMode: string) => {
     if (nextMode === 'json' && !visualValid) return;
-    if (nextMode === 'visual' && !jsonValid) return;
+    if (nextMode === 'visual' && (!jsonValid || !visualCompatible)) return;
     if (nextMode === 'visual' || nextMode === 'json') setMode(nextMode);
   };
 
@@ -40,9 +59,9 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
         </h2>
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.transforms.description']()}</p>
       </div>
-      <Tabs value={mode} onValueChange={changeMode}>
+      <Tabs value={activeMode} onValueChange={changeMode}>
         <TabsList>
-          <TabsTrigger value="visual" disabled={!jsonValid}>
+          <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
             {m['dashboard.providers.transforms.mode.visual']()}
           </TabsTrigger>
           <TabsTrigger value="json" disabled={!visualValid}>

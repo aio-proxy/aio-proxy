@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantKey } from './common';
+import { AliasConfigSchema, ModelIdSchema } from './common';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
-import { type ProviderAlias, validateAliasTargets } from './provider-alias';
+import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 export { type ProviderAlias, validateAliasTargets } from './provider-alias';
@@ -212,9 +212,7 @@ export const ProviderMutationBodySchema = z
     AiSdkProviderMutationBodySchema,
   ])
   .superRefine(validateAliasTargets)
-  .transform((provider) =>
-    provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
-  );
+  .transform(normalizeProviderAliasKeys);
 
 export const ProviderMutationAuthoringBodySchema = z
   .discriminatedUnion('kind', [
@@ -223,57 +221,12 @@ export const ProviderMutationAuthoringBodySchema = z
     AiSdkProviderMutationAuthoringBodySchema,
   ])
   .superRefine(validateAliasTargets)
-  .transform((provider) =>
-    provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
-  );
+  .transform(normalizeProviderAliasKeys);
 
-type ProviderValue =
-  | z.output<typeof ApiProviderSchema>
-  | z.output<typeof OAuthProviderSchema>
-  | z.output<typeof AiSdkProviderSchema>;
 export const ProviderSchema = z
   .discriminatedUnion('kind', [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
   .superRefine(validateAliasTargets)
   .transform(normalizeProviderAlias);
-
-function normalizeProviderAlias(provider: ProviderValue): ProviderValue {
-  if (provider.alias === undefined) {
-    return provider;
-  }
-  const alias = normalizeAliasPreserve(normalizeAliasKeys(provider.alias));
-  return alias === provider.alias ? provider : { ...provider, alias };
-}
-
-function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
-  return Object.fromEntries(
-    Object.entries(alias).map(([name, config]) => [
-      normalizeAliasName(name),
-      config.variants === undefined
-        ? config
-        : {
-            ...config,
-            variants: Object.fromEntries(
-              Object.entries(config.variants).map(([variant, target]) => [normalizeVariantKey(variant), target]),
-            ),
-          },
-    ]),
-  );
-}
-
-function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
-  let changed = false;
-  const normalized: Record<string, ProviderAlias[string]> = {};
-  for (const [clientModel, config] of Object.entries(alias)) {
-    const selfAlias = alias[config.model];
-    if (config.preserve && clientModel !== config.model && selfAlias?.model === config.model) {
-      normalized[clientModel] = { ...config, preserve: false };
-      changed = true;
-      continue;
-    }
-    normalized[clientModel] = config;
-  }
-  return changed ? normalized : alias;
-}
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;

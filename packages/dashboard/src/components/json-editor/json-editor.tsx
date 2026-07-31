@@ -144,15 +144,18 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       }),
     [draft, parseResult.ok, schema, validationState],
   );
-  const validation = {
-    ...draftValidation,
-    valid: draftValidation.valid && !externalValuePending,
-    pending: draftValidation.pending || externalValuePending,
-  };
+  const validation = useMemo(
+    () => ({
+      ...draftValidation,
+      valid: draftValidation.valid && !externalValuePending,
+      pending: draftValidation.pending || externalValuePending,
+    }),
+    [draftValidation, externalValuePending],
+  );
 
   useEffect(() => {
-    onValidationChange?.(draftValidation, draft);
-  }, [draft, draftValidation, onValidationChange]);
+    onValidationChange?.(validation, draft);
+  }, [draft, onValidationChange, validation]);
 
   const handleChange = useCallback(
     (nextDraft: string | undefined) => {

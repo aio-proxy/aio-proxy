@@ -54,7 +54,6 @@ describe('evaluateProviderRequestTransforms', () => {
 
     expect(output.request.body).toEqual({ limit: 10, route: { name: 'original' } });
     expect(output.request.headers['x-route']).toBe('last');
-    expect(output.bodyLoaded).toBe(true);
     expect(output.bodyModified).toBe(true);
     expect(locations).toEqual([{ ruleIndex: 1, ruleName: 'cap-and-route', stageIndex: 0 }]);
     expect(output.lastAppliedLocation).toEqual({ ruleIndex: 1, ruleName: 'cap-and-route', stageIndex: 2 });
@@ -101,7 +100,6 @@ describe('evaluateProviderRequestTransforms', () => {
     );
 
     expect(bodyLoads).toBe(0);
-    expect(output.bodyLoaded).toBe(false);
     expect(output.bodyModified).toBe(false);
     expect(output.request.headers).toEqual({ 'x-route': 'header-only' });
   });

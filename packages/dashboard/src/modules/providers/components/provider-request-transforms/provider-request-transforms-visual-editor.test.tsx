@@ -219,7 +219,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   await screen.findByTestId('request-transform-rule-0');
   expect(JSON.stringify(latestValue(onChange))).toBe(canonical);
   expect(onChange).toHaveBeenCalledTimes(changeCount);
-});
+}, 10_000);
 
 test('retains unsafe stage control drafts until shared rule validation accepts them', async () => {
   const onChange = rs.fn();

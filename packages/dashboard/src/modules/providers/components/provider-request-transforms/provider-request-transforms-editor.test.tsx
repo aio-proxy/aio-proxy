@@ -3,6 +3,9 @@ import { beforeEach, expect, rs, test } from '@rstest/core';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, useRef } from 'react';
 
+import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
+import type { JsonValue } from '@/components/json-editor/json-editor-state';
+
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
 const validationMocks = rs.hoisted(() => ({
@@ -68,6 +71,50 @@ const renderEditor = async () => {
   onChange.mockClear();
   return { editor, onChange, onValidityChange, view };
 };
+
+test('starts in JSON when valid transforms cannot be rendered visually', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  const value = [
+    { update: [{ $set: { 'request.body.options': { retries: 2 } } }] },
+  ] satisfies readonly ProviderRequestTransformRule[];
+
+  render(<ProviderRequestTransformsEditor value={value} onChange={onChange} onValidityChange={onValidityChange} />);
+
+  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  expect((editor as HTMLTextAreaElement).value).toContain('"retries": 2');
+  expect(screen.getByRole('tab', { name: /Visual|可视化/u })).toHaveAttribute('aria-disabled', 'true');
+  await resolveNextValidation();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('reports a controlled JSON value as pending until the parent acknowledges it', async () => {
+  const onValidationChange = rs.fn();
+  const onValueChange = rs.fn(
+    (nextValue: JsonValue | undefined, _draft: string, expectValueAcknowledgement: JsonEditorValueAcknowledgement) =>
+      expectValueAcknowledgement(nextValue),
+  );
+
+  render(
+    <JsonEditor
+      value={{ mode: 'one' }}
+      ariaLabel="controlled json"
+      onValueChange={onValueChange}
+      onValidationChange={onValidationChange}
+    />,
+  );
+  const editor = await screen.findByRole('textbox', { name: 'controlled json' });
+  await waitFor(() =>
+    expect(onValidationChange).toHaveBeenLastCalledWith(expect.objectContaining({ valid: true }), expect.any(String)),
+  );
+  onValidationChange.mockClear();
+
+  fireEvent.change(editor, { target: { value: '{"mode":"two"}' } });
+
+  await waitFor(() => expect(onValueChange).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('"mode": "one"'));
+  expect(onValidationChange.mock.calls.some(([validation]) => !validation.valid && validation.pending)).toBe(true);
+});
 
 test('edits the request rule array without exposing the transforms wrapper', async () => {
   const { editor, onChange, onValidityChange } = await renderEditor();

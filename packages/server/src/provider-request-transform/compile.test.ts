@@ -30,7 +30,6 @@ describe('compileProviderRequestTransforms', () => {
       },
     ]);
 
-    expect(compiled.readsBody).toBe(true);
     expect(compiled.rules.map(({ ruleIndex, name, whenReadsBody }) => ({ ruleIndex, name, whenReadsBody }))).toEqual([
       { ruleIndex: 0, name: 'body-aware', whenReadsBody: true },
       { ruleIndex: 1, name: undefined, whenReadsBody: false },
@@ -80,10 +79,9 @@ describe('compileProviderRequestTransforms', () => {
     });
   });
 
-  test('marks an unset-only transform as body-dependent', () => {
+  test('marks an unset-only stage as a body write', () => {
     const compiled = compileProviderRequestTransforms([{ update: [{ $unset: 'request.body.debug' }] }]);
 
-    expect(compiled.readsBody).toBe(true);
     expect(compiled.rules[0]?.stages[0]).toMatchObject({ readsBody: false, writesBody: true });
   });
 

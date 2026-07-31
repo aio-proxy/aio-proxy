@@ -20,7 +20,6 @@ export type CompiledProviderRequestTransformRule = {
 };
 
 export type CompiledProviderRequestTransforms = {
-  readonly readsBody: boolean;
   readonly rules: readonly CompiledProviderRequestTransformRule[];
 };
 
@@ -28,7 +27,6 @@ export function compileProviderRequestTransforms(
   rules: readonly ProviderRequestTransformRule[],
 ): CompiledProviderRequestTransforms {
   return {
-    readsBody: rules.some(ruleReadsBody),
     rules: rules.map((rule, ruleIndex) => ({
       ruleIndex,
       name: rule.name,
@@ -43,10 +41,6 @@ export function compileProviderRequestTransforms(
       })),
     })),
   };
-}
-
-function ruleReadsBody(rule: ProviderRequestTransformRule): boolean {
-  return referencesBody(rule.when) || rule.update.some((stage) => referencesBody(stage) || stageTargetsBody(stage));
 }
 
 function referencesBody(value: unknown): boolean {
