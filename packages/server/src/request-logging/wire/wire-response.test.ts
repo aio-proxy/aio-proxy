@@ -80,6 +80,32 @@ test('an unconsumed controlled response does not read its source', async () => {
   });
 });
 
+test('counts dispatched SSE events instead of comment blocks', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: 0, now: () => 10 });
+  const text = ': keep-alive\n\ndata: one\n\ndata: two\n\n';
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+  const response = await withAttemptResponseObservation(observation, () =>
+    createObservedFetch(
+      captureFetch([], () => new Response(source, { headers: { 'content-type': 'text/event-stream' } })),
+    )('https://upstream.test/v1', { decompress: false } as RequestInit & { readonly decompress: false }),
+  );
+
+  expect(await response.text()).toBe(text);
+  expect(observation.snapshot()).toEqual({
+    transportObservation: 'sse',
+    upstreamHeadersMs: 10,
+    firstUpstreamByteMs: 10,
+    firstSseEventMs: 10,
+    maxSseFramesPerRead: 2,
+    contentEncoding: 'identity',
+  });
+});
+
 test('response errors remain observable and emit error terminal', async () => {
   const logs: ServerLog[] = [];
   const failure = new Error('source failed');

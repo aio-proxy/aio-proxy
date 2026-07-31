@@ -132,6 +132,7 @@ function observedBody(
   const { bodyObservation, debug, observeSseEvent } = options;
   let sequence = 0;
   let pendingRead: number | undefined;
+  let pendingSseEvents = 0;
   let readObservationActive = true;
   let parserActive = observeSseEvent !== undefined && options.controlledIdentitySse === true;
   const parser = parserActive
@@ -141,6 +142,7 @@ function observedBody(
         },
         onEvent() {
           if (!parserActive) return;
+          pendingSseEvents++;
           try {
             observeSseEvent?.();
           } catch {
@@ -186,11 +188,14 @@ function observedBody(
       },
       sourceRead(byteLength) {
         observeRead(byteLength, 0);
-        if (parser !== undefined) pendingRead = byteLength;
+        if (parser !== undefined) {
+          pendingRead = byteLength;
+          pendingSseEvents = 0;
+        }
       },
-      sseFrames(count) {
+      sseFrames() {
         if (pendingRead === undefined) return;
-        observeRead(pendingRead, count);
+        observeRead(pendingRead, pendingSseEvents);
         pendingRead = undefined;
       },
     },

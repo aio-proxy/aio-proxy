@@ -68,6 +68,7 @@ export function createAttemptResponseObservation(options: {
     observeResponse(response, { controlledStream }) {
       responseCount++;
       if (responseCount > 1) {
+        lastContentAt = undefined;
         transportObservation = 'ambiguous';
         return undefined;
       }
