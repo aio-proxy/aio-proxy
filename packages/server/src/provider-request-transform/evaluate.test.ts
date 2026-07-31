@@ -180,6 +180,23 @@ describe('provider request transform query behavior', () => {
     expect(existsOutput.request.headers['x-match']).toBe('$exists');
   });
 
+  test('does not apply scalar-null predicates to missing fields', async () => {
+    const compiled = compileProviderRequestTransforms([
+      {
+        when: { 'request.body.missing': null },
+        update: [{ $set: { 'request.headers': headerSet('x-match', 'null') } }],
+      },
+    ]);
+
+    const missingOutput = await evaluateProviderRequestTransforms(compiled, fixture({ headers: {} }), async () => ({}));
+    const nullOutput = await evaluateProviderRequestTransforms(compiled, fixture({ headers: {} }), async () => ({
+      missing: null,
+    }));
+
+    expect(missingOutput.request.headers['x-match']).toBeUndefined();
+    expect(nullOutput.request.headers['x-match']).toBe('null');
+  });
+
   test('lets explicit existence predicates control missing-field behavior', async () => {
     const cases: readonly [string, Record<string, unknown>][] = [
       ['$not-$exists', { $not: { $exists: true } }],

@@ -86,4 +86,15 @@ describe('compileProviderRequestTransforms', () => {
     expect(compiled.readsBody).toBe(true);
     expect(compiled.rules[0]?.stages[0]).toMatchObject({ readsBody: false, writesBody: true });
   });
+
+  test('requires scalar-null predicates to match existing fields', () => {
+    const compiled = compileProviderRequestTransforms([
+      { when: { 'request.body.missing': null }, update: [] },
+      { when: { 'request.body.missing': { $exists: false } }, update: [] },
+    ]);
+
+    expect(compiled.rules[0]?.query.test({ request: { body: {} } })).toBe(false);
+    expect(compiled.rules[0]?.query.test({ request: { body: { missing: null } } })).toBe(true);
+    expect(compiled.rules[1]?.query.test({ request: { body: {} } })).toBe(true);
+  });
 });

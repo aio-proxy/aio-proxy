@@ -92,7 +92,7 @@ function normalizeMissingFieldComparisons(document: Record<string, unknown>): Re
 }
 
 function requiresExistingField(condition: unknown): boolean {
-  if (!isDocument(condition)) return false;
+  if (!isDocument(condition)) return true;
   const operators = Object.keys(condition).filter((key) => key.startsWith('$'));
   return operators.length > 0 && !containsExistsOperator(condition);
 }
