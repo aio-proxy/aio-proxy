@@ -1,5 +1,5 @@
-import type { AiSdkProviderMutationBody, ApiProviderMutationBody, ProviderKind } from '@aio-proxy/types';
-import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema } from '@aio-proxy/types';
+import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from '@aio-proxy/types';
+import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
 import type { ProviderFormMode } from '../constants';
@@ -11,6 +11,19 @@ type ProviderFormShape = ProviderFormValues extends infer Provider
     : never
   : never;
 export type ProviderFormInitial = Partial<ProviderFormValues>;
+
+export function parseProviderFormInitial(value: unknown): ProviderFormInitial | undefined {
+  if (value === null || typeof value !== 'object' || !('kind' in value)) return undefined;
+  const schema =
+    value.kind === ProviderKind.Api
+      ? ApiProviderMutationBodySchema
+      : value.kind === ProviderKind.AiSdk
+        ? AiSdkProviderMutationBodySchema
+        : undefined;
+  if (schema === undefined) return undefined;
+  const result = schema.safeParse(value);
+  return result.success ? result.data : undefined;
+}
 
 export type ProviderForm = ReactFormExtendedApi<
   ProviderFormShape,

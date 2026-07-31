@@ -36,6 +36,7 @@ type Condition = NonNullable<ProviderRequestTransformRule['when']>;
 export interface RequestTransformConditionEditorProps {
   readonly value: Condition;
   readonly onChange: (value: Condition) => void;
+  readonly onValidityChange?: (valid: boolean) => void;
 }
 
 const collectRules = (query: DefaultRuleGroupType, rules = new Map<string, DefaultRuleType>()) => {
@@ -141,6 +142,7 @@ const prepareConditionQuery = (value: Condition): DefaultRuleGroupType =>
 export const RequestTransformConditionEditor: React.FC<RequestTransformConditionEditorProps> = ({
   value,
   onChange,
+  onValidityChange,
 }) => {
   const [query, setQuery] = useState(() => prepareConditionQuery(value));
   const expectedValue = useRef(value);
@@ -151,7 +153,8 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
     if (isEqual(value, expectedValue.current)) return;
     expectedValue.current = value;
     setQuery(prepareConditionQuery(value));
-  }, [value]);
+    onValidityChange?.(true);
+  }, [onValidityChange, value]);
 
   const handleQueryChange = (nextQuery: DefaultRuleGroupType) => {
     const normalizedQuery = normalizeNumericBodyLiterals(query, normalizeOperatorTransitions(query, nextQuery));
@@ -160,8 +163,10 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
     try {
       parseRequestTransformCondition(nextValue);
     } catch {
+      onValidityChange?.(false);
       return;
     }
+    onValidityChange?.(true);
     expectedValue.current = nextValue;
     onChange(nextValue);
   };

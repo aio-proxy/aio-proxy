@@ -1,6 +1,6 @@
 /* oxlint-disable max-lines, max-lines-per-function */
 
-import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
@@ -42,8 +42,8 @@ const RequestTransformsHarness: React.FC<RequestTransformsHarnessProps> = ({
     <ProviderRequestTransformsEditor
       value={value}
       onChange={(nextValue) => {
-        setValue(nextValue);
         onChange(nextValue);
+        if (ProviderRequestTransformRulesSchema.safeParse(nextValue).success) setValue(nextValue);
       }}
       onValidityChange={onValidityChange}
     />
@@ -219,4 +219,111 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   await screen.findByTestId('request-transform-rule-0');
   expect(JSON.stringify(latestValue(onChange))).toBe(canonical);
   expect(onChange).toHaveBeenCalledTimes(changeCount);
+});
+
+test('retains unsafe stage control drafts until shared rule validation accepts them', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  render(
+    <RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
+  );
+
+  const bodyPath = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
+  fireEvent.change(bodyPath, { target: { value: '__proto__' } });
+
+  expect(bodyPath).toHaveValue('__proto__');
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  expect(onChange).not.toHaveBeenCalled();
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Header|请求头)$/u);
+  const headerName = within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u });
+  expect(headerName).toHaveValue('__proto__');
+  expect(onChange).not.toHaveBeenCalled();
+
+  fireEvent.change(headerName, { target: { value: 'X-Good' } });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: {
+        'request.headers': {
+          $setField: { field: 'x-good', input: '$request.headers', value: { $literal: '$seed' } },
+        },
+      },
+    }),
+  );
+  expect(headerName).toHaveValue('x-good');
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
+});
+
+test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  const { rerender } = render(
+    <RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
+  );
+
+  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
+  fireEvent.change(staticEditor, { target: { value: '{' } });
+
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  const jsonTab = screen.getByRole('tab', { name: /JSON/u });
+  expect(jsonTab).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(jsonTab);
+  expect(screen.getByTestId('request-transform-rule-0')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: /request transforms json/i })).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+
+  rerender(
+    <RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
+  );
+  const retainedDraft = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
+  expect(retainedDraft).toHaveValue('{');
+
+  fireEvent.change(retainedDraft, { target: { value: '{"ok":true}' } });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: { 'request.body.value': { $literal: { ok: true } } },
+    }),
+  );
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+test('retains incomplete computed fields and blocks switching modes until the expression is valid', async () => {
+  const computedValue = [
+    {
+      update: [{ $set: { 'request.body.value': { $concat: ['$request.body.route', '-suffix'] } } }],
+    },
+  ] satisfies readonly ProviderRequestTransformRule[];
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  render(
+    <RequestTransformsHarness initialValue={computedValue} onChange={onChange} onValidityChange={onValidityChange} />,
+  );
+
+  await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-kind'), /^(Field|字段)$/u);
+  await waitFor(() => expect(onChange).toHaveBeenCalled());
+  onChange.mockClear();
+  onValidityChange.mockClear();
+
+  await selectOption(
+    within(stageCard(0)).getByTestId('transform-set-expression-field-kind'),
+    /Current body field|当前请求体字段/u,
+  );
+  const suffix = within(stageCard(0)).getByTestId('transform-set-expression-field-suffix');
+  expect(suffix).toHaveValue('');
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  expect(onChange).not.toHaveBeenCalled();
+  const jsonTab = screen.getByRole('tab', { name: /JSON/u });
+  expect(jsonTab).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(jsonTab);
+  expect(suffix).toHaveValue('');
+
+  fireEvent.change(suffix, { target: { value: 'payload' } });
+  await waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith([
+      { update: [{ $set: { 'request.body.value': '$request.body.payload' } }] },
+    ]),
+  );
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
 });

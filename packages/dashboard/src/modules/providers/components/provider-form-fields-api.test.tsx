@@ -3,7 +3,7 @@ import { describe, expect, rs, test } from '@rstest/core';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 
 import { ProviderFormMode } from '../constants';
-import { useProviderForm } from '../hooks/use-provider-form';
+import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
 rs.mock('./provider-request-transforms/provider-request-transforms-editor', () => ({
@@ -39,17 +39,21 @@ describe('API provider form fields', () => {
 
   test('hydrates and submits the canonical baseURL field when editing', async () => {
     const onSubmit = rs.fn();
+    const initial = parseProviderFormInitial({
+      kind: ProviderKind.Api,
+      id: 'openrouter',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://openrouter.example/v1',
+      proxy: false,
+      hasApiKey: true,
+    });
+    expect(initial).toBeDefined();
     const { result } = renderHook(() =>
       useProviderForm({
         mode: ProviderFormMode.Edit,
         kind: ProviderKind.Api,
-        initial: {
-          kind: ProviderKind.Api,
-          id: 'openrouter',
-          enabled: true,
-          protocol: ProviderProtocol.OpenAICompatible,
-          baseURL: 'https://openrouter.example/v1',
-        },
+        initial,
         onSubmit,
       }),
     );
@@ -77,6 +81,7 @@ describe('API provider form fields', () => {
     const submitted = onSubmit.mock.calls[0]?.[0];
     expect(submitted).toMatchObject({ baseURL: 'https://updated.example/v1' });
     expect(submitted).not.toHaveProperty('baseUrl');
+    expect(submitted).not.toHaveProperty('hasApiKey');
   });
 
   test('groups edit fields and omits the immutable Provider ID input', () => {

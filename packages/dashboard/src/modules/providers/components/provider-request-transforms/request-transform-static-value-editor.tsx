@@ -7,20 +7,24 @@ import type { JsonValue as EditorJsonValue } from '@/components/json-editor/json
 export interface RequestTransformStaticValueEditorProps {
   readonly value: JsonValue;
   readonly onChange: (value: JsonValue) => void;
+  readonly onValidityChange: (valid: boolean) => void;
 }
 
 export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticValueEditorProps> = ({
   value,
   onChange,
+  onValidityChange,
 }) => (
   <JsonEditor
     value={value as EditorJsonValue}
     height={120}
     ariaLabel={m['dashboard.providers.transforms.value.static_label']()}
+    onDraftChange={() => onValidityChange(false)}
     onValueChange={(nextValue, _draft, expectValueAcknowledgement) => {
       if (nextValue === undefined) return;
       expectValueAcknowledgement(nextValue);
       onChange(nextValue);
     }}
+    onValidationChange={(validation) => onValidityChange(validation.valid)}
   />
 );

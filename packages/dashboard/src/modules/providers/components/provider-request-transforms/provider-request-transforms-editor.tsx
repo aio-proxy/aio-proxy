@@ -19,11 +19,18 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   onValidityChange,
 }) => {
   const [mode, setMode] = useState<'visual' | 'json'>('visual');
+  const [visualValid, setVisualValid] = useState(true);
   const [jsonValid, setJsonValid] = useState(true);
 
   useEffect(() => {
-    if (mode === 'visual') onValidityChange(true);
-  }, [mode, onValidityChange]);
+    onValidityChange(mode === 'visual' ? visualValid : jsonValid);
+  }, [jsonValid, mode, onValidityChange, visualValid]);
+
+  const changeMode = (nextMode: string) => {
+    if (nextMode === 'json' && !visualValid) return;
+    if (nextMode === 'visual' && !jsonValid) return;
+    if (nextMode === 'visual' || nextMode === 'json') setMode(nextMode);
+  };
 
   return (
     <section className="space-y-4 border-t pt-6" aria-labelledby="provider-request-transforms-heading">
@@ -33,25 +40,20 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
         </h2>
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.transforms.description']()}</p>
       </div>
-      <Tabs value={mode} onValueChange={(nextMode) => setMode(nextMode as 'visual' | 'json')}>
+      <Tabs value={mode} onValueChange={changeMode}>
         <TabsList>
           <TabsTrigger value="visual" disabled={!jsonValid}>
             {m['dashboard.providers.transforms.mode.visual']()}
           </TabsTrigger>
-          <TabsTrigger value="json">{m['dashboard.providers.transforms.mode.json']()}</TabsTrigger>
+          <TabsTrigger value="json" disabled={!visualValid}>
+            {m['dashboard.providers.transforms.mode.json']()}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="visual">
-          <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} />
+          <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} onValidityChange={setVisualValid} />
         </TabsContent>
         <TabsContent value="json">
-          <ProviderRequestTransformsJsonEditor
-            value={value}
-            onChange={onChange}
-            onValidityChange={(valid) => {
-              setJsonValid(valid);
-              onValidityChange(valid);
-            }}
-          />
+          <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
         </TabsContent>
       </Tabs>
     </section>

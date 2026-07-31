@@ -1,6 +1,8 @@
 import { m } from '@aio-proxy/i18n';
-import type { ProviderRequestTransformRule } from '@aio-proxy/types';
-import { useId } from 'react';
+import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
+import { useForm } from '@tanstack/react-form';
+import { isEqual } from 'es-toolkit/predicate';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -16,8 +18,10 @@ export interface RequestTransformRuleCardProps {
   readonly index: number;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
+  readonly structuralDisabled: boolean;
   readonly firstPathInputRef?: RefCallback<HTMLInputElement>;
   readonly onChange: (value: ProviderRequestTransformRule) => void;
+  readonly onValidityChange: (valid: boolean) => void;
   readonly onRemove: () => void;
   readonly onMoveUp: () => void;
   readonly onMoveDown: () => void;
@@ -28,14 +32,41 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
   index,
   canMoveUp,
   canMoveDown,
+  structuralDisabled,
   firstPathInputRef,
   onChange,
+  onValidityChange,
   onRemove,
   onMoveUp,
   onMoveDown,
 }) => {
   const nameId = useId();
   const ruleIndex = index + 1;
+  const form = useForm({ defaultValues: { name: value.name ?? '' } });
+  const expectedValue = useRef(value);
+  const [nameValid, setNameValid] = useState(true);
+  const [conditionValid, setConditionValid] = useState(true);
+  const [stagesValid, setStagesValid] = useState(true);
+  const ruleValid = nameValid && conditionValid && stagesValid;
+  const structureBlocked = structuralDisabled || !ruleValid;
+
+  useEffect(() => onValidityChange(ruleValid), [onValidityChange, ruleValid]);
+
+  useEffect(() => {
+    if (isEqual(value, expectedValue.current)) return;
+    expectedValue.current = value;
+    form.reset({ name: value.name ?? '' });
+    setNameValid(true);
+  }, [form, value]);
+
+  const commitRule = (candidate: ProviderRequestTransformRule, setValid: (valid: boolean) => void) => {
+    const result = ProviderRequestTransformRulesSchema.safeParse([candidate]);
+    setValid(result.success);
+    if (!result.success) return;
+    const nextRule = result.data[0]!;
+    expectedValue.current = nextRule;
+    onChange(nextRule);
+  };
 
   return (
     <Card data-testid={`request-transform-rule-${index}`}>
@@ -45,19 +76,24 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
       <CardContent className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor={nameId}>{m['dashboard.providers.transforms.rule.name']({ index: ruleIndex })}</Label>
-          <Input
-            id={nameId}
-            value={value.name ?? ''}
-            onChange={(event) => {
-              const name = event.target.value;
-              if (name === '') {
-                const { name: _name, ...ruleWithoutName } = value;
-                onChange(ruleWithoutName);
-              } else {
-                onChange({ ...value, name });
-              }
-            }}
-          />
+          <form.Field name="name">
+            {(field) => (
+              <Input
+                id={nameId}
+                value={field.state.value}
+                onChange={(event) => {
+                  const name = event.target.value;
+                  field.handleChange(name);
+                  if (name === '') {
+                    const { name: _name, ...ruleWithoutName } = value;
+                    commitRule(ruleWithoutName, setNameValid);
+                  } else {
+                    commitRule({ ...value, name }, setNameValid);
+                  }
+                }}
+              />
+            )}
+          </form.Field>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
@@ -70,30 +106,33 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           </div>
           <RequestTransformConditionEditor
             value={value.when ?? {}}
+            onValidityChange={setConditionValid}
             onChange={(when) => {
               if (Object.keys(when).length === 0) {
                 const { when: _when, ...ruleWithoutCondition } = value;
-                onChange(ruleWithoutCondition);
+                commitRule(ruleWithoutCondition, setConditionValid);
               } else {
-                onChange({ ...value, when });
+                commitRule({ ...value, when }, setConditionValid);
               }
             }}
           />
         </div>
         <RequestTransformStageList
           value={value.update}
+          structuralDisabled={structureBlocked}
           {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
-          onChange={(update) => onChange({ ...value, update: [...update] })}
+          onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
+          onValidityChange={setStagesValid}
         />
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
-        <Button type="button" variant="destructive" onClick={onRemove}>
+        <Button type="button" variant="destructive" disabled={structureBlocked} onClick={onRemove}>
           {m['dashboard.providers.transforms.rule.remove']({ index: ruleIndex })}
         </Button>
-        <Button type="button" variant="outline" disabled={!canMoveUp} onClick={onMoveUp}>
+        <Button type="button" variant="outline" disabled={structureBlocked || !canMoveUp} onClick={onMoveUp}>
           {m['dashboard.providers.transforms.rule.move_up']({ index: ruleIndex })}
         </Button>
-        <Button type="button" variant="outline" disabled={!canMoveDown} onClick={onMoveDown}>
+        <Button type="button" variant="outline" disabled={structureBlocked || !canMoveDown} onClick={onMoveDown}>
           {m['dashboard.providers.transforms.rule.move_down']({ index: ruleIndex })}
         </Button>
       </CardFooter>

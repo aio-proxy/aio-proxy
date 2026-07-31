@@ -34,11 +34,13 @@ const validExpression = (expression: ExpressionNode): boolean => {
 export interface RequestTransformExpressionEditorProps {
   readonly expression: ExpressionNode;
   readonly onChange: (expression: ExpressionNode) => void;
+  readonly onValidityChange: (valid: boolean) => void;
 }
 
 export const RequestTransformExpressionEditor: React.FC<RequestTransformExpressionEditorProps> = ({
   expression,
   onChange,
+  onValidityChange,
 }) => {
   const [draft, setDraft] = useState(expression);
   const expectedExpression = useRef(expression);
@@ -54,14 +56,17 @@ export const RequestTransformExpressionEditor: React.FC<RequestTransformExpressi
     if (isEqual(expression, expectedExpression.current)) return;
     expectedExpression.current = expression;
     setDraft(expression);
-  }, [expression]);
+    onValidityChange(true);
+  }, [expression, onValidityChange]);
 
   return (
     <ExpressionEditor
       node={draft}
       onChange={(nextExpression) => {
         setDraft(nextExpression);
-        if (!validExpression(nextExpression)) return;
+        const valid = validExpression(nextExpression);
+        onValidityChange(valid);
+        if (!valid) return;
         expectedExpression.current = nextExpression;
         onChange(nextExpression);
       }}
