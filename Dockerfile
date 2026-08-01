@@ -1,18 +1,29 @@
 # syntax=docker/dockerfile:1
 
-# Multi-arch image for aio-proxy.
+# Multi-arch image for aio-proxy, built the turbo way.
 #
-# Stage 1 compiles a self-contained, musl-linked binary with Bun. Bun can
-# cross-compile every target from a single (amd64) builder, so this stage is
-# pinned to $BUILDPLATFORM and picks the musl target from $TARGETARCH — buildx
-# produces both linux/amd64 and linux/arm64 without QEMU emulating the build.
-# The dashboard assets are embedded into the binary by the compiled entry, so
-# the runtime stage needs nothing but the binary itself.
+# Stage 1 (prune) uses `turbo prune` to carve the @aio-proxy/cli subgraph and
+# split it into a manifest-only `json/` tree and a source `full/` tree. Stage 2
+# installs from `json/` FIRST so the dependency layer is cached on the lockfile
+# alone — editing source no longer reinstalls. Bun cross-compiles a
+# self-contained, musl-linked binary for $TARGETARCH from a single ($BUILDPLATFORM)
+# builder, so buildx produces linux/amd64 and linux/arm64 without QEMU emulating
+# the build. Dashboard assets are embedded into the binary by the compiled entry,
+# so the runtime stage needs nothing but the binary itself.
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS prune
+WORKDIR /src
+COPY . .
+# bunx runs turbo without a global install layer; pin the repo's major.
+RUN bunx turbo@2 prune @aio-proxy/cli --docker
+
 FROM --platform=$BUILDPLATFORM oven/bun:1 AS build
 ARG TARGETARCH
 WORKDIR /src
-COPY . .
+# Manifests + lockfile only: this layer is cached until a package.json/lock changes.
+COPY --from=prune /src/out/json/ ./
 RUN bun install --frozen-lockfile
+# Now the source; a source edit invalidates from here, not the install above.
+COPY --from=prune /src/out/full/ ./
 RUN bun run build
 RUN case "$TARGETARCH" in \
       amd64) SUFFIX=linux-x64-musl ;; \
@@ -21,7 +32,7 @@ RUN case "$TARGETARCH" in \
     esac; \
     bun packages/cli/scripts/build-binary.ts "$SUFFIX" /out/aio-proxy
 
-# Stage 2: minimal alpine runtime. The binary is musl-linked and self-contained.
+# Runtime stage: minimal alpine. The binary is musl-linked and self-contained.
 FROM alpine:3.20
 # wget (busybox) drives the HEALTHCHECK; ca-certificates for upstream TLS.
 RUN apk add --no-cache ca-certificates \
