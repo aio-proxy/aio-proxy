@@ -115,3 +115,38 @@ test('a raw failure advances to the next candidate without invoking the same pro
   expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(tokenCountCalls).toEqual([]);
 });
+
+test('does not raw-forward a non-anthropic provider and lets it use its own tokenCount', async () => {
+  let rawInvoked = false;
+  const tokenCountCalls: string[] = [];
+  const geminiWithRaw: RuntimeProviderInstance = {
+    id: 'gemini',
+    kind: ProviderKind.Api,
+    enabled: true,
+    alias: { [requestedModel]: { model: 'gemini-wire', preserve: false } },
+    raw: {
+      resolve: ({ protocol }) =>
+        protocol === ProviderProtocol.Gemini
+          ? {
+              invoke: async () => {
+                rawInvoked = true;
+                return Response.json({ totalTokens: 9999 });
+              },
+            }
+          : undefined,
+    },
+    tokenCount: {
+      countTokens: counter('gemini', 321, tokenCountCalls),
+    },
+  };
+  const fixture = countFixture([geminiWithRaw]);
+  const response = await fixture.gemini();
+
+  expect(response.status).toBe(200);
+  // The gemini adapter is out of the raw-forward scope: raw.invoke is never called,
+  // and the provider's own tokenCount capability answers the count.
+  expect(rawInvoked).toBe(false);
+  expect(tokenCountCalls).toEqual(['gemini']);
+  expect(await response.json()).toEqual({ totalTokens: 321 });
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
+});

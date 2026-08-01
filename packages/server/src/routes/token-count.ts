@@ -125,7 +125,8 @@ async function handleTokenCountInContext<TRequest, TContext>(
       return await countCandidates({
         adapter,
         candidates: ordered,
-        context: resolution.context,
+        context,
+        logicalRequest: resolution.context,
         format,
         invocation,
         rawRequest,
@@ -156,7 +157,8 @@ function finishRejected(session: RequestTraceSession, response: Response, errorC
 type CountCandidatesOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterResolution<RuntimeProviderInstance>[];
-  readonly context: LogicalRequestContext;
+  readonly context: TContext;
+  readonly logicalRequest: LogicalRequestContext;
   readonly format: (inputTokens: number) => unknown;
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
@@ -174,6 +176,7 @@ async function countCandidates<TRequest, TContext>({
   adapter,
   candidates,
   context,
+  logicalRequest,
   format,
   invocation,
   rawRequest,
@@ -190,6 +193,7 @@ async function countCandidates<TRequest, TContext>({
       rawRequest,
       request,
       context,
+      logicalRequest,
       session,
     });
     if (rawResult.kind === 'return') return rawResult.response;
@@ -219,7 +223,7 @@ async function countCandidates<TRequest, TContext>({
             protocol: adapter.protocol,
             modelId: candidate.modelId,
             request: rawRequest.clone(),
-            context,
+            context: logicalRequest,
             invocation: candidateInvocation,
           } satisfies TokenCountInput),
       );

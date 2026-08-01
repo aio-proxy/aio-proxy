@@ -60,3 +60,49 @@ test('counts tool schemas because they are sent to the model verbatim', async ()
   const noTools = await invocationFrom({ messages: [{ role: 'user', content: 'hi' }] });
   expect(estimateInputTokens('anthropic', withTools)).toBeGreaterThan(estimateInputTokens('anthropic', noTools));
 });
+
+test('a tool-result carrying a large base64 image does not inflate the estimate', async () => {
+  const bigBase64 = 'A'.repeat(20_000);
+  const withMedia = {
+    messages: [
+      {
+        role: 'tool' as const,
+        content: [
+          {
+            type: 'tool-result' as const,
+            toolCallId: 'call_1',
+            toolName: 'render',
+            output: {
+              type: 'content' as const,
+              value: [
+                { type: 'text' as const, text: 'ok' },
+                { type: 'media' as const, data: bigBase64, mediaType: 'image/png' },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+  // The 20k base64 blob must not dominate: JSON.stringify(output) would be ~310 tokens.
+  expect(estimateInputTokens('anthropic', withMedia)).toBeLessThan(50);
+});
+
+test('an assistant tool-call counts its name and input JSON', async () => {
+  const bigInput = { query: 'x'.repeat(400), limit: 25, filters: ['a', 'b', 'c'] };
+  const withCall = {
+    messages: [
+      {
+        role: 'assistant' as const,
+        content: [
+          { type: 'text' as const, text: 'calling a tool' },
+          { type: 'tool-call' as const, toolCallId: 'call_1', toolName: 'search', input: bigInput },
+        ],
+      },
+    ],
+  };
+  const withoutCall = {
+    messages: [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: 'calling a tool' }] }],
+  };
+  expect(estimateInputTokens('anthropic', withCall)).toBeGreaterThan(estimateInputTokens('anthropic', withoutCall));
+});

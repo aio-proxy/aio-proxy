@@ -1,6 +1,9 @@
 import type { ModelInvocation } from '@aio-proxy/core';
 import type { ProtocolId } from '@aio-proxy/plugin-sdk';
 
+// One element of a structured (non-string) message content array.
+type ContentPart = Extract<ModelInvocation['messages'][number]['content'], readonly unknown[]>[number];
+
 // Per-provider character-class weights (tokens contributed by each class),
 // ported from new-api's empirical BPE averages
 // (.reference/new-api/service/token_estimator.go). The count endpoint's real
@@ -65,6 +68,25 @@ function estimateText(text: string, w: Weights): number {
   return count;
 }
 
+// Text tokens from a tool-result output. Skips embedded base64 file/image data
+// (which would inflate the estimate by binary size), keeping only textual/JSON content.
+function toolResultText(output: Extract<ContentPart, { type: 'tool-result' }>['output']): string {
+  switch (output.type) {
+    case 'text':
+    case 'error-text':
+      return output.value;
+    case 'json':
+    case 'error-json':
+      return JSON.stringify(output.value);
+    case 'content':
+      // Include text parts; skip media/file parts carrying base64 data. Narrow on the
+      // `text` property to avoid reading the deprecated `media` type discriminant.
+      return output.value.map((part) => ('text' in part ? part.text : '')).join('');
+    default:
+      return '';
+  }
+}
+
 // Pull user-visible text from a message, ignoring binary parts (base64
 // images/files) whose serialized size would inflate a byte count.
 function messageText(content: ModelInvocation['messages'][number]['content']): string {
@@ -72,7 +94,8 @@ function messageText(content: ModelInvocation['messages'][number]['content']): s
   let text = '';
   for (const part of content) {
     if (part.type === 'text') text += part.text;
-    else if (part.type === 'tool-result') text += JSON.stringify(part.output);
+    else if (part.type === 'tool-call') text += `${part.toolName}${JSON.stringify(part.input)}`;
+    else if (part.type === 'tool-result') text += toolResultText(part.output);
   }
   return text;
 }

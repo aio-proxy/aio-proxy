@@ -1,5 +1,6 @@
 import type { ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { attributeName, type RequestTraceSession } from '../request-tracing';
 import { isInboundAbort } from '../route-observation';
@@ -33,6 +34,7 @@ export async function attemptRawCount<TRequest, TContext>({
   rawRequest,
   request,
   context,
+  logicalRequest,
   session,
 }: {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -40,9 +42,17 @@ export async function attemptRawCount<TRequest, TContext>({
   readonly attemptIndex: number;
   readonly rawRequest: Request;
   readonly request: TRequest;
-  readonly context: LogicalRequestContext;
+  readonly context: TContext;
+  readonly logicalRequest: LogicalRequestContext;
   readonly session: RequestTraceSession;
 }): Promise<RawCountResult> {
+  // The main raw-forward path is scoped to api-kind + anthropic protocol only: other
+  // adapters' rawRequest rewrites to a generation endpoint (e.g. gemini :generateContent),
+  // which would return a real completion in place of a token count. Non-anthropic providers
+  // still fall through to their own tokenCount capability.
+  if (candidate.provider.kind !== ProviderKind.Api || adapter.protocol !== ProviderProtocol.Anthropic) {
+    return { kind: 'fallthrough' };
+  }
   const raw = candidate.provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
   if (raw === undefined) return { kind: 'fallthrough' };
 
@@ -56,7 +66,7 @@ export async function attemptRawCount<TRequest, TContext>({
   let response: Response | undefined;
   try {
     const upstream = await adapter.rawRequest(rawRequest.clone(), request, candidate.modelId, context);
-    response = await raw.invoke(upstream, context, { upstreamStream: false });
+    response = await raw.invoke(upstream, logicalRequest, { upstreamStream: false });
     if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     rawRequest.signal.throwIfAborted();
     attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
