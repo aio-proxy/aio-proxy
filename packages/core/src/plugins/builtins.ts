@@ -1,3 +1,4 @@
+import { createCursorPlugin, CURSOR_PLUGIN_VERSION } from '@aio-proxy/plugin-cursor';
 import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-proxy/plugin-github-copilot';
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-kimi-code';
@@ -13,6 +14,7 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
   '@aio-proxy/plugin-xai-grok',
+  '@aio-proxy/plugin-cursor',
 ] as const;
 
 const localized = (english: string, chinese: string) => ({ default: english, 'zh-Hans': chinese }) as const;
@@ -94,6 +96,16 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         adapterLabel: localized('Login with xAI Grok', '使用 xAI Grok 登录'),
         deviceInstructions: localized('Enter code', '输入代码'),
         waitingForAuthorization: localized('Waiting for xAI authorization', '正在等待 xAI 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: '@aio-proxy/plugin-cursor',
+      version: CURSOR_PLUGIN_VERSION,
+      descriptor: createCursorPlugin({
+        pluginLabel: localized('Cursor', 'Cursor'),
+        pluginDescription: localized('Use a Cursor account to access models', '使用 Cursor 账号访问模型'),
+        adapterLabel: localized('Login with Cursor', '使用 Cursor 登录'),
+        waitingForAuthorization: localized('Waiting for Cursor authorization', '正在等待 Cursor 授权'),
       }) as unknown as PluginDescriptor<unknown>,
     },
   ];

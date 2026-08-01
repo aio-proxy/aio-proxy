@@ -12,6 +12,7 @@ describe('provider login capability resolution', () => {
     '@aio-proxy/plugin-openai-chatgpt',
     '@aio-proxy/plugin-google-antigravity',
     '@aio-proxy/plugin-kimi-code',
+    '@aio-proxy/plugin-cursor',
   ] as const;
 
   test('resolves an unambiguous short capability ID', async () => {

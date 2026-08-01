@@ -12,6 +12,7 @@ const expectedBuiltIns = [
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
   '@aio-proxy/plugin-xai-grok',
+  '@aio-proxy/plugin-cursor',
 ] as const;
 
 const diagnostics = (code: string) => ({
@@ -42,13 +43,14 @@ test('reserved identities always load embedded descriptors without package looku
 
   expect(BUILT_IN_PLUGIN_PACKAGE_NAMES).toEqual(expectedBuiltIns);
   expect(imported).toEqual([]);
-  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true, true]);
+  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true, true, true]);
   expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(
     createEmbeddedBuiltIns().map(({ version }) => version),
   );
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-google-antigravity', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-kimi-code', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default')).toBeDefined();
+  expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-cursor', 'default')).toBeDefined();
 });
 
 test('embedded adapters retain English and Chinese copy independent of creation locale', async () => {
@@ -100,4 +102,10 @@ test('embedded adapters retain English and Chinese copy independent of creation 
     '使用 SuperGrok 或 X Premium+ 账号访问 Grok 模型',
   );
   expect(resolveLocalizedText(grok?.label ?? '', 'zh-Hans')).toBe('使用 xAI Grok 登录');
+
+  const cursor = snapshot.registry.resolveOAuth('@aio-proxy/plugin-cursor', 'default');
+  const cursorPlugin = snapshot.plugins.get('@aio-proxy/plugin-cursor');
+  expect(resolveLocalizedText(cursorPlugin?.label ?? '', 'zh-Hans')).toBe('Cursor');
+  expect(resolveLocalizedText(cursorPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Cursor 账号访问模型');
+  expect(resolveLocalizedText(cursor?.label ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
 });
