@@ -11,16 +11,16 @@ import type { LogicalRequestContext, ProtocolId, TokenCountInput } from '@aio-pr
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
-import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
+import { attributeName, type RequestTraceSession } from '../request-tracing';
 import { isInboundAbort } from '../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
 import { hasInvalidOrOversizedContentLength } from './pipeline';
 import { prioritizeAffinity } from './pipeline/affinity';
 import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
-import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
 import { estimateInputTokens } from './token-count-estimate';
 import { attemptRawCount } from './token-count-raw';
+import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from './token-count-shared';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -166,12 +166,6 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly session: RequestTraceSession;
 };
 
-export type CountAttempt = {
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly providerKind: RuntimeProviderInstance['kind'];
-};
-
 async function countCandidates<TRequest, TContext>({
   adapter,
   candidates,
@@ -271,24 +265,4 @@ async function countCandidates<TRequest, TContext>({
 
 function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelInvocation): boolean {
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
-}
-
-export function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
-  return startPipelineSpan(session.rootContext, spanName.attempt, {
-    attributes: {
-      [attributeName.attemptIndex]: index,
-      [attributeName.providerId]: attempt.providerId,
-      [attributeName.providerKind]: attempt.providerKind,
-      [attributeName.genAiResponseModel]: attempt.modelId,
-    },
-  });
-}
-
-export function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
-  try {
-    signal.throwIfAborted();
-  } catch (error) {
-    session.finish({ outcome: 'cancelled' });
-    throw error;
-  }
 }

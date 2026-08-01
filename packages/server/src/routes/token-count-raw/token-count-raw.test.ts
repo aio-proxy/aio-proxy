@@ -2,13 +2,17 @@ import { expect, test } from 'bun:test';
 
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import type { RuntimeProviderInstance } from '../runtime';
-import { counter, countFixture, requestedModel } from './token-count.test-support';
+import type { RuntimeProviderInstance } from '../../runtime';
+import { counter, countFixture, requestedModel } from '../token-count.test-support';
 
-function rawAnthropicProvider(id: string, seen: { url?: string; model?: string }): RuntimeProviderInstance {
+function rawAnthropicProvider(
+  id: string,
+  seen: { url?: string; model?: string },
+  kind: RuntimeProviderInstance['kind'] = ProviderKind.Api,
+): RuntimeProviderInstance {
   return {
     id,
-    kind: ProviderKind.Api,
+    kind,
     enabled: true,
     alias: { [requestedModel]: { model: `${id}-wire`, preserve: false } },
     raw: {
@@ -17,7 +21,10 @@ function rawAnthropicProvider(id: string, seen: { url?: string; model?: string }
           ? {
               invoke: async (request: Request) => {
                 seen.url = request.url;
-                seen.model = ((await request.clone().json()) as { model: string }).model;
+                const body: unknown = await request.clone().json();
+                if (body !== null && typeof body === 'object' && 'model' in body && typeof body.model === 'string') {
+                  seen.model = body.model;
+                }
                 void modelId;
                 return Response.json({ input_tokens: 4242 });
               },
@@ -149,4 +156,17 @@ test('does not raw-forward a non-anthropic provider and lets it use its own toke
   expect(tokenCountCalls).toEqual(['gemini']);
   expect(await response.json()).toEqual({ totalTokens: 321 });
   expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
+});
+
+test('raw-forwards an OAuth-kind provider that exposes an anthropic raw capability', async () => {
+  const seen: { url?: string; model?: string } = {};
+  const fixture = countFixture([rawAnthropicProvider('plugin', seen, ProviderKind.OAuth)]);
+  const response = await fixture.anthropic();
+
+  expect(response.status).toBe(200);
+  // Plugin/OAuth providers with an anthropic raw capability are forwarded, not estimated.
+  expect(await response.json()).toEqual({ input_tokens: 4242 });
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
+  expect(seen.model).toBe('plugin-wire');
+  expect(seen.url).toContain('/v1/messages/count_tokens');
 });

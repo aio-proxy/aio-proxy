@@ -33,38 +33,52 @@ function weightsFor(protocol: ProtocolId): Weights {
 // CJK ideographs, Hiragana/Katakana, Hangul.
 const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/u;
 
-// Character-class state machine: latin/number runs collapse into one token each,
-// CJK/space/newline/symbol score per character. Mirrors token_estimator.go's loop.
+// Character-class state machine: latin/number runs contribute proportionally to their
+// length (~1 token per K chars), CJK/space/newline/symbol score per character. Mirrors
+// token_estimator.go's loop but avoids collapsing a long run (minified code, URLs,
+// base64-in-text) to a single token, which would defeat context-budget checks.
+const CHARS_PER_TOKEN = { latin: 5, number: 3 } as const;
+
 function estimateText(text: string, w: Weights): number {
   let count = 0;
   let run: 'none' | 'latin' | 'number' = 'none';
+  let runLength = 0;
+  const flushRun = (): void => {
+    if (run === 'none') return;
+    const weight = run === 'number' ? w.number : w.word;
+    count += weight * Math.max(1, Math.round(runLength / CHARS_PER_TOKEN[run]));
+    run = 'none';
+    runLength = 0;
+  };
   for (const ch of text) {
     if (ch === '\n' || ch === '\t') {
-      run = 'none';
+      flushRun();
       count += w.newline;
       continue;
     }
     if (ch === ' ' || /\s/u.test(ch)) {
-      run = 'none';
+      flushRun();
       count += w.space;
       continue;
     }
     if (CJK.test(ch)) {
-      run = 'none';
+      flushRun();
       count += w.cjk;
       continue;
     }
     if (/[\p{L}\p{N}]/u.test(ch)) {
       const next = /\p{N}/u.test(ch) ? 'number' : 'latin';
-      if (run === 'none' || run !== next) {
-        count += next === 'number' ? w.number : w.word;
+      if (run !== next) {
+        flushRun();
         run = next;
       }
+      runLength += 1;
       continue;
     }
-    run = 'none';
+    flushRun();
     count += w.symbol;
   }
+  flushRun();
   return count;
 }
 

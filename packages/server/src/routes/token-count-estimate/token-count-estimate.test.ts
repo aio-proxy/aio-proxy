@@ -106,3 +106,12 @@ test('an assistant tool-call counts its name and input JSON', async () => {
   };
   expect(estimateInputTokens('anthropic', withCall)).toBeGreaterThan(estimateInputTokens('anthropic', withoutCall));
 });
+
+test('a long unbroken run scales with its length instead of collapsing to one token', async () => {
+  const longRun = await invocationFrom({ messages: [{ role: 'user', content: 'a'.repeat(10_000) }] });
+  const shortWord = await invocationFrom({ messages: [{ role: 'user', content: 'hello' }] });
+  // 10k latin chars ~ 10000/5 = 2000 runs * ~1.13 tokens. A single collapsed token would be ~1.
+  expect(estimateInputTokens('anthropic', longRun)).toBeGreaterThanOrEqual(1000);
+  // A short word still rounds to ~1 token.
+  expect(estimateInputTokens('anthropic', shortWord)).toBeLessThanOrEqual(3);
+});
