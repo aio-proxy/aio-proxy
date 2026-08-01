@@ -193,6 +193,8 @@ async function countCandidates<TRequest, TContext>({
       session,
     });
     if (rawResult.kind === 'return') return rawResult.response;
+    if (rawResult.kind === 'next') continue;
+    // 'fallthrough' → this candidate has no raw transport; try its tokenCount path below.
     const provider = candidate.provider;
     const count = provider.tokenCount;
     if (count === undefined) continue;

@@ -7,9 +7,15 @@ import type { RuntimeProviderInstance } from '../runtime';
 import { failureTerminal } from './pipeline/failure';
 import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from './token-count';
 
-// Outcome the count loop consumes: either return this upstream response verbatim,
-// or fall through to the next candidate / estimator. Abort is signalled by throwing.
-export type RawCountResult = { readonly kind: 'return'; readonly response: Response } | { readonly kind: 'continue' };
+// Outcome the count loop consumes:
+//   return      → hand this upstream response back verbatim
+//   fallthrough → no raw transport; try this candidate's tokenCount path
+//   next        → raw was attempted and failed; advance to the next candidate
+// Abort is signalled by throwing.
+export type RawCountResult =
+  | { readonly kind: 'return'; readonly response: Response }
+  | { readonly kind: 'fallthrough' }
+  | { readonly kind: 'next' };
 
 // Abandon an upstream response we will not return, releasing its stream/connection.
 function discardResponse(response: Response): void {
@@ -38,7 +44,7 @@ export async function attemptRawCount<TRequest, TContext>({
   readonly session: RequestTraceSession;
 }): Promise<RawCountResult> {
   const raw = candidate.provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
-  if (raw === undefined) return { kind: 'continue' };
+  if (raw === undefined) return { kind: 'fallthrough' };
 
   throwIfCountAborted(session, rawRequest.signal);
   const attempt: CountAttempt = {
@@ -47,9 +53,10 @@ export async function attemptRawCount<TRequest, TContext>({
     providerKind: candidate.provider.kind,
   };
   const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
+  let response: Response | undefined;
   try {
     const upstream = await adapter.rawRequest(rawRequest.clone(), request, candidate.modelId, context);
-    const response = await raw.invoke(upstream, context, { upstreamStream: false });
+    response = await raw.invoke(upstream, context, { upstreamStream: false });
     if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     rawRequest.signal.throwIfAborted();
     attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
@@ -65,8 +72,9 @@ export async function attemptRawCount<TRequest, TContext>({
     }
     attemptSpan.end(failureTerminal(response.status));
     discardResponse(response);
-    return { kind: 'continue' };
+    return { kind: 'next' };
   } catch (error) {
+    if (response !== undefined) discardResponse(response);
     if ((rawRequest.signal.aborted && error === rawRequest.signal.reason) || isInboundAbort(error, rawRequest.signal)) {
       attemptSpan.end({ outcome: 'cancelled' });
       session.finish({ outcome: 'cancelled', finalProviderId: candidate.provider.id, finalModelId: candidate.modelId });
@@ -79,6 +87,6 @@ export async function attemptRawCount<TRequest, TContext>({
     const mapped = adapter.errors.provider(error);
     attemptSpan.end(failureTerminal(mapped?.status));
     if (mapped === undefined) throw error;
-    return { kind: 'continue' };
+    return { kind: 'next' };
   }
 }

@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../runtime';
-import { countFixture, requestedModel } from './token-count.test-support';
+import { counter, countFixture, requestedModel } from './token-count.test-support';
 
 function rawAnthropicProvider(id: string, seen: { url?: string; model?: string }): RuntimeProviderInstance {
   return {
@@ -87,4 +87,31 @@ test('cancels the upstream body and falls through when the raw provider returns 
   expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   // The abandoned upstream stream must be released, not leaked.
   expect(cancelled).toBe(true);
+});
+
+test('a raw failure advances to the next candidate without invoking the same provider tokenCount', async () => {
+  const tokenCountCalls: string[] = [];
+  const withBoth: RuntimeProviderInstance = {
+    id: 'both',
+    kind: ProviderKind.Api,
+    enabled: true,
+    alias: { [requestedModel]: { model: 'both-wire', preserve: false } },
+    raw: {
+      resolve: ({ protocol }) =>
+        protocol === ProviderProtocol.Anthropic
+          ? { invoke: async () => Response.json({}, { status: 500 }) }
+          : undefined,
+    },
+    tokenCount: {
+      countTokens: counter('both', 111, tokenCountCalls),
+    },
+  };
+  const fixture = countFixture([withBoth]);
+  const response = await fixture.anthropic();
+
+  // Raw failed → advance to next candidate (here none), so estimate; the SAME provider's
+  // tokenCount must NOT fire a second upstream request.
+  expect(response.status).toBe(200);
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
+  expect(tokenCountCalls).toEqual([]);
 });
