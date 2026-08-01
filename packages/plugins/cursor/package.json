@@ -1,0 +1,29 @@
+{
+  "name": "@aio-proxy/plugin-cursor",
+  "version": "0.0.1",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test"
+  },
+  "dependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

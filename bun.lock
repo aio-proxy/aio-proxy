@@ -226,6 +226,19 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/cursor": {
+      "name": "@aio-proxy/plugin-cursor",
+      "version": "0.0.1",
+      "dependencies": {
+        "@aio-proxy/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugins/github-copilot": {
       "name": "@aio-proxy/plugin-github-copilot",
       "version": "0.0.1",
@@ -428,6 +441,8 @@
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/logger": ["@aio-proxy/logger@workspace:packages/logger"],
+
+    "@aio-proxy/plugin-cursor": ["@aio-proxy/plugin-cursor@workspace:packages/plugins/cursor"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 
