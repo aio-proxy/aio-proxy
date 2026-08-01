@@ -7,7 +7,7 @@ import {
   type RouterResolution,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
-import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, ProtocolId, TokenCountInput } from '@aio-proxy/plugin-sdk';
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
@@ -19,6 +19,7 @@ import { prioritizeAffinity } from './pipeline/affinity';
 import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
 import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
+import { estimateInputTokens } from './token-count-estimate';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -245,7 +246,7 @@ async function countCandidates<TRequest, TContext>({
   }
 
   throwIfCountAborted(session, rawRequest.signal);
-  const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
+  const estimate = estimateInputTokens(adapter.protocol as ProtocolId, invocation);
   const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
   session.finish({ outcome: 'success', finalHttpStatus: 200 });
   return response;
