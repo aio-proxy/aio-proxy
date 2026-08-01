@@ -4,6 +4,7 @@ import { createParser } from 'eventsource-parser';
 import { hasContentDelta } from './content';
 import {
   anthropicTotalTokens,
+  assertNever,
   type ExtractedUsage,
   isRecord,
   MAX_SSE_BUFFER_CHARS,
@@ -35,6 +36,7 @@ export type PassthroughSseUsageObserver = {
 export type PassthroughSseCallbacks = {
   readonly onEvent?: () => void;
   readonly onContent?: () => void;
+  readonly onTerminal?: (observation: PassthroughObservation) => void;
 };
 
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
@@ -105,14 +107,18 @@ export function createPassthroughSseUsageObserver(
     },
     onEvent(event) {
       safely(callbacks.onEvent);
-      failed ||= protocolFailure(protocol, event.event, undefined);
+      const failEvent = protocolFailure(protocol, event.event, undefined);
+      failed ||= failEvent;
       if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
         active = false;
+        if (failEvent) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
         return;
       }
       const parsed = parseJson(event.data);
-      failed ||= protocolFailure(protocol, undefined, parsed);
+      const failParsed = protocolFailure(protocol, undefined, parsed);
+      failed ||= failParsed;
       if (parsed === undefined) {
+        if (failEvent || failParsed) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
         return;
       }
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
@@ -120,6 +126,9 @@ export function createPassthroughSseUsageObserver(
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
+      }
+      if (failEvent || failParsed || isSuccessTerminal(protocol, event.event, parsed)) {
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
       }
     },
   });
@@ -193,6 +202,39 @@ function protocolFailure(protocol: ProviderProtocol, eventType: string | undefin
     response['status'] === 'incomplete' ||
     response['status'] === 'cancelled'
   );
+}
+
+function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
+  switch (protocol) {
+    case ProviderProtocol.OpenAIResponse: {
+      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      if (type === 'response.completed' || type === 'response.done') return true;
+      const response = isRecord(value) && isRecord(value['response']) ? value['response'] : value;
+      return isRecord(response) && response['status'] === 'completed';
+    }
+    case ProviderProtocol.Anthropic: {
+      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      return type === 'message_stop';
+    }
+    case ProviderProtocol.OpenAICompatible: {
+      if (!isRecord(value) || !Array.isArray(value['choices'])) return false;
+      return value['choices'].some((choice) => isRecord(choice) && typeof choice['finish_reason'] === 'string');
+    }
+    case ProviderProtocol.Gemini: {
+      const entries = Array.isArray(value) ? value : [value];
+      return entries.some(
+        (entry) =>
+          isRecord(entry) &&
+          Array.isArray(entry['candidates']) &&
+          entry['candidates'].some(
+            (candidate) =>
+              isRecord(candidate) && typeof candidate['finishReason'] === 'string' && candidate['finishReason'] !== '',
+          ),
+      );
+    }
+    default:
+      return assertNever(protocol);
+  }
 }
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
