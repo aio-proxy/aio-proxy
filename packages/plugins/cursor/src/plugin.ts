@@ -7,8 +7,9 @@ import {
   zod,
 } from '@aio-proxy/plugin-sdk';
 
-import { initialCursorCatalogFallback, staticCursorCatalog } from './catalog';
-import { type CursorOAuthDependencies, loginCursor } from './oauth';
+import { CURSOR_CATALOG_TTL_MS, discoverCursorCatalog, initialCursorCatalogFallback } from './catalog';
+import { loginCursor } from './oauth';
+import { createCursorRuntime, type CursorRuntimeDependencies } from './runtime';
 import { credentialSchema, type CursorCredential } from './schema';
 
 export type CursorPresentationText = {
@@ -27,7 +28,7 @@ export const englishPresentationText: CursorPresentationText = {
 
 export function createCursorPlugin(
   presentationText: CursorPresentationText = englishPresentationText,
-  dependencies: CursorOAuthDependencies = {},
+  dependencies: CursorRuntimeDependencies = {},
 ): PluginDescriptor<undefined> {
   const accountOptions = { schema: zod.object({}), form: [] } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, CursorCredential> = {
@@ -41,13 +42,11 @@ export function createCursorPlugin(
       return await loginCursor(context, { waiting: presentationText.waitingForAuthorization }, dependencies);
     },
     catalog: {
-      policy: { kind: 'static' },
-      discover: () => Promise.resolve(staticCursorCatalog()),
+      policy: { kind: 'ttl', ttlMs: CURSOR_CATALOG_TTL_MS },
+      discover: (context) => discoverCursorCatalog(context, dependencies),
       initialFallback: initialCursorCatalogFallback,
     },
-    createRuntime: async () => {
-      throw new Error('Cursor runtime is not implemented in Phase 1');
-    },
+    createRuntime: (context) => createCursorRuntime(context, dependencies),
   };
   return definePlugin((api) => api.oauth.register(adapter), {
     label: presentationText.pluginLabel ?? 'Cursor',

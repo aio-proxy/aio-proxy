@@ -1,0 +1,76 @@
+import { expect, test } from 'bun:test';
+
+import { create, toBinary } from '@bufbuild/protobuf';
+import { ValueSchema } from '@bufbuild/protobuf/wkt';
+
+import { InteractionUpdateSchema } from '../../gen/agent_pb';
+import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate } from './interaction';
+
+const update = (value: Record<string, unknown>) => create(InteractionUpdateSchema, { message: value } as never);
+const argValue = (json: unknown) =>
+  toBinary(ValueSchema, create(ValueSchema, { kind: { case: 'stringValue', value: JSON.stringify(json) } }));
+
+test('text deltas stream and finalize as a stop finish', () => {
+  const accumulator = createCursorStreamAccumulator();
+  const parts = [
+    ...mapInteractionUpdate(update({ case: 'textDelta', value: { text: 'Hel' } }), accumulator),
+    ...mapInteractionUpdate(update({ case: 'textDelta', value: { text: 'lo' } }), accumulator),
+    ...finalizeCursorStream(accumulator),
+  ];
+  expect(parts.filter((p) => p.type === 'text-delta').map((p) => (p as { delta: string }).delta)).toEqual([
+    'Hel',
+    'lo',
+  ]);
+  const finish = parts.at(-1) as { type: 'finish'; finishReason: { unified: string }; usage: unknown };
+  expect(finish.type).toBe('finish');
+  expect(finish.finishReason.unified).toBe('stop');
+});
+
+test('a completed MCP tool call emits one tool-call with an un-escaped name and tool-calls finish', () => {
+  const accumulator = createCursorStreamAccumulator();
+  const started = update({
+    case: 'toolCallStarted',
+    value: {
+      callId: 'c1',
+      toolCall: {
+        tool: { case: 'mcpToolCall', value: { args: { name: 'aio_proxy__read', toolCallId: 'c1', args: {} } } },
+      },
+    },
+  });
+  const delta = update({ case: 'partialToolCall', value: { callId: 'c1', argsTextDelta: '{"path":"/x"}' } });
+  const completed = update({
+    case: 'toolCallCompleted',
+    value: {
+      callId: 'c1',
+      toolCall: {
+        tool: {
+          case: 'mcpToolCall',
+          value: { args: { name: 'aio_proxy__read', toolCallId: 'c1', args: { path: argValue('/x') } } },
+        },
+      },
+    },
+  });
+  const parts = [
+    ...mapInteractionUpdate(started, accumulator),
+    ...mapInteractionUpdate(delta, accumulator),
+    ...mapInteractionUpdate(completed, accumulator),
+    ...finalizeCursorStream(accumulator),
+  ];
+  const toolCall = parts.find((p) => p.type === 'tool-call') as
+    | { toolName: string; toolCallId: string; input: string }
+    | undefined;
+  expect(toolCall?.toolName).toBe('read');
+  expect(toolCall?.toolCallId).toBe('c1');
+  expect(JSON.parse(toolCall!.input)).toMatchObject({ path: '/x' });
+  expect((parts.at(-1) as { finishReason: { unified: string } }).finishReason.unified).toBe('tool-calls');
+});
+
+test('token deltas accumulate into usage.outputTokens.total', () => {
+  const accumulator = createCursorStreamAccumulator();
+  mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 7 } }), accumulator);
+  mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 5 } }), accumulator);
+  const finish = finalizeCursorStream(accumulator).at(-1) as {
+    usage: { outputTokens: { total: number } };
+  };
+  expect(finish.usage.outputTokens.total).toBe(12);
+});

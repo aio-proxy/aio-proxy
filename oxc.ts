@@ -6,6 +6,7 @@ export const ignorePatterns = [
   'packages/dashboard/src/route-tree.gen.ts',
   'packages/i18n/project.inlang/**',
   'packages/i18n/src/paraglide/**',
+  'packages/plugins/cursor/src/gen/**',
   'packages/dashboard/src/components/ui/**',
   'docs/superpowers/**',
   // Verbatim upstream codex instructions snapshot imported as text; must not be reformatted.

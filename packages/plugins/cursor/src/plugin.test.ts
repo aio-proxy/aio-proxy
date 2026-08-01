@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import cursorPlugin, { createCursorPlugin } from '.';
+import cursorPlugin, { createCursorPlugin, englishPresentationText } from '.';
 import type { CursorCredential } from './schema';
 
 async function adapterFrom(
@@ -23,20 +23,34 @@ async function adapterFrom(
   return registered;
 }
 
-test('registers a default Cursor adapter with a static catalog and cursor icon', async () => {
+test('registers a default Cursor adapter with a ttl catalog and cursor icon', async () => {
   const adapter = await adapterFrom(cursorPlugin);
   expect(adapter.id).toBe('default');
   expect(adapter.icon).toBe('cursor');
   expect(adapter.account.options.form).toEqual([]);
-  expect(adapter.catalog.policy).toEqual({ kind: 'static' });
-  await expect(
-    adapter.catalog.discover({ credentials: {} as never, options: {}, signal: new AbortController().signal }),
-  ).resolves.toMatchObject({ language: expect.any(Array) });
+  expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
 });
 
-test('createRuntime throws until Phase 2 implements the runtime', async () => {
-  const adapter = await adapterFrom(createCursorPlugin());
-  await expect(
-    adapter.createRuntime({ credentials: {} as never, options: {}, catalog: adapter.catalog as never }),
-  ).rejects.toThrow(/not implemented in Phase 1/);
+test('createRuntime builds a v4 provider-only runtime', async () => {
+  const adapter = await adapterFrom(
+    createCursorPlugin(englishPresentationText, {
+      transport: {
+        openRun: () =>
+          Promise.resolve({
+            write: () => {},
+            end: () => {},
+            frames: (async function* () {})(),
+            trailers: Promise.resolve({ 'grpc-status': '0' }),
+          }),
+        unary: () => Promise.reject(new Error('unused')),
+      },
+    }),
+  );
+  const runtime = await adapter.createRuntime({
+    credentials: {} as never,
+    options: {},
+    catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+  });
+  expect(runtime.provider.specificationVersion).toBe('v4');
+  expect(runtime.raw).toBeUndefined();
 });

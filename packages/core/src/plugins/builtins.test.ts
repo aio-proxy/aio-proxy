@@ -108,4 +108,6 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(cursorPlugin?.label ?? '', 'zh-Hans')).toBe('Cursor');
   expect(resolveLocalizedText(cursorPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Cursor 账号访问模型');
   expect(resolveLocalizedText(cursor?.label ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
+  expect(cursor?.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
+  expect(typeof cursor?.createRuntime).toBe('function');
 });

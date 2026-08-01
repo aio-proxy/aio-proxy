@@ -18,7 +18,11 @@
     "test:unit": "bun test"
   },
   "dependencies": {
-    "@aio-proxy/plugin-sdk": "workspace:*"
+    "@ai-sdk/provider": "catalog:",
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "@bufbuild/protobuf": "catalog:",
+    "es-toolkit": "catalog:",
+    "lru-cache": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

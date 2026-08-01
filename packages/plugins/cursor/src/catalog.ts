@@ -1,4 +1,9 @@
-import type { ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
+import type { AccountContext, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
+
+import { discoverCursorModels, initialCursorCatalogFallback as discoverFallback } from './catalog/discover';
+import { currentCursorCredential, type CursorOAuthDependencies } from './oauth';
+import type { CursorCredential } from './schema';
+import { createNodeHttp2Transport, type CursorTransport } from './wire/transport';
 
 export const CURSOR_CATALOG_TTL_MS = 6 * 60 * 60_000;
 
@@ -23,6 +28,16 @@ export function staticCursorCatalog(): ModelCatalog {
   return emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName })));
 }
 
-export function initialCursorCatalogFallback(_error: unknown): ModelCatalog | undefined {
-  return undefined;
+// Live discovery: refresh the credential, then hit GetUsableModels over the h2
+// transport. On a retryable failure the adapter shows the curated snapshot via
+// initialCursorCatalogFallback (re-exported from catalog/discover).
+export async function discoverCursorCatalog(
+  context: AccountContext<CursorCredential, Record<string, never>>,
+  dependencies: CursorOAuthDependencies & { readonly transport?: CursorTransport } = {},
+): Promise<ModelCatalog> {
+  const credential = await currentCursorCredential(context.credentials, { ...dependencies, signal: context.signal });
+  const transport = dependencies.transport ?? createNodeHttp2Transport();
+  return await discoverCursorModels({ accessToken: credential.accessToken, transport, signal: context.signal });
 }
+
+export const initialCursorCatalogFallback = discoverFallback;
