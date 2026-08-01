@@ -56,19 +56,42 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).not.toContain('a&b/bin/aio-proxy');
 });
 
-test('resolveExec targets the native binary when invoked as the compiled binary', () => {
+test('resolveExec prefers the stable PATH launcher over its versioned symlink target', () => {
+  // Regression: brew exposes /opt/homebrew/bin/aio-proxy -> Cellar/<ver>/bin/aio-proxy.
+  // execPath resolves to the versioned target, but baking that breaks after
+  // `brew upgrade` deletes the old Cellar dir. When the PATH launcher resolves to
+  // the same binary we're running as, bake the stable launcher so ExecStart
+  // survives upgrades (brew retargets the symlink).
+  const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
+  const launcher = '/opt/homebrew/bin/aio-proxy';
+  const realpath = (p: string) => (p === launcher ? versioned : p);
+  expect(resolveExec(() => launcher, versioned, realpath)).toBe(launcher);
+});
+
+test('resolveExec targets execPath when no PATH launcher resolves to it', () => {
   // A managed run has a minimal PATH without node, so the ExecStart target must be
-  // the self-contained native binary. When invoked via npm we already ARE it, so
-  // process.execPath is used directly without consulting PATH.
-  const which = () => {
-    throw new Error('which must not be called when execPath is the native binary');
-  };
-  expect(resolveExec(which, '/opt/homebrew/bin/aio-proxy')).toBe('/opt/homebrew/bin/aio-proxy');
+  // the self-contained native binary. With no matching launcher on PATH, use
+  // process.execPath directly (npm invokes us AS the native binary).
+  const execPath = '/opt/homebrew/bin/aio-proxy';
+  expect(
+    resolveExec(
+      () => null,
+      execPath,
+      (p) => p,
+    ),
+  ).toBe(execPath);
 });
 
 test('resolveExec falls back to PATH when execPath is not the native binary', () => {
   // e.g. dev `bun run`: execPath is the bun interpreter, so resolve via PATH.
-  expect(resolveExec(() => '/usr/local/bin/aio-proxy', '/opt/homebrew/bin/bun')).toBe('/usr/local/bin/aio-proxy');
+  const launcher = '/usr/local/bin/aio-proxy';
+  expect(
+    resolveExec(
+      () => launcher,
+      '/opt/homebrew/bin/bun',
+      (p) => p,
+    ),
+  ).toBe(launcher);
 });
 
 test('resolveExec fails fast when the native binary is not found', () => {
@@ -76,7 +99,11 @@ test('resolveExec fails fast when the native binary is not found', () => {
   // invalid unit that never starts; installing must refuse instead.
   let caught: unknown;
   try {
-    resolveExec(() => null, '/opt/homebrew/bin/bun');
+    resolveExec(
+      () => null,
+      '/opt/homebrew/bin/bun',
+      (p) => p,
+    );
   } catch (err) {
     caught = err;
   }

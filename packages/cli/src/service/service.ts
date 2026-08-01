@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -26,22 +26,43 @@ function requirePlatform(): SupportedPlatform {
 // `aio-proxy` bin on PATH is a Node shim (`#!/usr/bin/env node`) that spawns the
 // platform-native binary; a managed run (launchd/systemd) has a minimal PATH
 // without node, so pointing ExecStart at the shim fails before the real binary
-// starts. When invoked via npm we already ARE the compiled native binary, so
-// process.execPath is the correct self-contained target. Fall back to `which`
-// only when execPath is not our binary (e.g. dev `bun run`), and fail fast if
-// even that is missing rather than render `ExecStart=<bun> run`, which would
-// invoke bun's own `run` subcommand and never start. execPath/which are
-// injectable to keep this testable.
+// starts.
+//
+// A brew (or any symlinked) install instead exposes a stable launcher on PATH
+// (`/opt/homebrew/bin/aio-proxy`) that symlinks to the *versioned* binary
+// (`.../Cellar/aio-proxy/0.3.0/bin/aio-proxy`), which is also what execPath
+// resolves to. Baking that versioned execPath is what breaks `service restart`
+// after `brew upgrade`: brew deletes the old Cellar dir and retargets the
+// symlink, leaving ExecStart pointing at a binary that no longer exists. So when
+// the PATH launcher resolves to the same binary we're running as, prefer that
+// stable path — it follows the symlink across upgrades.
+//
+// Otherwise fall back to the self-contained native binary we already ARE
+// (execPath). Only when execPath is an interpreter (dev `bun run`) do we resolve
+// via PATH, failing fast if even that is missing rather than render
+// `ExecStart=<bun> run`, which would invoke bun's own `run` subcommand and never
+// start. which/execPath/realpath are injectable to keep this testable.
 // ponytail: no AVX2/musl variant probing like opencode — we ship one binary per
 // platform with no variants, so execPath basename is enough.
 export function resolveExec(
   which: (cmd: string) => string | null = Bun.which,
   execPath: string = process.execPath,
+  realpath: (p: string) => string = realpathSync,
 ): string {
+  // realpath both so a symlinked launcher (brew) matches the versioned target
+  // execPath resolves to; swallow ENOENT so a stale/broken link can't crash us.
+  const sameBinary = (a: string, b: string): boolean => {
+    try {
+      return realpath(a) === realpath(b);
+    } catch {
+      return a === b;
+    }
+  };
+  const onPath = which('aio-proxy');
+  if (onPath !== null && sameBinary(onPath, execPath)) return onPath;
   if (basename(execPath) === 'aio-proxy') return execPath;
-  const exec = which('aio-proxy');
-  if (exec === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
-  return exec;
+  if (onPath === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
+  return onPath;
 }
 
 function launchdPlistPath(): string {
