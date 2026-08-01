@@ -62,6 +62,16 @@ export function passthroughCapture(
     void reader.cancel(new Error('stream_idle_timeout')).catch(() => {});
     releaseReader();
   });
+  let committed = false;
+  // Commit the session response only once the client has drained the stream to
+  // EOF. A terminal frame observed mid-stream resolves usage/timing early (for
+  // accurate trace duration), but a client that cancels before EOF must not
+  // commit — so commit is an EOF-only side effect, separate from trace resolve.
+  const commit = (obs: PassthroughObservation): void => {
+    if (committed || obs.failed === true || obs.responseId === undefined) return;
+    committed = true;
+    onResponseId?.(obs.responseId);
+  };
   const complete = async (obs: PassthroughObservation): Promise<void> => {
     if (completed) return;
     completed = true;
@@ -71,7 +81,6 @@ export function passthroughCapture(
       return;
     }
     const usage = await finalizePassthroughUsage(obs, { providerId, modelId, protocol, requestedModelId, logger });
-    if (obs.responseId !== undefined) onResponseId?.(obs.responseId);
     terminal.resolve({
       outcome: 'success',
       statusCode,
@@ -101,14 +110,16 @@ export function passthroughCapture(
       if (sseObserver !== undefined && decoder !== undefined) sseObserver.feed(decoder.decode(chunk, { stream: true }));
       else jsonCapture?.push(chunk);
     },
-    onEnd: () =>
-      complete(
+    onEnd: async () => {
+      const finalObservation =
         sseObserver !== undefined && decoder !== undefined
           ? finishSseObservation(sseObserver, decoder)
           : jsonCapture !== undefined && jsonCapture.captured()
             ? extractPassthroughObservation(protocol, jsonCapture.text())
-            : {},
-      ),
+            : {};
+      commit(finalObservation);
+      await complete(finalObservation);
+    },
     onError: (error) => {
       idle.clear();
       terminal.resolve({
