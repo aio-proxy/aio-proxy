@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { ProviderFormMode } from '../constants';
+import { ProviderFormMode, PROVIDER_MODELS_PLACEHOLDER } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
@@ -50,12 +50,12 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
             <form.Field name="baseURL">
               {(field) => (
                 <Field>
-                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_base_url']()}</Label>
+                  <Label htmlFor={field.name}>Base URL</Label>
                   <Input
                     id={field.name}
                     value={field.state.value ?? ''}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder={m['dashboard.providers.form.placeholder_base_url']()}
+                    placeholder="https://api.openai.com"
                   />
                 </Field>
               )}
@@ -66,13 +66,13 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
             <form.Field name="apiKey">
               {(field) => (
                 <Field>
-                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_api_key']()}</Label>
+                  <Label htmlFor={field.name}>API Key</Label>
                   <Input
                     id={field.name}
                     type="password"
                     value={field.state.value ?? ''}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder={m['dashboard.providers.form.placeholder_api_key']()}
+                    placeholder="sk-..."
                   />
                   <p className="text-sm text-muted-foreground">
                     {mode === ProviderFormMode.Edit
@@ -134,7 +134,7 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
                   id={field.name}
                   value={field.state.value ?? []}
                   onValueChange={(next) => field.handleChange(next)}
-                  placeholder={m['dashboard.providers.form.placeholder_models']()}
+                  placeholder={PROVIDER_MODELS_PLACEHOLDER}
                   removeLabel={(model) => m['dashboard.providers.form.remove_model']({ model })}
                 />
                 <p className="text-sm text-muted-foreground">{m['dashboard.providers.form.models_helper']()}</p>

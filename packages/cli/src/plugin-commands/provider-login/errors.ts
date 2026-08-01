@@ -5,8 +5,8 @@ export class ProviderCapabilityNotFoundError extends Error {
   constructor(readonly reference?: string) {
     super(
       reference === undefined
-        ? m.cli_provider_login_error_capability_not_found_any()
-        : m.cli_provider_login_error_capability_not_found({ reference }),
+        ? m['cli.provider.login.error_capability_not_found_any']()
+        : m['cli.provider.login.error_capability_not_found']({ reference }),
     );
   }
 }
@@ -20,8 +20,8 @@ export class ProviderCapabilityAmbiguousError extends Error {
     const joined = references.join(', ');
     super(
       input.length === 0
-        ? m.cli_provider_login_error_capability_ambiguous_selection({ references: joined })
-        : m.cli_provider_login_error_capability_ambiguous({ input, references: joined }),
+        ? m['cli.provider.login.error_capability_ambiguous_selection']({ references: joined })
+        : m['cli.provider.login.error_capability_ambiguous']({ input, references: joined }),
     );
   }
 }
@@ -32,20 +32,20 @@ export class ProviderCapabilityMismatchError extends Error {
     readonly requested: string,
     readonly target: string,
   ) {
-    super(m.cli_provider_login_error_capability_mismatch({ requested, target }));
+    super(m['cli.provider.login.error_capability_mismatch']({ requested, target }));
   }
 }
 
 export class ProviderTargetNotFoundError extends Error {
   override readonly name = 'ProviderTargetNotFoundError';
   constructor(readonly providerId: string) {
-    super(m.cli_provider_login_error_target_not_found({ provider: providerId }));
+    super(m['cli.provider.login.error_target_not_found']({ provider: providerId }));
   }
 }
 
 export class ProviderTargetInvalidError extends Error {
   override readonly name = 'ProviderTargetInvalidError';
   constructor(readonly providerId: string) {
-    super(m.cli_provider_login_error_target_invalid({ provider: providerId }));
+    super(m['cli.provider.login.error_target_invalid']({ provider: providerId }));
   }
 }

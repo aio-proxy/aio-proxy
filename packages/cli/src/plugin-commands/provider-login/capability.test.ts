@@ -18,7 +18,7 @@ describe('provider login capability prompts', () => {
     await expect(selectCapability([{ reference: '@a/one#default', label: 'First account' }])).resolves.toBe(
       '@a/one#default',
     );
-    expect(message).toBe('Select an OAuth capability.');
+    expect(message).toBe('Select an OAuth capability');
   });
 
   test('uses adapter labels for TTY choice names and canonical references for values', async () => {

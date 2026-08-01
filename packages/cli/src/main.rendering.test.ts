@@ -17,7 +17,7 @@ describe('cli rendering', () => {
     // Then
     expect(login).toContain('[capability]');
     expect(login).toContain('--provider <id>');
-    expect(login).toContain('Re-login an existing OAuth provider by id.');
+    expect(login).toContain('Re-login an existing OAuth provider by id');
     expect(probe).toContain('<provider-id>');
     expect(probe).not.toContain('<id>');
   });
@@ -39,9 +39,9 @@ describe('cli rendering', () => {
       const loopback = formatCliError(new LoopbackPortUnavailableError(1455), 'en');
       const unknown = formatCliError(new Error('unknown plugin secret'), 'en');
 
-      expect(missing.message).toBe('Unexpected internal error.');
-      expect(loopback.message).toBe('The local callback listener could not use port 1455.');
-      expect(unknown.message).toBe('Unexpected internal error.');
+      expect(missing.message).toBe('Unexpected internal error');
+      expect(loopback.message).toBe('The local callback listener could not use port 1455');
+      expect(unknown.message).toBe('Unexpected internal error');
       expect(unknown.message).not.toContain('unknown plugin secret');
     } finally {
       await setLocale(originalLocale);
@@ -58,7 +58,7 @@ describe('cli rendering', () => {
 
     const formatted = formatCliError(forged, 'en');
 
-    expect(formatted.message).toBe('Unexpected internal error.');
+    expect(formatted.message).toBe('Unexpected internal error');
     expect(formatted.message).not.toContain('secret');
     expect(formatted.message).not.toContain('attacker.invalid');
   });

@@ -4,6 +4,7 @@ import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { TRACE_PLACEHOLDER } from '../../trace-display-constants';
 import { formatTraceDuration, formatTraceResultDetails } from '../../trace-formatters';
 import { TraceStatus } from '../trace-status';
 
@@ -12,7 +13,7 @@ interface SpanDetailPanelProps {
 }
 
 export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
-  const missing = m['dashboard.traces.not_available']();
+  const missing = TRACE_PLACEHOLDER;
   const resultDetails =
     span === undefined ? undefined : formatTraceResultDetails({ errorType: span.errorType, errorCode: span.errorCode });
 

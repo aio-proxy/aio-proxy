@@ -68,7 +68,7 @@ export const readOrBootstrapConfig = async (path: string, dashboardUrl: string) 
     }
     if (process.stdin.isTTY !== true) {
       console.log(
-        m.cli_bootstrap_empty_config({
+        m['cli.bootstrap.empty_config']({
           path,
           dashboardUrl,
         }),
@@ -98,7 +98,7 @@ const loadConfigForRun = async (path: string, dashboardUrl: string) => {
     if (cause instanceof AppError || cause instanceof CliExit) throw cause;
     throw new CliExit(
       EXIT.unrecoverable,
-      m.cli_config_invalid({ error: cause instanceof Error ? cause.message : String(cause) }),
+      m['cli.config.invalid']({ error: cause instanceof Error ? cause.message : String(cause) }),
     );
   }
 };
@@ -157,7 +157,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   // 255s is Bun's maximum idle window.
   const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
   console.error(
-    m.cli_run_started({
+    m['cli.run.started']({
       apiUrl: controlBaseUrl(server.hostname ?? host, String(server.port)),
       dashboardUrl,
     }),

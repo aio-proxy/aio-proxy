@@ -65,7 +65,7 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
             {m['dashboard.providers.transforms.mode.visual']()}
           </TabsTrigger>
           <TabsTrigger value="json" disabled={!visualValid}>
-            {m['dashboard.providers.transforms.mode.json']()}
+            JSON
           </TabsTrigger>
         </TabsList>
         <TabsContent value="visual">

@@ -63,35 +63,35 @@ export const runUpgradeCommand = async (
   try {
     target = await deps.resolveTarget();
   } catch (err) {
-    throw new CliExit(EXIT.unrecoverable, m.cli_upgrade_detect_failed({ reason: errorReason(err) }));
+    throw new CliExit(EXIT.unrecoverable, m['cli.upgrade.detect_failed']({ reason: errorReason(err) }));
   }
   let latest: string;
   try {
     latest = await deps.fetchLatest(registry);
   } catch {
-    throw new CliExit(EXIT.transient, m.cli_upgrade_check_failed());
+    throw new CliExit(EXIT.transient, m['cli.upgrade.check_failed']());
   }
   const current = deps.currentVersion;
-  print(m.cli_upgrade_current_version({ version: current }));
+  print(m['cli.upgrade.current_version']({ version: current }));
 
   const cmp = Bun.semver.order(latest, current);
   if (cmp <= 0 && options.force !== true) {
-    print(m.cli_upgrade_up_to_date({ version: current }));
+    print(m['cli.upgrade.up_to_date']({ version: current }));
     return;
   }
-  if (cmp > 0) print(m.cli_upgrade_new_version({ version: latest }));
+  if (cmp > 0) print(m['cli.upgrade.new_version']({ version: latest }));
   if (options.check === true) return;
-  if (cmp <= 0 && options.force === true) print(m.cli_upgrade_forcing({ version: latest }));
+  if (cmp <= 0 && options.force === true) print(m['cli.upgrade.forcing']({ version: latest }));
 
-  print(m.cli_upgrade_via({ method: target.method }));
+  print(m['cli.upgrade.via']({ method: target.method }));
   // Install failures are plain Errors (package-manager exit code, missing asset);
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
   try {
     await deps.install(target, latest, options);
   } catch (err) {
-    throw new CliExit(EXIT.transient, m.cli_upgrade_install_failed({ reason: errorReason(err) }));
+    throw new CliExit(EXIT.transient, m['cli.upgrade.install_failed']({ reason: errorReason(err) }));
   }
-  print(m.cli_upgrade_success({ version: latest }));
+  print(m['cli.upgrade.success']({ version: latest }));
 
   if (!(await deps.isDaemonRunning())) return;
   // A managed daemon (launchd/systemd) is designed to be bounced, so applying the
@@ -99,9 +99,9 @@ export const runUpgradeCommand = async (
   // run`) daemon has no unit, so launchctl/systemctl would error; tell the user to
   // restart it themselves instead of failing the upgrade.
   if (!deps.isServiceManaged()) {
-    print(m.cli_upgrade_manual_restart_hint());
+    print(m['cli.upgrade.manual_restart_hint']());
     return;
   }
-  print(m.cli_upgrade_restarting());
+  print(m['cli.upgrade.restarting']());
   await deps.restartService();
 };

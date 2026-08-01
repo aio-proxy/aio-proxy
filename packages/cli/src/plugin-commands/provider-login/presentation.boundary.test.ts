@@ -92,6 +92,6 @@ describe('provider login adapter boundary', () => {
     }
     expect(thrown).toBeInstanceOf(LoopbackPortUnavailableError);
     expect(thrown).toMatchObject({ port: 1455 });
-    expect(formatCliError(thrown, 'en').message).toBe('The local callback listener could not use port 1455.');
+    expect(formatCliError(thrown, 'en').message).toBe('The local callback listener could not use port 1455');
   });
 });
