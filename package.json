@@ -60,20 +60,17 @@
     "preflight": "bun run lint:types && bun run format:check && bun run test"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "1.0.0-next.8",
+    "@changesets/cli": "3.0.0-next.10",
     "@commitlint/cli": "^21.2.0",
     "@commitlint/config-conventional": "^21.2.0",
     "@logtape/lint": "^2.2.4",
     "@microsoft/api-extractor": "7.58.11",
     "@types/bun": "catalog:",
-    "@types/semver": "^7.7.1",
-    "conventional-changelog": "^8.1.0",
-    "conventional-changelog-conventionalcommits": "^10.2.1",
-    "conventional-recommended-bump": "^12.1.0",
     "lefthook": "^2.1.9",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "oxlint-tsgolint": "^7.0.2001",
-    "semver": "^7.8.5",
     "turbo": "^2.10.1",
     "typescript": "^7.0.2"
   },
