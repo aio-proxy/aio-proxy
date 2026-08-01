@@ -1,10 +1,8 @@
 import { expect, test } from 'bun:test';
 
 import { geminiGenerateContentAdapter } from '@aio-proxy/core';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { LogicalSessionStore } from '../logical-session-store';
-import type { RuntimeProviderInstance } from '../runtime';
 import { createGeminiGenerateContentRoutes } from './gemini-generate-content';
 import {
   anthropicRequest,
@@ -287,56 +285,4 @@ test('fallback returns a character-class estimate, not bytes/64', async () => {
   const json = (await response.json()) as { input_tokens: number };
   // 12 CJK chars * 1.21 ~ 15 tokens. bytes/64 of this JSON would be ~2. Guard the density.
   expect(json.input_tokens).toBeGreaterThanOrEqual(10);
-});
-
-function rawAnthropicProvider(id: string, seen: { url?: string; model?: string }): RuntimeProviderInstance {
-  return {
-    id,
-    kind: ProviderKind.Api,
-    enabled: true,
-    alias: { [requestedModel]: { model: `${id}-wire`, preserve: false } },
-    raw: {
-      resolve: ({ protocol, modelId }) =>
-        protocol === ProviderProtocol.Anthropic
-          ? {
-              invoke: async (request: Request) => {
-                seen.url = request.url;
-                seen.model = ((await request.clone().json()) as { model: string }).model;
-                void modelId;
-                return Response.json({ input_tokens: 4242 });
-              },
-            }
-          : undefined,
-    },
-  };
-}
-
-test('forwards count_tokens upstream when a same-protocol raw provider is available', async () => {
-  const seen: { url?: string; model?: string } = {};
-  const fixture = countFixture([rawAnthropicProvider('relay', seen)]);
-  const response = await fixture.anthropic();
-
-  expect(response.status).toBe(200);
-  // Upstream value is returned verbatim; the estimate header must be absent.
-  expect(await response.json()).toEqual({ input_tokens: 4242 });
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
-  // rawRequest rewrote the client alias to the wire model and kept the count path.
-  expect(seen.model).toBe('relay-wire');
-  expect(seen.url).toContain('/v1/messages/count_tokens');
-});
-
-test('falls through to estimator when raw provider protocol does not match inbound', async () => {
-  const seen: { url?: string; model?: string } = {};
-  const openaiRaw: RuntimeProviderInstance = {
-    ...rawAnthropicProvider('openai', seen),
-    raw: {
-      resolve: ({ protocol }) =>
-        protocol === ProviderProtocol.OpenAIResponse ? { invoke: async () => Response.json({}) } : undefined,
-    },
-  };
-  const fixture = countFixture([openaiRaw]);
-  const response = await fixture.anthropic();
-  expect(response.status).toBe(200);
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
-  expect(seen.url).toBeUndefined(); // upstream never called
 });

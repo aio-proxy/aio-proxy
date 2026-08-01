@@ -20,6 +20,7 @@ import { failureTerminal } from './pipeline/failure';
 import { cancelRetainedRequestBody } from './pipeline/request';
 import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
 import { estimateInputTokens } from './token-count-estimate';
+import { attemptRawCount } from './token-count-raw';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -163,7 +164,7 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly session: RequestTraceSession;
 };
 
-type CountAttempt = {
+export type CountAttempt = {
   readonly providerId: string;
   readonly modelId: string;
   readonly providerKind: RuntimeProviderInstance['kind'];
@@ -182,56 +183,16 @@ async function countCandidates<TRequest, TContext>({
   throwIfCountAborted(session, rawRequest.signal);
 
   for (const [attemptIndex, candidate] of candidates.entries()) {
-    const raw = candidate.provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
-    if (raw !== undefined) {
-      throwIfCountAborted(session, rawRequest.signal);
-      const attempt: CountAttempt = {
-        providerId: candidate.provider.id,
-        modelId: candidate.modelId,
-        providerKind: candidate.provider.kind,
-      };
-      const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
-      try {
-        const upstream = await adapter.rawRequest(rawRequest.clone(), request, candidate.modelId, context);
-        const response = await raw.invoke(upstream, context, { upstreamStream: false });
-        if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
-        rawRequest.signal.throwIfAborted();
-        attemptSpan.span.setAttribute(attributeName.httpStatusCode, response.status);
-        if (response.status >= 200 && response.status < 400) {
-          attemptSpan.end();
-          session.finish({
-            outcome: 'success',
-            finalProviderId: candidate.provider.id,
-            finalModelId: candidate.modelId,
-            finalHttpStatus: response.status,
-          });
-          return response;
-        }
-        attemptSpan.end(failureTerminal(response.status));
-        continue;
-      } catch (error) {
-        if (
-          (rawRequest.signal.aborted && error === rawRequest.signal.reason) ||
-          isInboundAbort(error, rawRequest.signal)
-        ) {
-          attemptSpan.end({ outcome: 'cancelled' });
-          session.finish({
-            outcome: 'cancelled',
-            finalProviderId: candidate.provider.id,
-            finalModelId: candidate.modelId,
-          });
-          throw rawRequest.signal.reason;
-        }
-        if (rawRequest.signal.aborted) {
-          attemptSpan.end({ outcome: 'failure' });
-          throw error;
-        }
-        const mapped = adapter.errors.provider(error);
-        attemptSpan.end(failureTerminal(mapped?.status));
-        if (mapped === undefined) throw error;
-        continue;
-      }
-    }
+    const rawResult = await attemptRawCount({
+      adapter,
+      candidate,
+      attemptIndex,
+      rawRequest,
+      request,
+      context,
+      session,
+    });
+    if (rawResult.kind === 'return') return rawResult.response;
     const provider = candidate.provider;
     const count = provider.tokenCount;
     if (count === undefined) continue;
@@ -306,7 +267,7 @@ function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelI
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
 }
 
-function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
+export function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
   return startPipelineSpan(session.rootContext, spanName.attempt, {
     attributes: {
       [attributeName.attemptIndex]: index,
@@ -317,7 +278,7 @@ function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, i
   });
 }
 
-function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
+export function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
   try {
     signal.throwIfAborted();
   } catch (error) {
