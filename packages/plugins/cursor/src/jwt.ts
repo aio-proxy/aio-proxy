@@ -16,7 +16,7 @@ function readClaim(claims: Record<string, unknown>, key: string): string | undef
 }
 
 export function cursorTokenExpiry(token: string, now: number): number {
-  const exp = readCursorClaims(token).exp;
+  const exp = readCursorClaims(token)['exp'];
   return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 - 5 * 60_000 : now + 3_600_000;
 }
 

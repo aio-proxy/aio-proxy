@@ -62,8 +62,8 @@ function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCr
     throw new Error('Cursor authentication returned an invalid payload');
   }
   const record = payload as Record<string, unknown>;
-  const accessToken = record.accessToken;
-  const refreshToken = record.refreshToken;
+  const accessToken = record['accessToken'];
+  const refreshToken = record['refreshToken'];
   if (
     typeof accessToken !== 'string' ||
     accessToken === '' ||
