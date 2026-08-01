@@ -117,7 +117,7 @@ jobs:
           images: ghcr.io/aio-proxy/aio-proxy
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}
+            type=raw,value=${{ fromJSON(steps.changesets.outputs['published-packages'])[0].version }}
 
       - name: Build and push Docker image
         if: steps.changesets.outputs.published == 'true'
