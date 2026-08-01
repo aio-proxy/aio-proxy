@@ -130,7 +130,7 @@
   "cli_plugin_diagnostic_authorization_failed": "Authorization failed for provider {provider}.",
   "cli_plugin_diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}.",
   "cli_plugin_diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}.",
-  "cli_dashboard_not_yet_implemented": "The dashboard command is not yet implemented; run `aio-proxy run --open` to open the dashboard.",
+  "cli_dashboard_opened": "Opened the dashboard in your default browser.",
   "cli_error_port_out_of_range": "Port {port} is out of range (1-65535)",
   "cli_error_config_write_failed": "Could not write config file at {path}.",
   "cli_error_config_not_found": "Config file not found.",

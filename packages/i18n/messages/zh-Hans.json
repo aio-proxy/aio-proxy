@@ -126,7 +126,7 @@
   "cli_plugin_diagnostic_authorization_failed": "提供商 {provider} 授权失败。",
   "cli_plugin_diagnostic_catalog_unavailable": "提供商 {provider} 的模型目录不可用。",
   "cli_plugin_diagnostic_runtime_create_failed": "无法为提供商 {provider} 创建运行时。",
-  "cli_dashboard_not_yet_implemented": "TODO(i18n): The dashboard command is not yet implemented; run `aio-proxy run --open` to open the dashboard.",
+  "cli_dashboard_opened": "已在默认浏览器中打开控制台。",
   "cli_error_port_out_of_range": "端口 {port} 超出范围 (1-65535)",
   "cli_error_config_write_failed": "无法写入配置文件 {path}。",
   "cli_error_config_not_found": "未找到配置文件。",
