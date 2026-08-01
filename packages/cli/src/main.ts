@@ -172,7 +172,6 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .description(m['cli.upgrade.description']())
     .option('--check', m['cli.upgrade.option_check_description']())
     .option('--force', m['cli.upgrade.option_force_description']())
-    .option('--restart', m['cli.upgrade.option_restart_description']())
     .option('--registry <url>', m['cli.upgrade.option_registry_description']())
     .action((options) => runUpgradeCommand(options));
 

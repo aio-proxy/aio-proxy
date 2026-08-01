@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { CliExit } from '../exit';
-import { renderLaunchdPlist, renderSystemdUnit, resolveExec } from './service';
+import { renderLaunchdPlist, renderSystemdUnit, resolveExec, writeManagedUnit } from './service';
 
 test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   const unit = renderSystemdUnit({ exec: '/usr/local/bin/aio-proxy', configPath: '/home/u/.aio-proxy/config.jsonc' });
@@ -56,19 +59,66 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).not.toContain('a&b/bin/aio-proxy');
 });
 
-test('resolveExec targets the native binary when invoked as the compiled binary', () => {
+test('resolveExec prefers the stable PATH launcher over its versioned symlink target', () => {
+  // Regression: brew exposes /opt/homebrew/bin/aio-proxy -> Cellar/<ver>/bin/aio-proxy.
+  // execPath resolves to the versioned target, but baking that breaks after
+  // `brew upgrade` deletes the old Cellar dir. When the PATH launcher resolves to
+  // the same binary we're running as, bake the stable launcher so ExecStart
+  // survives upgrades (brew retargets the symlink).
+  const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
+  const launcher = '/opt/homebrew/bin/aio-proxy';
+  const realpath = (p: string) => (p === launcher ? versioned : p);
+  expect(resolveExec(() => launcher, versioned, realpath)).toBe(launcher);
+});
+
+test('resolveExec targets execPath when no PATH launcher resolves to it', () => {
   // A managed run has a minimal PATH without node, so the ExecStart target must be
-  // the self-contained native binary. When invoked via npm we already ARE it, so
-  // process.execPath is used directly without consulting PATH.
-  const which = () => {
-    throw new Error('which must not be called when execPath is the native binary');
+  // the self-contained native binary. With no matching launcher on PATH, use
+  // process.execPath directly (npm invokes us AS the native binary).
+  const execPath = '/opt/homebrew/bin/aio-proxy';
+  expect(
+    resolveExec(
+      () => null,
+      execPath,
+      (p) => p,
+      () => true,
+    ),
+  ).toBe(execPath);
+});
+
+test('resolveExec defers to the PATH launcher when execPath was deleted mid-upgrade', () => {
+  // Regression: an in-process `aio-proxy upgrade` on brew deletes the running
+  // Cellar execPath while retargeting the launcher symlink to the new binary.
+  // resolveExec runs in the old process, so execPath no longer exists; it must
+  // bake the live launcher, not the deleted path. realpath(execPath) throws
+  // (gone), so sameBinary is false and the exists guard rejects execPath.
+  const deletedExec = '/opt/homebrew/Cellar/aio-proxy/0.2.1/bin/aio-proxy';
+  const launcher = '/opt/homebrew/bin/aio-proxy';
+  const realpath = (p: string) => {
+    if (p === deletedExec) throw new Error('ENOENT');
+    return p;
   };
-  expect(resolveExec(which, '/opt/homebrew/bin/aio-proxy')).toBe('/opt/homebrew/bin/aio-proxy');
+  expect(
+    resolveExec(
+      () => launcher,
+      deletedExec,
+      realpath,
+      (p) => p !== deletedExec,
+    ),
+  ).toBe(launcher);
 });
 
 test('resolveExec falls back to PATH when execPath is not the native binary', () => {
   // e.g. dev `bun run`: execPath is the bun interpreter, so resolve via PATH.
-  expect(resolveExec(() => '/usr/local/bin/aio-proxy', '/opt/homebrew/bin/bun')).toBe('/usr/local/bin/aio-proxy');
+  const launcher = '/usr/local/bin/aio-proxy';
+  expect(
+    resolveExec(
+      () => launcher,
+      '/opt/homebrew/bin/bun',
+      (p) => p,
+      () => true,
+    ),
+  ).toBe(launcher);
 });
 
 test('resolveExec fails fast when the native binary is not found', () => {
@@ -76,10 +126,49 @@ test('resolveExec fails fast when the native binary is not found', () => {
   // invalid unit that never starts; installing must refuse instead.
   let caught: unknown;
   try {
-    resolveExec(() => null, '/opt/homebrew/bin/bun');
+    resolveExec(
+      () => null,
+      '/opt/homebrew/bin/bun',
+      (p) => p,
+      () => true,
+    );
   } catch (err) {
     caught = err;
   }
   expect(caught).toBeInstanceOf(CliExit);
   expect((caught as CliExit).code).toBe(1);
+});
+
+// writeManagedUnit takes an explicit target path (test seam) so these run on any
+// host without touching the real ~/Library/LaunchAgents.
+test('writeManagedUnit rewrites a stale plist with the fresh exec path', async () => {
+  // Regression for the brew-upgrade failure: an existing unit points at a deleted
+  // versioned binary (old Cellar path). Restart must regenerate the unit, not just
+  // stop/start it, so the stale ExecStart is replaced with the current launcher.
+  const dir = join(tmpdir(), `aio-svc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  const plistPath = join(dir, 'com.aio-proxy.agent.plist');
+  const stale = '/opt/homebrew/Cellar/aio-proxy/0.2.1/bin/aio-proxy';
+  writeFileSync(plistPath, renderLaunchdPlist({ exec: stale, configPath: join(dir, 'config.jsonc') }));
+  expect(readFileSync(plistPath, 'utf8')).toContain(stale);
+
+  const fresh = '/opt/homebrew/bin/aio-proxy';
+  const written = await writeManagedUnit('darwin', fresh, plistPath);
+
+  expect(written).toBe(plistPath);
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>${fresh}</string>`);
+  expect(contents).not.toContain(stale);
+});
+
+test('writeManagedUnit creates the unit and parent dir when none exists', async () => {
+  const plistPath = join(
+    tmpdir(),
+    `aio-svc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    'LaunchAgents',
+    'com.aio-proxy.agent.plist',
+  );
+  expect(existsSync(plistPath)).toBe(false);
+  await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
+  expect(existsSync(plistPath)).toBe(true);
 });
