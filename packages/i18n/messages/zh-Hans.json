@@ -347,6 +347,7 @@
         "preparing": "正在准备授权…",
         "device_code_title": "使用设备代码授权",
         "loopback_title": "在浏览器中授权",
+        "authorize_url_title": "在浏览器中完成授权",
         "open_authorization": "打开授权页面",
         "manual_callback_label": "完整回调 URL",
         "manual_callback_placeholder": "粘贴完整回调 URL",

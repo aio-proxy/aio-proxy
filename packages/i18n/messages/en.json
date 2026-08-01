@@ -347,6 +347,7 @@
         "preparing": "Preparing authorization…",
         "device_code_title": "Authorize with a device code",
         "loopback_title": "Authorize in your browser",
+        "authorize_url_title": "Authorize in your browser",
         "open_authorization": "Open authorization page",
         "manual_callback_label": "Complete callback URL",
         "manual_callback_placeholder": "Paste the full callback URL",
