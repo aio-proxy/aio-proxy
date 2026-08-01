@@ -5,8 +5,10 @@
 // (see .changeset/config.json + .github/workflows/release.yml). This script is
 // ONLY the publish step: it packs and publishes whatever version the merged
 // Version PR already wrote into each package.json. It does NOT decide versions,
-// write changelogs, commit, or tag — changesets/action creates the git tag(s) +
-// GitHub Release(s) from the NDJSON events we emit below.
+// write changelogs, or commit. changesets/action (publish-script mode) never
+// creates git tags — it only PUSHES a tag we create locally and then builds the
+// GitHub Release from the NDJSON git-tag event we emit — so this script tags the
+// release commit itself (see the tag block near the end).
 //
 // Why this is still hand-rolled rather than `changeset publish`:
 //   - `bun publish` cannot do npm OIDC trusted publishing (oven-sh/bun#22423),
@@ -166,46 +168,59 @@ if (DRY_RUN) {
 }
 
 // --- publish; skip versions already on the registry so a rerun resumes cleanly-
-// changesets/action injects CHANGESETS_OUTPUT and, after this script exits, reads
-// one NDJSON git-tag event per line, then pushes that git tag + creates a GitHub
-// Release (body = the tagged package's CHANGELOG.md entry) for each event.
-//
-// We emit an event only for a note-bearing PRODUCT package (not the platform
-// binaries) that actually has a changelog entry this cycle, so every GitHub
-// Release has real notes and the platform binaries add no empty-release noise.
-// A package a prior run already published is still re-emitted, so a resumed
-// release recreates any tag/Release the earlier run didn't finish.
 const outputPath = process.env['CHANGESETS_OUTPUT'];
-// changesets/action reads this file UNCONDITIONALLY after the publish script
-// exits and treats a missing file as a hard error. When nothing warrants a
-// GitHub Release this cycle (every package already published, or none has a
-// changelog entry) we emit no events, so create the file up front to leave the
-// action a valid empty NDJSON (0 events = no releases) instead of an ENOENT.
+// changesets/action reads this file UNCONDITIONALLY after the publish script exits
+// and treats a missing file as a hard error. Create it up front so a cycle that
+// emits no git-tag event (see the single-tag block below) still leaves the action
+// a valid empty NDJSON (0 events = no releases) instead of an ENOENT.
 if (outputPath) await Bun.write(outputPath, '');
-const emitTag = async (name: string, dir: string) => {
-  if (!outputPath) return;
-  if (platformProvided.has(name)) return; // platform binaries: npm only, no Release
-  if (!(await hasChangelogEntry(dir, version))) return; // no notes this cycle -> no Release
-  const event = { type: 'git-tag', tag: `${name}@${version}`, packageName: name };
-  appendFileSync(outputPath, `${JSON.stringify(event)}\n`);
-};
 
-for (const { path, json } of publishable) {
+for (const { json } of publishable) {
   const name = json.name;
-  const dir = path.replace(/\/package\.json$/, '');
   const tgz = tarballs.get(name)!;
   const existing = await $`npm view ${`${name}@${version}`} version`.nothrow().quiet();
   if (existing.exitCode === 0 && existing.text().trim() === version) {
     console.log(`\nSkipping ${name}@${version}: already published`);
-    await emitTag(name, dir);
     continue;
   }
   console.log(`\nPublishing ${tgz}`);
   await $`npm publish ${tgz} --provenance --access public`;
-  await emitTag(name, dir);
 }
 
 console.log(`\nReleased v${version}`);
+
+// --- one lockstep tag + GitHub Release for the whole release --------------------
+// Every package shares one version (`fixed`), so this repo cuts a single
+// `v<version>` tag (matching the historical v0.1.0 / v0.0.1), NOT changesets'
+// monorepo default of one `<pkg>@<version>` tag per published package. In
+// publish-script mode changesets/action never creates tags — it only pushes a tag
+// we create here and then builds a GitHub Release whose body is the emitted
+// package's CHANGELOG entry. So create `v<version>` locally and emit ONE event.
+//
+// The Release body must come from a product package that has notes this cycle:
+// prefer the CLI launcher `aio-proxy`, else the SDK (an SDK-only cycle leaves
+// `aio-proxy` without an entry, and the action throws on a missing entry). If
+// neither has an entry — which the changeset convention in AGENTS.md prevents —
+// emit nothing so the action makes no contentless Release. The tag name is also
+// what the Homebrew notify step reads (`gh release view` -> tagName -> strip `v`).
+if (outputPath) {
+  let releaseOf: string | undefined;
+  for (const name of ['aio-proxy', '@aio-proxy/plugin-sdk']) {
+    const dir = publishable.find((p) => p.json.name === name)?.path.replace(/\/package\.json$/, '');
+    if (dir && (await hasChangelogEntry(dir, version))) {
+      releaseOf = name;
+      break;
+    }
+  }
+  if (releaseOf) {
+    const tag = `v${version}`;
+    // Idempotent for reruns/resumes: create the local tag only if absent, but
+    // always emit so a resumed release still pushes the tag + creates the Release.
+    const tagged = (await $`git tag -l ${tag}`.nothrow().quiet()).text().trim() === tag;
+    if (!tagged) await $`git tag ${tag}`;
+    appendFileSync(outputPath, `${JSON.stringify({ type: 'git-tag', tag, packageName: releaseOf })}\n`);
+  }
+}
 
 // Return true when CHANGELOG.md has a non-empty entry for `version`. Mirrors the
 // depth-2 heading slice that changesets/action uses to build the Release body, so
