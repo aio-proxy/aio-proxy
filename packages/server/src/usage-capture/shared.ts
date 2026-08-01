@@ -5,6 +5,8 @@ import type { AttemptResponseObservation } from '../response-observation';
 
 export const MAX_PASSTHROUGH_JSON_BYTES = 1024 * 1024;
 
+export const STREAM_IDLE_TIMEOUT_MS = 300_000;
+
 export type UsageCompletion =
   | { readonly outcome: 'success'; readonly usage?: UsageRow; readonly statusCode?: number; readonly ttftMs?: number }
   | { readonly outcome: 'failure'; readonly statusCode?: number; readonly errorCode?: string; readonly ttftMs?: number }
@@ -26,6 +28,10 @@ export type StreamUsageOptions = {
   // ttft is recorded for streamed responses and skipped for buffered JSON.
   readonly startedAt?: number;
   readonly observation?: AttemptResponseObservation;
+  // Upstream idle timeout in ms; when the stream produces no data for this long,
+  // completion resolves failure and the upstream is cancelled. Defaults to
+  // STREAM_IDLE_TIMEOUT_MS; image endpoints should pass a larger value.
+  readonly idleTimeoutMs?: number;
 };
 
 export type PassthroughUsageOptions = {
@@ -38,6 +44,10 @@ export type PassthroughUsageOptions = {
   // performance.now() at attempt dispatch; ttft is recorded only for SSE bodies.
   readonly startedAt?: number;
   readonly observation?: AttemptResponseObservation;
+  // Upstream idle timeout in ms; when the stream produces no bytes for this long,
+  // completion resolves failure and the upstream is cancelled. Defaults to
+  // STREAM_IDLE_TIMEOUT_MS; image endpoints should pass a larger value.
+  readonly idleTimeoutMs?: number;
 };
 
 export type UsageCapture = {
@@ -78,6 +88,33 @@ export function deferred<T>() {
         settled = true;
         resolvePromise(value);
       }
+    },
+  };
+}
+
+export type IdleTimer = {
+  // Re-arm the timer, cancelling any prior pending fire. Call after each unit
+  // of stream progress so the timeout measures gaps between data, not total time.
+  readonly arm: () => void;
+  // Cancel any pending fire without re-arming. Call once the stream settles.
+  readonly clear: () => void;
+};
+
+// Fires onIdle when arm() is not called again within idleMs. A non-positive
+// idleMs disables the timer entirely. Shared by the passthrough and AI SDK
+// stream capture paths so both get identical upstream-stall handling.
+export function createIdleTimer(idleMs: number, onIdle: () => void): IdleTimer {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clear = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  return {
+    clear,
+    arm: () => {
+      clear();
+      if (idleMs <= 0) return;
+      timer = setTimeout(onIdle, idleMs);
     },
   };
 }

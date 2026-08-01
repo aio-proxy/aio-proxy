@@ -1,3 +1,5 @@
+import type { UsageRow } from '@aio-proxy/types';
+
 import {
   createPassthroughSseUsageObserver,
   extractPassthroughObservation,
@@ -8,10 +10,13 @@ import { isAbortError } from '../route-observation';
 import type { ServerLogSink } from '../server-log';
 import {
   type Captured,
+  createIdleTimer,
   deferred,
+  type IdleTimer,
   MAX_PASSTHROUGH_JSON_BYTES,
   observeContentAt,
   type PassthroughUsageOptions,
+  STREAM_IDLE_TIMEOUT_MS,
   ttftProperty,
   type UsageCompletion,
   usageProperty,
@@ -28,6 +33,7 @@ export function passthroughCapture(
     onResponseId,
     startedAt,
     observation,
+    idleTimeoutMs,
   }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
@@ -44,20 +50,27 @@ export function passthroughCapture(
   const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
   let completed = false;
+  const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
+    if (completed) return;
+    completed = true;
+    terminal.resolve({
+      outcome: 'failure',
+      statusCode,
+      errorCode: 'stream_idle_timeout',
+      ...ttftProperty(startedAt, firstTokenAt),
+    });
+    void reader.cancel(new Error('stream_idle_timeout')).catch(() => {});
+    releaseReader();
+  });
   const complete = async (obs: PassthroughObservation): Promise<void> => {
     if (completed) return;
     completed = true;
+    idle.clear();
     if (obs.failed === true) {
       terminal.resolve({ outcome: 'failure', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
       return;
     }
-    const usage = await finalizeUsage({
-      usage: obs.usage === undefined && obs.issues === undefined ? undefined : { ...obs.usage, providerId, modelId },
-      accounting: { source: 'passthrough', protocol },
-      ...(requestedModelId === undefined ? {} : { requestedModelId }),
-      ...(logger === undefined ? {} : { logger }),
-      ...(obs.issues === undefined ? {} : { issues: obs.issues }),
-    });
+    const usage = await finalizePassthroughUsage(obs, { providerId, modelId, protocol, requestedModelId, logger });
     if (obs.responseId !== undefined) onResponseId?.(obs.responseId);
     terminal.resolve({
       outcome: 'success',
@@ -73,68 +86,44 @@ export function passthroughCapture(
       })
     : undefined;
   const decoder = isSse ? new TextDecoder() : undefined;
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  let captureJson = !isSse;
+  const jsonCapture = isSse ? undefined : createJsonCapture();
   let released = false;
   const releaseReader = () => {
     if (released) return;
     released = true;
     reader.releaseLock();
   };
-  const returnedBody = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      let done = false;
-      try {
-        const next = await reader.read();
-        if (!next.done) {
-          if (sseObserver !== undefined && decoder !== undefined) {
-            sseObserver.feed(decoder.decode(next.value, { stream: true }));
-          } else if (captureJson) {
-            const nextByteLength = byteLength + next.value.byteLength;
-            if (nextByteLength <= MAX_PASSTHROUGH_JSON_BYTES) {
-              chunks.push(next.value);
-              byteLength = nextByteLength;
-            } else {
-              chunks.length = 0;
-              byteLength = 0;
-              captureJson = false;
-            }
-          }
-          controller.enqueue(next.value);
-          return;
-        }
-
-        done = true;
-        controller.close();
-        const finalObservation =
-          sseObserver !== undefined && decoder !== undefined
-            ? finishSseObservation(sseObserver, decoder)
-            : captureJson
-              ? extractPassthroughObservation(protocol, decodeChunks(chunks, byteLength))
-              : {};
-        await complete(finalObservation);
-      } catch (error) {
-        done = true;
-        terminal.resolve({
-          outcome: isAbortError(error) ? 'cancelled' : 'failure',
-          statusCode,
-          ...ttftProperty(startedAt, firstTokenAt),
-        });
-        controller.error(error);
-      } finally {
-        if (done) releaseReader();
-      }
+  const returnedBody = createTeeBody({
+    reader,
+    idle,
+    releaseReader,
+    onChunk: (chunk) => {
+      if (sseObserver !== undefined && decoder !== undefined) sseObserver.feed(decoder.decode(chunk, { stream: true }));
+      else jsonCapture?.push(chunk);
     },
-    async cancel(reason) {
+    onEnd: () =>
+      complete(
+        sseObserver !== undefined && decoder !== undefined
+          ? finishSseObservation(sseObserver, decoder)
+          : jsonCapture !== undefined && jsonCapture.captured()
+            ? extractPassthroughObservation(protocol, jsonCapture.text())
+            : {},
+      ),
+    onError: (error) => {
+      idle.clear();
+      terminal.resolve({
+        outcome: isAbortError(error) ? 'cancelled' : 'failure',
+        statusCode,
+        ...ttftProperty(startedAt, firstTokenAt),
+      });
+    },
+    onCancel: () => {
+      idle.clear();
       terminal.resolve({ outcome: 'cancelled', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
-      try {
-        await reader.cancel(reason);
-      } finally {
-        releaseReader();
-      }
     },
   });
+
+  idle.arm();
 
   return {
     value: new Response(returnedBody, {
@@ -146,9 +135,80 @@ export function passthroughCapture(
   };
 }
 
+type TeeBodyDeps = {
+  readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  readonly idle: IdleTimer;
+  readonly releaseReader: () => void;
+  readonly onChunk: (chunk: Uint8Array) => void;
+  readonly onEnd: () => Promise<void>;
+  readonly onError: (error: unknown) => void;
+  readonly onCancel: () => void;
+};
+
+// Tees the upstream body to the client while feeding observation hooks. Chunk
+// forwarding is byte-identical; onEnd/onError/onCancel drive completion. Idle
+// re-arming happens per chunk so a stalled upstream is caught by the caller's timer.
+function createTeeBody(deps: TeeBodyDeps): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let done = false;
+      try {
+        const next = await deps.reader.read();
+        if (!next.done) {
+          deps.onChunk(next.value);
+          controller.enqueue(next.value);
+          deps.idle.arm();
+          return;
+        }
+        done = true;
+        controller.close();
+        await deps.onEnd();
+      } catch (error) {
+        done = true;
+        deps.onError(error);
+        controller.error(error);
+      } finally {
+        if (done) deps.releaseReader();
+      }
+    },
+    async cancel(reason) {
+      deps.onCancel();
+      try {
+        await deps.reader.cancel(reason);
+      } finally {
+        deps.releaseReader();
+      }
+    },
+  });
+}
+
 function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
   observer.feed(decoder.decode());
   return observer.finish();
+}
+
+type PassthroughUsageContext = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly protocol: PassthroughUsageOptions['protocol'];
+  readonly requestedModelId: string | undefined;
+  readonly logger: ServerLogSink | undefined;
+};
+
+async function finalizePassthroughUsage(
+  obs: PassthroughObservation,
+  ctx: PassthroughUsageContext,
+): Promise<UsageRow | undefined> {
+  return finalizeUsage({
+    usage:
+      obs.usage === undefined && obs.issues === undefined
+        ? undefined
+        : { ...obs.usage, providerId: ctx.providerId, modelId: ctx.modelId },
+    accounting: { source: 'passthrough', protocol: ctx.protocol },
+    ...(ctx.requestedModelId === undefined ? {} : { requestedModelId: ctx.requestedModelId }),
+    ...(ctx.logger === undefined ? {} : { logger: ctx.logger }),
+    ...(obs.issues === undefined ? {} : { issues: obs.issues }),
+  });
 }
 
 function createSseUsageObserver(
@@ -167,12 +227,42 @@ function createSseUsageObserver(
   });
 }
 
-function decodeChunks(chunks: readonly Uint8Array[], byteLength: number): string {
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
+type JsonCapture = {
+  // Accumulate a body chunk while under the size cap; once exceeded, capture is
+  // permanently disabled and buffered bytes are dropped to bound memory.
+  readonly push: (chunk: Uint8Array) => void;
+  // Whether the full body is still buffered (never exceeded the cap).
+  readonly captured: () => boolean;
+  // Decoded UTF-8 text of the buffered body; empty once capture is disabled.
+  readonly text: () => string;
+};
+
+function createJsonCapture(): JsonCapture {
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let active = true;
+  return {
+    captured: () => active,
+    push: (chunk) => {
+      if (!active) return;
+      const nextByteLength = byteLength + chunk.byteLength;
+      if (nextByteLength > MAX_PASSTHROUGH_JSON_BYTES) {
+        chunks.length = 0;
+        byteLength = 0;
+        active = false;
+        return;
+      }
+      chunks.push(chunk);
+      byteLength = nextByteLength;
+    },
+    text: () => {
+      const bytes = new Uint8Array(byteLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return new TextDecoder().decode(bytes);
+    },
+  };
 }
