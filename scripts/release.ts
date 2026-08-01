@@ -205,18 +205,16 @@ console.log(`\nReleased v${version}`);
 // depth-2 heading slice that changesets/action uses to build the Release body, so
 // we only tag a product when the Release it produces would actually have content.
 async function hasChangelogEntry(dir: string, ver: string): Promise<boolean> {
-  let text: string;
-  try {
-    text = await Bun.file(join(dir, 'CHANGELOG.md')).text();
-  } catch {
-    return false; // no CHANGELOG (e.g. platform binaries) -> nothing to release
-  }
-  const lines = text.split('\n');
-  const start = lines.findIndex((l) => l.trimEnd() === `## ${ver}`);
+  const file = Bun.file(join(dir, 'CHANGELOG.md'));
+  if (!(await file.exists())) return false; // no CHANGELOG (e.g. platform binaries)
+
+  const lines = (await file.text()).split('\n');
+  const start = lines.findIndex((line) => line.trimEnd() === `## ${ver}`);
   if (start < 0) return false;
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^##\s/.test(lines[i]!)) break; // next version section (depth-2) ends this entry
-    if (lines[i]!.trim() !== '') return true; // any non-blank content = real notes
-  }
-  return false;
+
+  // The entry runs from its heading to the next depth-2 heading (or EOF).
+  const after = lines.slice(start + 1);
+  const nextSection = after.findIndex((line) => /^##\s/.test(line));
+  const entry = nextSection < 0 ? after : after.slice(0, nextSection);
+  return entry.some((line) => line.trim() !== ''); // any non-blank line = real notes
 }
