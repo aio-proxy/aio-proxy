@@ -27,10 +27,27 @@ export function streamCapture(
   let finishUsage: UsageRow | undefined;
   let firstTokenAt: number | undefined;
   let released = false;
+  let completed = false;
   const releaseReader = () => {
     if (released) return;
     released = true;
     reader.releaseLock();
+  };
+  const complete = async (): Promise<void> => {
+    if (completed) return;
+    completed = true;
+    terminal.resolve({
+      outcome: 'success',
+      ...usageProperty(
+        await finalizeUsage({
+          usage: finishUsage,
+          accounting: { source: 'ai-sdk' },
+          ...(requestedModelId === undefined ? {} : { requestedModelId }),
+          ...(logger === undefined ? {} : { logger }),
+        }),
+      ),
+      ...ttftProperty(startedAt, firstTokenAt),
+    });
   };
 
   const value = new ReadableStream<TextStreamPart<ToolSet>>({
@@ -41,30 +58,23 @@ export function streamCapture(
           releaseReader();
           if (cancelled) return;
           controller.close();
-          terminal.resolve(
-            aborted
-              ? { outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) }
-              : finished
-                ? {
-                    outcome: 'success',
-                    ...usageProperty(
-                      await finalizeUsage({
-                        usage: finishUsage,
-                        accounting: { source: 'ai-sdk' },
-                        ...(requestedModelId === undefined ? {} : { requestedModelId }),
-                        ...(logger === undefined ? {} : { logger }),
-                      }),
-                    ),
-                    ...ttftProperty(startedAt, firstTokenAt),
-                  }
-                : { outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) },
-          );
+          if (aborted) {
+            terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
+          } else if (finished) {
+            await complete();
+          } else {
+            terminal.resolve({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
+          }
           return;
         }
         if (next.value.type === 'finish') {
           finished = true;
           finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
-        } else if (next.value.type === 'abort') {
+          controller.enqueue(next.value);
+          void complete();
+          return;
+        }
+        if (next.value.type === 'abort') {
           aborted = true;
         } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
           const contentAt = observeContentAt(observation);
