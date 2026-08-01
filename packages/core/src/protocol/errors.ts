@@ -1,6 +1,6 @@
 import { APICallError } from '@ai-sdk/provider';
 import { RetryError } from 'ai';
-import { ZodError } from 'zod';
+import { prettifyError, ZodError } from 'zod';
 
 import {
   AiSdkProviderError,
@@ -18,6 +18,13 @@ import { InvalidCompressedRequestBodyError } from './request';
 
 const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
 
+// ZodError detail is safe to surface: prettifyError emits only the failing path
+// and the expected constraint (e.g. "Expected 'user' | 'assistant' → at
+// messages[1].role"), never the received value, so no request content leaks.
+function withZodDetail(base: string, error: unknown): string {
+  return error instanceof ZodError ? `${base}: ${prettifyError(error)}` : base;
+}
+
 export const openAICompletionsErrors: ProtocolErrorMapper = {
   modelUnsupported: (error) =>
     error instanceof ImageInputUnsupportedError
@@ -28,7 +35,7 @@ export const openAICompletionsErrors: ProtocolErrorMapper = {
     error instanceof ZodError ||
     error instanceof InvalidCompressedRequestBodyError ||
     error instanceof OpenAICompletionsTransformError
-      ? openAIInvalid(400, 'invalid_request', 'Invalid OpenAI Completions request')
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Completions request', error))
       : undefined,
   modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
   previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
@@ -53,7 +60,7 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
       error instanceof ZodError ||
       error instanceof InvalidCompressedRequestBodyError ||
       error instanceof OpenAIResponsesTransformError
-      ? openAIInvalid(400, 'invalid_request', 'Invalid OpenAI Responses request')
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Responses request', error))
       : undefined;
   },
   modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
@@ -75,7 +82,7 @@ export const anthropicMessagesErrors: ProtocolErrorMapper = {
     error instanceof ZodError ||
     error instanceof InvalidCompressedRequestBodyError ||
     error instanceof AnthropicMessagesTransformError
-      ? anthropicError(400, 'invalid_request_error', 'Invalid Anthropic Messages request')
+      ? anthropicError(400, 'invalid_request_error', withZodDetail('Invalid Anthropic Messages request', error))
       : undefined,
   modelNotFound: (message) => anthropicError(404, 'not_found_error', message),
   previousResponseConflict: () => anthropicError(409, 'invalid_request_error', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
@@ -101,7 +108,7 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
       error instanceof ZodError ||
       error instanceof InvalidCompressedRequestBodyError ||
       error instanceof GeminiGenerateContentTransformError
-      ? geminiError(400, 'INVALID_ARGUMENT', 'Invalid Gemini request')
+      ? geminiError(400, 'INVALID_ARGUMENT', withZodDetail('Invalid Gemini request', error))
       : undefined;
   },
   modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),

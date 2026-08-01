@@ -122,6 +122,11 @@ const AssistantMessageSchema = z.object({
   content: z.union([z.string(), z.array(AssistantContentBlockSchema)]),
 });
 
+const SystemMessageSchema = z.object({
+  role: z.literal('system'),
+  content: z.union([z.string(), z.array(TextBlockSchema)]),
+});
+
 const FunctionToolSchema = z.object({
   type: z.undefined().optional(),
   name: IdSchema,
@@ -179,7 +184,9 @@ const OutputConfigSchema = z.object({ effort: z.enum(['low', 'medium', 'high', '
 export const AnthropicMessagesRequestSchema = z.object({
   model: IdSchema,
   system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
-  messages: z.array(z.discriminatedUnion('role', [UserMessageSchema, AssistantMessageSchema])).min(1),
+  messages: z
+    .array(z.discriminatedUnion('role', [UserMessageSchema, AssistantMessageSchema, SystemMessageSchema]))
+    .min(1),
   metadata: MetadataSchema.optional(),
   session_id: z.string().optional(),
   conversation_id: z.string().optional(),

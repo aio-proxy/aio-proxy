@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { z } from 'zod';
+
 import { ImageInputUnsupportedError } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
@@ -50,6 +52,19 @@ const cases = [
     { error: { code: 400, message: 'Invalid Gemini request', status: 'INVALID_ARGUMENT' } },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
+
+test.each(cases)(
+  'requestError surfaces ZodError path detail without the received value for %s',
+  async (_name, mapper) => {
+    const error = z
+      .object({ messages: z.array(z.object({ role: z.literal('user') })) })
+      .safeParse({ messages: [{ role: 'leaked-secret-value' }] }).error;
+    const message = JSON.stringify(await mapper.requestError(error)?.json());
+
+    expect(message).toContain('messages[0].role');
+    expect(message).not.toContain('leaked-secret-value');
+  },
+);
 
 test.each(cases)('maps unsupported content encoding for %s', async (_name, mapper, expected) => {
   const response = mapper.unsupportedContentEncoding();

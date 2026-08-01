@@ -57,7 +57,7 @@ function messageToModelMessage(
   message: AnthropicMessagesRequest['messages'][number],
   toolNames: Map<string, string>,
   messageIndex: number,
-): AnthropicUserMessage | AnthropicAssistantMessage {
+): AnthropicUserMessage | AnthropicAssistantMessage | AnthropicSystemMessage {
   switch (message.role) {
     case 'user':
       return {
@@ -66,6 +66,8 @@ function messageToModelMessage(
       };
     case 'assistant':
       return { role: 'assistant', content: assistantContentToModelParts(message.content, toolNames) };
+    case 'system':
+      return systemToModelMessage(message.content);
     default:
       return assertNever(message);
   }

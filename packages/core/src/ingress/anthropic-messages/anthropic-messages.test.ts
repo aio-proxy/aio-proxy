@@ -24,7 +24,7 @@ const invalidInputs = [
     name: 'invalid role',
     input: {
       model: 'claude-sonnet-4-5',
-      messages: [{ role: 'system', content: 'hello' }],
+      messages: [{ role: 'tool', content: 'hello' }],
     },
     path: ['messages', 0, 'role'],
   },
