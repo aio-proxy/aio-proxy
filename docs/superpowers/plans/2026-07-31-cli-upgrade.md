@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **实现修订（PR #105 review 后）：** binary 渠道的下载源已从「GitHub Release 资产」改为「npm 平台 tarball」，与 `aio-proxy/homebrew-tap` Formula 完全一致：`<registry>/@aio-proxy/cli-<os>-<arch>/-/cli-<os>-<arch>-<v>.tgz`，解压取 `package/bin/aio-proxy`。因此 `constants.ts` 用 `BINARY_NPM_SCOPE` + `SUPPORTED_BINARY_TARGETS` 取代 `GITHUB_REPO`；`binary.ts` 用 `binaryTargetKey()` + `binaryTarballUrl()` + `Bun.Archive` 取代 `binaryAssetName()` + `releases/download` URL。下文保留原始规划内容作历史记录，具体以已合入代码为准。
+
 **Goal:** 新增 `aio-proxy upgrade`，自动识别当前二进制归属的安装渠道（brew/bun/npm/pnpm/binary）并调用对应渠道升级到最新版。
 
 **Architecture:** 检测与升级动作解耦。`detect.ts` 用 `Bun.which` 反查当前 `aio-proxy` 落在哪个包管理器的全局 bin 目录，产出纯数据 `UpgradeTarget`；`upgrade.ts` 消费它做版本比较与编排；`methods.ts` 构造各包管理器 arg；`binary.ts` 负责 GitHub 资产的下载/原子替换/回滚/备份清扫。全部用户可见文案走 `@aio-proxy/i18n`。

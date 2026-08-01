@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -52,6 +52,19 @@ function systemdUnitPath(): string {
   const xdg = process.env['XDG_CONFIG_HOME'];
   const base = xdg === undefined || xdg === '' ? join(homedir(), '.config') : xdg;
   return join(base, 'systemd', 'user', SYSTEMD_UNIT_NAME);
+}
+
+// Whether a managed unit file exists for the current platform. `serviceRestart`
+// invokes launchctl/systemctl unconditionally, which errors when the daemon was
+// started manually (`aio-proxy run`) with no installed unit; callers that only
+// want to restart a managed daemon should gate on this first. Returns false on
+// unsupported platforms rather than throwing, since "no managed service" is the
+// honest answer there too.
+export function isManagedServiceInstalled(): boolean {
+  const os = platform();
+  if (os === 'darwin') return existsSync(launchdPlistPath());
+  if (os === 'linux') return existsSync(systemdUnitPath());
+  return false;
 }
 
 // Run a manager command, streaming its output. `allowFailure` is for status-style

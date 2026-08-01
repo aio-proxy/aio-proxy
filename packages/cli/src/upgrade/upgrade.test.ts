@@ -65,7 +65,7 @@ test('buildHomebrewUpdateArgs switches on force', () => {
 
 import { existsSync, readFileSync } from 'node:fs';
 
-import { replaceBinaryForUpdate, sweepStaleBackups } from './binary';
+import { binaryTarballUrl, replaceBinaryForUpdate, sweepStaleBackups } from './binary';
 
 test('replaceBinaryForUpdate rolls back when verify fails', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aio-bin-'));
@@ -103,6 +103,39 @@ test('replaceBinaryForUpdate swaps in new binary when verify ok', async () => {
   expect(readFileSync(target, 'utf8')).toBe('NEW');
 });
 
+test('replaceBinaryForUpdate rolls back and rethrows when verify throws', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-bin-'));
+  const target = join(root, 'aio-proxy');
+  const temp = join(root, 'aio-proxy.new');
+  writeFileSync(target, 'OLD');
+  writeFileSync(temp, 'NEW');
+  await expect(
+    replaceBinaryForUpdate({
+      targetPath: target,
+      tempPath: temp,
+      backupPath: join(root, 'aio-proxy.1.2.bak'),
+      expectedVersion: '1.0.0',
+      // A corrupt/wrong-format download makes Bun.spawn reject rather than
+      // return { ok:false }; that must still restore the old binary.
+      verify: async () => {
+        throw new Error('spawn EFTYPE');
+      },
+    }),
+  ).rejects.toThrow('spawn EFTYPE');
+  expect(readFileSync(target, 'utf8')).toBe('OLD'); // 回滚到旧二进制，未把坏文件留在目标路径
+  expect(existsSync(join(root, 'aio-proxy.1.2.bak'))).toBe(false); // 备份已还原
+});
+
+test('binaryTarballUrl points at the npm per-platform package (same as Homebrew tap)', () => {
+  expect(binaryTarballUrl('https://registry.npmjs.org/', 'darwin-arm64', '1.2.3')).toBe(
+    'https://registry.npmjs.org/@aio-proxy/cli-darwin-arm64/-/cli-darwin-arm64-1.2.3.tgz',
+  );
+  // A registry without a trailing slash still yields a well-formed URL.
+  expect(binaryTarballUrl('https://r.example.com', 'linux-x64', '0.9.0')).toBe(
+    'https://r.example.com/@aio-proxy/cli-linux-x64/-/cli-linux-x64-0.9.0.tgz',
+  );
+});
+
 test('sweepStaleBackups removes only timestamped .bak siblings', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aio-sweep-'));
   const target = join(root, 'aio-proxy');
@@ -126,25 +159,31 @@ test('fetchLatestVersion throws on non-ok', async () => {
   await expect(fetchLatestVersion(NPM_REGISTRY, fake)).rejects.toThrow();
 });
 
-import { runUpgradeCommand } from './upgrade';
+import { CliExit, EXIT } from '../exit';
+import type { UpgradeTarget } from './constants';
+import { runUpgradeCommand, type UpgradeOptions } from './upgrade';
+
+type Deps = Parameters<typeof runUpgradeCommand>[2];
+const makeDeps = (over: Partial<NonNullable<Deps>> = {}): NonNullable<Deps> => ({
+  resolveTarget: async () => ({ method: 'bun' }) as UpgradeTarget,
+  fetchLatest: async () => '1.0.0',
+  currentVersion: '1.0.0',
+  install: async () => {},
+  isDaemonRunning: async () => false,
+  isServiceManaged: () => true,
+  restartService: async () => {},
+  ...over,
+});
 
 test('--check reports up-to-date without installing', async () => {
   const lines: string[] = [];
-  await runUpgradeCommand({ check: true }, (l) => lines.push(l), {
-    resolveTarget: async () => ({ method: 'bun' }),
-    fetchLatest: async () => '1.0.0',
-    currentVersion: '1.0.0',
-  });
+  await runUpgradeCommand({ check: true }, (l) => lines.push(l), makeDeps({ fetchLatest: async () => '1.0.0' }));
   expect(lines.join('\n')).toContain('1.0.0');
 });
 
 test('--check reports a newer version when available', async () => {
   const lines: string[] = [];
-  await runUpgradeCommand({ check: true }, (l) => lines.push(l), {
-    resolveTarget: async () => ({ method: 'bun' }),
-    fetchLatest: async () => '2.0.0',
-    currentVersion: '1.0.0',
-  });
+  await runUpgradeCommand({ check: true }, (l) => lines.push(l), makeDeps({ fetchLatest: async () => '2.0.0' }));
   expect(lines.join('\n')).toContain('2.0.0');
 });
 
@@ -152,18 +191,109 @@ test('version-check failure throws and installs nothing', async () => {
   const lines: string[] = [];
   let installed = false;
   await expect(
-    runUpgradeCommand({}, (l) => lines.push(l), {
-      resolveTarget: async () => {
-        installed = true; // resolveTarget runs, but no install should follow a fetch failure
-        return { method: 'bun' };
-      },
-      fetchLatest: async () => {
-        throw new Error('registry unreachable');
-      },
-      currentVersion: '1.0.0',
-    }),
+    runUpgradeCommand(
+      {},
+      (l) => lines.push(l),
+      makeDeps({
+        resolveTarget: async () => {
+          installed = true; // resolveTarget runs, but no install should follow a fetch failure
+          return { method: 'bun' };
+        },
+        fetchLatest: async () => {
+          throw new Error('registry unreachable');
+        },
+        install: async () => {
+          throw new Error('install should not run after a fetch failure');
+        },
+      }),
+    ),
   ).rejects.toThrow();
   // no success/via line was printed -> no install dispatched
   expect(lines.some((l) => l.length > 0)).toBe(false);
   expect(installed).toBe(true);
+});
+
+test('resolveTarget failure surfaces the real reason as a CliExit', async () => {
+  const err = await runUpgradeCommand(
+    {},
+    () => {},
+    makeDeps({
+      resolveTarget: async () => {
+        throw new Error('cannot locate aio-proxy in PATH');
+      },
+      fetchLatest: async () => '2.0.0',
+    }),
+  ).catch((e) => e);
+  expect(err).toBeInstanceOf(CliExit);
+  expect((err as CliExit).code).toBe(EXIT.unrecoverable);
+  expect((err as CliExit).message).toContain('cannot locate aio-proxy in PATH');
+});
+
+test('install failure is rethrown as a CliExit carrying the real reason', async () => {
+  const lines: string[] = [];
+  const err = await runUpgradeCommand(
+    {},
+    (l) => lines.push(l),
+    makeDeps({
+      resolveTarget: async () => ({ method: 'npm' }),
+      fetchLatest: async () => '2.0.0',
+      install: async () => {
+        throw new Error('npm exited with 1');
+      },
+    }),
+  ).catch((e) => e);
+  expect(err).toBeInstanceOf(CliExit);
+  expect((err as CliExit).message).toContain('npm exited with 1');
+  expect(lines.some((l) => l.includes('Upgraded to'))).toBe(false); // 未打印成功
+});
+
+const upgradeRun = (over: Partial<NonNullable<Deps>>, options: UpgradeOptions = {}) => {
+  const lines: string[] = [];
+  return {
+    lines,
+    done: runUpgradeCommand(options, (l) => lines.push(l), makeDeps({ fetchLatest: async () => '2.0.0', ...over })),
+  };
+};
+
+test('running daemon without --restart points at `service restart`', async () => {
+  const { lines, done } = upgradeRun({ isDaemonRunning: async () => true });
+  await done;
+  const out = lines.join('\n');
+  // The hint must name the command the CLI actually registers (`service restart`),
+  // not the bare `aio-proxy restart`, which is not a real command.
+  expect(out).toContain('`aio-proxy service restart`');
+  expect(out).not.toContain('`aio-proxy restart`');
+});
+
+test('--restart restarts a managed service', async () => {
+  let restarted = false;
+  const { done } = upgradeRun(
+    {
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => true,
+      restartService: async () => {
+        restarted = true;
+      },
+    },
+    { restart: true },
+  );
+  await done;
+  expect(restarted).toBe(true);
+});
+
+test('--restart on a manually started daemon does not touch the service manager', async () => {
+  let restarted = false;
+  const { lines, done } = upgradeRun(
+    {
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => false,
+      restartService: async () => {
+        restarted = true;
+      },
+    },
+    { restart: true },
+  );
+  await done;
+  expect(restarted).toBe(false); // 手动启动无托管单元时，不调用 launchctl/systemctl
+  expect(lines.join('\n')).toContain('manually'); // 给出自行重启提示
 });

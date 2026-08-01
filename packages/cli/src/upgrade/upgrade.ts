@@ -3,7 +3,7 @@ import { m } from '@aio-proxy/i18n';
 import packageJson from '../../package.json' with { type: 'json' };
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { CliExit, EXIT } from '../exit';
-import { serviceRestart } from '../service';
+import { isManagedServiceInstalled, serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
 import { resolveUpgradeTarget } from './detect';
@@ -21,13 +21,36 @@ type UpgradeDeps = {
   readonly resolveTarget: () => Promise<UpgradeTarget>;
   readonly fetchLatest: (registry: string) => Promise<string>;
   readonly currentVersion: string;
+  readonly install: (target: UpgradeTarget, version: string, options: UpgradeOptions) => Promise<void>;
+  // The post-upgrade daemon step is injectable so its branches (managed restart
+  // vs. manual-run hint) are testable without real health probing or launchctl.
+  readonly isDaemonRunning: () => Promise<boolean>;
+  readonly isServiceManaged: () => boolean;
+  readonly restartService: () => Promise<void>;
+};
+
+const runInstall = async (target: UpgradeTarget, version: string, options: UpgradeOptions): Promise<void> => {
+  const registry = options.registry ?? NPM_REGISTRY;
+  if (target.method === 'binary') await updateViaBinary(target.path, version, { registry });
+  else await runPackageManagerUpgrade(target.method, version, { registry, force: options.force === true });
+};
+
+const probeDaemonRunning = async (): Promise<boolean> => {
+  const { host, port } = await resolveControlAddress({});
+  return (await probeHealth(controlBaseUrl(host, port))) !== null;
 };
 
 const defaultDeps: UpgradeDeps = {
   resolveTarget: resolveUpgradeTarget,
   fetchLatest: (registry) => fetchLatestVersion(registry),
   currentVersion: packageJson.version,
+  install: runInstall,
+  isDaemonRunning: probeDaemonRunning,
+  isServiceManaged: isManagedServiceInstalled,
+  restartService: serviceRestart,
 };
+
+const errorReason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export const runUpgradeCommand = async (
   options: UpgradeOptions = {},
@@ -35,7 +58,14 @@ export const runUpgradeCommand = async (
   deps: UpgradeDeps = defaultDeps,
 ): Promise<void> => {
   const registry = options.registry ?? NPM_REGISTRY;
-  const target = await deps.resolveTarget();
+  // resolveTarget throws when aio-proxy is not on PATH; surface the real reason
+  // and an unrecoverable exit code instead of a generic "Unexpected internal error".
+  let target: UpgradeTarget;
+  try {
+    target = await deps.resolveTarget();
+  } catch (err) {
+    throw new CliExit(EXIT.unrecoverable, m.cli_upgrade_detect_failed({ reason: errorReason(err) }));
+  }
   let latest: string;
   try {
     latest = await deps.fetchLatest(registry);
@@ -55,18 +85,27 @@ export const runUpgradeCommand = async (
   if (cmp <= 0 && options.force === true) print(m.cli_upgrade_forcing({ version: latest }));
 
   print(m.cli_upgrade_via({ method: target.method }));
-  if (target.method === 'binary') await updateViaBinary(target.path, latest);
-  else await runPackageManagerUpgrade(target.method, latest, { registry, force: options.force === true });
+  // Install failures are plain Errors (package-manager exit code, missing asset);
+  // rethrow as CliExit so the user sees the actionable reason, not a generic message.
+  try {
+    await deps.install(target, latest, options);
+  } catch (err) {
+    throw new CliExit(EXIT.transient, m.cli_upgrade_install_failed({ reason: errorReason(err) }));
+  }
   print(m.cli_upgrade_success({ version: latest }));
 
-  const { host, port } = await resolveControlAddress({});
-  const url = controlBaseUrl(host, port);
-  if ((await probeHealth(url)) !== null) {
-    if (options.restart === true) {
-      print(m.cli_upgrade_restarting());
-      await serviceRestart();
-    } else {
-      print(m.cli_upgrade_daemon_running_hint());
-    }
+  if (!(await deps.isDaemonRunning())) return;
+  if (options.restart !== true) {
+    print(m.cli_upgrade_daemon_running_hint());
+    return;
   }
+  // --restart only makes sense for a service-manager-managed daemon; a manually
+  // started (`aio-proxy run`) daemon has no unit, so launchctl/systemctl would
+  // error. Tell the user to restart it themselves instead of failing the upgrade.
+  if (!deps.isServiceManaged()) {
+    print(m.cli_upgrade_manual_restart_hint());
+    return;
+  }
+  print(m.cli_upgrade_restarting());
+  await deps.restartService();
 };

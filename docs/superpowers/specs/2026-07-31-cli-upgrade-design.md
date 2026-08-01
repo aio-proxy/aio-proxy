@@ -18,14 +18,15 @@ aio-proxy upgrade --force    # 已是最新也强制重装当前最新版
 - 唯一「真产物」是 Bun `--compile` 单文件自包含二进制（见 `2026-07-04-distribution-design.md`）。三个渠道分发同一批产物：
   - **npm**：主包 `aio-proxy`，`optionalDependencies` 以精确版本挂四个平台包 `@aio-proxy/cli-<platform>-<arch>`。用户可用 npm / bun / pnpm 全局安装。
   - **brew**：独立 tap `aio-proxy/homebrew-tap`，`brew install aio-proxy/tap/aio-proxy`，Formula 复用 npm 平台 tarball（见 `2026-07-30-homebrew-tap-design.md`）。
-  - **curl**：仓库根 `install.sh`，从 GitHub Release 下载二进制到 `~/.local/bin/aio-proxy`。
+  - **curl**：仓库根 `install.sh`，下载单文件二进制到 `~/.local/bin/aio-proxy`（当前指向 GitHub Release，是遗留坏路径，见下）。
 - 版本号在编译期确定：`main.ts` 通过 `import packageJson` 读取，release 流程在编译前把所有包 bump 到同一版本。因此 `aio-proxy --version` 的输出可信，无需 `--define`。
 - 主包 `optionalDependencies` 是精确版本，所以 `npm i -g aio-proxy@<v>` 会连带拉到匹配的平台二进制，**不存在** oh-my-pi 那种平台包版本漂移问题，升级命令无需显式 lockstep 安装平台包。
 
-### 阻塞依赖（必须在文档中如实记录）
+### binary 渠道的下载源（关键决策）
 
-- **GitHub Release 目前不附带二进制**：`scripts/release.ts` 的 `gh release create` 未传任何 asset 参数，`packages/cli/scripts/build-binary.ts` 只把二进制写进 `npm/cli-*/bin/`。因此 `releases/latest/download/aio-proxy-<os>-<arch>` 现在就是 404 —— 这同时意味着 `install.sh`（curl 渠道）今天也是坏的。**binary 渠道的升级依赖 release 上传二进制资产这一前置条件**，本设计一并把 binary 升级路径实现好，等资产就位即可用；在资产缺失期间该路径会以明确的「请用 install.sh 重装」提示失败。
-- **仓库标识不一致**：`install.sh` 写的是 `baranwang/aio-proxy`，而 `package.json`、README、brew tap 组织都是 `aio-proxy`。binary 下载 URL 统一固定为 `aio-proxy/aio-proxy`；`install.sh` 的 `baranwang` 是遗留 bug，属于本设计之外的单独修复项。
+- **二进制只发布到 npm，不上传 GitHub Release**：`scripts/release.ts` 的 `gh release create` 只传 `--notes-file`，`packages/cli/scripts/build-binary.ts` 把编译产物写进 `npm/cli-*/bin/aio-proxy` 并作为 `@aio-proxy/cli-<os>-<arch>` 发布。因此 `releases/download/...` 是不存在的地址。
+- **对齐 Homebrew tap 的真实取数路径**：`aio-proxy/homebrew-tap` 的 Formula 直接 `url "https://registry.npmjs.org/@aio-proxy/cli-<os>-<arch>/-/cli-<os>-<arch>-<v>.tgz"`，`install` 阶段取出 tarball 里的 `bin/aio-proxy`。binary 渠道复用同一 npm tarball（解压 `package/bin/aio-proxy`），与 brew 共享同一批已发布产物，无需改动 release 流程或补传 GitHub 资产。
+- **仓库标识不一致（遗留）**：`install.sh` 写的是 `baranwang/aio-proxy` 且仍指向 GitHub Release；这属于 `install.sh` 自身的遗留修复项，不在本次 upgrade 命令范围内。
 
 ## 决策
 
@@ -56,11 +57,11 @@ aio-proxy upgrade --force    # 已是最新也强制重装当前最新版
 | npm | `npm i -g --registry=<official> aio-proxy@<v>` |
 | pnpm | `pnpm add -g aio-proxy@<v>` |
 | brew | `brew update && brew upgrade aio-proxy/tap/aio-proxy`（`--force` 时改 `brew reinstall`） |
-| binary | 下载 GitHub Release 资产 → 原子替换 → 校验 → 失败回滚 |
+| binary | 下载 npm 平台 tarball → 解压 `bin/aio-proxy` → 原子替换 → 校验 → 失败回滚 |
 
 binary 路径细节（对齐 oh-my-pi 的健壮实现）：
 
-- 下载 `https://github.com/aio-proxy/aio-proxy/releases/download/v<v>/aio-proxy-<os>-<arch>` 到 `<path>.new`。
+- 从 `<registry>/@aio-proxy/cli-<os>-<arch>/-/cli-<os>-<arch>-<v>.tgz` 下载并解压出 `package/bin/aio-proxy`，写到 `<path>.new`（与 Homebrew tap 使用完全相同的 tarball）。
 - 把现有二进制重命名到唯一备份名 `<path>.<timestamp>.<pid>.bak`（唯一名避免覆盖可能仍被占用的旧备份），再把 `.new` 重命名到目标路径。
 - 运行新二进制 `--version` 校验版本；不匹配则回滚备份并报错。
 - 成功后清理本次备份，并顺带清扫历史遗留的 `*.bak`。
@@ -98,21 +99,21 @@ packages/cli/src/upgrade/
 - 版本检查失败（网络 / registry 不可达）：报错并以非零码退出，不触发任何安装。
 - 已是最新且无 `--force`：打印「已是最新」，正常退出。
 - 包管理器命令非零退出：透传退出码并给出该渠道的失败信息。
-- binary 替换失败：回滚到备份，保留原可用二进制，报错。
-- binary 资产缺失（当前 404 状态）：明确提示改用 `install.sh` 重装，而不是留下半损坏的二进制。
-- 无法解析 `aio-proxy` 在 PATH 中的路径：报错说明无法定位安装位置。
+- binary 替换失败或校验抛异常：回滚到备份，保留原可用二进制，rethrow 真实错误；任何早于原子替换的失败（下载/解压/写入）都会在 `finally` 中清理 `.new` 临时文件。
+- 当前平台无对应平台包（非 darwin/linux × arm64/x64）：明确提示改用 `install.sh` 重装。
+- 无法解析 `aio-proxy` 在 PATH 中的路径：以 `CliExit` 报出真实原因（不定位安装位置）。
 
 ## 验收
 
 - 在 bun / npm / pnpm / brew 全局安装各自场景下，`upgrade` 能正确识别渠道并调用对应升级命令。
 - `--check` 不产生任何写操作，只输出版本比较结果。
-- binary 路径在资产就位后可完成「下载→替换→校验」；校验失败可回滚到原二进制。
+- binary 路径可从 npm 平台 tarball 完成「下载→解压→替换→校验」；校验失败或抛异常均回滚到原二进制。
 - 单元测试覆盖：路径归属判定（含 realpath 软链场景）、各渠道 arg 构造、semver 比较、binary 回滚逻辑。
 - `bun run preflight` 通过。
 
 ## 非目标
 
-- 不修复 `install.sh` 的 `baranwang` 遗留标识，也不在本次补齐 GitHub Release 二进制资产（仅记录为 binary 渠道的前置依赖）。
+- 不修复 `install.sh` 的 `baranwang` 遗留标识与其 GitHub Release 下载路径（单独的 `install.sh` 修复项）。
 - 不支持 Windows、musl、额外 CPU 变体（与现有分发矩阵一致）。
 - 不引入自动后台升级 / 定时检查；升级只在用户显式执行时发生。
 - 不改动 npm / brew / curl 的安装行为本身。
