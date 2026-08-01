@@ -30,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0 # full history so the action can build the Version PR / changelog
           fetch-tags: true
+          persist-credentials: false # avoid duplicate Authorization headers during changesets push
 
       - uses: oven-sh/setup-bun@v2
         with:
