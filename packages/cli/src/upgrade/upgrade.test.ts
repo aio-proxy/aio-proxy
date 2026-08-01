@@ -161,7 +161,7 @@ test('fetchLatestVersion throws on non-ok', async () => {
 
 import { CliExit, EXIT } from '../exit';
 import type { UpgradeTarget } from './constants';
-import { runUpgradeCommand, type UpgradeOptions } from './upgrade';
+import { runUpgradeCommand } from './upgrade';
 
 type Deps = Parameters<typeof runUpgradeCommand>[2];
 const makeDeps = (over: Partial<NonNullable<Deps>> = {}): NonNullable<Deps> => ({
@@ -247,53 +247,52 @@ test('install failure is rethrown as a CliExit carrying the real reason', async 
   expect(lines.some((l) => l.includes('Upgraded to'))).toBe(false); // 未打印成功
 });
 
-const upgradeRun = (over: Partial<NonNullable<Deps>>, options: UpgradeOptions = {}) => {
+const upgradeRun = (over: Partial<NonNullable<Deps>>) => {
   const lines: string[] = [];
   return {
     lines,
-    done: runUpgradeCommand(options, (l) => lines.push(l), makeDeps({ fetchLatest: async () => '2.0.0', ...over })),
+    done: runUpgradeCommand({}, (l) => lines.push(l), makeDeps({ fetchLatest: async () => '2.0.0', ...over })),
   };
 };
 
-test('running daemon without --restart points at `service restart`', async () => {
-  const { lines, done } = upgradeRun({ isDaemonRunning: async () => true });
-  await done;
-  const out = lines.join('\n');
-  // The hint must name the command the CLI actually registers (`service restart`),
-  // not the bare `aio-proxy restart`, which is not a real command.
-  expect(out).toContain('`aio-proxy service restart`');
-  expect(out).not.toContain('`aio-proxy restart`');
-});
-
-test('--restart restarts a managed service', async () => {
+test('managed service is restarted after a successful upgrade', async () => {
   let restarted = false;
-  const { done } = upgradeRun(
-    {
-      isDaemonRunning: async () => true,
-      isServiceManaged: () => true,
-      restartService: async () => {
-        restarted = true;
-      },
+  const { done } = upgradeRun({
+    isDaemonRunning: async () => true,
+    isServiceManaged: () => true,
+    restartService: async () => {
+      restarted = true;
     },
-    { restart: true },
-  );
+  });
   await done;
+  // A managed daemon is designed to be bounced, so applying the upgrade restarts
+  // it unconditionally — no opt-in flag.
   expect(restarted).toBe(true);
 });
 
-test('--restart on a manually started daemon does not touch the service manager', async () => {
+test('manually started daemon is not touched and gets a self-restart hint', async () => {
   let restarted = false;
-  const { lines, done } = upgradeRun(
-    {
-      isDaemonRunning: async () => true,
-      isServiceManaged: () => false,
-      restartService: async () => {
-        restarted = true;
-      },
+  const { lines, done } = upgradeRun({
+    isDaemonRunning: async () => true,
+    isServiceManaged: () => false,
+    restartService: async () => {
+      restarted = true;
     },
-    { restart: true },
-  );
+  });
   await done;
   expect(restarted).toBe(false); // 手动启动无托管单元时，不调用 launchctl/systemctl
   expect(lines.join('\n')).toContain('manually'); // 给出自行重启提示
+});
+
+test('a stopped daemon needs no restart', async () => {
+  let restarted = false;
+  const { done } = upgradeRun({
+    isDaemonRunning: async () => false,
+    isServiceManaged: () => true,
+    restartService: async () => {
+      restarted = true;
+    },
+  });
+  await done;
+  expect(restarted).toBe(false);
 });

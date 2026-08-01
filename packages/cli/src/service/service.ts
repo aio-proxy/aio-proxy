@@ -38,16 +38,21 @@ function requirePlatform(): SupportedPlatform {
 // stable path — it follows the symlink across upgrades.
 //
 // Otherwise fall back to the self-contained native binary we already ARE
-// (execPath). Only when execPath is an interpreter (dev `bun run`) do we resolve
-// via PATH, failing fast if even that is missing rather than render
-// `ExecStart=<bun> run`, which would invoke bun's own `run` subcommand and never
-// start. which/execPath/realpath are injectable to keep this testable.
+// (execPath) — but only if it still exists. An in-process `aio-proxy upgrade` on
+// brew deletes the old Cellar execPath mid-run while retargeting the launcher
+// symlink to the new binary, so a now-deleted execPath must defer to the PATH
+// launcher (the live install) instead of baking a path that no longer exists.
+// Only when execPath is an interpreter (dev `bun run`) or gone do we resolve via
+// PATH, failing fast if even that is missing rather than render `ExecStart=<bun>
+// run`, which would invoke bun's own `run` subcommand and never start.
+// which/execPath/realpath/exists are injectable to keep this testable.
 // ponytail: no AVX2/musl variant probing like opencode — we ship one binary per
 // platform with no variants, so execPath basename is enough.
 export function resolveExec(
   which: (cmd: string) => string | null = Bun.which,
   execPath: string = process.execPath,
   realpath: (p: string) => string = realpathSync,
+  exists: (p: string) => boolean = existsSync,
 ): string {
   // realpath both so a symlinked launcher (brew) matches the versioned target
   // execPath resolves to; swallow ENOENT so a stale/broken link can't crash us.
@@ -60,9 +65,9 @@ export function resolveExec(
   };
   const onPath = which('aio-proxy');
   if (onPath !== null && sameBinary(onPath, execPath)) return onPath;
-  if (basename(execPath) === 'aio-proxy') return execPath;
-  if (onPath === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
-  return onPath;
+  if (basename(execPath) === 'aio-proxy' && exists(execPath)) return execPath;
+  if (onPath !== null) return onPath;
+  throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
 }
 
 function launchdPlistPath(): string {
@@ -173,11 +178,13 @@ export async function serviceStop(): Promise<void> {
 
 export async function serviceRestart(): Promise<void> {
   const os = requirePlatform();
-  // Rewrite the unit with a freshly resolved exec first. A unit installed by an
-  // earlier release (or before a `brew upgrade` retargeted the launcher symlink)
-  // can hold a stale ExecStart pointing at a deleted binary; on darwin a plain
-  // stop/start would then relaunch nothing, so restart must also migrate the unit.
-  await writeManagedUnit(os);
+  // Rewrite an already-installed unit with a freshly resolved exec first. A unit
+  // installed by an earlier release (or before a `brew upgrade` retargeted the
+  // launcher symlink) can hold a stale ExecStart pointing at a deleted binary; on
+  // darwin a plain stop/start would then relaunch nothing, so restart must migrate
+  // it. Only migrate when a unit exists — restart must not create one (that is
+  // install's job), or it would leave a partial, un-enabled unit behind.
+  if (isManagedServiceInstalled()) await writeManagedUnit(os);
   if (os === 'darwin') {
     await serviceStop();
     await serviceStart();

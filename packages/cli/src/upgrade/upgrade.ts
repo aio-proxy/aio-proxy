@@ -13,7 +13,6 @@ import { fetchLatestVersion } from './registry';
 export type UpgradeOptions = {
   readonly check?: boolean;
   readonly force?: boolean;
-  readonly restart?: boolean;
   readonly registry?: string;
 };
 
@@ -95,13 +94,10 @@ export const runUpgradeCommand = async (
   print(m.cli_upgrade_success({ version: latest }));
 
   if (!(await deps.isDaemonRunning())) return;
-  if (options.restart !== true) {
-    print(m.cli_upgrade_daemon_running_hint());
-    return;
-  }
-  // --restart only makes sense for a service-manager-managed daemon; a manually
-  // started (`aio-proxy run`) daemon has no unit, so launchctl/systemctl would
-  // error. Tell the user to restart it themselves instead of failing the upgrade.
+  // A managed daemon (launchd/systemd) is designed to be bounced, so applying the
+  // upgrade means restarting it — no opt-in flag. A manually started (`aio-proxy
+  // run`) daemon has no unit, so launchctl/systemctl would error; tell the user to
+  // restart it themselves instead of failing the upgrade.
   if (!deps.isServiceManaged()) {
     print(m.cli_upgrade_manual_restart_hint());
     return;

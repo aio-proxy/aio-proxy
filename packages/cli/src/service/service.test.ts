@@ -81,8 +81,31 @@ test('resolveExec targets execPath when no PATH launcher resolves to it', () => 
       () => null,
       execPath,
       (p) => p,
+      () => true,
     ),
   ).toBe(execPath);
+});
+
+test('resolveExec defers to the PATH launcher when execPath was deleted mid-upgrade', () => {
+  // Regression: an in-process `aio-proxy upgrade` on brew deletes the running
+  // Cellar execPath while retargeting the launcher symlink to the new binary.
+  // resolveExec runs in the old process, so execPath no longer exists; it must
+  // bake the live launcher, not the deleted path. realpath(execPath) throws
+  // (gone), so sameBinary is false and the exists guard rejects execPath.
+  const deletedExec = '/opt/homebrew/Cellar/aio-proxy/0.2.1/bin/aio-proxy';
+  const launcher = '/opt/homebrew/bin/aio-proxy';
+  const realpath = (p: string) => {
+    if (p === deletedExec) throw new Error('ENOENT');
+    return p;
+  };
+  expect(
+    resolveExec(
+      () => launcher,
+      deletedExec,
+      realpath,
+      (p) => p !== deletedExec,
+    ),
+  ).toBe(launcher);
 });
 
 test('resolveExec falls back to PATH when execPath is not the native binary', () => {
@@ -93,6 +116,7 @@ test('resolveExec falls back to PATH when execPath is not the native binary', ()
       () => launcher,
       '/opt/homebrew/bin/bun',
       (p) => p,
+      () => true,
     ),
   ).toBe(launcher);
 });
@@ -106,6 +130,7 @@ test('resolveExec fails fast when the native binary is not found', () => {
       () => null,
       '/opt/homebrew/bin/bun',
       (p) => p,
+      () => true,
     );
   } catch (err) {
     caught = err;
