@@ -4,13 +4,31 @@ This folder is managed by [Changesets](https://github.com/changesets/changesets)
 
 ## Adding a changeset
 
-Run this whenever a change affects the published packages (the `aio-proxy` CLI launcher, its `@aio-proxy/cli-*` platform binaries, or `@aio-proxy/plugin-sdk`):
+Run this whenever a change affects users, then commit the generated `.changeset/*.md` file alongside your change:
 
 ```bash
 bun changeset
 ```
 
-Pick the bump level and write a short, user-facing summary. Commit the generated `.changeset/*.md` file alongside your change.
+Pick the bump level and write a short, user-facing summary.
+
+**Always target a product package** so the note lands in a published Release:
+
+- `aio-proxy` — the CLI launcher / proxy (its `@aio-proxy/cli-*` platform binaries ride along automatically).
+- `@aio-proxy/plugin-sdk` — the plugin SDK.
+
+When the change actually lives in an internal package (`@aio-proxy/core`, `server`, `cli`, the plugins), list that package **and** the product package, at the same bump level, and prefix the summary with the area:
+
+```
+---
+'@aio-proxy/core': minor
+'aio-proxy': minor
+---
+
+core: fix provider fallback ordering under session affinity
+```
+
+Do **not** target only an internal package: the `fixed` group would still bump `aio-proxy`, but its Release notes would be empty. See the Changesets section in the repo `AGENTS.md` for the full rule.
 
 ## How releases work here
 
