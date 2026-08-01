@@ -54,6 +54,8 @@ jobs:
           # Defaults we rely on: version-script=`changeset version`,
           # create-github-releases=true, push-git-tags=true, setup-git-user=true —
           # so we only set the publish script and the commit/PR title.
+          # Use a PAT because the repository disallows PR creation via GITHUB_TOKEN.
+          github-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           publish-script: bun run scripts/release.ts
           commit-message: 'chore: release'
           pr-title: 'chore: release'
