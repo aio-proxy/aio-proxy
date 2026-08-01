@@ -69,7 +69,11 @@ export function streamCapture(
   const value = new ReadableStream<TextStreamPart<ToolSet>>({
     async pull(controller) {
       try {
+        // Arm only around the pending upstream read so the timeout measures
+        // upstream stalls, not time spent waiting for downstream (client) demand.
+        idle.arm();
         const next = await reader.read();
+        idle.clear();
         if (next.done) {
           releaseReader();
           if (cancelled) return;
@@ -105,7 +109,6 @@ export function streamCapture(
           firstTokenAt ??= contentAt;
         }
         controller.enqueue(next.value);
-        idle.arm();
       } catch (error) {
         idle.clear();
         releaseReader();
@@ -131,7 +134,7 @@ export function streamCapture(
     },
   });
 
-  idle.arm();
-
+  // The idle timer is armed per-read inside pull, not here: it must measure only
+  // the pending upstream read window, never idle client demand between pulls.
   return { value, completion: terminal.promise };
 }

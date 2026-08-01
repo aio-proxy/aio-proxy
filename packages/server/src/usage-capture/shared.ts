@@ -40,7 +40,14 @@ export type PassthroughUsageOptions = {
   readonly providerId: string;
   readonly modelId: string;
   readonly requestedModelId?: string;
+  // Fired at the terminal frame with the upstream response ID, for trace
+  // persistence. Resolves alongside completion so the finished trace records the
+  // ID even when the terminal frame precedes stream EOF.
   readonly onResponseId?: (responseId: string) => void;
+  // Fired only once the client drains the stream to EOF, for logical-session
+  // commit. Gated on EOF (not the terminal frame) so a client that cancels
+  // before EOF does not commit the response.
+  readonly onCommit?: (responseId: string) => void;
   // performance.now() at attempt dispatch; ttft is recorded only for SSE bodies.
   readonly startedAt?: number;
   readonly observation?: AttemptResponseObservation;

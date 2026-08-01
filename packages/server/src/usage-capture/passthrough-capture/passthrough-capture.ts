@@ -1,27 +1,21 @@
 import type { UsageRow } from '@aio-proxy/types';
 
-import {
-  createPassthroughSseUsageObserver,
-  extractPassthroughObservation,
-  type PassthroughObservation,
-  type PassthroughSseUsageObserver,
-} from '../passthrough-usage';
-import { isAbortError } from '../route-observation';
-import type { ServerLogSink } from '../server-log';
+import { type PassthroughObservation } from '../../passthrough-usage';
+import { isAbortError } from '../../route-observation';
+import type { ServerLogSink } from '../../server-log';
 import {
   type Captured,
   createIdleTimer,
   deferred,
   type IdleTimer,
-  MAX_PASSTHROUGH_JSON_BYTES,
-  observeContentAt,
   type PassthroughUsageOptions,
   STREAM_IDLE_TIMEOUT_MS,
   ttftProperty,
   type UsageCompletion,
   usageProperty,
-} from './shared';
-import { finalizeUsage } from './usage-validation';
+} from '../shared';
+import { finalizeUsage } from '../usage-validation';
+import { createObservationSource } from './observation-source';
 
 // Non-2xx and body-less responses have no stream to observe: resolve completion
 // immediately and hand the response through unchanged.
@@ -43,6 +37,7 @@ export function passthroughCapture(
     modelId,
     requestedModelId,
     onResponseId,
+    onCommit,
     startedAt,
     observation,
     idleTimeoutMs,
@@ -75,13 +70,13 @@ export function passthroughCapture(
   });
   let committed = false;
   // Commit the session response only once the client has drained the stream to
-  // EOF. A terminal frame observed mid-stream resolves usage/timing early (for
-  // accurate trace duration), but a client that cancels before EOF must not
-  // commit — so commit is an EOF-only side effect, separate from trace resolve.
+  // EOF. A client that cancels before EOF must not commit — so the session
+  // commit is an EOF-only side effect, separate from the trace response ID
+  // (captured at the terminal frame in `complete`).
   const commit = (obs: PassthroughObservation): void => {
     if (committed || obs.failed === true || obs.responseId === undefined) return;
     committed = true;
-    onResponseId?.(obs.responseId);
+    onCommit?.(obs.responseId);
   };
   const complete = async (obs: PassthroughObservation): Promise<void> => {
     if (completed) return;
@@ -91,6 +86,10 @@ export function passthroughCapture(
       terminal.resolve({ outcome: 'failure', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
       return;
     }
+    // Capture the response ID for trace persistence at the terminal frame, before
+    // resolving completion — settleSuccess samples it when completion resolves, so
+    // a trace whose terminal frame precedes EOF still records its response ID.
+    if (obs.responseId !== undefined) onResponseId?.(obs.responseId);
     const usage = await finalizePassthroughUsage(obs, { providerId, modelId, protocol, requestedModelId, logger });
     terminal.resolve({
       outcome: 'success',
@@ -99,14 +98,10 @@ export function passthroughCapture(
       ...ttftProperty(startedAt, firstTokenAt),
     });
   };
-  const sseObserver = isSse
-    ? createSseUsageObserver(protocol, observation, {
-        onContent: (contentAt) => (firstTokenAt ??= contentAt),
-        onTerminal: (obs) => void complete(obs),
-      })
-    : undefined;
-  const decoder = isSse ? new TextDecoder() : undefined;
-  const jsonCapture = isSse ? undefined : createJsonCapture();
+  const source = createObservationSource(isSse, protocol, observation, {
+    onContent: (contentAt) => (firstTokenAt ??= contentAt),
+    onTerminal: (obs) => void complete(obs),
+  });
   let released = false;
   const releaseReader = () => {
     if (released) return;
@@ -118,17 +113,9 @@ export function passthroughCapture(
     idle,
     releaseReader,
     aborted: () => idleAborted,
-    onChunk: (chunk) => {
-      if (sseObserver !== undefined && decoder !== undefined) sseObserver.feed(decoder.decode(chunk, { stream: true }));
-      else jsonCapture?.push(chunk);
-    },
+    onChunk: (chunk) => source.feed(chunk),
     onEnd: async () => {
-      const finalObservation =
-        sseObserver !== undefined && decoder !== undefined
-          ? finishSseObservation(sseObserver, decoder)
-          : jsonCapture !== undefined && jsonCapture.captured()
-            ? extractPassthroughObservation(protocol, jsonCapture.text())
-            : {};
+      const finalObservation = source.final();
       commit(finalObservation);
       await complete(finalObservation);
     },
@@ -146,8 +133,8 @@ export function passthroughCapture(
     },
   });
 
-  idle.arm();
-
+  // The idle timer is armed per-read inside the tee, not here: it must measure
+  // only the pending upstream read window, never idle client demand between pulls.
   return {
     value: new Response(returnedBody, {
       headers: response.headers,
@@ -170,18 +157,20 @@ type TeeBodyDeps = {
 };
 
 // Tees the upstream body to the client while feeding observation hooks. Chunk
-// forwarding is byte-identical; onEnd/onError/onCancel drive completion. Idle
-// re-arming happens per chunk so a stalled upstream is caught by the caller's timer.
+// forwarding is byte-identical; onEnd/onError/onCancel drive completion. The idle
+// timer is armed only around the pending upstream `reader.read()` so the timeout
+// measures upstream stalls, not time spent waiting for downstream (client) demand.
 function createTeeBody(deps: TeeBodyDeps): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       let done = false;
       try {
+        deps.idle.arm();
         const next = await deps.reader.read();
+        deps.idle.clear();
         if (!next.done) {
           deps.onChunk(next.value);
           controller.enqueue(next.value);
-          deps.idle.arm();
           return;
         }
         done = true;
@@ -213,11 +202,6 @@ function createTeeBody(deps: TeeBodyDeps): ReadableStream<Uint8Array> {
   });
 }
 
-function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
-  observer.feed(decoder.decode());
-  return observer.finish();
-}
-
 type PassthroughUsageContext = {
   readonly providerId: string;
   readonly modelId: string;
@@ -240,60 +224,4 @@ async function finalizePassthroughUsage(
     ...(ctx.logger === undefined ? {} : { logger: ctx.logger }),
     ...(obs.issues === undefined ? {} : { issues: obs.issues }),
   });
-}
-
-function createSseUsageObserver(
-  protocol: PassthroughUsageOptions['protocol'],
-  observation: PassthroughUsageOptions['observation'],
-  callbacks: {
-    readonly onContent: (at: number) => void;
-    readonly onTerminal: (observation: PassthroughObservation) => void;
-  },
-): PassthroughSseUsageObserver {
-  const onEvent = observation?.observeSseEvent;
-  return createPassthroughSseUsageObserver(protocol, {
-    ...(onEvent === undefined ? {} : { onEvent }),
-    onContent: () => callbacks.onContent(observeContentAt(observation)),
-    onTerminal: callbacks.onTerminal,
-  });
-}
-
-type JsonCapture = {
-  // Accumulate a body chunk while under the size cap; once exceeded, capture is
-  // permanently disabled and buffered bytes are dropped to bound memory.
-  readonly push: (chunk: Uint8Array) => void;
-  // Whether the full body is still buffered (never exceeded the cap).
-  readonly captured: () => boolean;
-  // Decoded UTF-8 text of the buffered body; empty once capture is disabled.
-  readonly text: () => string;
-};
-
-function createJsonCapture(): JsonCapture {
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  let active = true;
-  return {
-    captured: () => active,
-    push: (chunk) => {
-      if (!active) return;
-      const nextByteLength = byteLength + chunk.byteLength;
-      if (nextByteLength > MAX_PASSTHROUGH_JSON_BYTES) {
-        chunks.length = 0;
-        byteLength = 0;
-        active = false;
-        return;
-      }
-      chunks.push(chunk);
-      byteLength = nextByteLength;
-    },
-    text: () => {
-      const bytes = new Uint8Array(byteLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return new TextDecoder().decode(bytes);
-    },
-  };
 }
