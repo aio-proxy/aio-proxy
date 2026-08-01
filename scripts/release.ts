@@ -176,6 +176,12 @@ if (DRY_RUN) {
 // A package a prior run already published is still re-emitted, so a resumed
 // release recreates any tag/Release the earlier run didn't finish.
 const outputPath = process.env['CHANGESETS_OUTPUT'];
+// changesets/action reads this file UNCONDITIONALLY after the publish script
+// exits and treats a missing file as a hard error. When nothing warrants a
+// GitHub Release this cycle (every package already published, or none has a
+// changelog entry) we emit no events, so create the file up front to leave the
+// action a valid empty NDJSON (0 events = no releases) instead of an ENOENT.
+if (outputPath) await Bun.write(outputPath, '');
 const emitTag = async (name: string, dir: string) => {
   if (!outputPath) return;
   if (platformProvided.has(name)) return; // platform binaries: npm only, no Release
