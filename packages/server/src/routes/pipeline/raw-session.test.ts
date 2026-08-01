@@ -126,6 +126,52 @@ test('does not commit a completed raw response event when the client cancels bef
   expect(notCommitted.resolvedBy).toBe('generated');
 });
 
+test('records the response ID on the trace when the terminal frame precedes EOF', async () => {
+  const encoder = new TextEncoder();
+  let releaseTail: (() => void) | undefined;
+  const tailGate = new Promise<void>((resolve) => (releaseTail = resolve));
+  const provider = rawProvider({
+    id: 'raw',
+    modelId: REQUESTED_MODEL,
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_terminal","status":"completed"}}\n\n',
+              ),
+            );
+            // Hold the stream open past the terminal frame, then close so the
+            // trace settles at the terminal frame — before EOF.
+            await tailGate;
+            controller.close();
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+  });
+  const route = defineProviderRouteSource([provider]);
+  const source = realUsageSource(route.source);
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: jsonRequest({ input: 'ping', model: REQUESTED_MODEL, stream: true }),
+    source,
+  });
+  const reader = response.body!.getReader();
+  await reader.read(); // consume the terminal frame; trace resolves here, before EOF
+  await settleRecording(route.recording);
+
+  // The finished trace records the upstream response ID even though EOF is still
+  // pending — otherwise a restart could not recover provider/session ownership.
+  expect(route.recording.finals[0]?.responseId).toBe('resp_terminal');
+
+  releaseTail?.();
+  await reader.cancel();
+});
+
 test.each([
   ['streaming response without content type', true, undefined, 200, 'text/event-stream; charset=utf-8'],
   ['buffered response without content type', false, undefined, 200, null],

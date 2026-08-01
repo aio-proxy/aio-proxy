@@ -4,6 +4,7 @@ import { createParser } from 'eventsource-parser';
 import { hasContentDelta } from './content';
 import {
   anthropicTotalTokens,
+  assertNever,
   type ExtractedUsage,
   isRecord,
   MAX_SSE_BUFFER_CHARS,
@@ -35,6 +36,7 @@ export type PassthroughSseUsageObserver = {
 export type PassthroughSseCallbacks = {
   readonly onEvent?: () => void;
   readonly onContent?: () => void;
+  readonly onTerminal?: (observation: PassthroughObservation) => void;
 };
 
 export function extractPassthroughUsage(protocol: ProviderProtocol, bodyText: string): ExtractedUsage | undefined {
@@ -105,14 +107,22 @@ export function createPassthroughSseUsageObserver(
     },
     onEvent(event) {
       safely(callbacks.onEvent);
-      failed ||= protocolFailure(protocol, event.event, undefined);
+      const failEvent = protocolFailure(protocol, event.event, undefined);
+      failed ||= failEvent;
       if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
         active = false;
+        if (failEvent) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        return;
+      }
+      if (protocol === ProviderProtocol.OpenAICompatible && event.data.trim() === '[DONE]') {
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
         return;
       }
       const parsed = parseJson(event.data);
-      failed ||= protocolFailure(protocol, undefined, parsed);
+      const failParsed = protocolFailure(protocol, undefined, parsed);
+      failed ||= failParsed;
       if (parsed === undefined) {
+        if (failEvent || failParsed) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
         return;
       }
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
@@ -120,6 +130,9 @@ export function createPassthroughSseUsageObserver(
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
+      }
+      if (failEvent || failParsed || isSuccessTerminal(protocol, event.event, parsed)) {
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
       }
     },
   });
@@ -193,6 +206,39 @@ function protocolFailure(protocol: ProviderProtocol, eventType: string | undefin
     response['status'] === 'incomplete' ||
     response['status'] === 'cancelled'
   );
+}
+
+function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
+  switch (protocol) {
+    case ProviderProtocol.OpenAIResponse: {
+      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      if (type === 'response.completed' || type === 'response.done') return true;
+      const response = isRecord(value) && isRecord(value['response']) ? value['response'] : value;
+      return isRecord(response) && response['status'] === 'completed';
+    }
+    case ProviderProtocol.Anthropic: {
+      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      return type === 'message_stop';
+    }
+    case ProviderProtocol.OpenAICompatible: {
+      // The terminal frame is `[DONE]` (handled in onEvent), not `finish_reason`:
+      // with stream_options.include_usage the usage arrives in a trailing
+      // `choices:[]` frame AFTER finish_reason, so resolving on finish_reason
+      // would drop token/cost accounting.
+      return false;
+    }
+    case ProviderProtocol.Gemini: {
+      // Gemini SSE has no unambiguous stream-level terminal sentinel. With
+      // generationConfig.candidateCount > 1 candidates finish in separate frames
+      // and the aggregate usageMetadata can trail the first candidate's
+      // finishReason, so firing here would settle the trace early and drop the
+      // later candidates' token/cost accounting. Defer to the EOF completion,
+      // which observes the fully merged usage.
+      return false;
+    }
+    default:
+      return assertNever(protocol);
+  }
 }
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
