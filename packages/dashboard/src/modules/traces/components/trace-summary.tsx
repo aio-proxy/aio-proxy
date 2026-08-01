@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { TRACE_PLACEHOLDER } from '../trace-display-constants';
 import {
   displayTotalTokens,
   formatTraceCost,
@@ -22,7 +23,7 @@ interface TraceSummaryProps {
 }
 
 export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSelect }) => {
-  const missing = m['dashboard.traces.not_available']();
+  const missing = TRACE_PLACEHOLDER;
   const sessionValue =
     trace.session === undefined ? undefined : (
       <Tooltip>

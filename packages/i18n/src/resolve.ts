@@ -35,6 +35,24 @@ function normalizeLocale(value: string | undefined): Locale | undefined {
     ) {
       return 'zh-Hans';
     }
+    if (
+      normalized === 'zh-hant' ||
+      normalized === 'zh-tw' ||
+      normalized === 'zh-hk' ||
+      normalized === 'zh-mo' ||
+      normalized?.startsWith('zh-hant-') ||
+      normalized?.startsWith('zh-tw-') ||
+      normalized?.startsWith('zh-hk-') ||
+      normalized?.startsWith('zh-mo-')
+    ) {
+      return 'zh-Hant';
+    }
+    if (normalized === 'ja' || normalized?.startsWith('ja-')) {
+      return 'ja';
+    }
+    if (normalized === 'ko' || normalized?.startsWith('ko-')) {
+      return 'ko';
+    }
   }
 
   return undefined;

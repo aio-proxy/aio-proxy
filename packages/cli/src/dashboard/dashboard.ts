@@ -31,7 +31,7 @@ export async function dashboardCommand(options: DashboardOptions = {}, deps: Das
   const dashboardUrl = `${base}/dashboard`;
   const health = await probe(base);
   if (health === null) {
-    print(m.cli_status_not_running({ url: base }));
+    print(m['cli.status.not_running']({ url: base }));
     throw new StatusNotRunningError();
   }
 
@@ -41,6 +41,6 @@ export async function dashboardCommand(options: DashboardOptions = {}, deps: Das
   } catch {
     opened = false;
   }
-  if (opened) print(m.cli_dashboard_opened());
+  if (opened) print(m['cli.dashboard.opened']());
   print(dashboardUrl);
 }

@@ -16,10 +16,10 @@ export async function pluginAdd(
   try {
     packageName = requirePluginPackageName(packageName);
     if (deps.builtInNames.has(packageName)) {
-      deps.print(m.cli_plugin_already_builtin({ plugin: packageName }));
+      deps.print(m['cli.plugin.already_builtin']({ plugin: packageName }));
       return;
     }
-    await requireConfirmation(m.cli_plugin_trust_prompt({ plugin: packageName }), options, deps, packageName);
+    await requireConfirmation(m['cli.plugin.trust_prompt']({ plugin: packageName }), options, deps, packageName);
     const installAndUse =
       deps.withInstalledNpmPackage ??
       (async (name, registry, use) => use(await deps.npmAdd(name, registry), async () => {}));
@@ -43,8 +43,8 @@ export async function pluginAdd(
     });
     deps.print(
       classification.kind === 'ai-sdk-provider'
-        ? m.cli_provider_package_installed({ package: packageName })
-        : m.cli_plugin_added({ plugin: packageName }),
+        ? m['cli.provider.package_installed']({ package: packageName })
+        : m['cli.plugin.added']({ plugin: packageName }),
     );
   } finally {
     if (injected === undefined) deps.close?.();

@@ -27,7 +27,7 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
     maximumFractionDigits: 1,
     style: 'percent',
   });
-  const notAvailable = m['dashboard.usage.not_available']();
+  const notAvailable = 'N/A';
   const cards: readonly UsageSummaryCard[] = [
     {
       icon: CircleDollarSign,

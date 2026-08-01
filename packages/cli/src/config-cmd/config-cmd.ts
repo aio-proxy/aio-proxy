@@ -34,10 +34,10 @@ export async function configValidate(
     parseRuntimeConfig(await new AtomicConfigFile(resolved).read());
   } catch (cause) {
     throw new ConfigValidationError(
-      m.cli_config_invalid({ error: cause instanceof Error ? cause.message : String(cause) }),
+      m['cli.config.invalid']({ error: cause instanceof Error ? cause.message : String(cause) }),
     );
   }
-  print(m.cli_config_valid({ path: resolved }));
+  print(m['cli.config.valid']({ path: resolved }));
 }
 
 export function configPathCommand(print: (line: string) => void = console.log): void {
@@ -104,5 +104,5 @@ export async function configEdit(): Promise<void> {
     stderr: 'inherit',
   });
   const code = await proc.exited;
-  if (code !== 0) throw new CliExit(EXIT.unrecoverable, m.cli_config_edit_failed({ editor: editor ?? 'vi', code }));
+  if (code !== 0) throw new CliExit(EXIT.unrecoverable, m['cli.config.edit_failed']({ editor: editor ?? 'vi', code }));
 }

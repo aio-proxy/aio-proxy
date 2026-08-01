@@ -35,6 +35,22 @@ describe('resolveLocale', () => {
     expect(resolveLocale({ lang: 'zh' })).toBe('zh-Hans');
   });
 
+  test('normalizes Traditional Chinese region tags to zh-Hant', () => {
+    // Given / When / Then
+    expect(resolveLocale({ lang: 'zh-Hant' })).toBe('zh-Hant');
+    expect(resolveLocale({ lang: 'zh-TW' })).toBe('zh-Hant');
+    expect(resolveLocale({ lang: 'zh-HK' })).toBe('zh-Hant');
+    expect(resolveLocale({ lang: 'zh-Hant-TW' })).toBe('zh-Hant');
+  });
+
+  test('normalizes Japanese and Korean tags to ja and ko', () => {
+    // Given / When / Then
+    expect(resolveLocale({ lang: 'ja' })).toBe('ja');
+    expect(resolveLocale({ lang: 'ja-JP' })).toBe('ja');
+    expect(resolveLocale({ lang: 'ko' })).toBe('ko');
+    expect(resolveLocale({ lang: 'ko-KR' })).toBe('ko');
+  });
+
   test('falls back to en for malformed input', () => {
     // Given / When / Then
     expect(resolveLocale({ lang: 'not-a-locale' })).toBe('en');

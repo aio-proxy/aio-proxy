@@ -23,39 +23,39 @@ function formatAppError(err: AppError, locale: Locale): FormattedUserError {
     case 'cli_error_config_invalid':
       return {
         code: err.code,
-        message: m.cli_error_config_invalid({}, { locale }),
+        message: m['cli.error.config_invalid']({}, { locale }),
       };
     case 'cli_error_config_not_found':
       return {
         code: err.code,
-        message: m.cli_error_config_not_found({}, { locale }),
+        message: m['cli.error.config_not_found']({}, { locale }),
       };
     case 'cli_error_config_write_failed':
       if (err instanceof ConfigWriteError) {
         return {
           code: err.code,
-          message: m.cli_error_config_write_failed({ path: err.path }, { locale }),
+          message: m['cli.error.config_write_failed']({ path: err.path }, { locale }),
         };
       }
       return {
         code: err.code,
-        message: m.cli_error_config_write_failed({ path: '' }, { locale }),
+        message: m['cli.error.config_write_failed']({ path: '' }, { locale }),
       };
     case 'cli_error_port_out_of_range':
       if (err instanceof PortOutOfRangeError) {
         return {
           code: err.code,
-          message: m.cli_error_port_out_of_range({ port: err.port }, { locale }),
+          message: m['cli.error.port_out_of_range']({ port: err.port }, { locale }),
         };
       }
       return {
         code: err.code,
-        message: m.cli_error_port_out_of_range({ port: '' }, { locale }),
+        message: m['cli.error.port_out_of_range']({ port: '' }, { locale }),
       };
     case 'error_invalid_locale':
       return {
         code: err.code,
-        message: m.error_invalid_locale({}, { locale }),
+        message: m['error.invalid_locale']({}, { locale }),
       };
   }
 }
@@ -64,14 +64,14 @@ export function formatUserError(err: unknown, locale: Locale): FormattedUserErro
   if (err instanceof ProviderNotInstalledError) {
     return {
       code: err.code,
-      message: m.error_provider_not_installed({ pkg: err.pkg }, { locale }),
+      message: m['error.provider_not_installed']({ pkg: err.pkg }, { locale }),
     };
   }
 
   if (err instanceof AliasCollisionError) {
     return {
       code: err.code,
-      message: m.error_alias_collision(
+      message: m['error.alias_collision'](
         {
           alias: err.alias,
           providerA: err.providerA,
@@ -85,7 +85,7 @@ export function formatUserError(err: unknown, locale: Locale): FormattedUserErro
   if (err instanceof StaleProviderGenerationError) {
     return {
       code: err.code,
-      message: m.error_stale_provider_generation({ provider: err.provider }, { locale }),
+      message: m['error.stale_provider_generation']({ provider: err.provider }, { locale }),
     };
   }
 
@@ -96,19 +96,19 @@ export function formatUserError(err: unknown, locale: Locale): FormattedUserErro
   if (err instanceof ZodError) {
     return {
       code: ERROR_CODES.validationFailed,
-      message: m.error_validation_failed({}, { locale }),
+      message: m['error.validation_failed']({}, { locale }),
     };
   }
 
   if (err instanceof HTTPException) {
     return {
       code: ERROR_CODES.httpException,
-      message: m.error_http_exception({ status: err.status }, { locale }),
+      message: m['error.http_exception']({ status: err.status }, { locale }),
     };
   }
 
   return {
     code: ERROR_CODES.internalUnexpected,
-    message: m.error_internal_unexpected({}, { locale }),
+    message: m['error.internal_unexpected']({}, { locale }),
   };
 }

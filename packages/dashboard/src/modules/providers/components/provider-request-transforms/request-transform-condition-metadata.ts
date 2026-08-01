@@ -17,7 +17,7 @@ const comparisonOperators = new Set(['=', '!=', '>', '>=', '<', '<=']);
 const headerOperatorNames = new Set(['=', '!=', 'exists', 'doesNotExist', 'pattern', 'regex']);
 
 export const getRequestTransformFields = (): Field[] => [
-  { name: 'provider.id', label: m['dashboard.providers.transforms.condition.field.provider_id']() },
+  { name: 'provider.id', label: 'Provider ID' },
   { name: 'provider.kind', label: m['dashboard.providers.transforms.condition.field.provider_kind']() },
   { name: 'provider.protocol', label: m['dashboard.providers.transforms.condition.field.provider_protocol']() },
   { name: 'request.model', label: m['dashboard.providers.transforms.condition.field.current_model']() },

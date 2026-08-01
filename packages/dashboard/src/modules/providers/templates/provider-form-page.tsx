@@ -10,7 +10,7 @@ import { aliasEditorIssues, aliasIssueControlId } from '../alias-editor';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
 import { ProviderFormFieldsAiSdk } from '../components/provider-form-fields-ai-sdk';
 import { ProviderFormFieldsApi } from '../components/provider-form-fields-api';
-import { ProviderFormMode } from '../constants';
+import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../constants';
 import { type ProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
 
@@ -59,7 +59,7 @@ export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initia
     mode === ProviderFormMode.Create ? m['dashboard.providers.new_title']() : m['dashboard.providers.edit_title']();
   const subtitle =
     mode === ProviderFormMode.Edit && providerId !== undefined
-      ? `${providerId} · ${kind === 'api' ? m['dashboard.providers.kind_label.api']() : m['dashboard.providers.kind_label.ai-sdk']()}`
+      ? `${providerId} · ${kind === 'api' ? PROVIDER_KIND_LABEL.api : PROVIDER_KIND_LABEL['ai-sdk']}`
       : undefined;
 
   const submit = () => {
