@@ -1,5 +1,19 @@
 # @aio-proxy/cli
 
+## 0.4.0
+
+### Patch Changes
+
+- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks [@baranwang](https://github.com/baranwang)! - cli: fix the managed service becoming unreachable after `brew upgrade`. The service unit now records the stable PATH launcher instead of the version-pinned Cellar binary, `service restart` regenerates an already-installed unit with a freshly resolved executable (recovering units that still point at a deleted old binary), and `resolveExec` falls back to the PATH launcher when the running executable was deleted mid-upgrade. `aio-proxy upgrade` now always restarts a managed daemon after upgrading (the `--restart` flag is removed); a manually started daemon still gets a self-restart hint.
+- Updated dependencies [[`2d1d035`](https://github.com/aio-proxy/aio-proxy/commit/2d1d03580db04a8ff957df3b3dd17d0879599282)]:
+  - @aio-proxy/i18n@0.4.0
+  - @aio-proxy/core@0.4.0
+  - @aio-proxy/dashboard@0.4.0
+  - @aio-proxy/server@0.4.0
+  - @aio-proxy/logger@0.4.0
+  - @aio-proxy/plugin-sdk@0.4.0
+  - @aio-proxy/types@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
