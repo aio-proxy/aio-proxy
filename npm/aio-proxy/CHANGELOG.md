@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.2.1
+
+### Patch Changes
+
+- [#114](https://github.com/aio-proxy/aio-proxy/pull/114) [`23457e3`](https://github.com/aio-proxy/aio-proxy/commit/23457e3c2a4f306460a25aa6252e477f3bbec6ec) Thanks [@baranwang](https://github.com/baranwang)! - release: verify the end-to-end publish + single `v<version>` tag + GitHub Release flow. No user-facing behavior change.
+
 ## 0.2.0
 
 ### Minor Changes
