@@ -104,6 +104,21 @@ describe('Anthropic Messages transform', () => {
     });
   });
 
+  test('Given a system message in messages When converted Then it becomes a model system message', () => {
+    const request = parseAnthropicMessages({
+      model: 'claude-sonnet-4-5',
+      messages: [
+        { role: 'system', content: 'be terse' },
+        { role: 'user', content: 'hello' },
+      ],
+    });
+
+    const converted = anthropicMessagesToModelMessages(request);
+
+    expect(converted.messages[0]).toEqual({ role: 'system', content: 'be terse' });
+    expect(converted.messages[1]).toEqual({ role: 'user', content: 'hello' });
+  });
+
   test('Given model messages without model When reversed Then typed error names path', () => {
     const converted: AnthropicMessagesModelMessages = {
       messages: [{ role: 'user', content: 'hello' }],
