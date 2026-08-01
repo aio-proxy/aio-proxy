@@ -28,7 +28,7 @@
 // `fixed` group guarantees that and scripts/check-lockstep-fixed.ts guards it.
 // Discovery is automatic; adding a non-private package needs no change here.
 
-import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -176,10 +176,10 @@ if (DRY_RUN) {
 // A package a prior run already published is still re-emitted, so a resumed
 // release recreates any tag/Release the earlier run didn't finish.
 const outputPath = process.env['CHANGESETS_OUTPUT'];
-const emitTag = (name: string, dir: string) => {
+const emitTag = async (name: string, dir: string) => {
   if (!outputPath) return;
   if (platformProvided.has(name)) return; // platform binaries: npm only, no Release
-  if (!hasChangelogEntry(dir, version)) return; // no notes this cycle -> no Release
+  if (!(await hasChangelogEntry(dir, version))) return; // no notes this cycle -> no Release
   const event = { type: 'git-tag', tag: `${name}@${version}`, packageName: name };
   appendFileSync(outputPath, `${JSON.stringify(event)}\n`);
 };
@@ -191,12 +191,12 @@ for (const { path, json } of publishable) {
   const existing = await $`npm view ${`${name}@${version}`} version`.nothrow().quiet();
   if (existing.exitCode === 0 && existing.text().trim() === version) {
     console.log(`\nSkipping ${name}@${version}: already published`);
-    emitTag(name, dir);
+    await emitTag(name, dir);
     continue;
   }
   console.log(`\nPublishing ${tgz}`);
   await $`npm publish ${tgz} --provenance --access public`;
-  emitTag(name, dir);
+  await emitTag(name, dir);
 }
 
 console.log(`\nReleased v${version}`);
@@ -204,10 +204,10 @@ console.log(`\nReleased v${version}`);
 // Return true when CHANGELOG.md has a non-empty entry for `version`. Mirrors the
 // depth-2 heading slice that changesets/action uses to build the Release body, so
 // we only tag a product when the Release it produces would actually have content.
-function hasChangelogEntry(dir: string, ver: string): boolean {
+async function hasChangelogEntry(dir: string, ver: string): Promise<boolean> {
   let text: string;
   try {
-    text = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+    text = await Bun.file(join(dir, 'CHANGELOG.md')).text();
   } catch {
     return false; // no CHANGELOG (e.g. platform binaries) -> nothing to release
   }
