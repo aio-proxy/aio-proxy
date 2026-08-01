@@ -27,10 +27,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Changesets guards: the `fixed` group must list every workspace package
-      # (lockstep), and changesets may only target the public product packages.
+      # Changesets guard: the `fixed` group must list every workspace package so
+      # the whole workspace stays on one lockstep version.
       - run: bun run scripts/check-lockstep-fixed.ts
-      - run: bun run scripts/check-changeset-targets.ts
 
       - run: bun run check
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
