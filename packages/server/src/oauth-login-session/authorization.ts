@@ -122,6 +122,14 @@ export const createDashboardAuthorization = (options: {
           ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
         });
       },
+      async presentAuthorizeUrl(input) {
+        options.publish({
+          id: options.sessionId,
+          status: 'authorize_url',
+          url: requireHttpUrl(input.url).href,
+          ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
+        });
+      },
       loopback,
     },
     submitCallback(raw) {
