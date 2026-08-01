@@ -206,11 +206,11 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
     const redirect = new URL(redirectUri);
     const missing = await fetch(new URL('/missing', redirect.origin));
     expect(missing.status).toBe(404);
-    expect(await missing.text()).toBe(m.cli_oauth_callback_not_found());
+    expect(await missing.text()).toBe(m['cli.oauth.callback_not_found']());
 
     const invalidHttp = await fetch(`${redirectUri}?code=do-not-log&state=wrong-state`);
     expect(invalidHttp.status).toBe(400);
-    expect(await invalidHttp.text()).toBe(m.cli_oauth_invalid_callback_response());
+    expect(await invalidHttp.text()).toBe(m['cli.oauth.invalid_callback_response']());
 
     const invalid = await routes.request(`/oauth/sessions/${session.id}/callback`, {
       method: 'POST',

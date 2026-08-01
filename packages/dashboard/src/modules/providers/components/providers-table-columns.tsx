@@ -9,14 +9,15 @@ import type React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
+import { PROVIDER_KIND_LABEL } from '../constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
 import { ProviderModelsCell } from './provider-models-cell';
 import { ProviderStateCell } from './provider-state-cell';
 
 const kindLabels: Record<DashboardProviderSummary['kind'], () => string> = {
-  api: () => m['dashboard.providers.kind_label.api'](),
-  'ai-sdk': () => m['dashboard.providers.kind_label.ai-sdk'](),
-  oauth: () => m['dashboard.providers.kind_label.oauth'](),
+  api: () => PROVIDER_KIND_LABEL.api,
+  'ai-sdk': () => PROVIDER_KIND_LABEL['ai-sdk'],
+  oauth: () => PROVIDER_KIND_LABEL.oauth,
   invalid: () => m['dashboard.providers.kind_label.invalid'](),
 };
 

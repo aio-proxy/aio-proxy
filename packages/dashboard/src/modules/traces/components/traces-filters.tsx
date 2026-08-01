@@ -116,9 +116,9 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
-                <SelectItem value="UNSET">{m['dashboard.traces.otel_unset']()}</SelectItem>
-                <SelectItem value="OK">{m['dashboard.traces.otel_ok']()}</SelectItem>
-                <SelectItem value="ERROR">{m['dashboard.traces.otel_error']()}</SelectItem>
+                <SelectItem value="UNSET">UNSET</SelectItem>
+                <SelectItem value="OK">OK</SelectItem>
+                <SelectItem value="ERROR">ERROR</SelectItem>
               </SelectContent>
             </Select>
           </Field>

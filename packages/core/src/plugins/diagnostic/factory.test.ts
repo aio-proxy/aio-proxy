@@ -17,7 +17,7 @@ describe('createPluginDiagnosticFactory', () => {
       occurredAt: new Date(123).toISOString(),
       retryable: false,
       suggestedCommand: 'aio-proxy provider login',
-      summary: 'Plugin <plugin> does not provide capability <capability>.',
+      summary: 'Plugin <plugin> does not provide capability <capability>',
     });
     expect(diagnostic.summary).not.toContain('secret');
   });

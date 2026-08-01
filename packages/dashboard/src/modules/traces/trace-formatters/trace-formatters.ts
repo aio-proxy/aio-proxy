@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import type { UsageRow } from '@aio-proxy/types';
 
 import { createUsageValueFormatter } from '../../usage/services/usage-value-formatter';
+import { TRACE_PLACEHOLDER } from '../trace-display-constants';
 
 export const displayTotalTokens = (usage: UsageRow | undefined) =>
   usage?.totalTokens ??
@@ -10,7 +11,7 @@ export const displayTotalTokens = (usage: UsageRow | undefined) =>
     : undefined);
 
 export const formatTraceCost = (cost: number | undefined, locale = navigator.language) =>
-  cost === undefined ? m['dashboard.traces.not_available']() : createUsageValueFormatter('cost', locale)(cost);
+  cost === undefined ? TRACE_PLACEHOLDER : createUsageValueFormatter('cost', locale)(cost);
 
 export const formatTraceDuration = (milliseconds: number, locale = navigator.language) =>
   milliseconds < 1_000
@@ -25,7 +26,7 @@ export const formatTraceResultDetails = (input: {
   readonly errorCode?: string | undefined;
 }): string | undefined => {
   const values = [
-    input.httpStatus === undefined ? undefined : m['dashboard.traces.http_status_value']({ status: input.httpStatus }),
+    input.httpStatus === undefined ? undefined : `HTTP ${input.httpStatus}`,
     input.errorType,
     input.errorCode,
   ].filter((value): value is string => value !== undefined);

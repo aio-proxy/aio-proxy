@@ -25,13 +25,13 @@ export type CliAuthorizationDeps = {
 
 export function createDefaultCliAuthorizationCopy(): CliAuthorizationDeps['copy'] {
   return {
-    copiedDeviceCode: m.cli_oauth_copied_device_code(),
-    deviceCode: (code) => m.cli_oauth_device_code({ code }),
-    openedAuthorizationPage: m.cli_oauth_opened_authorization_page(),
-    successHtml: m.cli_oauth_success_html(),
-    alreadyCompleted: m.cli_oauth_callback_already_completed(),
-    invalidCallback: m.cli_oauth_invalid_callback_response(),
-    notFound: m.cli_oauth_callback_not_found(),
+    copiedDeviceCode: m['cli.oauth.copied_device_code'](),
+    deviceCode: (code) => m['cli.oauth.device_code']({ code }),
+    openedAuthorizationPage: m['cli.oauth.opened_authorization_page'](),
+    successHtml: m['cli.oauth.success_html'](),
+    alreadyCompleted: m['cli.oauth.callback_already_completed'](),
+    invalidCallback: m['cli.oauth.invalid_callback_response'](),
+    notFound: m['cli.oauth.callback_not_found'](),
   };
 }
 

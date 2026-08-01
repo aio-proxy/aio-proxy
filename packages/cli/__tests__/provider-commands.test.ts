@@ -20,14 +20,14 @@ describe('provider commands', () => {
     try {
       const result = await runCliUntilOutput(
         ['provider', 'login', '@aio-proxy/plugin-google-antigravity'],
-        ['Custom Antigravity base URL', 'OAuth capability @aio-proxy/plugin-google-antigravity was not found.'],
+        ['Custom Antigravity base URL', 'OAuth capability @aio-proxy/plugin-google-antigravity was not found'],
         { AIO_PROXY_HOME: home },
       );
       const text = `${result.stdout}${result.stderr}`;
 
       expect(result.exitCode).not.toBe(0);
       expect(text).toContain('Custom Antigravity base URL');
-      expect(text).not.toContain('OAuth capability @aio-proxy/plugin-google-antigravity was not found.');
+      expect(text).not.toContain('OAuth capability @aio-proxy/plugin-google-antigravity was not found');
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

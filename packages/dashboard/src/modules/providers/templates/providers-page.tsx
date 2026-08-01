@@ -15,6 +15,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { ProvidersTable } from '../components/providers-table';
+import { PROVIDER_KIND_LABEL } from '../constants';
 import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {
@@ -36,13 +37,13 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
-              {m['dashboard.providers.kind_label.oauth']()}
+              {PROVIDER_KIND_LABEL.oauth}
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'api' }} />}>
-              {m['dashboard.providers.kind_label.api']()}
+              {PROVIDER_KIND_LABEL.api}
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'ai-sdk' }} />}>
-              {m['dashboard.providers.kind_label.ai-sdk']()}
+              {PROVIDER_KIND_LABEL['ai-sdk']}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

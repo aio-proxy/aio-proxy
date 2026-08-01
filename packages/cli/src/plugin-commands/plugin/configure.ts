@@ -62,7 +62,7 @@ export async function pluginConfig(
         await configure(descriptor, installed.version, assertOwnership);
       });
     }
-    deps.print(m.cli_plugin_configured({ plugin: packageName }));
+    deps.print(m['cli.plugin.configured']({ plugin: packageName }));
   } finally {
     if (injected === undefined) deps.close?.();
   }

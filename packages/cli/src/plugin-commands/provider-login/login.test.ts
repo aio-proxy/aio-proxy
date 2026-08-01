@@ -27,7 +27,7 @@ describe('provider login orchestration', () => {
     });
     await expect(providerLogin('@b/two#default', { provider: 'target' }, state.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'Requested capability @b/two#default does not match provider capability @a/one#unique.',
+      message: 'Requested capability @b/two#default does not match provider capability @a/one#unique',
     });
   });
 
@@ -35,12 +35,12 @@ describe('provider login orchestration', () => {
     const state = scope.fixture();
     await expect(providerLogin(undefined, { provider: 'target' }, state.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'OAuth provider target was not found.',
+      message: 'OAuth provider target was not found',
     });
     const invalid = scope.fixture({ kind: 'api', protocol: 'openai-compatible' });
     await expect(providerLogin(undefined, { provider: 'target' }, invalid.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'Provider target is not a valid OAuth provider.',
+      message: 'Provider target is not a valid OAuth provider',
     });
     const pending = scope.fixture({ kind: 'oauth', plugin: '@a/one', capability: 'unique', enabled: true });
     pending.deps = {
@@ -50,16 +50,16 @@ describe('provider login orchestration', () => {
       },
     };
     await expect(providerLogin(undefined, { provider: 'target' }, pending.deps)).rejects.toThrow(
-      'Provider target is pending account cleanup.',
+      'Provider target is pending account cleanup',
     );
     await expect(providerLogin('@missing/pkg#default', {}, state.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'OAuth capability @missing/pkg#default was not found.',
+      message: 'OAuth capability @missing/pkg#default was not found',
     });
     const unavailable = scope.fixture({ kind: 'oauth', plugin: '@missing/pkg', capability: 'default', enabled: true });
     await expect(providerLogin(undefined, { provider: 'target' }, unavailable.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'OAuth capability @missing/pkg#default was not found.',
+      message: 'OAuth capability @missing/pkg#default was not found',
     });
   });
 

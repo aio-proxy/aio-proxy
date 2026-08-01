@@ -8,6 +8,12 @@ import { TokenCount } from '@/components/token-count';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+import {
+  TRACE_CACHE_READ_SHORT,
+  TRACE_CACHE_WRITE_SHORT,
+  TRACE_PLACEHOLDER,
+  TRACE_TTFT_LABEL,
+} from '../trace-display-constants';
 import { formatTraceCost, formatTraceDuration } from '../trace-formatters';
 import type { TraceSearch } from '../trace-search';
 import { TraceStatus } from './trace-status';
@@ -41,7 +47,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
       const session = row.original.session;
       return session === undefined ? (
-        m['dashboard.traces.not_available']()
+        TRACE_PLACEHOLDER
       ) : (
         <div className="min-w-28">
           <Tooltip>
@@ -74,7 +80,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
       const { requestedModelId, finalModelId } = row.original;
       const model = requestedModelId ?? finalModelId;
-      if (model === undefined) return m['dashboard.traces.not_available']();
+      if (model === undefined) return TRACE_PLACEHOLDER;
       const originalModel =
         requestedModelId !== undefined && finalModelId !== undefined && requestedModelId !== finalModelId
           ? finalModelId
@@ -90,14 +96,12 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   {
     id: 'finalProvider',
     header: () => m['dashboard.traces.provider'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
-      row.original.finalProviderId ?? m['dashboard.traces.not_available'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.finalProviderId ?? TRACE_PLACEHOLDER,
   },
   {
     accessorKey: 'finalHttpStatus',
     header: () => m['dashboard.traces.http_status'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
-      row.original.finalHttpStatus ?? m['dashboard.traces.not_available'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
   },
   {
     accessorKey: 'durationMs',
@@ -107,7 +111,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
         <div>{formatTraceDuration(row.original.durationMs)}</div>
         {row.original.ttftMs === undefined ? null : (
           <div className="text-xs text-muted-foreground">
-            {m['dashboard.traces.ttft']()} {formatTraceDuration(row.original.ttftMs)}
+            {TRACE_TTFT_LABEL} {formatTraceDuration(row.original.ttftMs)}
           </div>
         )}
       </div>
@@ -124,7 +128,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
         usage?.cacheReadTokens === undefined &&
         usage?.cacheWriteTokens === undefined
       ) {
-        return m['dashboard.traces.not_available']();
+        return TRACE_PLACEHOLDER;
       }
       return (
         <div className="min-w-32">
@@ -138,11 +142,11 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-baseline gap-1">
-              {m['dashboard.traces.cache_read_short']()}
+              {TRACE_CACHE_READ_SHORT}
               <TokenCount value={usage.cacheReadTokens} />
             </span>
             <span className="inline-flex items-baseline gap-1">
-              {m['dashboard.traces.cache_write_short']()}
+              {TRACE_CACHE_WRITE_SHORT}
               <TokenCount value={usage.cacheWriteTokens} />
             </span>
           </div>

@@ -7,7 +7,7 @@ export function completionCommand(shell: string, print: (line: string) => void =
   if (!isSupportedShell(shell)) {
     throw new CliExit(
       EXIT.unrecoverable,
-      m.cli_completion_unsupported_shell({ shell, shells: SUPPORTED_SHELLS.join(', ') }),
+      m['cli.completion.unsupported_shell']({ shell, shells: SUPPORTED_SHELLS.join(', ') }),
     );
   }
   print(renderCompletion(shell));

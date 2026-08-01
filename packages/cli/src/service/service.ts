@@ -19,7 +19,7 @@ type SupportedPlatform = 'darwin' | 'linux';
 function requirePlatform(): SupportedPlatform {
   const current = platform();
   if (current === 'darwin' || current === 'linux') return current;
-  throw new CliExit(EXIT.unrecoverable, m.cli_service_unsupported_platform({ platform: current }));
+  throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: current }));
 }
 
 // Resolve the single executable the service manager should launch. The npm
@@ -40,7 +40,7 @@ export function resolveExec(
 ): string {
   if (basename(execPath) === 'aio-proxy') return execPath;
   const exec = which('aio-proxy');
-  if (exec === null) throw new CliExit(EXIT.unrecoverable, m.cli_service_exec_not_found());
+  if (exec === null) throw new CliExit(EXIT.unrecoverable, m['cli.service.exec_not_found']());
   return exec;
 }
 
@@ -73,7 +73,7 @@ async function runManager(cmd: readonly string[], allowFailure = false): Promise
   const proc = Bun.spawn(cmd as string[], { stdout: 'inherit', stderr: 'inherit' });
   const code = await proc.exited;
   if (code !== 0 && !allowFailure) {
-    throw new CliExit(EXIT.transient, m.cli_service_command_failed({ command: cmd.join(' '), code }));
+    throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: cmd.join(' '), code }));
   }
   return code;
 }
@@ -82,7 +82,7 @@ function assertUserScope(options: ServiceInstallOptions): void {
   if (options.system === true) {
     // ponytail: user-scope only; system-scope (root, LaunchDaemons/etc-systemd)
     // deferred until a maintainer signs off on privileged installs.
-    throw new CliExit(EXIT.unrecoverable, m.cli_service_system_unsupported());
+    throw new CliExit(EXIT.unrecoverable, m['cli.service.system_unsupported']());
   }
 }
 
@@ -95,8 +95,8 @@ export async function serviceInstall(options: ServiceInstallOptions = {}, print:
     const target = launchdPlistPath();
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, renderLaunchdPlist({ exec, configPath: cfg }), { mode: 0o644 });
-    print(m.cli_service_installed({ path: target }));
-    print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
+    print(m['cli.service.installed']({ path: target }));
+    print(m['cli.service.env_hint']({ path: serviceEnvFile(cfg) }));
     return;
   }
   const target = systemdUnitPath();
@@ -104,8 +104,8 @@ export async function serviceInstall(options: ServiceInstallOptions = {}, print:
   writeFileSync(target, renderSystemdUnit({ exec, configPath: cfg }), { mode: 0o644 });
   await runManager(['systemctl', '--user', 'daemon-reload']);
   await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
-  print(m.cli_service_installed({ path: target }));
-  print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
+  print(m['cli.service.installed']({ path: target }));
+  print(m['cli.service.env_hint']({ path: serviceEnvFile(cfg) }));
 }
 
 export async function serviceUninstall(print: Printer = console.log): Promise<void> {
@@ -114,14 +114,14 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
     const target = launchdPlistPath();
     await runManager(['launchctl', 'unload', '-w', target], true);
     rmSync(target, { force: true });
-    print(m.cli_service_uninstalled({ path: target }));
+    print(m['cli.service.uninstalled']({ path: target }));
     return;
   }
   const target = systemdUnitPath();
   await runManager(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
   rmSync(target, { force: true });
   await runManager(['systemctl', '--user', 'daemon-reload']);
-  print(m.cli_service_uninstalled({ path: target }));
+  print(m['cli.service.uninstalled']({ path: target }));
 }
 
 export async function serviceStart(): Promise<void> {

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
 import type { ProviderFormMode } from '../constants';
+import { PROVIDER_MODELS_PLACEHOLDER } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { ProviderAliasFields } from './provider-alias';
@@ -99,7 +100,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
                         commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
                       }
                     }}
-                    placeholder={m['dashboard.providers.form.placeholder_package_name']()}
+                    placeholder={DEFAULT_AI_SDK_PACKAGE}
                   />
                 </Field>
               )}
@@ -148,7 +149,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
                   id={field.name}
                   value={field.state.value ?? []}
                   onValueChange={(next) => field.handleChange(next)}
-                  placeholder={m['dashboard.providers.form.placeholder_models']()}
+                  placeholder={PROVIDER_MODELS_PLACEHOLDER}
                   removeLabel={(model) => m['dashboard.providers.form.remove_model']({ model })}
                 />
                 <p className="text-sm text-muted-foreground">{m['dashboard.providers.form.models_helper']()}</p>

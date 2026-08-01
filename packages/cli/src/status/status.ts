@@ -53,7 +53,7 @@ export async function statusCommand(
 
   if (health === null) {
     if (options.json === true) print(JSON.stringify({ ...result }, undefined, 2));
-    else print(m.cli_status_not_running({ url }));
+    else print(m['cli.status.not_running']({ url }));
     // Result already printed; signal "down" with a nonzero exit so health checks and
     // service scripts can tell an unreachable daemon apart from a running one without
     // parsing localized output.
@@ -86,10 +86,10 @@ export async function statusCommand(
     return;
   }
 
-  print(m.cli_status_running({ url, version: health.version ?? 'unknown' }));
+  print(m['cli.status.running']({ url, version: health.version ?? 'unknown' }));
   if (options.deep === true) {
     if (deepFailure === undefined) print(JSON.stringify(providers, undefined, 2));
-    else if (deepFailure.reason === 'auth') print(m.cli_status_deep_unavailable());
-    else print(m.cli_status_deep_probe_failed({ status: String(deepFailure.status ?? 'network error') }));
+    else if (deepFailure.reason === 'auth') print(m['cli.status.deep_unavailable']());
+    else print(m['cli.status.deep_probe_failed']({ status: String(deepFailure.status ?? 'network error') }));
   }
 }

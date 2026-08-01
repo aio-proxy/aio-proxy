@@ -41,7 +41,7 @@ export function createCapabilitySelector(
 ): (choices: readonly CapabilityChoice[]) => Promise<string> {
   return (choices) =>
     prompt({
-      message: m.cli_provider_login_capability_prompt(),
+      message: m['cli.provider.login.capability_prompt'](),
       choices: choices.map(({ reference, label }) => ({
         name: resolveLocalizedText(label, getLocale()),
         value: reference,
