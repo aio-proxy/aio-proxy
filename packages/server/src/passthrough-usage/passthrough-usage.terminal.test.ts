@@ -48,13 +48,15 @@ describe('observer onTerminal detection', () => {
     expect(seen).toHaveLength(0);
   });
 
-  test('Gemini finishReason fires success terminal', () => {
+  test('Gemini finishReason does not fire early terminal (defers to EOF for full usage)', () => {
+    // Gemini has no stream-level terminal: with candidateCount > 1 the aggregate
+    // usageMetadata can trail the first candidate's finishReason, so completion
+    // must wait for EOF rather than settle on the first finishReason.
     const seen = collectTerminal(
       ProviderProtocol.Gemini,
       'data: {"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}]}\n\n',
     );
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.failed).toBeUndefined();
+    expect(seen).toHaveLength(0);
   });
 
   test('OpenAIResponse response.failed fires failure terminal', () => {

@@ -228,16 +228,13 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       return false;
     }
     case ProviderProtocol.Gemini: {
-      const entries = Array.isArray(value) ? value : [value];
-      return entries.some(
-        (entry) =>
-          isRecord(entry) &&
-          Array.isArray(entry['candidates']) &&
-          entry['candidates'].some(
-            (candidate) =>
-              isRecord(candidate) && typeof candidate['finishReason'] === 'string' && candidate['finishReason'] !== '',
-          ),
-      );
+      // Gemini SSE has no unambiguous stream-level terminal sentinel. With
+      // generationConfig.candidateCount > 1 candidates finish in separate frames
+      // and the aggregate usageMetadata can trail the first candidate's
+      // finishReason, so firing here would settle the trace early and drop the
+      // later candidates' token/cost accounting. Defer to the EOF completion,
+      // which observes the fully merged usage.
+      return false;
     }
     default:
       return assertNever(protocol);

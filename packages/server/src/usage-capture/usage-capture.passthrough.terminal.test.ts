@@ -65,6 +65,52 @@ describe('passthrough terminal early completion', () => {
     expect(await captured.value.text()).toBe(completedFrame + 'data: [DONE]\n\n');
   });
 
+  test('Gemini defers completion to EOF so multi-candidate usage is not lost', async () => {
+    // candidateCount > 1: the first candidate reports finishReason in an early
+    // frame, but the aggregate usageMetadata trails in a later frame. Completion
+    // must NOT settle on the first finishReason — it waits for EOF and records
+    // the full usage.
+    let releaseTail: (() => void) | undefined;
+    const tailGate = new Promise<void>((r) => (releaseTail = r));
+    const firstCandidate =
+      'data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"finishReason":"STOP","index":0}]}\n\n';
+    const trailingUsage =
+      'data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"finishReason":"STOP","index":1}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":6,"totalTokenCount":10}}\n\n';
+    const captured = createUsageCapture().passthrough({
+      response: new Response(
+        framedStream([firstCandidate], async () => {
+          await tailGate;
+          return trailingUsage;
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+      protocol: ProviderProtocol.Gemini,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    // Drain the first candidate frame; completion must stay pending — the first
+    // finishReason must not settle the trace.
+    const reader = captured.value.body!.getReader();
+    await reader.read();
+    const pending = await Promise.race([captured.completion.then(() => 'settled'), Promise.resolve('pending')]);
+    expect(pending).toBe('pending');
+
+    // Release the trailing usage frame and drain to EOF.
+    releaseTail?.();
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+    }
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    expect('usage' in completion ? completion.usage : undefined).toMatchObject({
+      inputTokens: 4,
+      outputTokens: 6,
+      totalTokens: 10,
+    });
+  });
+
   test('a client cancel after the terminal frame does not overwrite the trace success', async () => {
     // The client reads the terminal frame, then cancels while the async usage
     // lookup is still settling. The trace outcome was decided at the terminal
