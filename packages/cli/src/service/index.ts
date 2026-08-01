@@ -1,4 +1,5 @@
 export {
+  isManagedServiceInstalled,
   serviceInstall,
   serviceRestart,
   serviceStart,

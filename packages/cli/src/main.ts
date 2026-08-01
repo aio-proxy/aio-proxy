@@ -15,6 +15,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
+import { runUpgradeCommand } from './upgrade';
 
 export { readOrBootstrapConfig } from './run';
 
@@ -165,6 +166,15 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .command('completion <shell>')
     .description(m.cli_completion_description())
     .action((shell) => completionCommand(shell));
+
+  program
+    .command('upgrade')
+    .description(m.cli_upgrade_description())
+    .option('--check', m.cli_upgrade_option_check_description())
+    .option('--force', m.cli_upgrade_option_force_description())
+    .option('--restart', m.cli_upgrade_option_restart_description())
+    .option('--registry <url>', m.cli_upgrade_option_registry_description())
+    .action((options) => runUpgradeCommand(options));
 
   return program;
 };
