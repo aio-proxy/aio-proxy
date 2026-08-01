@@ -80,6 +80,23 @@ export function createCliAuthorizationPort(deps: CliAuthorizationDeps): Authoriz
         }
       }
     },
+    async presentAuthorizeUrl(input) {
+      const url = requireHttpUrl(input.url);
+      let opened = false;
+      try {
+        opened = deps.openBrowser(url.href);
+      } catch {
+        opened = false;
+      }
+      if (opened) deps.print(deps.copy.openedAuthorizationPage);
+      deps.print(url.href);
+      if (input.instructions !== undefined) {
+        const instructions = LocalizedTextSchema.safeParse(input.instructions);
+        if (instructions.success) {
+          deps.print(resolveLocalizedText(instructions.data, deps.locale ?? getLocale()));
+        }
+      }
+    },
     loopback: (input) => runLoopbackAuthorization(input, deps),
   };
 }
