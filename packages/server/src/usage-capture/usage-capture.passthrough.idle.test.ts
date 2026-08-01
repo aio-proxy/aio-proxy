@@ -80,6 +80,45 @@ describe('passthrough idle timeout', () => {
 
     await reader.cancel();
   });
+
+  test('a hung-open upstream after the terminal frame still trips the idle timeout', async () => {
+    // The terminal frame settles the trace as success, but the socket stays open.
+    // Trace settlement must not disable the transport idle timer: the next pending
+    // read still trips the timeout, cancels upstream, and errors the client stream,
+    // while the already-recorded success outcome is preserved.
+    let cancelled = false;
+    const completedFrame =
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","id":"resp_1","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}}\n\n';
+    const hanging = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(completedFrame));
+      },
+      pull() {
+        return new Promise<void>(() => {}); // never resolves — hung-open after terminal frame
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const captured = createUsageCapture().passthrough({
+      response: new Response(hanging, { headers: { 'content-type': 'text/event-stream' } }),
+      protocol: ProviderProtocol.OpenAIResponse,
+      providerId: 'provider',
+      modelId: 'model',
+      idleTimeoutMs: 40,
+    });
+
+    const reader = captured.value.body!.getReader();
+    await reader.read(); // terminal frame
+
+    await expect(reader.read()).rejects.toThrow('stream_idle_timeout');
+    expect(cancelled).toBe(true);
+    // The success recorded at the terminal frame is preserved (the idle fire did
+    // not overwrite it). Usage-value preservation is covered by the terminal
+    // early-completion suite, which seeds the price catalog.
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+  });
 });
 
 function delay(ms: number): Promise<void> {

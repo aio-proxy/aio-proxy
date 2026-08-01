@@ -65,6 +65,43 @@ describe('passthrough terminal early completion', () => {
     expect(await captured.value.text()).toBe(completedFrame + 'data: [DONE]\n\n');
   });
 
+  test('a client cancel after the terminal frame does not overwrite the trace success', async () => {
+    // The client reads the terminal frame, then cancels while the async usage
+    // lookup is still settling. The trace outcome was decided at the terminal
+    // frame and must stay success — not be flipped to cancelled.
+    const completedFrame =
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","id":"resp_1","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}}\n\n';
+    const encoder = new TextEncoder();
+    let frameSent = false;
+    const captured = createUsageCapture().passthrough({
+      response: new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            // Emit the terminal frame, then leave the stream open (no more data)
+            // until the client cancels — cancel unblocks via the cancel handler.
+            if (!frameSent) {
+              frameSent = true;
+              controller.enqueue(encoder.encode(completedFrame));
+            }
+          },
+          cancel() {},
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+      protocol: ProviderProtocol.OpenAIResponse,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    const reader = captured.value.body!.getReader();
+    await reader.read(); // terminal frame
+    await reader.cancel('client stopped');
+
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    expect('usage' in completion ? completion.usage : undefined).toMatchObject({ inputTokens: 2, outputTokens: 3 });
+  });
+
   test('OpenAICompatible resolves at [DONE] with usage from the trailing frame', async () => {
     let releaseTail: (() => void) | undefined;
     const tailGate = new Promise<void>((r) => (releaseTail = r));

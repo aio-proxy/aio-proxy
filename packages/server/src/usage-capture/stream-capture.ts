@@ -28,40 +28,47 @@ export function streamCapture(
   let finished = false;
   let finishUsage: UsageRow | undefined;
   let firstTokenAt: number | undefined;
-  let released = false;
-  let completed = false;
+  // Trace settlement (usage/timing/outcome) and transport lifecycle (reader) are
+  // tracked separately: an AI SDK `finish` part settles the trace early, but the
+  // transport stays live until EOF/cancel/idle. Conflating them let a cancel
+  // after `finish` overwrite a success, and disabled the idle timer post-finish.
+  let traceSettled = false;
+  let transportClosed = false;
+  let idleAborted = false;
   const releaseReader = () => {
-    if (released) return;
-    released = true;
+    if (transportClosed) return;
+    transportClosed = true;
     reader.releaseLock();
   };
-  let idleAborted = false;
+  const settleTrace = (completion: UsageCompletion): void => {
+    if (traceSettled) return;
+    traceSettled = true;
+    terminal.resolve(completion);
+  };
   const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
-    if (completed) return;
-    completed = true;
+    if (transportClosed) return;
     idleAborted = true;
-    terminal.resolve({
-      outcome: 'failure',
-      errorCode: 'stream_idle_timeout',
-      ...ttftProperty(startedAt, firstTokenAt),
-    });
+    // The trace may already be settled (finish part seen); only fill in a failure
+    // outcome if it is not, but always tear down the stalled transport.
+    settleTrace({ outcome: 'failure', errorCode: 'stream_idle_timeout', ...ttftProperty(startedAt, firstTokenAt) });
     void reader.cancel(new Error('stream_idle_timeout')).catch(() => {});
     releaseReader();
   });
   const complete = async (): Promise<void> => {
-    if (completed) return;
-    completed = true;
+    if (traceSettled) return;
+    // Decide the trace outcome synchronously (before the await) so a cancel or
+    // idle fire racing the async usage lookup cannot overwrite it.
+    traceSettled = true;
     idle.clear();
+    const usage = await finalizeUsage({
+      usage: finishUsage,
+      accounting: { source: 'ai-sdk' },
+      ...(requestedModelId === undefined ? {} : { requestedModelId }),
+      ...(logger === undefined ? {} : { logger }),
+    });
     terminal.resolve({
       outcome: 'success',
-      ...usageProperty(
-        await finalizeUsage({
-          usage: finishUsage,
-          accounting: { source: 'ai-sdk' },
-          ...(requestedModelId === undefined ? {} : { requestedModelId }),
-          ...(logger === undefined ? {} : { logger }),
-        }),
-      ),
+      ...usageProperty(usage),
       ...ttftProperty(startedAt, firstTokenAt),
     });
   };
@@ -87,11 +94,11 @@ export function streamCapture(
           }
           controller.close();
           if (aborted) {
-            terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
+            settleTrace({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
           } else if (finished) {
             await complete();
           } else {
-            terminal.resolve({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
+            settleTrace({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
           }
           return;
         }
@@ -113,9 +120,9 @@ export function streamCapture(
         idle.clear();
         releaseReader();
         if (cancelled || isAbortError(error)) {
-          terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
+          settleTrace({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
         } else {
-          terminal.resolve({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
+          settleTrace({ outcome: 'failure', ...ttftProperty(startedAt, firstTokenAt) });
         }
         if (!cancelled) {
           controller.error(error);
@@ -125,7 +132,9 @@ export function streamCapture(
     async cancel(reason) {
       idle.clear();
       cancelled = true;
-      terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
+      // A cancel after the trace already settled (e.g. client disconnects just
+      // after the finish part) must not overwrite the recorded outcome.
+      settleTrace({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
       try {
         await reader.cancel(reason);
       } finally {

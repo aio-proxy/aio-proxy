@@ -53,18 +53,33 @@ export function passthroughCapture(
   const reader = response.body!.getReader();
   const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
-  let completed = false;
+  // Trace settlement (usage/timing/outcome) and transport lifecycle (reader +
+  // client stream) are tracked separately: a terminal frame settles the trace
+  // early, but the transport stays live until EOF/cancel/idle. Conflating them
+  // let a post-terminal cancel overwrite a success, and disabled the idle timer
+  // once a terminal frame arrived.
+  let traceSettled = false;
+  let transportClosed = false;
   let idleAborted = false;
+  const releaseReader = () => {
+    if (transportClosed) return;
+    transportClosed = true;
+    reader.releaseLock();
+  };
   const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
-    if (completed) return;
-    completed = true;
+    if (transportClosed) return;
     idleAborted = true;
-    terminal.resolve({
-      outcome: 'failure',
-      statusCode,
-      errorCode: 'stream_idle_timeout',
-      ...ttftProperty(startedAt, firstTokenAt),
-    });
+    // The trace may already be settled (terminal frame seen); only fill in a
+    // failure outcome if it is not, but always tear down the stalled transport.
+    if (!traceSettled) {
+      traceSettled = true;
+      terminal.resolve({
+        outcome: 'failure',
+        statusCode,
+        errorCode: 'stream_idle_timeout',
+        ...ttftProperty(startedAt, firstTokenAt),
+      });
+    }
     void reader.cancel(new Error('stream_idle_timeout')).catch(() => {});
     releaseReader();
   });
@@ -79,8 +94,10 @@ export function passthroughCapture(
     onCommit?.(obs.responseId);
   };
   const complete = async (obs: PassthroughObservation): Promise<void> => {
-    if (completed) return;
-    completed = true;
+    if (traceSettled) return;
+    // Decide the trace outcome synchronously (before any await) so a cancel or
+    // idle fire racing the async usage lookup cannot overwrite it.
+    traceSettled = true;
     idle.clear();
     if (obs.failed === true) {
       terminal.resolve({ outcome: 'failure', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
@@ -102,12 +119,6 @@ export function passthroughCapture(
     onContent: (contentAt) => (firstTokenAt ??= contentAt),
     onTerminal: (obs) => void complete(obs),
   });
-  let released = false;
-  const releaseReader = () => {
-    if (released) return;
-    released = true;
-    reader.releaseLock();
-  };
   const returnedBody = createTeeBody({
     reader,
     idle,
@@ -121,6 +132,8 @@ export function passthroughCapture(
     },
     onError: (error) => {
       idle.clear();
+      if (traceSettled) return;
+      traceSettled = true;
       terminal.resolve({
         outcome: isAbortError(error) ? 'cancelled' : 'failure',
         statusCode,
@@ -129,6 +142,10 @@ export function passthroughCapture(
     },
     onCancel: () => {
       idle.clear();
+      // A cancel after the trace already settled (e.g. client disconnects just
+      // after the terminal frame) must not overwrite the recorded outcome.
+      if (traceSettled) return;
+      traceSettled = true;
       terminal.resolve({ outcome: 'cancelled', statusCode, ...ttftProperty(startedAt, firstTokenAt) });
     },
   });
