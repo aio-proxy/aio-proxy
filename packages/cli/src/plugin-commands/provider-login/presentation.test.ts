@@ -15,9 +15,9 @@ afterEach(scope.cleanup);
 
 describe('provider login safe presentation', () => {
   test('uses localized capability and target errors with safe identifiers', async () => {
-    expect(new ProviderCapabilityNotFoundError('missing').message).toBe('OAuth capability missing was not found.');
+    expect(new ProviderCapabilityNotFoundError('missing').message).toBe('OAuth capability missing was not found');
     expect(new ProviderCapabilityMismatchError('@a/one#unique', '@b/two#default').message).toBe(
-      'Requested capability @a/one#unique does not match provider capability @b/two#default.',
+      'Requested capability @a/one#unique does not match provider capability @b/two#default',
     );
     const state = scope.fixture();
     state.deps = {
@@ -26,9 +26,7 @@ describe('provider login safe presentation', () => {
         throw new AccountCleanupPendingError('target');
       },
     };
-    await expect(providerLogin('unique', {}, state.deps)).rejects.toThrow(
-      'Provider target is pending account cleanup.',
-    );
+    await expect(providerLogin('unique', {}, state.deps)).rejects.toThrow('Provider target is pending account cleanup');
   });
 
   test('localizes exhausted Provider ID collisions with the safe candidate', async () => {
@@ -40,7 +38,7 @@ describe('provider login safe presentation', () => {
       },
     };
     await expect(providerLogin('unique', {}, state.deps)).rejects.toThrow(
-      'Unable to allocate a unique provider ID for person-deadbeef.',
+      'Unable to allocate a unique provider ID for person-deadbeef',
     );
   });
 
@@ -53,7 +51,7 @@ describe('provider login safe presentation', () => {
       },
     };
     await expect(providerLogin('unique', {}, state.deps)).rejects.toThrow(
-      'An account is already configured as provider existing. Run aio-proxy provider login --provider existing to re-login.',
+      'An account is already configured as provider existing. Run aio-proxy provider login --provider existing to re-login',
     );
     expect(state.printed).toEqual([]);
   });
@@ -81,7 +79,7 @@ describe('provider login safe presentation', () => {
       },
     };
     await expect(providerLogin(undefined, { provider: 'target' }, state.deps)).rejects.toThrow(
-      'The authenticated account does not match provider target.',
+      'The authenticated account does not match provider target',
     );
     expect(state.printed).toEqual([]);
   });
