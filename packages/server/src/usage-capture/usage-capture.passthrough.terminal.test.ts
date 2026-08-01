@@ -65,6 +65,38 @@ describe('passthrough terminal early completion', () => {
     expect(await captured.value.text()).toBe(completedFrame + 'data: [DONE]\n\n');
   });
 
+  test('OpenAICompatible resolves at [DONE] with usage from the trailing frame', async () => {
+    let releaseTail: (() => void) | undefined;
+    const tailGate = new Promise<void>((r) => (releaseTail = r));
+    const finishFrame = 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+    // The usage arrives AFTER finish_reason (stream_options.include_usage), then [DONE].
+    // Resolving on finish_reason would drop this usage; the terminal must be [DONE].
+    const captured = createUsageCapture().passthrough({
+      response: new Response(
+        framedStream([finishFrame], async () => {
+          await tailGate;
+          return 'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":6,"total_tokens":10}}\n\ndata: [DONE]\n\n';
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: 'provider',
+      modelId: 'model',
+    });
+
+    // Drain the client body to drive pulls; finish_reason alone must NOT resolve —
+    // completion waits for the trailing usage frame + [DONE].
+    releaseTail?.();
+    const [completion, body] = await Promise.all([captured.completion, captured.value.text()]);
+    expect(completion.outcome).toBe('success');
+    expect('usage' in completion ? completion.usage : undefined).toMatchObject({
+      inputTokens: 4,
+      outputTokens: 6,
+      totalTokens: 10,
+    });
+    expect(body).toContain('[DONE]');
+  });
+
   test('resolves failure at response.failed terminal', async () => {
     const failedFrame = 'event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed"}}\n\n';
     const captured = createUsageCapture().passthrough({

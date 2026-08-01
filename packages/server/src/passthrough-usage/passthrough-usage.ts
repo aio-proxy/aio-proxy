@@ -114,6 +114,10 @@ export function createPassthroughSseUsageObserver(
         if (failEvent) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
         return;
       }
+      if (protocol === ProviderProtocol.OpenAICompatible && event.data.trim() === '[DONE]') {
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        return;
+      }
       const parsed = parseJson(event.data);
       const failParsed = protocolFailure(protocol, undefined, parsed);
       failed ||= failParsed;
@@ -217,8 +221,11 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       return type === 'message_stop';
     }
     case ProviderProtocol.OpenAICompatible: {
-      if (!isRecord(value) || !Array.isArray(value['choices'])) return false;
-      return value['choices'].some((choice) => isRecord(choice) && typeof choice['finish_reason'] === 'string');
+      // The terminal frame is `[DONE]` (handled in onEvent), not `finish_reason`:
+      // with stream_options.include_usage the usage arrives in a trailing
+      // `choices:[]` frame AFTER finish_reason, so resolving on finish_reason
+      // would drop token/cost accounting.
+      return false;
     }
     case ProviderProtocol.Gemini: {
       const entries = Array.isArray(value) ? value : [value];

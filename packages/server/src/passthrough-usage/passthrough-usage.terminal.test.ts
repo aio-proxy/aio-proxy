@@ -28,13 +28,24 @@ describe('observer onTerminal detection', () => {
     expect(seen[0]?.failed).toBeUndefined();
   });
 
-  test('OpenAICompatible finish_reason fires success terminal', () => {
+  test('OpenAICompatible [DONE] fires success terminal after trailing usage', () => {
+    const seen = collectTerminal(
+      ProviderProtocol.OpenAICompatible,
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' +
+        'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":6,"total_tokens":10}}\n\n' +
+        'data: [DONE]\n\n',
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.failed).toBeUndefined();
+    expect(seen[0]?.usage).toEqual({ inputTokens: 4, outputTokens: 6, totalTokens: 10 });
+  });
+
+  test('OpenAICompatible finish_reason alone does not fire terminal', () => {
     const seen = collectTerminal(
       ProviderProtocol.OpenAICompatible,
       'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
     );
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.failed).toBeUndefined();
+    expect(seen).toHaveLength(0);
   });
 
   test('Gemini finishReason fires success terminal', () => {

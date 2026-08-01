@@ -37,6 +37,10 @@ describe('stream capture idle timeout', () => {
     const reader = captured.value.getReader();
     await reader.read();
 
+    // The stalled upstream is cancelled by the idle timer; the client stream must
+    // error rather than close cleanly, so a truncated generation is not mistaken
+    // for a complete one.
+    await expect(reader.read()).rejects.toThrow('stream_idle_timeout');
     await expect(captured.completion).resolves.toEqual({ outcome: 'failure', errorCode: 'stream_idle_timeout' });
     expect(cancelled).toBe(true);
   });

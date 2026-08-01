@@ -23,6 +23,18 @@ import {
 } from './shared';
 import { finalizeUsage } from './usage-validation';
 
+// Non-2xx and body-less responses have no stream to observe: resolve completion
+// immediately and hand the response through unchanged.
+function nonStreamingCompletion(response: Response): Captured<Response> | undefined {
+  if (response.status < 200 || response.status >= 400) {
+    return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
+  }
+  if (response.body === null) {
+    return { value: response, completion: Promise.resolve({ outcome: 'success', statusCode: response.status }) };
+  }
+  return undefined;
+}
+
 export function passthroughCapture(
   {
     response,
@@ -37,22 +49,21 @@ export function passthroughCapture(
   }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
-  if (response.status < 200 || response.status >= 400) {
-    return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
-  }
-  if (response.body === null) {
-    return { value: response, completion: Promise.resolve({ outcome: 'success', statusCode: response.status }) };
-  }
+  const shortCircuit = nonStreamingCompletion(response);
+  if (shortCircuit !== undefined) return shortCircuit;
 
   const statusCode = response.status;
   const terminal = deferred<UsageCompletion>();
-  const reader = response.body.getReader();
+  // Non-null: nonStreamingCompletion short-circuits when response.body is null.
+  const reader = response.body!.getReader();
   const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
   let completed = false;
+  let idleAborted = false;
   const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
     if (completed) return;
     completed = true;
+    idleAborted = true;
     terminal.resolve({
       outcome: 'failure',
       statusCode,
@@ -106,6 +117,7 @@ export function passthroughCapture(
     reader,
     idle,
     releaseReader,
+    aborted: () => idleAborted,
     onChunk: (chunk) => {
       if (sseObserver !== undefined && decoder !== undefined) sseObserver.feed(decoder.decode(chunk, { stream: true }));
       else jsonCapture?.push(chunk);
@@ -150,6 +162,7 @@ type TeeBodyDeps = {
   readonly reader: ReadableStreamDefaultReader<Uint8Array>;
   readonly idle: IdleTimer;
   readonly releaseReader: () => void;
+  readonly aborted: () => boolean;
   readonly onChunk: (chunk: Uint8Array) => void;
   readonly onEnd: () => Promise<void>;
   readonly onError: (error: unknown) => void;
@@ -172,6 +185,13 @@ function createTeeBody(deps: TeeBodyDeps): ReadableStream<Uint8Array> {
           return;
         }
         done = true;
+        // An idle timeout cancels the upstream reader, surfacing here as a normal
+        // EOF. Terminate the client stream abnormally so a stalled partial response
+        // is not mistaken for a clean, complete one.
+        if (deps.aborted()) {
+          controller.error(new Error('stream_idle_timeout'));
+          return;
+        }
         controller.close();
         await deps.onEnd();
       } catch (error) {

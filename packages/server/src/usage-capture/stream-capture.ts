@@ -35,9 +35,11 @@ export function streamCapture(
     released = true;
     reader.releaseLock();
   };
+  let idleAborted = false;
   const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
     if (completed) return;
     completed = true;
+    idleAborted = true;
     terminal.resolve({
       outcome: 'failure',
       errorCode: 'stream_idle_timeout',
@@ -71,6 +73,14 @@ export function streamCapture(
         if (next.done) {
           releaseReader();
           if (cancelled) return;
+          // An idle timeout cancels the upstream reader, surfacing here as a normal
+          // EOF. Terminate the client stream abnormally so a stalled partial
+          // response is not mistaken for a clean, complete one. Completion was
+          // already resolved (failure) by the idle timer.
+          if (idleAborted) {
+            controller.error(new Error('stream_idle_timeout'));
+            return;
+          }
           controller.close();
           if (aborted) {
             terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });

@@ -30,10 +30,13 @@ describe('passthrough idle timeout', () => {
       idleTimeoutMs: 40,
     });
 
-    // consume the first delivered chunk, then stop reading — upstream hangs.
+    // consume the first delivered chunk, then keep reading — upstream hangs until
+    // the idle timer cancels it, which must surface to the client as a stream
+    // error (not a clean EOF that masks the truncated response).
     const reader = captured.value.body!.getReader();
     await reader.read();
 
+    await expect(reader.read()).rejects.toThrow('stream_idle_timeout');
     await expect(captured.completion).resolves.toEqual({
       outcome: 'failure',
       statusCode: 200,
