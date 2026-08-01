@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { CliExit } from '../exit';
-import { renderLaunchdPlist, renderSystemdUnit, resolveExec } from './service';
+import { renderLaunchdPlist, renderSystemdUnit, resolveExec, writeManagedUnit } from './service';
 
 test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   const unit = renderSystemdUnit({ exec: '/usr/local/bin/aio-proxy', configPath: '/home/u/.aio-proxy/config.jsonc' });
@@ -109,4 +112,38 @@ test('resolveExec fails fast when the native binary is not found', () => {
   }
   expect(caught).toBeInstanceOf(CliExit);
   expect((caught as CliExit).code).toBe(1);
+});
+
+// writeManagedUnit takes an explicit target path (test seam) so these run on any
+// host without touching the real ~/Library/LaunchAgents.
+test('writeManagedUnit rewrites a stale plist with the fresh exec path', async () => {
+  // Regression for the brew-upgrade failure: an existing unit points at a deleted
+  // versioned binary (old Cellar path). Restart must regenerate the unit, not just
+  // stop/start it, so the stale ExecStart is replaced with the current launcher.
+  const dir = join(tmpdir(), `aio-svc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  const plistPath = join(dir, 'com.aio-proxy.agent.plist');
+  const stale = '/opt/homebrew/Cellar/aio-proxy/0.2.1/bin/aio-proxy';
+  writeFileSync(plistPath, renderLaunchdPlist({ exec: stale, configPath: join(dir, 'config.jsonc') }));
+  expect(readFileSync(plistPath, 'utf8')).toContain(stale);
+
+  const fresh = '/opt/homebrew/bin/aio-proxy';
+  const written = await writeManagedUnit('darwin', fresh, plistPath);
+
+  expect(written).toBe(plistPath);
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>${fresh}</string>`);
+  expect(contents).not.toContain(stale);
+});
+
+test('writeManagedUnit creates the unit and parent dir when none exists', async () => {
+  const plistPath = join(
+    tmpdir(),
+    `aio-svc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    'LaunchAgents',
+    'com.aio-proxy.agent.plist',
+  );
+  expect(existsSync(plistPath)).toBe(false);
+  await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
+  expect(existsSync(plistPath)).toBe(true);
 });

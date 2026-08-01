@@ -107,26 +107,33 @@ function assertUserScope(options: ServiceInstallOptions): void {
   }
 }
 
+// Render and write (or overwrite) the managed unit for the current platform with
+// a freshly resolved exec path. Returns the unit path. Shared by install and
+// restart: restart must rewrite an existing unit because an install from an
+// earlier release — or a `brew upgrade` that retargeted the launcher symlink —
+// can leave a stale ExecStart pointing at a now-deleted binary, and a plain
+// stop/start would relaunch nothing.
+export async function writeManagedUnit(
+  os: SupportedPlatform,
+  exec: string = resolveExec(),
+  target: string = os === 'darwin' ? launchdPlistPath() : systemdUnitPath(),
+): Promise<string> {
+  const cfg = configPath();
+  const body =
+    os === 'darwin' ? renderLaunchdPlist({ exec, configPath: cfg }) : renderSystemdUnit({ exec, configPath: cfg });
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, body, { mode: 0o644 });
+  if (os === 'linux') await runManager(['systemctl', '--user', 'daemon-reload']);
+  return target;
+}
+
 export async function serviceInstall(options: ServiceInstallOptions = {}, print: Printer = console.log): Promise<void> {
   assertUserScope(options);
   const os = requirePlatform();
-  const exec = resolveExec();
-  const cfg = configPath();
-  if (os === 'darwin') {
-    const target = launchdPlistPath();
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, renderLaunchdPlist({ exec, configPath: cfg }), { mode: 0o644 });
-    print(m.cli_service_installed({ path: target }));
-    print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
-    return;
-  }
-  const target = systemdUnitPath();
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, renderSystemdUnit({ exec, configPath: cfg }), { mode: 0o644 });
-  await runManager(['systemctl', '--user', 'daemon-reload']);
-  await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
+  const target = await writeManagedUnit(os);
+  if (os === 'linux') await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   print(m.cli_service_installed({ path: target }));
-  print(m.cli_service_env_hint({ path: serviceEnvFile(cfg) }));
+  print(m.cli_service_env_hint({ path: serviceEnvFile(configPath()) }));
 }
 
 export async function serviceUninstall(print: Printer = console.log): Promise<void> {
@@ -166,6 +173,11 @@ export async function serviceStop(): Promise<void> {
 
 export async function serviceRestart(): Promise<void> {
   const os = requirePlatform();
+  // Rewrite the unit with a freshly resolved exec first. A unit installed by an
+  // earlier release (or before a `brew upgrade` retargeted the launcher symlink)
+  // can hold a stale ExecStart pointing at a deleted binary; on darwin a plain
+  // stop/start would then relaunch nothing, so restart must also migrate the unit.
+  await writeManagedUnit(os);
   if (os === 'darwin') {
     await serviceStop();
     await serviceStart();
