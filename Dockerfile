@@ -8,7 +8,7 @@
 # produces both linux/amd64 and linux/arm64 without QEMU emulating the build.
 # The dashboard assets are embedded into the binary by the compiled entry, so
 # the runtime stage needs nothing but the binary itself.
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.0 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS build
 ARG TARGETARCH
 WORKDIR /src
 COPY . .
