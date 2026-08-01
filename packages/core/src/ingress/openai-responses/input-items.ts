@@ -18,7 +18,11 @@ const inputImagePartSchema = z
     type: z.literal('input_image'),
     image_url: z.string().optional(),
     file_id: idSchema.optional(),
-    detail: z.enum(['auto', 'low', 'high']).optional(),
+    // Clients may send image detail hints outside the documented set
+    // (e.g. Codex sends `original`). Detail is a best-effort hint that
+    // downstream transforms already drop when unrecognized, so coerce
+    // unknown values to undefined instead of rejecting the whole request.
+    detail: z.enum(['auto', 'low', 'high']).optional().catch(undefined),
   })
   .loose()
   .superRefine((part, context) => {
