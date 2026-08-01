@@ -56,6 +56,10 @@ export type LoopbackRequest = {
 
 export type AuthorizationPort = {
   readonly presentDeviceCode: (input: DeviceCodePresentation) => Promise<void>;
+  readonly presentAuthorizeUrl: (input: {
+    readonly url: string;
+    readonly instructions?: LocalizedText;
+  }) => Promise<void>;
   readonly loopback: (input: LoopbackRequest) => Promise<{ readonly code: string; readonly redirectUri: string }>;
 };
 

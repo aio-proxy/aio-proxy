@@ -41,6 +41,7 @@ test('uses the fixed loopback callback and returns a complete stable account ide
     {
       authorization: {
         presentDeviceCode: async () => {},
+        presentAuthorizeUrl: async () => {},
         loopback: async (input) => {
           loopbackRequest = input;
           const authorizationUrl = new URL(
@@ -175,7 +176,7 @@ function loginContext(
   }),
 ) {
   return {
-    authorization: { presentDeviceCode: async () => {}, loopback },
+    authorization: { presentDeviceCode: async () => {}, presentAuthorizeUrl: async () => {}, loopback },
     progress: () => {},
     signal: new AbortController().signal,
   };

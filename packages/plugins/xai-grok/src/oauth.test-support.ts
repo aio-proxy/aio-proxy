@@ -10,6 +10,7 @@ export function loginContext(presented: unknown[]): OAuthLoginContext {
       presentDeviceCode: async (input) => {
         presented.push(input);
       },
+      presentAuthorizeUrl: async () => {},
       loopback: async () => {
         throw new Error('device flow must not use loopback');
       },

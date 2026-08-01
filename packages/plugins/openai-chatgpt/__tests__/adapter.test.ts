@@ -143,6 +143,7 @@ function loginContext(overrides: {
     authorization: {
       loopback: overrides.loopback,
       presentDeviceCode: async () => undefined,
+      presentAuthorizeUrl: async () => undefined,
     },
     progress: () => undefined,
     signal: overrides.signal ?? new AbortController().signal,

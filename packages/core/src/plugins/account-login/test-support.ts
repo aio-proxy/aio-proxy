@@ -132,6 +132,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
 
 const authorization: AuthorizationPort = {
   async presentDeviceCode() {},
+  async presentAuthorizeUrl() {},
   async loopback() {
     return { code: 'code', redirectUri: 'http://127.0.0.1/callback' };
   },

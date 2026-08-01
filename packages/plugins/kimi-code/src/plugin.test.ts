@@ -83,6 +83,7 @@ function loginContext(
     progress: (message) => progress.push(message),
     authorization: {
       presentDeviceCode: async (input) => presented.push(input),
+      presentAuthorizeUrl: async () => {},
       loopback: async () => {
         throw new Error('Unexpected loopback login');
       },
