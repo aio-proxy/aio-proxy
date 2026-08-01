@@ -6,8 +6,10 @@ import type { ServerLogSink } from '../server-log';
 import { normalizeAiSdkUsage } from './pricing';
 import {
   type Captured,
+  createIdleTimer,
   deferred,
   observeContentAt,
+  STREAM_IDLE_TIMEOUT_MS,
   type StreamUsageOptions,
   ttftProperty,
   type UsageCompletion,
@@ -16,7 +18,7 @@ import {
 import { finalizeUsage } from './usage-validation';
 
 export function streamCapture(
-  { stream, providerId, modelId, requestedModelId, startedAt, observation }: StreamUsageOptions,
+  { stream, providerId, modelId, requestedModelId, startedAt, observation, idleTimeoutMs }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -33,9 +35,21 @@ export function streamCapture(
     released = true;
     reader.releaseLock();
   };
+  const idle = createIdleTimer(idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
+    if (completed) return;
+    completed = true;
+    terminal.resolve({
+      outcome: 'failure',
+      errorCode: 'stream_idle_timeout',
+      ...ttftProperty(startedAt, firstTokenAt),
+    });
+    void reader.cancel(new Error('stream_idle_timeout')).catch(() => {});
+    releaseReader();
+  });
   const complete = async (): Promise<void> => {
     if (completed) return;
     completed = true;
+    idle.clear();
     terminal.resolve({
       outcome: 'success',
       ...usageProperty(
@@ -81,7 +95,9 @@ export function streamCapture(
           firstTokenAt ??= contentAt;
         }
         controller.enqueue(next.value);
+        idle.arm();
       } catch (error) {
+        idle.clear();
         releaseReader();
         if (cancelled || isAbortError(error)) {
           terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
@@ -94,6 +110,7 @@ export function streamCapture(
       }
     },
     async cancel(reason) {
+      idle.clear();
       cancelled = true;
       terminal.resolve({ outcome: 'cancelled', ...ttftProperty(startedAt, firstTokenAt) });
       try {
@@ -103,6 +120,8 @@ export function streamCapture(
       }
     },
   });
+
+  idle.arm();
 
   return { value, completion: terminal.promise };
 }
