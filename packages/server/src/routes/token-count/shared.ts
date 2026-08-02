@@ -1,6 +1,6 @@
-import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
-import type { RuntimeProviderInstance } from '../runtime';
-import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
+import { attributeName, type RequestTraceSession, spanName } from '../../request-tracing';
+import type { RuntimeProviderInstance } from '../../runtime';
+import { type OpenSpan, startPipelineSpan } from '../pipeline/tracing';
 
 // Attempt identity shared by the raw-forward and tokenCount paths.
 export type CountAttempt = {

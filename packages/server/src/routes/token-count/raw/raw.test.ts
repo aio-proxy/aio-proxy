@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import type { RuntimeProviderInstance } from '../../runtime';
+import type { RuntimeProviderInstance } from '../../../runtime';
 import { counter, countFixture, requestedModel } from '../token-count.test-support';
 
 function rawAnthropicProvider(

@@ -2,11 +2,11 @@ import type { ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { attributeName, type RequestTraceSession } from '../../request-tracing';
-import { isInboundAbort } from '../../route-observation';
-import type { RuntimeProviderInstance } from '../../runtime';
-import { failureTerminal } from '../pipeline/failure';
-import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from '../token-count-shared';
+import { attributeName, type RequestTraceSession } from '../../../request-tracing';
+import { isInboundAbort } from '../../../route-observation';
+import type { RuntimeProviderInstance } from '../../../runtime';
+import { failureTerminal } from '../../pipeline/failure';
+import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from '../shared';
 
 // Outcome the count loop consumes:
 //   return      → hand this upstream response back verbatim

@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import { geminiGenerateContentAdapter } from '@aio-proxy/core';
 
-import { LogicalSessionStore } from '../logical-session-store';
-import { createGeminiGenerateContentRoutes } from './gemini-generate-content';
+import { LogicalSessionStore } from '../../logical-session-store';
+import { createGeminiGenerateContentRoutes } from '../gemini-generate-content';
 import {
   anthropicRequest,
   configOrderedProviders,

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { anthropicMessagesAdapter } from '@aio-proxy/core';
 
-import { estimateInputTokens } from './token-count-estimate';
+import { estimateInputTokens } from './estimate';
 
 // Builds a ModelInvocation the same way the route does, from a parsed request.
 async function invocationFrom(body: Record<string, unknown>) {

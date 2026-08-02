@@ -7,10 +7,10 @@ import {
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 
-import { createRecording } from '../../__tests__/pipeline-helpers/recording';
-import { LogicalSessionStore } from '../logical-session-store';
-import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
-import type { ServerLog } from '../server-log';
+import { createRecording } from '../../../__tests__/pipeline-helpers/recording';
+import { LogicalSessionStore } from '../../logical-session-store';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
+import type { ServerLog } from '../../server-log';
 import { handleTokenCount } from './token-count';
 
 export const requestedModel = 'count-model';
