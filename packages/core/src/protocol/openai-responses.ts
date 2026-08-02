@@ -2,13 +2,13 @@ import { openai } from '@ai-sdk/openai';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { AiSdkCallSettings, ModelMessage, ToolSet } from '../ai-sdk-bridge';
+import type { ModelMessage, ToolSet } from '../ai-sdk-bridge';
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAIResponsesErrors } from './errors';
-import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
+import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
 import { readJsonRequest } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
@@ -132,25 +132,6 @@ async function rewriteOpenAIResponsesRequest(
 
 function conversationId(conversation: OpenAIResponsesRequest['conversation']): string | undefined {
   return typeof conversation === 'string' ? conversation : conversation?.id;
-}
-
-type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
-const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
-  'none',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'provider-default',
-];
-
-// Ingress accepts any effort string so a future upstream level is not rejected
-// here, but the AI SDK call options only take the levels it knows. Drop an
-// unrecognized level and let the provider apply its own default.
-function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
-  const known = AI_SDK_REASONING.find((level) => level === effort);
-  return known === undefined ? {} : { reasoning: known };
 }
 
 function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {

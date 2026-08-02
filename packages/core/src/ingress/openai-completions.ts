@@ -74,7 +74,11 @@ export const OpenAICompletionsRequestSchema = z.object({
   max_tokens: z.number().int().positive().optional(),
   max_completion_tokens: z.number().int().positive().optional(),
   response_format: LooseObjectSchema.optional(),
-  reasoning_effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  // We never branch on the effort value: it is only used as a routing variant
+  // key and otherwise normalized against upstream capability before dispatch.
+  // Gating it to a fixed enum would reject legitimate levels (e.g. `max`) and
+  // aliases before they can reach normalization, so accept any string.
+  reasoning_effort: z.string().optional(),
 });
 
 export type OpenAICompletionsRequest = z.output<typeof OpenAICompletionsRequestSchema>;

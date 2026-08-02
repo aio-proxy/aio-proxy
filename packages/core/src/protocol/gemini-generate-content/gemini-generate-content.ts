@@ -1,22 +1,25 @@
 import { normalizeVariantKey, ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { AiSdkCallSettings, JSONValue } from '../ai-sdk-bridge';
-import { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from '../egress/gemini-generate-content';
+import type { AiSdkCallSettings, JSONValue } from '../../ai-sdk-bridge';
+import {
+  writeGeminiGenerateContentResponse,
+  writeGeminiGenerateContentSSE,
+} from '../../egress/gemini-generate-content';
 import {
   type GeminiGenerateContentRequest,
   parseGeminiGenerateContent,
-} from '../ingress/gemini-generate-content/index';
+} from '../../ingress/gemini-generate-content/index';
 import {
   type GeminiGenerateContentSettings,
   geminiGenerateContentToModelMessages,
-} from '../transform/gemini-generate-content/index';
-import { defineProtocolAdapter } from './adapter';
-import { geminiGenerateContentErrors } from './errors';
-import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
-import { readJsonRequest, readRequestText } from './request';
-import type { SessionCandidate } from './session';
-import { functionToolSet } from './tools';
+} from '../../transform/gemini-generate-content/index';
+import { defineProtocolAdapter } from '../adapter';
+import { geminiGenerateContentErrors } from '../errors';
+import { clampSdkReasoning, normalizeEffort } from '../reasoning-effort/index';
+import { readJsonRequest, readRequestText } from '../request';
+import type { SessionCandidate } from '../session';
+import { functionToolSet } from '../tools';
 
 type GeminiAiSdkSettings = AiSdkCallSettings & {
   readonly providerOptions?: {
@@ -112,6 +115,13 @@ type RawGeminiBody = z.infer<typeof rawBodySchema>;
 // Clamp generationConfig.thinkingConfig.thinkingLevel (a string) down to the
 // upstream's supported effort set. Non-string/absent levels pass through so the
 // body is forwarded untouched apart from re-serialization.
+//
+// Gemini's wire enum is UPPERCASE (`LOW`/`MEDIUM`/`HIGH`), while normalizeEffort
+// yields the canonical lowercase ladder value. Only rewrite when the request is
+// genuinely downgraded to a different level; when the level is unchanged (e.g. a
+// supported `HIGH`, differing from the canonical `high` only in casing) forward
+// the original spelling verbatim. On a real downgrade, re-emit in Gemini's
+// uppercase spelling so the forwarded body stays a valid Gemini request.
 function clampThinkingLevel(body: RawGeminiBody, supported: ReadonlySet<string>): RawGeminiBody {
   const generationConfig = asRecord(body['generationConfig']);
   if (generationConfig === undefined) return body;
@@ -119,8 +129,10 @@ function clampThinkingLevel(body: RawGeminiBody, supported: ReadonlySet<string>)
   if (thinkingConfig === undefined) return body;
   const level = thinkingConfig['thinkingLevel'];
   if (typeof level !== 'string') return body;
-  const next = normalizeEffort(level, supported);
-  if (next === level) return body;
+  const normalized = normalizeEffort(level, supported);
+  // Casing-only difference (or exact match) is not a downgrade: keep the wire value.
+  if (normalized.toLowerCase() === level.toLowerCase()) return body;
+  const next = normalized.toUpperCase();
   return {
     ...body,
     generationConfig: { ...generationConfig, thinkingConfig: { ...thinkingConfig, thinkingLevel: next } },

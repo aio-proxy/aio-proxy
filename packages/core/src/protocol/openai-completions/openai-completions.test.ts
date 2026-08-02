@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { parseOpenAICompletions } from '../ingress/openai-completions';
+import { parseOpenAICompletions } from '../../ingress/openai-completions';
 import { openAICompletionsAdapter } from './openai-completions';
 
 test('clamps reasoning_effort in the raw body against the supported set', async () => {
@@ -31,6 +31,24 @@ test('rewrites the model on the raw body when no reasoning_effort is present', a
   const json = (await forwarded.json()) as Record<string, unknown>;
   expect(json).toMatchObject({ model: 'upstream' });
   expect('reasoning_effort' in json).toBe(false);
+});
+
+test('accepts non-enum reasoning_effort values (e.g. max) and clamps them', async () => {
+  // The completions ingress must not gate reasoning_effort to a fixed enum:
+  // `max` and future/alias levels have to reach normalization rather than be
+  // rejected at parse time.
+  const body = { model: 'src', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'max' };
+  const raw = new Request('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify(body) });
+  const parsed = parseOpenAICompletions(structuredClone(body));
+  expect(parsed.reasoning_effort).toBe('max');
+  const forwarded = await openAICompletionsAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  expect(await forwarded.json()).toMatchObject({ model: 'upstream', reasoning_effort: 'high' });
 });
 
 test('clamps settings.reasoning through modelInvocationForTarget', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { parseGeminiGenerateContent } from '../ingress/gemini-generate-content/index';
+import { parseGeminiGenerateContent } from '../../ingress/gemini-generate-content/index';
 import { geminiGenerateContentAdapter } from './gemini-generate-content';
 
 function geminiRequest(body: unknown): Request {
@@ -25,10 +25,32 @@ describe('geminiGenerateContentAdapter.rawRequest', () => {
       new Set(['low', 'medium', 'high']),
       { model: 'src', stream: false },
     );
+    // A genuine downgrade re-emits in Gemini's uppercase wire spelling.
     expect(await forwarded.json()).toMatchObject({
-      generationConfig: { thinkingConfig: { thinkingLevel: 'high' } },
+      generationConfig: { thinkingConfig: { thinkingLevel: 'HIGH' } },
     });
     expect(new URL(forwarded.url).pathname).toContain('upstream');
+  });
+
+  test('preserves the uppercase wire spelling when the level is supported', async () => {
+    const body = {
+      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+      generationConfig: { thinkingConfig: { thinkingLevel: 'HIGH' } },
+    };
+    const raw = geminiRequest(body);
+    const parsed = parseGeminiGenerateContent(structuredClone({ ...body, model: 'src' }));
+    const forwarded = await geminiGenerateContentAdapter.rawRequest(
+      raw,
+      parsed,
+      'upstream',
+      new Set(['low', 'medium', 'high']),
+      { model: 'src', stream: false },
+    );
+    // Casing-only difference from the canonical `high` must not corrupt the
+    // Gemini wire enum: forward `HIGH` unchanged.
+    expect(await forwarded.json()).toMatchObject({
+      generationConfig: { thinkingConfig: { thinkingLevel: 'HIGH' } },
+    });
   });
 
   test('rewrites the URL to the resolved model for non-streaming requests', async () => {

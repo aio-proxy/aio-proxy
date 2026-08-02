@@ -1,3 +1,4 @@
+import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
 import type { ModelInvocation } from '../adapter';
 
 // Ascending reasoning-effort ladder. Index = rank; higher index = more effort.
@@ -66,4 +67,24 @@ export function clampSdkReasoning(invocation: ModelInvocation, supported: Readon
   if (next === reasoning) return invocation;
   const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
   return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
+}
+
+export type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
+const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'provider-default',
+];
+
+// Ingress accepts any effort string (so a future/alias level is not rejected),
+// but the AI SDK model path only takes the levels it knows. Keep a recognized
+// level for downstream capability clamping; drop an unknown one (e.g. `max`) so
+// the provider applies its own default.
+export function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
+  const known = AI_SDK_REASONING.find((level) => level === effort);
+  return known === undefined ? {} : { reasoning: known };
 }

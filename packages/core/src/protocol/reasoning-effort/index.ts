@@ -1,1 +1,7 @@
-export { clampSdkReasoning, modelEffortValues, normalizeEffort } from './reasoning-effort';
+export {
+  type AiSdkReasoning,
+  clampSdkReasoning,
+  modelEffortValues,
+  normalizeEffort,
+  reasoningSetting,
+} from './reasoning-effort';
