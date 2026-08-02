@@ -1,0 +1,161 @@
+import type { ModelInvocation } from '@aio-proxy/core';
+import type { ProtocolId } from '@aio-proxy/plugin-sdk';
+
+// One element of a structured (non-string) message content array.
+type ContentPart = Extract<ModelInvocation['messages'][number]['content'], readonly unknown[]>[number];
+
+// Conservative per-part surcharges for the local fallback. We cannot decode base64 to get
+//  dimensions/pages, so we assign a fixed non-zero estimate rather than 0 (which would let an
+//  image/PDF-only request read as ~1 token). Anchored on Anthropic's ~(w×h)/750 → a typical
+//  1568-px image ≈ 1600 tokens; PDFs are usually larger, so bias higher. Upstream anthropic-raw
+//  providers return exact counts and never hit this path.
+const IMAGE_TOKEN_SURCHARGE = 1600;
+const FILE_TOKEN_SURCHARGE = 2000;
+
+// Per-provider character-class weights (tokens contributed by each class),
+// ported from new-api's empirical BPE averages
+// (.reference/new-api/service/token_estimator.go). The count endpoint's real
+// tokenizer is not public, so this fallback only aims to beat a flat bytes/N
+// ratio; it is intentionally approximate.
+type Weights = {
+  readonly word: number; // per latin word
+  readonly number: number; // per contiguous digit run
+  readonly cjk: number; // per CJK char
+  readonly symbol: number; // per ordinary punctuation char
+  readonly newline: number; // per \n or \t
+  readonly space: number; // per space
+};
+
+const WEIGHTS: Record<'claude' | 'openai' | 'gemini', Weights> = {
+  claude: { word: 1.13, number: 1.63, cjk: 1.21, symbol: 0.4, newline: 0.89, space: 0.39 },
+  openai: { word: 1.02, number: 1.55, cjk: 0.85, symbol: 0.4, newline: 0.5, space: 0.42 },
+  gemini: { word: 1.15, number: 2.8, cjk: 0.68, symbol: 0.38, newline: 1.15, space: 0.2 },
+};
+
+function weightsFor(protocol: ProtocolId): Weights {
+  if (protocol === 'anthropic') return WEIGHTS.claude;
+  if (protocol === 'gemini') return WEIGHTS.gemini;
+  return WEIGHTS.openai;
+}
+
+// CJK ideographs, Hiragana/Katakana, Hangul.
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/u;
+
+// Character-class state machine: latin/number runs contribute proportionally to their
+// length (~1 token per K chars), CJK/space/newline/symbol score per character. Mirrors
+// token_estimator.go's loop but avoids collapsing a long run (minified code, URLs,
+// base64-in-text) to a single token, which would defeat context-budget checks.
+const CHARS_PER_TOKEN = { latin: 5, number: 3 } as const;
+
+function estimateText(text: string, w: Weights): number {
+  let count = 0;
+  let run: 'none' | 'latin' | 'number' = 'none';
+  let runLength = 0;
+  const flushRun = (): void => {
+    if (run === 'none') return;
+    const weight = run === 'number' ? w.number : w.word;
+    count += weight * Math.max(1, Math.round(runLength / CHARS_PER_TOKEN[run]));
+    run = 'none';
+    runLength = 0;
+  };
+  for (const ch of text) {
+    if (ch === '\n' || ch === '\t') {
+      flushRun();
+      count += w.newline;
+      continue;
+    }
+    if (ch === ' ' || /\s/u.test(ch)) {
+      flushRun();
+      count += w.space;
+      continue;
+    }
+    if (CJK.test(ch)) {
+      flushRun();
+      count += w.cjk;
+      continue;
+    }
+    if (/[\p{L}\p{N}]/u.test(ch)) {
+      const next = /\p{N}/u.test(ch) ? 'number' : 'latin';
+      if (run !== next) {
+        flushRun();
+        run = next;
+      }
+      runLength += 1;
+      continue;
+    }
+    flushRun();
+    count += w.symbol;
+  }
+  flushRun();
+  return count;
+}
+
+// Text tokens from a tool-result output. Skips embedded base64 file/image data
+// (which would inflate the estimate by binary size), keeping only textual/JSON content.
+function toolResultText(output: Extract<ContentPart, { type: 'tool-result' }>['output']): string {
+  switch (output.type) {
+    case 'text':
+    case 'error-text':
+      return output.value;
+    case 'json':
+    case 'error-json':
+      return JSON.stringify(output.value);
+    case 'content':
+      // Include text parts; skip media/file parts carrying base64 data. Narrow on the
+      // `text` property to avoid reading the deprecated `media` type discriminant.
+      return output.value.map((part) => ('text' in part ? part.text : '')).join('');
+    default:
+      return '';
+  }
+}
+
+// Fixed token surcharge for the non-text (image/file) parts of a message, including image/file
+// entries nested in a tool-result's content array. We never decode or byte-count the payload —
+// each media part contributes a flat estimate so an image/PDF-only request cannot read as ~0.
+function mediaSurcharge(content: ModelInvocation['messages'][number]['content']): number {
+  if (typeof content === 'string') return 0;
+  let tokens = 0;
+  for (const part of content) {
+    if (part.type === 'file') {
+      tokens += part.mediaType.startsWith('image') ? IMAGE_TOKEN_SURCHARGE : FILE_TOKEN_SURCHARGE;
+    } else if ('image' in part) {
+      // Deprecated ImagePart carries an `image` field rather than `data`.
+      tokens += IMAGE_TOKEN_SURCHARGE;
+    } else if (part.type === 'tool-result' && part.output.type === 'content') {
+      for (const item of part.output.value) {
+        // Skip inline text (counted elsewhere); surcharge media/file entries by shape, not by
+        // the deprecated `media` type discriminant or their base64 byte length.
+        if ('text' in item) continue;
+        const isImage = 'mediaType' in item && typeof item.mediaType === 'string' && item.mediaType.startsWith('image');
+        tokens += isImage ? IMAGE_TOKEN_SURCHARGE : FILE_TOKEN_SURCHARGE;
+      }
+    }
+  }
+  return tokens;
+}
+
+// Pull user-visible text from a message, ignoring binary parts (base64
+// images/files) whose serialized size would inflate a byte count.
+function messageText(content: ModelInvocation['messages'][number]['content']): string {
+  if (typeof content === 'string') return content;
+  let text = '';
+  for (const part of content) {
+    if (part.type === 'text') text += part.text;
+    else if (part.type === 'tool-call') text += `${part.toolName}${JSON.stringify(part.input)}`;
+    else if (part.type === 'tool-result') text += toolResultText(part.output);
+  }
+  return text;
+}
+
+export function estimateInputTokens(protocol: ProtocolId, invocation: ModelInvocation): number {
+  const w = weightsFor(protocol);
+  let total = 0;
+  for (const message of invocation.messages) {
+    total += estimateText(messageText(message.content), w);
+    // Media surcharges are already in token units — do NOT run them through char weighting.
+    total += mediaSurcharge(message.content);
+  }
+  // Tool schemas are serialized into the model prompt verbatim, so they count.
+  if (invocation.tools !== undefined) total += estimateText(JSON.stringify(invocation.tools), w);
+  return Math.max(1, Math.ceil(total));
+}
