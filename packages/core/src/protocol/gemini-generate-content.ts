@@ -13,6 +13,7 @@ import {
 } from '../transform/gemini-generate-content/index';
 import { defineProtocolAdapter } from './adapter';
 import { geminiGenerateContentErrors } from './errors';
+import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
 import { readJsonRequest } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
@@ -61,13 +62,21 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
     transcript: request.contents,
   }),
   wantsStream: (_request, context) => context.stream,
-  async rawRequest(raw, _request, resolvedModel, context) {
-    if (context.model === resolvedModel) return raw.clone();
+  async rawRequest(raw, _request, resolvedModel, supportedEfforts, context) {
     const url = new URL(raw.url);
     url.pathname = `/v1beta/models/${encodeURIComponent(resolvedModel)}${
       context.stream ? ':streamGenerateContent' : ':generateContent'
     }`;
-    return new Request(url, raw.clone());
+    const body = rawBodySchema.parse(await readJsonRequest(raw));
+    const rewrittenBody = clampThinkingLevel(body, supportedEfforts);
+    const headers = new Headers(raw.headers);
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+    return new Request(url, {
+      method: raw.method,
+      headers,
+      body: JSON.stringify(rewrittenBody),
+    });
   },
   modelInvocation(request) {
     const transformed = geminiGenerateContentToModelMessages(request);
@@ -78,6 +87,9 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
       ...(tools === undefined ? {} : { tools }),
     };
   },
+  modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts) {
+    return clampSdkReasoning(invocation, supportedEfforts);
+  },
   modelJson: writeGeminiGenerateContentResponse,
   modelSse: writeGeminiGenerateContentSSE,
   errors: geminiGenerateContentErrors,
@@ -87,6 +99,33 @@ function candidate(source: SessionCandidate['source'], value: string | undefined
   return value === undefined ? undefined : { source, value };
 }
 
+const rawBodySchema = z.object({}).catchall(z.unknown());
+
+type RawGeminiBody = z.infer<typeof rawBodySchema>;
+
+// Clamp generationConfig.thinkingConfig.thinkingLevel (a string) down to the
+// upstream's supported effort set. Non-string/absent levels pass through so the
+// body is forwarded untouched apart from re-serialization.
+function clampThinkingLevel(body: RawGeminiBody, supported: ReadonlySet<string>): RawGeminiBody {
+  const generationConfig = asRecord(body['generationConfig']);
+  if (generationConfig === undefined) return body;
+  const thinkingConfig = asRecord(generationConfig['thinkingConfig']);
+  if (thinkingConfig === undefined) return body;
+  const level = thinkingConfig['thinkingLevel'];
+  if (typeof level !== 'string') return body;
+  const next = normalizeEffort(level, supported);
+  if (next === level) return body;
+  return {
+    ...body,
+    generationConfig: { ...generationConfig, thinkingConfig: { ...thinkingConfig, thinkingLevel: next } },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
 function isCandidate(value: SessionCandidate | undefined): value is SessionCandidate {
   return value !== undefined;
 }
