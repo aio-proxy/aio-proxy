@@ -81,10 +81,15 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
     // not clamped, forward the original body bytes verbatim (re-serializing
     // would drop the client's whitespace); only re-serialize on an actual change.
     const forwardedBody = rewrittenBody === body ? bodyText : JSON.stringify(rewrittenBody);
+    // Build from the URL (the model lives in the path, not the body), but carry
+    // the inbound abort signal through: without it a client disconnect leaves a
+    // fresh non-aborted signal on the rewritten request, so raw transports that
+    // honour request.signal keep the upstream generation (and billing) running.
     return new Request(url, {
       method: raw.method,
       headers,
       body: forwardedBody,
+      signal: raw.signal,
     });
   },
   modelInvocation(request) {

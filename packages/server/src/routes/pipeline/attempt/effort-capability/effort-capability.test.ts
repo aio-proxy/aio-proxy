@@ -5,7 +5,7 @@ import {
   modelsDevModel,
   seedEmptyModelsDevCatalog,
   seedModelsDevCatalog,
-} from '../../../../__tests__/server.test-support';
+} from '../../../../../__tests__/server.test-support';
 import { resolveSupportedEfforts } from './effort-capability';
 
 // Seed an isolated, empty catalog so the lookup resolves offline instead of

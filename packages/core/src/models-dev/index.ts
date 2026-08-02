@@ -14,6 +14,13 @@ const PROVIDERS_CACHE_TTL = 1_000 * 60 * 60 * 6;
 // repeated I/O while still letting a later catalog warm (e.g. via /v1/models)
 // resolve the id once the sentinel expires.
 const NEGATIVE_CACHE_TTL = 1_000 * 30;
+// The resolved-model LRU only holds hits and is capped at 16 entries, so a
+// deployment with more than 16 distinct configured models thrashes it: every
+// LRU miss re-reads and JSON-parses the whole provider catalog from disk. This
+// short-lived memory cache holds the parsed provider map so resolveModel runs
+// against memory regardless of per-model LRU eviction. The TTL keeps it well
+// under the file cache's 6h window so a catalog refresh still propagates.
+const PROVIDER_MAP_MEMORY_TTL = 1_000 * 30;
 
 const client = Models.make();
 const cache = new LRUCache<string, Model>({
@@ -27,6 +34,12 @@ const negativeCache = new LRUCache<string, true>({
   max: 64,
   ttl: NEGATIVE_CACHE_TTL,
 });
+// Single-entry memory cache for the parsed provider map. Keyed by the file
+// cache key so clearModelsCache can invalidate it deterministically in tests.
+const providerMapMemoryCache = new LRUCache<string, ProviderMap>({
+  max: 1,
+  ttl: PROVIDER_MAP_MEMORY_TTL,
+});
 
 // The resolved-model cache is a module singleton keyed by model id, holding
 // hits only. Tests that seed different provider maps under the same id must
@@ -34,15 +47,28 @@ const negativeCache = new LRUCache<string, true>({
 export function clearModelsCache(): void {
   cache.clear();
   negativeCache.clear();
+  providerMapMemoryCache.clear();
+}
+
+// Read the parsed provider map from the memory cache, falling back to a single
+// disk read + JSON parse whose result is memoized for PROVIDER_MAP_MEMORY_TTL.
+// Returns undefined only when the file cache is cold.
+async function readCachedProviderMap(): Promise<ProviderMap | undefined> {
+  const memo = providerMapMemoryCache.get(PROVIDERS_CACHE_KEY);
+  if (memo) return memo;
+  const providerMap = await fileCacheStorage.getItem<ProviderMap>(PROVIDERS_CACHE_KEY, {
+    ttl: PROVIDERS_CACHE_TTL,
+  });
+  if (providerMap) providerMapMemoryCache.set(PROVIDERS_CACHE_KEY, providerMap);
+  return providerMap ?? undefined;
 }
 
 export async function getProviders(options?: RequestOptions): Promise<ProviderMap> {
-  const cached = await fileCacheStorage.getItem<ProviderMap>(PROVIDERS_CACHE_KEY, {
-    ttl: PROVIDERS_CACHE_TTL,
-  });
+  const cached = await readCachedProviderMap();
   if (cached) return cached;
   const providerMap = await client.providers(options);
   await fileCacheStorage.setItem(PROVIDERS_CACHE_KEY, providerMap);
+  providerMapMemoryCache.set(PROVIDERS_CACHE_KEY, providerMap);
   return providerMap;
 }
 export async function getModels(modelIds: string[], options?: RequestOptions) {
@@ -83,7 +109,7 @@ export async function getModelsCachedOnly(modelIds: string[]): Promise<Record<st
       continue;
     }
     if (providerMap === undefined) {
-      providerMap = await fileCacheStorage.getItem<ProviderMap>(PROVIDERS_CACHE_KEY, { ttl: PROVIDERS_CACHE_TTL });
+      providerMap = (await readCachedProviderMap()) ?? null;
     }
     if (!providerMap) {
       // Cold catalog: leave the negative cache untouched so the very next

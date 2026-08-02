@@ -166,4 +166,47 @@ describe('getModelsCachedOnly', () => {
     await fileCacheStorage.setItem('models-dev-providers', providerMap);
     expect((await getModelsCachedOnly(['gpt-5']))['gpt-5']?.id).toBe('gpt-5');
   });
+
+  test('resolves distinct ids beyond the resolved-model LRU without re-reading the catalog per id', async () => {
+    // The resolved-model LRU only holds hits and is capped at 16. Resolving
+    // more than that many distinct hits must not JSON-parse the whole catalog
+    // from disk once per id; the in-memory provider map serves every resolve
+    // after the first read.
+    const models: Record<string, Model> = {};
+    for (let i = 0; i < 20; i++) models[`bulk-${i}`] = model(`bulk-${i}`);
+    await fileCacheStorage.setItem('models-dev-providers', {
+      openrouter: provider('openrouter', models),
+    });
+    clearModelsCache();
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      const ids = Object.keys(models);
+      const result = await getModelsCachedOnly(ids);
+      for (const id of ids) expect(result[id]?.id).toBe(id);
+      // One disk read for the whole batch, not one per id.
+      expect(spy.mock.calls.length).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('serves a follow-up lookup from the memory-cached provider map after LRU eviction', async () => {
+    // Even across separate calls, an id evicted from the 16-entry LRU resolves
+    // from the memory-cached provider map rather than a fresh disk read.
+    const models: Record<string, Model> = {};
+    for (let i = 0; i < 20; i++) models[`bulk-${i}`] = model(`bulk-${i}`);
+    await fileCacheStorage.setItem('models-dev-providers', {
+      openrouter: provider('openrouter', models),
+    });
+    clearModelsCache();
+    await getModelsCachedOnly(Object.keys(models)); // warms memory cache, evicts early ids from LRU
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      const result = await getModelsCachedOnly(['bulk-0']);
+      expect(result['bulk-0']?.id).toBe('bulk-0');
+      expect(spy.mock.calls.length).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

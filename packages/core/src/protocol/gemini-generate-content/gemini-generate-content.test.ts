@@ -10,6 +10,14 @@ function geminiRequest(body: unknown): Request {
   });
 }
 
+function geminiRequestWithSignal(body: unknown, signal: AbortSignal): Request {
+  return new Request('https://x/v1beta/models/src:generateContent', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
 describe('geminiGenerateContentAdapter.rawRequest', () => {
   test('clamps thinkingLevel in the raw body against the supported set', async () => {
     const body = {
@@ -92,6 +100,23 @@ describe('geminiGenerateContentAdapter.rawRequest', () => {
     expect(await forwarded.json()).toMatchObject({
       generationConfig: { thinkingConfig: { thinkingLevel: 'low' } },
     });
+  });
+
+  test('propagates the inbound abort signal on the rewritten request', async () => {
+    // A client disconnect must abort the upstream generation: the rewritten
+    // request has to carry raw.signal, not a fresh non-aborted one, or raw
+    // transports that honour request.signal keep billing after cancellation.
+    const controller = new AbortController();
+    const body = { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] };
+    const raw = geminiRequestWithSignal(body, controller.signal);
+    const parsed = parseGeminiGenerateContent(structuredClone({ ...body, model: 'src' }));
+    const forwarded = await geminiGenerateContentAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {
+      model: 'src',
+      stream: false,
+    });
+    expect(forwarded.signal.aborted).toBe(false);
+    controller.abort();
+    expect(forwarded.signal.aborted).toBe(true);
   });
 });
 

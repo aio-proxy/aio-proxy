@@ -3,7 +3,7 @@
 'aio-proxy': minor
 ---
 
-core: normalize and downgrade reasoning effort per upstream model capability
+normalize and downgrade reasoning effort per upstream model capability
 
 Inbound reasoning-effort values are now accepted leniently and clamped to what
 each candidate upstream model actually advertises, on both the raw-passthrough
