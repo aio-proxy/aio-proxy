@@ -23,6 +23,12 @@ export const UsageRowSchema = z.object({
   cacheReadTokens: TokenCountSchema.optional(),
   cacheWriteTokens: TokenCountSchema.optional(),
   reasoningTokens: TokenCountSchema.optional(),
+  inputAudioTokens: TokenCountSchema.optional(),
+  outputAudioTokens: TokenCountSchema.optional(),
+  // Per-EVENT counts (not tokens): generated images and web-search invocations
+  // that downstream pricing charges as per-event fees, distinct from the token fields above.
+  imageCount: TokenCountSchema.optional(),
+  webSearchCount: TokenCountSchema.optional(),
   priceModelId: IdSchema.optional(),
   // oxlint-disable-next-line typescript/no-deprecated -- Keep the finite boundary explicit in the public schema.
   estimatedCostUsd: z.number().finite().min(0).optional(),
