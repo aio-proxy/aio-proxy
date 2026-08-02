@@ -68,5 +68,9 @@ function pricingInput(usage: UsageRow) {
     ...(usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: usage.cacheReadTokens }),
     ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
     ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+    ...(usage.inputAudioTokens === undefined ? {} : { inputAudioTokens: usage.inputAudioTokens }),
+    ...(usage.outputAudioTokens === undefined ? {} : { outputAudioTokens: usage.outputAudioTokens }),
+    ...(usage.imageCount === undefined ? {} : { imageCount: usage.imageCount }),
+    ...(usage.webSearchCount === undefined ? {} : { webSearchCount: usage.webSearchCount }),
   };
 }
