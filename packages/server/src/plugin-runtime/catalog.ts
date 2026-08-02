@@ -80,14 +80,14 @@ export function catalogFreshness(
   return policy.kind === 'ttl' && stored.refreshedAt + policy.ttlMs <= Date.now() ? 'stale' : 'fresh';
 }
 
-export function modelMetadata(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
+export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   return Object.fromEntries(
     catalog.language.map((descriptor) => {
       const protocol = metadataProtocol(descriptor.metadata);
       return [
         descriptor.id,
         {
-          ...(descriptor.displayName === undefined ? {} : { displayName: descriptor.displayName }),
+          ...(descriptor.displayName === undefined ? {} : { name: descriptor.displayName }),
           ...(protocol === undefined ? {} : { protocol }),
         },
       ];
