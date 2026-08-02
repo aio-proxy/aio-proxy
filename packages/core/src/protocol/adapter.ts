@@ -46,11 +46,18 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
   session?: (request: TRequest, context: TContext) => ProtocolSessionHints;
   wantsStream: (request: TRequest, context: TContext) => boolean;
-  rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
+  rawRequest: (
+    raw: Request,
+    request: TRequest,
+    resolvedModel: string,
+    supportedEfforts: ReadonlySet<string>,
+    context: TContext,
+  ) => Promise<Request>;
   modelInvocation: (request: TRequest, context: TContext) => ModelInvocation;
   modelInvocationForTarget: (
     invocation: ModelInvocation,
     targetProtocol: ProviderProtocol | undefined,
+    supportedEfforts: ReadonlySet<string>,
   ) => ModelInvocation;
   modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
   modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
