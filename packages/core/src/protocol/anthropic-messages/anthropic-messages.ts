@@ -13,9 +13,10 @@ import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from '..
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
 import { anthropicThinkingOption } from '../anthropic-thinking';
 import { anthropicMessagesErrors } from '../errors';
-import { readJsonRequest, rewriteJsonRequestModel } from '../request';
+import { readJsonRequest } from '../request';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
+import { normalizeAnthropicInvocationEffort, rewriteAnthropicRawEffort } from './effort';
 
 type AnthropicAssistantPart = Exclude<Extract<AnthropicModelMessage, { role: 'assistant' }>['content'], string>[number];
 type AnthropicUserContent = Extract<AnthropicModelMessage, { role: 'user' }>['content'];
@@ -43,8 +44,8 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
     transcript: request.messages,
   }),
   wantsStream: (request) => request.stream === true,
-  rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel ? Promise.resolve(raw.clone()) : rewriteJsonRequestModel(raw, resolvedModel);
+  rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+    return rewriteAnthropicRawEffort(raw, resolvedModel, supportedEfforts);
   },
   modelInvocation(request) {
     const transformed = anthropicMessagesToModelMessages(request);
@@ -65,6 +66,9 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
       ...(tools === undefined ? {} : { tools }),
       ...(providerTools === undefined || providerTools.length === 0 ? {} : { providerTools }),
     };
+  },
+  modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts) {
+    return normalizeAnthropicInvocationEffort(invocation, supportedEfforts);
   },
   modelJson: writeAnthropicMessagesResponse,
   modelSse: writeAnthropicMessagesSSE,
