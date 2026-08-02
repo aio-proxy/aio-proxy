@@ -4,7 +4,7 @@
 
 **Goal:** Let each `api`/`ai-sdk` Provider declare a `metadata` map keyed by upstream model id that overrides client-visible model metadata (display name, token limits, capability flags, date metadata) and per-model cost accounting, taking precedence over models.dev auto-discovery.
 
-**Architecture:** A field-allowlisted, `.loose()` Zod schema in `@aio-proxy/types` defines the config shape (`metadata."<upstream-id>": { displayName, description, extend, limit, capabilities, cost }`), mirroring the models.dev / OpenRouter field vocabulary in camelCase. `@aio-proxy/server` materializes config `metadata` onto each runtime Provider instance; model resolution and the Codex `/models` assembly apply overrides with a config > models.dev > default priority and aggregate context windows across providers. Billing maps the hit channel's config `cost` into the existing `OpenRouterModelPrice` pricing engine (extended with split audio, per-event fees, and context-size tiers), recording a `priceSource` provenance on each usage row.
+**Architecture:** A field-allowlisted, `.loose()` Zod schema in `@aio-proxy/types` defines the config shape (`metadata."<upstream-id>": { name, description, extend, limit, capabilities, cost }`), mirroring the models.dev / OpenRouter field vocabulary in camelCase. `@aio-proxy/server` materializes config `metadata` onto each runtime Provider instance; model resolution and the Codex `/models` assembly apply overrides with a config > models.dev > default priority and aggregate context windows across providers. Billing maps the hit channel's config `cost` into the existing `OpenRouterModelPrice` pricing engine (extended with split audio, per-event fees, and context-size tiers), recording a `priceSource` provenance on each usage row.
 
 **Tech Stack:** Bun, TypeScript, Zod 4, Turborepo, `@opencode-ai/models` (models.dev catalog), `bun:test`/Rstest.
 
@@ -29,13 +29,14 @@
 ```jsonc
 "metadata": {
   "<upstream-model-id>": {
-    "displayName": "GPT-5 Codex",
+    "name": "GPT-5 Codex",
     "description": "OpenAI GPT-5 tuned for agentic coding",
     "extend": "openai/gpt-5",
     "limit": { "context": 400000, "input": 272000, "output": 128000 },
     "capabilities": {
       "reasoning": true, "temperature": true, "toolCall": true,
       "attachment": true, "structuredOutput": true,
+      "reasoningOptions": [ { "type": "effort", "values": ["low","medium","high","xhigh"] } ],
       "modalities": { "input": ["text","image"], "output": ["text"] },
       "knowledge": "2025-01", "releaseDate": "2025-06", "lastUpdated": "2025-07"
     },
@@ -93,14 +94,14 @@
 - Test: `packages/types/src/model-metadata/model-metadata.test.ts`
 
 **Interfaces:**
-- Produces: `ModelMetadataSchema`, `ModelCostSchema`, `ModelLimitSchema`, `ModelCapabilitiesSchema`, `ModelCostTierSchema`, `ModalitySchema`; types `ModelMetadata`, `ModelCost`, `ModelCostTier`, `ModelLimit`, `ModelCapabilities`, `Modality`; `MODEL_METADATA_KNOWN_KEYS`; `collectUnknownModelMetadataKeys(record): readonly string[]`.
+- Produces: `ModelMetadataSchema`, `ModelCostSchema`, `ModelLimitSchema`, `ModelCapabilitiesSchema`, `ModelCostTierSchema`, `ModalitySchema`, `ReasoningOptionSchema`, `ReasoningEffortSchema`; types `ModelMetadata`, `ModelCost`, `ModelCostTier`, `ModelLimit`, `ModelCapabilities`, `Modality`, `ReasoningOption`, `ReasoningEffort`; `MODEL_METADATA_KNOWN_KEYS`; `collectUnknownModelMetadataKeys(record): readonly string[]`.
 
-- [ ] **Step 1: Write failing tests** for: accepts a full record (`displayName`/`description`/`extend`/`limit`/`capabilities`/`cost` with split audio + nested tier); preserves unknown top-level & unknown `cost` keys under `.loose()`; rejects negative cost (`cost.input: -1`), non-positive limit (`limit.context: 0`), non-integer limit (`limit.context: 1.5`), negative tier size; `collectUnknownModelMetadataKeys` reports `up-a.mystery` and `up-a.cost.surcharge`.
+- [ ] **Step 1: Write failing tests** for: accepts a full record (`name`/`description`/`extend`/`limit`/`capabilities`/`cost` with split audio + nested tier); preserves unknown top-level & unknown `cost` keys under `.loose()`; rejects negative cost (`cost.input: -1`), non-positive limit (`limit.context: 0`), non-integer limit (`limit.context: 1.5`), negative tier size; `collectUnknownModelMetadataKeys` reports `up-a.mystery` and `up-a.cost.surcharge`.
 
 ```ts
 test('accepts a full metadata record', () => {
   const parsed = ModelMetadataSchema.parse({
-    displayName: 'X',
+    name: 'X',
     limit: { context: 1_000_000, input: 900_000, output: 65_536 },
     capabilities: { reasoning: true, modalities: { input: ['text', 'image'], output: ['text'] }, knowledge: '2025-01' },
     cost: { input: 2, output: 10, inputAudio: 40, outputAudio: 80, image: 0.01, request: 0.004,
@@ -122,7 +123,7 @@ test('reports unknown top-level and nested cost keys', () => {
 ```
 
 - [ ] **Step 2: Run tests, verify they fail** — Run: `cd packages/types && bun test src/model-metadata/model-metadata.test.ts` — Expected: FAIL (schema/fields missing).
-- [ ] **Step 3: Implement** the schemas per the Field Shape section: `TokenClassPriceFields` (adds `inputAudio`/`outputAudio`), `ModelCostTierSchema` (`tier: { type: literal('context'), size: int().nonnegative() }` + token fields), `ModelCostSchema` (`.loose()`, token + `image`/`webSearch`/`request` + `tiers`), `ModelLimitSchema` (`context`/`input`/`output` = `int().positive().optional()`, `.loose()`), `ModalitySchema` = `z.enum(['text','audio','image','video','pdf'])`, `ModelModalitiesSchema`, `ModelCapabilitiesSchema` (booleans + modalities + `knowledge`/`releaseDate`/`lastUpdated` strings, `.loose()`), `ModelMetadataSchema` (`displayName`/`description`/`extend`/`limit`/`capabilities`/`cost`, `.loose()`). `MODEL_METADATA_KNOWN_KEYS = {displayName, description, extend, limit, capabilities, cost}`; `MODEL_COST_KNOWN_KEYS` = token + audio + fees + `tiers`; `collectUnknownModelMetadataKeys` checks top-level + `cost` subkeys.
+- [ ] **Step 3: Implement** the schemas per the Field Shape section: `TokenClassPriceFields` (adds `inputAudio`/`outputAudio`), `ModelCostTierSchema` (`tier: { type: literal('context'), size: int().nonnegative() }` + token fields), `ModelCostSchema` (`.loose()`, token + `image`/`webSearch`/`request` + `tiers`), `ModelLimitSchema` (`context`/`input`/`output` = `int().positive().optional()`, `.loose()`), `ModalitySchema` = `z.enum(['text','audio','image','video','pdf'])`, `ModelModalitiesSchema`, `ReasoningEffortSchema` = `z.enum([...]).nullable()`, `ReasoningOptionSchema` = discriminated union on `type` of `toggle` / `effort {values}` / `budgetTokens {min?,max?}` (camelCased from models.dev `budget_tokens`), `ModelCapabilitiesSchema` (booleans + `reasoningOptions?: ReasoningOption[]` + modalities + `knowledge`/`releaseDate`/`lastUpdated` strings, `.loose()`), `ModelMetadataSchema` (`name`/`description`/`extend`/`limit`/`capabilities`/`cost`, `.loose()`). `MODEL_METADATA_KNOWN_KEYS = {name, description, extend, limit, capabilities, cost}`; `MODEL_COST_KNOWN_KEYS` = token + audio + fees + `tiers`; `collectUnknownModelMetadataKeys` checks top-level + `cost` subkeys.
 - [ ] **Step 4: Run tests, verify pass** — Run: `cd packages/types && bun test src/model-metadata/model-metadata.test.ts` — Expected: PASS.
 - [ ] **Step 5: Commit** — `git add packages/types/src/model-metadata && git commit -m "feat(types): per-model metadata schema (limit/capabilities/cost)"`
 
@@ -172,7 +173,7 @@ test('reports unknown top-level and nested cost keys', () => {
 - Consumes: `ModelMetadata` (Task 1), provider schema `metadata` (Task 2).
 - Produces: `RuntimeProviderInstance.metadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>`; `modelMetadataRecord(catalog): Readonly<Record<string, RuntimeModelMetadata>>`.
 
-- [ ] **Step 1: Write a failing test** that `capabilities()` output for a plugin provider exposes `metadata[modelId]` with the catalog descriptor's protocol/displayName.
+- [ ] **Step 1: Write a failing test** that `capabilities()` output for a plugin provider exposes `metadata[modelId]` with the catalog descriptor's protocol/name.
 - [ ] **Step 2: Run, verify fail** — Run: `cd packages/server && bun test src/plugin-runtime/capabilities.test.ts` — Expected: FAIL.
 - [ ] **Step 3: Implement** the `metadata` spread on api/ai-sdk instances; rename runtime field to `metadata`; materialize config `metadata` in both `materialize.ts` branches; `modelMetadataRecord` + `metadata` field in `capabilities.ts`. Rebuild core: `bunx turbo run build --filter=@aio-proxy/core`.
 - [ ] **Step 4: Run, verify pass** — Expected: PASS.
@@ -189,9 +190,9 @@ test('reports unknown top-level and nested cost keys', () => {
 - Consumes: `RuntimeProviderInstance.metadata` (Task 4).
 - Produces: `ResolvedModel.contextWindow` (resolved single value, name unchanged).
 
-- [ ] **Step 1: Write failing tests**: config `displayName` wins over catalog name; `candidateContextWindow` prefers config `limit.context`, then `limit.input`, then models.dev `limit.input`/`limit.context`; `min`/`max` aggregation across two providers exposes 200k / 1M respectively; a config context override wins over the models.dev limit in codex assembly.
+- [ ] **Step 1: Write failing tests**: config `name` wins over catalog name; `candidateContextWindow` prefers config `limit.context`, then `limit.input`, then models.dev `limit.input`/`limit.context`; `min`/`max` aggregation across two providers exposes 200k / 1M respectively; a config context override wins over the models.dev limit in codex assembly.
 - [ ] **Step 2: Run, verify fail** — Run: `cd packages/server && bun test src/server/model-resolution` — Expected: FAIL.
-- [ ] **Step 3: Implement** the `provider.metadata?.[id]?.displayName` read and `candidateContextWindow` reading `limit.context ?? limit.input ?? metadata?.limit.input ?? metadata?.limit.context`; keep the resolved-single-value `contextWindow` name in list-models/codex.
+- [ ] **Step 3: Implement** the `provider.metadata?.[id]?.name` read and `candidateContextWindow` reading `limit.context ?? limit.input ?? metadata?.limit.input ?? metadata?.limit.context`; keep the resolved-single-value `contextWindow` name in list-models/codex.
 - [ ] **Step 4: Run, verify pass** — Expected: PASS.
 - [ ] **Step 5: Commit** — `git commit -am "feat(server): apply metadata overrides in model resolution"`
 
@@ -226,6 +227,6 @@ test('reports unknown top-level and nested cost keys', () => {
 
 ## Self-Review Notes
 
-- **Spec coverage:** displayName/description/extend/limit/capabilities/cost all in Task 1; provider wiring Task 2; cost engine Task 3; runtime Task 4; resolution/catalog Task 5; billing+provenance Task 6; docs Task 7. `capabilities` is stored end-to-end; downstream *projection* of capability flags into Codex ModelInfo is limited to what Codex consumes (context window) — remaining flags are stored/served but not yet mapped into every client field (acceptable for v1; flagged for a follow-up if a client needs them).
+- **Spec coverage:** name/description/extend/limit/capabilities/cost all in Task 1; provider wiring Task 2; cost engine Task 3; runtime Task 4; resolution/catalog Task 5; billing+provenance Task 6; docs Task 7. `capabilities` is stored end-to-end; downstream *projection* of capability flags into Codex ModelInfo is limited to what Codex consumes (context window) — remaining flags are stored/served but not yet mapped into every client field (acceptable for v1; flagged for a follow-up if a client needs them).
 - **Type consistency:** config type is `ModelCost`; the pricing engine's shape is the distinct `OpenRouterModelPrice` (kept as its own naming layer, not renamed). `configModelPrice` bridges the two. Runtime field is `metadata`; catalog helper is `modelMetadataRecord`.
 - **Out of scope:** google-antigravity `modelMetadata` wire field and catalog `contextWindow`; models.dev→engine audio/tier auto-discovery mapping in `price.ts` (config override path only).

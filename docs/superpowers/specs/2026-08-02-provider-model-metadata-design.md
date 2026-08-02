@@ -32,7 +32,7 @@
 "metadata": {
   "<upstream-model-id>": {
     // ── 展示 / 继承 ──
-    "displayName": "GPT-5 Codex",
+    "name": "GPT-5 Codex",
     "description": "OpenAI GPT-5 tuned for agentic coding",  // 对齐 models.dev：description 是模型顶层字段，不归 capabilities
     "extend": "openai/gpt-5",           // 仅当本地 id 与 models.dev slug 对不上时改指向
 
@@ -42,6 +42,9 @@
     // ── 能力位 capabilities（v1 纳入；全可选、覆盖 models.dev 自动发现；扁平布尔支持三态：true=强制开 / false=强制关 / 缺省=不覆盖）──
     "capabilities": {
       "reasoning": true,
+      "reasoningOptions": [                       // 照抄 models.dev；消费方 toAnthropicCapabilities 已按此形状读取
+        { "type": "effort", "values": ["low","medium","high","xhigh"] }
+      ],
       "temperature": true,
       "toolCall": true,
       "attachment": true,
@@ -76,8 +79,16 @@
 ```ts
 ModalitySchema = z.enum(['text','audio','image','video','pdf'])
 
+ReasoningEffortSchema = z.enum(['none','minimal','low','medium','high','xhigh','max','default']).nullable()
+ReasoningOptionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('toggle') }).loose(),
+  z.object({ type: z.literal('effort'), values: z.array(ReasoningEffortSchema) }).loose(),
+  z.object({ type: z.literal('budgetTokens'), min?, max?: int() }).loose(),
+])   // camelCase budgetTokens ← models.dev budget_tokens
+
 ModelCapabilitiesSchema = z.object({
   reasoning?, temperature?, toolCall?, attachment?, structuredOutput?: z.boolean(),
+  reasoningOptions?: ReasoningOptionSchema[],
   modalities?: z.object({ input?: Modality[], output?: Modality[] }).loose(),
   knowledge?, releaseDate?, lastUpdated?: z.string(),   // 日期元数据 YYYY-MM(-DD)
 }).loose()
@@ -96,7 +107,7 @@ ModelCostSchema = z.object({
   tiers?: ModelCostTierSchema[],
 }).loose()
 
-ModelMetadataSchema = z.object({ displayName?, description?, extend?, limit?, capabilities?, cost? }).loose()
+ModelMetadataSchema = z.object({ name?, description?, extend?, limit?, capabilities?, cost? }).loose()
 ```
 
 ## 4. 计费引擎需要跟着改的点（`usage-pricing.ts`）
@@ -110,6 +121,7 @@ ModelMetadataSchema = z.object({ displayName?, description?, extend?, limit?, ca
 
 - `RuntimeModelMetadata` 已是 `ModelMetadata & {protocol?}`，capabilities 自动带上。
 - `/models`（`list-models.ts`）与 codex（`codex-assembly.ts`）需把 capabilities 覆盖投影到对外字段——需确认 Codex ModelInfo 消费哪些能力位（reasoning/tool 等），未消费的仅存储不投影。
+- **`reasoningOptions` 有活跃消费方**：`packages/server/src/server/model-capabilities/model-capabilities.ts` 的 `toAnthropicCapabilities` 读 `reasoning_options`，找 `type:'effort'` 项的 `values` 填 Anthropic `/v1/models` 的 `effort.{high,low,medium,max,xhigh}`，并据 `budget_tokens`/`toggle`/`effort` 推 `thinking.types.{enabled,adaptive}`。目前它只读 `ModelsDevModel`（models.dev 原始 snake_case）；本特性需让 config 的 `capabilities.reasoningOptions` 覆盖并入这一投影，使用户可纠正 models.dev 对 effort 档位的误报。config 侧字面量用 camelCase `budgetTokens`，合并时归一到消费方读取的形状。
 - 未消费的能力位仍值得存，因为 dashboard 与未来导出器会用。
 
 ## 6. 最终确认（已定）
@@ -124,6 +136,8 @@ ModelCapabilitiesSchema = z.object({
   toolCall: z.boolean().optional(),
   attachment: z.boolean().optional(),
   structuredOutput: z.boolean().optional(),
+  // reasoning 可配置方式（照抄 models.dev ReasoningOption[]，budget_tokens→budgetTokens）
+  reasoningOptions: z.array(ReasoningOptionSchema).optional(),
   modalities: z.object({
     input: z.array(ModalitySchema).optional(),
     output: z.array(ModalitySchema).optional(),
@@ -135,7 +149,7 @@ ModelCapabilitiesSchema = z.object({
 }).loose()
 ```
 
-`MODEL_METADATA_KNOWN_KEYS` = `{ displayName, description, extend, limit, capabilities, cost }`。
+`MODEL_METADATA_KNOWN_KEYS` = `{ name, description, extend, limit, capabilities, cost }`。
 `capabilities`/`limit`/`cost` 的未知子键沿用 `.loose()` 兜底；`collectUnknownModelMetadataKeys` 现仅检查顶层 + `cost` 子键（保持现有粒度，capabilities/limit 子键不额外收集）。
 
 ### 6.1 能力位风格：为什么是扁平布尔而非 OpenRouter 的 `supported_parameters`
@@ -152,4 +166,4 @@ ModelCapabilitiesSchema = z.object({
 3. **对齐权威源**：models.dev 本身用扁平布尔；OpenRouter 仅作为 modalities 取值与"audio 拆分"的佐证。
 4. **"字段更少"是错觉**：数组把 N 个布尔压成 1 字段，代价是每个消费点 `includes('tools')` 字符串查找且丢失三态。
 
-`description` 依两家惯例置于 **metadata 顶层**（与 `displayName` 平级），不归入 `capabilities`。`reasoning` 保持 `boolean`——"如何配置 reasoning"（effort/budget）属路由层，v1 不引入。
+`description` 依两家惯例置于 **metadata 顶层**（与 `name` 平级），不归入 `capabilities`。`name` 对齐 models.dev 的 `Model.name`（模型顶层规范名/展示名），覆盖客户端可见名称。`reasoning` 保持 `boolean`——"如何配置 reasoning"（effort/budget）属路由层，v1 不引入。
