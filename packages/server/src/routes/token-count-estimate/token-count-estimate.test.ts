@@ -27,23 +27,44 @@ test('CJK text estimates denser than the same character count of latin text', as
   expect(estimateInputTokens('anthropic', cjk)).toBeGreaterThan(estimateInputTokens('anthropic', latin));
 });
 
-test('ignores base64 image parts instead of counting their bytes', async () => {
-  const bigBase64 = 'A'.repeat(20_000);
-  const withImage = await invocationFrom({
+test('an image part contributes a fixed surcharge regardless of base64 size', async () => {
+  const small = await invocationFrom({
     messages: [
       {
         role: 'user',
         content: [
           { type: 'text', text: 'describe this' },
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: bigBase64 } },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(20_000) } },
+        ],
+      },
+    ],
+  });
+  const large = await invocationFrom({
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'describe this' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(200_000) } },
         ],
       },
     ],
   });
   const textOnly = await invocationFrom({ messages: [{ role: 'user', content: 'describe this' }] });
-  // The 20k base64 blob must not dominate the estimate the way bytes/64 (~310 tokens) would.
-  expect(estimateInputTokens('anthropic', withImage)).toBeLessThan(50);
-  expect(estimateInputTokens('anthropic', withImage)).toBe(estimateInputTokens('anthropic', textOnly));
+  // The image adds a flat surcharge, not a byte-scaled count: both sizes estimate identically.
+  expect(estimateInputTokens('anthropic', small)).toBe(estimateInputTokens('anthropic', large));
+  // And it is the text estimate plus the fixed image surcharge (~1600), never ~1.
+  expect(estimateInputTokens('anthropic', small)).toBeGreaterThanOrEqual(1600);
+  expect(estimateInputTokens('anthropic', small)).toBeGreaterThan(estimateInputTokens('anthropic', textOnly));
+});
+
+test('an image-only user message estimates the image surcharge, not ~1 token', async () => {
+  const imageOnly = await invocationFrom({
+    messages: [
+      { role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AA==' } }] },
+    ],
+  });
+  expect(estimateInputTokens('anthropic', imageOnly)).toBeGreaterThanOrEqual(1600);
 });
 
 test('counts tool schemas because they are sent to the model verbatim', async () => {
@@ -61,9 +82,8 @@ test('counts tool schemas because they are sent to the model verbatim', async ()
   expect(estimateInputTokens('anthropic', withTools)).toBeGreaterThan(estimateInputTokens('anthropic', noTools));
 });
 
-test('a tool-result carrying a large base64 image does not inflate the estimate', async () => {
-  const bigBase64 = 'A'.repeat(20_000);
-  const withMedia = {
+test('a tool-result image surcharges a fixed amount regardless of base64 size', async () => {
+  const small = {
     messages: [
       {
         role: 'tool' as const,
@@ -76,7 +96,7 @@ test('a tool-result carrying a large base64 image does not inflate the estimate'
               type: 'content' as const,
               value: [
                 { type: 'text' as const, text: 'ok' },
-                { type: 'media' as const, data: bigBase64, mediaType: 'image/png' },
+                { type: 'media' as const, data: 'A'.repeat(20_000), mediaType: 'image/png' },
               ],
             },
           },
@@ -84,8 +104,30 @@ test('a tool-result carrying a large base64 image does not inflate the estimate'
       },
     ],
   };
-  // The 20k base64 blob must not dominate: JSON.stringify(output) would be ~310 tokens.
-  expect(estimateInputTokens('anthropic', withMedia)).toBeLessThan(50);
+  const large = {
+    messages: [
+      {
+        role: 'tool' as const,
+        content: [
+          {
+            type: 'tool-result' as const,
+            toolCallId: 'call_1',
+            toolName: 'render',
+            output: {
+              type: 'content' as const,
+              value: [
+                { type: 'text' as const, text: 'ok' },
+                { type: 'media' as const, data: 'A'.repeat(200_000), mediaType: 'image/png' },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+  // The base64 blob is never byte-counted: both sizes estimate the same fixed image surcharge.
+  expect(estimateInputTokens('anthropic', small)).toBe(estimateInputTokens('anthropic', large));
+  expect(estimateInputTokens('anthropic', small)).toBeGreaterThanOrEqual(1600);
 });
 
 test('an assistant tool-call counts its name and input JSON', async () => {
@@ -114,4 +156,18 @@ test('a long unbroken run scales with its length instead of collapsing to one to
   expect(estimateInputTokens('anthropic', longRun)).toBeGreaterThanOrEqual(1000);
   // A short word still rounds to ~1 token.
   expect(estimateInputTokens('anthropic', shortWord)).toBeLessThanOrEqual(3);
+});
+
+test('a non-image file (PDF) part estimates at least the file surcharge', async () => {
+  const withPdf = {
+    messages: [
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'file' as const, mediaType: 'application/pdf', data: { type: 'data' as const, data: 'JVBER=' } },
+        ],
+      },
+    ],
+  };
+  expect(estimateInputTokens('anthropic', withPdf)).toBeGreaterThanOrEqual(2000);
 });

@@ -4,6 +4,14 @@ import type { ProtocolId } from '@aio-proxy/plugin-sdk';
 // One element of a structured (non-string) message content array.
 type ContentPart = Extract<ModelInvocation['messages'][number]['content'], readonly unknown[]>[number];
 
+// Conservative per-part surcharges for the local fallback. We cannot decode base64 to get
+//  dimensions/pages, so we assign a fixed non-zero estimate rather than 0 (which would let an
+//  image/PDF-only request read as ~1 token). Anchored on Anthropic's ~(w×h)/750 → a typical
+//  1568-px image ≈ 1600 tokens; PDFs are usually larger, so bias higher. Upstream anthropic-raw
+//  providers return exact counts and never hit this path.
+const IMAGE_TOKEN_SURCHARGE = 1600;
+const FILE_TOKEN_SURCHARGE = 2000;
+
 // Per-provider character-class weights (tokens contributed by each class),
 // ported from new-api's empirical BPE averages
 // (.reference/new-api/service/token_estimator.go). The count endpoint's real
@@ -101,6 +109,31 @@ function toolResultText(output: Extract<ContentPart, { type: 'tool-result' }>['o
   }
 }
 
+// Fixed token surcharge for the non-text (image/file) parts of a message, including image/file
+// entries nested in a tool-result's content array. We never decode or byte-count the payload —
+// each media part contributes a flat estimate so an image/PDF-only request cannot read as ~0.
+function mediaSurcharge(content: ModelInvocation['messages'][number]['content']): number {
+  if (typeof content === 'string') return 0;
+  let tokens = 0;
+  for (const part of content) {
+    if (part.type === 'file') {
+      tokens += part.mediaType.startsWith('image') ? IMAGE_TOKEN_SURCHARGE : FILE_TOKEN_SURCHARGE;
+    } else if ('image' in part) {
+      // Deprecated ImagePart carries an `image` field rather than `data`.
+      tokens += IMAGE_TOKEN_SURCHARGE;
+    } else if (part.type === 'tool-result' && part.output.type === 'content') {
+      for (const item of part.output.value) {
+        // Skip inline text (counted elsewhere); surcharge media/file entries by shape, not by
+        // the deprecated `media` type discriminant or their base64 byte length.
+        if ('text' in item) continue;
+        const isImage = 'mediaType' in item && typeof item.mediaType === 'string' && item.mediaType.startsWith('image');
+        tokens += isImage ? IMAGE_TOKEN_SURCHARGE : FILE_TOKEN_SURCHARGE;
+      }
+    }
+  }
+  return tokens;
+}
+
 // Pull user-visible text from a message, ignoring binary parts (base64
 // images/files) whose serialized size would inflate a byte count.
 function messageText(content: ModelInvocation['messages'][number]['content']): string {
@@ -117,7 +150,11 @@ function messageText(content: ModelInvocation['messages'][number]['content']): s
 export function estimateInputTokens(protocol: ProtocolId, invocation: ModelInvocation): number {
   const w = weightsFor(protocol);
   let total = 0;
-  for (const message of invocation.messages) total += estimateText(messageText(message.content), w);
+  for (const message of invocation.messages) {
+    total += estimateText(messageText(message.content), w);
+    // Media surcharges are already in token units — do NOT run them through char weighting.
+    total += mediaSurcharge(message.content);
+  }
   // Tool schemas are serialized into the model prompt verbatim, so they count.
   if (invocation.tools !== undefined) total += estimateText(JSON.stringify(invocation.tools), w);
   return Math.max(1, Math.ceil(total));
