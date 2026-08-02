@@ -1,5 +1,17 @@
 # aio-proxy
 
+## 0.5.1
+
+### Patch Changes
+
+- [#131](https://github.com/aio-proxy/aio-proxy/pull/131) [`1a525e8`](https://github.com/aio-proxy/aio-proxy/commit/1a525e861a0ef77668c3321f75171bb9e2880e9f) Thanks [@baranwang](https://github.com/baranwang)! - core: fix proxied streaming passthrough dropping the request body. Bun 1.3.x
+  silently discards a `ReadableStream` request body when `fetch` uses a proxy, so
+  `api` providers with a `proxy` configured hung until timeout on streaming
+  requests (e.g. `openai-response` passthrough). `createProxyFetch` now buffers a
+  streamed request body to bytes before sending it through the proxy, so the body
+  survives without changing the streaming response. This lets the build toolchain
+  stay on the reproducible Bun 1.3.14 release.
+
 ## 0.5.0
 
 ### Minor Changes
