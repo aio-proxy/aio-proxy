@@ -10,13 +10,17 @@
 # builder, so buildx produces linux/amd64 and linux/arm64 without QEMU emulating
 # the build. Dashboard assets are embedded into the binary by the compiled entry,
 # so the runtime stage needs nothing but the binary itself.
-FROM --platform=$BUILDPLATFORM oven/bun:1 AS prune
+# NOTE: pinned to the Bun canary line — 1.4 fixes a 1.3.x bug where fetch() with a
+# proxy silently drops a ReadableStream request body (breaks proxied streaming
+# passthrough). `bun build --compile` embeds the BUILD-stage runtime into the
+# binary, so this base is what ships. Revert to oven/bun:1 once 1.4.0 is stable.
+FROM --platform=$BUILDPLATFORM oven/bun:canary-alpine AS prune
 WORKDIR /src
 COPY . .
 # bunx runs turbo without a global install layer; pin the repo's major.
 RUN bunx turbo@2 prune @aio-proxy/cli --docker
 
-FROM --platform=$BUILDPLATFORM oven/bun:1 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:canary-alpine AS build
 ARG TARGETARCH
 WORKDIR /src
 # Manifests + lockfile only: this layer is cached until a package.json/lock changes.
