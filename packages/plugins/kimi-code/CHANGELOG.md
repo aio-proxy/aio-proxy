@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-kimi-code
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.5.1
+
 ## 0.5.0
 
 ### Patch Changes
