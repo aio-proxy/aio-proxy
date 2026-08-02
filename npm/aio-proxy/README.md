@@ -155,6 +155,29 @@ When a request is billed, the Provider that actually served it supplies the pric
 
 Per-event fees and audio-token costs are metered from the actual response: generated images and web-search invocations are counted from the served output, and audio tokens are read from the upstream usage (available on OpenAI-compatible Chat Completions upstreams). A fee applies only when the corresponding events occur.
 
+#### Inheriting a catalog entry with `extend`
+
+When your Provider's upstream model id doesn't line up with a [models.dev](https://models.dev) slug (an aliased or renamed model), point `extend` at the slug to inherit as a base layer:
+
+```jsonc
+{
+  "metadata": {
+    // Your Provider serves this under a name models.dev doesn't know.
+    "my-frontier-alias": {
+      "extend": "openai/gpt-5.5", // inherit this catalog entry as the base
+      "name": "My Frontier Model", // override the inherited name
+      "cost": { "input": 2 }, // override input price; inherited output/tiers remain
+    },
+  },
+}
+```
+
+- `extend` names a models.dev slug (`provider/model`) whose catalog entry supplies the base metadata (name, limit, capabilities, cost).
+- Your explicit fields override the inherited ones. Merging is deep for objects (e.g. `cost.input` above overrides only that field while `cost.output` is inherited), and arrays (such as `capabilities.reasoningOptions`, `modalities`, and cost `tiers`) replace the inherited array wholesale rather than merging by index.
+- Only the `extend` target is used as the base — the model's own upstream id is **not** auto-matched against the catalog. That is the whole point of `extend`: the name doesn't line up.
+- Inherited `cost` is treated as a config price: you opted in through `extend`, so billing tags it `priceSource: "config"`, just like a `cost` you wrote out in full.
+- If the target slug isn't found in the catalog, your explicit fields are kept (the `extend` key is dropped) and a warning is logged; startup is never blocked.
+
 ## Routing rules
 
 Each key in the `providers` object is a stable **Provider ID**. A request is handled as follows:
