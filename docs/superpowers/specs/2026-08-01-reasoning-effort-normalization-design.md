@@ -38,8 +38,14 @@ clamps the effort down to the highest level that candidate's model supports.
 - Each protocol adapter rewrites effort in its own request shape. The candidate
   loop stays free of provider-kind and protocol branching, consistent with the
   Protocol Routing Architecture.
-- The cache `variant` key reflects the normalized effort, so two requests that
-  clamp to the same effort share a session/cache bucket.
+- The `variant` key keeps using the client's requested (raw) effort, unchanged.
+  `variant()` feeds `router.resolve(model, variantKey)`, which selects the target
+  upstream model via `resolveAliasTarget(config, variantKey)` — it runs before any
+  candidate is chosen, so the per-candidate model (and thus its supported set) is
+  not yet known. Normalization is strictly a per-candidate downstream concern and
+  must not touch routing/variant selection, or it would create a circular
+  dependency (pick a model to normalize against, but the model is picked by the
+  effort). Effort-based alias routing continues to key on the original request.
 
 ## Non-goals
 
@@ -99,6 +105,12 @@ modelEffortValues((await getModels([modelId]))[modelId])
 at runtime so it accepts `unknown`. Any thrown error or missing model yields an
 empty set (pass-through).
 
+`getModels` is async with an LRU + file cache. Resolving per candidate inside the
+attempt loop is acceptable: the first lookup warms the cache, subsequent lookups
+for the same `modelId` are cache hits. The resolve is awaited once per candidate
+attempt (alongside the upstream call it precedes), not per retry, and never blocks
+on a cold path more than the existing model-capabilities lookups already do.
+
 ## Adapter Interface Change
 
 `packages/core/src/protocol/adapter.ts` gains one parameter on each effort-bearing
@@ -140,8 +152,9 @@ Each adapter applies normalization in both of its paths:
   settings — Anthropic rewrites `providerOptions.aioProxy.thinking.effort`; the
   other three rewrite `settings.reasoning`.
 
-`variant` returns the normalized effort so cache/session bucketing is consistent
-with what is actually sent upstream.
+`variant` is unchanged and still returns the client's requested (raw) effort: it
+is consumed by `router.resolve` for effort-based alias/model selection before any
+candidate exists, so it cannot and must not carry a per-candidate normalized value.
 
 ## Ingress and Type Changes
 
@@ -180,7 +193,7 @@ with what is actually sent upstream.
     the raw body and the model invocation.
   - `xhigh` requested against a model that supports `xhigh` is preserved.
   - Empty supported set passes the requested effort through unchanged.
-  - `variant` reflects the normalized value.
+  - `variant` still returns the client's raw effort (unaffected by normalization).
 - A routing/regression test proving an inbound Anthropic request with
   `output_config.effort: "xhigh"` no longer 400s and is downgraded per candidate.
 
