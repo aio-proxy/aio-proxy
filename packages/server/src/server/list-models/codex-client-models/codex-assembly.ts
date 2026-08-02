@@ -35,6 +35,9 @@ type AssembleInput = {
   slug: string;
   displayName: string;
   metadata: ModelsDevModel | undefined;
+  // Config override, already aggregated across providers; wins over the catalog
+  // window. Undefined falls through to the catalog limit, then the static default.
+  contextWindow: number | undefined;
   // A complete upstream ModelInfo cloned as the base so every required field is
   // present. Undefined only when the catalog cache is empty (first-run offline).
   template: CodexUpstreamModel | undefined;
@@ -58,7 +61,9 @@ function reasoningLevelsFor(metadata: ModelsDevModel | undefined): readonly Reas
 
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
   const text = instructions.replaceAll('{{model_name}}', input.slug);
-  const contextWindow = input.metadata?.limit.input ?? input.metadata?.limit.context ?? DEFAULT_CONTEXT_WINDOW;
+  // Config override wins over the catalog window, which wins over the static default.
+  const contextWindow =
+    input.contextWindow ?? input.metadata?.limit.input ?? input.metadata?.limit.context ?? DEFAULT_CONTEXT_WINDOW;
 
   // Codex's InputModality enum accepts only 'text' and 'image'; emitting 'pdf'
   // (a common models.dev signal, e.g. Claude) makes the client reject the whole

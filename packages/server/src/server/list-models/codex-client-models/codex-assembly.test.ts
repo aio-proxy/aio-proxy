@@ -38,7 +38,13 @@ const TEMPLATE = {
 };
 
 test('synthesized entry inherits required ModelInfo fields from the template and drops promo fields', () => {
-  const entry = assembleCodexModel({ slug: 'x', displayName: 'X', metadata: undefined, template: TEMPLATE });
+  const entry = assembleCodexModel({
+    slug: 'x',
+    displayName: 'X',
+    metadata: undefined,
+    contextWindow: undefined,
+    template: TEMPLATE,
+  });
   // Required (non-Option, no serde default) Codex ModelInfo fields must be present
   // or the client rejects the whole Vec<ModelInfo> and shows an empty picker.
   expect(entry.shell_type).toBe('shell_command');
@@ -55,7 +61,13 @@ test('synthesized entry inherits required ModelInfo fields from the template and
 });
 
 test('synthesized entry carries required fields even with no template (offline)', () => {
-  const entry = assembleCodexModel({ slug: 'x', displayName: 'X', metadata: undefined, template: undefined });
+  const entry = assembleCodexModel({
+    slug: 'x',
+    displayName: 'X',
+    metadata: undefined,
+    contextWindow: undefined,
+    template: undefined,
+  });
   expect(entry.shell_type).toBe('shell_command');
   expect(entry.truncation_policy).toEqual({ mode: 'tokens', limit: 10_000 });
   expect(entry.support_verbosity).toBe(true);
@@ -68,6 +80,7 @@ test('synthesized entry substitutes model name and omits availability_nux', () =
     slug: 'my-alias',
     displayName: 'My Alias',
     metadata: undefined,
+    contextWindow: undefined,
     template: undefined,
   });
   expect(entry.slug).toBe('my-alias');
@@ -100,6 +113,7 @@ test('reasoning levels derive from the models-dev effort option values', () => {
   const entry = assembleCodexModel({
     slug: 'm',
     displayName: 'M',
+    contextWindow: undefined,
     metadata: model({
       limit: { context: 128_000, input: 500, output: 8_000 },
       reasoning: true,
@@ -120,6 +134,7 @@ test('a non-reasoning model advertises no reasoning levels and no default', () =
   const entry = assembleCodexModel({
     slug: 'm',
     displayName: 'M',
+    contextWindow: undefined,
     metadata: model({
       reasoning: false,
       modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
@@ -136,6 +151,7 @@ test('an effort option missing its values does not crash and yields no levels', 
   const entry = assembleCodexModel({
     slug: 'm',
     displayName: 'M',
+    contextWindow: undefined,
     metadata: model({
       reasoning: true,
       // Upstream JSON can omit `values` even though the type marks it required.
@@ -145,4 +161,18 @@ test('an effort option missing its values does not crash and yields no levels', 
   });
   expect(entry.supported_reasoning_levels).toEqual([]);
   expect(entry).not.toHaveProperty('default_reasoning_level');
+});
+
+test('a config context override wins over the models.dev limit in the assembled entry', () => {
+  // Catalog limit.input is 500; the config-resolved contextWindow of 900_000 must win
+  // and set both context_window and max_context_window that Codex consumes.
+  const entry = assembleCodexModel({
+    slug: 'm',
+    displayName: 'M',
+    contextWindow: 900_000,
+    metadata: model({ limit: { context: 128_000, input: 500, output: 8_000 } }),
+    template: undefined,
+  });
+  expect(entry.context_window).toBe(900_000);
+  expect(entry.max_context_window).toBe(900_000);
 });

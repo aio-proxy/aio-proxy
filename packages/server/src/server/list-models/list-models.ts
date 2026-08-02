@@ -15,7 +15,7 @@ type ModelListItem = OpenAIModel &
 
 export async function listModels(state: ServerState) {
   const resolved = await resolveEnabledModels(state);
-  const data = resolved.map(({ slug, provider, metadata, displayName }): ModelListItem => {
+  const data = resolved.map(({ slug, provider, metadata, displayName, contextWindow }): ModelListItem => {
     const timestamps = modelTimestamps(metadata?.release_date);
     return {
       capabilities: metadata === undefined ? null : toAnthropicCapabilities(metadata),
@@ -23,7 +23,9 @@ export async function listModels(state: ServerState) {
       created_at: timestamps.createdAt,
       display_name: displayName,
       id: slug,
-      max_input_tokens: metadata === undefined ? null : (metadata.limit.input ?? metadata.limit.context),
+      // Config context-window override wins over the catalog input/context limit.
+      max_input_tokens:
+        contextWindow ?? (metadata === undefined ? null : (metadata.limit.input ?? metadata.limit.context)),
       max_tokens: metadata?.limit.output ?? null,
       object: 'model',
       owned_by: provider.id,

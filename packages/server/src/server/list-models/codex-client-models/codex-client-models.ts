@@ -24,7 +24,15 @@ export async function codexClientModels(
     if (row !== undefined) {
       // Case A is verbatim: display_name comes from the upstream row, so it may
       // differ from the alias-only name that listModels/Case B derive. Intentional.
-      templated.push({ entry: { ...row, slug: model.slug, id: model.slug }, priority: row.priority });
+      // A config context override still wins over the row's advertised window.
+      const contextOverride =
+        model.contextWindow === undefined
+          ? {}
+          : { context_window: model.contextWindow, max_context_window: model.contextWindow };
+      templated.push({
+        entry: { ...row, ...contextOverride, slug: model.slug, id: model.slug },
+        priority: row.priority,
+      });
       continue;
     }
     synthesizedInputs.push({
@@ -34,6 +42,7 @@ export async function codexClientModels(
         slug: model.slug,
         displayName: model.displayName,
         metadata: model.metadata,
+        contextWindow: model.contextWindow,
         template,
       }),
     });

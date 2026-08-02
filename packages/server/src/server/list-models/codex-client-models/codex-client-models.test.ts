@@ -113,6 +113,41 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
 });
 
+test('config context overrides win in both the upstream row (case A) and the synthesized entry (case B)', async () => {
+  // Provider config caps gpt-5.6-sol (case A upstream row) at 250k and third-party-model
+  // (case B synthesized) at 750k. Both must project into the Codex ModelInfo.
+  const configured = {
+    id: 'p1',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    alias: {
+      'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
+      'my-alias': { model: 'third-party-model', preserve: false },
+    },
+    metadata: {
+      'gpt-5.6-sol': { limit: { context: 250_000 } },
+      'third-party-model': { limit: { context: 750_000 } },
+    },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+  const state = {
+    acquireProviderSnapshot: () => ({ snapshot: { providers: [configured] }, release() {} }),
+  } as unknown as ServerState;
+
+  // Upstream row advertises its own context window; the config override must win.
+  const upstreamRow = { ...upstream, context_window: 111_000, max_context_window: 111_000 };
+  const fetchImpl = (async () => Response.json({ models: [upstreamRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(state, { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  expect(caseA.context_window).toBe(250_000);
+  expect(caseA.max_context_window).toBe(250_000);
+
+  const caseB = models.find((m) => m.id === 'my-alias') as Record<string, unknown>;
+  expect(caseB.context_window).toBe(750_000);
+  expect(caseB.max_context_window).toBe(750_000);
+});
+
 test('synthesized entries get deterministic priorities past the max template priority, ordered by display name', async () => {
   const multi = {
     id: 'p1',
