@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import { geminiGenerateContentAdapter } from '@aio-proxy/core';
 
-import { LogicalSessionStore } from '../logical-session-store';
-import { createGeminiGenerateContentRoutes } from './gemini-generate-content';
+import { LogicalSessionStore } from '../../logical-session-store';
+import { createGeminiGenerateContentRoutes } from '../gemini-generate-content';
 import {
   anthropicRequest,
   configOrderedProviders,
@@ -264,4 +264,25 @@ test('routes Gemini countTokens and preserves a provider-qualified model resourc
 
   expect(await response.json()).toEqual({ totalTokens: 17 });
   expect(modelIds).toEqual(['gemini-wire']);
+});
+
+test('fallback returns a character-class estimate, not bytes/64', async () => {
+  const fixture = countFixture([provider({ id: 'no-count' })]); // provider() with no tokenCount => fallback
+  const cjkBody = {
+    model: requestedModel,
+    max_tokens: 16,
+    messages: [{ role: 'user', content: '你好世界一二三四五六七八' }],
+  };
+  const response = await fixture.anthropic(
+    new Request('https://proxy.test/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(cjkBody),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
+  const json = (await response.json()) as { input_tokens: number };
+  // 12 CJK chars * 1.21 ~ 15 tokens. bytes/64 of this JSON would be ~2. Guard the density.
+  expect(json.input_tokens).toBeGreaterThanOrEqual(10);
 });

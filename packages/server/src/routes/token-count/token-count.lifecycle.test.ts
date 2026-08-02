@@ -4,7 +4,7 @@ import { anthropicMessagesAdapter } from '@aio-proxy/core';
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 
-import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { handleTokenCount } from './token-count';
 import { countFixture } from './token-count.test-support';
 

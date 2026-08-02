@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import { anthropicMessagesAdapter } from '@aio-proxy/core';
 
-import { currentRequestLogContext } from '../request-logging';
-import { reconstructed, waitFor } from '../request-logging/test-support';
+import { currentRequestLogContext } from '../../request-logging';
+import { reconstructed, waitFor } from '../../request-logging/test-support';
 import { handleTokenCount } from './token-count';
 import { anthropicRequest, countFixture, provider } from './token-count.test-support';
 

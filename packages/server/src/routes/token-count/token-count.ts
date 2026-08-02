@@ -7,18 +7,20 @@ import {
   type RouterResolution,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
-import type { LogicalRequestContext, TokenCountInput } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, ProtocolId, TokenCountInput } from '@aio-proxy/plugin-sdk';
 import { context } from '@opentelemetry/api';
 
-import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../request-logging';
-import { attributeName, type RequestTraceSession, spanName } from '../request-tracing';
-import { isInboundAbort } from '../route-observation';
-import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
-import { hasInvalidOrOversizedContentLength } from './pipeline';
-import { prioritizeAffinity } from './pipeline/affinity';
-import { failureTerminal } from './pipeline/failure';
-import { cancelRetainedRequestBody } from './pipeline/request';
-import { type OpenSpan, startPipelineSpan } from './pipeline/tracing';
+import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../../request-logging';
+import { attributeName, type RequestTraceSession } from '../../request-tracing';
+import { isInboundAbort } from '../../route-observation';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
+import { hasInvalidOrOversizedContentLength } from '../pipeline';
+import { prioritizeAffinity } from '../pipeline/affinity';
+import { failureTerminal } from '../pipeline/failure';
+import { cancelRetainedRequestBody } from '../pipeline/request';
+import { estimateInputTokens } from './estimate';
+import { attemptRawCount } from './raw';
+import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from './shared';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -123,7 +125,8 @@ async function handleTokenCountInContext<TRequest, TContext>(
       return await countCandidates({
         adapter,
         candidates: ordered,
-        context: resolution.context,
+        context,
+        logicalRequest: resolution.context,
         format,
         invocation,
         rawRequest,
@@ -154,7 +157,8 @@ function finishRejected(session: RequestTraceSession, response: Response, errorC
 type CountCandidatesOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterResolution<RuntimeProviderInstance>[];
-  readonly context: LogicalRequestContext;
+  readonly context: TContext;
+  readonly logicalRequest: LogicalRequestContext;
   readonly format: (inputTokens: number) => unknown;
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
@@ -162,16 +166,11 @@ type CountCandidatesOptions<TRequest, TContext> = {
   readonly session: RequestTraceSession;
 };
 
-type CountAttempt = {
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly providerKind: RuntimeProviderInstance['kind'];
-};
-
 async function countCandidates<TRequest, TContext>({
   adapter,
   candidates,
   context,
+  logicalRequest,
   format,
   invocation,
   rawRequest,
@@ -181,6 +180,19 @@ async function countCandidates<TRequest, TContext>({
   throwIfCountAborted(session, rawRequest.signal);
 
   for (const [attemptIndex, candidate] of candidates.entries()) {
+    const rawResult = await attemptRawCount({
+      adapter,
+      candidate,
+      attemptIndex,
+      rawRequest,
+      request,
+      context,
+      logicalRequest,
+      session,
+    });
+    if (rawResult.kind === 'return') return rawResult.response;
+    if (rawResult.kind === 'next') continue;
+    // 'fallthrough' → this candidate has no raw transport; try its tokenCount path below.
     const provider = candidate.provider;
     const count = provider.tokenCount;
     if (count === undefined) continue;
@@ -205,7 +217,7 @@ async function countCandidates<TRequest, TContext>({
             protocol: adapter.protocol,
             modelId: candidate.modelId,
             request: rawRequest.clone(),
-            context,
+            context: logicalRequest,
             invocation: candidateInvocation,
           } satisfies TokenCountInput),
       );
@@ -245,7 +257,7 @@ async function countCandidates<TRequest, TContext>({
   }
 
   throwIfCountAborted(session, rawRequest.signal);
-  const estimate = Math.max(1, Math.ceil(JSON.stringify(request).length / 64));
+  const estimate = estimateInputTokens(adapter.protocol as ProtocolId, invocation);
   const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
   session.finish({ outcome: 'success', finalHttpStatus: 200 });
   return response;
@@ -253,24 +265,4 @@ async function countCandidates<TRequest, TContext>({
 
 function lacksProviderTool(provider: RuntimeProviderInstance, invocation: ModelInvocation): boolean {
   return invocation.providerTools?.some((tool) => provider.model?.supportsProviderTool?.(tool.type) !== true) === true;
-}
-
-function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
-  return startPipelineSpan(session.rootContext, spanName.attempt, {
-    attributes: {
-      [attributeName.attemptIndex]: index,
-      [attributeName.providerId]: attempt.providerId,
-      [attributeName.providerKind]: attempt.providerKind,
-      [attributeName.genAiResponseModel]: attempt.modelId,
-    },
-  });
-}
-
-function throwIfCountAborted(session: RequestTraceSession, signal: AbortSignal): void {
-  try {
-    signal.throwIfAborted();
-  } catch (error) {
-    session.finish({ outcome: 'cancelled' });
-    throw error;
-  }
 }

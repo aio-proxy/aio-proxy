@@ -4,9 +4,9 @@ import { anthropicMessagesAdapter, REQUEST_BODY_LIMITS, Router } from '@aio-prox
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 
-import { createRecording } from '../../__tests__/pipeline-helpers/recording';
-import { LogicalSessionStore } from '../logical-session-store';
-import type { ProviderRouteSource, RuntimeProviderInstance } from '../runtime';
+import { createRecording } from '../../../__tests__/pipeline-helpers/recording';
+import { LogicalSessionStore } from '../../logical-session-store';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { handleTokenCount } from './token-count';
 
 test('rejects oversized Content-Length and cancels the count request body before parsing', async () => {
