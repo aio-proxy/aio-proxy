@@ -4,6 +4,7 @@ import { LRUCache } from 'lru-cache';
 import { fileCacheStorage } from '../cache';
 import { resolveModel } from './resolve';
 
+export { catalogModelToMetadata } from './catalog-metadata/index';
 export { findModelPrice } from './price';
 
 const PROVIDERS_CACHE_KEY = 'models-dev-providers';

@@ -104,7 +104,7 @@ export {
   safeParseOpenAIResponses,
 } from './ingress/openai-responses/index';
 export type { Model as ModelsDevModel } from '@opencode-ai/models';
-export { clearModelsCache, findModelPrice, getModels, getProviders } from './models-dev/index';
+export { catalogModelToMetadata, clearModelsCache, findModelPrice, getModels, getProviders } from './models-dev/index';
 export {
   findInstalledNpmPackage,
   isNpmPackageName,
