@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import type { Model, Provider, ProviderMap } from '@opencode-ai/models';
 
-import { clearModelsCache, getModels } from '.';
+import { clearModelsCache, getModels, getModelsCachedOnly } from '.';
 import { fileCacheStorage } from '../cache';
 
 const model = (id: string, name = id): Model => ({
@@ -100,5 +100,43 @@ describe('getModels', () => {
     });
     clearModelsCache();
     expect((await getModels(['gpt-5']))['gpt-5']?.name).toBe('GPT-5 Renamed');
+  });
+});
+
+describe('getModelsCachedOnly', () => {
+  test('resolves from the file-cached provider map without a network fetch', async () => {
+    const originalFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === 'https://models.dev/api.json') fetched = true;
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const result = await getModelsCachedOnly(['gpt-5']);
+      expect(result['gpt-5']?.id).toBe('gpt-5');
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('returns undefined without fetching when the provider map is absent', async () => {
+    // Drop the seeded map so the file cache misses; a cold catalog must not
+    // trigger a network fetch on the hot path.
+    await fileCacheStorage.removeItem('models-dev-providers');
+    clearModelsCache();
+    const originalFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === 'https://models.dev/api.json') fetched = true;
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const result = await getModelsCachedOnly(['gpt-5']);
+      expect(result['gpt-5']).toBeUndefined();
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

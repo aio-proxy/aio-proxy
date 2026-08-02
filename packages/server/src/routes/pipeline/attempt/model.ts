@@ -1,11 +1,11 @@
-import { assertImageInputSupported, type ModelEgressContext } from '@aio-proxy/core';
+import { type ModelEgressContext } from '@aio-proxy/core';
 
 import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase } from '../attempt-base';
 import { createSseResponse, preflightStream } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
-import { emitReject, resolveInvocation } from './model-prepare';
+import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
 // Model dispatch for one candidate. The attempt span opens before the provider
 // invocation so buffered (non-stream) requests still get a real span duration.
@@ -19,25 +19,12 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
 
-  slot.trace.targetProtocol = model.targetProtocol?.(candidate.modelId);
-  const prepared = resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol);
+  const prepared = await prepareModelInvocation(ctx, slot, model, holder);
   if (prepared.kind !== 'ok') return prepared.step;
   const { candidateInvocation, targetProtocol } = prepared;
 
-  try {
-    assertImageInputSupported(candidateInvocation.messages, targetProtocol);
-  } catch (error) {
-    const unsupported = adapter.errors.modelUnsupported?.(error);
-    if (unsupported === undefined) throw error;
-    return emitReject(ctx, slot, unsupported, 'unsupported_feature');
-  }
-  const unsupportedProviderTool = candidateInvocation.providerTools?.find(
-    (tool) => model.supportsProviderTool?.(tool.type) !== true,
-  );
-  if (unsupportedProviderTool !== undefined) {
-    const unsupported = adapter.errors.unsupported(unsupportedProviderTool.type);
-    return emitReject(ctx, slot, unsupported);
-  }
+  const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
+  if (unsupported !== undefined) return unsupported;
 
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);

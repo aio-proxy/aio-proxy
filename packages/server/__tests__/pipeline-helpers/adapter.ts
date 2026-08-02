@@ -38,7 +38,7 @@ export function defineProtocolAdapter(
     },
     model: (request) => request.model,
     wantsStream: (request) => request.stream,
-    async rawRequest(raw, request, resolvedModel, context) {
+    async rawRequest(raw, request, resolvedModel, _supportedEfforts, context) {
       context.rawRequestCalls += 1;
       const headers = new Headers(raw.headers);
       headers.delete('content-length');

@@ -185,7 +185,7 @@ async function countCandidates<TRequest, TContext>({
     const count = provider.tokenCount;
     if (count === undefined) continue;
     const targetProtocol = provider.model?.targetProtocol?.(candidate.modelId);
-    const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol);
+    const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol, new Set());
     try {
       assertImageInputSupported(candidateInvocation.messages, targetProtocol);
     } catch (error) {

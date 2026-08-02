@@ -16,16 +16,18 @@ function canonical(effort: string): string {
 }
 
 // Clamp the requested effort down to the highest supported level at or below it.
-// Empty support => pass through (no capability info; do not mangle). An effort
-// not on the ladder clamps to the highest supported level, or passes through
-// when nothing is supported.
+// Empty support => return the original string verbatim (no capability info; do
+// not canonicalize or mangle casing). An effort not on the ladder clamps to the
+// highest supported level; if only off-ladder levels are supported, pass through.
 export function normalizeEffort(effort: string, supported: ReadonlySet<string>): string {
+  // No capability info: forward the client's value verbatim (do not even
+  // canonicalize — e.g. Gemini's uppercase `HIGH` must survive untouched).
+  if (supported.size === 0) return effort;
   const wanted = canonical(effort);
-  if (supported.size === 0) return wanted;
   if (supported.has(wanted)) return wanted;
 
   const supportedRanks = LADDER.map((level, rank) => ({ level, rank })).filter((entry) => supported.has(entry.level));
-  if (supportedRanks.length === 0) return wanted;
+  if (supportedRanks.length === 0) return effort;
 
   const wantedRank = LADDER.indexOf(wanted as (typeof LADDER)[number]);
   // Off-ladder or above everything: take the highest supported level.

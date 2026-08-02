@@ -50,3 +50,30 @@ export async function getModels(modelIds: string[], options?: RequestOptions) {
   }
   return result;
 }
+
+// Resolve models using ONLY already-cached data (the resolved-model LRU and the
+// file-cached provider map). Never triggers a network catalog fetch, so it is
+// safe on the request hot path: a cold or slow models.dev yields undefined
+// rather than blocking. Any warm fetch happens elsewhere (e.g. /v1/models).
+export async function getModelsCachedOnly(modelIds: string[]): Promise<Record<string, Model | undefined>> {
+  const result: Record<string, Model | undefined> = {};
+  let providerMap: ProviderMap | undefined | null;
+  for (const modelId of modelIds) {
+    const cached = cache.get(modelId);
+    if (cached !== undefined) {
+      result[modelId] = cached;
+      continue;
+    }
+    if (providerMap === undefined) {
+      providerMap = await fileCacheStorage.getItem<ProviderMap>(PROVIDERS_CACHE_KEY, { ttl: PROVIDERS_CACHE_TTL });
+    }
+    if (!providerMap) {
+      result[modelId] = undefined;
+      continue;
+    }
+    const model = resolveModel(providerMap, modelId);
+    result[modelId] = model;
+    if (model !== undefined) cache.set(modelId, model);
+  }
+  return result;
+}

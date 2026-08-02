@@ -7,6 +7,13 @@ describe('normalizeEffort', () => {
     expect(normalizeEffort('xhigh', new Set())).toBe('xhigh');
   });
 
+  test('preserves original casing and aliases verbatim when supported set is empty', () => {
+    // No capability info must be a true no-op: not even canonicalization runs,
+    // so Gemini's uppercase `HIGH` (and alias forms) survive untouched.
+    expect(normalizeEffort('HIGH', new Set())).toBe('HIGH');
+    expect(normalizeEffort('X-High', new Set())).toBe('X-High');
+  });
+
   test('keeps the effort when it is supported', () => {
     expect(normalizeEffort('high', new Set(['low', 'medium', 'high']))).toBe('high');
   });

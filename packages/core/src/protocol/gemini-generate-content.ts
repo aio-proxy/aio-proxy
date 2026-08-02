@@ -14,7 +14,7 @@ import {
 import { defineProtocolAdapter } from './adapter';
 import { geminiGenerateContentErrors } from './errors';
 import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
-import { readJsonRequest } from './request';
+import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
 
@@ -67,15 +67,21 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
     url.pathname = `/v1beta/models/${encodeURIComponent(resolvedModel)}${
       context.stream ? ':streamGenerateContent' : ':generateContent'
     }`;
-    const body = rawBodySchema.parse(await readJsonRequest(raw));
+    // Read the decoded body text once so a no-op clamp can forward it verbatim.
+    const bodyText = await readRequestText(raw);
+    const body = rawBodySchema.parse(JSON.parse(bodyText));
     const rewrittenBody = clampThinkingLevel(body, supportedEfforts);
     const headers = new Headers(raw.headers);
     headers.delete('content-encoding');
     headers.delete('content-length');
+    // Gemini rewrites the model in the URL, not the body. When the effort was
+    // not clamped, forward the original body bytes verbatim (re-serializing
+    // would drop the client's whitespace); only re-serialize on an actual change.
+    const forwardedBody = rewrittenBody === body ? bodyText : JSON.stringify(rewrittenBody);
     return new Request(url, {
       method: raw.method,
       headers,
-      body: JSON.stringify(rewrittenBody),
+      body: forwardedBody,
     });
   },
   modelInvocation(request) {
