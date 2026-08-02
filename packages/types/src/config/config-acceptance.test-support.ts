@@ -6,3 +6,5 @@ export const defaultServer = {
   logging: { enabled: false, retentionDays: 14, level: 'info' },
   retry: { retryAfterCapMs: 30_000 },
 } as const;
+
+export const defaultRouter = { modelContextAggregation: 'min' } as const;
