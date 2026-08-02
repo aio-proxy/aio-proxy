@@ -97,6 +97,59 @@ aio-proxy reload
 
 Editors that support `$schema` can provide completion and validation. Use `{{env.NAME}}` to read environment variables.
 
+### Model metadata and pricing
+
+Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream model id**, to override client-facing metadata and cost accounting for that Provider's models. User-supplied values take precedence over auto-discovered [models.dev](https://models.dev) data, which in turn wins over built-in defaults. Unknown fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
+
+```jsonc
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  // When several Providers expose the same public model, reconcile its context window:
+  // "min" (default, safe) reports the smallest; "max" reports the largest.
+  "router": { "modelContextAggregation": "min" },
+  "providers": {
+    "openai": {
+      "kind": "api",
+      "protocol": "openai-response",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "{{env.OPENAI_API_KEY}}",
+      "models": ["gpt-5"],
+      "metadata": {
+        // Keyed by the upstream model id the Provider serves.
+        "gpt-5": {
+          "name": "GPT-5", // client-facing display name
+          "description": "Frontier model",
+          "limit": {
+            "context": 1000000, // context window exposed to clients (e.g. Codex `/models`)
+            "input": 1000000,
+            "output": 128000,
+          },
+          "capabilities": {
+            "reasoning": true,
+            "toolCall": true,
+            "attachment": true,
+          },
+          "cost": {
+            // Per-token prices are USD per 1,000,000 tokens.
+            "input": 1.25,
+            "output": 10,
+            "cacheRead": 0.125,
+            // Per-event fees are USD per event.
+            "image": 0.01,
+            "webSearch": 0.01,
+            "request": 0,
+            // Long-context surcharge: the highest crossed tier applies to the whole request.
+            "tiers": [{ "tier": { "type": "context", "size": 200000 }, "input": 2.5, "output": 15 }],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+When a request is billed, the Provider that actually served it supplies the price: a configured `cost` wins over the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
+
 ## Routing rules
 
 Each key in the `providers` object is a stable **Provider ID**. A request is handled as follows:
