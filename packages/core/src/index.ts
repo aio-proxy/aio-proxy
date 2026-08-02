@@ -191,7 +191,10 @@ export {
 } from './transform/openai-responses/index';
 export {
   calculateEstimatedCost,
+  configModelPrice,
   type OpenRouterModelPrice,
+  type OpenRouterModelPriceTier,
+  tierAdjustedPrice,
   type UsageAccounting,
   type UsageCostResult,
   type UsagePricingInput,

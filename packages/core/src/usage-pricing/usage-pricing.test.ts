@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
+import type { ModelCost } from '@aio-proxy/types';
 
-import { calculateEstimatedCost } from './usage-pricing';
+import { calculateEstimatedCost, configModelPrice } from './usage-pricing';
+
+const aiSdk = { source: 'ai-sdk' } as const;
 
 const openaiPassthrough = {
   source: 'passthrough',
@@ -127,6 +130,107 @@ describe('calculateEstimatedCost billable normalization', () => {
       // (10*1 + 1000*8) / 1e6
       estimatedCostUsd: 0.00801,
       priceModelId: 'model',
+    });
+  });
+});
+
+describe('configModelPrice', () => {
+  test('maps a single field with no extra keys', () => {
+    expect(configModelPrice('p/m', { input: 2 })).toEqual({ id: 'p/m', input: 2 });
+  });
+
+  test('maps every field and turns config tiers into engine threshold tiers', () => {
+    const cost: ModelCost = {
+      input: 2,
+      output: 10,
+      cacheRead: 0.5,
+      cacheWrite: 3,
+      reasoning: 4,
+      inputAudio: 5,
+      outputAudio: 20,
+      image: 0.01,
+      webSearch: 0.02,
+      request: 0.005,
+      tiers: [
+        { tier: { type: 'context', size: 200_000 }, input: 4, output: 15, inputAudio: 8 },
+        { tier: { type: 'context', size: 1_000_000 }, input: 6 },
+      ],
+    };
+    expect(configModelPrice('p/m', cost)).toEqual({
+      id: 'p/m',
+      input: 2,
+      output: 10,
+      cacheRead: 0.5,
+      cacheWrite: 3,
+      reasoning: 4,
+      inputAudio: 5,
+      outputAudio: 20,
+      image: 0.01,
+      webSearch: 0.02,
+      request: 0.005,
+      tiers: [
+        { threshold: 200_000, input: 4, output: 15, inputAudio: 8 },
+        { threshold: 1_000_000, input: 6 },
+      ],
+    });
+  });
+});
+
+describe('calculateEstimatedCost audio, fees, and context tiers', () => {
+  test('charges split audio, per-event fees once each, and the highest crossed tier', () => {
+    expect(
+      calculateEstimatedCost(
+        {
+          inputTokens: 1500,
+          outputTokens: 300,
+          inputAudioTokens: 100,
+          outputAudioTokens: 50,
+          imageCount: 2,
+          webSearchCount: 1,
+        },
+        {
+          id: 'p/m',
+          input: 2,
+          output: 10,
+          inputAudio: 5,
+          outputAudio: 20,
+          image: 0.01,
+          webSearch: 0.02,
+          request: 0.005,
+          tiers: [{ threshold: 1000, input: 4, output: 15 }],
+        },
+        aiSdk,
+      ),
+    ).toEqual({
+      // tier (input 1500 > 1000) overlays input:4, output:15
+      // tokens: 1500*4 + 300*15 + 100*5 + 50*20
+      // fees (once each): 0.01*2*1e6 + 0.02*1e6 + 0.005*1e6
+      estimatedCostUsd:
+        (1500 * 4 + 300 * 15 + 100 * 5 + 50 * 20 + 0.01 * 2 * 1_000_000 + 0.02 * 1_000_000 + 0.005 * 1_000_000) /
+        1_000_000,
+      priceModelId: 'p/m',
+    });
+  });
+
+  test('selects the highest crossed tier with strict greater-than', () => {
+    expect(
+      calculateEstimatedCost(
+        { inputTokens: 200_000 },
+        {
+          id: 'p/m',
+          input: 2,
+          tiers: [
+            { threshold: 100_000, input: 4 },
+            { threshold: 200_000, input: 6 },
+            { threshold: 500_000, input: 8 },
+          ],
+        },
+        aiSdk,
+      ),
+    ).toEqual({
+      // inputTokens 200_000 strictly exceeds only 100_000 -> input:4
+      estimatedCostUsd: (200_000 * 4) / 1_000_000,
+      priceModelId: 'p/m',
     });
   });
 });
