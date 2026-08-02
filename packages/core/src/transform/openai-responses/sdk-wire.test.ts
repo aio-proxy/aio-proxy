@@ -44,6 +44,7 @@ test('preserves custom tool identity through the OpenAI Responses SDK encoder', 
   const invocation = openAIResponsesAdapter.modelInvocationForTarget(
     openAIResponsesAdapter.modelInvocation(parsed, {}),
     ProviderProtocol.OpenAIResponse,
+    new Set(),
   );
   let body: unknown;
   const model = createOpenAI({
@@ -114,6 +115,7 @@ test('materializes Responses custom tools as portable Anthropic functions', asyn
   const invocation = openAIResponsesAdapter.modelInvocationForTarget(
     openAIResponsesAdapter.modelInvocation(parsed, {}),
     ProviderProtocol.Anthropic,
+    new Set(),
   );
   let body: unknown;
   const model = createAnthropic({

@@ -8,6 +8,7 @@ import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/op
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAIResponsesErrors } from './errors';
+import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
 import { readJsonRequest } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
@@ -34,10 +35,8 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
     transcript: request.input,
   }),
   wantsStream: (request) => request.stream === true,
-  rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel && request.background === undefined && !raw.headers.has('content-encoding')
-      ? Promise.resolve(raw.clone())
-      : rewriteOpenAIResponsesRequest(raw, resolvedModel);
+  rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+    return rewriteOpenAIResponsesRequest(raw, resolvedModel, supportedEfforts);
   },
   modelInvocation(request) {
     const transformed = openAIResponsesToModelMessages(request);
@@ -49,12 +48,13 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
       ...(tools === undefined ? {} : { tools }),
     };
   },
-  modelInvocationForTarget(invocation, targetProtocol) {
-    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return invocation;
-    const tools = responsesToolSet(invocation.tools);
+  modelInvocationForTarget(invocation, targetProtocol, supportedEfforts) {
+    const clamped = clampSdkReasoning(invocation, supportedEfforts);
+    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return clamped;
+    const tools = responsesToolSet(clamped.tools);
     return {
-      ...invocation,
-      messages: openAIResponsesMessages(invocation.messages),
+      ...clamped,
+      messages: openAIResponsesMessages(clamped.messages),
       ...(tools === undefined ? {} : { tools }),
     };
   },
@@ -103,14 +103,29 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 
-async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string): Promise<Request> {
+async function rewriteOpenAIResponsesRequest(
+  raw: Request,
+  resolvedModel: string,
+  supportedEfforts: ReadonlySet<string>,
+): Promise<Request> {
   const { background: _background, ...body } = jsonObjectSchema.parse(await readJsonRequest(raw));
+  const reasoning = body['reasoning'];
+  const nextReasoning =
+    typeof reasoning === 'object' &&
+    reasoning !== null &&
+    typeof (reasoning as { effort?: unknown }).effort === 'string'
+      ? { ...reasoning, effort: normalizeEffort((reasoning as { effort: string }).effort, supportedEfforts) }
+      : reasoning;
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
   return new Request(raw, {
     method: raw.method,
-    body: JSON.stringify({ ...body, model: resolvedModel }),
+    body: JSON.stringify({
+      ...body,
+      model: resolvedModel,
+      ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+    }),
     headers,
   });
 }

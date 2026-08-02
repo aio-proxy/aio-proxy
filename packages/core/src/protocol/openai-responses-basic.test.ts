@@ -28,7 +28,9 @@ describe('openAIResponsesAdapter', () => {
       providerOptions: { openai: { store: false } },
       reasoning: 'high',
     });
-    expect(await (await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', {})).json()).toMatchObject({
+    expect(
+      await (await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).json(),
+    ).toMatchObject({
       model: 'upstream',
     });
     expect(openAIResponsesAdapter.modelJson).toBe(writeOpenAIResponsesResponse);
@@ -61,9 +63,13 @@ describe('openAIResponsesAdapter', () => {
       content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'emit_raw', input: { input: 'pwd' } }],
     });
     expect(portableTool).toMatchObject({ type: 'function' });
-    expect(openAIResponsesAdapter.modelInvocationForTarget(base, ProviderProtocol.Anthropic)).toBe(base);
+    expect(openAIResponsesAdapter.modelInvocationForTarget(base, ProviderProtocol.Anthropic, new Set())).toBe(base);
 
-    const specialized = openAIResponsesAdapter.modelInvocationForTarget(base, ProviderProtocol.OpenAIResponse);
+    const specialized = openAIResponsesAdapter.modelInvocationForTarget(
+      base,
+      ProviderProtocol.OpenAIResponse,
+      new Set(),
+    );
 
     expect(specialized).not.toBe(base);
     expect(specialized.messages[0]).toMatchObject({
@@ -93,7 +99,11 @@ describe('openAIResponsesAdapter', () => {
       ],
     };
 
-    const specialized = openAIResponsesAdapter.modelInvocationForTarget(malformed, ProviderProtocol.OpenAIResponse);
+    const specialized = openAIResponsesAdapter.modelInvocationForTarget(
+      malformed,
+      ProviderProtocol.OpenAIResponse,
+      new Set(),
+    );
 
     expect(specialized.messages[0]).toMatchObject({
       role: 'assistant',
@@ -101,7 +111,7 @@ describe('openAIResponsesAdapter', () => {
     });
   });
 
-  test('clones an uncompressed raw request when the resolved model is unchanged', async () => {
+  test('normalizes an uncompressed raw request when the resolved model is unchanged', async () => {
     const body = '{"model":"same", "input":"hello", "beta_field":true}';
     const raw = new Request('https://proxy.test/v1/responses', {
       method: 'POST',
@@ -114,12 +124,12 @@ describe('openAIResponsesAdapter', () => {
     });
     const parsed = await openAIResponsesAdapter.parse(raw, {});
 
-    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', {});
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
 
     expect(forwarded).not.toBe(raw);
     expect(forwarded.headers.get('content-encoding')).toBeNull();
     expect(forwarded.headers.get('x-sentinel')).toBe('preserved');
-    expect(await forwarded.text()).toBe(body);
+    expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
   });
 
   test('normalizes a compressed same-model request before raw forwarding', async () => {
@@ -138,12 +148,32 @@ describe('openAIResponsesAdapter', () => {
     });
     const parsed = await openAIResponsesAdapter.parse(raw, {});
 
-    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', {});
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
 
     expect(forwarded.headers.get('content-encoding')).toBeNull();
     expect(forwarded.headers.get('content-length')).toBeNull();
     expect(forwarded.headers.get('x-sentinel')).toBe('preserved');
     expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
+  });
+
+  test('clamps reasoning.effort in the raw body against the supported set', async () => {
+    const body = { model: 'src', input: 'hi', reasoning: { effort: 'xhigh' } };
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+    const forwarded = await openAIResponsesAdapter.rawRequest(
+      raw,
+      parsed,
+      'upstream',
+      new Set(['low', 'medium', 'high']),
+      {},
+    );
+
+    expect(await forwarded.json()).toMatchObject({ model: 'upstream', reasoning: { effort: 'high' } });
   });
 });
 

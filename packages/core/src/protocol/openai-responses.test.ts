@@ -24,7 +24,7 @@ test('drops background before raw forwarding while preserving unknown fields', a
   });
   const parsed = await openAIResponsesAdapter.parse(raw, {});
 
-  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), {});
 
   expect(forwarded.headers.get('content-encoding')).toBeNull();
   expect(forwarded.headers.get('content-length')).toBeNull();
