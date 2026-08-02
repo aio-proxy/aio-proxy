@@ -51,6 +51,39 @@ describe('createProxyFetch', () => {
     expect(sent).toBe('{"hello":"world"}');
   });
 
+  test('buffers a ReadableStream body carried on a Request input when a proxy is set', async () => {
+    const calls: Array<{ input: unknown; init: (RequestInit & { proxy?: string }) | undefined }> = [];
+    const spy = (async (input: unknown, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response();
+    }) as typeof globalThis.fetch;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"hello":'));
+        controller.enqueue(new TextEncoder().encode('"world"}'));
+        controller.close();
+      },
+    });
+    const request = new Request('https://upstream.example/v1', {
+      method: 'POST',
+      body: stream,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+
+    const proxyFetch = createProxyFetch('http://proxy.example:8080', spy);
+    await proxyFetch(request, { headers: new Headers({ 'x-test': '1' }) });
+
+    const forwarded = calls[0]?.init;
+    expect(forwarded?.proxy).toBe('http://proxy.example:8080');
+    expect(forwarded?.method).toBe('POST');
+    expect(forwarded?.body instanceof ReadableStream).toBe(false);
+    const sent = await new Response(forwarded?.body as BodyInit).text();
+    expect(sent).toBe('{"hello":"world"}');
+    const headers = forwarded?.headers as Headers;
+    expect(headers.get('x-test')).toBe('1');
+  });
+
   test('forwards a non-stream body unchanged when a proxy is set', async () => {
     const calls: Array<(RequestInit & { proxy?: string }) | undefined> = [];
     const spy = (async (_input: unknown, init?: RequestInit) => {
