@@ -56,7 +56,8 @@
 - Produces:
   - `normalizeEffort(effort: string, supported: ReadonlySet<string>): string`
   - `modelEffortValues(model: unknown): ReadonlySet<string>`
-  - Both re-exported from `reasoning-effort/index.ts`.
+  - `clampSdkReasoning(invocation: ModelInvocation, supported: ReadonlySet<string>): ModelInvocation` — clamps `settings.reasoning` (the AI-SDK effort field shared by OpenAI Responses/Completions and Gemini) via `normalizeEffort`; identity when reasoning is absent/non-string or already at a supported level.
+  - All three re-exported from `reasoning-effort/index.ts`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -110,6 +111,35 @@ describe('modelEffortValues', () => {
     expect(modelEffortValues(null).size).toBe(0);
   });
 });
+
+describe('clampSdkReasoning', () => {
+  test('clamps settings.reasoning down to a supported level', () => {
+    const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
+    const result = clampSdkReasoning(invocation, new Set(['low', 'medium', 'high']));
+    expect(result.settings?.reasoning).toBe('high');
+  });
+
+  test('returns the same invocation when reasoning is absent', () => {
+    const invocation = { messages: [], settings: {} };
+    expect(clampSdkReasoning(invocation, new Set(['low']))).toBe(invocation);
+  });
+
+  test('returns the same invocation when reasoning already supported', () => {
+    const invocation = { messages: [], settings: { reasoning: 'high' } };
+    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high']))).toBe(invocation);
+  });
+
+  test('passes reasoning through when the supported set is empty', () => {
+    const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
+    expect(clampSdkReasoning(invocation, new Set()).settings?.reasoning).toBe('xhigh');
+  });
+});
+```
+
+Update the import line at the top of the test to include the new export:
+
+```typescript
+import { clampSdkReasoning, modelEffortValues, normalizeEffort } from './index';
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -177,13 +207,36 @@ export function modelEffortValues(model: unknown): ReadonlySet<string> {
   if (!Array.isArray(values)) return new Set();
   return new Set(values.filter((value): value is string => typeof value === 'string'));
 }
+
+// Clamp the AI-SDK reasoning effort (settings.reasoning) shared by the
+// OpenAI Responses/Completions and Gemini model paths. Identity when reasoning
+// is absent, non-string, or already at a supported level.
+export function clampSdkReasoning(
+  invocation: ModelInvocation,
+  supported: ReadonlySet<string>,
+): ModelInvocation {
+  const reasoning = invocation.settings?.reasoning;
+  if (typeof reasoning !== 'string') return invocation;
+  const next = normalizeEffort(reasoning, supported);
+  if (next === reasoning) return invocation;
+  const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
+  return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
+}
+```
+
+Add the import at the top of `reasoning-effort.ts`:
+
+```typescript
+import type { ModelInvocation } from '../adapter';
 ```
 
 `packages/core/src/protocol/reasoning-effort/index.ts`:
 
 ```typescript
-export { modelEffortValues, normalizeEffort } from './reasoning-effort';
+export { clampSdkReasoning, modelEffortValues, normalizeEffort } from './reasoning-effort';
 ```
+
+Note: `reasoning-effort.ts` importing a type from `../adapter` is a type-only import (erased at build), so it introduces no runtime dependency cycle. `adapter.ts` does not import from `reasoning-effort`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -590,22 +643,11 @@ Rewrite `rawRequest` to clamp `reasoning.effort` in the body in addition to the 
 
 Add imports for `readJsonRequest` from `./request`.
 
-In `modelInvocationForTarget`, clamp `settings.reasoning` on **both** return paths (the current early `return invocation` for non-OpenAIResponse targets, and the specialized object). Add a local helper and apply it:
-
-```typescript
-function clampReasoning(invocation: ModelInvocation, supportedEfforts: ReadonlySet<string>): ModelInvocation {
-  const reasoning = invocation.settings?.reasoning;
-  if (typeof reasoning !== 'string') return invocation;
-  const next = normalizeEffort(reasoning, supportedEfforts);
-  if (next === reasoning) return invocation;
-  const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
-  return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
-}
-```
+In `modelInvocationForTarget`, clamp `settings.reasoning` on **both** return paths (the current early `return invocation` for non-OpenAIResponse targets, and the specialized object) using the shared `clampSdkReasoning` helper from Task 1:
 
 ```typescript
   modelInvocationForTarget(invocation, targetProtocol, supportedEfforts) {
-    const clamped = clampReasoning(invocation, supportedEfforts);
+    const clamped = clampSdkReasoning(invocation, supportedEfforts);
     if (targetProtocol !== ProviderProtocol.OpenAIResponse) return clamped;
     const tools = responsesToolSet(clamped.tools);
     return {
@@ -616,7 +658,7 @@ function clampReasoning(invocation: ModelInvocation, supportedEfforts: ReadonlyS
   },
 ```
 
-Import `ModelInvocation` type if not already imported, and `normalizeEffort` from `./reasoning-effort/index`.
+Import: `import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';`
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -676,20 +718,15 @@ Add import: `import { normalizeEffort } from './reasoning-effort/index';` and `i
 
 Rewrite `rawRequest` to clamp `reasoning_effort` (top-level string) in addition to the model, mirroring Task 5's body-rewrite pattern but on the `reasoning_effort` field.
 
-Add `modelInvocationForTarget` that clamps `settings.reasoning` (the completions model path has no target-protocol specialization, so it only clamps):
+Add `modelInvocationForTarget` that clamps `settings.reasoning` via the shared helper (completions has no target-protocol specialization):
 
 ```typescript
   modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts) {
-    const reasoning = invocation.settings?.reasoning;
-    if (typeof reasoning !== 'string') return invocation;
-    const next = normalizeEffort(reasoning, supportedEfforts);
-    if (next === reasoning) return invocation;
-    const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
-    return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
+    return clampSdkReasoning(invocation, supportedEfforts);
   },
 ```
 
-Import the `ModelInvocation` type from `./adapter`. The invocation's `settings.reasoning` comes from `openAICompletionsToModelMessages`.
+Import: `import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';`. The invocation's `settings.reasoning` comes from `openAICompletionsToModelMessages`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -760,20 +797,15 @@ Expected: FAIL — arity/param-order mismatch, no clamp.
 
 Change the signature to `async rawRequest(raw, _request, resolvedModel, supportedEfforts, context)`. Keep the existing URL-rewrite logic (using `context.model`, `context.stream`). Additionally, when the body carries `generationConfig.thinkingConfig.thinkingLevel` as a string, clamp it with `normalizeEffort(level, supportedEfforts)` and rebuild the body. Because the current code returns `new Request(url, raw.clone())` for the model-rewrite case and `raw.clone()` for the same-model case, restructure to always read+rewrite the body when a `thinkingLevel` is present, and otherwise keep the existing clone/URL behavior.
 
-Add `modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts)` that clamps `settings.reasoning` (same body as Task 6's, since Gemini's model path also lands effort in `settings.reasoning` via `geminiReasoning`):
+Add `modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts)` that clamps `settings.reasoning` via the shared helper (Gemini's model path lands effort in `settings.reasoning` via `geminiReasoning`):
 
 ```typescript
   modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts) {
-    const reasoning = invocation.settings?.reasoning;
-    if (typeof reasoning !== 'string') return invocation;
-    const next = normalizeEffort(reasoning, supportedEfforts);
-    if (next === reasoning) return invocation;
-    const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
-    return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
+    return clampSdkReasoning(invocation, supportedEfforts);
   },
 ```
 
-Add imports: `import { normalizeEffort } from './reasoning-effort/index';`, `import type { ModelInvocation } from './adapter';`, and `readJsonRequest` from `./request` for the raw body rewrite.
+Add imports: `import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';` and `readJsonRequest` from `./request` for the raw body rewrite.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
