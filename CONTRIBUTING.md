@@ -5,7 +5,7 @@ Contributions to AIO Proxy are welcome, including bug reports, documentation imp
 ## Requirements
 
 - Git
-- Bun 1.3.14 or later
+- Bun 1.4 (canary) or later — Bun 1.3.x silently drops a `ReadableStream` request body when `fetch` uses a proxy, which breaks proxied streaming passthrough. Install with `bun upgrade --canary`, or let `.bun-version` pin it.
 
 ## Set up the development environment
 
