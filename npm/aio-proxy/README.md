@@ -134,6 +134,9 @@ Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream mode
             "input": 1.25,
             "output": 10,
             "cacheRead": 0.125,
+            // Audio token prices, USD per 1,000,000 tokens (OpenAI-compatible upstreams only).
+            "inputAudio": 2.5,
+            "outputAudio": 20,
             // Per-event fees are USD per event.
             "image": 0.01,
             "webSearch": 0.01,
@@ -149,6 +152,8 @@ Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream mode
 ```
 
 When a request is billed, the Provider that actually served it supplies the price: a configured `cost` wins over the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
+
+Per-event fees and audio-token costs are metered from the actual response: generated images and web-search invocations are counted from the served output, and audio tokens are read from the upstream usage (available on OpenAI-compatible Chat Completions upstreams). A fee applies only when the corresponding events occur.
 
 ## Routing rules
 
