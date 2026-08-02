@@ -5,6 +5,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { attributeName, type RequestTraceSession } from '../../../request-tracing';
 import { isInboundAbort } from '../../../route-observation';
 import type { RuntimeProviderInstance } from '../../../runtime';
+import { resolveSupportedEfforts } from '../../pipeline';
 import { failureTerminal } from '../../pipeline/failure';
 import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from '../shared';
 
@@ -66,7 +67,18 @@ export async function attemptRawCount<TRequest, TContext>({
   const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
   let response: Response | undefined;
   try {
-    const upstream = await adapter.rawRequest(rawRequest.clone(), request, candidate.modelId, context);
+    // Clamp adaptive effort to the candidate's real capabilities so an
+    // unsupported level does not make the provider's count_tokens throw and
+    // silently fall back to a local estimate. Skip when there is no effort.
+    const hasEffort = adapter.variant(request, context) !== undefined;
+    const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
+    const upstream = await adapter.rawRequest(
+      rawRequest.clone(),
+      request,
+      candidate.modelId,
+      supportedEfforts,
+      context,
+    );
     response = await raw.invoke(upstream, logicalRequest, { upstreamStream: false });
     if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
     rawRequest.signal.throwIfAborted();

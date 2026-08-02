@@ -125,4 +125,16 @@ describe('AnthropicMessagesRequestSchema', () => {
   test('Given invalid input When parseAnthropicMessages is called Then it throws ZodError', () => {
     expect(() => parseAnthropicMessages({})).toThrow(ZodError);
   });
+
+  test('Given an arbitrary effort string in output_config When parsed Then it survives parsing', () => {
+    const parsed = parseAnthropicMessages({
+      model: 'claude-3-5-sonnet',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'hi' }],
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+    });
+
+    expect(parsed.output_config?.effort).toBe('xhigh');
+  });
 });

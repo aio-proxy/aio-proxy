@@ -2,6 +2,7 @@ import type { ModelMessage } from '../../ai-sdk-bridge';
 import { OpenAICompletionsTransformError } from '../../error';
 import { imageFilePart, type ImageFilePart } from '../../image-input';
 import type { OpenAICompletionsRequest } from '../../ingress/openai-completions';
+import { type AiSdkReasoning, reasoningSetting } from '../../protocol/reasoning-effort/index';
 
 type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
 type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
@@ -24,7 +25,7 @@ export type OpenAICompletionsTransformSettings = {
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly responseFormat?: OpenAICompletionsRequest['response_format'];
-  readonly reasoning?: OpenAICompletionsRequest['reasoning_effort'];
+  readonly reasoning?: AiSdkReasoning;
 };
 
 export type OpenAICompletionsModelMessages = {
@@ -104,7 +105,7 @@ export function openAICompletionsToModelMessages(req: OpenAICompletionsRequest):
       ...(req.max_completion_tokens !== undefined ? { maxTokens: req.max_completion_tokens } : {}),
       ...(req.max_completion_tokens === undefined && req.max_tokens !== undefined ? { maxTokens: req.max_tokens } : {}),
       ...(req.response_format !== undefined ? { responseFormat: req.response_format } : {}),
-      ...(req.reasoning_effort !== undefined ? { reasoning: req.reasoning_effort } : {}),
+      ...reasoningSetting(req.reasoning_effort),
     },
   };
 }

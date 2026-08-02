@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { Model, Provider, ProviderMap } from '@opencode-ai/models';
 
-import { clearModelsCache, getModels } from '.';
+import { clearModelsCache, getModels, getModelsCachedOnly } from '.';
 import { fileCacheStorage } from '../cache';
 
 const model = (id: string, name = id): Model => ({
@@ -100,5 +100,113 @@ describe('getModels', () => {
     });
     clearModelsCache();
     expect((await getModels(['gpt-5']))['gpt-5']?.name).toBe('GPT-5 Renamed');
+  });
+});
+
+describe('getModelsCachedOnly', () => {
+  test('resolves from the file-cached provider map without a network fetch', async () => {
+    const originalFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === 'https://models.dev/api.json') fetched = true;
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const result = await getModelsCachedOnly(['gpt-5']);
+      expect(result['gpt-5']?.id).toBe('gpt-5');
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('returns undefined without fetching when the provider map is absent', async () => {
+    // Drop the seeded map so the file cache misses; a cold catalog must not
+    // trigger a network fetch on the hot path.
+    await fileCacheStorage.removeItem('models-dev-providers');
+    clearModelsCache();
+    const originalFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === 'https://models.dev/api.json') fetched = true;
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const result = await getModelsCachedOnly(['gpt-5']);
+      expect(result['gpt-5']).toBeUndefined();
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('caches an unresolved custom id so a repeat lookup skips the disk read', async () => {
+    // A custom id absent from models.dev must not re-read + parse the whole
+    // provider catalog from disk on every request; the negative cache absorbs
+    // the repeat while the catalog stays warm.
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      expect((await getModelsCachedOnly(['custom-model']))['custom-model']).toBeUndefined();
+      const afterFirst = spy.mock.calls.length;
+      expect(afterFirst).toBeGreaterThan(0);
+      expect((await getModelsCachedOnly(['custom-model']))['custom-model']).toBeUndefined();
+      expect(spy.mock.calls.length).toBe(afterFirst);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('does not cache a miss when the catalog is cold, so it retries once warm', async () => {
+    // Cold catalog (no provider map): a miss must stay uncached so the very
+    // next request resolves once the file cache is warmed, rather than being
+    // pinned undefined for the negative TTL.
+    await fileCacheStorage.removeItem('models-dev-providers');
+    clearModelsCache();
+    expect((await getModelsCachedOnly(['gpt-5']))['gpt-5']).toBeUndefined();
+    await fileCacheStorage.setItem('models-dev-providers', providerMap);
+    expect((await getModelsCachedOnly(['gpt-5']))['gpt-5']?.id).toBe('gpt-5');
+  });
+
+  test('resolves distinct ids beyond the resolved-model LRU without re-reading the catalog per id', async () => {
+    // The resolved-model LRU only holds hits and is capped at 16. Resolving
+    // more than that many distinct hits must not JSON-parse the whole catalog
+    // from disk once per id; the in-memory provider map serves every resolve
+    // after the first read.
+    const models: Record<string, Model> = {};
+    for (let i = 0; i < 20; i++) models[`bulk-${i}`] = model(`bulk-${i}`);
+    await fileCacheStorage.setItem('models-dev-providers', {
+      openrouter: provider('openrouter', models),
+    });
+    clearModelsCache();
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      const ids = Object.keys(models);
+      const result = await getModelsCachedOnly(ids);
+      for (const id of ids) expect(result[id]?.id).toBe(id);
+      // One disk read for the whole batch, not one per id.
+      expect(spy.mock.calls.length).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('serves a follow-up lookup from the memory-cached provider map after LRU eviction', async () => {
+    // Even across separate calls, an id evicted from the 16-entry LRU resolves
+    // from the memory-cached provider map rather than a fresh disk read.
+    const models: Record<string, Model> = {};
+    for (let i = 0; i < 20; i++) models[`bulk-${i}`] = model(`bulk-${i}`);
+    await fileCacheStorage.setItem('models-dev-providers', {
+      openrouter: provider('openrouter', models),
+    });
+    clearModelsCache();
+    await getModelsCachedOnly(Object.keys(models)); // warms memory cache, evicts early ids from LRU
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      const result = await getModelsCachedOnly(['bulk-0']);
+      expect(result['bulk-0']?.id).toBe('bulk-0');
+      expect(spy.mock.calls.length).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

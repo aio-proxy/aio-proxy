@@ -2,13 +2,14 @@ import { openai } from '@ai-sdk/openai';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { AiSdkCallSettings, ModelMessage, ToolSet } from '../ai-sdk-bridge';
+import type { ModelMessage, ToolSet } from '../ai-sdk-bridge';
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAIResponsesErrors } from './errors';
-import { readJsonRequest } from './request';
+import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
+import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
 
@@ -34,10 +35,8 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
     transcript: request.input,
   }),
   wantsStream: (request) => request.stream === true,
-  rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel && request.background === undefined && !raw.headers.has('content-encoding')
-      ? Promise.resolve(raw.clone())
-      : rewriteOpenAIResponsesRequest(raw, resolvedModel);
+  rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+    return rewriteOpenAIResponsesRequest(raw, resolvedModel, supportedEfforts);
   },
   modelInvocation(request) {
     const transformed = openAIResponsesToModelMessages(request);
@@ -49,12 +48,13 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
       ...(tools === undefined ? {} : { tools }),
     };
   },
-  modelInvocationForTarget(invocation, targetProtocol) {
-    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return invocation;
-    const tools = responsesToolSet(invocation.tools);
+  modelInvocationForTarget(invocation, targetProtocol, supportedEfforts) {
+    const clamped = clampSdkReasoning(invocation, supportedEfforts);
+    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return clamped;
+    const tools = responsesToolSet(clamped.tools);
     return {
-      ...invocation,
-      messages: openAIResponsesMessages(invocation.messages),
+      ...clamped,
+      messages: openAIResponsesMessages(clamped.messages),
       ...(tools === undefined ? {} : { tools }),
     };
   },
@@ -103,39 +103,53 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 
-async function rewriteOpenAIResponsesRequest(raw: Request, resolvedModel: string): Promise<Request> {
-  const { background: _background, ...body } = jsonObjectSchema.parse(await readJsonRequest(raw));
+async function rewriteOpenAIResponsesRequest(
+  raw: Request,
+  resolvedModel: string,
+  supportedEfforts: ReadonlySet<string>,
+): Promise<Request> {
+  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
+  // of round-tripping through JSON, which would silently truncate large
+  // integers and drop the client's exact byte representation.
+  const bodyText = await readRequestText(raw);
+  const { background: _background, ...body } = jsonObjectSchema.parse(JSON.parse(bodyText));
+  const reasoning = body['reasoning'];
+  const nextReasoning =
+    typeof reasoning === 'object' &&
+    reasoning !== null &&
+    typeof (reasoning as { effort?: unknown }).effort === 'string'
+      ? { ...reasoning, effort: normalizeEffort((reasoning as { effort: string }).effort, supportedEfforts) }
+      : reasoning;
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
+  // Any of these force a re-serialization: a model rewrite, a stripped
+  // `background` field, or a clamped effort. Only when none apply can we
+  // forward the untouched original bytes.
+  const modelUnchanged = body['model'] === resolvedModel;
+  const backgroundStripped = _background !== undefined;
+  const effortUnchanged =
+    nextReasoning === reasoning ||
+    (typeof reasoning === 'object' &&
+      reasoning !== null &&
+      (nextReasoning as { effort?: unknown }).effort === (reasoning as { effort?: unknown }).effort);
+  const forwardedBody =
+    modelUnchanged && !backgroundStripped && effortUnchanged
+      ? bodyText
+      : JSON.stringify({
+          ...body,
+          model: resolvedModel,
+          ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+        });
   return new Request(raw, {
     method: raw.method,
-    body: JSON.stringify({ ...body, model: resolvedModel }),
+    body: forwardedBody,
     headers,
   });
 }
 
 function conversationId(conversation: OpenAIResponsesRequest['conversation']): string | undefined {
   return typeof conversation === 'string' ? conversation : conversation?.id;
-}
-
-type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
-const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
-  'none',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'provider-default',
-];
-
-// Ingress accepts any effort string so a future upstream level is not rejected
-// here, but the AI SDK call options only take the levels it knows. Drop an
-// unrecognized level and let the provider apply its own default.
-function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
-  const known = AI_SDK_REASONING.find((level) => level === effort);
-  return known === undefined ? {} : { reasoning: known };
 }
 
 function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {

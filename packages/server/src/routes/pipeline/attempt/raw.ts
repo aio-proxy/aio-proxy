@@ -6,6 +6,7 @@ import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure'
 import { retainResponseBody } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
+import { resolveSupportedEfforts } from './effort-capability';
 import { attemptLog } from './emit';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
@@ -22,7 +23,12 @@ export async function attemptRawCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
 
-  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
+  // Only resolve capabilities when the request carries an effort to clamp;
+  // otherwise the rewrite has nothing to normalize and the hot-path catalog
+  // read is pure overhead.
+  const hasEffort = adapter.variant(request, context) !== undefined;
+  const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
+  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, supportedEfforts, context);
   observation.markTransportUnavailable();
   const response = await inAttempt(adapter.protocol, () =>
     raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }),
