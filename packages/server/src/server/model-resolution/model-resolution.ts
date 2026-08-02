@@ -28,7 +28,7 @@ function resolveDisplayName(
   metadata: ModelsDevModel | undefined,
 ): string {
   const catalogName = metadata !== undefined && metadata.name !== metadata.id ? metadata.name : undefined;
-  return provider.modelMetadata?.[modelId]?.displayName ?? catalogName ?? slug;
+  return provider.metadata?.[modelId]?.name ?? catalogName ?? slug;
 }
 
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {

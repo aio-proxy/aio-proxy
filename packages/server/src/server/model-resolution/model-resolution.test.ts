@@ -75,7 +75,7 @@ const oauthProvider = {
   kind: ProviderKind.OAuth,
   enabled: true,
   alias: { 'gpt-5': { model: 'gpt-5.6-sol', preserve: false } },
-  modelMetadata: { 'gpt-5.6-sol': { displayName: 'Vendor Name' } },
+  metadata: { 'gpt-5.6-sol': { name: 'Vendor Name' } },
   model: { invoke: async function* () {} },
 } as unknown as RuntimeProviderInstance;
 

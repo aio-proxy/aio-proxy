@@ -19,7 +19,7 @@ const provider = {
     'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
     'my-alias': { model: 'third-party-model', preserve: false },
   },
-  modelMetadata: {},
+  metadata: {},
   model: { invoke: async function* () {} },
 } as unknown as RuntimeProviderInstance;
 
@@ -123,7 +123,7 @@ test('synthesized entries get deterministic priorities past the max template pri
       zebra: { model: 'third-party-z', preserve: false },
       apple: { model: 'third-party-a', preserve: false },
     },
-    modelMetadata: {},
+    metadata: {},
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
   const state = {
