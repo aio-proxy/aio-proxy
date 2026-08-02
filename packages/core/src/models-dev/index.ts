@@ -8,6 +8,12 @@ export { findModelPrice } from './price';
 
 const PROVIDERS_CACHE_KEY = 'models-dev-providers';
 const PROVIDERS_CACHE_TTL = 1_000 * 60 * 60 * 6;
+// Custom model ids absent from models.dev never populate the resolved-model LRU,
+// so a hot-path lookup would re-read and JSON-parse the whole cached provider
+// catalog from disk on every request. A short negative TTL absorbs that burst of
+// repeated I/O while still letting a later catalog warm (e.g. via /v1/models)
+// resolve the id once the sentinel expires.
+const NEGATIVE_CACHE_TTL = 1_000 * 30;
 
 const client = Models.make();
 const cache = new LRUCache<string, Model>({
@@ -15,12 +21,19 @@ const cache = new LRUCache<string, Model>({
   ttl: PROVIDERS_CACHE_TTL,
   updateAgeOnGet: true,
 });
+// Separate negative cache: getModelsCachedOnly-only. getModels keeps its
+// "misses are not cached" contract so a fresh network fetch can still resolve.
+const negativeCache = new LRUCache<string, true>({
+  max: 64,
+  ttl: NEGATIVE_CACHE_TTL,
+});
 
 // The resolved-model cache is a module singleton keyed by model id, holding
 // hits only. Tests that seed different provider maps under the same id must
 // clear it between cases, or a prior case's cached hit leaks into the next.
 export function clearModelsCache(): void {
   cache.clear();
+  negativeCache.clear();
 }
 
 export async function getProviders(options?: RequestOptions): Promise<ProviderMap> {
@@ -64,16 +77,25 @@ export async function getModelsCachedOnly(modelIds: string[]): Promise<Record<st
       result[modelId] = cached;
       continue;
     }
+    // A recent unresolved lookup short-circuits before touching disk again.
+    if (negativeCache.has(modelId)) {
+      result[modelId] = undefined;
+      continue;
+    }
     if (providerMap === undefined) {
       providerMap = await fileCacheStorage.getItem<ProviderMap>(PROVIDERS_CACHE_KEY, { ttl: PROVIDERS_CACHE_TTL });
     }
     if (!providerMap) {
+      // Cold catalog: leave the negative cache untouched so the very next
+      // request retries once the file cache is warm rather than waiting out
+      // the sentinel TTL.
       result[modelId] = undefined;
       continue;
     }
     const model = resolveModel(providerMap, modelId);
     result[modelId] = model;
     if (model !== undefined) cache.set(modelId, model);
+    else negativeCache.set(modelId, true);
   }
   return result;
 }

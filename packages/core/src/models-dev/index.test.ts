@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -138,5 +138,32 @@ describe('getModelsCachedOnly', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test('caches an unresolved custom id so a repeat lookup skips the disk read', async () => {
+    // A custom id absent from models.dev must not re-read + parse the whole
+    // provider catalog from disk on every request; the negative cache absorbs
+    // the repeat while the catalog stays warm.
+    const spy = spyOn(fileCacheStorage, 'getItem');
+    try {
+      expect((await getModelsCachedOnly(['custom-model']))['custom-model']).toBeUndefined();
+      const afterFirst = spy.mock.calls.length;
+      expect(afterFirst).toBeGreaterThan(0);
+      expect((await getModelsCachedOnly(['custom-model']))['custom-model']).toBeUndefined();
+      expect(spy.mock.calls.length).toBe(afterFirst);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('does not cache a miss when the catalog is cold, so it retries once warm', async () => {
+    // Cold catalog (no provider map): a miss must stay uncached so the very
+    // next request resolves once the file cache is warmed, rather than being
+    // pinned undefined for the negative TTL.
+    await fileCacheStorage.removeItem('models-dev-providers');
+    clearModelsCache();
+    expect((await getModelsCachedOnly(['gpt-5']))['gpt-5']).toBeUndefined();
+    await fileCacheStorage.setItem('models-dev-providers', providerMap);
+    expect((await getModelsCachedOnly(['gpt-5']))['gpt-5']?.id).toBe('gpt-5');
   });
 });

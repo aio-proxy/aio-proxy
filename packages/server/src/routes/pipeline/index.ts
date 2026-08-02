@@ -236,4 +236,5 @@ function rejectRequest(options: {
   return response;
 }
 
+export { resolveSupportedEfforts } from './attempt/effort-capability';
 export { hasInvalidOrOversizedContentLength } from './request';

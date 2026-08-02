@@ -71,7 +71,11 @@ export async function prepareModelInvocation<TRequest, TContext>(
   holder: InvocationHolder,
 ): Promise<PreparedInvocation> {
   slot.trace.targetProtocol = model.targetProtocol?.(slot.candidate.modelId);
-  const supportedEfforts = await resolveSupportedEfforts(slot.candidate.modelId);
+  // Only resolve capabilities when the request actually carries an effort to
+  // clamp. Skipping the lookup otherwise avoids a hot-path catalog read for
+  // requests (e.g. custom models) that have nothing to normalize.
+  const hasEffort = ctx.adapter.variant(ctx.request, ctx.context) !== undefined;
+  const supportedEfforts = hasEffort ? await resolveSupportedEfforts(slot.candidate.modelId) : new Set<string>();
   return resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol, supportedEfforts);
 }
 

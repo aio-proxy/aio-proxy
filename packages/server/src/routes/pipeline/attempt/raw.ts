@@ -23,7 +23,11 @@ export async function attemptRawCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
 
-  const supportedEfforts = await resolveSupportedEfforts(candidate.modelId);
+  // Only resolve capabilities when the request carries an effort to clamp;
+  // otherwise the rewrite has nothing to normalize and the hot-path catalog
+  // read is pure overhead.
+  const hasEffort = adapter.variant(request, context) !== undefined;
+  const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
   const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, supportedEfforts, context);
   observation.markTransportUnavailable();
   const response = await inAttempt(adapter.protocol, () =>
