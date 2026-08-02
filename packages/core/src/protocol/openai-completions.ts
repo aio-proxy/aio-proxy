@@ -5,7 +5,8 @@ import { type OpenAICompletionsRequest, parseOpenAICompletions } from '../ingres
 import { openAICompletionsToModelMessages } from '../transform/openai-completions/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAICompletionsErrors } from './errors';
-import { readJsonRequest, rewriteJsonRequestModel } from './request';
+import { clampSdkReasoning, normalizeEffort } from './reasoning-effort/index';
+import { readJsonRequest } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
 
@@ -27,8 +28,22 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
     transcript: request.messages,
   }),
   wantsStream: (request) => request.stream === true,
-  rawRequest(raw, request, resolvedModel) {
-    return request.model === resolvedModel ? Promise.resolve(raw.clone()) : rewriteJsonRequestModel(raw, resolvedModel);
+  async rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+    const body = (await readJsonRequest(raw)) as Record<string, unknown>;
+    const effort = body['reasoning_effort'];
+    const nextEffort = typeof effort === 'string' ? normalizeEffort(effort, supportedEfforts) : effort;
+    const headers = new Headers(raw.headers);
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+    return new Request(raw, {
+      method: raw.method,
+      body: JSON.stringify({
+        ...body,
+        model: resolvedModel,
+        ...(nextEffort === undefined ? {} : { reasoning_effort: nextEffort }),
+      }),
+      headers,
+    });
   },
   modelInvocation(request) {
     const transformed = openAICompletionsToModelMessages(request);
@@ -38,6 +53,9 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
       settings: transformed.settings,
       ...(tools === undefined ? {} : { tools }),
     };
+  },
+  modelInvocationForTarget(invocation, _targetProtocol, supportedEfforts) {
+    return clampSdkReasoning(invocation, supportedEfforts);
   },
   modelJson: writeOpenAICompletionsResponse,
   modelSse: writeOpenAICompletionsSSE,

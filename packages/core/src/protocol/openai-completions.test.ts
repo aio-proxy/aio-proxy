@@ -1,0 +1,46 @@
+import { expect, test } from 'bun:test';
+
+import { parseOpenAICompletions } from '../ingress/openai-completions';
+import { openAICompletionsAdapter } from './openai-completions';
+
+test('clamps reasoning_effort in the raw body against the supported set', async () => {
+  const body = { model: 'src', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'xhigh' };
+  const raw = new Request('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify(body) });
+  const parsed = parseOpenAICompletions(structuredClone(body));
+  const forwarded = await openAICompletionsAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  expect(await forwarded.json()).toMatchObject({ model: 'upstream', reasoning_effort: 'high' });
+});
+
+test('rewrites the model on the raw body when no reasoning_effort is present', async () => {
+  const body = { model: 'src', messages: [{ role: 'user', content: 'hi' }] };
+  const raw = new Request('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify(body) });
+  const parsed = parseOpenAICompletions(structuredClone(body));
+  const forwarded = await openAICompletionsAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  const json = (await forwarded.json()) as Record<string, unknown>;
+  expect(json).toMatchObject({ model: 'upstream' });
+  expect('reasoning_effort' in json).toBe(false);
+});
+
+test('clamps settings.reasoning through modelInvocationForTarget', () => {
+  const body = { model: 'src', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'xhigh' };
+  const parsed = parseOpenAICompletions(structuredClone(body));
+  const invocation = openAICompletionsAdapter.modelInvocation(parsed, {});
+  const clamped = openAICompletionsAdapter.modelInvocationForTarget(
+    invocation,
+    undefined,
+    new Set(['low', 'medium', 'high']),
+  );
+  expect(clamped.settings?.reasoning).toBe('high');
+});
