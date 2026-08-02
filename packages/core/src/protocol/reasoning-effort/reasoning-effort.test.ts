@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { clampSdkReasoning, modelEffortValues, normalizeEffort } from './index';
+import { clampSdkReasoning, modelEffortValues, normalizeEffort, reasoningSetting } from './index';
 
 describe('normalizeEffort', () => {
   test('passes effort through unchanged when supported set is empty', () => {
@@ -23,8 +23,13 @@ describe('normalizeEffort', () => {
     expect(normalizeEffort('max', new Set(['low', 'medium']))).toBe('medium');
   });
 
-  test('clamps down to the lowest supported level when nothing below the request exists', () => {
-    expect(normalizeEffort('none', new Set(['medium', 'high']))).toBe('medium');
+  test('never raises effort above the request when nothing at or below is supported', () => {
+    // Downgrade-only: asking for less than the upstream's lowest level must not
+    // silently bump the request up (that would increase latency/cost).
+    expect(normalizeEffort('none', new Set(['medium', 'high']))).toBe('none');
+    expect(normalizeEffort('minimal', new Set(['high']))).toBe('minimal');
+    // Aliases below the floor are still folded to their canonical form.
+    expect(normalizeEffort('x-high', new Set(['max']))).toBe('xhigh');
   });
 
   test('folds aliases before clamping', () => {
@@ -73,5 +78,34 @@ describe('clampSdkReasoning', () => {
   test('passes reasoning through when the supported set is empty', () => {
     const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
     expect(clampSdkReasoning(invocation, new Set()).settings?.reasoning).toBe('xhigh');
+  });
+
+  test('downgrades an out-of-union max (carried as xhigh) to a supported level', () => {
+    // `max` is folded to `xhigh` by reasoningSetting before the model path, so
+    // per-candidate clamping can still bring it down to what the model advertises.
+    const invocation = { messages: [], settings: { reasoning: 'xhigh' } };
+    expect(clampSdkReasoning(invocation, new Set(['low', 'medium', 'high'])).settings?.reasoning).toBe('high');
+  });
+});
+
+describe('reasoningSetting', () => {
+  test('keeps a level the AI SDK understands', () => {
+    expect(reasoningSetting('high')).toEqual({ reasoning: 'high' });
+    expect(reasoningSetting('xhigh')).toEqual({ reasoning: 'xhigh' });
+  });
+
+  test('folds aliases to their canonical AI SDK level instead of dropping them', () => {
+    expect(reasoningSetting('x-high')).toEqual({ reasoning: 'xhigh' });
+    expect(reasoningSetting('X_HIGH')).toEqual({ reasoning: 'xhigh' });
+    expect(reasoningSetting('extrahigh')).toEqual({ reasoning: 'xhigh' });
+  });
+
+  test('expresses an above-ceiling ladder level (max) as xhigh so it can be clamped', () => {
+    expect(reasoningSetting('max')).toEqual({ reasoning: 'xhigh' });
+  });
+
+  test('drops a genuinely unknown level and an absent value', () => {
+    expect(reasoningSetting('ultra')).toEqual({});
+    expect(reasoningSetting(undefined)).toEqual({});
   });
 });

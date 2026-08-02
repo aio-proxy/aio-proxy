@@ -9,7 +9,7 @@ import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from 
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
-import { readJsonRequest } from './request';
+import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
 
@@ -108,7 +108,11 @@ async function rewriteOpenAIResponsesRequest(
   resolvedModel: string,
   supportedEfforts: ReadonlySet<string>,
 ): Promise<Request> {
-  const { background: _background, ...body } = jsonObjectSchema.parse(await readJsonRequest(raw));
+  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
+  // of round-tripping through JSON, which would silently truncate large
+  // integers and drop the client's exact byte representation.
+  const bodyText = await readRequestText(raw);
+  const { background: _background, ...body } = jsonObjectSchema.parse(JSON.parse(bodyText));
   const reasoning = body['reasoning'];
   const nextReasoning =
     typeof reasoning === 'object' &&
@@ -119,13 +123,27 @@ async function rewriteOpenAIResponsesRequest(
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
+  // Any of these force a re-serialization: a model rewrite, a stripped
+  // `background` field, or a clamped effort. Only when none apply can we
+  // forward the untouched original bytes.
+  const modelUnchanged = body['model'] === resolvedModel;
+  const backgroundStripped = _background !== undefined;
+  const effortUnchanged =
+    nextReasoning === reasoning ||
+    (typeof reasoning === 'object' &&
+      reasoning !== null &&
+      (nextReasoning as { effort?: unknown }).effort === (reasoning as { effort?: unknown }).effort);
+  const forwardedBody =
+    modelUnchanged && !backgroundStripped && effortUnchanged
+      ? bodyText
+      : JSON.stringify({
+          ...body,
+          model: resolvedModel,
+          ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+        });
   return new Request(raw, {
     method: raw.method,
-    body: JSON.stringify({
-      ...body,
-      model: resolvedModel,
-      ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
-    }),
+    body: forwardedBody,
     headers,
   });
 }

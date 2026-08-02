@@ -35,6 +35,27 @@ test('drops background before raw forwarding while preserving unknown fields', a
   });
 });
 
+test('forwards the original body bytes verbatim when model, background, and effort are unchanged', async () => {
+  // A same-model request with no background and an already-supported effort must
+  // not be round-tripped through JSON, which would truncate integers beyond
+  // Number.MAX_SAFE_INTEGER and drop the client's exact byte representation.
+  const bodyText = '{"model":"upstream-model","input":"hi","seed":9007199254740993}';
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream-model',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
 test('reports a safe diagnostic when background mode is downgraded', async () => {
   const raw = new Request('https://proxy.test/v1/responses', {
     method: 'POST',

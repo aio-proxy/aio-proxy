@@ -17,9 +17,12 @@ function canonical(effort: string): string {
 }
 
 // Clamp the requested effort down to the highest supported level at or below it.
-// Empty support => return the original string verbatim (no capability info; do
-// not canonicalize or mangle casing). An effort not on the ladder clamps to the
-// highest supported level; if only off-ladder levels are supported, pass through.
+// This is downgrade-only: it never raises effort above what the client asked for
+// (raising would silently increase latency/cost). Empty support => return the
+// original string verbatim (no capability info; do not canonicalize or mangle
+// casing). An effort above everything supported clamps to the highest supported
+// level; an effort at or below the lowest supported level, or off-ladder with
+// nothing at/below it, is left as the client's canonical value.
 export function normalizeEffort(effort: string, supported: ReadonlySet<string>): string {
   // No capability info: forward the client's value verbatim (do not even
   // canonicalize — e.g. Gemini's uppercase `HIGH` must survive untouched).
@@ -36,8 +39,10 @@ export function normalizeEffort(effort: string, supported: ReadonlySet<string>):
 
   const atOrBelow = supportedRanks.filter((entry) => entry.rank <= wantedRank);
   if (atOrBelow.length > 0) return atOrBelow[atOrBelow.length - 1]!.level;
-  // Nothing supported at or below the request: clamp up to the lowest supported.
-  return supportedRanks[0]!.level;
+  // Nothing supported at or below the request: the client asked for less than the
+  // upstream's lowest level. Downgrade-only means we must not raise it, so keep
+  // the client's canonical value rather than clamping *up* to the lowest support.
+  return wanted;
 }
 
 type EffortReasoningOption = { readonly type?: unknown; readonly values?: unknown };
@@ -59,18 +64,20 @@ export function modelEffortValues(model: unknown): ReadonlySet<string> {
 
 // Clamp the AI-SDK reasoning effort (settings.reasoning) shared by the
 // OpenAI Responses/Completions and Gemini model paths. Identity when reasoning
-// is absent, non-string, or already at a supported level.
+// is absent or already at a supported level. The result is always constrained
+// back to a level the AI SDK understands (an out-of-union input like a raw
+// `max` was already folded to `xhigh` by reasoningSetting before it got here).
 export function clampSdkReasoning(invocation: ModelInvocation, supported: ReadonlySet<string>): ModelInvocation {
   const reasoning = invocation.settings?.reasoning;
   if (typeof reasoning !== 'string') return invocation;
-  const next = normalizeEffort(reasoning, supported);
-  if (next === reasoning) return invocation;
+  const clamped = toAiSdkReasoning(normalizeEffort(reasoning, supported));
+  if (clamped === reasoning) return invocation;
   const settings = invocation.settings as NonNullable<ModelInvocation['settings']>;
-  return { ...invocation, settings: { ...settings, reasoning: next as typeof settings.reasoning } };
+  return { ...invocation, settings: { ...settings, reasoning: clamped } };
 }
 
 export type AiSdkReasoning = NonNullable<AiSdkCallSettings['reasoning']>;
-const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
+const AI_SDK_REASONING: ReadonlySet<AiSdkReasoning> = new Set([
   'none',
   'minimal',
   'low',
@@ -78,13 +85,27 @@ const AI_SDK_REASONING: readonly AiSdkReasoning[] = [
   'high',
   'xhigh',
   'provider-default',
-];
+]);
 
-// Ingress accepts any effort string (so a future/alias level is not rejected),
-// but the AI SDK model path only takes the levels it knows. Keep a recognized
-// level for downstream capability clamping; drop an unknown one (e.g. `max`) so
-// the provider applies its own default.
+// Fold an arbitrary effort string to the level the AI SDK model path can carry.
+// Aliases canonicalize (`x-high` -> `xhigh`); a ladder level above the SDK's
+// ceiling (`max`) maps to the highest expressible level (`xhigh`) so it still
+// participates in per-candidate downgrading rather than being dropped; a level
+// the SDK does not know at all yields undefined (provider default applies).
+function toAiSdkReasoning(effort: string): AiSdkReasoning | undefined {
+  const wanted = canonical(effort);
+  if (AI_SDK_REASONING.has(wanted as AiSdkReasoning)) return wanted as AiSdkReasoning;
+  // Above the SDK ceiling but on our ladder (e.g. `max`): express as `xhigh`.
+  const wantedRank = LADDER.indexOf(wanted as (typeof LADDER)[number]);
+  const xhighRank = LADDER.indexOf('xhigh');
+  return wantedRank > xhighRank ? 'xhigh' : undefined;
+}
+
+// Ingress accepts any effort string (so a future/alias level is not rejected).
+// Keep a level the model path can carry so per-candidate capability clamping can
+// still downgrade it; drop a genuinely unknown level so the provider defaults.
 export function reasoningSetting(effort: string | undefined): { readonly reasoning?: AiSdkReasoning } {
-  const known = AI_SDK_REASONING.find((level) => level === effort);
+  if (effort === undefined) return {};
+  const known = toAiSdkReasoning(effort);
   return known === undefined ? {} : { reasoning: known };
 }

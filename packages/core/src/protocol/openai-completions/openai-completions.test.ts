@@ -62,3 +62,20 @@ test('clamps settings.reasoning through modelInvocationForTarget', () => {
   );
   expect(clamped.settings?.reasoning).toBe('high');
 });
+
+test('forwards the original body bytes verbatim when model and effort are unchanged', async () => {
+  // A same-model request whose effort is absent (or already supported) must not
+  // be round-tripped through JSON, which would truncate integers beyond
+  // Number.MAX_SAFE_INTEGER and drop the client's exact byte representation.
+  const bodyText = '{"model":"upstream","seed":9007199254740993,"messages":[{"role":"user","content":"hi"}]}';
+  const raw = new Request('https://x/v1/chat/completions', { method: 'POST', body: bodyText });
+  const parsed = parseOpenAICompletions(JSON.parse(bodyText));
+  const forwarded = await openAICompletionsAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  expect(await forwarded.text()).toBe(bodyText);
+});
