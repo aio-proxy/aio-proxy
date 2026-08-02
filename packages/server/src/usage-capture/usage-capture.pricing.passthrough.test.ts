@@ -98,3 +98,59 @@ describe('usage capture pricing passthrough', () => {
     });
   });
 });
+
+describe('usage capture config price override', () => {
+  afterEach(() => {
+    clearPriceCatalog();
+  });
+
+  test('a hit-channel config price wins over the catalog and marks priceSource config', async () => {
+    const body = JSON.stringify({ usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } });
+    // Catalog would bill 100*2 + 50*10 = 700/1e6; the hit channel's config price
+    // must win, billing 100*1 + 50*3 = 250/1e6 instead.
+    await seedPriceCatalog([{ id: 'priced/model', input: 2, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 }]);
+    const captured = createUsageCapture().passthrough({
+      response: new Response(body, { headers: { 'content-type': 'application/json' }, status: 200 }),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: 'provider',
+      modelId: 'priced/model',
+      configPrice: { id: 'priced/model', input: 1, output: 3 },
+    });
+
+    await captured.value.text();
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      statusCode: 200,
+      usage: expect.objectContaining({
+        inputTokens: 100,
+        outputTokens: 50,
+        priceModelId: 'priced/model',
+        estimatedCostUsd: 250 / 1_000_000,
+        priceSource: 'config',
+      }),
+    });
+  });
+
+  test('a config price still bills when the model is absent from the catalog', async () => {
+    const body = JSON.stringify({ usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } });
+    // Empty catalog: the config price must not fall back to models.dev on a miss.
+    await seedPriceCatalog([]);
+    const captured = createUsageCapture().passthrough({
+      response: new Response(body, { headers: { 'content-type': 'application/json' }, status: 200 }),
+      protocol: ProviderProtocol.OpenAICompatible,
+      providerId: 'provider',
+      modelId: 'relay/opaque-id',
+      configPrice: { id: 'relay/opaque-id', input: 1, output: 3 },
+    });
+
+    await captured.value.text();
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      statusCode: 200,
+      usage: expect.objectContaining({
+        estimatedCostUsd: 250 / 1_000_000,
+        priceSource: 'config',
+      }),
+    });
+  });
+});

@@ -66,6 +66,7 @@ describe('usage capture stream lifecycle', () => {
         reasoningTokens: 3,
         priceModelId: 'priced/model',
         estimatedCostUsd: 0.000057,
+        priceSource: 'models-dev',
       },
     });
   });

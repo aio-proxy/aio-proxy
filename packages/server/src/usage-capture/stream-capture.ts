@@ -18,7 +18,16 @@ import {
 import { finalizeUsage } from './usage-validation';
 
 export function streamCapture(
-  { stream, providerId, modelId, requestedModelId, startedAt, observation, idleTimeoutMs }: StreamUsageOptions,
+  {
+    stream,
+    providerId,
+    modelId,
+    requestedModelId,
+    startedAt,
+    observation,
+    idleTimeoutMs,
+    configPrice,
+  }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -64,6 +73,7 @@ export function streamCapture(
       usage: finishUsage,
       accounting: { source: 'ai-sdk' },
       ...(requestedModelId === undefined ? {} : { requestedModelId }),
+      ...(configPrice === undefined ? {} : { configPrice }),
       ...(logger === undefined ? {} : { logger }),
     });
     terminal.resolve({

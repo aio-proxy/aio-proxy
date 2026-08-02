@@ -1,3 +1,4 @@
+import { configModelPrice, type OpenRouterModelPrice } from '@aio-proxy/core';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -34,4 +35,15 @@ export function attemptBase(
     ...(metadata.targetProtocol === undefined ? {} : { protocol: metadata.targetProtocol }),
     durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
   };
+}
+
+// The hit channel's per-model config cost override, mapped into the pricing
+// engine's shape. Undefined when the provider declares no cost for this model,
+// so billing falls back to the models.dev catalog.
+export function candidateConfigPrice(
+  provider: RuntimeProviderInstance,
+  modelId: string,
+): OpenRouterModelPrice | undefined {
+  const cost = provider.metadata?.[modelId]?.cost;
+  return cost === undefined ? undefined : configModelPrice(modelId, cost);
 }

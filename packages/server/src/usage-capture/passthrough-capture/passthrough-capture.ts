@@ -41,6 +41,7 @@ export function passthroughCapture(
     startedAt,
     observation,
     idleTimeoutMs,
+    configPrice,
   }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
@@ -107,7 +108,14 @@ export function passthroughCapture(
     // resolving completion — settleSuccess samples it when completion resolves, so
     // a trace whose terminal frame precedes EOF still records its response ID.
     if (obs.responseId !== undefined) onResponseId?.(obs.responseId);
-    const usage = await finalizePassthroughUsage(obs, { providerId, modelId, protocol, requestedModelId, logger });
+    const usage = await finalizePassthroughUsage(obs, {
+      providerId,
+      modelId,
+      protocol,
+      requestedModelId,
+      configPrice,
+      logger,
+    });
     terminal.resolve({
       outcome: 'success',
       statusCode,
@@ -224,6 +232,7 @@ type PassthroughUsageContext = {
   readonly modelId: string;
   readonly protocol: PassthroughUsageOptions['protocol'];
   readonly requestedModelId: string | undefined;
+  readonly configPrice: PassthroughUsageOptions['configPrice'];
   readonly logger: ServerLogSink | undefined;
 };
 
@@ -238,6 +247,7 @@ async function finalizePassthroughUsage(
         : { ...obs.usage, providerId: ctx.providerId, modelId: ctx.modelId },
     accounting: { source: 'passthrough', protocol: ctx.protocol },
     ...(ctx.requestedModelId === undefined ? {} : { requestedModelId: ctx.requestedModelId }),
+    ...(ctx.configPrice === undefined ? {} : { configPrice: ctx.configPrice }),
     ...(ctx.logger === undefined ? {} : { logger: ctx.logger }),
     ...(obs.issues === undefined ? {} : { issues: obs.issues }),
   });
