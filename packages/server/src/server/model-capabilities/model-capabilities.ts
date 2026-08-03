@@ -46,12 +46,17 @@ export function toAnthropicCapabilities(model: ModelsDevModel): ModelCapabilitie
 // Derives the Anthropic capabilities subset from merged config metadata (catalog
 // base + config overrides), so /v1/models reflects config capability overrides.
 // Mirrors toAnthropicCapabilities but reads the camelCased ModelMetadata shape.
-export function toAnthropicCapabilitiesFromMetadata(meta: ModelMetadata): ModelCapabilitiesSubset {
+// Returns null when metadata carries no capability signal at all, so /v1/models
+// reports "unknown" (null) rather than fabricating an all-false capability block.
+export function toAnthropicCapabilitiesFromMetadata(meta: ModelMetadata): ModelCapabilitiesSubset | null {
   const caps = meta.capabilities;
-  const options = caps?.reasoningOptions ?? [];
+  if (caps === undefined) {
+    return null;
+  }
+  const options = caps.reasoningOptions ?? [];
   const effort = options.find((option) => option.type === 'effort');
   const values = new Set(effort?.values ?? []);
-  const inputs = caps?.modalities?.input ?? [];
+  const inputs = caps.modalities?.input ?? [];
   return {
     effort: {
       high: support(values.has('high')),
@@ -63,9 +68,9 @@ export function toAnthropicCapabilitiesFromMetadata(meta: ModelMetadata): ModelC
     },
     image_input: support(inputs.includes('image')),
     pdf_input: support(inputs.includes('pdf')),
-    structured_outputs: support(caps?.structuredOutput === true),
+    structured_outputs: support(caps.structuredOutput === true),
     thinking: {
-      supported: caps?.reasoning === true,
+      supported: caps.reasoning === true,
       types: {
         adaptive: support(effort !== undefined),
         enabled: support(options.some((option) => option.type === 'budgetTokens' || option.type === 'toggle')),

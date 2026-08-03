@@ -69,32 +69,47 @@ test('derives Anthropic capabilities from merged metadata, honoring config overr
     },
   } as const;
   const caps = toAnthropicCapabilitiesFromMetadata(meta);
-  expect(caps.structured_outputs).toEqual({ supported: false });
-  expect(caps.image_input).toEqual({ supported: true });
-  expect(caps.pdf_input).toEqual({ supported: true });
-  expect(caps.thinking.supported).toEqual({ supported: true }.supported);
-  expect(caps.effort.supported).toBe(true);
-  expect(caps.effort.high).toEqual({ supported: true });
-  expect(caps.effort.medium).toEqual({ supported: false });
+  expect(caps).not.toBeNull();
+  expect(caps?.structured_outputs).toEqual({ supported: false });
+  expect(caps?.image_input).toEqual({ supported: true });
+  expect(caps?.pdf_input).toEqual({ supported: true });
+  expect(caps?.thinking.supported).toBe(true);
+  expect(caps?.effort.supported).toBe(true);
+  expect(caps?.effort.high).toEqual({ supported: true });
+  expect(caps?.effort.medium).toEqual({ supported: false });
 });
 
-test('metadata with no capabilities yields all-unsupported subset', () => {
-  const caps = toAnthropicCapabilitiesFromMetadata({});
-  expect(caps.structured_outputs).toEqual({ supported: false });
-  expect(caps.effort.supported).toBe(false);
-  expect(caps.thinking.supported).toBe(false);
+// A model whose merged metadata carries no capabilities block conveys no
+// capability signal: /v1/models must report `null` (unknown), not fabricate an
+// all-false block claiming the model supports nothing (Finding C regression).
+test('metadata with no capabilities field yields null (unknown), not an all-false block', () => {
+  expect(toAnthropicCapabilitiesFromMetadata({ name: 'x', limit: { context: 1000 } })).toBeNull();
+});
+
+// An explicit capabilities object is a signal even when it only sets one field,
+// so a populated block (not null) is returned.
+test('a capabilities object with any signal yields a populated block, not null', () => {
+  const caps = toAnthropicCapabilitiesFromMetadata({
+    capabilities: {
+      reasoning: true,
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    },
+  });
+  expect(caps).not.toBeNull();
+  expect(caps?.image_input.supported).toBe(true);
+  expect(caps?.thinking.supported).toBe(true);
 });
 
 test('a budgetTokens reasoning option marks thinking.types.enabled supported', () => {
   const caps = toAnthropicCapabilitiesFromMetadata({
     capabilities: { reasoningOptions: [{ type: 'budgetTokens', min: 1024 }] },
   });
-  expect(caps.thinking.types.enabled).toEqual({ supported: true });
+  expect(caps?.thinking.types.enabled).toEqual({ supported: true });
 });
 
 test('an effort-only reasoning option leaves thinking.types.enabled unsupported', () => {
   const caps = toAnthropicCapabilitiesFromMetadata({
     capabilities: { reasoningOptions: [{ type: 'effort', values: ['low', 'high'] }] },
   });
-  expect(caps.thinking.types.enabled).toEqual({ supported: false });
+  expect(caps?.thinking.types.enabled).toEqual({ supported: false });
 });
