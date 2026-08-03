@@ -135,8 +135,8 @@ export function calculateEstimatedCost(
   addTokens(billable.cacheReadTokens, tokenPrice.cacheRead);
   addTokens(billable.cacheWriteTokens, tokenPrice.cacheWrite);
   addTokens(billable.reasoningTokens, tokenPrice.reasoning);
-  addTokens(usage.inputAudioTokens, tokenPrice.inputAudio);
-  addTokens(usage.outputAudioTokens, tokenPrice.outputAudio);
+  addTokens(billable.inputAudioTokens, tokenPrice.inputAudio);
+  addTokens(billable.outputAudioTokens, tokenPrice.outputAudio);
 
   addFee(usage.imageCount, price.image);
   addFee(usage.webSearchCount, price.webSearch);
@@ -187,12 +187,19 @@ function toBillableUsage(
 }
 
 function inclusiveBillableUsage(usage: UsagePricingInput, price: OpenRouterModelPrice): UsagePricingInput {
+  // Audio tokens are a subset of their parent totals (OpenAI reports
+  // prompt_tokens_details.audio_tokens ⊆ prompt_tokens, and the completion
+  // equivalent), so they peel out of input/output like cache and reasoning do.
+  // Billing the raw audio count on top of an un-peeled parent double-charges
+  // those tokens at both the text and audio rate.
   const afterCache = peelSubsets(usage.inputTokens, [
     { count: usage.cacheReadTokens, unitPrice: price.cacheRead },
     { count: usage.cacheWriteTokens, unitPrice: price.cacheWrite },
+    { count: usage.inputAudioTokens, unitPrice: price.inputAudio },
   ]);
   const afterReasoning = peelSubsets(usage.outputTokens, [
     { count: usage.reasoningTokens, unitPrice: price.reasoning },
+    { count: usage.outputAudioTokens, unitPrice: price.outputAudio },
   ]);
   return {
     ...(afterCache.parent === undefined ? {} : { inputTokens: afterCache.parent }),
@@ -206,6 +213,12 @@ function inclusiveBillableUsage(usage: UsagePricingInput, price: OpenRouterModel
     ...(pricedSubset(usage.reasoningTokens, price.reasoning) === undefined
       ? {}
       : { reasoningTokens: usage.reasoningTokens }),
+    ...(pricedSubset(usage.inputAudioTokens, price.inputAudio) === undefined
+      ? {}
+      : { inputAudioTokens: usage.inputAudioTokens }),
+    ...(pricedSubset(usage.outputAudioTokens, price.outputAudio) === undefined
+      ? {}
+      : { outputAudioTokens: usage.outputAudioTokens }),
   };
 }
 

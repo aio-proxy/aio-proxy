@@ -202,11 +202,13 @@ describe('calculateEstimatedCost audio, fees, and context tiers', () => {
         aiSdk,
       ),
     ).toEqual({
-      // tier (input 1500 > 1000) overlays input:4, output:15
-      // tokens: 1500*4 + 300*15 + 100*5 + 50*20
+      // tier (input 1500 > 1000) overlays input:4, output:15.
+      // Audio tokens are a subset of their parents, so they peel out before the
+      // text rate applies: input 1500-100=1400 @4, output 300-50=250 @15, then
+      // audio 100@5 + 50@20 — each audio token billed once, at the audio rate.
       // fees (once each): 0.01*2*1e6 + 0.02*1e6 + 0.005*1e6
       estimatedCostUsd:
-        (1500 * 4 + 300 * 15 + 100 * 5 + 50 * 20 + 0.01 * 2 * 1_000_000 + 0.02 * 1_000_000 + 0.005 * 1_000_000) /
+        (1400 * 4 + 250 * 15 + 100 * 5 + 50 * 20 + 0.01 * 2 * 1_000_000 + 0.02 * 1_000_000 + 0.005 * 1_000_000) /
         1_000_000,
       priceModelId: 'p/m',
     });

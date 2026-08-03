@@ -23,21 +23,24 @@ describe('pricingInput forwards fee and audio count fields', () => {
     const row: UsageRow = {
       providerId: 'provider',
       modelId: 'm',
-      inputTokens: 100,
-      outputTokens: 50,
+      inputTokens: 1000,
+      outputTokens: 500,
       imageCount: 2,
       webSearchCount: 1,
-      inputAudioTokens: 1000,
-      outputAudioTokens: 500,
+      inputAudioTokens: 400,
+      outputAudioTokens: 200,
     };
 
-    // tokens: 100*2 + 50*10 = 700 micros
-    // audio:  1000*3 + 500*6 = 6000 micros
+    // Audio tokens are a subset of their parents and peel out before the text
+    // rate applies (each audio token billed once, at the audio rate):
+    //   input  1000-400=600 @2, output 500-200=300 @10
+    //   audio  400*3 + 200*6
+    // tokens: 600*2 + 300*10 + 400*3 + 200*6 = 1200 + 3000 + 1200 + 1200 = 6600 micros
     // fees:   image 0.01*2 + webSearch 0.005*1 = 0.025 USD = 25000 micros
-    // total = (700 + 6000 + 25000) / 1e6 = 0.0317 USD
+    // total = (6600 + 25000) / 1e6 = 0.0316 USD
     const priced = await priceUsage(row, accounting, undefined, configPrice);
     expect(priced).toMatchObject({
-      estimatedCostUsd: 0.0317,
+      estimatedCostUsd: 0.0316,
       priceModelId: 'm',
       priceSource: 'config',
     });
