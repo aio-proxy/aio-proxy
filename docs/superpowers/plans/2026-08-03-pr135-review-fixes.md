@@ -760,3 +760,52 @@ Then post a PR comment addressing each item: the three Codex P1 findings (now fi
 - **Type consistency:** `effectiveMetadata`/`maxInput` defined in Task 1 are consumed by name in Task 3; `toAnthropicCapabilitiesFromMetadata` defined in Task 2 consumed in Task 3; `finalizeUsage` new params in Task 4 match caller wiring; `MODELS_DEV_MODEL_REF`/`configSchemaOverride` defined and exported in Task 5, consumed by its test and the build.
 - **Risk — zod meta identification (Task 5):** the exact way `ctx.zodSchema` exposes the `.meta({ id })` marker may differ; Step 4 says to verify by logging once and adjust the accessor. If `.meta()` on an optional string proves unreliable, fall back to matching on the emitted `description` string (the extend description is unique) — but prefer the meta id.
 - **Risk — Codex-client models test (Task 3 Step 5):** may assert the old conflated values; correcting them is in-scope and expected.
+
+---
+
+## Follow-up: Codex Re-Review Findings A/B/C (BASE b1673e7c)
+
+Adjudicated 7 Codex findings (A–G). A/B/C are real, in-scope regressions or gaps
+introduced/surfaced by this PR's own fixes; D/G not real; E/F real but pre-existing
+and out of scope (call out as separate issues in the PR reply).
+
+### Task 7 — Finding A (P1): bill cost.request on body-less passthrough success
+
+`packages/server/src/usage-capture/passthrough-capture/passthrough-capture.ts`
+`nonStreamingCompletion` short-circuits a body-null 2xx to
+`{ outcome: 'success', statusCode }` WITHOUT going through `finalizeUsage`, so the
+Task-4 `seedForRequestFee` path never runs and a configured flat `cost.request` fee
+is dropped for no-body successes (e.g. 204). Route the body-null success through the
+same finalize path so a positive `configPrice.request` is still billed with
+providerId/modelId. Keep the file at/under the 300-line ceiling (currently ~257) —
+split a private collaborator if needed rather than growing it. Colocated test must
+assert: body-null 2xx WITH positive request fee → captured usage carries the fee;
+body-null 2xx WITHOUT request fee → still bare success (no phantom usage).
+
+### Task 8 — Finding B (P1): thread effectiveMetadata into codex client models
+
+`packages/server/src/server/list-models/codex-client-models/codex-client-models.ts`
+passes raw `model.metadata` (ModelsDevModel, snake_case) to `assembleCodexModel`,
+ignoring config overrides merged into `model.effectiveMetadata` (ModelMetadata,
+camelCase). Description / modalities / reasoning options therefore ignore config
+metadata overrides in the codex client model list. Feed the merged metadata:
+either adapt `assembleCodexModel` to read `ModelMetadata` (camelCase:
+`description`, `capabilities.modalities.input`, `capabilities.reasoningOptions`)
+with raw catalog as fallback, or derive those fields from `effectiveMetadata` in
+codex-client-models before calling assemble. `contextWindow` is already threaded
+correctly — do not regress it. Colocated test: a config `description`/reasoning
+override is reflected in the assembled codex model.
+
+### Task 9 — Finding C (P2 regression): null capabilities when no signals
+
+`packages/server/src/server/model-capabilities/model-capabilities.ts`
+`toAnthropicCapabilitiesFromMetadata` returns a FULL all-`{supported:false}` object
+even when `meta.capabilities` is undefined (no capabilities/modalities/
+reasoningOptions signals). The /v1/models projection should surface `null` in that
+case (as it did before this PR) rather than fabricating an all-false capability
+block. Fix in model-capabilities (return undefined/null when there is no capability
+signal) and/or its caller in `list-models.ts`. Colocated test: metadata with no
+capability signal → capabilities === null; metadata WITH a signal → populated block.
+
+Verification for all three: `turbo run test:unit --filter=@aio-proxy/server`
+(NOT `bun test <path>` — that bypasses the preload/env and gives false results).
