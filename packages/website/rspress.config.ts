@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 import { defineConfig } from '@rspress/core';
 
-const uiStyles = fileURLToPath(import.meta.resolve('@aio-proxy/ui/styles.css'));
+const styles = fileURLToPath(new URL('./src/styles.css', import.meta.url));
 
 export default defineConfig({
   root: 'docs',
@@ -13,5 +13,5 @@ export default defineConfig({
   builderConfig: {
     plugins: [pluginTailwindcss()],
   },
-  globalStyles: uiStyles,
+  globalStyles: styles,
 });

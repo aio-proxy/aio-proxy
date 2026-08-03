@@ -1,6 +1,6 @@
 import { getLocale } from '@aio-proxy/i18n';
 
-import '@aio-proxy/ui/styles.css';
+import './styles.css';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import ReactDOM from 'react-dom/client';
 
