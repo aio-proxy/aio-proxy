@@ -1,4 +1,5 @@
 import type { ModelsDevModel } from '@aio-proxy/core';
+import type { ModelMetadata } from '@aio-proxy/types';
 import type { ModelCapabilities } from '@anthropic-ai/sdk/resources/models';
 
 // The Anthropic Models API exposes a fixed capability superset. This is the
@@ -37,6 +38,37 @@ export function toAnthropicCapabilities(model: ModelsDevModel): ModelCapabilitie
       types: {
         adaptive: support(effort !== undefined),
         enabled: support(options.some((option) => option.type === 'budget_tokens' || option.type === 'toggle')),
+      },
+    },
+  };
+}
+
+// Derives the Anthropic capabilities subset from merged config metadata (catalog
+// base + config overrides), so /v1/models reflects config capability overrides.
+// Mirrors toAnthropicCapabilities but reads the camelCased ModelMetadata shape.
+export function toAnthropicCapabilitiesFromMetadata(meta: ModelMetadata): ModelCapabilitiesSubset {
+  const caps = meta.capabilities;
+  const options = caps?.reasoningOptions ?? [];
+  const effort = options.find((option) => option.type === 'effort');
+  const values = new Set(effort?.values ?? []);
+  const inputs = caps?.modalities?.input ?? [];
+  return {
+    effort: {
+      high: support(values.has('high')),
+      low: support(values.has('low')),
+      max: support(values.has('max')),
+      medium: support(values.has('medium')),
+      supported: effort !== undefined,
+      xhigh: support(values.has('xhigh')),
+    },
+    image_input: support(inputs.includes('image')),
+    pdf_input: support(inputs.includes('pdf')),
+    structured_outputs: support(caps?.structuredOutput === true),
+    thinking: {
+      supported: caps?.reasoning === true,
+      types: {
+        adaptive: support(effort !== undefined),
+        enabled: support(options.some((option) => option.type === 'budgetTokens' || option.type === 'toggle')),
       },
     },
   };
