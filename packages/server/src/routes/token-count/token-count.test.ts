@@ -32,7 +32,6 @@ test('uses routing order and falls through candidates without count support', as
   const response = await fixture.anthropic();
 
   expect(await response.json()).toEqual({ input_tokens: 42 });
-  expect(response.headers.has('x-aio-proxy-token-count-estimated')).toBe(false);
   expect(calls).toEqual(['real']);
   expect(fixture.recording.attempts).toEqual([
     expect.objectContaining({ outcome: 'success', providerId: 'real', statusCode: 200 }),
@@ -187,7 +186,7 @@ test('records failed and invalid counters before succeeding', async () => {
   ]);
 });
 
-test('returns a standard estimate with the estimate header after real attempts fail', async () => {
+test('returns a standard estimate after real attempts fail', async () => {
   const rawRequest = geminiRequest();
   const parsed = await geminiGenerateContentAdapter.parse(rawRequest.clone(), geminiContext());
   const expected = Math.max(1, Math.ceil(JSON.stringify(parsed).length / 64));
@@ -203,7 +202,6 @@ test('returns a standard estimate with the estimate header after real attempts f
   const response = await fixture.gemini(rawRequest);
 
   expect(await response.json()).toEqual({ totalTokens: expected });
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(fixture.recording.finals).toEqual([expect.objectContaining({ outcome: 'success' })]);
 });
 
@@ -281,7 +279,6 @@ test('fallback returns a character-class estimate, not bytes/64', async () => {
     }),
   );
   expect(response.status).toBe(200);
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   const json = (await response.json()) as { input_tokens: number };
   // 12 CJK chars * 1.21 ~ 15 tokens. bytes/64 of this JSON would be ~2. Guard the density.
   expect(json.input_tokens).toBeGreaterThanOrEqual(10);

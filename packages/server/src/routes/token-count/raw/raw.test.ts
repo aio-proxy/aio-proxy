@@ -40,9 +40,8 @@ test('forwards count_tokens upstream when a same-protocol raw provider is availa
   const response = await fixture.anthropic();
 
   expect(response.status).toBe(200);
-  // Upstream value is returned verbatim; the estimate header must be absent.
+  // Upstream value is returned verbatim.
   expect(await response.json()).toEqual({ input_tokens: 4242 });
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
   // rawRequest rewrote the client alias to the wire model and kept the count path.
   expect(seen.model).toBe('relay-wire');
   expect(seen.url).toContain('/v1/messages/count_tokens');
@@ -60,7 +59,6 @@ test('falls through to estimator when raw provider protocol does not match inbou
   const fixture = countFixture([openaiRaw]);
   const response = await fixture.anthropic();
   expect(response.status).toBe(200);
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(seen.url).toBeUndefined(); // upstream never called
 });
 
@@ -91,7 +89,6 @@ test('cancels the upstream body and falls through when the raw provider returns 
 
   // No further candidate, so the route falls through to the estimator.
   expect(response.status).toBe(200);
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   // The abandoned upstream stream must be released, not leaked.
   expect(cancelled).toBe(true);
 });
@@ -119,7 +116,6 @@ test('a raw failure advances to the next candidate without invoking the same pro
   // Raw failed → advance to next candidate (here none), so estimate; the SAME provider's
   // tokenCount must NOT fire a second upstream request.
   expect(response.status).toBe(200);
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   expect(tokenCountCalls).toEqual([]);
 });
 
@@ -155,7 +151,6 @@ test('does not raw-forward a non-anthropic provider and lets it use its own toke
   expect(rawInvoked).toBe(false);
   expect(tokenCountCalls).toEqual(['gemini']);
   expect(await response.json()).toEqual({ totalTokens: 321 });
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
 });
 
 test('raw-forwards an OAuth-kind provider that exposes an anthropic raw capability', async () => {
@@ -166,7 +161,6 @@ test('raw-forwards an OAuth-kind provider that exposes an anthropic raw capabili
   expect(response.status).toBe(200);
   // Plugin/OAuth providers with an anthropic raw capability are forwarded, not estimated.
   expect(await response.json()).toEqual({ input_tokens: 4242 });
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBeNull();
   expect(seen.model).toBe('plugin-wire');
   expect(seen.url).toContain('/v1/messages/count_tokens');
 });

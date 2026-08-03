@@ -20,7 +20,13 @@ import { failureTerminal } from '../pipeline/failure';
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { estimateInputTokens } from './estimate';
 import { attemptRawCount } from './raw';
-import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from './shared';
+import {
+  type CountAttempt,
+  recordLocalEstimate,
+  recordSkippedCandidate,
+  startAttemptSpan,
+  throwIfCountAborted,
+} from './shared';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
@@ -198,8 +204,12 @@ async function countCandidates<TRequest, TContext>({
     if (rawResult.kind === 'next') continue;
     // 'fallthrough' → this candidate has no raw transport; try its tokenCount path below.
     const provider = candidate.provider;
+    const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
     const count = provider.tokenCount;
-    if (count === undefined) continue;
+    if (count === undefined) {
+      recordSkippedCandidate(session, attempt, attemptIndex, 'no_capability');
+      continue;
+    }
     const targetProtocol = provider.model?.targetProtocol?.(candidate.modelId);
     // Clamp adaptive effort against this candidate's real capabilities, exactly
     // as the generation path does; otherwise an unsupported level (e.g. xhigh)
@@ -211,11 +221,14 @@ async function countCandidates<TRequest, TContext>({
       assertImageInputSupported(candidateInvocation.messages, targetProtocol);
     } catch (error) {
       if (adapter.errors.modelUnsupported?.(error) === undefined) throw error;
+      recordSkippedCandidate(session, attempt, attemptIndex, 'image_unsupported');
       continue;
     }
-    if (lacksProviderTool(provider, candidateInvocation)) continue;
+    if (lacksProviderTool(provider, candidateInvocation)) {
+      recordSkippedCandidate(session, attempt, attemptIndex, 'missing_tool');
+      continue;
+    }
     throwIfCountAborted(session, rawRequest.signal);
-    const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
     const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
     let inputTokens: number;
     try {
@@ -266,8 +279,9 @@ async function countCandidates<TRequest, TContext>({
   }
 
   throwIfCountAborted(session, rawRequest.signal);
+  recordLocalEstimate(session);
   const estimate = estimateInputTokens(adapter.protocol as ProtocolId, invocation);
-  const response = Response.json(format(estimate), { headers: { 'x-aio-proxy-token-count-estimated': 'true' } });
+  const response = Response.json(format(estimate));
   session.finish({ outcome: 'success', finalHttpStatus: 200 });
   return response;
 }

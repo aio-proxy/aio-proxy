@@ -7,6 +7,7 @@ export const spanName = {
   prepare: 'aio_proxy.request.prepare',
   inference: 'gen_ai.client.inference',
   tokenCount: 'aio_proxy.token_count',
+  candidateSkipped: 'aio_proxy.token_count.candidate_skipped',
   egress: 'aio_proxy.response.egress',
   usage: 'aio_proxy.usage.resolve',
 } as const;
@@ -45,6 +46,8 @@ export const attributeName = {
   sourceProtocol: 'aio_proxy.protocol.source',
   targetProtocol: 'aio_proxy.protocol.target',
   selectionReason: 'aio_proxy.route.selection_reason',
+  tokenCountSource: 'aio_proxy.token_count.source',
+  skipReason: 'aio_proxy.token_count.skip_reason',
   prepareMode: 'aio_proxy.prepare.mode',
   egressMode: 'aio_proxy.egress.mode',
   errorCode: 'aio_proxy.error.code',

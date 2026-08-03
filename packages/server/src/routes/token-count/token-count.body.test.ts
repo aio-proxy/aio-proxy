@@ -95,7 +95,10 @@ test('releases the retained count body after returning an estimate', async () =>
 
   const response = await runCount(fixture.source, request);
 
-  expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
+  // Every counter failed, so the route returns a local estimate (a non-negative integer).
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { input_tokens: number };
+  expect(Number.isInteger(body.input_tokens)).toBe(true);
   expect(request.bodyUsed).toBe(true);
 });
 
