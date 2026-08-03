@@ -23,7 +23,6 @@ rs.mock('@/modules/auth/hooks/use-dashboard-auth-session', () => ({
 }));
 
 rs.mock('@/modules/auth/services/auth-service', () => ({ logoutDashboard: mocks.logoutDashboard }));
-rs.mock('sonner', () => ({ toast: { error: () => undefined } }));
 
 const renderLogout = () => {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });

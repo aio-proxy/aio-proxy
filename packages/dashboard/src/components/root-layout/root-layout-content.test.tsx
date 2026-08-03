@@ -13,7 +13,6 @@ rs.mock('@aio-proxy/ui/components/sidebar', () => ({
   SidebarInset: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   SidebarProvider: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
 }));
-rs.mock('@aio-proxy/ui/components/sonner', () => ({ Toaster: () => null }));
 rs.mock('@/modules/auth/hooks/use-dashboard-auth-session', () => ({
   useDashboardAuthSession: () => ({ data: { status: mocks.status }, isError: false, isPending: false }),
 }));
