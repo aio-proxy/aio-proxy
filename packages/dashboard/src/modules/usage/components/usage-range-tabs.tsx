@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { UsageOverviewRange } from '@aio-proxy/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useAtomValue, useSetAtom } from 'jotai';
-
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 

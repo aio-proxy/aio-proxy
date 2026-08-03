@@ -1,8 +1,7 @@
+import { SidebarProvider } from '@aio-proxy/ui/components/sidebar';
 import { beforeEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-
-import { SidebarProvider } from '@/components/ui/sidebar';
 
 import { SidebarLogout } from './sidebar-logout';
 

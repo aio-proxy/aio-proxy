@@ -1,10 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasConfig } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Trash2Icon } from 'lucide-react';
 import { type FC, useState } from 'react';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../alias-editor';
 import { ProviderAliasConfigFields } from './provider-alias-config-fields';

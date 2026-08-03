@@ -4,11 +4,11 @@ import {
   ProviderRequestTransformRulesSchema,
   type ProviderRequestTransformRule,
 } from '@aio-proxy/types';
+import { FieldError } from '@aio-proxy/ui/components/field';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
 import type { JsonEditorValidation, JsonValue } from '@/components/json-editor/json-editor-state';
-import { FieldError } from '@/components/ui/field';
 
 interface ProviderRequestTransformsJsonEditorProps {
   readonly value: readonly ProviderRequestTransformRule[];

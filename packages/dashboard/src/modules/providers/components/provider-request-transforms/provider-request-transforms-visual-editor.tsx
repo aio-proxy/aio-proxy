@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Empty, EmptyHeader, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { useEffect, useRef, useState } from 'react';
-
-import { Button } from '@/components/ui/button';
-import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 
 import { RequestTransformRuleCard } from './request-transform-rule-card';
 

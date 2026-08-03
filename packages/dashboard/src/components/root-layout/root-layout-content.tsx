@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
+import { SidebarInset, SidebarProvider } from '@aio-proxy/ui/components/sidebar';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { Toaster } from '@aio-proxy/ui/components/sonner';
 import { Outlet } from '@tanstack/react-router';
 
 import { SideMenu } from '@/components/side-menu';
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Toaster } from '@/components/ui/sonner';
 import { useDashboardAuthSession } from '@/modules/auth/hooks/use-dashboard-auth-session';
 import { DashboardUnavailable } from '@/modules/auth/templates/dashboard-unavailable';
 import { LoginPage } from '@/modules/auth/templates/login-page';

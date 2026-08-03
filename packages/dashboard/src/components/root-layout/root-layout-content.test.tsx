@@ -8,11 +8,11 @@ const mocks = rs.hoisted(() => ({ status: 'unauthenticated' }));
 rs.mock('@aio-proxy/i18n', () => ({ m: { 'dashboard.auth.loading': () => 'Loading Dashboard' } }));
 rs.mock('@tanstack/react-router', () => ({ Outlet: () => <div>Protected content</div> }));
 rs.mock('@/components/side-menu', () => ({ SideMenu: () => <nav>Sidebar</nav> }));
-rs.mock('@/components/ui/sidebar', () => ({
+rs.mock('@aio-proxy/ui/components/sidebar', () => ({
   SidebarInset: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   SidebarProvider: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
 }));
-rs.mock('@/components/ui/sonner', () => ({ Toaster: () => null }));
+rs.mock('@aio-proxy/ui/components/sonner', () => ({ Toaster: () => null }));
 rs.mock('@/modules/auth/hooks/use-dashboard-auth-session', () => ({
   useDashboardAuthSession: () => ({ data: { status: mocks.status }, isError: false, isPending: false }),
 }));

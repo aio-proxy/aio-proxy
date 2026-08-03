@@ -1,6 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import type { FC } from 'react';
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,7 +8,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@aio-proxy/ui/components/alert-dialog';
+import type { FC } from 'react';
 
 type Props = {
   readonly alias: string;

@@ -1,7 +1,6 @@
 import { getLocale } from '@aio-proxy/i18n';
-
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
+import { cn } from '@aio-proxy/ui/lib/utils';
 
 import { formatCompactTokenCount, formatExactTokenCount } from './format-token-count';
 

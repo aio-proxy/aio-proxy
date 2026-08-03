@@ -1,14 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthFormField } from '@aio-proxy/types';
+import { Checkbox } from '@aio-proxy/ui/components/checkbox';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
+import { Textarea } from '@aio-proxy/ui/components/textarea';
 import type { AnyFieldApi } from '@tanstack/react-form';
-
-import { Checkbox } from '@/components/ui/checkbox';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 
 import type { OAuthProviderForm, OAuthProviderFormValues } from '../hooks/use-oauth-provider-form';
 import { resolveDashboardText } from '../localized-text';

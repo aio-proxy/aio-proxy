@@ -1,6 +1,5 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability } from '@aio-proxy/types';
-
 import {
   Combobox,
   ComboboxContent,
@@ -8,9 +7,9 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from '@/components/ui/combobox';
-import { Field } from '@/components/ui/field';
-import { Label } from '@/components/ui/label';
+} from '@aio-proxy/ui/components/combobox';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
 
 import { resolveDashboardText } from '../localized-text';
 

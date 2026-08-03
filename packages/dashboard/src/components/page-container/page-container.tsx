@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import { buttonVariants } from '@aio-proxy/ui/components/button';
 import { Link } from '@tanstack/react-router';
 import { ArrowLeftIcon } from 'lucide-react';
-
-import { buttonVariants } from '@/components/ui/button';
 
 interface PageContainerProps {
   readonly title: string;

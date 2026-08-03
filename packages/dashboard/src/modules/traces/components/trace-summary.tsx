@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
 import type { ReactNode } from 'react';
 
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { TRACE_PLACEHOLDER } from '../trace-display-constants';
 import {

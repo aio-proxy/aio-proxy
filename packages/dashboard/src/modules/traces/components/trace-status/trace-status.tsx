@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan, DashboardTraceSummary } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { cva } from 'class-variance-authority';
-
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 
 interface TraceStatusProps {
   readonly item: Pick<DashboardTraceSummary | DashboardTraceSpan, 'endedAt' | 'otelStatusCode' | 'terminationReason'>;

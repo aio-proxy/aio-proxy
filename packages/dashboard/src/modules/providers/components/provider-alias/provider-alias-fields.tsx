@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import type { FC } from 'react';
-
-import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 
 import {
   aliasEditorIssues,

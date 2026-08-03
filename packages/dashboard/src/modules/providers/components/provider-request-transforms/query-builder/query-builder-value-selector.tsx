@@ -1,9 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { useMemo } from 'react';
-import type React from 'react';
-import type { FullOption, FullOptionList, VersatileSelectorProps } from 'react-querybuilder';
-import { isOptionGroupArray, useValueSelector } from 'react-querybuilder';
-
 import {
   Select,
   SelectContent,
@@ -12,7 +7,11 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@aio-proxy/ui/components/select';
+import { useMemo } from 'react';
+import type React from 'react';
+import type { FullOption, FullOptionList, VersatileSelectorProps } from 'react-querybuilder';
+import { isOptionGroupArray, useValueSelector } from 'react-querybuilder';
 
 import { RequestTransformFieldSelector } from '../request-transform-field-selector';
 

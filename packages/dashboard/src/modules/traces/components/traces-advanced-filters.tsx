@@ -1,16 +1,15 @@
 import { m } from '@aio-proxy/i18n';
 import type { TraceTerminationReason } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@aio-proxy/ui/components/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
 import { ListFilter } from 'lucide-react';
 import { useEffect } from 'react';
 import { z } from 'zod';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Field, FieldError, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import type { TraceFilterPatch, TraceSearch } from '../trace-search';
 

@@ -1,12 +1,5 @@
 import { getLocale, m } from '@aio-proxy/i18n';
-import { format, parseISO } from 'date-fns';
-import { enUS, zhCN } from 'date-fns/locale';
-import { useAtomValue } from 'jotai';
-import { useId } from 'react';
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-
-import { formatExactTokenCount } from '@/components/token-count';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import {
   type ChartConfig,
   ChartContainer,
@@ -14,7 +7,14 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-} from '@/components/ui/chart';
+} from '@aio-proxy/ui/components/chart';
+import { format, parseISO } from 'date-fns';
+import { enUS, zhCN } from 'date-fns/locale';
+import { useAtomValue } from 'jotai';
+import { useId } from 'react';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+
+import { formatExactTokenCount } from '@/components/token-count';
 
 import type { UsageOverviewData, UsageOverviewSeries } from '../services/usage-service';
 import { createUsageValueFormatter } from '../services/usage-value-formatter';

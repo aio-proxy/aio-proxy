@@ -1,8 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { useForm } from '@tanstack/react-form';
-import type { Table } from '@tanstack/react-table';
-import type React from 'react';
-
 import {
   Pagination,
   PaginationContent,
@@ -11,8 +7,11 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from '@/components/ui/pagination';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+} from '@aio-proxy/ui/components/pagination';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { useForm } from '@tanstack/react-form';
+import type { Table } from '@tanstack/react-table';
+import type React from 'react';
 
 import { getPaginationItems } from './pagination-items';
 

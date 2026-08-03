@@ -1,7 +1,6 @@
+import { Button } from '@aio-proxy/ui/components/button';
 import type React from 'react';
 import type { ActionProps } from 'react-querybuilder';
-
-import { Button } from '@/components/ui/button';
 
 export interface QueryBuilderActionElementProps extends ActionProps {}
 

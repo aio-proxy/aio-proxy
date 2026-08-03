@@ -1,5 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderProtocol, type OtelSpanStatusCode } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
 import { endOfDay, startOfDay } from 'date-fns';
 import { RefreshCw, RotateCcw } from 'lucide-react';
@@ -8,11 +13,6 @@ import { z } from 'zod';
 
 import { DateTimeRangePicker } from '@/components/date-time-range-picker';
 import { ProtocolLabel } from '@/components/protocol-label';
-import { Button } from '@/components/ui/button';
-import { Field, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 
 import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from '../trace-date-range';
 import { createDefaultTraceSearch, type TraceFilterPatch, type TraceSearch, withTraceFilters } from '../trace-search';

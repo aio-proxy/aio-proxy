@@ -1,9 +1,8 @@
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { useId } from 'react';
 import type React from 'react';
 import type { NotToggleProps } from 'react-querybuilder';
-
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 
 export interface QueryBuilderNotToggleProps extends NotToggleProps {}
 

@@ -1,8 +1,7 @@
+import { Button } from '@aio-proxy/ui/components/button';
+import { TableHead } from '@aio-proxy/ui/components/table';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
-
-import { Button } from '@/components/ui/button';
-import { TableHead } from '@/components/ui/table';
 
 type Props = {
   readonly label: React.ReactNode;

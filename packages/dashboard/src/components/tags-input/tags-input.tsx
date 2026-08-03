@@ -1,5 +1,3 @@
-import type React from 'react';
-
 import {
   Combobox,
   ComboboxChip,
@@ -9,7 +7,8 @@ import {
   ComboboxItem,
   ComboboxList,
   ComboboxValue,
-} from '@/components/ui/combobox';
+} from '@aio-proxy/ui/components/combobox';
+import type React from 'react';
 
 import { splitByTokenSeparators, type TagsInputItem, useTagsInput } from './use-tags-input';
 

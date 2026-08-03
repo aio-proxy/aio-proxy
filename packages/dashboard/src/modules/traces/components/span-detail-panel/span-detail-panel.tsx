@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan } from '@aio-proxy/types';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
 import { TRACE_PLACEHOLDER } from '../../trace-display-constants';
 import { formatTraceDuration, formatTraceResultDetails } from '../../trace-formatters';

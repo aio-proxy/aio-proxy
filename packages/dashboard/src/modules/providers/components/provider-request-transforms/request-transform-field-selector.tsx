@@ -1,11 +1,6 @@
 import { m } from '@aio-proxy/i18n';
-import { useId } from 'react';
-import type React from 'react';
-import type { FullOption, FullOptionList, ValueSelectorProps } from 'react-querybuilder';
-import { isOptionGroupArray } from 'react-querybuilder';
-
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
 import {
   Select,
   SelectContent,
@@ -14,7 +9,11 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@aio-proxy/ui/components/select';
+import { useId } from 'react';
+import type React from 'react';
+import type { FullOption, FullOptionList, ValueSelectorProps } from 'react-querybuilder';
+import { isOptionGroupArray } from 'react-querybuilder';
 
 export type TransformFieldKind =
   | 'provider.id'

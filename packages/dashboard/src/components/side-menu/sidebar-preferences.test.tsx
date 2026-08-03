@@ -1,7 +1,6 @@
+import { SidebarProvider } from '@aio-proxy/ui/components/sidebar';
 import { describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-
-import { SidebarProvider } from '@/components/ui/sidebar';
 
 import { SidebarPreferences } from './sidebar-preferences';
 

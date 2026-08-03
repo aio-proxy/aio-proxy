@@ -1,11 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { UsageOverviewGroupBy, UsageOverviewMetric } from '@aio-proxy/types';
+import { CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useReducer } from 'react';
 import { createPortal } from 'react-dom';
-
-import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 

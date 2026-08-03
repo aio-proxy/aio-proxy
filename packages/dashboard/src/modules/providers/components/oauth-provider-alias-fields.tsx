@@ -1,7 +1,6 @@
 import { m } from '@aio-proxy/i18n';
-
-import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 
 import { aliasEditorIssues, aliasSummary, type ProviderAlias, serializeAlias } from '../alias-editor';
 import { aliasSummaryMessage } from '../alias-editor-copy';

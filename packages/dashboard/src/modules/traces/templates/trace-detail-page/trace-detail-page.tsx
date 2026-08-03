@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useNavigate } from '@tanstack/react-router';
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import { SpanDetailPanel } from '../../components/span-detail-panel';
 import { SpanWaterfall } from '../../components/span-waterfall';
