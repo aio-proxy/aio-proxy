@@ -185,7 +185,7 @@ Elevation follows shadcn `base-luma` exactly. Standard cards use tonal surfaces 
 
 ## 5. Components
 
-Components must come from `src/components/ui`; install missing components through the shadcn CLI. Shared primitives own shape, state, and accessibility. Tailwind is for product layout and composition only.
+Components must come from `@aio-proxy/ui/components/*`; install missing components from `packages/ui` with `bun x --bun shadcn@4.13.0 add <component> --overwrite`. Shared primitives own shape, state, and accessibility. Tailwind is for product layout and composition only.
 
 ### Buttons
 
@@ -230,7 +230,7 @@ Components must come from `src/components/ui`; install missing components throug
 
 ### Do:
 
-- **Do** use an existing shadcn component from `src/components/ui` first; add missing components through the shadcn CLI.
+- **Do** use an existing shadcn component from `@aio-proxy/ui/components/*` first; add missing components from `packages/ui` with the documented shadcn command.
 - **Do** use semantic color tokens and share the same component code across light and dark themes.
 - **Do** keep the default 36px control height, 4px spacing baseline, and shared corner proportions.
 - **Do** preserve hover, focus-visible, active, disabled, and error states for every interactive control.
