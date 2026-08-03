@@ -1,5 +1,6 @@
-import { getModels, type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
-import { ModelContextAggregation } from '@aio-proxy/types';
+import { catalogModelToMetadata, getModels, type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
+import { ModelContextAggregation, type ModelMetadata } from '@aio-proxy/types';
+import { mergeWith } from 'es-toolkit/object';
 
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -13,6 +14,13 @@ export type ResolvedModel = {
   // Client-facing context window after config override + cross-provider
   // aggregation; undefined => downstream applies its own default.
   readonly contextWindow: number | undefined;
+  // Config-overridden metadata merged over the alias-slug catalog entry (catalog
+  // under, config wins, arrays replace). Drives the /v1/models projection so
+  // config capabilities/limit.output/modalities surface, not just the raw catalog.
+  readonly effectiveMetadata: ModelMetadata | undefined;
+  // Max input tokens (config limit.input ?? catalog limit.input). Distinct from
+  // contextWindow (total context); never falls back to context.
+  readonly maxInput: number | undefined;
 };
 
 type ModelRouteCandidate = {
@@ -43,6 +51,38 @@ function candidateContextWindow(
 ): number | undefined {
   const limit = provider.metadata?.[modelId]?.limit;
   return limit?.context ?? limit?.input ?? metadata?.limit.input ?? metadata?.limit.context;
+}
+
+// Effective metadata for the public slug: the alias-slug catalog entry as the
+// base layer, config metadata for the primary candidate's upstream modelId merged
+// on top (user wins; arrays replace). Same direction/customizer as resolve-extend.
+function effectiveMetadata(
+  provider: RuntimeProviderInstance,
+  modelId: string,
+  metadata: ModelsDevModel | undefined,
+): ModelMetadata | undefined {
+  const config = provider.metadata?.[modelId];
+  const base = metadata === undefined ? undefined : catalogModelToMetadata(metadata);
+  if (base === undefined) return config === undefined ? undefined : stripProtocol(config);
+  if (config === undefined) return base;
+  return mergeWith(base, stripProtocol(config), (_target, source) => (Array.isArray(source) ? source : undefined));
+}
+
+// RuntimeModelMetadata carries a runtime-only `protocol`; drop it so the merged
+// view is a clean ModelMetadata (protocol is not a client-facing metadata field).
+function stripProtocol(meta: ModelMetadata & { protocol?: unknown }): ModelMetadata {
+  const { protocol: _protocol, ...rest } = meta;
+  return rest;
+}
+
+// Max input tokens for one candidate: config limit.input wins over catalog
+// limit.input. Never falls back to the context window (context !== max input).
+function candidateMaxInput(
+  provider: RuntimeProviderInstance,
+  modelId: string,
+  metadata: ModelsDevModel | undefined,
+): number | undefined {
+  return provider.metadata?.[modelId]?.limit?.input ?? metadata?.limit.input;
 }
 
 // The same public slug from multiple providers can carry different windows.
@@ -92,6 +132,10 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
         candidates.map((candidate) => candidateContextWindow(candidate.provider, candidate.modelId, metadata)),
         aggregation,
       );
+      const maxInput = aggregateContextWindow(
+        candidates.map((candidate) => candidateMaxInput(candidate.provider, candidate.modelId, metadata)),
+        aggregation,
+      );
       return {
         slug,
         modelId: primary.modelId,
@@ -99,6 +143,8 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
         metadata,
         displayName: resolveDisplayName(primary.provider, primary.modelId, slug, metadata),
         contextWindow,
+        effectiveMetadata: effectiveMetadata(primary.provider, primary.modelId, metadata),
+        maxInput,
       };
     });
   } finally {

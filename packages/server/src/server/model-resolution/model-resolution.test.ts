@@ -133,6 +133,8 @@ test('resolveEnabledModels reads metadata only from the alias slug, never the up
       metadata: undefined,
       displayName: 'my-alias',
       contextWindow: undefined,
+      effectiveMetadata: undefined,
+      maxInput: undefined,
     },
   ]);
 });
@@ -141,16 +143,15 @@ test('resolveEnabledModels de-dupes by slug and uses alias-slug catalog metadata
   const slugMetadata = modelsDevModel('gpt-5', 'gpt-5');
   await seedCatalog({ 'gpt-5': slugMetadata });
   const resolved = await resolveEnabledModels(fakeState([oauthProvider]));
-  expect(resolved).toEqual([
-    {
-      slug: 'gpt-5',
-      modelId: 'gpt-5.6-sol',
-      provider: oauthProvider,
-      metadata: slugMetadata,
-      displayName: 'Vendor Name',
-      contextWindow: 128_000,
-    },
-  ]);
+  expect(resolved[0]).toMatchObject({
+    slug: 'gpt-5',
+    modelId: 'gpt-5.6-sol',
+    displayName: 'Vendor Name',
+    contextWindow: 128_000,
+    maxInput: undefined,
+  });
+  expect(resolved[0]?.effectiveMetadata?.name).toBe('Vendor Name');
+  expect(resolved[0]?.effectiveMetadata?.limit?.context).toBe(128_000);
 });
 
 test('displayName prefers the OAuth provider self-reported name for the upstream modelId', async () => {
@@ -225,4 +226,24 @@ test('the first candidate in config order supplies the public identity fields', 
   expect(resolved[0]?.modelId).toBe('up-first');
   expect(resolved[0]?.provider).toBe(first);
   expect(resolved[0]?.contextWindow).toBe(200_000);
+});
+
+test('maxInput uses config limit.input over catalog, and never falls back to context', async () => {
+  // catalog input 500k; config input 272k; both carry a context. maxInput must be
+  // the config input (272k), NOT the context window (300k).
+  await seedCatalog({ 'gpt-mi': modelsDevModel('gpt-mi', 'gpt-mi', { limit: { input: 500_000, output: 8_000 } }) });
+  const provider = slugProvider('p1', 'gpt-mi', 'up-mi', { context: 300_000, input: 272_000 });
+  const resolved = await resolveEnabledModels(fakeState([provider]));
+  expect(resolved[0]?.maxInput).toBe(272_000);
+  expect(resolved[0]?.contextWindow).toBe(300_000);
+});
+
+test('maxInput uses catalog limit.input when config has none, and is undefined when neither has input', async () => {
+  await seedCatalog({ 'gpt-ci': modelsDevModel('gpt-ci', 'gpt-ci', { limit: { input: 400_000, output: 8_000 } }) });
+  const withCatalogInput = slugProvider('p1', 'gpt-ci', 'up-ci');
+  expect((await resolveEnabledModels(fakeState([withCatalogInput])))[0]?.maxInput).toBe(400_000);
+
+  await seedCatalog({ 'gpt-nc': modelsDevModel('gpt-nc', 'gpt-nc', { limit: { context: 128_000, output: 8_000 } }) });
+  const noInput = slugProvider('p2', 'gpt-nc', 'up-nc');
+  expect((await resolveEnabledModels(fakeState([noInput])))[0]?.maxInput).toBeUndefined();
 });
