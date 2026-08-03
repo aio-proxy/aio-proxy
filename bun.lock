@@ -180,6 +180,7 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "typescript": "catalog:",
       },
     },
