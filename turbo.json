@@ -8,14 +8,19 @@
         "../infra/src/rslib.ts",
         "../infra/tsconfig/base.json",
         "build/**",
+        "docs/**",
         "messages/**",
         "src/**",
         "scripts/**",
         "package.json",
         "rslib.config.ts",
+        "rspress.config.ts",
         "tsconfig.json"
       ],
       "outputs": ["dist/**", "src/route-tree.gen.ts", "src/paraglide/**"]
+    },
+    "@aio-proxy/ui#build": {
+      "outputs": []
     },
     "test": {
       "dependsOn": ["build", "^build"],
