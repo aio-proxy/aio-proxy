@@ -41,7 +41,7 @@ export async function codexClientModels(
       entry: assembleCodexModel({
         slug: model.slug,
         displayName: model.displayName,
-        metadata: model.metadata,
+        metadata: model.effectiveMetadata,
         contextWindow: model.contextWindow,
         template,
       }),

@@ -1,21 +1,21 @@
 import { expect, test } from 'bun:test';
 
-import type { ModelsDevModel } from '@aio-proxy/core';
+import type { ModelMetadata } from '@aio-proxy/types';
 
 import { assembleCodexModel } from './codex-assembly';
 
-const model = (overrides: Partial<ModelsDevModel>): ModelsDevModel => ({
-  attachment: false,
-  description: '',
-  id: 'm',
-  last_updated: '2026-01-15',
-  limit: { context: 128_000, output: 8_000 },
-  modalities: { input: ['text'], output: ['text'] },
+// Merged, config-over-catalog metadata (camelCase ModelMetadata) — the shape
+// assembleCodexModel actually consumes, so a config override reaches the entry.
+const metadata = (overrides: Partial<ModelMetadata>): ModelMetadata => ({
   name: 'M',
-  open_weights: false,
-  reasoning: false,
-  release_date: '2026-01-15',
-  tool_call: false,
+  description: '',
+  limit: { context: 128_000, output: 8_000 },
+  capabilities: {
+    reasoning: false,
+    toolCall: false,
+    attachment: false,
+    modalities: { input: ['text'], output: ['text'] },
+  },
   ...overrides,
 });
 
@@ -114,10 +114,13 @@ test('reasoning levels derive from the models-dev effort option values', () => {
     slug: 'm',
     displayName: 'M',
     contextWindow: undefined,
-    metadata: model({
+    metadata: metadata({
       limit: { context: 128_000, input: 500, output: 8_000 },
-      reasoning: true,
-      reasoning_options: [{ type: 'effort', values: ['low', 'medium'] }],
+      capabilities: {
+        reasoning: true,
+        reasoningOptions: [{ type: 'effort', values: ['low', 'medium'] }],
+        modalities: { input: ['text'], output: ['text'] },
+      },
       description: 'A synthesized model description',
     }),
     template: undefined,
@@ -135,9 +138,11 @@ test('a non-reasoning model advertises no reasoning levels and no default', () =
     slug: 'm',
     displayName: 'M',
     contextWindow: undefined,
-    metadata: model({
-      reasoning: false,
-      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+    metadata: metadata({
+      capabilities: {
+        reasoning: false,
+        modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      },
     }),
     template: undefined,
   });
@@ -152,10 +157,13 @@ test('an effort option missing its values does not crash and yields no levels', 
     slug: 'm',
     displayName: 'M',
     contextWindow: undefined,
-    metadata: model({
-      reasoning: true,
-      // Upstream JSON can omit `values` even though the type marks it required.
-      reasoning_options: [{ type: 'effort' } as unknown as { type: 'effort'; values: [] }],
+    metadata: metadata({
+      capabilities: {
+        reasoning: true,
+        // Upstream JSON can omit `values` even though the type marks it required.
+        reasoningOptions: [{ type: 'effort' } as unknown as { type: 'effort'; values: [] }],
+        modalities: { input: ['text'], output: ['text'] },
+      },
     }),
     template: undefined,
   });
@@ -170,9 +178,32 @@ test('a config context override wins over the models.dev limit in the assembled 
     slug: 'm',
     displayName: 'M',
     contextWindow: 900_000,
-    metadata: model({ limit: { context: 128_000, input: 500, output: 8_000 } }),
+    metadata: metadata({ limit: { context: 128_000, input: 500, output: 8_000 } }),
     template: undefined,
   });
   expect(entry.context_window).toBe(900_000);
   expect(entry.max_context_window).toBe(900_000);
+});
+
+test('config metadata overrides (description, modalities, reasoning) flow into the synthesized entry', () => {
+  // effectiveMetadata carries config-over-catalog values: a description, image
+  // modality, and an effort option the raw catalog never had. Reading the merged
+  // metadata (not the raw catalog) is what surfaces these to Codex.
+  const entry = assembleCodexModel({
+    slug: 'm',
+    displayName: 'M',
+    contextWindow: undefined,
+    metadata: metadata({
+      description: 'Config-overridden description',
+      capabilities: {
+        reasoning: true,
+        reasoningOptions: [{ type: 'effort', values: ['high', 'max'] }],
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      },
+    }),
+    template: undefined,
+  });
+  expect(entry.description).toBe('Config-overridden description');
+  expect(entry.input_modalities).toEqual(['text', 'image']);
+  expect((entry.supported_reasoning_levels as { effort: string }[]).map((l) => l.effort)).toEqual(['high', 'max']);
 });

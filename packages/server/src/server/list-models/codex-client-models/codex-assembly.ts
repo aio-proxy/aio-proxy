@@ -1,5 +1,4 @@
-import type { ModelsDevModel } from '@aio-proxy/core';
-import type { CodexUpstreamModel } from '@aio-proxy/types';
+import type { CodexUpstreamModel, ModelMetadata } from '@aio-proxy/types';
 
 import instructions from './default-instructions.md' with { type: 'text' };
 
@@ -34,7 +33,9 @@ const REQUIRED_DEFAULTS = {
 type AssembleInput = {
   slug: string;
   displayName: string;
-  metadata: ModelsDevModel | undefined;
+  // Config-overridden metadata merged over the catalog entry (config wins), so
+  // description/modalities/reasoning overrides surface in the synthesized entry.
+  metadata: ModelMetadata | undefined;
   // Config override, already aggregated across providers; wins over the catalog
   // window. Undefined falls through to the catalog limit, then the static default.
   contextWindow: number | undefined;
@@ -51,9 +52,9 @@ function reasoningLevel(effort: ReasoningLevel) {
 // from the models.dev `effort` reasoning option. No metadata at all falls back
 // to the full list (unknown, assume all); an explicit non-reasoning model
 // yields an empty list, so we advertise no reasoning and no default level.
-function reasoningLevelsFor(metadata: ModelsDevModel | undefined): readonly ReasoningLevel[] {
+function reasoningLevelsFor(metadata: ModelMetadata | undefined): readonly ReasoningLevel[] {
   if (metadata === undefined) return REASONING_LEVELS;
-  const effort = metadata.reasoning_options?.find((option) => option.type === 'effort');
+  const effort = metadata.capabilities?.reasoningOptions?.find((option) => option.type === 'effort');
   if (effort === undefined) return [];
   const values = new Set(effort.values ?? []);
   return REASONING_LEVELS.filter((level) => values.has(level));
@@ -63,13 +64,13 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
   const text = instructions.replaceAll('{{model_name}}', input.slug);
   // Config override wins over the catalog window, which wins over the static default.
   const contextWindow =
-    input.contextWindow ?? input.metadata?.limit.input ?? input.metadata?.limit.context ?? DEFAULT_CONTEXT_WINDOW;
+    input.contextWindow ?? input.metadata?.limit?.input ?? input.metadata?.limit?.context ?? DEFAULT_CONTEXT_WINDOW;
 
   // Codex's InputModality enum accepts only 'text' and 'image'; emitting 'pdf'
   // (a common models.dev signal, e.g. Claude) makes the client reject the whole
   // catalog. Case A passes the upstream codex row through verbatim, so this only
   // constrains synthesized (Case B) entries.
-  const modalityInputs = input.metadata?.modalities.input;
+  const modalityInputs = input.metadata?.capabilities?.modalities?.input;
   const inputModalities = modalityInputs
     ? ['text', ...(modalityInputs.includes('image') ? ['image'] : [])]
     : ['text', 'image'];

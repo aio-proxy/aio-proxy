@@ -148,6 +148,37 @@ test('config context overrides win in both the upstream row (case A) and the syn
   expect(caseB.max_context_window).toBe(750_000);
 });
 
+test('config metadata overrides (description) flow into the synthesized case B entry', async () => {
+  // Provider config overrides third-party-model's description and input modalities.
+  // The synthesized entry must reflect the merged (effective) metadata, not the raw
+  // catalog record, so these config overrides surface to Codex.
+  const configured = {
+    id: 'p1',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    alias: {
+      'my-alias': { model: 'my-alias', preserve: false },
+    },
+    metadata: {
+      'my-alias': {
+        description: 'Overridden by config',
+        capabilities: { modalities: { input: ['text', 'image'] } },
+      },
+    },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+  const state = {
+    acquireProviderSnapshot: () => ({ snapshot: { providers: [configured] }, release() {} }),
+  } as unknown as ServerState;
+
+  const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(state, { fetchImpl });
+
+  const caseB = models.find((m) => m.id === 'my-alias') as Record<string, unknown>;
+  expect(caseB.description).toBe('Overridden by config');
+  expect(caseB.input_modalities).toEqual(['text', 'image']);
+});
+
 test('synthesized entries get deterministic priorities past the max template priority, ordered by display name', async () => {
   const multi = {
     id: 'p1',
