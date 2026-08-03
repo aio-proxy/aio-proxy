@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const paraglideCli = fileURLToPath(new URL('./bin/run.js', import.meta.resolve('@inlang/paraglide-js/package.json')));
 
 describe('paraglide tree-shaking spike', () => {
   test('documents aggregated m bundle retention for unused message names', async () => {
@@ -29,7 +32,7 @@ describe('paraglide tree-shaking spike', () => {
     writeFileSync(zhPath, `${JSON.stringify(zhMessages, null, 2)}\n`);
 
     const compile = Bun.spawnSync(
-      ['bunx', '@inlang/paraglide-js', 'compile', '--project', './project.inlang', '--outdir', './paraglide'],
+      [process.execPath, paraglideCli, 'compile', '--project', './project.inlang', '--outdir', './paraglide'],
       {
         cwd: root,
       },
