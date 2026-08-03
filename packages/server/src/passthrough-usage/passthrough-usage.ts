@@ -2,6 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { createParser } from 'eventsource-parser';
 
 import { hasContentDelta } from './content';
+import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
   assertNever,
@@ -63,6 +64,7 @@ export function createPassthroughSseUsageObserver(
   let responseId: string | undefined;
   let sawContent = false;
   let failed = false;
+  const itemCounter = createResponseItemCounter(protocol);
   let linePrefix = '';
   let lineLength = 0;
   let eventFailed = false;
@@ -111,28 +113,31 @@ export function createPassthroughSseUsageObserver(
       failed ||= failEvent;
       if (!active || event.data.length > MAX_SSE_BUFFER_CHARS) {
         active = false;
-        if (failEvent) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        if (failEvent)
+          safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
       if (protocol === ProviderProtocol.OpenAICompatible && event.data.trim() === '[DONE]') {
-        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
       const parsed = parseJson(event.data);
       const failParsed = protocolFailure(protocol, undefined, parsed);
       failed ||= failParsed;
       if (parsed === undefined) {
-        if (failEvent || failParsed) safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        if (failEvent || failParsed)
+          safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
+      itemCounter.observe(event.event, parsed);
       responseId = completedResponseId(protocol, parsed) ?? responseId;
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
       }
       if (failEvent || failParsed || isSuccessTerminal(protocol, event.event, parsed)) {
-        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed)));
+        safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
       }
     },
   });
@@ -158,7 +163,7 @@ export function createPassthroughSseUsageObserver(
           active = false;
         }
       }
-      return failed || active ? observation(observed, responseId, failed) : {};
+      return failed || active ? observation(observed, responseId, failed, itemCounter.totals()) : {};
     },
     sawContent: () => sawContent,
   };
@@ -175,14 +180,22 @@ function observationFromJson(protocol: ProviderProtocol, value: unknown): Passth
     usageFromJson(protocol, value),
     completedResponseId(protocol, value),
     protocolFailure(protocol, undefined, value),
+    countResponseItems(protocol, value),
   );
 }
 
-function observation(usage: UsageExtraction, responseId: string | undefined, failed: boolean): PassthroughObservation {
+function observation(
+  usage: UsageExtraction,
+  responseId: string | undefined,
+  failed: boolean,
+  itemCounts: ResponseItemCounts = {},
+): PassthroughObservation {
   if (failed) return { failed: true };
+  const baseUsage = usage.kind === 'valid' ? usage.usage : undefined;
+  const mergedUsage = withItemCounts(baseUsage, itemCounts);
   return {
     ...(responseId === undefined ? {} : { responseId }),
-    ...(usage.kind === 'valid' ? { usage: usage.usage } : {}),
+    ...(mergedUsage === undefined ? {} : { usage: mergedUsage }),
     ...(usage.kind === 'invalid' ? { issues: usage.issues } : {}),
   };
 }

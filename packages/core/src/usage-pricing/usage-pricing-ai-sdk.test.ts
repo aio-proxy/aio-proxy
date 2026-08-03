@@ -95,4 +95,51 @@ describe('calculateEstimatedCost billable normalization', () => {
       priceModelId: 'model',
     });
   });
+
+  test('peels priced audio tokens from their parents so they are not double-billed', () => {
+    expect(
+      calculateEstimatedCost(
+        { inputTokens: 1000, outputTokens: 400, inputAudioTokens: 800, outputAudioTokens: 200 },
+        { id: 'model', input: 2, output: 10, inputAudio: 40, outputAudio: 60 },
+        openaiPassthrough,
+      ),
+    ).toEqual({
+      // audio ⊂ parent: input 1000-800=200 @2, output 400-200=200 @10,
+      // audio 800@40 + 200@60 (each audio token billed once, at the audio rate).
+      // (200*2 + 200*10 + 800*40 + 200*60) / 1e6
+      estimatedCostUsd: (200 * 2 + 200 * 10 + 800 * 40 + 200 * 60) / 1_000_000,
+      priceModelId: 'model',
+    });
+  });
+
+  test('leaves audio tokens inside their parent when no audio price is set', () => {
+    expect(
+      calculateEstimatedCost(
+        { inputTokens: 1000, outputTokens: 400, inputAudioTokens: 800, outputAudioTokens: 200 },
+        { id: 'model', input: 2, output: 10 },
+        openaiPassthrough,
+      ),
+    ).toEqual({
+      // No audio rate → audio tokens are not peeled and carry no separate line;
+      // they stay billed at the parent text rate exactly once.
+      // (1000*2 + 400*10) / 1e6
+      estimatedCostUsd: (1000 * 2 + 400 * 10) / 1_000_000,
+      priceModelId: 'model',
+    });
+  });
+
+  test('clamps the parent at zero when audio tokens exceed the parent total', () => {
+    expect(
+      calculateEstimatedCost(
+        { inputTokens: 500, inputAudioTokens: 800 },
+        { id: 'model', input: 2, inputAudio: 40 },
+        openaiPassthrough,
+      ),
+    ).toEqual({
+      // input clamps to max(0, 500-800)=0; audio billed on the real 800 count.
+      // (0*2 + 800*40) / 1e6
+      estimatedCostUsd: (800 * 40) / 1_000_000,
+      priceModelId: 'model',
+    });
+  });
 });

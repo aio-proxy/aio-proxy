@@ -2,7 +2,7 @@ import { type ModelEgressContext } from '@aio-proxy/core';
 
 import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
-import { attemptBase } from '../attempt-base';
+import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { createSseResponse, preflightStream } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
@@ -30,12 +30,14 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(targetProtocol, () => model.ensureAvailable?.());
+  const configPrice = candidateConfigPrice(provider, candidate.modelId);
   const captured = source.usageCapture.stream({
     providerId: provider.id,
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
     startedAt,
     observation,
+    ...(configPrice === undefined ? {} : { configPrice }),
     stream: inAttempt(targetProtocol, () => {
       observation.markTransportUnavailable();
       return model.invoke({

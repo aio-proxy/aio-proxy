@@ -7,6 +7,7 @@ export * from './dashboard';
 export * from './dashboard-localized-text';
 export * from './dashboard-oauth';
 export * from './plugin';
+export * from './model-metadata/index';
 export * from './provider';
 export * from './provider-transform/index';
 export * from './trace';

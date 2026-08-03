@@ -97,6 +97,87 @@ aio-proxy reload
 
 Editors that support `$schema` can provide completion and validation. Use `{{env.NAME}}` to read environment variables.
 
+### Model metadata and pricing
+
+Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream model id**, to override client-facing metadata and cost accounting for that Provider's models. User-supplied values take precedence over auto-discovered [models.dev](https://models.dev) data, which in turn wins over built-in defaults. Unknown fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
+
+```jsonc
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  // When several Providers expose the same public model, reconcile its context window:
+  // "min" (default, safe) reports the smallest; "max" reports the largest.
+  "router": { "modelContextAggregation": "min" },
+  "providers": {
+    "openai": {
+      "kind": "api",
+      "protocol": "openai-response",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "{{env.OPENAI_API_KEY}}",
+      "models": ["gpt-5"],
+      "metadata": {
+        // Keyed by the upstream model id the Provider serves.
+        "gpt-5": {
+          "name": "GPT-5", // client-facing display name
+          "description": "Frontier model",
+          "limit": {
+            "context": 1000000, // context window exposed to clients (e.g. Codex `/models`)
+            "input": 1000000,
+            "output": 128000,
+          },
+          "capabilities": {
+            "reasoning": true,
+            "toolCall": true,
+            "attachment": true,
+          },
+          "cost": {
+            // Per-token prices are USD per 1,000,000 tokens.
+            "input": 1.25,
+            "output": 10,
+            "cacheRead": 0.125,
+            // Audio token prices, USD per 1,000,000 tokens (OpenAI-compatible upstreams only).
+            "inputAudio": 2.5,
+            "outputAudio": 20,
+            // Per-event fees are USD per event.
+            "image": 0.01,
+            "webSearch": 0.01,
+            "request": 0,
+            // Long-context surcharge: the highest crossed tier applies to the whole request.
+            "tiers": [{ "tier": { "type": "context", "size": 200000 }, "input": 2.5, "output": 15 }],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+When a request is billed, the Provider that actually served it supplies the price: a configured `cost` wins over the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
+
+Per-event fees and audio-token costs are metered from the actual response: generated images and web-search invocations are counted from the served output, and audio tokens are read from the upstream usage (available on OpenAI-compatible Chat Completions upstreams). A fee applies only when the corresponding events occur.
+
+#### Inheriting a catalog entry with `extend`
+
+When your Provider's upstream model id doesn't line up with a [models.dev](https://models.dev) slug (an aliased or renamed model), point `extend` at the slug to inherit as a base layer:
+
+```jsonc
+{
+  "metadata": {
+    // Your Provider serves this under a name models.dev doesn't know.
+    "my-frontier-alias": {
+      "extend": "openai/gpt-5.5", // inherit this catalog entry as the base
+      "name": "My Frontier Model", // override the inherited name
+      "cost": { "input": 2 }, // override input price; inherited output/tiers remain
+    },
+  },
+}
+```
+
+- `extend` names a models.dev slug (`provider/model`) whose catalog entry supplies the base metadata (name, limit, capabilities, cost).
+- Your explicit fields override the inherited ones. Merging is deep for objects (e.g. `cost.input` above overrides only that field while `cost.output` is inherited), and arrays (such as `capabilities.reasoningOptions`, `modalities`, and cost `tiers`) replace the inherited array wholesale rather than merging by index.
+- Only the `extend` target is used as the base — the model's own upstream id is **not** auto-matched against the catalog. That is the whole point of `extend`: the name doesn't line up.
+- Inherited `cost` is treated as a config price: you opted in through `extend`, so billing tags it `priceSource: "config"`, just like a `cost` you wrote out in full.
+- If the target slug isn't found in the catalog, your explicit fields are kept (the `extend` key is dropped) and a warning is logged; startup is never blocked.
+
 ## Routing rules
 
 Each key in the `providers` object is a stable **Provider ID**. A request is handled as follows:

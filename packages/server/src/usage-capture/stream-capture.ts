@@ -15,10 +15,20 @@ import {
   type UsageCompletion,
   usageProperty,
 } from './shared';
+import { createStreamEventCounter } from './stream-event-counts';
 import { finalizeUsage } from './usage-validation';
 
 export function streamCapture(
-  { stream, providerId, modelId, requestedModelId, startedAt, observation, idleTimeoutMs }: StreamUsageOptions,
+  {
+    stream,
+    providerId,
+    modelId,
+    requestedModelId,
+    startedAt,
+    observation,
+    idleTimeoutMs,
+    configPrice,
+  }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
@@ -28,6 +38,11 @@ export function streamCapture(
   let finished = false;
   let finishUsage: UsageRow | undefined;
   let firstTokenAt: number | undefined;
+  // Built-in provider events (generated images, web searches) billed
+  // per-occurrence. Only counted on a success trace: they merge into finishUsage,
+  // which reaches finalizeUsage exclusively via complete() (finish/EOF-success),
+  // never the abort/cancel/idle paths.
+  const eventCounts = createStreamEventCounter(providerId, modelId);
   // Trace settlement (usage/timing/outcome) and transport lifecycle (reader) are
   // tracked separately: an AI SDK `finish` part settles the trace early, but the
   // transport stays live until EOF/cancel/idle. Conflating them let a cancel
@@ -63,7 +78,10 @@ export function streamCapture(
     const usage = await finalizeUsage({
       usage: finishUsage,
       accounting: { source: 'ai-sdk' },
+      providerId,
+      modelId,
       ...(requestedModelId === undefined ? {} : { requestedModelId }),
+      ...(configPrice === undefined ? {} : { configPrice }),
       ...(logger === undefined ? {} : { logger }),
     });
     terminal.resolve({
@@ -104,7 +122,7 @@ export function streamCapture(
         }
         if (next.value.type === 'finish') {
           finished = true;
-          finishUsage = normalizeAiSdkUsage(next.value, providerId, modelId);
+          finishUsage = eventCounts.withCounts(normalizeAiSdkUsage(next.value, providerId, modelId));
           controller.enqueue(next.value);
           void complete();
           return;
@@ -114,6 +132,8 @@ export function streamCapture(
         } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
+        } else {
+          eventCounts.observe(next.value);
         }
         controller.enqueue(next.value);
       } catch (error) {

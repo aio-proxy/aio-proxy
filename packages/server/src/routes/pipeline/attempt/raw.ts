@@ -1,7 +1,7 @@
 import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
-import { attemptBase } from '../attempt-base';
+import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { retainResponseBody } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
@@ -58,6 +58,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
   const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);
+  const configPrice = candidateConfigPrice(provider, candidate.modelId);
   const captured = source.usageCapture.passthrough({
     response: normalizedResponse,
     protocol: adapter.protocol,
@@ -65,6 +66,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
     observation,
+    ...(configPrice === undefined ? {} : { configPrice }),
     ...(ctx.streamRequested ? { startedAt } : {}),
     ...(adapter.session === undefined
       ? {}

@@ -86,4 +86,65 @@ describe('passthrough usage extraction', () => {
       cacheWriteTokens: 5,
     });
   });
+
+  test('extracts OpenAI-compatible audio tokens from usage details', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAICompatible,
+        JSON.stringify({
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            prompt_tokens_details: { audio_tokens: 30 },
+            completion_tokens_details: { audio_tokens: 10 },
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      inputAudioTokens: 30,
+      outputAudioTokens: 10,
+    });
+  });
+
+  test('omits OpenAI-compatible audio tokens when details are absent', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.OpenAICompatible,
+      JSON.stringify({
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+        },
+      }),
+    );
+
+    expect(usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+    expect(usage).not.toHaveProperty('inputAudioTokens');
+    expect(usage).not.toHaveProperty('outputAudioTokens');
+  });
+
+  test('does not extract audio tokens from Responses-protocol usage', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.OpenAIResponse,
+      JSON.stringify({
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          input_tokens_details: { audio_tokens: 30 },
+          output_tokens_details: { audio_tokens: 10 },
+        },
+      }),
+    );
+
+    expect(usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+    expect(usage).not.toHaveProperty('inputAudioTokens');
+    expect(usage).not.toHaveProperty('outputAudioTokens');
+  });
 });

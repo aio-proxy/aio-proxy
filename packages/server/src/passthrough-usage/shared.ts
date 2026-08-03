@@ -11,7 +11,9 @@ export type UsageField =
   | 'totalTokens'
   | 'cacheReadTokens'
   | 'cacheWriteTokens'
-  | 'reasoningTokens';
+  | 'reasoningTokens'
+  | 'inputAudioTokens'
+  | 'outputAudioTokens';
 export type UsageFieldResult =
   | { readonly kind: 'absent' }
   | { readonly kind: 'valid'; readonly value: number }

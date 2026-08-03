@@ -58,6 +58,7 @@ export function createApiProvider(
     kind: config.kind,
     ...(config.models === undefined ? {} : { models: config.models }),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
+    ...(config.metadata === undefined ? {} : { metadata: config.metadata }),
     protocol: config.protocol,
     async passthrough(req, options) {
       const upstreamUrl = rewrittenUrl(baseURL, req.url);

@@ -35,6 +35,7 @@ import {
 } from '../provider-runtime';
 import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import { applyMetadataExtend } from './resolve-extend/index';
 import type { ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
@@ -72,12 +73,16 @@ export async function buildSnapshot(
     diagnostics,
     logger,
   );
+  // Resolve per-model `metadata.extend` into effective merged metadata before any
+  // materialization/summary derivation reads provider metadata, so downstream cost
+  // and model-resolution consumers transparently see the merged values.
+  const configWithExtend = await applyMetadataExtend(config, logger);
   const nonOAuth = {
-    ...config,
-    providers: config.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
+    ...configWithExtend,
+    providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
   };
   const base = materializeProviders(nonOAuth);
-  const oauthConfigs = config.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
+  const oauthConfigs = configWithExtend.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
   const oauth = await Promise.all(
     oauthConfigs.map((provider) => {
       const previousEntry = previous?.runtimeCache.get(provider.id);
@@ -103,9 +108,16 @@ export async function buildSnapshot(
       });
     }),
   );
-  const { providers, summaries } = assembleProviders(config, nonOAuth, base, oauth, oauthConfigs, diagnostics);
+  const { providers, summaries } = assembleProviders(
+    configWithExtend,
+    nonOAuth,
+    base,
+    oauth,
+    oauthConfigs,
+    diagnostics,
+  );
   return {
-    config,
+    config: configWithExtend,
     plugins,
     probes: base.probes,
     providers,

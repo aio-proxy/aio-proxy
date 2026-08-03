@@ -104,7 +104,14 @@ export {
   safeParseOpenAIResponses,
 } from './ingress/openai-responses/index';
 export type { Model as ModelsDevModel } from '@opencode-ai/models';
-export { clearModelsCache, findModelPrice, getModels, getModelsCachedOnly, getProviders } from './models-dev/index';
+export {
+  catalogModelToMetadata,
+  clearModelsCache,
+  findModelPrice,
+  getModels,
+  getModelsCachedOnly,
+  getProviders,
+} from './models-dev/index';
 export { modelEffortValues, normalizeEffort } from './protocol/reasoning-effort/index';
 export {
   findInstalledNpmPackage,
@@ -192,7 +199,10 @@ export {
 } from './transform/openai-responses/index';
 export {
   calculateEstimatedCost,
+  configModelPrice,
   type OpenRouterModelPrice,
+  type OpenRouterModelPriceTier,
+  tierAdjustedPrice,
   type UsageAccounting,
   type UsageCostResult,
   type UsagePricingInput,

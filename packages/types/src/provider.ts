@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AliasConfigSchema, ModelIdSchema } from './common';
+import { ModelMetadataSchema } from './model-metadata/index';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
@@ -66,12 +67,20 @@ const modelsField = {
   models: z.array(ModelIdSchema).optional().describe('Upstream model ids available through this provider.'),
 } as const;
 
+const metadataField = {
+  metadata: z
+    .record(ModelIdSchema, ModelMetadataSchema)
+    .optional()
+    .describe('Per-model metadata overrides keyed by upstream model id.'),
+} as const;
+
 const AiSdkPackageNameSchema = z.string().trim().min(1, 'AI SDK package name cannot be blank');
 
 const ApiProviderSharedFields = {
   kind: z.literal(ProviderKind.Api).describe('Provider backed by a raw HTTP API.'),
   ...SharedProviderSchemaBase,
   ...modelsField,
+  ...metadataField,
   protocol: ProviderProtocolSchema,
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
   headers: ApiHeadersSchema.optional().describe('Headers applied to upstream requests; configured values win.'),
@@ -110,6 +119,7 @@ const AiSdkProviderSharedFields = {
   kind: z.literal(ProviderKind.AiSdk).describe('Provider loaded from an AI SDK provider package.'),
   ...SharedProviderSchemaBase,
   ...modelsField,
+  ...metadataField,
   packageName: AiSdkPackageNameSchema.default('@ai-sdk/openai-compatible').describe(
     'npm package name that exports the AI SDK provider factory.',
   ),
@@ -148,6 +158,7 @@ const ApiProviderMutationSharedFields = {
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
@@ -178,6 +189,7 @@ const AiSdkProviderMutationSharedFields = {
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;

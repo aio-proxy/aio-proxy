@@ -1,4 +1,4 @@
-import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import { type OpenRouterModelPrice, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import type { AttemptResponseObservation } from '../response-observation';
@@ -32,6 +32,9 @@ export type StreamUsageOptions = {
   // completion resolves failure and the upstream is cancelled. Defaults to
   // STREAM_IDLE_TIMEOUT_MS; image endpoints should pass a larger value.
   readonly idleTimeoutMs?: number;
+  // Per-provider price override for the hit channel; when present it wins over
+  // the models.dev catalog and marks the usage row's priceSource as 'config'.
+  readonly configPrice?: OpenRouterModelPrice;
 };
 
 export type PassthroughUsageOptions = {
@@ -55,6 +58,9 @@ export type PassthroughUsageOptions = {
   // completion resolves failure and the upstream is cancelled. Defaults to
   // STREAM_IDLE_TIMEOUT_MS; image endpoints should pass a larger value.
   readonly idleTimeoutMs?: number;
+  // Per-provider price override for the hit channel; when present it wins over
+  // the models.dev catalog and marks the usage row's priceSource as 'config'.
+  readonly configPrice?: OpenRouterModelPrice;
 };
 
 export type UsageCapture = {

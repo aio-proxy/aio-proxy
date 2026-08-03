@@ -131,8 +131,8 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     modelId: 'model',
     metadata: { region: 'us', protocol: 'anthropic' },
   });
-  expect(result.provider?.modelMetadata?.[modelId]).toEqual({
-    displayName: 'Model',
+  expect(result.provider?.metadata?.[modelId]).toEqual({
+    name: 'Model',
     protocol: ProviderProtocol.Anthropic,
   });
   expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.Anthropic);
