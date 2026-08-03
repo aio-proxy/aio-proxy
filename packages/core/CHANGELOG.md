@@ -1,5 +1,40 @@
 # @aio-proxy/core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`963e395`](https://github.com/aio-proxy/aio-proxy/commit/963e3951a64644441a36b0ae4c9b93d644444d18) Thanks [@baranwang](https://github.com/baranwang)! - extend: resolve per-model `metadata.extend` into effective merged metadata — inherit a models.dev catalog entry as a base layer, deep-merged under your explicit fields, so cost accounting and model resolution both see the inherited values.
+
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`f15d8d3`](https://github.com/aio-proxy/aio-proxy/commit/f15d8d301a2172eff687bd414cc9a05b7cab4085) Thanks [@baranwang](https://github.com/baranwang)! - feat: per-provider model metadata & cost overrides
+
+  Providers can now declare a `metadata` map keyed by upstream model id to override client-facing model metadata (name, description, token limits, capabilities) and cost accounting. User config wins over models.dev auto-discovery. Billing uses the actual hit channel's configured `cost`, and each usage row records its `priceSource` (`config`/`models-dev`/`default`). A new `router.modelContextAggregation` (`min` default / `max`) reconciles the context window when multiple providers expose the same public model.
+
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`6963859`](https://github.com/aio-proxy/aio-proxy/commit/6963859bed52fbb6e56060015bf37c97a9f0abfd) Thanks [@baranwang](https://github.com/baranwang)! - feat: meter image, web-search, and audio usage for per-event and audio fees
+
+  The proxy now counts generated images and web-search invocations from served
+  responses (OpenAI Responses output items and streamed AI SDK file/tool-call
+  parts) and reads audio token counts from OpenAI-compatible usage. These flow
+  into the configured `cost` fields (`image`, `webSearch`, `inputAudio`,
+  `outputAudio`), which previously had no effect because nothing produced the
+  counts. Audio tokens are treated as a subset of their input/output totals (as
+  the upstream reports them) and peeled out before the text rate applies, so each
+  audio token is billed once at the audio rate rather than at both rates.
+  Requests without such events are unaffected.
+
+### Patch Changes
+
+- Updated dependencies [[`abf31a4`](https://github.com/aio-proxy/aio-proxy/commit/abf31a4c2eaa5c6fedf7dd9831f00e54d2fef8ee), [`f15d8d3`](https://github.com/aio-proxy/aio-proxy/commit/f15d8d301a2172eff687bd414cc9a05b7cab4085), [`6963859`](https://github.com/aio-proxy/aio-proxy/commit/6963859bed52fbb6e56060015bf37c97a9f0abfd)]:
+  - @aio-proxy/types@0.6.0
+  - @aio-proxy/plugin-openai-chatgpt@0.6.0
+  - @aio-proxy/i18n@0.6.0
+  - @aio-proxy/logger@0.6.0
+  - @aio-proxy/plugin-github-copilot@0.6.0
+  - @aio-proxy/plugin-google-antigravity@0.6.0
+  - @aio-proxy/plugin-kimi-code@0.6.0
+  - @aio-proxy/plugin-sdk@0.6.0
+  - @aio-proxy/plugin-xai-grok@0.6.0
+
 ## 0.5.2
 
 ### Patch Changes

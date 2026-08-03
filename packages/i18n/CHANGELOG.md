@@ -1,5 +1,7 @@
 # @aio-proxy/i18n
 
+## 0.6.0
+
 ## 0.5.2
 
 ### Patch Changes
