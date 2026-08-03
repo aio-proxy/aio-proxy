@@ -5,6 +5,7 @@
 
 @source "./components";
 @source "../../dashboard/src";
+@source "../../website/docs";
 
 @custom-variant dark (&:is(.dark *));
 
