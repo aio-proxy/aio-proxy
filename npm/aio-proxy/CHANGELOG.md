@@ -1,5 +1,48 @@
 # aio-proxy
 
+## 0.5.2
+
+### Patch Changes
+
+- [#133](https://github.com/aio-proxy/aio-proxy/pull/133) [`39d1b19`](https://github.com/aio-proxy/aio-proxy/commit/39d1b1927055fa483c9d09d82b6e5e76100eee95) Thanks [@baranwang](https://github.com/baranwang)! - Fix Docker release build failure by building `@aio-proxy/i18n` with rslib
+
+  The `@aio-proxy/i18n` package built its declarations with `tsc -b`, unlike every other referenced workspace package (which use rslib). Because `paraglide-js compile` regenerates `src/paraglide/**` on every build, fresh/concurrent builds (such as the multi-arch Docker release) could see i18n's emitted `dist` as stale relative to its regenerated sources, so `@aio-proxy/core`'s declaration generation failed the composite project-reference check with `TS6305: Output file '.../i18n/dist/index.d.ts' has not been built from source file '.../i18n/src/index.ts'`.
+
+  i18n now compiles messages and then builds with rslib like the other packages, emitting its declarations through the same pipeline and eliminating the fragile cross-package staleness check.
+
+## 0.5.1
+
+### Patch Changes
+
+- [#131](https://github.com/aio-proxy/aio-proxy/pull/131) [`1a525e8`](https://github.com/aio-proxy/aio-proxy/commit/1a525e861a0ef77668c3321f75171bb9e2880e9f) Thanks [@baranwang](https://github.com/baranwang)! - core: fix proxied streaming passthrough dropping the request body. Bun 1.3.x
+  silently discards a `ReadableStream` request body when `fetch` uses a proxy, so
+  `api` providers with a `proxy` configured hung until timeout on streaming
+  requests (e.g. `openai-response` passthrough). `createProxyFetch` now buffers a
+  streamed request body to bytes before sending it through the proxy, so the body
+  survives without changing the streaming response. This lets the build toolchain
+  stay on the reproducible Bun 1.3.14 release.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#125](https://github.com/aio-proxy/aio-proxy/pull/125) [`7856451`](https://github.com/aio-proxy/aio-proxy/commit/7856451f2434912a619e1c72aca44a1ccd1aaf43) Thanks [@baranwang](https://github.com/baranwang)! - server: return real upstream token counts for `/v1/messages/count_tokens` when a same-protocol raw provider is configured, and replace the `bytes/64` fallback with a character-class-weighted estimator
+
+- [#129](https://github.com/aio-proxy/aio-proxy/pull/129) [`c6ecfc0`](https://github.com/aio-proxy/aio-proxy/commit/c6ecfc0dc81e6cb0f0c5cd7b27b79f32cfb0955c) Thanks [@baranwang](https://github.com/baranwang)! - normalize and downgrade reasoning effort per upstream model capability
+
+  Inbound reasoning-effort values are now accepted leniently and clamped to what
+  each candidate upstream model actually advertises, on both the raw-passthrough
+  and AI SDK model-invocation paths. This fixes a `400 ... at output_config.effort`
+  error when Claude Code's ultracode mode sent effort `xhigh` to an upstream that
+  only supports `low`/`medium`/`high` — the request now downgrades to the highest
+  supported level instead of being rejected. Capability resolution is cache-only,
+  so a cold or slow models.dev never blocks the request (it falls back to
+  forwarding the client's value unchanged).
+
+### Patch Changes
+
+- [#127](https://github.com/aio-proxy/aio-proxy/pull/127) [`d95834a`](https://github.com/aio-proxy/aio-proxy/commit/d95834ad85ea0352f5c389497ea008c687a80d64) Thanks [@baranwang](https://github.com/baranwang)! - core: upgrade the bundled Bun runtime to the 1.4 line so proxied streaming passthrough no longer drops the request body. Bun 1.3.x silently discarded a `ReadableStream` request body when `fetch` used a proxy, so `api` providers with a `proxy` configured hung until timeout on streaming requests (e.g. `openai-response` passthrough). The compiled binary embeds the build-time Bun runtime, so this is delivered by pinning the build toolchain to Bun 1.4.
+
 ## 0.4.0
 
 ### Minor Changes

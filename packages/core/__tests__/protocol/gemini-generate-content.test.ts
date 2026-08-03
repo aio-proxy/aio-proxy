@@ -134,7 +134,13 @@ describe('geminiGenerateContentAdapter', () => {
     const context = { model: 'route-alias', stream: true };
     const parsed = await geminiGenerateContentAdapter.parse(raw, context);
 
-    const forwarded = await geminiGenerateContentAdapter.rawRequest(raw, parsed, 'upstream/model + pro', context);
+    const forwarded = await geminiGenerateContentAdapter.rawRequest(
+      raw,
+      parsed,
+      'upstream/model + pro',
+      new Set(),
+      context,
+    );
     const url = new URL(forwarded.url);
 
     expect(url.pathname).toBe('/v1beta/models/upstream%2Fmodel%20%2B%20pro:streamGenerateContent');

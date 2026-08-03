@@ -25,7 +25,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 Releases are driven by Changesets. All workspace packages share one lockstep version (`fixed` in `.changeset/config.json`), and only two packages get a published GitHub Release with notes: the `aio-proxy` CLI launcher and `@aio-proxy/plugin-sdk`.
 
 - Every changeset that affects users MUST target a product package: `aio-proxy` (for CLI/proxy changes) and/or `@aio-proxy/plugin-sdk` (for SDK changes). This is what puts the note into a published Release.
-- When the change actually lives in an internal package, also list that package alongside the product package and prefix the summary with the area, e.g. a `core` fix is a changeset targeting both `@aio-proxy/core` and `aio-proxy` with a summary like `core: fix provider fallback`.
+- When the change actually lives in an internal package, also list that package alongside the product package, e.g. a `core` fix is a changeset targeting both `@aio-proxy/core` and `aio-proxy`.
 - Never write a changeset that targets ONLY an internal or platform-binary package (`@aio-proxy/core`, `server`, `cli`, the plugins, `@aio-proxy/cli-*`). The `fixed` group still bumps `aio-proxy`, but its CHANGELOG entry would be empty, so `scripts/release.ts` skips its GitHub Release and the notes silently vanish.
 - Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
 - Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.

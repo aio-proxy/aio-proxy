@@ -179,7 +179,7 @@ const ThinkingSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('adaptive') }),
 ]);
 
-const OutputConfigSchema = z.object({ effort: z.enum(['low', 'medium', 'high', 'max']).optional() }).loose();
+const OutputConfigSchema = z.object({ effort: z.string().optional() }).loose();
 
 export const AnthropicMessagesRequestSchema = z.object({
   model: IdSchema,

@@ -4,7 +4,7 @@ import type { AnthropicMessagesRequest } from '../ingress/anthropic-messages/ind
 export type AnthropicThinkingOption =
   | { readonly mode: 'disabled' }
   | { readonly mode: 'fixed'; readonly budgetTokens: number }
-  | { readonly mode: 'adaptive'; readonly effort: 'low' | 'medium' | 'high' | 'max' };
+  | { readonly mode: 'adaptive'; readonly effort: string };
 
 export function anthropicThinkingOption(
   request: Pick<AnthropicMessagesRequest, 'thinking' | 'output_config' | 'max_tokens'>,

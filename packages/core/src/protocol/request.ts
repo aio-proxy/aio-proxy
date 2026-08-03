@@ -26,6 +26,13 @@ export class UnsupportedContentEncodingError extends Error {
 }
 
 export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = REQUEST_BODY_LIMITS): Promise<unknown> {
+  return JSON.parse(await readRequestText(raw, limits));
+}
+
+// Read and decode a request body to text, honoring content-encoding. Callers
+// that must forward the client's exact bytes (e.g. Gemini raw passthrough, which
+// rewrites the model in the URL rather than the body) reuse this text verbatim.
+export async function readRequestText(raw: Request, limits: RequestBodyLimits = REQUEST_BODY_LIMITS): Promise<string> {
   const branches = [raw];
   try {
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
@@ -33,7 +40,7 @@ export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = 
     branches.push(branch);
     const encoded = await readRequestBytes(branch.body, limits.encoded);
     const bytes = encoding === undefined ? encoded : await decodeRequestBytes(encoded, encoding, limits.decoded);
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return new TextDecoder().decode(bytes);
   } catch (error) {
     await Promise.all(branches.map((request) => cancelRequestBody(request, error)));
     throw error;

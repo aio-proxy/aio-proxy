@@ -23,7 +23,9 @@ describe('openAICompletionsAdapter', () => {
     const invocation = openAICompletionsAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(['weather']);
     expect(invocation.settings).toEqual({ reasoning: 'high' });
-    expect(await (await openAICompletionsAdapter.rawRequest(raw, parsed, 'upstream', {})).json()).toMatchObject({
+    expect(
+      await (await openAICompletionsAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).json(),
+    ).toMatchObject({
       model: 'upstream',
       beta_field: true,
     });
@@ -39,7 +41,7 @@ describe('openAICompletionsAdapter', () => {
     });
     const parsed = await openAICompletionsAdapter.parse(raw, {});
 
-    const forwarded = await openAICompletionsAdapter.rawRequest(raw, parsed, 'same', {});
+    const forwarded = await openAICompletionsAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
 
     expect(forwarded).not.toBe(raw);
     expect(await forwarded.json()).toEqual({

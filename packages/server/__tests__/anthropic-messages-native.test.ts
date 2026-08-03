@@ -5,10 +5,12 @@ import { createServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createTempHomes, messagesRequest, recorded, textStream } from './anthropic-messages.test-support';
+import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from './server.test-support';
 
 const homes = createTempHomes('aio-proxy-anthropic-usage-');
 const tempHome = homes.tempHome;
 afterEach(homes.cleanup);
+afterEach(clearModelsDevCatalog);
 
 describe('POST /v1/messages', () => {
   test('Given anthropic api provider When message is posted Then passthrough receives original request', async () => {
@@ -129,5 +131,45 @@ describe('POST /v1/messages', () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('"text":"fallback"');
+  });
+
+  test('Given a candidate advertising {low,medium,high} When adaptive xhigh is posted Then the forwarded effort clamps to high', async () => {
+    // Given a native Anthropic provider whose model advertises low/medium/high.
+    await seedModelsDevCatalog({
+      'claude-sonnet-4-5': modelsDevModel('claude-sonnet-4-5', 'Claude Sonnet 4.5', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
+      }),
+    });
+    let bodySeen: Record<string, unknown> | undefined;
+    const provider = {
+      id: 'anthropic',
+      kind: 'api',
+      models: ['claude-sonnet-4-5'],
+      alias: { 'claude-sonnet-4-5': { model: 'claude-sonnet-4-5', preserve: false } },
+      protocol: ProviderProtocol.Anthropic,
+      async passthrough(req) {
+        bodySeen = (await req.json()) as Record<string, unknown>;
+        return Response.json({ ok: true });
+      },
+    } satisfies ApiProviderInstance;
+    const app = await createServer({ config: { providers: {} }, dbHome: tempHome(), providerInstances: [provider] });
+
+    // When an adaptive request asks for xhigh (above the advertised ceiling).
+    const response = await app.request('/v1/messages', {
+      body: JSON.stringify({
+        ...messagesRequest,
+        stream: false,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'xhigh' },
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    // Then the request is not rejected and the upstream effort is clamped to high.
+    expect(response.status).not.toBe(400);
+    expect(response.status).toBe(200);
+    expect(bodySeen?.['output_config']).toEqual({ effort: 'high' });
   });
 });
