@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 import { ModelIdSchema } from '../common';
 
+/** External models.dev slug enum referenced by the `extend` field in the emitted config JSON Schema. */
+export const MODELS_DEV_MODEL_REF = 'https://models.dev/model-schema.json#/$defs/Model';
+
+/** Discriminable meta marker read by the config JSON Schema override to emit the external models.dev $ref. */
+const modelsDevRefMeta = { modelsDevRef: true } as const;
+
 /**
  * Per-token prices are USD per 1,000,000 tokens — the same unit models.dev and the
  * internal OpenRouterModelPrice use, so config values flow into the pricing engine
@@ -118,7 +124,9 @@ export const ModelMetadataSchema = z
       .optional()
       .describe('Client-facing display name for this model, mirroring models.dev `Model.name`.'),
     description: z.string().optional().describe('Client-facing description for this model.'),
-    extend: ModelIdSchema.optional().describe('models.dev slug to inherit metadata from when names differ.'),
+    extend: ModelIdSchema.meta(modelsDevRefMeta)
+      .optional()
+      .describe('models.dev slug to inherit metadata from when names differ.'),
     limit: ModelLimitSchema.optional().describe('Token limits, mirroring the models.dev `limit` object.'),
     capabilities: ModelCapabilitiesSchema.optional().describe('Capability flags and date metadata overrides.'),
     cost: ModelCostSchema.optional().describe('Per-model pricing overrides used for cost accounting.'),
