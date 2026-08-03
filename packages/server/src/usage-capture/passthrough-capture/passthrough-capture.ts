@@ -18,15 +18,25 @@ import { finalizeUsage } from '../usage-validation';
 import { createObservationSource } from './observation-source';
 
 // Non-2xx and body-less responses have no stream to observe: resolve completion
-// immediately and hand the response through unchanged.
-function nonStreamingCompletion(response: Response): Captured<Response> | undefined {
+// immediately and hand the response through unchanged. A body-less 2xx success
+// still routes through finalizeUsage so a configured flat per-request fee
+// (cost.request) is billed even with no token usage; failures never bill.
+function nonStreamingCompletion(response: Response, ctx: PassthroughUsageContext): Captured<Response> | undefined {
   if (response.status < 200 || response.status >= 400) {
     return { value: response, completion: Promise.resolve({ outcome: 'failure', statusCode: response.status }) };
   }
   if (response.body === null) {
-    return { value: response, completion: Promise.resolve({ outcome: 'success', statusCode: response.status }) };
+    return { value: response, completion: bodyLessSuccess(response.status, ctx) };
   }
   return undefined;
+}
+
+// A body-less success has no observation, so seed an empty observation:
+// finalizePassthroughUsage passes usage: undefined and seedForRequestFee bills
+// the flat request fee when configured (otherwise no phantom usage row).
+async function bodyLessSuccess(statusCode: number, ctx: PassthroughUsageContext): Promise<UsageCompletion> {
+  const usage = await finalizePassthroughUsage({}, ctx);
+  return { outcome: 'success', statusCode, ...usageProperty(usage) };
 }
 
 export function passthroughCapture(
@@ -45,7 +55,14 @@ export function passthroughCapture(
   }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
 ): Captured<Response> {
-  const shortCircuit = nonStreamingCompletion(response);
+  const shortCircuit = nonStreamingCompletion(response, {
+    providerId,
+    modelId,
+    protocol,
+    requestedModelId,
+    configPrice,
+    logger,
+  });
   if (shortCircuit !== undefined) return shortCircuit;
 
   const statusCode = response.status;
