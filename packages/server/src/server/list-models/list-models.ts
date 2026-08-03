@@ -3,7 +3,7 @@ import { getUnixTime, isValid, parseISO } from 'date-fns';
 import type { Model as OpenAIModel } from 'openai/resources/models';
 
 import type { ServerState } from '../../server-state';
-import { type ModelCapabilitiesSubset, toAnthropicCapabilities } from '../model-capabilities';
+import { type ModelCapabilitiesSubset, toAnthropicCapabilitiesFromMetadata } from '../model-capabilities';
 import { resolveEnabledModels } from '../model-resolution/index';
 
 const unknownCreatedAt = '1970-01-01T00:00:00Z';
@@ -15,18 +15,18 @@ type ModelListItem = OpenAIModel &
 
 export async function listModels(state: ServerState) {
   const resolved = await resolveEnabledModels(state);
-  const data = resolved.map(({ slug, provider, metadata, displayName, contextWindow }): ModelListItem => {
+  const data = resolved.map(({ slug, provider, metadata, effectiveMetadata, displayName, maxInput }): ModelListItem => {
     const timestamps = modelTimestamps(metadata?.release_date);
     return {
-      capabilities: metadata === undefined ? null : toAnthropicCapabilities(metadata),
+      capabilities: effectiveMetadata === undefined ? null : toAnthropicCapabilitiesFromMetadata(effectiveMetadata),
       created: timestamps.created,
       created_at: timestamps.createdAt,
       display_name: displayName,
       id: slug,
-      // Config context-window override wins over the catalog input/context limit.
-      max_input_tokens:
-        contextWindow ?? (metadata === undefined ? null : (metadata.limit.input ?? metadata.limit.context)),
-      max_tokens: metadata?.limit.output ?? null,
+      // Max input tokens (config limit.input ?? catalog limit.input); distinct
+      // from the total context window.
+      max_input_tokens: maxInput ?? null,
+      max_tokens: effectiveMetadata?.limit?.output ?? null,
       object: 'model',
       owned_by: provider.id,
       type: 'model',
