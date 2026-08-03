@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 
 import {
   createProviderMutationFn,
@@ -14,10 +14,10 @@ export function useProviderCreate() {
     mutationFn: createProviderMutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.created']());
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.created']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.create_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.create_failed']() });
     },
   });
 }
@@ -28,10 +28,10 @@ export function useProviderUpdate() {
     mutationFn: updateProviderMutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.updated']());
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.updated']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.update_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.update_failed']() });
     },
   });
 }
@@ -42,10 +42,10 @@ export function useProviderDelete() {
     mutationFn: deleteProviderMutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.deleted']());
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.deleted']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.delete_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.delete_failed']() });
     },
   });
 }
