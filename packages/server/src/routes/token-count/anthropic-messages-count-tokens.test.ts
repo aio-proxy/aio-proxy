@@ -34,7 +34,6 @@ describe('POST /v1/messages/count_tokens', () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({ input_tokens: 3 });
     expect(typeof body.input_tokens).toBe('number');
-    expect(response.headers.get('x-aio-proxy-token-count-estimated')).toBe('true');
   });
 
   test('Given oversized Content-Length When token count is posted Then rejects before parsing', async () => {

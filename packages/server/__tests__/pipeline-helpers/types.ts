@@ -1,4 +1,5 @@
 import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
+import type { StoredSpan } from '@aio-proxy/core/db';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import type { ModelTransport, RuntimeProviderInstance } from '../../src/runtime';
@@ -73,5 +74,9 @@ export type Recording = {
   readonly identities: { readonly requestedModelId: string }[];
   readonly attempts: RecordedAttempt[];
   readonly finals: RecordedFinal[];
+  // Every span from every completed trace, in completion order. Tests that
+  // assert non-attempt spans (local-estimate fallback, skipped candidates)
+  // filter this by span name.
+  readonly spans: StoredSpan[];
   readonly settle: () => Promise<void>;
 };
