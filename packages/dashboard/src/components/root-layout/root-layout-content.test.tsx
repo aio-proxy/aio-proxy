@@ -1,5 +1,6 @@
+import { toast } from '@aio-proxy/ui/components/toast';
 import { expect, rs, test } from '@rstest/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 import { RootLayoutContent } from './root-layout-content';
 
@@ -21,7 +22,7 @@ rs.mock('@/modules/auth/templates/dashboard-unavailable', () => ({
 }));
 rs.mock('@/modules/auth/templates/login-page', () => ({ LoginPage: () => <div>Dashboard sign in</div> }));
 
-test('renders only the surface allowed by the Dashboard auth status', () => {
+test('renders only the surface allowed by the Dashboard auth status', async () => {
   const view = render(<RootLayoutContent />);
   expect(screen.getByText('Dashboard sign in')).toBeInTheDocument();
   expect(screen.queryByText('Sidebar')).not.toBeInTheDocument();
@@ -34,4 +35,8 @@ test('renders only the surface allowed by the Dashboard auth status', () => {
   view.rerender(<RootLayoutContent />);
   expect(screen.getByText('Sidebar')).toBeInTheDocument();
   expect(screen.getByText('Protected content')).toBeInTheDocument();
+
+  const toastId = toast.add({ type: 'success', title: 'Toast ready' });
+  await waitFor(() => expect(screen.getByText('Toast ready')).toBeInTheDocument());
+  toast.close(toastId);
 });

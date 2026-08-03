@@ -1,4 +1,5 @@
 import { SidebarProvider } from '@aio-proxy/ui/components/sidebar';
+import { Toaster } from '@aio-proxy/ui/components/toast';
 import { beforeEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -8,7 +9,6 @@ import { SidebarLogout } from './sidebar-logout';
 const mocks = rs.hoisted(() => ({
   logoutDashboard: rs.fn().mockResolvedValue(undefined),
   status: 'authenticated' as 'authenticated' | 'disabled',
-  toastError: rs.fn(),
 }));
 
 rs.mock('@aio-proxy/i18n', () => ({
@@ -23,7 +23,7 @@ rs.mock('@/modules/auth/hooks/use-dashboard-auth-session', () => ({
 }));
 
 rs.mock('@/modules/auth/services/auth-service', () => ({ logoutDashboard: mocks.logoutDashboard }));
-rs.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
+rs.mock('sonner', () => ({ toast: { error: () => undefined } }));
 
 const renderLogout = () => {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -32,13 +32,13 @@ const renderLogout = () => {
       <SidebarProvider>
         <SidebarLogout />
       </SidebarProvider>
+      <Toaster />
     </QueryClientProvider>,
   );
 };
 
 beforeEach(() => {
   mocks.logoutDashboard.mockReset().mockResolvedValue(undefined);
-  mocks.toastError.mockReset();
   mocks.status = 'authenticated';
 });
 
@@ -58,7 +58,7 @@ test('reports a logout failure', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
 
-  await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('Could not sign out.'));
+  await waitFor(() => expect(screen.getByText('Could not sign out.')).toBeInTheDocument());
 });
 
 test('disables logout while the request is pending', async () => {
