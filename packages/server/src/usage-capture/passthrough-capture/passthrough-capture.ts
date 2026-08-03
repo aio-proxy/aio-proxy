@@ -246,6 +246,8 @@ async function finalizePassthroughUsage(
         ? undefined
         : { ...obs.usage, providerId: ctx.providerId, modelId: ctx.modelId },
     accounting: { source: 'passthrough', protocol: ctx.protocol },
+    providerId: ctx.providerId,
+    modelId: ctx.modelId,
     ...(ctx.requestedModelId === undefined ? {} : { requestedModelId: ctx.requestedModelId }),
     ...(ctx.configPrice === undefined ? {} : { configPrice: ctx.configPrice }),
     ...(ctx.logger === undefined ? {} : { logger: ctx.logger }),

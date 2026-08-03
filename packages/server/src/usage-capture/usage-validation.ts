@@ -12,11 +12,31 @@ export async function finalizeUsage(input: {
   readonly issues?: readonly UsageIssue[];
   readonly requestedModelId?: string;
   readonly configPrice?: OpenRouterModelPrice;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }): Promise<UsageRow | undefined> {
-  const normalized = validUsage(input.usage, input.accounting, input.logger, input.issues);
+  const seed = seedForRequestFee(input);
+  const normalized = validUsage(input.usage ?? seed, input.accounting, input.logger, input.issues);
   if (normalized === undefined) return undefined;
   const priced = await priceUsage(normalized, input.accounting, input.requestedModelId, input.configPrice);
   return validUsage(priced, input.accounting, input.logger, undefined, true);
+}
+
+// A successful response can carry a flat per-request fee (cost.request) with no
+// token usage. Callers reach finalizeUsage only on success, so when there is no
+// usage but a positive request fee is configured, seed a minimal row so the fee
+// is billed instead of silently dropped.
+function seedForRequestFee(input: {
+  readonly usage: UsageRow | undefined;
+  readonly configPrice?: OpenRouterModelPrice;
+  readonly providerId?: string;
+  readonly modelId?: string;
+}): UsageRow | undefined {
+  if (input.usage !== undefined) return undefined;
+  const requestFee = input.configPrice?.request;
+  if (requestFee === undefined || !(requestFee > 0)) return undefined;
+  if (input.providerId === undefined || input.modelId === undefined) return undefined;
+  return { providerId: input.providerId, modelId: input.modelId };
 }
 
 function validUsage(

@@ -78,6 +78,8 @@ export function streamCapture(
     const usage = await finalizeUsage({
       usage: finishUsage,
       accounting: { source: 'ai-sdk' },
+      providerId,
+      modelId,
       ...(requestedModelId === undefined ? {} : { requestedModelId }),
       ...(configPrice === undefined ? {} : { configPrice }),
       ...(logger === undefined ? {} : { logger }),
