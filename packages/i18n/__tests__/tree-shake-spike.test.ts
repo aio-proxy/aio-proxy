@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const paraglideCli = fileURLToPath(new URL('./bin/run.js', import.meta.resolve('@inlang/paraglide-js/package.json')));
+const messageFormatPlugin = fileURLToPath(import.meta.resolve('@inlang/plugin-message-format'));
 
 describe('paraglide tree-shaking spike', () => {
   test('documents aggregated m bundle retention for unused message names', async () => {
@@ -16,6 +17,9 @@ describe('paraglide tree-shaking spike', () => {
     cpSync('packages/i18n/project.inlang', join(root, 'project.inlang'), {
       recursive: true,
     });
+    const localPlugin = join(root, 'node_modules', '@inlang', 'plugin-message-format', 'dist', 'index.js');
+    mkdirSync(dirname(localPlugin), { recursive: true });
+    cpSync(messageFormatPlugin, localPlugin);
 
     const enPath = join(root, 'messages/en.json');
     const zhPath = join(root, 'messages/zh-Hans.json');
