@@ -1,15 +1,15 @@
-import { useForm } from '@tanstack/react-form';
-import type React from 'react';
-
-import { Button } from '@/components/ui/button';
+import { Button } from '@aio-proxy/ui/components/button';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Field, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+} from '@aio-proxy/ui/components/dropdown-menu';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { useForm } from '@tanstack/react-form';
+import type React from 'react';
+
 import type { ColumnVisibilityForm } from '@/hooks/use-data-table';
 
 type VisibilityColumn = {

@@ -1,14 +1,13 @@
 import { m } from '@aio-proxy/i18n';
+import { Checkbox } from '@aio-proxy/ui/components/checkbox';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
+import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { useId } from 'react';
 import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
 import { getFirstOption, joinWith, toArray, useValueEditor } from 'react-querybuilder';
-
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 
 export interface QueryBuilderValueEditorProps extends ValueEditorProps {
   readonly extraProps?: Record<string, unknown>;

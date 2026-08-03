@@ -13,8 +13,8 @@ This file is the frontend authority for `packages/dashboard`.
 
 ## UI Components
 
-- Use the shadcn components in `src/components/ui` when an equivalent exists.
-- Add missing shadcn components through the shadcn CLI so `components.json` stays the source of truth.
+- Use the shared shadcn components from `@aio-proxy/ui/components/*` when an equivalent exists.
+- Add missing shadcn components from `packages/ui` with `bun x --bun --no-install shadcn add <component> --overwrite` run from that package; `packages/ui/components.json` is the source of truth.
 - The configured primitives are Base UI and lucide icons; follow that pattern for new UI controls.
 - Direct Tailwind is fine for layout, spacing, responsive behavior, and page composition.
 - Control styling belongs in the shared UI components, not one-off lookalikes.

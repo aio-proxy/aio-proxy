@@ -1,10 +1,9 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type { RequestTransformStageDraft } from '../../request-transforms';
 import {

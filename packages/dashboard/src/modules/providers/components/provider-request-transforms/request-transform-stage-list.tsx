@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformStage } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { useEffect, useState } from 'react';
 import type { RefCallback } from 'react';
-
-import { Button } from '@/components/ui/button';
 
 import {
   parseRequestTransformStages,

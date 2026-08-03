@@ -1,15 +1,14 @@
 import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from '@aio-proxy/i18n';
-import { Eclipse, Languages } from 'lucide-react';
-import { useTheme } from 'next-themes';
-
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+} from '@aio-proxy/ui/components/dropdown-menu';
+import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@aio-proxy/ui/components/sidebar';
+import { Eclipse, Languages } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 import { reloadDashboard } from './reload-dashboard';
 import { SidebarLogout } from './sidebar-logout';

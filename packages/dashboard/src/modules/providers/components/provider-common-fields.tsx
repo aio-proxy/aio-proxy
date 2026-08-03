@@ -1,11 +1,10 @@
 import { m } from '@aio-proxy/i18n';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { kebabCase } from 'es-toolkit/string';
 import type React from 'react';
-
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 
 import { ProviderFormMode } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';

@@ -1,7 +1,6 @@
 import { m } from '@aio-proxy/i18n';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 
 export const DashboardUnavailable: React.FC = () => (
   <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-8">

@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
+    "@inlang/plugin-message-format": "4.4.0",
     "@rslib/core": "catalog:",
     "typescript": "catalog:"
   }

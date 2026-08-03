@@ -1,7 +1,5 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { forwardRef, useImperativeHandle, useState } from 'react';
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,7 +9,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@aio-proxy/ui/components/alert-dialog';
+import { forwardRef, useImperativeHandle, useState } from 'react';
 
 import { useProviderDelete } from '../hooks/use-provider-mutations';
 

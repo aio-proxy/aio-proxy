@@ -1,10 +1,10 @@
 import { getLocale } from '@aio-proxy/i18n';
+
+import './styles.css';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import ReactDOM from 'react-dom/client';
 
 import { routeTree } from './route-tree.gen';
-
-import './styles.css';
 
 document.documentElement.lang = getLocale();
 

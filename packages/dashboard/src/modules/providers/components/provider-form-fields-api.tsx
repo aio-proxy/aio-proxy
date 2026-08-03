@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderProtocol } from '@aio-proxy/types';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TagsInput } from '@/components/tags-input';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { ProviderFormMode, PROVIDER_MODELS_PLACEHOLDER } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';

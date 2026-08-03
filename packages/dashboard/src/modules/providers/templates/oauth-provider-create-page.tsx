@@ -1,11 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability, DashboardOAuthSession } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
 
 import { OAuthAccountFields } from '../components/oauth-account-fields';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';

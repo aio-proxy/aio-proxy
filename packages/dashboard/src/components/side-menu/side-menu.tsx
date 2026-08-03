@@ -1,9 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { Link, useLocation } from '@tanstack/react-router';
-import { ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
-import type { ComponentProps, ComponentType } from 'react';
-
-import { AioProxyBrand } from '@/components/aio-proxy-brand';
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +10,12 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-} from '@/components/ui/sidebar';
+} from '@aio-proxy/ui/components/sidebar';
+import { Link, useLocation } from '@tanstack/react-router';
+import { ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
+import type { ComponentProps, ComponentType } from 'react';
+
+import { AioProxyBrand } from '@/components/aio-proxy-brand';
 
 import { SidebarPreferences } from './sidebar-preferences';
 

@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import { Empty } from '@aio-proxy/ui/components/empty';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
 import { PageContainer } from '@/components/page-container';
-import { Empty } from '@/components/ui/empty';
 import { ProviderFormMode } from '@/modules/providers/constants';
 import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
 import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';

@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
 import type React from 'react';
 import type { RefCallback } from 'react';
-
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 import type { RequestTransformStageControlValues } from './request-transform-stage-draft';
 import type { RequestTransformStageForm } from './request-transform-stage-form';

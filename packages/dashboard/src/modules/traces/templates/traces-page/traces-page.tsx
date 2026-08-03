@@ -1,11 +1,11 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent } from '@aio-proxy/ui/components/card';
+import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import { TracesFilters } from '../../components/traces-filters';
 import { TracesTable } from '../../components/traces-table';

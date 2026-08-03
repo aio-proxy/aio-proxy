@@ -1,8 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { useForm } from '@tanstack/react-form';
-import type { Table } from '@tanstack/react-table';
-import type React from 'react';
-
 import {
   Pagination,
   PaginationContent,
@@ -11,8 +7,11 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from '@/components/ui/pagination';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+} from '@aio-proxy/ui/components/pagination';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { useForm } from '@tanstack/react-form';
+import type { Table } from '@tanstack/react-table';
+import type React from 'react';
 
 import { getPaginationItems } from './pagination-items';
 
@@ -80,7 +79,6 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table,
             aria-label={previousLabel}
             aria-disabled={!canPreviousPage || undefined}
             tabIndex={canPreviousPage ? undefined : -1}
-            disabled={!canPreviousPage}
             onClick={(event) => {
               event.preventDefault();
               if (canPreviousPage) table.previousPage();
@@ -114,7 +112,6 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({ table,
             text={nextLabel}
             aria-label={nextLabel}
             aria-disabled={!canNextPage || undefined}
-            disabled={!canNextPage}
             tabIndex={canNextPage ? undefined : -1}
             onClick={(event) => {
               event.preventDefault();

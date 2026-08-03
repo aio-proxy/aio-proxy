@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { ProviderKind } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { useNavigate } from '@tanstack/react-router';
 import { type FC, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
 
 import { aliasEditorIssues, aliasIssueControlId } from '../alias-editor';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';

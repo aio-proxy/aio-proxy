@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import type React from 'react';
-
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import type { RequestTransformStageDraft } from '../../request-transforms';
 import {

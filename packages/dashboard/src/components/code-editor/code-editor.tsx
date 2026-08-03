@@ -1,10 +1,9 @@
+import { Spinner } from '@aio-proxy/ui/components/spinner';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { Editor, type OnMount } from '@monaco-editor/react';
 import { merge } from 'es-toolkit/object';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
-
-import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
 
 import { setCodeEditorAriaInvalid } from './code-editor-accessibility';
 import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from './themes';

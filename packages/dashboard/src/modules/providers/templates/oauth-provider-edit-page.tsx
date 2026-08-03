@@ -1,9 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
 
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';

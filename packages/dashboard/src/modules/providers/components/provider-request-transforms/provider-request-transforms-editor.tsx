@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useEffect, useMemo, useState } from 'react';
-
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { parseRequestTransformCondition, parseRequestTransformStages } from '../../request-transforms';
 import { ProviderRequestTransformsJsonEditor } from './provider-request-transforms-json-editor';

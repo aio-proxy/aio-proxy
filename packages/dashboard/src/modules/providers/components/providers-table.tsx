@@ -1,17 +1,17 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { Empty } from '@aio-proxy/ui/components/empty';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useForm } from '@tanstack/react-form';
 import { flexRender } from '@tanstack/react-table';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { DataTablePagination } from '@/components/data-table-pagination';
-import { Empty } from '@/components/ui/empty';
-import { Field, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDataTable } from '@/hooks/use-data-table';
-import { cn } from '@/lib/utils';
 
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from './delete-provider-dialog';
 import { canEditProvider, createProviderColumns } from './providers-table-columns';

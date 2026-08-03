@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import { SidebarMenuButton, SidebarMenuItem } from '@aio-proxy/ui/components/sidebar';
 import { LogOut } from 'lucide-react';
 
-import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useDashboardAuthSession } from '@/modules/auth/hooks/use-dashboard-auth-session';
 import { useDashboardLogout } from '@/modules/auth/hooks/use-dashboard-logout';
 

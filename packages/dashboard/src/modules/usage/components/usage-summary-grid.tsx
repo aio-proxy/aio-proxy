@@ -1,9 +1,9 @@
 import { getLocale, m } from '@aio-proxy/i18n';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { formatCompactTokenCount, TokenCount } from '@/components/token-count';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type { UsageOverviewSummary } from '../services/usage-service';
 import { formatNanoUsd } from '../services/usage-value-formatter';

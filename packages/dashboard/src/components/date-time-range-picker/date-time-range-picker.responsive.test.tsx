@@ -6,7 +6,7 @@ import { openPicker, value } from './date-time-range-picker.test-support';
 
 const viewport = rs.hoisted(() => ({ mobile: false }));
 
-rs.mock('@/hooks/use-mobile', () => ({
+rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
   useIsMobile: () => viewport.mobile,
 }));
 

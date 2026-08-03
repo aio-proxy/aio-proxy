@@ -1,11 +1,10 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Calendar } from '@aio-proxy/ui/components/calendar';
+import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { type Locale } from 'date-fns';
-
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Field, FieldError, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
 
 import type { DateTimeRange, DateTimeRangePreset } from './date-time-range-picker.types';
 import { useDateTimeRangeDraft } from './use-date-time-range-draft';

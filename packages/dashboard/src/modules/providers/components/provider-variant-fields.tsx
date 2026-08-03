@@ -1,11 +1,17 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasTarget } from '@aio-proxy/types';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import type { Dispatch, FC, SetStateAction } from 'react';
-
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 
 import type { AliasDraftForm } from '../alias-editor';
 import type { VisibleEditError } from '../alias-editor-copy';

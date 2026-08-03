@@ -1,13 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
 import { ChevronRight, Trash2 } from 'lucide-react';
 import type React from 'react';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 import { PROVIDER_KIND_LABEL } from '../constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';

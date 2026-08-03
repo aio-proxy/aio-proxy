@@ -1,8 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan } from '@aio-proxy/types';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 
 import { formatTraceDuration } from '../../trace-formatters';
 import { layoutTraceSpans } from '../../trace-layout';

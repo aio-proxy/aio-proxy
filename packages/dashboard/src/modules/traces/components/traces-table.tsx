@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 
 import { DataTablePagination } from '@/components/data-table-pagination';
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import {
   TRACE_CACHE_READ_SHORT,

@@ -1,12 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthProviderEdit, OAuthProvider, ProviderTransforms } from '@aio-proxy/types';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';

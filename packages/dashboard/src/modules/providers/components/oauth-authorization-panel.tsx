@@ -1,12 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthSession } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useForm } from '@tanstack/react-form';
-
-import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
 
 interface OAuthAuthorizationPanelProps {
   readonly session: DashboardOAuthSession;
