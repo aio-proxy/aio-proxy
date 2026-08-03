@@ -185,7 +185,7 @@ Elevation follows shadcn `base-luma` exactly. Standard cards use tonal surfaces 
 
 ## 5. Components
 
-Components must come from `@aio-proxy/ui/components/*`; install missing components from `packages/ui` with `bun x --bun shadcn@4.13.0 add <component> --overwrite`. Shared primitives own shape, state, and accessibility. Tailwind is for product layout and composition only.
+Components must come from `@aio-proxy/ui/components/*`; install missing components from `packages/ui` with `bun x --bun --no-install shadcn add <component> --overwrite` run from that package. Shared primitives own shape, state, and accessibility. Tailwind is for product layout and composition only.
 
 ### Buttons
 
