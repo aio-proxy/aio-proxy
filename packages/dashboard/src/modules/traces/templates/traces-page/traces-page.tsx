@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { TracesFilters } from '../../components/traces-filters';
+import { TracesFilterRail } from '../../components/traces-filter-rail';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch } from '../../trace-search';
@@ -24,16 +24,16 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
 
   return (
     <PageContainer title={m['dashboard.traces.title']()}>
-      <div className="space-y-4">
-        <TracesFilters
+      <div className="traces-filter-workbench">
+        <TracesFilterRail
           search={search}
           autoRefresh={autoRefresh}
           refreshing={query.isFetching}
-          onChange={onSearchChange}
+          onSearchChange={onSearchChange}
           onAutoRefresh={setAutoRefresh}
           onRefresh={() => void query.refetch()}
         />
-        <Card>
+        <Card className="traces-filter-results">
           <CardContent>
             {query.isLoading ? (
               <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
