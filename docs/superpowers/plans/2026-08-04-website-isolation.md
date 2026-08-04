@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the documentation site to top-level `website/` and prevent root
-development, build, and preflight commands from including it.
+Turbo development, build, test, and e2e commands from including it.
 
 **Architecture:** `website` remains an explicitly declared Bun workspace so
 its existing `workspace:*` UI dependency and `catalog:` versions keep working.
@@ -18,8 +18,9 @@ Oxlint, Oxfmt.
 - Keep `@aio-proxy/website` dependent on the local `@aio-proxy/ui` package.
 - Do not change documentation content, Rspress configuration, release config,
   or Changesets.
-- Root `dev`, `build`, test, e2e, and `preflight` commands must skip
+- Root Turbo `dev`, `build`, test, and e2e commands must skip
   `@aio-proxy/website`.
+- Root lint and format commands must continue to check `website/**`.
 - Regenerate the root Bun lockfile after the workspace path move.
 
 ---
@@ -70,10 +71,10 @@ Then update `package.json` as follows:
     "packages": ["packages/*", "packages/plugins/*", "npm/*", "website"]
   },
   "scripts": {
-    "lint": "oxlint --ignore-pattern='website/**' .",
-    "lint:types": "oxlint --type-aware --type-check --ignore-pattern='website/**' --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
-    "format": "oxfmt . '!website/**'",
-    "format:check": "oxfmt --check . '!website/**'",
+    "lint": "oxlint .",
+    "lint:types": "oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "test:unit": "turbo run test:unit --filter=!@aio-proxy/website",
     "test:artifact": "turbo run test:artifact --filter=!@aio-proxy/website",
     "test": "turbo run test test:artifact --filter=!@aio-proxy/website",
@@ -124,8 +125,8 @@ bun run preflight
 ```
 
 Expected: every routing assertion exits zero without output, the Rspress build
-passes, and root preflight passes while its lint, format, and test commands
-exclude `website/**` and `@aio-proxy/website`.
+passes, and root preflight passes while lint and format include `website/**`
+and Turbo test tasks exclude `@aio-proxy/website`.
 
 - [ ] **Step 5: Review and commit the focused change**
 

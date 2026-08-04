@@ -3,15 +3,16 @@
 ## Goal
 
 Move the Rspress documentation site from `packages/website` to top-level
-`website`, while keeping it out of the repository's normal development,
-build, and preflight workflows.
+`website`, while keeping it out of the repository's Turbo development, build,
+test, and e2e workflows.
 
 ## Chosen boundary
 
 `website` remains a Bun workspace package so it can reuse the local
 `@aio-proxy/ui` package and root dependency catalog. It is independent in
 operation: contributors run its own `dev` and `build` scripts explicitly, and
-root application commands do not schedule or check it.
+root Turbo workflows do not schedule it. Root lint and format checks continue
+to cover the documentation site.
 
 ## Changes
 
@@ -19,8 +20,10 @@ root application commands do not schedule or check it.
   or shared UI imports.
 - Add `website` explicitly to the root workspace package paths, preserving
   `workspace:*` and `catalog:` dependency resolution.
-- Exclude `@aio-proxy/website` from root Turbo `dev` and `build` commands.
-- Exclude `website/**` from root lint and format commands used by `preflight`.
+- Exclude `@aio-proxy/website` from root Turbo `dev`, `build`, test, and e2e
+  commands.
+- Keep root lint and format commands unchanged so `preflight` checks the
+  documentation site.
 - Regenerate `bun.lock` so its workspace path matches the moved package.
 
 ## Non-goals
@@ -32,7 +35,8 @@ root application commands do not schedule or check it.
 
 ## Verification
 
-- Turbo dry-run output for root `dev` and `build` excludes
+- Turbo dry-run output for root `dev`, `build`, test, and e2e excludes
   `@aio-proxy/website`.
-- `bun --filter @aio-proxy/website run build` succeeds.
-- Root `bun run preflight` succeeds without checking the documentation site.
+- `bun run --filter @aio-proxy/website build` succeeds.
+- Root `bun run preflight` succeeds while lint and format checks include the
+  documentation site.
