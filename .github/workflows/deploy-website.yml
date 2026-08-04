@@ -1,0 +1,53 @@
+name: Deploy website to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - uses: actions/configure-pages@v5
+
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @aio-proxy/website build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

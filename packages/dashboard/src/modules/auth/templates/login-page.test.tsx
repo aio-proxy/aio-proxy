@@ -27,8 +27,7 @@ rs.mock('../services/auth-service', () => ({ loginDashboard: mocks.loginDashboar
 test('shows the enlarged login brand without the tagline', () => {
   render(<LoginPage />);
 
-  expect(screen.getByTitle('AIO').closest('svg')?.parentElement).toHaveStyle('--logo-height: 32px');
-  expect(screen.getByText('Proxy')).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'AIO Proxy' })).toHaveClass('text-2xl');
   expect(screen.queryByText('All-in-one Gateway')).not.toBeInTheDocument();
 });
 
