@@ -56,6 +56,8 @@ afterEach(() => {
 test('OAuth create page selects a capability and renders its account fields before authorization', async () => {
   render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
+  expect(screen.queryByRole('tablist')).toBeNull();
+
   const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
   fireEvent.keyDown(picker, { key: 'ArrowDown' });
   fireEvent.change(picker, { target: { value: 'Example' } });

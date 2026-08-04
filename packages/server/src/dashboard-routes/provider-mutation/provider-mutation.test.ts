@@ -34,6 +34,18 @@ describe('parseProviderMutation', () => {
 
     expect(result).toMatchObject({ ok: false, status: 422 });
   });
+
+  test('accepts null as an explicit request to inherit the global proxy', () => {
+    const result = parseProviderMutation({
+      kind: 'api',
+      id: 'openai',
+      protocol: 'openai-response',
+      baseURL: 'https://api.example/v1',
+      proxy: null,
+    });
+
+    expect(result).toMatchObject({ ok: true, body: { authored: { proxy: null }, materialized: { proxy: null } } });
+  });
 });
 
 describe('replaceProvider', () => {
@@ -54,5 +66,14 @@ describe('replaceProvider', () => {
     });
 
     expect(result['openai']).toMatchObject({ transforms: { request: [] } });
+  });
+
+  test('removes an existing provider proxy when the client explicitly selects inheritance', () => {
+    const result = replaceProvider({ openai: { kind: 'api', proxy: 'https://proxy.example:8443' } }, 'openai', {
+      kind: 'api',
+      proxy: null,
+    });
+
+    expect(result['openai']).not.toHaveProperty('proxy');
   });
 });

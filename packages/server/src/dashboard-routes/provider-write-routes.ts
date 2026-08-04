@@ -57,6 +57,7 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
         return context.json({ error: 'OAuth providers must be created through login' }, 400);
       }
       const { id, ...bodyRest } = authored;
+      if ('proxy' in bodyRest && bodyRest.proxy === null) delete bodyRest.proxy;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
         await state.configStore.mutateProviders((record) => insertProvider(record, id, providerData));

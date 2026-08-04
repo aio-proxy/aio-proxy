@@ -38,6 +38,7 @@ export const HttpProxyUrlSchema = z.url().refine((value) => {
 }, 'Proxy URL must use http: or https:');
 
 const ProviderProxySchema = z.union([HttpProxyUrlSchema, z.literal(false)]).optional();
+const ProviderMutationProxySchema = ProviderProxySchema.nullable();
 const AuthoringProviderProxySchema = z
   .union([HttpProxyUrlSchema, ConfigTemplateStringSchema, z.literal(false)])
   .optional();
@@ -166,7 +167,7 @@ const ApiProviderMutationSharedFields = {
 export const ApiProviderMutationBodySchema = z.object({
   ...ApiProviderMutationSharedFields,
   baseURL: z.url(),
-  proxy: ProviderProxySchema,
+  proxy: ProviderMutationProxySchema,
 });
 
 const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omit({
@@ -176,7 +177,7 @@ const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omi
 }).extend({
   protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
   baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
-  proxy: AuthoringProviderProxySchema,
+  proxy: AuthoringProviderProxySchema.nullable(),
 });
 
 const AiSdkProviderMutationSharedFields = {
@@ -196,7 +197,7 @@ const AiSdkProviderMutationSharedFields = {
 
 export const AiSdkProviderMutationBodySchema = z.object({
   ...AiSdkProviderMutationSharedFields,
-  proxy: ProviderProxySchema,
+  proxy: ProviderMutationProxySchema,
 });
 
 const AiSdkProviderMutationAuthoringBodySchema = AiSdkProviderMutationBodySchema.omit({
@@ -204,7 +205,7 @@ const AiSdkProviderMutationAuthoringBodySchema = AiSdkProviderMutationBodySchema
   packageName: true,
 }).extend({
   packageName: z.union([AiSdkPackageNameSchema, ConfigTemplateStringSchema]).optional(),
-  proxy: AuthoringProviderProxySchema,
+  proxy: AuthoringProviderProxySchema.nullable(),
 });
 
 export const OAuthProviderMutationBodySchema = z.strictObject({

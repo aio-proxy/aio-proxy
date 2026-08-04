@@ -9,12 +9,49 @@ import type React from 'react';
 import { ProviderFormMode } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 
-type Props = {
+interface ProviderCommonFieldsProps {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
-};
+  section: 'connection' | 'routing';
+}
 
-export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
+export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, section }) => {
+  if (section === 'routing') {
+    return (
+      <>
+        <div data-testid="provider-form-field-enabled">
+          <form.Field name="enabled">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_enabled']()}</Label>
+                <Switch
+                  id={field.name}
+                  checked={field.state.value ?? true}
+                  onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
+                />
+              </Field>
+            )}
+          </form.Field>
+        </div>
+        <div data-testid="provider-form-field-weight">
+          <form.Field name="weight">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
+                <Input
+                  id={field.name}
+                  type="number"
+                  value={field.state.value ?? ''}
+                  onChange={(e) => field.handleChange(e.target.value === '' ? undefined : Number(e.target.value))}
+                />
+              </Field>
+            )}
+          </form.Field>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div data-testid="provider-form-field-name">
@@ -61,35 +98,6 @@ export const ProviderCommonFields: React.FC<Props> = ({ form, mode }) => {
           </form.Field>
         </div>
       ) : null}
-      <div data-testid="provider-form-field-enabled">
-        <form.Field name="enabled">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_enabled']()}</Label>
-              <Switch
-                id={field.name}
-                checked={field.state.value ?? true}
-                onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
-      <div data-testid="provider-form-field-weight">
-        <form.Field name="weight">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
-              <Input
-                id={field.name}
-                type="number"
-                value={field.state.value ?? ''}
-                onChange={(e) => field.handleChange(e.target.value === '' ? undefined : Number(e.target.value))}
-              />
-            </Field>
-          )}
-        </form.Field>
-      </div>
     </>
   );
 };

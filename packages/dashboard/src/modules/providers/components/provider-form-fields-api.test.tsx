@@ -84,7 +84,7 @@ describe('API provider form fields', () => {
     expect(submitted).not.toHaveProperty('hasApiKey');
   });
 
-  test('groups edit fields and omits the immutable Provider ID input', () => {
+  test('shows only the active connection step and omits the immutable Provider ID input', () => {
     const { result } = renderHook(() =>
       useProviderForm({
         mode: ProviderFormMode.Edit,
@@ -104,9 +104,42 @@ describe('API provider form fields', () => {
       />,
     );
 
-    expect(screen.getByRole('region', { name: /Basic information|基本信息/u })).toBeTruthy();
     expect(screen.getByRole('region', { name: /Connection|连接/u })).toBeTruthy();
-    expect(screen.getByRole('region', { name: /Models and aliases|模型与别名/u })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /Models and aliases|模型与别名/u })).toBeNull();
     expect(screen.queryByLabelText(/Provider ID|提供商 ID/u)).toBeNull();
+  });
+
+  test.each([
+    {
+      kind: ProviderKind.Api,
+      initial: {
+        kind: ProviderKind.Api,
+        id: 'api-provider',
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseURL: 'https://api.example/v1',
+        proxy: '****',
+      },
+    },
+    {
+      kind: ProviderKind.AiSdk,
+      initial: {
+        kind: ProviderKind.AiSdk,
+        id: 'sdk-provider',
+        packageName: '@ai-sdk/openai-compatible',
+        proxy: '****',
+      },
+    },
+  ])('omits the redacted proxy when submitting a $kind provider edit', async ({ kind, initial }) => {
+    const onSubmit = rs.fn();
+    const parsed = parseProviderFormInitial(initial);
+    expect(parsed?.proxy).toBe('****');
+    const { result } = renderHook(() =>
+      useProviderForm({ mode: ProviderFormMode.Edit, kind, initial: parsed, onSubmit }),
+    );
+
+    await act(async () => result.current.handleSubmit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('proxy');
   });
 });

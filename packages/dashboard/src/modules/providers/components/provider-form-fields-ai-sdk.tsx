@@ -8,13 +8,13 @@ import { useEffect, useRef } from 'react';
 
 import { TagsInput } from '@/components/tags-input';
 
-import type { ProviderFormMode } from '../constants';
-import { PROVIDER_MODELS_PLACEHOLDER } from '../constants';
+import { type ProviderFormMode, type ProviderFormStep, PROVIDER_MODELS_PLACEHOLDER } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderOptionsEditor } from './provider-options-editor';
+import { ProviderProxyField } from './provider-proxy-field';
 import { ProviderRequestTransformsFormField } from './provider-request-transforms';
 
 const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
@@ -36,6 +36,7 @@ interface ProviderFormFieldsAiSdkProps {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   providerId?: string | undefined;
+  activeStep?: ProviderFormStep;
   aliasOpen: boolean;
   onAliasOpenChange: (open: boolean) => void;
   onOptionsValidityChange: (valid: boolean) => void;
@@ -45,6 +46,7 @@ interface ProviderFormFieldsAiSdkProps {
 export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({
   form,
   mode,
+  activeStep = 0,
   aliasOpen,
   onAliasOpenChange,
   onOptionsValidityChange,
@@ -65,80 +67,76 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
     schemaState.commitPackage(initialPackageName, false);
   }, [initialPackageName, schemaState.commitPackage]);
 
-  return (
-    <div className="space-y-8">
-      <section className="space-y-4" aria-labelledby="provider-ai-sdk-basic-heading">
-        <h2 id="provider-ai-sdk-basic-heading" className="text-base font-semibold">
-          {m['dashboard.providers.form.section_basic']()}
+  if (activeStep === 0) {
+    return (
+      <section className="space-y-5" aria-labelledby="provider-ai-sdk-connection-heading">
+        <h2 id="provider-ai-sdk-connection-heading" className="text-base font-semibold">
+          {m['dashboard.providers.editor.step_connection']()}
         </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <ProviderCommonFields form={form} mode={mode} />
-        </div>
-      </section>
-      <section className="space-y-4" aria-labelledby="provider-ai-sdk-integration-heading">
-        <h2 id="provider-ai-sdk-integration-heading" className="text-base font-semibold">
-          {m['dashboard.providers.form.section_integration']()}
-        </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div data-testid="provider-form-field-packageName">
-            <form.Field name="packageName">
-              {(field) => (
-                <Field>
-                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
-                  <Input
-                    id={field.name}
-                    value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
-                    onChange={(event) => {
-                      field.handleChange(event.target.value);
-                      lastCommittedPackage.current = null;
-                      schemaState.changePackage(event.target.value);
-                    }}
-                    onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
-                      }
-                    }}
-                    placeholder={DEFAULT_AI_SDK_PACKAGE}
-                  />
-                </Field>
-              )}
-            </form.Field>
-          </div>
-          <div data-testid="provider-form-field-options" className="md:col-span-2">
-            <form.Field name="options">
-              {(field) => (
-                <ProviderOptionsEditor
-                  field={field}
-                  schemaState={schemaState}
-                  onValidityChange={onOptionsValidityChange}
+        <ProviderCommonFields form={form} mode={mode} section="connection" />
+        <div data-testid="provider-form-field-packageName">
+          <form.Field name="packageName">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                    lastCommittedPackage.current = null;
+                    schemaState.changePackage(event.target.value);
+                  }}
+                  onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
+                    }
+                  }}
+                  placeholder={DEFAULT_AI_SDK_PACKAGE}
                 />
-              )}
-            </form.Field>
-          </div>
-          <div data-testid="provider-form-field-parseReasoningContent" className="md:col-span-2">
-            <form.Field name="parseReasoningContent">
-              {(field) => (
-                <Field>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id={field.name}
-                      checked={field.state.value ?? false}
-                      onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-                    />
-                    <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
-                  </div>
-                </Field>
-              )}
-            </form.Field>
-          </div>
+              </Field>
+            )}
+          </form.Field>
         </div>
+        <div data-testid="provider-form-field-options">
+          <form.Field name="options">
+            {(field) => (
+              <ProviderOptionsEditor
+                field={field}
+                schemaState={schemaState}
+                onValidityChange={onOptionsValidityChange}
+              />
+            )}
+          </form.Field>
+        </div>
+        <div data-testid="provider-form-field-parseReasoningContent">
+          <form.Field name="parseReasoningContent">
+            {(field) => (
+              <Field>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={field.name}
+                    checked={field.state.value ?? false}
+                    onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
+                  />
+                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
+                </div>
+              </Field>
+            )}
+          </form.Field>
+        </div>
+        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} mode={mode} />}</form.Field>
       </section>
-      <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
-      <section className="space-y-4" aria-labelledby="provider-ai-sdk-models-heading">
+    );
+  }
+
+  if (activeStep === 1) {
+    return (
+      <section className="space-y-5" aria-labelledby="provider-ai-sdk-models-heading">
         <h2 id="provider-ai-sdk-models-heading" className="text-base font-semibold">
-          {m['dashboard.providers.form.section_models_aliases']()}
+          {m['dashboard.providers.editor.step_models']()}
         </h2>
         <div data-testid="provider-form-field-models">
           <form.Field name="models">
@@ -159,6 +157,20 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
         </div>
         <ProviderAliasFields form={form} mode={mode} open={aliasOpen} onOpenChange={onAliasOpenChange} />
       </section>
-    </div>
-  );
+    );
+  }
+
+  if (activeStep === 2) {
+    return (
+      <section className="space-y-5" aria-labelledby="provider-ai-sdk-routing-heading">
+        <h2 id="provider-ai-sdk-routing-heading" className="text-base font-semibold">
+          {m['dashboard.providers.editor.step_routing']()}
+        </h2>
+        <ProviderCommonFields form={form} mode={mode} section="routing" />
+        <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
+      </section>
+    );
+  }
+
+  return null;
 };

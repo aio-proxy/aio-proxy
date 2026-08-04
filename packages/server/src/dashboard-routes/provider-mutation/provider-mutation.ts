@@ -94,6 +94,8 @@ export function replaceProvider(
 
   const restored = retainAuthoredTemplateStrings(previous, next) as Record<string, unknown>;
 
+  if (provider['proxy'] === null) delete restored['proxy'];
+
   if (provider['alias'] === undefined && previous['alias'] !== undefined) {
     restored['alias'] = previous['alias'];
   }
