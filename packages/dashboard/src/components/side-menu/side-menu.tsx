@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
 } from '@aio-proxy/ui/components/sidebar';
 import { Link, useLocation } from '@tanstack/react-router';
-import { ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
+import { ChartNoAxesCombined, HandPlatter, Settings2, Waypoints } from 'lucide-react';
 import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
@@ -63,6 +63,13 @@ export const SideMenu: React.FC = () => {
           icon: HandPlatter,
           to: '/providers',
           isActive: (pathname) => pathname.startsWith('/providers'),
+        },
+        {
+          id: 'settings',
+          label: m['dashboard.menus.settings'](),
+          icon: Settings2,
+          to: '/settings',
+          isActive: (pathname) => pathname.startsWith('/settings'),
         },
         // {
         //   id: 'models',
