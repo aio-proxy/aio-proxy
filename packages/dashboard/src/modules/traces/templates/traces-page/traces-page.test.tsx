@@ -308,6 +308,46 @@ describe('traces page', () => {
     expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
   });
 
+  test('isolates a frozen page-one buffer immediately during placeholder search transitions', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
+    mocks.data = { items: [runningTrace, terminalTrace], page: 1, pageSize: 20, total: 2, pageCount: 2 };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    const newTrace = { ...toolOnlyTrace, traceId: '4'.repeat(32) };
+    mocks.data = { items: [newTrace, runningTrace], page: 1, pageSize: 20, total: 3, pageCount: 2 };
+    view.rerender(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByRole('button', { name: /new traces available|新 Trace/iu })).toBeTruthy();
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(newTrace.traceId)).toBeNull();
+
+    mocks.isPlaceholderData = true;
+    const filteredSearch = { ...initialSearch, requestedModelId: 'filtered-model' };
+    view.rerender(<TracesPage search={filteredSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.queryByRole('button', { name: /new traces available|新 Trace/iu })).toBeNull();
+    expect(screen.getByText(newTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+
+    const resizedPlaceholder = { ...toolOnlyTrace, traceId: '5'.repeat(32) };
+    mocks.data = { items: [resizedPlaceholder], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    view.rerender(
+      <TracesPage search={{ ...filteredSearch, pageSize: 50 }} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />,
+    );
+    expect(screen.getByText(resizedPlaceholder.traceId)).toBeTruthy();
+    expect(screen.queryByText(newTrace.traceId)).toBeNull();
+
+    const pagePlaceholder = { ...runningTrace, traceId: '6'.repeat(32) };
+    mocks.data = { items: [pagePlaceholder], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    view.rerender(
+      <TracesPage
+        search={{ ...filteredSearch, page: 2, pageSize: 50 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+    expect(screen.getByText(pagePlaceholder.traceId)).toBeTruthy();
+    expect(screen.queryByText(resizedPlaceholder.traceId)).toBeNull();
+  });
+
   test('disables older loading while fetching placeholder data', () => {
     mocks.isPlaceholderData = true;
     const onSearchChange = rs.fn();

@@ -24,24 +24,33 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [renderedData, setRenderedData] = useState<TracesData>();
   const [newItemsCount, setNewItemsCount] = useState(0);
+  const searchKey = JSON.stringify(search);
+  const [bufferSearchKey, setBufferSearchKey] = useState(searchKey);
+  const activeSearchKeyRef = useRef(searchKey);
   const renderedDataRef = useRef<TracesData | undefined>(undefined);
   const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
-  const searchKey = JSON.stringify(search);
-  const settledSearchKeyRef = useRef(searchKey);
   const query = useTracesQuery(search, autoRefresh);
+
+  if (activeSearchKeyRef.current !== searchKey) {
+    activeSearchKeyRef.current = searchKey;
+    renderedDataRef.current = undefined;
+    latestFirstPageRef.current = undefined;
+  }
 
   useEffect(() => {
     if (query.data === undefined) return;
 
+    setBufferSearchKey(searchKey);
+
     if (query.isPlaceholderData) {
+      setRenderedData(undefined);
       setNewItemsCount(0);
       return;
     }
 
-    if (search.page !== 1 || settledSearchKeyRef.current !== searchKey) {
-      settledSearchKeyRef.current = searchKey;
+    if (search.page !== 1) {
       renderedDataRef.current = query.data;
-      latestFirstPageRef.current = search.page === 1 ? query.data : undefined;
+      latestFirstPageRef.current = undefined;
       setRenderedData(query.data);
       setNewItemsCount(0);
       return;
@@ -59,7 +68,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
     }
   }, [query.data, query.isPlaceholderData, search.page, searchKey]);
 
-  const visibleData = renderedData ?? query.data;
+  const bufferIsActive = bufferSearchKey === searchKey;
+  const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
 
   return (
     <PageContainer title={m['dashboard.traces.title']()}>
@@ -100,7 +110,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 search={search}
                 isFetching={query.isFetching}
                 isPlaceholderData={query.isPlaceholderData}
-                newItemsCount={search.page === 1 ? newItemsCount : 0}
+                newItemsCount={search.page === 1 && bufferIsActive ? newItemsCount : 0}
                 onAcceptNewItems={() => {
                   const latest = latestFirstPageRef.current;
                   if (latest === undefined) return;
