@@ -9,15 +9,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: root-pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,21 +32,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - uses: actions/configure-pages@v6
-
       - run: bun install --frozen-lockfile
       - run: bun run --filter @aio-proxy/website build
 
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: website/dist
+      - name: Require root-pages token
+        env:
+          ROOT_PAGES_TOKEN: ${{ secrets.ROOT_PAGES_TOKEN }}
+        run: test -n "$ROOT_PAGES_TOKEN"
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - uses: actions/checkout@v7
+        with:
+          repository: aio-proxy/aio-proxy.github.io
+          ref: main
+          path: root-site
+          token: ${{ secrets.ROOT_PAGES_TOKEN }}
+
+      - name: Publish website
+        working-directory: root-site
+        run: |
+          rsync -a --delete --exclude=.git ../website/dist/ ./
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add --all
+          git diff --cached --quiet || git commit -m 'docs: deploy website'
+          git push origin HEAD:main
