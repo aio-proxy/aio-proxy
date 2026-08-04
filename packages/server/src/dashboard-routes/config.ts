@@ -7,6 +7,7 @@ import type { DashboardAuthentication } from '../dashboard-auth';
 import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
 import { createDashboardOAuthLoginRoutes } from './oauth-login';
+import { createDashboardOverviewRoute } from './overview';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
@@ -36,6 +37,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       const query = context.req.valid('query');
       return context.json(state.traceStore.overview(query));
     })
+    .route('/overview', createDashboardOverviewRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {
