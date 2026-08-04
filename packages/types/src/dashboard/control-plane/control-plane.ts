@@ -7,7 +7,7 @@ import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
 
 const required = <T extends z.ZodType>(schema: z.ZodDefault<T>): T => schema.unwrap();
 
-const CONFIG_TEMPLATE_EXPRESSION = /(?<!\{)\{\{[\t\n\r ]*env\.[A-Za-z_][A-Za-z0-9_]*[\t\n\r ]*\}\}(?!\})/gu;
+const CONFIG_TEMPLATE_EXPRESSION = /(?<![\\{])\{\{[\t\n\r ]*env\.[A-Za-z_][A-Za-z0-9_]*[\t\n\r ]*\}\}(?!\})/gu;
 
 function hasOnlySupportedConfigTemplates(value: string): boolean {
   let expressions = 0;
@@ -33,9 +33,17 @@ function materializeProxyTemplate(value: string): string {
   const hostValueStart = bracketed ? hostStart + 1 : hostStart;
   const hostEnd = bracketed && bracketEnd >= 0 ? bracketEnd : portSeparator > hostStart ? portSeparator : authorityEnd;
 
-  return value.replace(CONFIG_TEMPLATE_EXPRESSION, (_expression, offset: number) => {
-    if (offset >= hostValueStart && offset < hostEnd) return bracketed ? '2001:db8::1' : 'proxy.example';
-    if (portSeparator >= 0 && offset > portSeparator && offset < authorityEnd) return '8080';
+  return value.replace(CONFIG_TEMPLATE_EXPRESSION, (expression, offset: number) => {
+    const expressionEnd = offset + expression.length;
+    if (offset >= hostValueStart && expressionEnd <= hostEnd) {
+      const replacesHost = offset === hostValueStart && expressionEnd === hostEnd;
+      if (bracketed) return replacesHost ? '2001:db8::1' : '1';
+      return replacesHost ? 'proxy.example' : 'value';
+    }
+    if (portSeparator >= 0 && offset > portSeparator && expressionEnd <= authorityEnd) {
+      const replacesPort = offset === portSeparator + 1 && expressionEnd === authorityEnd;
+      return replacesPort ? '8080' : '0';
+    }
     return 'value';
   });
 }

@@ -34,6 +34,12 @@ describe('dashboard settings control-plane contracts', () => {
     expect(mutation.parse({ proxy: 'http://[{{env.PROXY_IPV6}}]:{{env.PROXY_PORT}}' })).toEqual({
       proxy: 'http://[{{env.PROXY_IPV6}}]:{{env.PROXY_PORT}}',
     });
+    expect(mutation.parse({ proxy: 'http://proxy.example:8{{env.PROXY_PORT}}' })).toEqual({
+      proxy: 'http://proxy.example:8{{env.PROXY_PORT}}',
+    });
+    expect(mutation.parse({ proxy: 'http://[2001:db8::{{env.PROXY_TAIL}}]' })).toEqual({
+      proxy: 'http://[2001:db8::{{env.PROXY_TAIL}}]',
+    });
     expect(mutation.parse({ proxy: 'https://{{ env.PROXY_HOST }}' })).toEqual({
       proxy: 'https://{{ env.PROXY_HOST }}',
     });
@@ -49,6 +55,7 @@ describe('dashboard settings control-plane contracts', () => {
       'not-a-proxy {{env.X}}',
       'https://{{! comment}}',
       'https://{{foo}}',
+      'https://\\{{env.HOST}}',
     ]) {
       expect(mutation.safeParse({ proxy }).success).toBe(false);
     }
