@@ -37,6 +37,7 @@ test('options schema failure rejects before setup', async () => {
     status: 'failed',
     diagnostic: { code: 'PLUGIN_OPTIONS_INVALID' },
   });
+  expect(snapshot.plugins.get('@example/options')?.hasOptions).toBe(true);
 });
 
 test('options async validation shares the setup deadline and late setup stays sealed', async () => {

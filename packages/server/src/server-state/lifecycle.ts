@@ -117,6 +117,7 @@ export type ServerStateParts = Pick<
   | 'logicalSessionStore'
   | 'oauthQuota'
   | 'oauthLoginSessions'
+  | 'pluginControlPlane'
   | 'providerSummaries'
   | 'reload'
   | 'traceStore'
@@ -157,6 +158,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
     oauthLoginSessions: parts.oauthLoginSessions,
+    pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,

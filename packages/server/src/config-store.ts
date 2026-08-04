@@ -38,7 +38,9 @@ export type ConfigStoreOptions = {
 export type ConfigStore = {
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
-  readonly mutateConfig: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
+  readonly mutateConfig: (
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+  ) => Promise<void>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
@@ -98,7 +100,9 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
   }
 
-  async function mutateConfigNow(fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
+  async function mutateConfigNow(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+  ): Promise<void> {
     if (file === undefined) throw new ConfigPathMissingError();
     await file.replace(fn, {
       validateCandidate: (candidate) => void parseRuntimeConfig(candidate),

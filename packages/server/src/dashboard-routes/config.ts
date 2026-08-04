@@ -8,6 +8,7 @@ import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
 import { createDashboardOAuthLoginRoutes } from './oauth-login';
 import { createDashboardOverviewRoute } from './overview';
+import { createDashboardPluginRoutes } from './plugins';
 import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
@@ -41,6 +42,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       return context.json(state.traceStore.overview(query));
     })
     .route('/overview', createDashboardOverviewRoute(state))
+    .route('/plugins', createDashboardPluginRoutes(state))
     .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))

@@ -77,15 +77,16 @@ describe('dashboard static routes', () => {
     const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
 
     try {
-      const removedPlugins = await routes.request('/plugins');
+      const plugins = await routes.request('/plugins');
       const capabilities = await routes.request('/oauth/capabilities');
       const providers = await routes.request('/providers');
       const serialized = JSON.stringify({
+        plugins: await plugins.json(),
         capabilities: await capabilities.json(),
         providers: await providers.json(),
       });
 
-      expect(removedPlugins.status).toBe(404);
+      expect(plugins.status).toBe(200);
       expect(capabilities.status).toBe(200);
       expect(providers.status).toBe(200);
       expect(serialized).toContain('PLUGIN_LOAD_FAILED');

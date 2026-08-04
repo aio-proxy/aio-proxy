@@ -19,6 +19,7 @@ import type {
 import type { ConfigStore } from '../config-store';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
+import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
 import type { OAuthQuotaOperations } from '../plugin-quota';
 import type { CatalogJobDescriptor } from '../plugin-runtime';
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
@@ -53,6 +54,10 @@ export type ServerStateTestHooks = {
   readonly recoverPendingAccountOperations?: typeof recoverPendingAccountOperations;
   readonly oauthSessionNow?: () => number;
   readonly oauthSessionTtlMs?: number;
+  readonly pluginControlPlane?: Pick<
+    PluginControlPlaneOptions,
+    'findInstalledNpmPackage' | 'removeNpmPackageCache' | 'withInstalledNpmPackage' | 'withNpmPackageLifecycle'
+  >;
 };
 
 export type InternalServerStateOptions = ServerStateOptions & {
@@ -70,6 +75,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly oauthQuota: OAuthQuotaOperations;
+  readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
   readonly oauthLoginSessions: OAuthLoginSessionManager;

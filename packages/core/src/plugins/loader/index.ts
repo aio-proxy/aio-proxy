@@ -34,6 +34,7 @@ export type LoadedPluginState = {
   readonly description?: LocalizedText;
   readonly version?: string;
   readonly builtIn: boolean;
+  readonly hasOptions?: boolean;
   readonly state: PluginState;
 };
 export type PluginRegistrySnapshot = {
@@ -59,6 +60,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     let version: string | undefined;
     let label: LocalizedText | undefined;
     let description: LocalizedText | undefined;
+    let hasOptions = false;
     try {
       const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
       secretValues = collectSecretStrings(secretOptions);
@@ -74,6 +76,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       }
       label = descriptor.metadata.label;
       description = descriptor.metadata.description;
+      hasOptions = descriptor.metadata.options !== undefined;
       const staging = host.stage(candidate.packageName, { redactSecretValues: secretValues });
       const setup = Promise.resolve().then(async () => {
         const pluginOptions = await prepareOptions(descriptor, candidate.options, secretOptions);
@@ -97,6 +100,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         ...(description === undefined ? {} : { description }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
+        hasOptions,
         state: { status: 'ready' },
       });
     } catch (error) {
@@ -106,6 +110,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         ...(description === undefined ? {} : { description }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
+        hasOptions,
         state: failedState(options, candidate.packageName, error, secretValues, candidate.configured),
       });
     }
