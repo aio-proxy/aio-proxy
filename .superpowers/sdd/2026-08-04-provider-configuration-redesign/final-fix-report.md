@@ -10,7 +10,7 @@ Implemented all three final review findings while preserving the earlier secret-
 
 - Same-identity edits continue through `replaceProvider`, preserving omitted and redacted persisted secrets in memory for the saved target only.
 - Changed API or AI SDK identity takes a separate sanitize-only path. It recursively removes standalone and embedded `****`/`sk-****` masks, never merges the persisted Provider, and materializes only explicitly authored draft values.
-- When the persisted Provider had sensitive values but the changed draft has no fresh value in a recognized credential-bearing field or authorization/API-key header, resolution fails before materialization with the recoverable `fresh_credentials_required` result. Ordinary headers cannot satisfy this guard.
+- When the persisted Provider had sensitive values but the changed draft has no fresh root `apiKey` or recognized authorization/API-key header, resolution fails before materialization with the recoverable `fresh_credentials_required` result. Ordinary headers and arbitrary AI SDK option names cannot satisfy this guard.
 - Integration coverage proves fresh API credentials/headers and fresh AI SDK options reach the changed target while saved credentials, headers, and options do not. Missing fresh credentials contact neither a changed destination nor a changed proxy.
 
 ### Validate-step query ownership
@@ -50,13 +50,20 @@ Implemented all three final review findings while preserving the earlier secret-
 ## Risks
 
 - Changed-identity ambiguity intentionally fails closed. In particular, changing AI SDK options can require re-entering fresh credentials even when the user considers the edited option non-sensitive; this is the confirmed security tradeoff that prevents persisted secrets from reaching a changed target.
-- Fresh credentials for a changed identity must use a recognized credential-bearing field or authorization/API-key header. Nonstandard custom authentication header names fail closed rather than being guessed from an arbitrary value.
+- Fresh credentials for a changed identity must use the explicit root `apiKey` field or a recognized authorization/API-key header. Nonstandard custom authentication fields and header names fail closed rather than being guessed from arbitrary names or values.
 - Independent review noted a non-blocking visual minor: moving Provider headers to the shared sortable header primitive dropped the table's prior per-column header alignment classes. Sorting, `aria-sort`, column visibility, cell alignment, and horizontal access remain functional; aligning the shared header primitive can be handled separately.
 - Repository-wide preflight remains blocked by the unrelated Trace filter type errors above. Provider-scoped type checks, affected tests, and the Dashboard production build are green.
 
 ## Final scoped security remediation
 
 - Final re-review found that path matching still treated a persisted ordinary header such as `Content-Type` as proof of a fresh credential, because all persisted header values are conservatively redacted.
-- Persisted-secret detection and fresh-credential eligibility are now separate: persisted headers remain conservatively sensitive, while fresh eligibility accepts only named credential fields and recognized authorization/API-key header paths.
+- Persisted-secret detection and fresh-credential eligibility are now separate: persisted headers remain conservatively sensitive, while fresh eligibility accepts only root `apiKey` and recognized authorization/API-key header paths.
 - Red/green coverage proves a persisted `Content-Type` plus a changed target returns `fresh_credentials_required` without contacting the target, while a fresh `Authorization` header reaches the changed target and no saved/redacted header does.
 - Fresh remediation verification: Server Provider routes 30 passed, 0 failed; Dashboard Provider slice 150 passed, 0 failed; scoped type-aware lint passed.
+
+## Exact AI SDK credential-key remediation
+
+- Focused security re-review found that the unanchored credential-name pattern treated arbitrary AI SDK option names such as `tokenCount`, `apiKeyHint`, and `secretMode` as fresh credential proof.
+- Fresh proof now follows the explicit AI SDK loader contract exactly: root `options.apiKey` or a recognized entry under `options.headers`. Arbitrary passthrough option names never authorize a changed target.
+- The strengthened changed-target regression failed by contacting the target when only masked saved credentials plus `tokenCount: "1"` were present; after the fix it returns `fresh_credentials_required` and performs zero requests.
+- Final remediation verification: Server Provider routes 30 passed, 0 failed; Dashboard Provider slice 150 passed, 0 failed; scoped type-aware lint passed. Existing fresh API key/Authorization success and persisted `Content-Type` rejection remain green.

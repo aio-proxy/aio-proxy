@@ -493,7 +493,7 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
-  test('does not restore AI SDK secrets or contact a changed persisted Provider destination', async () => {
+  test('does not treat AI SDK tokenCount as fresh credentials for a changed destination', async () => {
     let requests = 0;
     let authorization: string | null = null;
     const attacker = Bun.serve({
@@ -522,6 +522,7 @@ describe('draft Provider catalog and test routes', () => {
               baseURL: `http://127.0.0.1:${attacker.port}/v1`,
               headers: { 'x-saved-sdk-secret': '****' },
               name: 'saved-sdk',
+              tokenCount: '1',
             },
             packageName: '@ai-sdk/openai-compatible',
           },
