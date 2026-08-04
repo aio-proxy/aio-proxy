@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthFormField } from '@aio-proxy/types';
-import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { Switch } from '@aio-proxy/ui/components/switch';
@@ -32,6 +32,13 @@ const isValidJson = (value: string) => {
   }
 };
 
+const setPublicOptionValue = (publicField: AnyFieldApi, key: string, value: unknown) => {
+  const next = { ...publicField.state.value };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  publicField.handleChange(next);
+};
+
 export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   combined,
   field,
@@ -44,24 +51,32 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   const id = `plugin-option-${field.key}`;
   const label = resolveDashboardText(field.label);
   const description = field.description === undefined ? undefined : resolveDashboardText(field.description);
+  const descriptionId = description === undefined ? undefined : `${id}-description`;
   const current = publicField.state.value[field.key];
-  const setPublic = (value: unknown) => {
-    const next = { ...publicField.state.value };
-    if (value === undefined) delete next[field.key];
-    else next[field.key] = value;
-    publicField.handleChange(next);
-  };
+  const setPublic = (value: unknown) => setPublicOptionValue(publicField, field.key, value);
 
   if (field.type === 'secret') {
-    return <PluginSecretOptionsField field={field} form={form} label={label} secretField={secretField} />;
+    return (
+      <PluginSecretOptionsField
+        description={description}
+        field={field}
+        form={form}
+        label={label}
+        secretField={secretField}
+      />
+    );
   }
 
   if (field.type === 'boolean') {
     return (
       <Field orientation="horizontal">
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldContent>
+          <FieldLabel htmlFor={id}>{label}</FieldLabel>
+          {description === undefined ? null : <FieldDescription id={descriptionId}>{description}</FieldDescription>}
+        </FieldContent>
         <Switch
           id={id}
+          aria-describedby={descriptionId}
           checked={Boolean(current ?? field.defaultValue)}
           onCheckedChange={(checked) => setPublic(Boolean(checked))}
         />
@@ -72,12 +87,12 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   if (field.type === 'select') {
     return (
       <Field>
-        <FieldLabel>{label}</FieldLabel>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Select
           value={current === undefined ? '' : optionValue(current as string | number | boolean)}
           onValueChange={(value) => setPublic(value === null ? undefined : JSON.parse(value))}
         >
-          <SelectTrigger>
+          <SelectTrigger id={id} aria-describedby={descriptionId}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -88,6 +103,7 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
             ))}
           </SelectContent>
         </Select>
+        {description === undefined ? null : <FieldDescription id={descriptionId}>{description}</FieldDescription>}
       </Field>
     );
   }
@@ -95,11 +111,14 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
   if (field.type === 'json') {
     const value = jsonField.state.value[field.key] ?? (current === undefined ? '' : JSON.stringify(current, null, 2));
     const invalid = !isValidJson(value);
+    const invalidId = invalid ? `${id}-error` : undefined;
+    const describedBy = [descriptionId, invalidId].filter((value) => value !== undefined).join(' ') || undefined;
     return (
       <Field>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Textarea
           id={id}
+          aria-describedby={describedBy}
           aria-invalid={invalid}
           value={value}
           onChange={(event) => {
@@ -108,7 +127,12 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
             if (isValidJson(next)) setPublic(next === '' ? undefined : JSON.parse(next));
           }}
         />
-        {invalid ? <p className="text-sm text-destructive">{m['dashboard.plugins.invalid_json']()}</p> : null}
+        {description === undefined ? null : <FieldDescription id={descriptionId}>{description}</FieldDescription>}
+        {invalid ? (
+          <p id={invalidId} role="alert" className="text-sm text-destructive">
+            {m['dashboard.plugins.invalid_json']()}
+          </p>
+        ) : null}
       </Field>
     );
   }
@@ -118,6 +142,7 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
+        aria-describedby={descriptionId}
         type={field.type === 'number' ? 'number' : 'text'}
         value={typeof current === 'string' || typeof current === 'number' ? current : ''}
         placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
@@ -131,7 +156,7 @@ export const PluginOptionsField: React.FC<PluginOptionsFieldProps> = ({
           )
         }
       />
-      {description === undefined ? null : <FieldDescription>{description}</FieldDescription>}
+      {description === undefined ? null : <FieldDescription id={descriptionId}>{description}</FieldDescription>}
     </Field>
   );
 };

@@ -1,20 +1,25 @@
+/* oxlint-disable max-lines */
 import type { DashboardPluginEditView, DashboardPluginSummary } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { PluginRequestError } from '../../services/plugins-service';
 import { PluginsPage } from './plugins-page';
 
 const mocks = rs.hoisted(() => ({
   editView: undefined as DashboardPluginEditView | undefined,
-  install: { error: null as Error | null, isPending: false, mutate: rs.fn() },
-  options: { error: null as Error | null, isPending: false, mutate: rs.fn() },
+  install: { error: null as Error | null, isPending: false, mutate: rs.fn(), reset: rs.fn() },
+  options: { error: null as Error | null, isPending: false, mutate: rs.fn(), reset: rs.fn() },
   plugins: { data: { plugins: [] as DashboardPluginSummary[] }, isError: false, isLoading: false },
-  uninstall: { error: null as Error | null, isPending: false, mutate: rs.fn() },
+  uninstall: { error: null as Error | null, isPending: false, mutate: rs.fn(), reset: rs.fn() },
 }));
 
 rs.mock('../../hooks/use-plugins-query', () => ({
-  usePluginEditViewQuery: () => ({ data: mocks.editView, isError: false, isLoading: false }),
+  usePluginEditViewQuery: (packageName: string | null) => ({
+    data: packageName === null ? undefined : mocks.editView,
+    isError: false,
+    isLoading: false,
+  }),
   usePluginsQuery: () => mocks.plugins,
 }));
 
@@ -42,10 +47,21 @@ afterEach(() => {
     mutation.error = null;
     mutation.isPending = false;
     mutation.mutate.mockReset();
+    mutation.reset.mockReset();
+    mutation.reset.mockImplementation(() => {
+      mutation.error = null;
+    });
   }
 });
 
-test('keeps Add Plugin in the page header and gates installation on local-code trust', async () => {
+test('keeps Add Plugin in the page header and confirms the exact request after the typed trust challenge', async () => {
+  mocks.install.mutate.mockImplementation((input, callbacks) => {
+    if (input.confirmed !== true) {
+      const error = new PluginRequestError('confirmation_required', 400);
+      mocks.install.error = error;
+      callbacks.onError(error);
+    }
+  });
   render(<PluginsPage />);
 
   const add = screen.getByRole('button', { name: /Add Plugin|添加插件|新增外掛/u });
@@ -56,10 +72,15 @@ test('keeps Add Plugin in the page header and gates installation on local-code t
     target: { value: '@example/new-plugin' },
   });
   const install = screen.getByRole('button', { name: /Install Plugin|安装插件|安裝外掛/u });
-  expect(install).toBeDisabled();
-  expect(mocks.install.mutate).not.toHaveBeenCalled();
+  expect(install).toBeEnabled();
+  fireEvent.click(install);
+
+  await waitFor(() => {
+    expect(mocks.install.mutate).toHaveBeenNthCalledWith(1, { packageName: '@example/new-plugin' }, expect.any(Object));
+  });
 
   const trust = screen.getByRole('checkbox', { name: /trust|信任/u });
+  expect(install).toBeDisabled();
   fireEvent.keyDown(trust, { code: 'Space', key: ' ' });
   fireEvent.keyUp(trust, { code: 'Space', key: ' ' });
   expect(trust).toBeChecked();
@@ -67,11 +88,63 @@ test('keeps Add Plugin in the page header and gates installation on local-code t
   fireEvent.click(install);
 
   await waitFor(() => {
-    expect(mocks.install.mutate).toHaveBeenCalledWith(
+    expect(mocks.install.mutate).toHaveBeenNthCalledWith(
+      2,
       { confirmed: true, packageName: '@example/new-plugin' },
       expect.any(Object),
     );
   });
+});
+
+test('clears challenged trust when the package, registry, or drawer lifecycle changes', async () => {
+  mocks.install.mutate.mockImplementation((input, callbacks) => {
+    if (input.confirmed !== true) {
+      const error = new PluginRequestError('confirmation_required', 400);
+      mocks.install.error = error;
+      callbacks.onError(error);
+    }
+  });
+  render(<PluginsPage />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Add Plugin|添加插件|新增外掛/u }));
+  const packageName = screen.getByLabelText(/Package name|包名称|套件名稱/u);
+  const registry = screen.getByLabelText(/Registry|注册表|登錄檔/u);
+  const install = screen.getByRole('button', { name: /Install Plugin|安装插件|安裝外掛/u });
+
+  fireEvent.change(packageName, { target: { value: '@example/first-plugin' } });
+  fireEvent.click(install);
+  let trust = await screen.findByRole('checkbox', { name: /trust|信任/u });
+  fireEvent.click(trust);
+
+  fireEvent.change(packageName, { target: { value: '@example/second-plugin' } });
+  expect(screen.queryByRole('checkbox', { name: /trust|信任/u })).toBeNull();
+  await waitFor(() => expect(install).toBeEnabled());
+  fireEvent.click(install);
+  await waitFor(() => {
+    expect(mocks.install.mutate).toHaveBeenLastCalledWith(
+      { packageName: '@example/second-plugin' },
+      expect.any(Object),
+    );
+  });
+
+  trust = await screen.findByRole('checkbox', { name: /trust|信任/u });
+  fireEvent.click(trust);
+  fireEvent.change(registry, { target: { value: 'https://registry.example.com' } });
+  expect(screen.queryByRole('checkbox', { name: /trust|信任/u })).toBeNull();
+  await waitFor(() => expect(install).toBeEnabled());
+  fireEvent.click(install);
+  await waitFor(() => {
+    expect(mocks.install.mutate).toHaveBeenLastCalledWith(
+      { packageName: '@example/second-plugin', registry: 'https://registry.example.com' },
+      expect.any(Object),
+    );
+  });
+
+  await screen.findByRole('checkbox', { name: /trust|信任/u });
+  fireEvent.click(screen.getByRole('button', { name: /Cancel|取消/u }));
+  fireEvent.click(screen.getByRole('button', { name: /Add Plugin|添加插件|新增外掛/u }));
+  expect(screen.getByLabelText(/Package name|包名称|套件名稱/u)).toHaveValue('');
+  expect(screen.queryByRole('checkbox', { name: /trust|信任/u })).toBeNull();
 });
 
 test('does not offer uninstall for a built-in Plugin', () => {
@@ -138,6 +211,116 @@ test('loads the safe options edit-view without rendering a stored secret and sub
       expect.any(Object),
     );
   });
+});
+
+test('clears unsaved replacement secrets and mutation errors before options can reopen', async () => {
+  mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
+  mocks.editView = {
+    packageName: '@example/plugin',
+    revision: 'sha256:current',
+    publicValues: {},
+    form: [{ configured: true, key: 'token', label: 'Token', type: 'secret' }],
+  };
+  mocks.options.error = new PluginRequestError('stale_revision', 409);
+  mocks.options.reset.mockImplementation(() => {
+    mocks.options.error = null;
+  });
+
+  render(<PluginsPage />);
+  const options = screen.getByRole('button', { name: /Options|选项|選項/u });
+  fireEvent.click(options);
+  const token = await screen.findByLabelText('Token');
+  fireEvent.change(token, { target: { value: 'unsaved-replacement' } });
+  expect(token).toHaveValue('unsaved-replacement');
+  expect(screen.getByRole('alert')).toBeInTheDocument();
+
+  const cancel = screen.getByRole('button', { name: /Cancel|取消/u });
+  act(() => {
+    cancel.click();
+    options.click();
+  });
+
+  expect(screen.getByLabelText('Token')).toHaveValue('');
+  fireEvent.click(screen.getByRole('button', { name: /Cancel|取消/u }));
+  fireEvent.click(options);
+  expect(mocks.options.reset).toHaveBeenCalled();
+  expect(mocks.options.error).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('uses effective defaults when evaluating conditional option fields', async () => {
+  mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
+  mocks.editView = {
+    packageName: '@example/plugin',
+    revision: 'sha256:current',
+    publicValues: {},
+    form: [
+      {
+        defaultValue: true,
+        key: 'advanced',
+        label: 'Advanced',
+        type: 'boolean',
+      },
+      {
+        key: 'mode',
+        label: 'Mode',
+        type: 'text',
+        when: { equals: true, key: 'advanced' },
+      },
+    ],
+  };
+
+  render(<PluginsPage />);
+  fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
+
+  expect(await screen.findByLabelText('Mode')).toBeInTheDocument();
+});
+
+test('associates descriptions with boolean, select, JSON, and secret option controls', async () => {
+  mocks.plugins.data.plugins = [plugin({ hasOptions: true })];
+  mocks.editView = {
+    packageName: '@example/plugin',
+    revision: 'sha256:current',
+    publicValues: {},
+    form: [
+      {
+        description: 'Enables advanced options',
+        key: 'advanced',
+        label: 'Advanced',
+        type: 'boolean',
+      },
+      {
+        description: 'Select the operating mode',
+        key: 'mode',
+        label: 'Mode',
+        options: [{ label: 'Fast', value: 'fast' }],
+        type: 'select',
+      },
+      {
+        description: 'Enter structured settings',
+        key: 'settings',
+        label: 'Settings',
+        type: 'json',
+      },
+      {
+        configured: false,
+        description: 'Enter a replacement token',
+        key: 'token',
+        label: 'Token',
+        type: 'secret',
+      },
+    ],
+  };
+
+  render(<PluginsPage />);
+  fireEvent.click(screen.getByRole('button', { name: /Options|选项|選項/u }));
+
+  expect(await screen.findByRole('switch', { name: 'Advanced' })).toHaveAccessibleDescription(
+    'Enables advanced options',
+  );
+  expect(screen.getByRole('combobox', { name: 'Mode' })).toHaveAccessibleDescription('Select the operating mode');
+  expect(screen.getByLabelText('Settings')).toHaveAccessibleDescription('Enter structured settings');
+  expect(screen.getByLabelText('Token')).toHaveAccessibleDescription('Enter a replacement token');
 });
 
 test('keeps cleared public option values serializable', async () => {

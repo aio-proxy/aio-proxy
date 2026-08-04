@@ -20,11 +20,19 @@ import { z } from 'zod';
 import { usePluginInstallMutation } from '../hooks/use-plugin-mutations';
 import { PluginRequestError } from '../services/plugins-service';
 
-const PluginInstallFormSchema = z.object({
+const PluginInstallRequestFormSchema = z.object({
   packageName: PluginPackageNameSchema,
   registry: z.union([z.literal(''), z.url()]),
-  trustConfirmed: z.literal(true),
 });
+const PluginInstallFormSchema = PluginInstallRequestFormSchema.extend({ trustConfirmed: z.boolean() });
+
+type PluginInstallRequest = {
+  readonly packageName: string;
+  readonly registry?: string;
+};
+
+const isSameInstallRequest = (left: PluginInstallRequest, right: PluginInstallRequest) =>
+  left.packageName === right.packageName && left.registry === right.registry;
 
 export interface PluginInstallDrawerRef {
   readonly open: () => void;
@@ -38,37 +46,132 @@ const installErrorMessage = (error: Error | null): string | undefined => {
   return m['dashboard.plugins.install_failed']();
 };
 
-export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) => {
+interface PluginInstallInputFieldProps {
+  readonly id: string;
+  readonly label: string;
+  readonly onBlur: () => void;
+  readonly onChange: (value: string) => void;
+  readonly placeholder?: string;
+  readonly type?: 'text' | 'url';
+  readonly value: string;
+}
+
+const PluginInstallInputField: React.FC<PluginInstallInputFieldProps> = ({
+  id,
+  label,
+  onBlur,
+  onChange,
+  placeholder,
+  type = 'text',
+  value,
+}) => (
+  <Field>
+    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <Input
+      id={id}
+      type={type}
+      autoComplete="off"
+      value={value}
+      placeholder={placeholder}
+      onBlur={onBlur}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  </Field>
+);
+
+const PluginTrustField: React.FC<{
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+}> = ({ checked, onChange }) => (
+  <Field>
+    <FieldLabel className="items-start">
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+      {m['dashboard.plugins.trust_local_code']()}
+    </FieldLabel>
+    <FieldDescription>{m['dashboard.plugins.trust_local_code_description']()}</FieldDescription>
+  </Field>
+);
+
+const PluginInstallSubmitButton: React.FC<{
+  readonly confirmationRequired: boolean;
+  readonly isPending: boolean;
+  readonly isSubmitting: boolean;
+  readonly isValid: boolean;
+  readonly trustConfirmed: boolean;
+}> = ({ confirmationRequired, isPending, isSubmitting, isValid, trustConfirmed }) => (
+  <Button type="submit" disabled={!isValid || (confirmationRequired && !trustConfirmed) || isSubmitting || isPending}>
+    {m['dashboard.plugins.install_action']()}
+  </Button>
+);
+
+const usePluginInstallWorkflow = () => {
   const [open, setOpen] = useState(false);
+  const [challengedRequest, setChallengedRequest] = useState<PluginInstallRequest | null>(null);
   const mutation = usePluginInstallMutation();
-  const isMobile = useIsMobile();
   const form = useForm({
     defaultValues: { packageName: '', registry: '', trustConfirmed: false },
     validators: { onChange: PluginInstallFormSchema },
     onSubmit: ({ value }) => {
-      const parsed = PluginInstallFormSchema.safeParse(value);
+      const parsed = PluginInstallRequestFormSchema.safeParse(value);
       if (!parsed.success) return;
-      mutation.mutate(
-        {
-          packageName: parsed.data.packageName,
-          confirmed: true,
-          ...(parsed.data.registry === '' ? {} : { registry: parsed.data.registry }),
+      const request: PluginInstallRequest = {
+        packageName: parsed.data.packageName,
+        ...(parsed.data.registry === '' ? {} : { registry: parsed.data.registry }),
+      };
+      const confirmed =
+        challengedRequest !== null && isSameInstallRequest(challengedRequest, request) && value.trustConfirmed;
+      if (challengedRequest !== null && !confirmed) return;
+      mutation.mutate(confirmed ? { ...request, confirmed: true } : request, {
+        onError: (error) => {
+          if (error instanceof PluginRequestError && error.code === 'confirmation_required') {
+            setChallengedRequest(request);
+            form.setFieldValue('trustConfirmed', false);
+          }
         },
-        {
-          onSuccess: () => {
-            setOpen(false);
-            form.reset();
-          },
-        },
-      );
+        onSuccess: closeDrawer,
+      });
     },
   });
 
-  useImperativeHandle(ref, () => ({ open: () => setOpen(true) }), []);
-  const error = installErrorMessage(mutation.error);
+  function clearChallenge() {
+    setChallengedRequest(null);
+    form.setFieldValue('trustConfirmed', false);
+    mutation.reset();
+  }
+
+  function closeDrawer() {
+    form.reset();
+    mutation.reset();
+    setChallengedRequest(null);
+    setOpen(false);
+  }
+
+  return {
+    challengedRequest,
+    clearChallenge,
+    closeDrawer,
+    error: installErrorMessage(mutation.error),
+    form,
+    isPending: mutation.isPending,
+    open,
+    openDrawer: () => setOpen(true),
+  };
+};
+
+export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) => {
+  const workflow = usePluginInstallWorkflow();
+  const isMobile = useIsMobile();
+  useImperativeHandle(ref, () => ({ open: workflow.openDrawer }), [workflow.openDrawer]);
 
   return (
-    <Drawer open={open} onOpenChange={setOpen} swipeDirection={isMobile ? 'down' : 'right'}>
+    <Drawer
+      open={workflow.open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) workflow.openDrawer();
+        else workflow.closeDrawer();
+      }}
+      swipeDirection={isMobile ? 'down' : 'right'}
+    >
       <DrawerContent className="p-0 sm:w-full sm:max-w-lg" data-testid="plugin-install-drawer">
         <DrawerHeader>
           <DrawerTitle>{m['dashboard.plugins.install_title']()}</DrawerTitle>
@@ -79,72 +182,74 @@ export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) =
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void form.handleSubmit();
+            void workflow.form.handleSubmit();
           }}
         >
           <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
-            <form.Field name="packageName">
+            <workflow.form.Field name="packageName">
               {(field) => (
-                <Field>
-                  <FieldLabel htmlFor="plugin-package-name">{m['dashboard.plugins.package_name']()}</FieldLabel>
-                  <Input
-                    id="plugin-package-name"
-                    autoComplete="off"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </Field>
+                <PluginInstallInputField
+                  id="plugin-package-name"
+                  label={m['dashboard.plugins.package_name']()}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(value) => {
+                    field.handleChange(value);
+                    workflow.clearChallenge();
+                  }}
+                />
               )}
-            </form.Field>
-            <form.Field name="registry">
+            </workflow.form.Field>
+            <workflow.form.Field name="registry">
               {(field) => (
-                <Field>
-                  <FieldLabel htmlFor="plugin-registry">{m['dashboard.plugins.registry']()}</FieldLabel>
-                  <Input
-                    id="plugin-registry"
-                    type="url"
-                    value={field.state.value}
-                    placeholder={m['dashboard.plugins.registry_placeholder']()}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </Field>
+                <PluginInstallInputField
+                  id="plugin-registry"
+                  label={m['dashboard.plugins.registry']()}
+                  type="url"
+                  value={field.state.value}
+                  placeholder={m['dashboard.plugins.registry_placeholder']()}
+                  onBlur={field.handleBlur}
+                  onChange={(value) => {
+                    field.handleChange(value);
+                    workflow.clearChallenge();
+                  }}
+                />
               )}
-            </form.Field>
-            <form.Field name="trustConfirmed">
-              {(field) => (
-                <Field>
-                  <FieldLabel className="items-start">
-                    <Checkbox
-                      checked={field.state.value}
-                      onCheckedChange={(checked) => field.handleChange(checked === true)}
-                    />
-                    {m['dashboard.plugins.trust_local_code']()}
-                  </FieldLabel>
-                  <FieldDescription>{m['dashboard.plugins.trust_local_code_description']()}</FieldDescription>
-                </Field>
-              )}
-            </form.Field>
-            {error === undefined ? null : (
+            </workflow.form.Field>
+            {workflow.challengedRequest === null ? null : (
+              <workflow.form.Field name="trustConfirmed">
+                {(field) => (
+                  <PluginTrustField checked={field.state.value} onChange={(checked) => field.handleChange(checked)} />
+                )}
+              </workflow.form.Field>
+            )}
+            {workflow.error === undefined ? null : (
               <p role="alert" className="text-sm text-destructive">
-                {error}
+                {workflow.error}
               </p>
             )}
           </div>
           <DrawerFooter className="flex-row justify-end border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={workflow.closeDrawer}>
               {m['dashboard.plugins.cancel']()}
             </Button>
-            <form.Subscribe
-              selector={(state) => [PluginInstallFormSchema.safeParse(state.values).success, state.isSubmitting]}
+            <workflow.form.Subscribe
+              selector={(state) => [
+                PluginInstallRequestFormSchema.safeParse(state.values).success,
+                state.values.trustConfirmed,
+                state.isSubmitting,
+              ]}
             >
-              {([isValid, isSubmitting]) => (
-                <Button type="submit" disabled={!isValid || isSubmitting || mutation.isPending}>
-                  {m['dashboard.plugins.install_action']()}
-                </Button>
+              {([isValid, trustConfirmed, isSubmitting]) => (
+                <PluginInstallSubmitButton
+                  confirmationRequired={workflow.challengedRequest !== null}
+                  isPending={workflow.isPending}
+                  isSubmitting={Boolean(isSubmitting)}
+                  isValid={Boolean(isValid)}
+                  trustConfirmed={Boolean(trustConfirmed)}
+                />
               )}
-            </form.Subscribe>
+            </workflow.form.Subscribe>
           </DrawerFooter>
         </form>
       </DrawerContent>

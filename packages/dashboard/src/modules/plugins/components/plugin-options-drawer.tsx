@@ -1,5 +1,9 @@
 import { m } from '@aio-proxy/i18n';
-import { DashboardPluginOptionsMutationSchema, type DashboardPluginSummary } from '@aio-proxy/types';
+import {
+  type DashboardOAuthFormField,
+  DashboardPluginOptionsMutationSchema,
+  type DashboardPluginSummary,
+} from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import {
   Drawer,
@@ -32,6 +36,13 @@ const optionsErrorMessage = (error: Error | null): string | undefined => {
   return m['dashboard.plugins.options_save_failed']();
 };
 
+const optionDefaults = (fields: readonly DashboardOAuthFormField[]): Readonly<Record<string, unknown>> =>
+  Object.fromEntries(
+    fields.flatMap((field) =>
+      'defaultValue' in field && field.defaultValue !== undefined ? [[field.key, field.defaultValue]] : [],
+    ),
+  );
+
 export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) => {
   const [packageName, setPackageName] = useState<string | null>(null);
   const editViewQuery = usePluginEditViewQuery(packageName);
@@ -47,8 +58,14 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
       clearSecretKeys: value.clearSecretKeys,
     });
     if (!parsed.success) return;
-    mutation.mutate(parsed.data, { onSuccess: () => setPackageName(null) });
+    mutation.mutate(parsed.data, { onSuccess: closeDrawer });
   });
+
+  function closeDrawer() {
+    form.reset(pluginOptionsFormValues(editViewQuery.data));
+    mutation.reset();
+    setPackageName(null);
+  }
 
   useImperativeHandle(ref, () => ({ open: (plugin) => setPackageName(plugin.packageName) }), []);
 
@@ -62,7 +79,7 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
     <Drawer
       open={packageName !== null}
       onOpenChange={(open) => {
-        if (!open) setPackageName(null);
+        if (!open) closeDrawer();
       }}
       swipeDirection={isMobile ? 'down' : 'right'}
     >
@@ -96,7 +113,11 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
                     {(secretField: AnyFieldApi) => (
                       <form.Field name="jsonValues">
                         {(jsonField: AnyFieldApi) => {
-                          const combined = { ...publicField.state.value, ...secretField.state.value };
+                          const combined = {
+                            ...optionDefaults(editViewQuery.data.form),
+                            ...publicField.state.value,
+                            ...secretField.state.value,
+                          };
                           return (
                             <div className="space-y-4">
                               {editViewQuery.data.form.map((field) => (
@@ -126,7 +147,7 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
             )}
           </div>
           <DrawerFooter className="flex-row justify-end border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setPackageName(null)}>
+            <Button type="button" variant="outline" onClick={closeDrawer}>
               {m['dashboard.plugins.cancel']()}
             </Button>
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
