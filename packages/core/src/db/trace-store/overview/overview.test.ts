@@ -167,15 +167,9 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
 
     const result = store.overviewDashboard({ range: '24h', year: 2026, now: NOW });
 
-    expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual([
-      'a',
-      'b',
-      'c',
-      'd',
-      '__other__',
-      '__failed__',
-      '__cancelled__',
-    ]);
+    expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual(['a', 'b', 'c', 'd', '__other__']);
+    expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__failed__' in values))).toBe(true);
+    expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__cancelled__' in values))).toBe(true);
     expect(result.modelTrendByMetric.tokens.series.map(({ key }) => key)).toEqual(['e', 'd', 'c', 'b', '__other__']);
     expect(result.modelTrendByMetric.cost.series.map(({ key }) => key)).toEqual(['a', 'b', 'e', 'd', '__other__']);
     expect(result.topModelCosts).toEqual([
@@ -185,6 +179,40 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
       { modelId: 'd', estimatedCostNanoUsd: '20' },
       { modelId: 'c', estimatedCostNanoUsd: '10' },
     ]);
+  });
+});
+
+test('keeps Provider health and top model costs independent of range and activity year', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      endedAt: new Date('2025-01-15T08:00:00.000Z'),
+      modelId: 'old-model',
+      attempts: [{ providerId: 'old-provider', durationMs: 700 }],
+      usage: { estimatedCostUsd: 5 },
+    });
+    seedTrace(store, {
+      id: 2,
+      modelId: 'recent-model',
+      attempts: [{ providerId: 'recent-provider', durationMs: 100 }],
+      usage: { estimatedCostUsd: 2 },
+    });
+
+    const narrow = store.overviewDashboard({ range: '24h', year: 2026, now: NOW });
+    const changed = store.overviewDashboard({ range: '90d', year: 2025, now: NOW });
+
+    const expectedHealth = [
+      { providerId: 'old-provider', successRate: 1, p95LatencyMs: 700 },
+      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 },
+    ];
+    const expectedCosts = [
+      { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
+      { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
+    ];
+    expect(narrow.providerHealth).toEqual(expectedHealth);
+    expect(changed.providerHealth).toEqual(expectedHealth);
+    expect(narrow.topModelCosts).toEqual(expectedCosts);
+    expect(changed.topModelCosts).toEqual(expectedCosts);
   });
 });
 

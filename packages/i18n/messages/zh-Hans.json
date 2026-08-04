@@ -330,7 +330,8 @@
       "models": "模型"
     },
     "navigation": {
-      "back": "返回"
+      "back": "返回",
+      "breadcrumbs": "面包屑"
     },
     "preferences": {
       "appearance": "外观",
@@ -735,12 +736,14 @@
       "metric_tokens": "Token",
       "metric_cost": "费用",
       "provider_health_title": "提供商健康状况",
+      "provider_filter": "筛选提供商诊断",
+      "columns": "列",
       "provider_id": "提供商 ID",
       "success_rate": "成功率",
       "p95_latency": "P95 延迟",
-      "no_provider_activity": "此时间范围内暂无提供商尝试",
+      "no_provider_activity": "暂无已记录的提供商尝试",
       "top_models_title": "模型费用排行",
-      "no_model_costs": "此时间范围内暂无模型费用",
+      "no_model_costs": "暂无已记录的模型费用",
       "activity_title": "请求活跃度",
       "activity_year": "活跃年份",
       "previous_year": "上一年",

@@ -41,7 +41,7 @@ test('renders breadcrumbs before the page title', () => {
     </PageContainer>,
   );
 
-  const breadcrumb = screen.getByRole('navigation', { name: /breadcrumb/u });
+  const breadcrumb = screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$/u });
   expect(within(breadcrumb).getByText('观测')).toBeInTheDocument();
   expect(within(breadcrumb).getByText('Dashboard')).toBeInTheDocument();
   expect(

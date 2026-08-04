@@ -53,4 +53,13 @@ describe('overview service', () => {
       refetchInterval: false,
     });
   });
+
+  test('retains the previous overview while a changed range or year is loading', () => {
+    const previous = decodeOverview(wireOverview);
+    const placeholder = overviewQueryOptions({ range: '7d', year: 2025 }).placeholderData;
+
+    expect(typeof placeholder).toBe('function');
+    if (typeof placeholder !== 'function') throw new Error('Expected functional placeholder data');
+    expect(placeholder(previous, undefined as never)).toBe(previous);
+  });
 });

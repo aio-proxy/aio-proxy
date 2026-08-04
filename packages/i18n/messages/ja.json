@@ -332,7 +332,8 @@
       "models": "モデル"
     },
     "navigation": {
-      "back": "戻る"
+      "back": "戻る",
+      "breadcrumbs": "パンくずリスト"
     },
     "preferences": {
       "appearance": "外観",
@@ -737,12 +738,14 @@
       "metric_tokens": "トークン",
       "metric_cost": "コスト",
       "provider_health_title": "プロバイダーの健全性",
+      "provider_filter": "プロバイダー診断を絞り込む",
+      "columns": "列",
       "provider_id": "プロバイダー ID",
       "success_rate": "成功率",
       "p95_latency": "P95 レイテンシー",
-      "no_provider_activity": "この期間にプロバイダー試行はありません",
+      "no_provider_activity": "記録されたプロバイダー試行はありません",
       "top_models_title": "モデル別コスト上位",
-      "no_model_costs": "この期間にモデルコストはありません",
+      "no_model_costs": "記録されたモデルコストはありません",
       "activity_title": "リクエストアクティビティ",
       "activity_year": "アクティビティの年",
       "previous_year": "前年",

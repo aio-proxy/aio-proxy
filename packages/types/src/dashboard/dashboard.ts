@@ -82,7 +82,12 @@ export const DashboardUsageOverviewResponseSchema = z.object({
 
 const DashboardOverviewTrendSchema = z.object({
   buckets: z.array(DashboardUsageBucketSchema),
-  series: z.array(DashboardUsageSeriesSchema),
+  series: z.array(
+    z.object({
+      key: z.string().min(1),
+      kind: z.enum(['dimension', 'other']),
+    }),
+  ),
 });
 
 export const DashboardOverviewResponseSchema = z.object({

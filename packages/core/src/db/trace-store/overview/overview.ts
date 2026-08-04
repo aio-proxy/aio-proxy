@@ -72,13 +72,28 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
       providerCount: 0,
     },
     modelTrendByMetric: {
-      requests: { series: requests.series, buckets: requests.buckets },
-      tokens: { series: tokens.series, buckets: tokens.buckets },
-      cost: { series: cost.series, buckets: cost.buckets },
+      requests: modelTrend(requests),
+      tokens: modelTrend(tokens),
+      cost: modelTrend(cost),
     },
-    providerHealth: providerHealth(db, range),
-    topModelCosts: topModelCosts(db, range),
+    providerHealth: providerHealth(db),
+    topModelCosts: topModelCosts(db),
     activity: { year: query.year, days: activityDays(db, query.year) },
+  };
+}
+
+function modelTrend(overview: ReturnType<typeof aggregateRows>) {
+  const series = overview.series.filter(
+    (entry): entry is Extract<(typeof overview.series)[number], { kind: 'dimension' | 'other' }> =>
+      entry.kind === 'dimension' || entry.kind === 'other',
+  );
+  const keys = new Set(series.map(({ key }) => key));
+  return {
+    series,
+    buckets: overview.buckets.map((bucket) => ({
+      ...bucket,
+      values: Object.fromEntries(Object.entries(bucket.values).filter(([key]) => keys.has(key))),
+    })),
   };
 }
 
@@ -141,7 +156,7 @@ function rootRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow
   }));
 }
 
-function providerHealth(db: BunSQLiteDatabase, range: ResolvedRange): DashboardOverviewResponse['providerHealth'] {
+function providerHealth(db: BunSQLiteDatabase): DashboardOverviewResponse['providerHealth'] {
   const rows = all<RawHealthRow>(
     db,
     `select provider_id as providerId,
@@ -149,8 +164,8 @@ function providerHealth(db: BunSQLiteDatabase, range: ResolvedRange): DashboardO
       cast(count(*) as text) as attemptCount,
       json_group_array(max(0, ended_at - started_at)) as durations
     from trace_span where name = 'aio_proxy.provider.attempt' and provider_id is not null
-      and ended_at >= ? and ended_at <= ? group by provider_id order by provider_id`,
-    [range.start.getTime(), range.end.getTime()],
+      group by provider_id order by provider_id`,
+    [],
   );
   return rows.map((row) => {
     const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
@@ -164,14 +179,14 @@ function providerHealth(db: BunSQLiteDatabase, range: ResolvedRange): DashboardO
   });
 }
 
-function topModelCosts(db: BunSQLiteDatabase, range: ResolvedRange): DashboardOverviewResponse['topModelCosts'] {
+function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewResponse['topModelCosts'] {
   return all<RawCostRow>(
     db,
     `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
       cast(sum(estimated_cost_nano_usd) as text) as estimatedCostNanoUsd
     from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
-      and ended_at >= ? and ended_at <= ? group by modelId`,
-    [range.start.getTime(), range.end.getTime()],
+      group by modelId`,
+    [],
   )
     .map((row) => ({ modelId: row.modelId, estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd) }))
     .sort(

@@ -332,7 +332,8 @@
       "models": "模型"
     },
     "navigation": {
-      "back": "返回"
+      "back": "返回",
+      "breadcrumbs": "麵包屑"
     },
     "preferences": {
       "appearance": "外觀",
@@ -737,12 +738,14 @@
       "metric_tokens": "Token",
       "metric_cost": "費用",
       "provider_health_title": "提供商健康狀況",
+      "provider_filter": "篩選提供商診斷",
+      "columns": "欄",
       "provider_id": "提供商 ID",
       "success_rate": "成功率",
       "p95_latency": "P95 延遲",
-      "no_provider_activity": "此時間範圍內暫無提供商嘗試",
+      "no_provider_activity": "尚無已記錄的提供商嘗試",
       "top_models_title": "模型費用排行",
-      "no_model_costs": "此時間範圍內暫無模型費用",
+      "no_model_costs": "尚無已記錄的模型費用",
       "activity_title": "請求活躍度",
       "activity_year": "活躍年份",
       "previous_year": "上一年",

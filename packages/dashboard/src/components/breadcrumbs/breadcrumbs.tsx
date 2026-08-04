@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import {
   Breadcrumb,
   BreadcrumbItem as BreadcrumbListItem,
@@ -19,7 +20,7 @@ interface BreadcrumbsProps {
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items }) => (
-  <Breadcrumb>
+  <Breadcrumb aria-label={m['dashboard.navigation.breadcrumbs']()}>
     <BreadcrumbList>
       {items.map((item, index) => {
         const isCurrent = index === items.length - 1;

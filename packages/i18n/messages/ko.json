@@ -332,7 +332,8 @@
       "models": "모델"
     },
     "navigation": {
-      "back": "뒤로"
+      "back": "뒤로",
+      "breadcrumbs": "이동 경로"
     },
     "preferences": {
       "appearance": "모양",
@@ -737,12 +738,14 @@
       "metric_tokens": "토큰",
       "metric_cost": "비용",
       "provider_health_title": "프로바이더 상태",
+      "provider_filter": "프로바이더 진단 필터",
+      "columns": "열",
       "provider_id": "프로바이더 ID",
       "success_rate": "성공률",
       "p95_latency": "P95 지연 시간",
-      "no_provider_activity": "이 기간에 프로바이더 시도가 없음",
+      "no_provider_activity": "기록된 프로바이더 시도가 없음",
       "top_models_title": "상위 모델 비용",
-      "no_model_costs": "이 기간에 모델 비용이 없음",
+      "no_model_costs": "기록된 모델 비용이 없음",
       "activity_title": "요청 활동",
       "activity_year": "활동 연도",
       "previous_year": "이전 연도",

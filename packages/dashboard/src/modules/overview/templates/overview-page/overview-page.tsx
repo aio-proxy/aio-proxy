@@ -68,6 +68,7 @@ export const OverviewPage: React.FC = () => {
       </Empty>
     );
   } else {
+    const isActivityPending = overview.isFetching && overview.data.activity.year !== year;
     content = (
       <>
         {overview.data.summary.requestCount === 0n ? (
@@ -85,17 +86,24 @@ export const OverviewPage: React.FC = () => {
             <OverviewKpiGrid summary={overview.data.summary} />
             <ModelUsageTrend
               metric={metric}
-              range={range}
+              range={overview.data.range}
               trend={overview.data.modelTrendByMetric[metric]}
               onMetricChange={setMetric}
             />
-            <div className="overview-lower-grid gap-3">
-              <ProviderHealthTable rows={overview.data.providerHealth} />
-              <TopModelCosts models={overview.data.topModelCosts} />
-            </div>
           </>
         )}
-        <RequestActivityHeatmap activity={overview.data.activity} onYearChange={setYear} />
+        <div className="overview-lower-grid gap-3">
+          <ProviderHealthTable rows={overview.data.providerHealth} />
+          <TopModelCosts models={overview.data.topModelCosts} />
+        </div>
+        {isActivityPending ? (
+          <div role="status">
+            <span className="sr-only">{m['dashboard.overview.loading']()}</span>
+            <Skeleton className="h-64 rounded-4xl" />
+          </div>
+        ) : (
+          <RequestActivityHeatmap activity={overview.data.activity} onYearChange={setYear} />
+        )}
       </>
     );
   }

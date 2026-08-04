@@ -330,7 +330,8 @@
       "models": "Models"
     },
     "navigation": {
-      "back": "Back"
+      "back": "Back",
+      "breadcrumbs": "Breadcrumbs"
     },
     "preferences": {
       "appearance": "Appearance",
@@ -735,12 +736,14 @@
       "metric_tokens": "Tokens",
       "metric_cost": "Cost",
       "provider_health_title": "Provider health",
+      "provider_filter": "Filter Provider diagnostics",
+      "columns": "Columns",
       "provider_id": "Provider ID",
       "success_rate": "Success rate",
       "p95_latency": "P95 latency",
-      "no_provider_activity": "No Provider attempts in this range",
+      "no_provider_activity": "No Provider attempts recorded",
       "top_models_title": "Top model costs",
-      "no_model_costs": "No model costs in this range",
+      "no_model_costs": "No model costs recorded",
       "activity_title": "Request activity",
       "activity_year": "Activity year",
       "previous_year": "Previous year",

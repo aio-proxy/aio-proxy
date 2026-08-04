@@ -71,6 +71,7 @@ export const RequestActivityHeatmap: React.FC<RequestActivityHeatmapProps> = ({ 
                     variant="ghost"
                     size="icon-sm"
                     aria-label={m['dashboard.overview.previous_year']()}
+                    disabled={activity.year <= 2000}
                     onClick={() => selectActivityYear(activity.year - 1, setSelectedDate, onYearChange)}
                   />
                 }
@@ -88,6 +89,7 @@ export const RequestActivityHeatmap: React.FC<RequestActivityHeatmapProps> = ({ 
                     variant="ghost"
                     size="icon-sm"
                     aria-label={m['dashboard.overview.next_year']()}
+                    disabled={activity.year >= 2100}
                     onClick={() => selectActivityYear(activity.year + 1, setSelectedDate, onYearChange)}
                   />
                 }

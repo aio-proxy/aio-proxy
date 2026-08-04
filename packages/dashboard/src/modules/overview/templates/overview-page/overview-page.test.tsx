@@ -99,6 +99,34 @@ describe('overview page', () => {
     ).toBe(true);
   });
 
+  test('decodes model transport keys before presenting the chart legend', () => {
+    const chartBounds = rs.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      bottom: 200,
+      height: 200,
+      left: 0,
+      right: 320,
+      top: 0,
+      width: 320,
+      x: 0,
+      y: 0,
+      toJSON: () => undefined,
+    });
+    overviewData.modelTrendByMetric.requests.series = [
+      { key: 'dimension:gpt-4%2E1', kind: 'dimension' as const },
+      { key: '__other__', kind: 'other' as const },
+    ];
+    overviewData.modelTrendByMetric.requests.buckets = [
+      { key: '2026-01-01T00:00:00.000Z', values: { 'dimension:gpt-4%2E1': 40n, __other__: 2n } },
+    ];
+
+    render(<OverviewPage />);
+
+    expect(screen.getByText('gpt-4.1')).toBeInTheDocument();
+    expect(screen.queryByText('dimension:gpt-4%2E1')).not.toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+    chartBounds.mockRestore();
+  });
+
   test('changes only range and year query input and keeps refresh immediately before the range tabs', () => {
     render(<OverviewPage />);
 
@@ -106,10 +134,10 @@ describe('overview page', () => {
     const rangeTabs = screen.getByRole('tablist', { name: /Overview range|概览时间范围/u });
     expect(refresh.compareDocumentPosition(rangeTabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
-    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d', year: 2026 });
-
     fireEvent.click(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u }));
+    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h', year: 2025 });
+
+    fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
     expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d', year: 2025 });
   });
 
@@ -122,6 +150,71 @@ describe('overview page', () => {
     expect(selectedDay.childElementCount).toBe(2);
     expect(within(selectedDay).getByText(/January 1, 2026|2026/u)).toBeInTheDocument();
     expect(within(selectedDay).getByText(/7 requests|7 个请求|7 件のリクエスト|요청 7건/u)).toBeInTheDocument();
+  });
+
+  test('keeps unwindowed diagnostics visible when the selected range has no requests', () => {
+    overviewData.summary.requestCount = 0n;
+
+    render(<OverviewPage />);
+
+    expect(screen.getByText(/No requests in this range|此时间范围内暂无请求/u)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Top model costs|模型成本排行/u })).toBeInTheDocument();
+  });
+
+  test('keeps loaded sections visible while only a changed activity year is pending', () => {
+    mocks.useOverviewQuery.mockImplementation((input: { year: number }) => ({
+      data: overviewData,
+      isError: false,
+      isFetching: input.year !== overviewData.activity.year,
+      isLoading: false,
+      refetch: mocks.refetch,
+    }));
+    render(<OverviewPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u }));
+
+    expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
+    expect(screen.getByText(/Loading overview|正在加载概览/u)).toBeInTheDocument();
+  });
+
+  test('formats a retained trend with the range that produced the loaded buckets', () => {
+    const chartBounds = rs.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      bottom: 200,
+      height: 200,
+      left: 0,
+      right: 320,
+      top: 0,
+      width: 320,
+      x: 0,
+      y: 0,
+      toJSON: () => undefined,
+    });
+    mocks.useOverviewQuery.mockImplementation((input: { range: string }) => ({
+      data: overviewData,
+      isError: false,
+      isFetching: input.range !== overviewData.range,
+      isLoading: false,
+      refetch: mocks.refetch,
+    }));
+    render(<OverviewPage />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
+
+    expect(screen.getByText(/\d{2}:\d{2}\s?(?:AM|PM)/u)).toBeInTheDocument();
+    chartBounds.mockRestore();
+  });
+
+  test('disables activity navigation at the supported year boundaries', () => {
+    overviewData.activity.year = 2000;
+    const first = render(<OverviewPage />);
+    expect(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u })).toBeDisabled();
+
+    first.unmount();
+    overviewData = createOverviewData();
+    overviewData.activity.year = 2100;
+    render(<OverviewPage />);
+    expect(screen.getByRole('button', { name: /Next year|下一年|翌年|다음 연도/u })).toBeDisabled();
   });
 
   test('distinguishes no configured Provider from an empty selected range', () => {

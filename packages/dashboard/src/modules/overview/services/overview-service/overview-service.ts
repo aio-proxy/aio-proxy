@@ -1,5 +1,5 @@
 import type { DashboardOverviewRange } from '@aio-proxy/types';
-import { queryOptions } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
@@ -58,6 +58,7 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
     queryKey: ['dashboard', 'overview', input.range, input.year],
     queryFn: () => getOverview(input),
+    placeholderData: keepPreviousData,
     refetchInterval: input.range === '24h' ? 5_000 : false,
     refetchIntervalInBackground: false,
   });

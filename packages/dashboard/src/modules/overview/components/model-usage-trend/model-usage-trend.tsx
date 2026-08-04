@@ -25,6 +25,10 @@ interface ModelUsageTrendProps {
 }
 
 const metrics: readonly UsageOverviewMetric[] = ['requests', 'tokens', 'cost'];
+const dimensionKeyPrefix = 'dimension:';
+
+const decodeModelSeriesKey = (key: string) =>
+  key.startsWith(dimensionKeyPrefix) ? decodeURIComponent(key.slice(dimensionKeyPrefix.length)) : key;
 
 export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range, trend, onMetricChange }) => {
   const titleId = useId();
@@ -39,15 +43,16 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
     tokens: m['dashboard.overview.metric_tokens'](),
     cost: m['dashboard.overview.metric_cost'](),
   };
-  const seriesLabel = (series: (typeof trend.series)[number]) =>
-    series.kind === 'other' ? m['dashboard.usage.series_other']() : series.key;
-  const seriesColor = (series: (typeof trend.series)[number], index: number) =>
+  const modelSeries = [
+    ...trend.series.filter(({ kind }) => kind === 'dimension').slice(0, 4),
+    ...trend.series.filter(({ kind }) => kind === 'other').slice(0, 1),
+  ];
+  const seriesLabel = (series: (typeof modelSeries)[number]) =>
+    series.kind === 'other' ? m['dashboard.usage.series_other']() : decodeModelSeriesKey(series.key);
+  const seriesColor = (series: (typeof modelSeries)[number], index: number) =>
     series.kind === 'other' ? 'var(--chart-5)' : `var(--chart-${(index % 4) + 1})`;
   const chartConfig = Object.fromEntries(
-    trend.series.map((series, index) => [
-      series.key,
-      { color: seriesColor(series, index), label: seriesLabel(series) },
-    ]),
+    modelSeries.map((series, index) => [series.key, { color: seriesColor(series, index), label: seriesLabel(series) }]),
   ) satisfies ChartConfig;
   const chartData = trend.buckets.map((bucket) => ({
     bucket: bucket.key,
@@ -103,7 +108,7 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
               }
             />
             <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
-            {trend.series.map((series, index) => (
+            {modelSeries.map((series, index) => (
               <Area
                 key={series.key}
                 dataKey={series.key}
