@@ -28,7 +28,7 @@ describe('draft Provider catalog and test routes', () => {
         providers: {
           saved: {
             apiKey: 'saved-secret',
-            baseURL: 'https://saved.example/v1',
+            baseURL: 'http://saved.example/v1',
             headers: { 'x-saved-secret': 'saved-header' },
             kind: 'api',
             models: ['saved-model'],
@@ -46,7 +46,7 @@ describe('draft Provider catalog and test routes', () => {
             models: ['saved-sdk-model'],
             options: {
               apiKey: 'saved-sdk-secret',
-              baseURL: 'https://saved-sdk.example/v1',
+              baseURL: 'http://saved-sdk.example/v1',
               name: 'saved-sdk',
             },
             packageName: '@ai-sdk/openai-compatible',
@@ -204,7 +204,7 @@ describe('draft Provider catalog and test routes', () => {
     });
   });
 
-  test('distinguishes preserved, inherited, disabled, and replaced edit proxy drafts', () => {
+  test('restores only edit drafts that preserve the persisted proxy semantics', () => {
     const baseDraft = {
       baseURL: 'https://saved.example/v1',
       id: 'saved-proxied',
@@ -213,6 +213,11 @@ describe('draft Provider catalog and test routes', () => {
     };
 
     const preserved = resolveProviderDraft(state, baseDraft, 'saved-proxied');
+    const unchanged = resolveProviderDraft(
+      state,
+      { ...baseDraft, proxy: 'https://saved-proxy.example:8443' },
+      'saved-proxied',
+    );
     const inherited = resolveProviderDraft(state, { ...baseDraft, proxy: null }, 'saved-proxied');
     const disabled = resolveProviderDraft(state, { ...baseDraft, proxy: false }, 'saved-proxied');
     const replaced = resolveProviderDraft(
@@ -222,16 +227,17 @@ describe('draft Provider catalog and test routes', () => {
     );
 
     expect(preserved.ok && preserved.provider.proxy).toBe('https://saved-proxy.example:8443');
-    expect(inherited.ok && inherited.provider.proxy).toBeUndefined();
-    expect(disabled.ok && disabled.provider.proxy).toBe(false);
-    expect(replaced.ok && replaced.provider.proxy).toBe('https://replacement-proxy.example:9443');
+    expect(unchanged.ok && unchanged.provider.proxy).toBe('https://saved-proxy.example:8443');
+    expect(inherited).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
+    expect(disabled).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
+    expect(replaced).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
   });
 
   test('restores omitted saved credentials in memory for an edit draft with the same identity', () => {
     const resolved = resolveProviderDraft(
       state,
       {
-        baseURL: 'https://saved.example/v1',
+        baseURL: 'http://saved.example/v1',
         id: 'saved',
         kind: 'api',
         protocol: ProviderProtocol.OpenAICompatible,
@@ -244,6 +250,34 @@ describe('draft Provider catalog and test routes', () => {
       provider: {
         apiKey: 'saved-secret',
         headers: { 'x-saved-secret': 'saved-header' },
+      },
+    });
+  });
+
+  test('restores redacted AI SDK credentials when null preserves inherited proxy semantics', () => {
+    const resolved = resolveProviderDraft(
+      state,
+      {
+        id: 'saved-sdk',
+        kind: 'ai-sdk',
+        options: {
+          apiKey: '****',
+          baseURL: 'http://saved-sdk.example/v1',
+          name: 'saved-sdk',
+        },
+        packageName: '@ai-sdk/openai-compatible',
+        proxy: null,
+      },
+      'saved-sdk',
+    );
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      provider: {
+        options: {
+          apiKey: 'saved-sdk-secret',
+          baseURL: 'http://saved-sdk.example/v1',
+        },
       },
     });
   });
@@ -290,6 +324,52 @@ describe('draft Provider catalog and test routes', () => {
       expect(text).not.toContain('saved-header');
     } finally {
       await attacker.stop(true);
+    }
+  });
+
+  test('does not restore API secrets or contact a changed persisted Provider proxy', async () => {
+    let requests = 0;
+    let authorization: string | null = null;
+    let savedHeader: string | null = null;
+    const attackerProxy = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        requests += 1;
+        authorization = request.headers.get('authorization');
+        savedHeader = request.headers.get('x-saved-secret');
+        return Response.json({ data: [{ id: 'attacker-model' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            baseURL: 'http://saved.example/v1',
+            id: 'saved',
+            kind: 'api',
+            protocol: ProviderProtocol.OpenAICompatible,
+            proxy: `http://127.0.0.1:${attackerProxy.port}`,
+          },
+          persistedProviderId: 'saved',
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(400);
+      expect(JSON.parse(text)).toEqual({
+        ok: false,
+        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+      });
+      expect(requests).toBe(0);
+      expect(authorization).toBeNull();
+      expect(savedHeader).toBeNull();
+      expect(text).not.toContain('saved-secret');
+      expect(text).not.toContain('saved-header');
+    } finally {
+      await attackerProxy.stop(true);
     }
   });
 
@@ -340,6 +420,57 @@ describe('draft Provider catalog and test routes', () => {
       expect(text).not.toContain('saved-sdk-secret');
     } finally {
       await attacker.stop(true);
+    }
+  });
+
+  test('does not restore AI SDK secrets or contact a changed persisted Provider proxy', async () => {
+    let requests = 0;
+    let authorization: string | null = null;
+    const attackerProxy = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        requests += 1;
+        authorization = request.headers.get('authorization');
+        return new Response(
+          'data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' + 'data: [DONE]\n\n',
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/test',
+        jsonRequest({
+          draft: {
+            id: 'saved-sdk',
+            kind: 'ai-sdk',
+            models: ['saved-sdk-model'],
+            options: {
+              apiKey: '****',
+              baseURL: 'http://saved-sdk.example/v1',
+              name: 'saved-sdk',
+            },
+            packageName: '@ai-sdk/openai-compatible',
+            proxy: `http://127.0.0.1:${attackerProxy.port}`,
+          },
+          model: 'saved-sdk-model',
+          persistedProviderId: 'saved-sdk',
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(400);
+      expect(JSON.parse(text)).toEqual({
+        ok: false,
+        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+      });
+      expect(requests).toBe(0);
+      expect(authorization).toBeNull();
+      expect(text).not.toContain('saved-sdk-secret');
+    } finally {
+      await attackerProxy.stop(true);
     }
   });
 

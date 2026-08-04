@@ -73,15 +73,28 @@ export function resolveProviderDraft(
 
 function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDraft): boolean {
   if (previous.kind === ProviderKind.Api && draft.kind === ProviderKind.Api) {
-    return previous.protocol === draft.protocol && previous.baseURL === draft.baseURL;
+    return (
+      previous.protocol === draft.protocol &&
+      previous.baseURL === draft.baseURL &&
+      hasSameProxyIdentity(previous.proxy, draft.proxy)
+    );
   }
 
   if (previous.kind === ProviderKind.AiSdk && draft.kind === ProviderKind.AiSdk) {
     const packageName = draft.packageName ?? '@ai-sdk/openai-compatible';
-    return previous.packageName === packageName && isEqual(draft.options, redactSecrets(previous.options));
+    return (
+      previous.packageName === packageName &&
+      isEqual(draft.options, redactSecrets(previous.options)) &&
+      hasSameProxyIdentity(previous.proxy, draft.proxy)
+    );
   }
 
   return false;
+}
+
+function hasSameProxyIdentity(previous: string | false | undefined, draft: string | false | null | undefined): boolean {
+  const resolved = draft === undefined ? previous : draft === null ? undefined : draft;
+  return resolved === previous;
 }
 
 export async function loadProviderDraftCatalog(
