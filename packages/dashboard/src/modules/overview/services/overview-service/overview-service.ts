@@ -5,6 +5,14 @@ import type { InferResponseType } from 'hono/client';
 import { dashboardClient } from '@/lib/dashboard-client';
 
 type DashboardOverviewWireResponse = InferResponseType<typeof dashboardClient.dashboard.api.overview.$get, 200>;
+type DashboardOverviewDiagnosticsWireResponse = InferResponseType<
+  typeof dashboardClient.dashboard.api.overview.diagnostics.$get,
+  200
+>;
+type DashboardOverviewActivityWireResponse = InferResponseType<
+  typeof dashboardClient.dashboard.api.overview.activity.$get,
+  200
+>;
 type DashboardOverviewWireTrend = DashboardOverviewWireResponse['modelTrendByMetric']['requests'];
 
 const decodeTrend = (trend: DashboardOverviewWireTrend) => ({
@@ -30,17 +38,24 @@ export const decodeOverview = (wire: DashboardOverviewWireResponse) => ({
     tokens: decodeTrend(wire.modelTrendByMetric.tokens),
     cost: decodeTrend(wire.modelTrendByMetric.cost),
   },
+});
+
+export const decodeOverviewDiagnostics = (wire: DashboardOverviewDiagnosticsWireResponse) => ({
+  ...wire,
   topModelCosts: wire.topModelCosts.map((model) => ({
     ...model,
     estimatedCostNanoUsd: BigInt(model.estimatedCostNanoUsd),
   })),
-  activity: {
-    ...wire.activity,
-    days: wire.activity.days.map((day) => ({ ...day, requestCount: BigInt(day.requestCount) })),
-  },
+});
+
+export const decodeOverviewActivity = (wire: DashboardOverviewActivityWireResponse) => ({
+  ...wire,
+  days: wire.days.map((day) => ({ ...day, requestCount: BigInt(day.requestCount) })),
 });
 
 export type OverviewData = ReturnType<typeof decodeOverview>;
+export type OverviewDiagnosticsData = ReturnType<typeof decodeOverviewDiagnostics>;
+export type OverviewActivityData = ReturnType<typeof decodeOverviewActivity>;
 
 export class DashboardOverviewRequestError extends Error {
   constructor(readonly status: number) {
@@ -51,22 +66,56 @@ export class DashboardOverviewRequestError extends Error {
 
 export type OverviewQueryInput = {
   readonly range: DashboardOverviewRange;
+};
+
+export type OverviewActivityQueryInput = {
   readonly year: number;
 };
 
 export const overviewQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', input.range, input.year],
+    queryKey: ['dashboard', 'overview', 'range', input.range],
     queryFn: () => getOverview(input),
     placeholderData: keepPreviousData,
     refetchInterval: input.range === '24h' ? 5_000 : false,
     refetchIntervalInBackground: false,
   });
 
+export const overviewDiagnosticsQueryOptions = () =>
+  queryOptions({
+    queryKey: ['dashboard', 'overview', 'diagnostics'],
+    queryFn: getOverviewDiagnostics,
+    refetchInterval: false,
+    staleTime: 60_000,
+  });
+
+export const overviewActivityQueryOptions = (input: OverviewActivityQueryInput) =>
+  queryOptions({
+    queryKey: ['dashboard', 'overview', 'activity', input.year],
+    queryFn: () => getOverviewActivity(input),
+    placeholderData: keepPreviousData,
+    refetchInterval: false,
+    staleTime: 60_000,
+  });
+
 export const getOverview = async (input: OverviewQueryInput): Promise<OverviewData> => {
   const response = await dashboardClient.dashboard.api.overview.$get({
-    query: { range: input.range, year: String(input.year) },
+    query: { range: input.range },
   });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverview(await response.json());
+};
+
+export const getOverviewDiagnostics = async (): Promise<OverviewDiagnosticsData> => {
+  const response = await dashboardClient.dashboard.api.overview.diagnostics.$get();
+  if (!response.ok) throw new DashboardOverviewRequestError(response.status);
+  return decodeOverviewDiagnostics(await response.json());
+};
+
+export const getOverviewActivity = async (input: OverviewActivityQueryInput): Promise<OverviewActivityData> => {
+  const response = await dashboardClient.dashboard.api.overview.activity.$get({
+    query: { year: String(input.year) },
+  });
+  if (!response.ok) throw new DashboardOverviewRequestError(response.status);
+  return decodeOverviewActivity(await response.json());
 };

@@ -33,22 +33,17 @@ type RootRow = OverviewRow & {
   readonly normalizedPromptTokens: bigint;
 };
 
-type RawHealthRow = {
-  readonly providerId: string;
-  readonly successCount: string;
-  readonly attemptCount: string;
-  readonly durations: string;
-};
-
-type RawCostRow = { readonly modelId: string; readonly estimatedCostNanoUsd: string };
-type RawActivityRow = { readonly date: string; readonly requestCount: string };
-
 export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOverviewQuery): DashboardOverviewResponse {
   const now = query.now ?? new Date();
   const range = resolveRange(query.range, now);
   const rows = rootRows(db, range);
   const chartBuckets = bucketKeys(query.range, range.start, range.end);
-  const requests = aggregateRows(rows, 'requests', chartBuckets, 4);
+  const requests = aggregateRows(
+    rows.map((row) => ({ ...row, terminationReason: null })),
+    'requests',
+    chartBuckets,
+    4,
+  );
   const tokens = aggregateRows(rows, 'tokens', chartBuckets, 4);
   const cost = aggregateRows(rows, 'cost', chartBuckets, 4);
   const summary = requests.summary;
@@ -76,9 +71,6 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
       tokens: modelTrend(tokens),
       cost: modelTrend(cost),
     },
-    providerHealth: providerHealth(db),
-    topModelCosts: topModelCosts(db),
-    activity: { year: query.year, days: activityDays(db, query.year) },
   };
 }
 
@@ -156,68 +148,6 @@ function rootRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow
   }));
 }
 
-function providerHealth(db: BunSQLiteDatabase): DashboardOverviewResponse['providerHealth'] {
-  const rows = all<RawHealthRow>(
-    db,
-    `select provider_id as providerId,
-      cast(sum(case when termination_reason is null then 1 else 0 end) as text) as successCount,
-      cast(count(*) as text) as attemptCount,
-      json_group_array(max(0, ended_at - started_at)) as durations
-    from trace_span where name = 'aio_proxy.provider.attempt' and provider_id is not null
-      group by provider_id order by provider_id`,
-    [],
-  );
-  return rows.map((row) => {
-    const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
-    const successes = parseSqliteInteger(row.successCount);
-    const attempts = parseSqliteInteger(row.attemptCount);
-    return {
-      providerId: row.providerId,
-      successRate: Number(successes) / Number(attempts),
-      p95LatencyMs: durations[Math.ceil(durations.length * 0.95) - 1]!,
-    };
-  });
-}
-
-function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewResponse['topModelCosts'] {
-  return all<RawCostRow>(
-    db,
-    `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
-      cast(sum(estimated_cost_nano_usd) as text) as estimatedCostNanoUsd
-    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
-      group by modelId`,
-    [],
-  )
-    .map((row) => ({ modelId: row.modelId, estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd) }))
-    .sort(
-      (left, right) =>
-        compareBigIntDescending(left.estimatedCostNanoUsd, right.estimatedCostNanoUsd) ||
-        left.modelId.localeCompare(right.modelId),
-    )
-    .slice(0, 5)
-    .map((row) => ({ ...row, estimatedCostNanoUsd: row.estimatedCostNanoUsd.toString() }));
-}
-
-function activityDays(db: BunSQLiteDatabase, year: number): DashboardOverviewResponse['activity']['days'] {
-  const start = new Date(year, 0, 1);
-  const end = new Date(year + 1, 0, 1);
-  const counts = new Map(
-    all<RawActivityRow>(
-      db,
-      `select strftime('%Y-%m-%d', ended_at / 1000, 'unixepoch', 'localtime') as date,
-        cast(count(*) as text) as requestCount from trace_span
-      where parent_span_id is null and ended_at >= ? and ended_at < ? group by date`,
-      [start.getTime(), end.getTime()],
-    ).map((row) => [row.date, parseSqliteInteger(row.requestCount).toString()] as const),
-  );
-  const days = [];
-  for (const day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
-    const date = localDate(day);
-    days.push({ date, requestCount: counts.get(date) ?? '0' });
-  }
-  return days;
-}
-
 type ResolvedRange = ReturnType<typeof resolveRange>;
 
 function resolveRange(range: DashboardOverviewRange, now: Date) {
@@ -259,4 +189,3 @@ function localDate(value: Date): string {
 
 const ratio = (numerator: bigint, denominator: bigint) =>
   denominator === 0n ? null : Number(numerator) / Number(denominator);
-const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);

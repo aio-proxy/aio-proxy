@@ -6,10 +6,10 @@ import { cn } from '@aio-proxy/ui/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type Dispatch, type SetStateAction, useState } from 'react';
 
-import type { OverviewData } from '../../services/overview-service';
+import type { OverviewActivityData } from '../../services/overview-service';
 
 interface RequestActivityHeatmapProps {
-  readonly activity: OverviewData['activity'];
+  readonly activity: OverviewActivityData;
   readonly onYearChange: (year: number) => void;
 }
 
@@ -21,7 +21,7 @@ const intensityClasses = [
   'bg-primary hover:bg-primary/80',
 ] as const;
 
-const createHeatmapLayout = (days: OverviewData['activity']['days']) => {
+const createHeatmapLayout = (days: OverviewActivityData['days']) => {
   const firstWeekday = days[0] ? new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay() : 0;
   return {
     firstWeekday,

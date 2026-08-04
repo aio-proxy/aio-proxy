@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { parseRuntimeConfig } from '@aio-proxy/core';
-import { DashboardOverviewResponseSchema } from '@aio-proxy/types';
+import {
+  DashboardOverviewActivityResponseSchema,
+  DashboardOverviewDiagnosticsResponseSchema,
+  DashboardOverviewResponseSchema,
+} from '@aio-proxy/types';
 
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
 import { createServerState } from '../../server-state';
@@ -40,14 +44,46 @@ async function overviewRoutes() {
 }
 
 describe('GET /overview', () => {
-  test('returns a typed 90d overview with the configured provider count', async () => {
+  test('returns only typed 90d range data with the configured provider count', async () => {
     const { routes, state } = await overviewRoutes();
     try {
-      const response = await routes.request('/overview?range=90d&year=2026');
+      const response = await routes.request('/overview?range=90d');
       const body = DashboardOverviewResponseSchema.parse(await response.json());
 
       expect(response.status).toBe(200);
-      expect(body).toMatchObject({ range: '90d', summary: { providerCount: 2 }, activity: { year: 2026 } });
+      expect(body).toMatchObject({ range: '90d', summary: { providerCount: 2 } });
+      expect('providerHealth' in body).toBe(false);
+      expect('topModelCosts' in body).toBe(false);
+      expect('activity' in body).toBe(false);
+    } finally {
+      state.close();
+    }
+  });
+
+  test('returns all-time diagnostics from an independent endpoint', async () => {
+    const { routes, state } = await overviewRoutes();
+    try {
+      const response = await routes.request('/overview/diagnostics');
+
+      expect(response.status).toBe(200);
+      expect(DashboardOverviewDiagnosticsResponseSchema.parse(await response.json())).toEqual({
+        providerHealth: [],
+        topModelCosts: [],
+      });
+    } finally {
+      state.close();
+    }
+  });
+
+  test('returns yearly activity from an independent endpoint', async () => {
+    const { routes, state } = await overviewRoutes();
+    try {
+      const response = await routes.request('/overview/activity?year=2026');
+      const body = DashboardOverviewActivityResponseSchema.parse(await response.json());
+
+      expect(response.status).toBe(200);
+      expect(body.year).toBe(2026);
+      expect(body.days).toHaveLength(365);
     } finally {
       state.close();
     }
@@ -56,7 +92,7 @@ describe('GET /overview', () => {
   test('rejects ranges outside the dashboard overview contract', async () => {
     const { routes, state } = await overviewRoutes();
     try {
-      expect((await routes.request('/overview?range=14d&year=2026')).status).toBe(400);
+      expect((await routes.request('/overview?range=14d')).status).toBe(400);
     } finally {
       state.close();
     }
@@ -65,7 +101,7 @@ describe('GET /overview', () => {
   test.each(['1999', '2101', '2026.5', 'not-a-year'])('rejects invalid year %s', async (year) => {
     const { routes, state } = await overviewRoutes();
     try {
-      expect((await routes.request(`/overview?range=24h&year=${year}`)).status).toBe(400);
+      expect((await routes.request(`/overview/activity?year=${year}`)).status).toBe(400);
     } finally {
       state.close();
     }

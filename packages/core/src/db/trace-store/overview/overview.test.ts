@@ -20,6 +20,7 @@ type TraceSeed = {
   readonly endedAt?: Date;
   readonly modelId?: string;
   readonly attempts: readonly AttemptSeed[];
+  readonly terminationReason?: 'failure' | 'cancelled';
   readonly usage?: {
     readonly inputTokens?: number;
     readonly totalTokens?: number;
@@ -81,7 +82,11 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
       rootSpanId: spanId,
       spans: [rootSpan({ traceId, spanId, startedAt, endedAt, attributes: rootAttributes }), ...attempts],
       summary: {
-        ...(finalProviderId === undefined ? { terminationReason: 'failure' as const } : { finalProviderId }),
+        ...(seed.terminationReason !== undefined
+          ? { terminationReason: seed.terminationReason }
+          : finalProviderId === undefined
+            ? { terminationReason: 'failure' as const }
+            : { finalProviderId }),
         ...(finalProviderId === undefined ? {} : { finalModelId }),
         ...(usage === undefined ? {} : { usage }),
       },
@@ -130,7 +135,7 @@ test('normalizes inclusive and additive cache accounting by the successful captu
       usage: { inputTokens: 100, cacheReadTokens: 20 },
     });
 
-    const result = store.overviewDashboard({ range: '24h', year: 2026, now: NOW });
+    const result = store.overviewDashboard({ range: '24h', now: NOW });
 
     expect(result.summary.cacheReadTokens).toBe('90');
     expect(result.summary.cacheWriteTokens).toBe('30');
@@ -143,7 +148,17 @@ test('returns null cache rate when no row establishes a positive prompt denomina
   withStore((store) => {
     seedTrace(store, { id: 1, attempts: [{ providerId: 'provider', durationMs: 10 }] });
 
-    expect(store.overviewDashboard({ range: '24h', year: 2026, now: NOW }).summary.cacheHitRate).toBeNull();
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.cacheHitRate).toBeNull();
+  });
+});
+
+test('keeps the hot range aggregation free of all-time and yearly sections', () => {
+  withStore((store) => {
+    const result = store.overviewDashboard({ range: '24h', now: NOW });
+
+    expect('providerHealth' in result).toBe(false);
+    expect('topModelCosts' in result).toBe(false);
+    expect('activity' in result).toBe(false);
   });
 });
 
@@ -165,14 +180,14 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
       });
     }
 
-    const result = store.overviewDashboard({ range: '24h', year: 2026, now: NOW });
+    const result = store.overviewDashboard({ range: '24h', now: NOW });
 
     expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual(['a', 'b', 'c', 'd', '__other__']);
     expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__failed__' in values))).toBe(true);
     expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__cancelled__' in values))).toBe(true);
     expect(result.modelTrendByMetric.tokens.series.map(({ key }) => key)).toEqual(['e', 'd', 'c', 'b', '__other__']);
     expect(result.modelTrendByMetric.cost.series.map(({ key }) => key)).toEqual(['a', 'b', 'e', 'd', '__other__']);
-    expect(result.topModelCosts).toEqual([
+    expect(store.overviewDashboardDiagnostics().topModelCosts).toEqual([
       { modelId: 'a', estimatedCostNanoUsd: '50' },
       { modelId: 'b', estimatedCostNanoUsd: '40' },
       { modelId: 'e', estimatedCostNanoUsd: '30' },
@@ -182,7 +197,39 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
   });
 });
 
-test('keeps Provider health and top model costs independent of range and activity year', () => {
+test('counts failed and cancelled roots in the request trend by requested model', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      modelId: 'failed-model',
+      attempts: [{ providerId: 'provider', durationMs: 10, outcome: 'failure' }],
+    });
+    seedTrace(store, {
+      id: 2,
+      modelId: 'cancelled-model',
+      attempts: [],
+      terminationReason: 'cancelled',
+    });
+
+    const result = store.overviewDashboard({ range: '24h', now: NOW });
+    const requestTrendTotal = result.modelTrendByMetric.requests.buckets.reduce(
+      (total, bucket) =>
+        total + Object.values(bucket.values).reduce((bucketTotal, value) => bucketTotal + BigInt(value), 0n),
+      0n,
+    );
+
+    expect(result.summary.requestCount).toBe('2');
+    expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual([
+      'cancelled-model',
+      'failed-model',
+    ]);
+    expect(requestTrendTotal).toBe(2n);
+    expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__failed__' in values))).toBe(true);
+    expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__cancelled__' in values))).toBe(true);
+  });
+});
+
+test('returns Provider health and top model costs across all retained spans', () => {
   withStore((store) => {
     seedTrace(store, {
       id: 1,
@@ -198,8 +245,7 @@ test('keeps Provider health and top model costs independent of range and activit
       usage: { estimatedCostUsd: 2 },
     });
 
-    const narrow = store.overviewDashboard({ range: '24h', year: 2026, now: NOW });
-    const changed = store.overviewDashboard({ range: '90d', year: 2025, now: NOW });
+    const diagnostics = store.overviewDashboardDiagnostics();
 
     const expectedHealth = [
       { providerId: 'old-provider', successRate: 1, p95LatencyMs: 700 },
@@ -209,10 +255,8 @@ test('keeps Provider health and top model costs independent of range and activit
       { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
       { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
     ];
-    expect(narrow.providerHealth).toEqual(expectedHealth);
-    expect(changed.providerHealth).toEqual(expectedHealth);
-    expect(narrow.topModelCosts).toEqual(expectedCosts);
-    expect(changed.topModelCosts).toEqual(expectedCosts);
+    expect(diagnostics.providerHealth).toEqual(expectedHealth);
+    expect(diagnostics.topModelCosts).toEqual(expectedCosts);
   });
 });
 
@@ -229,7 +273,7 @@ test('derives Provider health from failed and successful attempt child spans', (
       seedTrace(store, { id: durationMs + 1, attempts: [{ providerId: 'c', durationMs }] });
     }
 
-    expect(store.overviewDashboard({ range: '24h', year: 2026, now: NOW }).providerHealth).toEqual([
+    expect(store.overviewDashboardDiagnostics().providerHealth).toEqual([
       { providerId: 'a', successRate: 0, p95LatencyMs: 300 },
       { providerId: 'b', successRate: 1, p95LatencyMs: 900 },
       { providerId: 'c', successRate: 1, p95LatencyMs: 19 },
@@ -247,15 +291,13 @@ test('preserves SQL sums above Number.MAX_SAFE_INTEGER', () => {
       });
     }
 
-    expect(store.overviewDashboard({ range: '24h', year: 2026, now: NOW }).summary.totalTokens).toBe(
-      '9007199254740993',
-    );
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.totalTokens).toBe('9007199254740993');
   });
 });
 
 test('materializes empty common years and every leap-year boundary date', () => {
   withStore((store) => {
-    const empty = store.overviewDashboard({ range: '24h', year: 2025, now: NOW }).activity;
+    const empty = store.overviewDashboardActivity(2025);
     expect(empty.days).toHaveLength(365);
     expect(empty.days[0]).toEqual({ date: '2025-01-01', requestCount: '0' });
     expect(empty.days.at(-1)).toEqual({ date: '2025-12-31', requestCount: '0' });
@@ -270,7 +312,7 @@ test('materializes empty common years and every leap-year boundary date', () => 
       endedAt: new Date(2024, 11, 31, 12),
       attempts: [{ providerId: 'provider', durationMs: 10 }],
     });
-    const leap = store.overviewDashboard({ range: '24h', year: 2024, now: NOW }).activity;
+    const leap = store.overviewDashboardActivity(2024);
 
     expect(leap.days).toHaveLength(366);
     expect(leap.days[0]).toEqual({ date: '2024-01-01', requestCount: '1' });

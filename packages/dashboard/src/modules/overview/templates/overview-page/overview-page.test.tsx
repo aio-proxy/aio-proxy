@@ -4,11 +4,17 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { OverviewPage } from './overview-page';
 
 const mocks = rs.hoisted(() => ({
-  refetch: rs.fn(),
+  activityRefetch: rs.fn(),
+  diagnosticsRefetch: rs.fn(),
+  overviewRefetch: rs.fn(),
+  useOverviewActivityQuery: rs.fn(),
+  useOverviewDiagnosticsQuery: rs.fn(),
   useOverviewQuery: rs.fn(),
 }));
 
 rs.mock('../../hooks/use-overview-query', () => ({
+  useOverviewActivityQuery: (input: unknown) => mocks.useOverviewActivityQuery(input),
+  useOverviewDiagnosticsQuery: () => mocks.useOverviewDiagnosticsQuery(),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
 
@@ -39,6 +45,9 @@ const createOverviewData = () => ({
       buckets: [{ key: '2026-01-01T00:00:00.000Z', values: { 'cost-model': 2_500_000_000n } }],
     },
   },
+});
+
+const createDiagnosticsData = () => ({
   providerHealth: [
     { providerId: 'provider-a', successRate: 0.98, p95LatencyMs: 420 },
     { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980 },
@@ -47,27 +56,50 @@ const createOverviewData = () => ({
     { modelId: 'model-a', estimatedCostNanoUsd: 1_500_000_000n },
     { modelId: 'model-b', estimatedCostNanoUsd: 1_000_000_000n },
   ],
-  activity: {
-    year: 2026,
-    days: [
-      { date: '2026-01-01', requestCount: 7n },
-      { date: '2026-01-02', requestCount: 0n },
-    ],
-  },
+});
+
+const createActivityData = () => ({
+  year: 2026,
+  days: [
+    { date: '2026-01-01', requestCount: 7n },
+    { date: '2026-01-02', requestCount: 0n },
+  ],
 });
 
 let overviewData = createOverviewData();
+let diagnosticsData = createDiagnosticsData();
+let activityData = createActivityData();
 
 beforeEach(() => {
   overviewData = createOverviewData();
-  mocks.refetch.mockReset();
+  diagnosticsData = createDiagnosticsData();
+  activityData = createActivityData();
+  mocks.activityRefetch.mockReset();
+  mocks.diagnosticsRefetch.mockReset();
+  mocks.overviewRefetch.mockReset();
+  mocks.useOverviewActivityQuery.mockReset();
+  mocks.useOverviewDiagnosticsQuery.mockReset();
   mocks.useOverviewQuery.mockReset();
   mocks.useOverviewQuery.mockImplementation(() => ({
     data: overviewData,
     isError: false,
     isFetching: false,
     isLoading: false,
-    refetch: mocks.refetch,
+    refetch: mocks.overviewRefetch,
+  }));
+  mocks.useOverviewDiagnosticsQuery.mockImplementation(() => ({
+    data: diagnosticsData,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: mocks.diagnosticsRefetch,
+  }));
+  mocks.useOverviewActivityQuery.mockImplementation(() => ({
+    data: activityData,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: mocks.activityRefetch,
   }));
 });
 
@@ -93,10 +125,12 @@ describe('overview page', () => {
     fireEvent.click(cost);
     expect(cost).toHaveAttribute('aria-selected', 'true');
 
-    expect(mocks.refetch).not.toHaveBeenCalled();
-    expect(
-      mocks.useOverviewQuery.mock.calls.every(([input]) => JSON.stringify(input) === '{"range":"24h","year":2026}'),
-    ).toBe(true);
+    expect(mocks.overviewRefetch).not.toHaveBeenCalled();
+    expect(mocks.diagnosticsRefetch).not.toHaveBeenCalled();
+    expect(mocks.activityRefetch).not.toHaveBeenCalled();
+    expect(mocks.useOverviewQuery.mock.calls.every(([input]) => JSON.stringify(input) === '{"range":"24h"}')).toBe(
+      true,
+    );
   });
 
   test('decodes model transport keys before presenting the chart legend', () => {
@@ -133,12 +167,18 @@ describe('overview page', () => {
     const refresh = screen.getByRole('button', { name: /Refresh overview|刷新概览/u });
     const rangeTabs = screen.getByRole('tablist', { name: /Overview range|概览时间范围/u });
     expect(refresh.compareDocumentPosition(rangeTabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(refresh);
+    expect(mocks.overviewRefetch).toHaveBeenCalledTimes(1);
+    expect(mocks.diagnosticsRefetch).toHaveBeenCalledTimes(1);
+    expect(mocks.activityRefetch).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u }));
-    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h', year: 2025 });
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith({ year: 2025 });
+    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h' });
 
     fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
-    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d', year: 2025 });
+    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d' });
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith({ year: 2025 });
   });
 
   test('shows only the selected activity date and count after clicking a day', () => {
@@ -163,12 +203,12 @@ describe('overview page', () => {
   });
 
   test('keeps loaded sections visible while only a changed activity year is pending', () => {
-    mocks.useOverviewQuery.mockImplementation((input: { year: number }) => ({
-      data: overviewData,
+    mocks.useOverviewActivityQuery.mockImplementation((input: { year: number }) => ({
+      data: activityData,
       isError: false,
-      isFetching: input.year !== overviewData.activity.year,
+      isFetching: input.year !== activityData.year,
       isLoading: false,
-      refetch: mocks.refetch,
+      refetch: mocks.activityRefetch,
     }));
     render(<OverviewPage />);
 
@@ -195,7 +235,7 @@ describe('overview page', () => {
       isError: false,
       isFetching: input.range !== overviewData.range,
       isLoading: false,
-      refetch: mocks.refetch,
+      refetch: mocks.overviewRefetch,
     }));
     render(<OverviewPage />);
 
@@ -206,13 +246,13 @@ describe('overview page', () => {
   });
 
   test('disables activity navigation at the supported year boundaries', () => {
-    overviewData.activity.year = 2000;
+    activityData.year = 2000;
     const first = render(<OverviewPage />);
     expect(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u })).toBeDisabled();
 
     first.unmount();
     overviewData = createOverviewData();
-    overviewData.activity.year = 2100;
+    activityData.year = 2100;
     render(<OverviewPage />);
     expect(screen.getByRole('button', { name: /Next year|下一年|翌年|다음 연도/u })).toBeDisabled();
   });

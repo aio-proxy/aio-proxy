@@ -108,6 +108,9 @@ export const DashboardOverviewResponseSchema = z.object({
     tokens: DashboardOverviewTrendSchema,
     cost: DashboardOverviewTrendSchema,
   }),
+});
+
+export const DashboardOverviewDiagnosticsResponseSchema = z.object({
   providerHealth: z.array(
     z.object({
       providerId: IdSchema,
@@ -116,10 +119,11 @@ export const DashboardOverviewResponseSchema = z.object({
     }),
   ),
   topModelCosts: z.array(z.object({ modelId: IdSchema, estimatedCostNanoUsd: NonNegativeIntegerStringSchema })),
-  activity: z.object({
-    year: z.number().int(),
-    days: z.array(z.object({ date: z.iso.date(), requestCount: NonNegativeIntegerStringSchema })).readonly(),
-  }),
+});
+
+export const DashboardOverviewActivityResponseSchema = z.object({
+  year: z.number().int(),
+  days: z.array(z.object({ date: z.iso.date(), requestCount: NonNegativeIntegerStringSchema })).readonly(),
 });
 
 export const DashboardEventSchema = z.discriminatedUnion('event', [
@@ -203,5 +207,9 @@ export type DashboardUsageOverviewResponseInput = z.input<typeof DashboardUsageO
 export type DashboardUsageOverviewResponse = z.output<typeof DashboardUsageOverviewResponseSchema>;
 export type DashboardOverviewResponseInput = z.input<typeof DashboardOverviewResponseSchema>;
 export type DashboardOverviewResponse = z.output<typeof DashboardOverviewResponseSchema>;
+export type DashboardOverviewDiagnosticsResponseInput = z.input<typeof DashboardOverviewDiagnosticsResponseSchema>;
+export type DashboardOverviewDiagnosticsResponse = z.output<typeof DashboardOverviewDiagnosticsResponseSchema>;
+export type DashboardOverviewActivityResponseInput = z.input<typeof DashboardOverviewActivityResponseSchema>;
+export type DashboardOverviewActivityResponse = z.output<typeof DashboardOverviewActivityResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;

@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/componen
 
 import { formatNanoUsd } from '@/modules/usage/services/usage-value-formatter';
 
-import type { OverviewData } from '../../services/overview-service';
+import type { OverviewDiagnosticsData } from '../../services/overview-service';
 
 interface TopModelCostsProps {
-  readonly models: OverviewData['topModelCosts'];
+  readonly models: OverviewDiagnosticsData['topModelCosts'];
 }
 
 export const TopModelCosts: React.FC<TopModelCostsProps> = ({ models }) => {

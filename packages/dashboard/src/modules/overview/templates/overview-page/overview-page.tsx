@@ -13,7 +13,11 @@ import { OverviewTimeWindow } from '../../components/overview-time-window';
 import { ProviderHealthTable } from '../../components/provider-health-table';
 import { RequestActivityHeatmap } from '../../components/request-activity-heatmap';
 import { TopModelCosts } from '../../components/top-model-costs';
-import { useOverviewQuery } from '../../hooks/use-overview-query';
+import {
+  useOverviewActivityQuery,
+  useOverviewDiagnosticsQuery,
+  useOverviewQuery,
+} from '../../hooks/use-overview-query';
 
 const loadingKpis = ['requests', 'tokens', 'cache', 'cost', 'rpm', 'tpm'] as const;
 
@@ -21,10 +25,12 @@ export const OverviewPage: React.FC = () => {
   const [range, setRange] = useState<DashboardOverviewRange>('24h');
   const [year, setYear] = useState(new Date().getFullYear());
   const [metric, setMetric] = useState<UsageOverviewMetric>('requests');
-  const overview = useOverviewQuery({ range, year });
+  const overview = useOverviewQuery({ range });
+  const diagnostics = useOverviewDiagnosticsQuery();
+  const activity = useOverviewActivityQuery({ year });
   let content: React.ReactNode;
 
-  if (overview.isLoading) {
+  if (overview.isLoading || diagnostics.isLoading || activity.isLoading) {
     content = (
       <>
         <span className="sr-only" role="status">
@@ -43,7 +49,14 @@ export const OverviewPage: React.FC = () => {
         <Skeleton className="h-64 rounded-4xl" />
       </>
     );
-  } else if (overview.isError || overview.data === undefined) {
+  } else if (
+    overview.isError ||
+    diagnostics.isError ||
+    activity.isError ||
+    overview.data === undefined ||
+    diagnostics.data === undefined ||
+    activity.data === undefined
+  ) {
     content = (
       <Empty className="min-h-80 bg-card">
         <EmptyHeader>
@@ -68,7 +81,7 @@ export const OverviewPage: React.FC = () => {
       </Empty>
     );
   } else {
-    const isActivityPending = overview.isFetching && overview.data.activity.year !== year;
+    const isActivityPending = activity.isFetching && activity.data.year !== year;
     content = (
       <>
         {overview.data.summary.requestCount === 0n ? (
@@ -93,8 +106,8 @@ export const OverviewPage: React.FC = () => {
           </>
         )}
         <div className="overview-lower-grid gap-3">
-          <ProviderHealthTable rows={overview.data.providerHealth} />
-          <TopModelCosts models={overview.data.topModelCosts} />
+          <ProviderHealthTable rows={diagnostics.data.providerHealth} />
+          <TopModelCosts models={diagnostics.data.topModelCosts} />
         </div>
         {isActivityPending ? (
           <div role="status">
@@ -102,7 +115,7 @@ export const OverviewPage: React.FC = () => {
             <Skeleton className="h-64 rounded-4xl" />
           </div>
         ) : (
-          <RequestActivityHeatmap activity={overview.data.activity} onYearChange={setYear} />
+          <RequestActivityHeatmap activity={activity.data} onYearChange={setYear} />
         )}
       </>
     );
@@ -117,7 +130,7 @@ export const OverviewPage: React.FC = () => {
           isFetching={overview.isFetching}
           range={range}
           onRangeChange={setRange}
-          onRefresh={() => void overview.refetch()}
+          onRefresh={() => void Promise.all([overview.refetch(), diagnostics.refetch(), activity.refetch()])}
         />
       }
     >

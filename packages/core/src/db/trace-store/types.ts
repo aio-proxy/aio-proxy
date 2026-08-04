@@ -1,5 +1,7 @@
 import type { LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 import type {
+  DashboardOverviewActivityResponse,
+  DashboardOverviewDiagnosticsResponse,
   DashboardOverviewRange,
   DashboardOverviewResponse,
   DashboardTraceDetail,
@@ -117,7 +119,6 @@ export type UsageOverviewQuery = {
 
 export type DashboardOverviewQuery = {
   readonly range: DashboardOverviewRange;
-  readonly year: number;
   readonly now?: Date;
 };
 
@@ -128,6 +129,8 @@ export type TraceStore = {
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
+  readonly overviewDashboardDiagnostics: () => DashboardOverviewDiagnosticsResponse;
+  readonly overviewDashboardActivity: (year: number) => DashboardOverviewActivityResponse;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
   readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (

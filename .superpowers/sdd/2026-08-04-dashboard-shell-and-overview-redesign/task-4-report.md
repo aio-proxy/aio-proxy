@@ -127,3 +127,25 @@ Addressed the first review round by making Provider diagnostics and top-model co
 | `bun run --filter @aio-proxy/dashboard test:unit -- src/components/page-container src/components/side-menu src/modules/overview` | Passed: 25/25 tests across 7 files.                                                                                                                                |
 | Targeted `bunx oxlint` over the 19 Fix Round 1 source, test, and message files                                                   | Exit 0; only the two pre-existing max-lines-per-function warnings were reported.                                                                                   |
 | Targeted `bunx oxfmt --check` over the same 19 files                                                                             | Passed; all matched files use the correct format.                                                                                                                  |
+
+## Fix Round 2
+
+Folded failed and cancelled root requests into their requested-model trend so the chart total matches the request KPI while retaining exactly Top 4 plus Other. Split the overview transport and query ownership into range, all-time diagnostics, and activity-year sources. Only the 24-hour range source polls; diagnostics and activity use independent non-polling keys with a 60-second stale time.
+
+### TDD evidence
+
+1. Core request-trend RED: 7 tests passed and the new failed/cancelled regression failed with an empty model series; GREEN: the focused core suite passed 8/8 before the contract split.
+2. Contract ownership RED: the Types range-only response regression failed, then the core hot-response regression failed while diagnostics/activity were still embedded.
+3. Route RED: the range endpoint still required `year`, and the diagnostics/activity endpoints returned 404.
+4. Dashboard service RED: all 3 tests failed against the combined response/key. Dashboard page RED: all 10 tests failed while rendering still expected one combined hook.
+5. Final GREEN: the focused Types, Core, Server, and Dashboard suites passed with the split contract and independent query ownership.
+
+| Command                                                                                                                          | Result                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `bun test packages/types/src/dashboard/dashboard.test.ts`                                                                        | Passed: 3/3 tests.                                                                                        |
+| `bun run --filter @aio-proxy/core test:unit -- src/db/trace-store/overview/overview.test.ts`                                     | Passed: 9/9 tests, including failed/cancelled model aggregation and hot-response isolation.               |
+| `bun run --filter @aio-proxy/server test:unit -- src/dashboard-routes/overview/overview.test.ts`                                 | Passed: 9/9 tests across the range, diagnostics, and activity endpoints.                                  |
+| `bun run --filter @aio-proxy/dashboard test:unit -- src/components/page-container src/components/side-menu src/modules/overview` | Passed: 25/25 tests across 7 files.                                                                       |
+| `bun run build:dashboard`                                                                                                        | Passed: 11/11 Turbo tasks; generated declarations and the Rsbuild Dashboard build completed successfully. |
+| Targeted `bunx oxlint` over the 19 Fix Round 2 source and test files                                                             | Exit 0; only the two pre-existing max-lines-per-function warnings were reported.                          |
+| Targeted `bunx oxfmt --check` over the same 19 files                                                                             | Passed; all matched files use the correct format.                                                         |

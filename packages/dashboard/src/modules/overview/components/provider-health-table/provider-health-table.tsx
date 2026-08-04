@@ -10,13 +10,13 @@ import { DataTablePagination } from '@/components/data-table-pagination';
 import { DataTableToolbar } from '@/components/data-table-toolbar';
 import { useDataTable } from '@/hooks/use-data-table';
 
-import type { OverviewData } from '../../services/overview-service';
+import type { OverviewDiagnosticsData } from '../../services/overview-service';
 
 interface ProviderHealthTableProps {
-  readonly rows: OverviewData['providerHealth'];
+  readonly rows: OverviewDiagnosticsData['providerHealth'];
 }
 
-type ProviderHealthRow = OverviewData['providerHealth'][number];
+type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
 
 const withSortingHandler = (handler: ((event: unknown) => void) | undefined) =>
   handler === undefined ? {} : { onToggleSorting: handler };

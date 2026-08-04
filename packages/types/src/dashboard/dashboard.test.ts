@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test';
 
 import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
-import { DashboardOverviewResponseSchema } from './dashboard';
+import {
+  DashboardOverviewActivityResponseSchema,
+  DashboardOverviewDiagnosticsResponseSchema,
+  DashboardOverviewResponseSchema,
+} from './dashboard';
 
 const overviewInput = {
   range: '90d',
@@ -21,15 +25,21 @@ const overviewInput = {
     tokens: { buckets: [], series: [] },
     cost: { buckets: [], series: [] },
   },
-  providerHealth: [{ providerId: 'openai-main', successRate: 1, p95LatencyMs: 42 }],
-  topModelCosts: [{ modelId: 'gpt-4.1', estimatedCostNanoUsd: '4' }],
-  activity: { year: 2026, days: [{ date: '2026-01-01', requestCount: '1' }] },
 } as const;
 
-test('accepts an overview with a 90-day window and a complete yearly activity series', () => {
+const diagnosticsInput = {
+  providerHealth: [{ providerId: 'openai-main', successRate: 1, p95LatencyMs: 42 }],
+  topModelCosts: [{ modelId: 'gpt-4.1', estimatedCostNanoUsd: '4' }],
+} as const;
+
+const activityInput = { year: 2026, days: [{ date: '2026-01-01', requestCount: '1' }] } as const;
+
+test('accepts independent range, diagnostics, and activity overview contracts', () => {
   const value = DashboardOverviewResponseSchema.parse(overviewInput);
 
   expect(value.range).toBe('90d');
+  expect(DashboardOverviewDiagnosticsResponseSchema.parse(diagnosticsInput)).toEqual(diagnosticsInput);
+  expect(DashboardOverviewActivityResponseSchema.parse(activityInput)).toEqual(activityInput);
 });
 
 test('rejects request outcome series from the model-only overview trend', () => {
