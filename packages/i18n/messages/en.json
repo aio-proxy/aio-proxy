@@ -360,6 +360,7 @@
         "col_provider": "Provider",
         "col_details": "Details",
         "col_type": "Type",
+        "col_protocol": "Protocol",
         "col_name": "Name",
         "col_enabled": "Enabled",
         "col_status": "Status",
@@ -651,6 +652,9 @@
         "edit_aliases": "Edit Aliases",
         "open_menu": "Open actions for provider {id}",
         "edit_provider": "Edit provider {id}",
+        "copy_provider_id": "Copy Provider ID",
+        "enable_provider": "Enable provider {id}",
+        "disable_provider": "Disable provider {id}",
         "delete_provider": "Delete provider {id}"
       },
       "toast": {

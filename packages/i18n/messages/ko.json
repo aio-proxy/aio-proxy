@@ -362,6 +362,7 @@
         "col_provider": "프로바이더",
         "col_details": "세부 정보",
         "col_type": "유형",
+        "col_protocol": "프로토콜",
         "col_name": "이름",
         "col_enabled": "활성화",
         "col_status": "상태",
@@ -653,6 +654,9 @@
         "edit_aliases": "별칭 편집",
         "open_menu": "프로바이더 {id}의 작업 열기",
         "edit_provider": "프로바이더 {id} 편집",
+        "copy_provider_id": "프로바이더 ID 복사",
+        "enable_provider": "프로바이더 {id} 활성화",
+        "disable_provider": "프로바이더 {id} 비활성화",
         "delete_provider": "프로바이더 {id} 삭제"
       },
       "toast": {

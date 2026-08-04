@@ -36,11 +36,11 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
             {m['dashboard.providers.new_provider']()}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
-              {PROVIDER_KIND_LABEL.oauth}
-            </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'api' }} />}>
               {PROVIDER_KIND_LABEL.api}
+            </DropdownMenuItem>
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
+              {PROVIDER_KIND_LABEL.oauth}
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'ai-sdk' }} />}>
               {PROVIDER_KIND_LABEL['ai-sdk']}

@@ -362,6 +362,7 @@
         "col_provider": "プロバイダー",
         "col_details": "詳細",
         "col_type": "タイプ",
+        "col_protocol": "プロトコル",
         "col_name": "名前",
         "col_enabled": "有効",
         "col_status": "ステータス",
@@ -653,6 +654,9 @@
         "edit_aliases": "エイリアスを編集",
         "open_menu": "プロバイダー {id} の操作を開く",
         "edit_provider": "プロバイダー {id} を編集",
+        "copy_provider_id": "プロバイダー ID をコピー",
+        "enable_provider": "プロバイダー {id} を有効化",
+        "disable_provider": "プロバイダー {id} を無効化",
         "delete_provider": "プロバイダー {id} を削除"
       },
       "toast": {

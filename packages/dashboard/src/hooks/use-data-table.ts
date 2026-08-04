@@ -3,6 +3,7 @@ import { useSelector } from '@tanstack/react-store';
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  getExpandedRowModel,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
@@ -21,7 +22,16 @@ const useColumnVisibilityForm = () =>
 
 export type ColumnVisibilityForm = ReturnType<typeof useColumnVisibilityForm>;
 
-export function useDataTable<TData>(data: readonly TData[], columns: readonly ColumnDef<TData>[]) {
+interface UseDataTableOptions<TData> {
+  readonly getRowId?: (row: TData) => string;
+  readonly getSubRows?: (row: TData) => TData[] | undefined;
+}
+
+export function useDataTable<TData>(
+  data: readonly TData[],
+  columns: readonly ColumnDef<TData>[],
+  options: UseDataTableOptions<TData> = {},
+) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -41,10 +51,14 @@ export function useDataTable<TData>(data: readonly TData[], columns: readonly Co
       ),
     onGlobalFilterChange: setGlobalFilter,
     onPaginationChange: setPagination,
+    ...(options.getRowId === undefined ? {} : { getRowId: options.getRowId }),
+    ...(options.getSubRows === undefined ? {} : { getSubRows: options.getSubRows }),
     getCoreRowModel: getCoreRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    paginateExpandedRows: options.getSubRows === undefined,
   });
 
   return { table, columnVisibilityForm };

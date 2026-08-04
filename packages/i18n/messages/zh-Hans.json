@@ -360,6 +360,7 @@
         "col_provider": "提供商",
         "col_details": "详情",
         "col_type": "类型",
+        "col_protocol": "协议",
         "col_name": "名称",
         "col_enabled": "启用",
         "col_status": "状态",
@@ -651,6 +652,9 @@
         "edit_aliases": "编辑别名",
         "open_menu": "打开提供商 {id} 的操作菜单",
         "edit_provider": "编辑提供商 {id}",
+        "copy_provider_id": "复制提供商 ID",
+        "enable_provider": "启用提供商 {id}",
+        "disable_provider": "停用提供商 {id}",
         "delete_provider": "删除提供商 {id}"
       },
       "toast": {

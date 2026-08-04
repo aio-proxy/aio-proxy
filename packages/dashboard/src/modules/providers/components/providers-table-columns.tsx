@@ -1,24 +1,17 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
-import { Button } from '@aio-proxy/ui/components/button';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
-import { ChevronRight, Trash2 } from 'lucide-react';
 import type React from 'react';
 
 import { PROVIDER_KIND_LABEL } from '../constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
+import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';
+import { ProviderMoreMenu } from './provider-more-menu';
 import { ProviderStateCell } from './provider-state-cell';
-
-const kindLabels: Record<DashboardProviderSummary['kind'], () => string> = {
-  api: () => PROVIDER_KIND_LABEL.api,
-  'ai-sdk': () => PROVIDER_KIND_LABEL['ai-sdk'],
-  oauth: () => PROVIDER_KIND_LABEL.oauth,
-  invalid: () => m['dashboard.providers.kind_label.invalid'](),
-};
+import type { ProviderTableRow } from './providers-table/provider-table-row';
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
@@ -26,126 +19,141 @@ export const canEditProvider = (provider: DashboardProviderSummary): boolean =>
   provider.kind !== 'invalid' &&
   (provider.state.diagnostic === undefined || !uneditableDiagnosticCodes.has(provider.state.diagnostic.code));
 
-const displayName = (provider: DashboardProviderSummary): string => provider.name ?? startCase(provider.id);
+const displayName = (provider: DashboardProviderSummary): string =>
+  (provider.kind === 'oauth' ? (provider.accountLabel ?? provider.name) : provider.name) ?? startCase(provider.id);
 
-const providerColumn: ColumnDef<DashboardProviderSummary> = {
+const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | undefined =>
+  row.rowType === 'provider' ? row.provider : undefined;
+
+const providerColumn: ColumnDef<ProviderTableRow> = {
   id: 'provider',
-  accessorFn: (provider) => [displayName(provider), provider.id, kindLabels[provider.kind]()].join(' '),
+  accessorFn: (row) =>
+    row.rowType === 'oauth-group'
+      ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
+      : `${displayName(row.provider)} ${row.provider.id}`,
   header: () => m['dashboard.providers.table.col_provider'](),
   cell: ({ row }) => {
-    const provider = row.original;
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
     const name = displayName(provider);
     return (
-      <div className="min-w-0 sm:min-w-40">
+      <div className={row.depth === 0 ? 'min-w-40' : 'min-w-40 pl-7'}>
         {canEditProvider(provider) ? (
           <Link
             id={`provider-link-${provider.id}`}
             to="/providers/$id/edit"
             params={{ id: provider.id }}
             aria-label={m['dashboard.providers.actions.edit_provider']({ id: provider.id })}
-            className="font-medium after:absolute after:inset-0 focus-visible:outline-none"
+            className="font-medium"
           >
             {name}
           </Link>
         ) : (
           <div className="font-medium">{name}</div>
         )}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <span>{provider.id}</span>
-          <span aria-hidden="true">·</span>
-          <span>{kindLabels[provider.kind]()}</span>
-          <span className="sm:hidden" aria-hidden="true">
-            ·
-          </span>
-          <span className="sm:hidden" data-testid={`provider-mobile-models-${provider.id}`}>
-            {(provider.clientModels ?? []).length} {m['dashboard.providers.table.col_models']()}
-          </span>
-        </div>
+        <div className="text-xs text-muted-foreground">{provider.id}</div>
       </div>
     );
   },
 };
 
-const statusColumn: ColumnDef<DashboardProviderSummary> = {
-  id: 'status',
-  accessorFn: (provider) =>
-    `${provider.enabled} ${provider.state.status} ${provider.state.status === 'ready' ? (provider.state.catalog ?? '') : ''}`,
-  header: () => m['dashboard.providers.table.col_status'](),
-  cell: ({ row }) => (
-    <div className="flex min-w-0 flex-col items-start gap-1 sm:min-w-32 sm:flex-row sm:gap-2">
-      <Badge variant={row.original.enabled ? 'secondary' : 'outline'}>
-        {row.original.enabled ? m['dashboard.providers.badge.enabled']() : m['dashboard.providers.badge.disabled']()}
-      </Badge>
-      <div className="space-y-1 whitespace-normal">
-        <ProviderStateCell provider={row.original} />
-        {row.original.catalogLastSuccessAt === undefined ? null : (
-          <div className="text-xs text-muted-foreground">
-            {m['dashboard.providers.catalog.last_success_at']({
-              value: new Date(row.original.catalogLastSuccessAt).toLocaleString(),
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  ),
+const typeColumn: ColumnDef<ProviderTableRow> = {
+  id: 'type',
+  accessorFn: (row) => {
+    if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
+    return row.provider.kind === 'ai-sdk'
+      ? (row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'])
+      : row.provider.kind === 'invalid'
+        ? m['dashboard.providers.kind_label.invalid']()
+        : PROVIDER_KIND_LABEL[row.provider.kind];
+  },
+  header: () => m['dashboard.providers.table.col_type'](),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
+    if (provider.kind === 'ai-sdk') return provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
+    if (provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
+    return PROVIDER_KIND_LABEL[provider.kind];
+  },
 };
 
-const detailsColumn: ColumnDef<DashboardProviderSummary> = {
-  id: 'details',
-  accessorFn: (provider) => [provider.accountLabel, provider.plugin, provider.capability].filter(Boolean).join(' '),
-  header: () => m['dashboard.providers.table.col_details'](),
+const protocolColumn: ColumnDef<ProviderTableRow> = {
+  id: 'protocol',
+  accessorFn: (row) => (row.rowType === 'provider' && row.provider.kind === 'api' ? (row.provider.protocol ?? '') : ''),
+  header: () => m['dashboard.providers.table.col_protocol'](),
   cell: ({ row }) => {
-    const provider = row.original;
-    const capability = [provider.plugin, provider.capability].filter(Boolean).join('/');
-    if (provider.accountLabel === undefined && capability === '' && provider.expiresAt === undefined) {
-      return null;
-    }
-    return (
-      <div className="max-w-xs space-y-1 whitespace-normal">
-        {provider.accountLabel === undefined ? null : <div>{provider.accountLabel}</div>}
-        {capability === '' ? null : <div className="text-xs text-muted-foreground">{capability}</div>}
-        {provider.expiresAt === undefined ? null : (
-          <div className="text-xs text-muted-foreground">
-            {m['dashboard.providers.account.expires_at']({
-              value: new Date(provider.expiresAt).toLocaleString(),
-            })}
-          </div>
-        )}
-      </div>
-    );
+    const provider = concreteProvider(row.original);
+    return provider?.kind === 'api' ? (provider.protocol ?? 'N/A') : 'N/A';
+  },
+};
+
+const modelsColumn: ColumnDef<ProviderTableRow> = {
+  id: 'models',
+  accessorFn: (row) =>
+    row.rowType === 'oauth-group'
+      ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
+      : row.provider.clientModels.join(' '),
+  header: () => m['dashboard.providers.table.col_models'](),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : <ProviderModelsCell models={provider.clientModels} />;
+  },
+};
+
+const weightColumn: ColumnDef<ProviderTableRow> = {
+  id: 'weight',
+  accessorFn: (row) => concreteProvider(row)?.weight ?? 0,
+  header: () => m['dashboard.providers.table.col_weight'](),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : (provider.weight ?? 0);
+  },
+};
+
+const stateColumn: ColumnDef<ProviderTableRow> = {
+  id: 'state',
+  accessorFn: (row) => {
+    const provider = concreteProvider(row);
+    return provider === undefined
+      ? ''
+      : `${provider.state.status} ${provider.state.diagnostic?.summary ?? ''} ${provider.state.diagnostic?.code ?? ''}`;
+  },
+  header: () => m['dashboard.providers.table.col_state'](),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : <ProviderStateCell provider={provider} />;
   },
 };
 
 export const createProviderColumns = (
   deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
-  hasDetails: boolean,
-): ColumnDef<DashboardProviderSummary>[] => [
+): ColumnDef<ProviderTableRow>[] => [
   providerColumn,
-  statusColumn,
-  ...(hasDetails ? [detailsColumn] : []),
+  typeColumn,
+  protocolColumn,
+  modelsColumn,
+  weightColumn,
+  stateColumn,
   {
-    id: 'models',
-    accessorFn: (provider) => (provider.clientModels ?? []).join(', '),
-    header: () => m['dashboard.providers.table.col_models'](),
-    cell: ({ row }) => <ProviderModelsCell models={row.original.clientModels ?? []} />,
+    id: 'enabled',
+    accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
+    header: () => m['dashboard.providers.table.col_enabled'](),
+    cell: ({ row }) => {
+      const provider = concreteProvider(row.original);
+      return provider === undefined || !canEditProvider(provider) ? null : (
+        <ProviderEnabledSwitch provider={provider} />
+      );
+    },
   },
   {
     id: 'actions',
     enableSorting: false,
-    header: () => '',
-    cell: ({ row }) =>
-      canEditProvider(row.original) ? (
-        <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={m['dashboard.providers.actions.delete_provider']({ id: row.original.id })}
-          onClick={() => deleteDialogRef.current?.open(row.original)}
-        >
-          <Trash2 />
-        </Button>
-      ),
+    header: () => m['dashboard.providers.table.col_actions'](),
+    cell: ({ row }) => {
+      const provider = concreteProvider(row.original);
+      return provider === undefined || !canEditProvider(provider) ? null : (
+        <ProviderMoreMenu provider={provider} onDelete={(target) => deleteDialogRef.current?.open(target)} />
+      );
+    },
   },
 ];
