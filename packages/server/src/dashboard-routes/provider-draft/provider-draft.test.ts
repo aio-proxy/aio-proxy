@@ -29,7 +29,7 @@ describe('draft Provider catalog and test routes', () => {
           saved: {
             apiKey: 'saved-secret',
             baseURL: 'http://saved.example/v1',
-            headers: { 'x-saved-secret': 'saved-header' },
+            headers: { 'content-type': 'application/json', 'x-saved-secret': 'saved-header' },
             kind: 'api',
             models: ['saved-model'],
             protocol: ProviderProtocol.OpenAICompatible,
@@ -362,7 +362,46 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
-  test('does not treat an unrelated API header as fresh credentials for a changed destination', async () => {
+  test('accepts a fresh authorization header for a changed API destination', async () => {
+    let authorization: string | null = null;
+    let savedHeader: string | null = null;
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        savedHeader = request.headers.get('x-saved-secret');
+        return Response.json({ data: [{ id: 'fresh-header-model' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+            headers: { authorization: 'Bearer fresh-header-secret', 'x-saved-secret': '****' },
+            id: 'saved',
+            kind: 'api',
+            protocol: ProviderProtocol.OpenAICompatible,
+          },
+          persistedProviderId: 'saved',
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(text)).toEqual({ ok: true, models: ['fresh-header-model'] });
+      expect(authorization).toBe('Bearer fresh-header-secret');
+      expect(savedHeader).toBeNull();
+      expect(text).not.toMatch(/fresh-header-secret|saved-secret|saved-header/u);
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test('does not treat a persisted ordinary API header as fresh credentials for a changed destination', async () => {
     let requests = 0;
     let authorization: string | null = null;
     let savedHeader: string | null = null;

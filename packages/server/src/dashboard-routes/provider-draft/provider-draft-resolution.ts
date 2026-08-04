@@ -17,6 +17,8 @@ type DraftResolution =
     };
 
 const OMIT = Symbol('redacted draft value');
+const CREDENTIAL_FIELD_PATTERN = /(?:api[-_]?key|authorization|bearer|credential|password|secret|token)/i;
+const CREDENTIAL_HEADER_PATTERN = /(?:^|-)(?:authorization|api-key)$/i;
 
 export function resolveProviderDraft(
   state: ServerState,
@@ -104,7 +106,7 @@ function stripRedactedValues(value: unknown): unknown {
 
 function requiresFreshCredentials(previous: Provider, candidate: Provider): boolean {
   const persisted = credentialFields(previous);
-  return hasCredentialValue(persisted) && !hasFreshCredentialAtPersistedPath(persisted, credentialFields(candidate));
+  return hasPersistedSensitiveValue(persisted) && !hasFreshCredentialValue(credentialFields(candidate));
 }
 
 function credentialFields(provider: Provider): unknown {
@@ -112,14 +114,14 @@ function credentialFields(provider: Provider): unknown {
   return provider.kind === ProviderKind.Api ? { apiKey: provider.apiKey, headers: provider.headers } : provider.options;
 }
 
-function hasCredentialValue(value: unknown, key = '', insideSecretBoundary = false): boolean {
+function hasPersistedSensitiveValue(value: unknown, key = '', insideSecretBoundary = false): boolean {
   if (typeof value === 'string') {
     return value.trim() !== '' && redactSecrets(value, key, insideSecretBoundary) !== value;
   }
-  if (Array.isArray(value)) return value.some((item) => hasCredentialValue(item, key, insideSecretBoundary));
+  if (Array.isArray(value)) return value.some((item) => hasPersistedSensitiveValue(item, key, insideSecretBoundary));
   if (!isPlainObject(value)) return false;
   return Object.entries(value).some(([entryKey, item]) =>
-    hasCredentialValue(
+    hasPersistedSensitiveValue(
       item,
       entryKey,
       insideSecretBoundary || entryKey.toLowerCase() === 'headers' || entryKey.toLowerCase() === 'proxy',
@@ -127,32 +129,14 @@ function hasCredentialValue(value: unknown, key = '', insideSecretBoundary = fal
   );
 }
 
-function hasFreshCredentialAtPersistedPath(
-  persisted: unknown,
-  candidate: unknown,
-  key = '',
-  insideSecretBoundary = false,
-): boolean {
-  if (typeof persisted === 'string') {
-    return (
-      hasCredentialValue(persisted, key, insideSecretBoundary) &&
-      hasCredentialValue(candidate, key, insideSecretBoundary)
-    );
+function hasFreshCredentialValue(value: unknown, key = '', insideHeaders = false): boolean {
+  if (typeof value === 'string') {
+    const credentialPath = insideHeaders ? CREDENTIAL_HEADER_PATTERN.test(key) : CREDENTIAL_FIELD_PATTERN.test(key);
+    return value.trim() !== '' && credentialPath;
   }
-  if (Array.isArray(persisted)) {
-    const candidateItems = Array.isArray(candidate) ? candidate : [];
-    return persisted.some((item, index) =>
-      hasFreshCredentialAtPersistedPath(item, candidateItems[index], key, insideSecretBoundary),
-    );
-  }
-  if (!isPlainObject(persisted)) return false;
-  const candidateRecord = isPlainObject(candidate) ? candidate : {};
-  return Object.entries(persisted).some(([entryKey, item]) =>
-    hasFreshCredentialAtPersistedPath(
-      item,
-      candidateRecord[entryKey],
-      entryKey,
-      insideSecretBoundary || entryKey.toLowerCase() === 'headers' || entryKey.toLowerCase() === 'proxy',
-    ),
+  if (Array.isArray(value)) return value.some((item) => hasFreshCredentialValue(item, key, insideHeaders));
+  if (!isPlainObject(value)) return false;
+  return Object.entries(value).some(([entryKey, item]) =>
+    hasFreshCredentialValue(item, entryKey, insideHeaders || entryKey.toLowerCase() === 'headers'),
   );
 }
