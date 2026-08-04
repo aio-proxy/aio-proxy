@@ -36,7 +36,7 @@ interface SideMenuGroup {
 export const SideMenu: React.FC = () => {
   const groups: readonly SideMenuGroup[] = [
     {
-      label: m['dashboard.menus.overview'](),
+      label: m['dashboard.menus.observability'](),
       items: [
         {
           id: 'dashboard',

@@ -1,5 +1,6 @@
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
+import { within } from '@testing-library/react';
 
 import { PageContainer } from './page-container';
 
@@ -31,4 +32,20 @@ test('renders an optional subtitle directly with the page heading', () => {
 
   expect(screen.getByRole('heading', { level: 1, name: 'Edit Provider' })).toBeInTheDocument();
   expect(screen.getByText('carpool · API')).toBeInTheDocument();
+});
+
+test('renders breadcrumbs before the page title', () => {
+  render(
+    <PageContainer title="Dashboard" breadcrumbs={[{ label: '观测' }, { label: 'Dashboard' }]}>
+      Content
+    </PageContainer>,
+  );
+
+  const breadcrumb = screen.getByRole('navigation', { name: /breadcrumb/u });
+  expect(within(breadcrumb).getByText('观测')).toBeInTheDocument();
+  expect(within(breadcrumb).getByText('Dashboard')).toBeInTheDocument();
+  expect(
+    breadcrumb.compareDocumentPosition(screen.getByRole('heading', { level: 1, name: 'Dashboard' })) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });

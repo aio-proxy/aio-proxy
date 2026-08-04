@@ -1,0 +1,43 @@
+import {
+  Breadcrumb,
+  BreadcrumbItem as BreadcrumbListItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@aio-proxy/ui/components/breadcrumb';
+import { Link } from '@tanstack/react-router';
+import { Fragment } from 'react';
+
+export interface BreadcrumbItem {
+  readonly label: string;
+  readonly to?: React.ComponentProps<typeof Link>['to'];
+}
+
+interface BreadcrumbsProps {
+  readonly items: readonly BreadcrumbItem[];
+}
+
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items }) => (
+  <Breadcrumb>
+    <BreadcrumbList>
+      {items.map((item, index) => {
+        const isCurrent = index === items.length - 1;
+        return (
+          <Fragment key={`${item.label}-${index}`}>
+            <BreadcrumbListItem>
+              {isCurrent ? (
+                <BreadcrumbPage>{item.label}</BreadcrumbPage>
+              ) : item.to === undefined ? (
+                <span>{item.label}</span>
+              ) : (
+                <BreadcrumbLink render={<Link to={item.to} />}>{item.label}</BreadcrumbLink>
+              )}
+            </BreadcrumbListItem>
+            {isCurrent ? null : <BreadcrumbSeparator />}
+          </Fragment>
+        );
+      })}
+    </BreadcrumbList>
+  </Breadcrumb>
+);
