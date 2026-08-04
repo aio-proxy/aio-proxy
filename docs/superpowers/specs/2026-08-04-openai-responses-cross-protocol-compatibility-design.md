@@ -1,10 +1,9 @@
-# OpenAI Responses CPA Compatibility Design
+# OpenAI Responses Cross-Protocol Compatibility Design
 
 ## Goal
 
 Make the OpenAI Responses model path accept Codex's top-level `instructions`
-and hosted `web_search` tool in the same practical way as CLIProxyAPI's
-Responses-to-Chat conversion.
+and hosted `web_search` tool when routing across protocols.
 
 ## Decision
 
@@ -18,10 +17,6 @@ Responses-to-Chat conversion.
 - Other unsupported hosted tools remain unsupported. This change is narrowly
   scoped to the Codex request shape captured in trace
   `ae7dcdc76ef2c05f9b384c397ceb97f4`.
-
-This matches CLIProxyAPI's generic Responses-to-Chat behavior: it maps
-`instructions` to a system message and only converts function/custom/namespace
-tools; built-in hosted tools are not turned into Chat functions.
 
 ## Data Flow
 
