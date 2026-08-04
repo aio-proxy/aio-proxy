@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as TracesIndexRouteImport } from './routes/traces/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
+import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
 import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
 import { Route as ProvidersNewKindRouteImport } from './routes/providers/new.$kind'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
@@ -37,6 +38,11 @@ const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
   path: '/providers/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PluginsIndexRoute = PluginsIndexRouteImport.update({
+  id: '/plugins/',
+  path: '/plugins/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TracesTraceIdRoute = TracesTraceIdRouteImport.update({
   id: '/traces/$traceId',
   path: '/traces/$traceId',
@@ -56,6 +62,7 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/traces/': typeof TracesIndexRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/plugins': typeof PluginsIndexRoute
   '/providers': typeof ProvidersIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/traces': typeof TracesIndexRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/traces/': typeof TracesIndexRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/traces/$traceId'
+    | '/plugins/'
     | '/providers/'
     | '/settings/'
     | '/traces/'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/traces/$traceId'
+    | '/plugins'
     | '/providers'
     | '/settings'
     | '/traces'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/traces/$traceId'
+    | '/plugins/'
     | '/providers/'
     | '/settings/'
     | '/traces/'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   TracesTraceIdRoute: typeof TracesTraceIdRoute
+  PluginsIndexRoute: typeof PluginsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   TracesIndexRoute: typeof TracesIndexRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProvidersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/plugins/': {
+      id: '/plugins/'
+      path: '/plugins'
+      fullPath: '/plugins/'
+      preLoaderRoute: typeof PluginsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/traces/$traceId': {
       id: '/traces/$traceId'
       path: '/traces/$traceId'
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   TracesTraceIdRoute: TracesTraceIdRoute,
+  PluginsIndexRoute: PluginsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   TracesIndexRoute: TracesIndexRoute,
