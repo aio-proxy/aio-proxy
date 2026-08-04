@@ -14,19 +14,20 @@ interface OverviewTimeWindowProps {
 
 const ranges: readonly DashboardOverviewRange[] = ['24h', '7d', '30d', '90d'];
 
+export const getOverviewRangeLabel = (range: DashboardOverviewRange): string =>
+  ({
+    '24h': m['dashboard.overview.range_24h'](),
+    '7d': m['dashboard.overview.range_7d'](),
+    '30d': m['dashboard.overview.range_30d'](),
+    '90d': m['dashboard.overview.range_90d'](),
+  })[range];
+
 export const OverviewTimeWindow: React.FC<OverviewTimeWindowProps> = ({
   isFetching,
   range,
   onRangeChange,
   onRefresh,
 }) => {
-  const labels: Record<DashboardOverviewRange, string> = {
-    '24h': m['dashboard.overview.range_24h'](),
-    '7d': m['dashboard.overview.range_7d'](),
-    '30d': m['dashboard.overview.range_30d'](),
-    '90d': m['dashboard.overview.range_90d'](),
-  };
-
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Tooltip>
@@ -51,7 +52,7 @@ export const OverviewTimeWindow: React.FC<OverviewTimeWindowProps> = ({
           <TabsList className="shrink-0" aria-label={m['dashboard.overview.range_label']()}>
             {ranges.map((value) => (
               <TabsTrigger key={value} value={value}>
-                {labels[value]}
+                {getOverviewRangeLabel(value)}
               </TabsTrigger>
             ))}
           </TabsList>

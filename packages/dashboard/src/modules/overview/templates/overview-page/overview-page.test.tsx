@@ -61,6 +61,7 @@ const createDiagnosticsData = () => ({
 const createActivityData = () => ({
   year: 2026,
   days: [
+    { date: '2026-01-03', requestCount: 1n },
     { date: '2026-01-01', requestCount: 7n },
     { date: '2026-01-02', requestCount: 0n },
   ],
@@ -197,9 +198,18 @@ describe('overview page', () => {
 
     render(<OverviewPage />);
 
-    expect(screen.getByText(/No requests in this range|此时间范围内暂无请求/u)).toBeInTheDocument();
+    expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Top model costs|模型成本排行/u })).toBeInTheDocument();
+  });
+
+  test('uses singular English request copy for a one-request activity day', () => {
+    render(<OverviewPage />);
+
+    const day = screen.getByRole('button', { name: /1 request$/u });
+    expect(day).not.toHaveAccessibleName(/1 requests/u);
+    fireEvent.click(day);
+    expect(within(screen.getByRole('status')).getByText(/^1 request$/u)).toBeInTheDocument();
   });
 
   test('keeps loaded sections visible while only a changed activity year is pending', () => {
@@ -266,6 +276,6 @@ describe('overview page', () => {
     overviewData = createOverviewData();
     overviewData.summary.requestCount = 0n;
     render(<OverviewPage />);
-    expect(screen.getByText(/No requests in this range|此时间范围内暂无请求/u)).toBeInTheDocument();
+    expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
   });
 });

@@ -149,3 +149,20 @@ Folded failed and cancelled root requests into their requested-model trend so th
 | `bun run build:dashboard`                                                                                                        | Passed: 11/11 Turbo tasks; generated declarations and the Rsbuild Dashboard build completed successfully. |
 | Targeted `bunx oxlint` over the 19 Fix Round 2 source and test files                                                             | Exit 0; only the two pre-existing max-lines-per-function warnings were reported.                          |
 | Targeted `bunx oxfmt --check` over the same 19 files                                                                             | Passed; all matched files use the correct format.                                                         |
+
+## Fix Round 3
+
+Removed SQLite `sum()` from range usage values and all-time model costs. Both paths now read each stored integer as decimal text and accumulate with JavaScript `BigInt`, including per-request fallback totals and normalized cache accounting. The empty-range title now receives the localized loaded range, and English activity counts use plural variants.
+
+### TDD evidence
+
+1. Core RED: the signed-int64 regression raised `SQLiteError: integer overflow` in the range query before any value reached `parseSqliteInteger`.
+2. Dashboard RED: the empty state still rendered “this range,” and both the day label and selected-day status rendered “1 requests.”
+3. GREEN: the focused regressions passed after moving arithmetic to `BigInt` and compiling the parameterized messages.
+
+| Command                                                                                                       | Result                                                                                       |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `bun run i18n:compile`                                                                                        | Passed; Paraglide compiled the range parameter and English plural variants.                  |
+| `bun run --filter @aio-proxy/core test:unit -- src/db/trace-store/overview src/db/trace-store/usage-overview` | Passed: 20/20 tests across 3 files, including totals above signed int64.                     |
+| `bun run --filter @aio-proxy/dashboard test:unit -- src/modules/overview`                                     | Passed: 16/16 tests across 3 files, including selected-range and one-request copy.           |
+| `bun run build:dashboard`                                                                                     | Passed: 11/11 Turbo tasks; generated declarations and the Rsbuild Dashboard build completed. |

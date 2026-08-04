@@ -724,7 +724,7 @@
       "error_description": "대시보드에서 개요 데이터를 불러오지 못했습니다",
       "no_providers_title": "프로바이더가 구성되지 않음",
       "no_providers_description": "프로바이더를 추가하면 요청 라우팅을 시작할 수 있습니다",
-      "no_requests_title": "이 기간에 요청이 없음",
+      "no_requests_title": "{range} 동안 요청이 없음",
       "no_requests_description": "더 긴 기간을 선택하거나 요청이 기록될 때까지 기다려 주세요",
       "summary_label": "개요 요약",
       "summary_requests": "요청 수",
@@ -750,8 +750,8 @@
       "activity_year": "활동 연도",
       "previous_year": "이전 연도",
       "next_year": "다음 연도",
-      "activity_day_label": "{date}: 요청 {count}건",
-      "activity_count": "요청 {count}건"
+      "activity_day_label": "{date}: 요청 {formattedCount}건",
+      "activity_count": "요청 {formattedCount}건"
     },
     "traces": {
       "title": "트레이스",

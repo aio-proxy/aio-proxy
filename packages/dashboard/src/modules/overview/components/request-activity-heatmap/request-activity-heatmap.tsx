@@ -128,7 +128,8 @@ export const RequestActivityHeatmap: React.FC<RequestActivityHeatmapProps> = ({ 
                 const count = formatters.number.format(day.requestCount);
                 const label = m['dashboard.overview.activity_day_label']({
                   date: formatters.date.format(date),
-                  count,
+                  count: Number(day.requestCount),
+                  formattedCount: count,
                 });
                 const intensity = activityIntensity(day.requestCount, maxCount);
                 return (
@@ -163,7 +164,10 @@ export const RequestActivityHeatmap: React.FC<RequestActivityHeatmapProps> = ({ 
               {formatters.date.format(new Date(`${selectedDay.date}T00:00:00.000Z`))}
             </time>
             <span className="text-muted-foreground">
-              {m['dashboard.overview.activity_count']({ count: formatters.number.format(selectedDay.requestCount) })}
+              {m['dashboard.overview.activity_count']({
+                count: Number(selectedDay.requestCount),
+                formattedCount: formatters.number.format(selectedDay.requestCount),
+              })}
             </span>
           </div>
         )}

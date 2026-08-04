@@ -9,7 +9,7 @@ import { PageContainer } from '@/components/page-container';
 
 import { ModelUsageTrend } from '../../components/model-usage-trend';
 import { OverviewKpiGrid } from '../../components/overview-kpi-grid';
-import { OverviewTimeWindow } from '../../components/overview-time-window';
+import { getOverviewRangeLabel, OverviewTimeWindow } from '../../components/overview-time-window';
 import { ProviderHealthTable } from '../../components/provider-health-table';
 import { RequestActivityHeatmap } from '../../components/request-activity-heatmap';
 import { TopModelCosts } from '../../components/top-model-costs';
@@ -90,7 +90,9 @@ export const OverviewPage: React.FC = () => {
               <EmptyMedia variant="icon">
                 <Activity />
               </EmptyMedia>
-              <EmptyTitle>{m['dashboard.overview.no_requests_title']()}</EmptyTitle>
+              <EmptyTitle>
+                {m['dashboard.overview.no_requests_title']({ range: getOverviewRangeLabel(overview.data.range) })}
+              </EmptyTitle>
               <EmptyDescription>{m['dashboard.overview.no_requests_description']()}</EmptyDescription>
             </EmptyHeader>
           </Empty>

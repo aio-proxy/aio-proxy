@@ -724,7 +724,7 @@
       "error_description": "ダッシュボードで概要データを読み込めませんでした",
       "no_providers_title": "プロバイダーが設定されていません",
       "no_providers_description": "プロバイダーを追加するとリクエストのルーティングを開始できます",
-      "no_requests_title": "この期間にリクエストはありません",
+      "no_requests_title": "{range}にリクエストはありません",
       "no_requests_description": "より長い期間を選択するか、リクエストが記録されるまでお待ちください",
       "summary_label": "概要サマリー",
       "summary_requests": "リクエスト数",
@@ -750,8 +750,8 @@
       "activity_year": "アクティビティの年",
       "previous_year": "前年",
       "next_year": "翌年",
-      "activity_day_label": "{date}: {count} 件のリクエスト",
-      "activity_count": "{count} 件のリクエスト"
+      "activity_day_label": "{date}: {formattedCount} 件のリクエスト",
+      "activity_count": "{formattedCount} 件のリクエスト"
     },
     "traces": {
       "title": "トレース",

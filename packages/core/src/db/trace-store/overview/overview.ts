@@ -13,17 +13,16 @@ type RawRootRow = {
   readonly bucket: string | number;
   readonly dimension: string;
   readonly terminationReason: string | null;
-  readonly requestCount: string;
-  readonly hasUsage: string;
-  readonly priced: string;
+  readonly transport: string | null;
+  readonly targetProtocol: string | null;
+  readonly hasUsage: number;
+  readonly priced: number;
   readonly estimatedCostNanoUsd: string;
   readonly inputTokens: string;
   readonly outputTokens: string;
-  readonly totalTokens: string;
+  readonly totalTokens: string | null;
   readonly cacheReadTokens: string;
   readonly cacheWriteTokens: string;
-  readonly normalizedCacheReadTokens: string;
-  readonly normalizedPromptTokens: string;
 };
 
 type RootRow = OverviewRow & {
@@ -98,54 +97,60 @@ function rootRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow
     select ${bucket} as bucket,
       coalesce(root.final_model_id, root.requested_model_id, 'unknown') as dimension,
       root.termination_reason as terminationReason,
-      cast(count(*) as text) as requestCount,
-      cast(sum(case when root.input_tokens is not null or root.output_tokens is not null
+      attempt.transport as transport,
+      attempt.target_protocol as targetProtocol,
+      case when root.input_tokens is not null or root.output_tokens is not null
         or root.total_tokens is not null or root.cache_read_tokens is not null
         or root.cache_write_tokens is not null or root.reasoning_tokens is not null
-        or root.estimated_cost_nano_usd is not null then 1 else 0 end) as text) as hasUsage,
-      cast(sum(case when root.estimated_cost_nano_usd is not null then 1 else 0 end) as text) as priced,
-      cast(sum(coalesce(root.estimated_cost_nano_usd, 0)) as text) as estimatedCostNanoUsd,
-      cast(sum(coalesce(root.input_tokens, 0)) as text) as inputTokens,
-      cast(sum(coalesce(root.output_tokens, 0)) as text) as outputTokens,
-      cast(sum(coalesce(root.total_tokens,
-        coalesce(root.input_tokens, 0) + coalesce(root.output_tokens, 0))) as text) as totalTokens,
-      cast(sum(coalesce(root.cache_read_tokens, 0)) as text) as cacheReadTokens,
-      cast(sum(coalesce(root.cache_write_tokens, 0)) as text) as cacheWriteTokens,
-      cast(sum(case when attempt.transport in ('raw', 'ai_sdk')
-        then coalesce(root.cache_read_tokens, 0) else 0 end) as text) as normalizedCacheReadTokens,
-      cast(sum(case
-        when attempt.transport = 'raw' and attempt.target_protocol = 'anthropic' then
-          coalesce(root.input_tokens, 0) + coalesce(root.cache_read_tokens, 0) + coalesce(root.cache_write_tokens, 0)
-        when attempt.transport in ('raw', 'ai_sdk') then
-          max(coalesce(root.input_tokens, 0), coalesce(root.cache_read_tokens, 0) + coalesce(root.cache_write_tokens, 0))
-        else 0 end) as text) as normalizedPromptTokens
+        or root.estimated_cost_nano_usd is not null then 1 else 0 end as hasUsage,
+      case when root.estimated_cost_nano_usd is not null then 1 else 0 end as priced,
+      cast(coalesce(root.estimated_cost_nano_usd, 0) as text) as estimatedCostNanoUsd,
+      cast(coalesce(root.input_tokens, 0) as text) as inputTokens,
+      cast(coalesce(root.output_tokens, 0) as text) as outputTokens,
+      cast(root.total_tokens as text) as totalTokens,
+      cast(coalesce(root.cache_read_tokens, 0) as text) as cacheReadTokens,
+      cast(coalesce(root.cache_write_tokens, 0) as text) as cacheWriteTokens
     from trace_span root
     left join trace_span attempt on attempt.trace_id = root.trace_id
       and attempt.parent_span_id = root.span_id
       and attempt.name = 'aio_proxy.provider.attempt' and attempt.termination_reason is null
-    where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?
-    group by bucket, dimension, root.termination_reason`;
+    where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?`;
   const params = [
     ...(range.bucketUnit === 'hour' ? [range.start.getTime()] : []),
     range.start.getTime(),
     range.end.getTime(),
   ];
-  return all<RawRootRow>(db, sql, params).map((row) => ({
-    bucket: row.bucket,
-    dimension: row.dimension,
-    terminationReason: row.terminationReason,
-    requestCount: parseSqliteInteger(row.requestCount),
-    hasUsage: parseSqliteInteger(row.hasUsage),
-    priced: parseSqliteInteger(row.priced),
-    estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd),
-    inputTokens: parseSqliteInteger(row.inputTokens),
-    outputTokens: parseSqliteInteger(row.outputTokens),
-    totalTokens: parseSqliteInteger(row.totalTokens),
-    cacheReadTokens: parseSqliteInteger(row.cacheReadTokens),
-    cacheWriteTokens: parseSqliteInteger(row.cacheWriteTokens),
-    normalizedCacheReadTokens: parseSqliteInteger(row.normalizedCacheReadTokens),
-    normalizedPromptTokens: parseSqliteInteger(row.normalizedPromptTokens),
-  }));
+  return all<RawRootRow>(db, sql, params).map((row) => {
+    const inputTokens = parseSqliteInteger(row.inputTokens);
+    const outputTokens = parseSqliteInteger(row.outputTokens);
+    const cacheReadTokens = parseSqliteInteger(row.cacheReadTokens);
+    const cacheWriteTokens = parseSqliteInteger(row.cacheWriteTokens);
+    const capturesCache = row.transport === 'raw' || row.transport === 'ai_sdk';
+    const cachedTokens = cacheReadTokens + cacheWriteTokens;
+    return {
+      bucket: row.bucket,
+      dimension: row.dimension,
+      terminationReason: row.terminationReason,
+      requestCount: 1n,
+      hasUsage: row.hasUsage,
+      priced: row.priced,
+      estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd),
+      inputTokens,
+      outputTokens,
+      totalTokens: row.totalTokens === null ? inputTokens + outputTokens : parseSqliteInteger(row.totalTokens),
+      cacheReadTokens,
+      cacheWriteTokens,
+      normalizedCacheReadTokens: capturesCache ? cacheReadTokens : 0n,
+      normalizedPromptTokens:
+        row.transport === 'raw' && row.targetProtocol === 'anthropic'
+          ? inputTokens + cachedTokens
+          : capturesCache
+            ? inputTokens > cachedTokens
+              ? inputTokens
+              : cachedTokens
+            : 0n,
+    };
+  });
 }
 
 type ResolvedRange = ReturnType<typeof resolveRange>;

@@ -1,1 +1,1 @@
-export { OverviewTimeWindow } from './overview-time-window';
+export { getOverviewRangeLabel, OverviewTimeWindow } from './overview-time-window';

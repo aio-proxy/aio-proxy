@@ -724,7 +724,7 @@
       "error_description": "控制台無法讀取概覽資料",
       "no_providers_title": "未設定提供商",
       "no_providers_description": "新增提供商後即可開始路由請求",
-      "no_requests_title": "此時間範圍內暫無請求",
+      "no_requests_title": "{range}內暫無請求",
       "no_requests_description": "請選擇更長的時間範圍，或等待請求被記錄",
       "summary_label": "概覽摘要",
       "summary_requests": "請求數",
@@ -750,8 +750,8 @@
       "activity_year": "活躍年份",
       "previous_year": "上一年",
       "next_year": "下一年",
-      "activity_day_label": "{date}：{count} 個請求",
-      "activity_count": "{count} 個請求"
+      "activity_day_label": "{date}：{formattedCount} 個請求",
+      "activity_count": "{formattedCount} 個請求"
     },
     "traces": {
       "title": "追蹤",

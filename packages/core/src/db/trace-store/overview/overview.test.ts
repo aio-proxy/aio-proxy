@@ -281,7 +281,7 @@ test('derives Provider health from failed and successful attempt child spans', (
   });
 });
 
-test('preserves SQL sums above Number.MAX_SAFE_INTEGER', () => {
+test('preserves totals above Number.MAX_SAFE_INTEGER', () => {
   withStore((store) => {
     for (const [index, totalTokens] of [4_503_599_627_370_496, 4_503_599_627_370_497].entries()) {
       seedTrace(store, {
@@ -293,6 +293,54 @@ test('preserves SQL sums above Number.MAX_SAFE_INTEGER', () => {
 
     expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.totalTokens).toBe('9007199254740993');
   });
+});
+
+test('preserves range and all-time totals above the signed SQLite integer limit', () => {
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    for (const id of [1, 2]) {
+      seedTrace(store, {
+        id,
+        modelId: 'large-model',
+        attempts: [{ providerId: 'provider', durationMs: 10 }],
+        usage: { totalTokens: 1, estimatedCostUsd: 0.000_000_001 },
+      });
+    }
+    handle.sqlite
+      .query(`update trace_span set
+        input_tokens = ?, output_tokens = ?, total_tokens = null,
+        cache_read_tokens = ?, cache_write_tokens = ?, estimated_cost_nano_usd = ?
+        where parent_span_id is null`)
+      .run(
+        5_000_000_000_000_000_000n,
+        5_000_000_000_000_000_000n,
+        5_000_000_000_000_000_000n,
+        5_000_000_000_000_000_000n,
+        5_000_000_000_000_000_000n,
+      );
+
+    const overview = store.overviewDashboard({ range: '24h', now: NOW });
+
+    expect(overview.summary.totalTokens).toBe('20000000000000000000');
+    expect(overview.summary.cacheReadTokens).toBe('10000000000000000000');
+    expect(overview.summary.cacheWriteTokens).toBe('10000000000000000000');
+    expect(overview.summary.estimatedCostNanoUsd).toBe('10000000000000000000');
+    expect(overview.summary.cacheHitRate).toBe(0.5);
+    expect(overview.modelTrendByMetric.tokens.buckets.find(({ values }) => values['large-model'] !== '0')).toEqual({
+      key: '2026-07-11T07:00:00.000Z',
+      values: { 'large-model': '20000000000000000000' },
+    });
+    expect(overview.modelTrendByMetric.cost.buckets.find(({ values }) => values['large-model'] !== '0')).toEqual({
+      key: '2026-07-11T07:00:00.000Z',
+      values: { 'large-model': '10000000000000000000' },
+    });
+    expect(store.overviewDashboardDiagnostics().topModelCosts).toEqual([
+      { modelId: 'large-model', estimatedCostNanoUsd: '10000000000000000000' },
+    ]);
+  } finally {
+    handle.close();
+  }
 });
 
 test('materializes empty common years and every leap-year boundary date', () => {

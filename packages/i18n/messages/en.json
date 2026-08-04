@@ -722,7 +722,7 @@
       "error_description": "The dashboard could not load overview data",
       "no_providers_title": "No Providers configured",
       "no_providers_description": "Add a Provider to start routing requests",
-      "no_requests_title": "No requests in this range",
+      "no_requests_title": "No requests in {range}",
       "no_requests_description": "Choose a longer range or wait for requests to be recorded",
       "summary_label": "Overview summary",
       "summary_requests": "Requests",
@@ -748,8 +748,26 @@
       "activity_year": "Activity year",
       "previous_year": "Previous year",
       "next_year": "Next year",
-      "activity_day_label": "{date}: {count} requests",
-      "activity_count": "{count} requests"
+      "activity_day_label": [
+        {
+          "declarations": ["input date", "input count", "input formattedCount", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=one": "{date}: {formattedCount} request",
+            "countPlural=other": "{date}: {formattedCount} requests"
+          }
+        }
+      ],
+      "activity_count": [
+        {
+          "declarations": ["input count", "input formattedCount", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=one": "{formattedCount} request",
+            "countPlural=other": "{formattedCount} requests"
+          }
+        }
+      ]
     },
     "traces": {
       "title": "Traces",

@@ -24,7 +24,7 @@ function providerHealth(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResp
   const rows = all<RawHealthRow>(
     db,
     `select provider_id as providerId,
-      cast(sum(case when termination_reason is null then 1 else 0 end) as text) as successCount,
+      cast(count(case when termination_reason is null then 1 end) as text) as successCount,
       cast(count(*) as text) as attemptCount,
       json_group_array(max(0, ended_at - started_at)) as durations
     from trace_span where name = 'aio_proxy.provider.attempt' and provider_id is not null
@@ -44,15 +44,19 @@ function providerHealth(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResp
 }
 
 function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResponse['topModelCosts'] {
-  return all<RawCostRow>(
+  const totals = new Map<string, bigint>();
+  const rows = iterate<RawCostRow>(
     db,
     `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
-      cast(sum(estimated_cost_nano_usd) as text) as estimatedCostNanoUsd
-    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
-      group by modelId`,
+      cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
+    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null`,
     [],
-  )
-    .map((row) => ({ modelId: row.modelId, estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd) }))
+  );
+  for (const row of rows) {
+    totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));
+  }
+  return [...totals]
+    .map(([modelId, estimatedCostNanoUsd]) => ({ modelId, estimatedCostNanoUsd }))
     .sort(
       (left, right) =>
         compareBigIntDescending(left.estimatedCostNanoUsd, right.estimatedCostNanoUsd) ||
@@ -64,6 +68,10 @@ function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsRespo
 
 function all<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBindings[]): T[] {
   return (db as IterableDatabase).$client.query<T, SQLQueryBindings[]>(sql).all(...params);
+}
+
+function iterate<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBindings[]): IterableIterator<T> {
+  return (db as IterableDatabase).$client.query<T, SQLQueryBindings[]>(sql).iterate(...params);
 }
 
 const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);

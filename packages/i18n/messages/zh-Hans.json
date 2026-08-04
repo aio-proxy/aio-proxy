@@ -722,7 +722,7 @@
       "error_description": "控制台无法读取概览数据",
       "no_providers_title": "未配置提供商",
       "no_providers_description": "添加提供商后即可开始路由请求",
-      "no_requests_title": "此时间范围内暂无请求",
+      "no_requests_title": "{range}内暂无请求",
       "no_requests_description": "请选择更长的时间范围，或等待请求被记录",
       "summary_label": "概览摘要",
       "summary_requests": "请求数",
@@ -748,8 +748,8 @@
       "activity_year": "活跃年份",
       "previous_year": "上一年",
       "next_year": "下一年",
-      "activity_day_label": "{date}：{count} 个请求",
-      "activity_count": "{count} 个请求"
+      "activity_day_label": "{date}：{formattedCount} 个请求",
+      "activity_count": "{formattedCount} 个请求"
     },
     "traces": {
       "title": "追踪",
