@@ -102,11 +102,11 @@ const modelsColumn: ColumnDef<ProviderTableRow> = {
 
 const weightColumn: ColumnDef<ProviderTableRow> = {
   id: 'weight',
-  accessorFn: (row) => concreteProvider(row)?.weight ?? 0,
+  accessorFn: (row) => concreteProvider(row)?.weight,
   header: () => m['dashboard.providers.table.col_weight'](),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined ? null : (provider.weight ?? 0);
+    return provider === undefined ? null : (provider.weight ?? 'N/A');
   },
 };
 

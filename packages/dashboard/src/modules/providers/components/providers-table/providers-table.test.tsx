@@ -145,6 +145,22 @@ describe('providers table', () => {
 
     expect(screen.getByTestId('provider-row-copilot-two')).toBeTruthy();
   });
+
+  test('distinguishes an unavailable Provider weight from an explicit zero', () => {
+    render(
+      <ProvidersTable
+        providers={[
+          providerStub({ id: 'weight-missing', kind: 'api', protocol: 'openai-response' }),
+          providerStub({ id: 'weight-zero', kind: 'api', protocol: 'openai-response', weight: 0 }),
+        ]}
+      />,
+    );
+
+    expect(within(screen.getByTestId('provider-row-weight-missing')).getByText('N/A')).toBeTruthy();
+    const zero = within(screen.getByTestId('provider-row-weight-zero'));
+    expect(zero.getByText('0')).toBeTruthy();
+    expect(zero.queryByText('N/A')).toBeNull();
+  });
 });
 
 describe('invalid provider row', () => {
