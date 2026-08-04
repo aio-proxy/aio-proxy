@@ -9,6 +9,7 @@ const mocks = rs.hoisted(() => ({
   mode: 'terminal',
   refetch: rs.fn(),
   navigate: rs.fn(),
+  writeText: rs.fn(async () => undefined),
   data: undefined as DashboardTraceDetail | undefined,
 }));
 const traceId = 'a'.repeat(32);
@@ -85,6 +86,20 @@ const detail: DashboardTraceDetail = {
       links: [],
     },
   ],
+  diagnostics: {
+    request: {
+      protocol: 'openai-response',
+      method: 'POST',
+      contentType: 'application/json',
+      contentLengthBytes: 35,
+      userAgent: 'diagnostics-test/1.0',
+    },
+    response: {
+      statusCode: 503,
+      contentType: 'application/json',
+      contentLengthBytes: 24,
+    },
+  },
 };
 
 rs.mock('../../hooks/use-trace-query', () => ({
@@ -129,7 +144,7 @@ rs.mock('@tanstack/react-router', () => ({
 }));
 
 const summaryRow = (label: RegExp): HTMLElement => {
-  const row = within(screen.getByTestId('trace-summary')).getByText(label).closest('div');
+  const row = within(screen.getByTestId('trace-summary')).getByText(label, { selector: 'dt' }).closest('div');
   if (row === null) throw new Error(`Missing summary row: ${label.source}`);
   return row;
 };
@@ -139,6 +154,11 @@ describe('trace detail page', () => {
     mocks.mode = 'terminal';
     mocks.refetch.mockReset();
     mocks.navigate.mockReset();
+    mocks.writeText.mockReset();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mocks.writeText },
+    });
     mocks.data = undefined;
   });
 
@@ -159,10 +179,79 @@ describe('trace detail page', () => {
     expect(screen.getAllByTestId('trace-span')[0]).toHaveTextContent(/Failure|失败/u);
   });
 
-  test.each(['terminal', 'loading', 'not-found', 'error'])('links the %s state back to the Trace list', (mode) => {
-    mocks.mode = mode;
+  test('puts complete identifiers, timing, routing, result, and usage in an unbordered context rail', () => {
     render(<TraceDetailPage traceId={traceId} />);
-    expect(screen.getByRole('link', { name: /Back|返回/u })).toHaveAttribute('href', '/traces');
+
+    const rail = screen.getByTestId('trace-context-rail');
+    expect(rail.querySelector('[data-slot="card"]')).toBeNull();
+    expect(within(rail).getByText(traceId)).toBeInTheDocument();
+    expect(within(rail).getByText('request-a')).toBeInTheDocument();
+    expect(within(rail).getByRole('button', { name: 'cache-a' })).toBeInTheDocument();
+    expect(
+      within(summaryRow(/Started|开始时间/u)).getByText(new Date(detail.trace.startedAt).toLocaleString()),
+    ).toBeInTheDocument();
+    expect(
+      within(summaryRow(/Ended|结束时间/u)).getByText(new Date(detail.trace.endedAt!).toLocaleString()),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText(/OpenAI Response|OpenAI 响应/u)).toBeInTheDocument();
+    expect(within(rail).getByText('gpt-5')).toBeInTheDocument();
+    expect(within(rail).getAllByText('provider-a').length).toBeGreaterThan(0);
+    expect(within(rail).getByText('HTTP 503 · upstream_error · provider_unavailable')).toBeInTheDocument();
+    expect(within(rail).getByText('15')).toBeInTheDocument();
+  });
+
+  test('opens on Detail and switches to the safe request and response diagnostics', () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    expect(screen.getByRole('tab', { name: /^Detail$|^详情$/u })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByTestId('trace-span')).toHaveLength(3);
+    expect(within(screen.getByTestId('span-detail-panel')).getByText('aio_proxy.request')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Request$|^请求$/u }));
+    expect(screen.getByRole('heading', { name: /^Headers$|^标头$/u })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Body$|^正文$/u })).toBeInTheDocument();
+    expect(screen.getByText('diagnostics-test/1.0')).toBeInTheDocument();
+    expect(screen.getByText('35')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Response$|^响应$/u }));
+    expect(screen.getByRole('tab', { name: /^Response$|^响应$/u })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('heading', { name: /^Headers$|^标头$/u }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { name: /^Body$|^正文$/u }).length).toBeGreaterThan(0);
+    expect(screen.getByText('503')).toBeInTheDocument();
+    expect(screen.getByText('24')).toBeInTheDocument();
+  });
+
+  test.each([
+    ['request', /^Request$|^请求$/u, /Request diagnostics are unavailable|请求诊断不可用/u],
+    ['response', /^Response$|^响应$/u, /Response diagnostics are unavailable|响应诊断不可用/u],
+  ])('shows a precise unavailable state for missing %s diagnostics', (_side, tabName, unavailable) => {
+    mocks.data = { ...detail, diagnostics: undefined };
+    render(<TraceDetailPage traceId={traceId} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: tabName }));
+    expect(screen.getByText(unavailable)).toBeInTheDocument();
+  });
+
+  test.each(['terminal', 'loading', 'not-found', 'error'])(
+    'uses the Traces breadcrumb instead of a return button in the %s state',
+    (mode) => {
+      mocks.mode = mode;
+      render(<TraceDetailPage traceId={traceId} />);
+
+      expect(screen.queryByRole('link', { name: /Back|返回/u })).toBeNull();
+      expect(screen.getByRole('link', { name: /^Traces$|^追踪$/u })).toHaveAttribute('href', '/traces');
+    },
+  );
+
+  test('puts the Trace ID, status, and copy action in the page header', async () => {
+    render(<TraceDetailPage traceId={traceId} />);
+
+    const header = screen.getByRole('banner');
+    expect(within(header).getByRole('heading', { level: 1, name: traceId })).toBeInTheDocument();
+    expect(within(header).getByText(/Failure|失败/u)).toBeInTheDocument();
+
+    fireEvent.click(within(header).getByRole('button', { name: /Copy Trace ID|复制追踪 ID/u }));
+    await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith(traceId));
   });
 
   test('shows only the Session ID and discloses its source in a tooltip', async () => {
@@ -269,7 +358,7 @@ describe('trace detail page', () => {
     mocks.mode = 'running';
     render(<TraceDetailPage traceId={traceId} />);
 
-    expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
+    expect(screen.getAllByText(/Running|运行中/u).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Refresh|刷新/u }));
     expect(mocks.refetch).toHaveBeenCalledTimes(1);
     expect(interval).not.toHaveBeenCalled();

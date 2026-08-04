@@ -27,7 +27,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items }) => (
         return (
           <Fragment key={`${item.label}-${index}`}>
             <BreadcrumbListItem>
-              {isCurrent ? (
+              {isCurrent && item.to === undefined ? (
                 <BreadcrumbPage>{item.label}</BreadcrumbPage>
               ) : item.to === undefined ? (
                 <span>{item.label}</span>
