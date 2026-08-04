@@ -1,5 +1,7 @@
 import type { LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 import type {
+  DashboardOverviewRange,
+  DashboardOverviewResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
   DashboardTracesResponse,
@@ -113,12 +115,19 @@ export type UsageOverviewQuery = {
   readonly now?: Date;
 };
 
+export type DashboardOverviewQuery = {
+  readonly range: DashboardOverviewRange;
+  readonly year: number;
+  readonly now?: Date;
+};
+
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
   readonly list: (query: TracesQuery) => DashboardTracesResponse;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
+  readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
   readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (

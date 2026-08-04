@@ -3,7 +3,7 @@ export * from './codex-model/index';
 export * from './commands';
 export * from './common';
 export * from './config/index';
-export * from './dashboard';
+export * from './dashboard/index';
 export * from './dashboard-localized-text';
 export * from './dashboard-oauth';
 export * from './plugin';

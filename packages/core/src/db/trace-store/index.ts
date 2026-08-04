@@ -1,5 +1,6 @@
 export { createTraceStore } from './trace-store';
 export type {
+  DashboardOverviewQuery,
   SessionAffinityObservation,
   SessionIdentity,
   SessionResponseOwner,
