@@ -7,6 +7,11 @@ import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
 
 const required = <T extends z.ZodType>(schema: z.ZodDefault<T>): T => schema.unwrap();
 
+const DashboardHttpProxyTemplateSchema = ConfigTemplateStringSchema.refine(
+  (value) => HttpProxyUrlSchema.safeParse(value.replace(/\{\{[\s\S]*?\}\}/gu, 'template.invalid')).success,
+  'Proxy template must have a valid http: or https: URL shape',
+);
+
 const DashboardSettingsProxySchema = z.union([
   HttpProxyUrlSchema.refine((value) => {
     try {
@@ -38,7 +43,7 @@ export const DashboardSettingsViewSchema = z.strictObject({
 export const DashboardSettingsMutationSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host).optional(),
   port: required(ServerConfigSchema.shape.port).optional(),
-  proxy: z.union([HttpProxyUrlSchema, ConfigTemplateStringSchema, z.null()]).optional(),
+  proxy: z.union([HttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
   logging: z
     .strictObject({
       enabled: required(ServerLoggingSchema.shape.enabled).optional(),

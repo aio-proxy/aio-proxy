@@ -25,13 +25,20 @@ describe('dashboard settings control-plane contracts', () => {
     expect(mutation.parse({})).toEqual({});
     expect(mutation.parse({ proxy: null })).toEqual({ proxy: null });
     expect(mutation.parse({ proxy: 'https://proxy.example' })).toEqual({ proxy: 'https://proxy.example' });
-    expect(mutation.parse({ proxy: '{{env.HTTPS_PROXY}}' })).toEqual({ proxy: '{{env.HTTPS_PROXY}}' });
+    expect(mutation.parse({ proxy: 'https://{{env.PROXY_HOST}}:8080' })).toEqual({
+      proxy: 'https://{{env.PROXY_HOST}}:8080',
+    });
   });
 
   test('rejects unsupported proxies and server-unowned settings', () => {
     const mutation = schema('DashboardSettingsMutationSchema');
 
-    for (const proxy of ['socks5://localhost:1080', 'proxy.example']) {
+    for (const proxy of [
+      'socks5://localhost:1080',
+      'proxy.example',
+      'socks5://{{env.HOST}}',
+      'not-a-proxy {{env.X}}',
+    ]) {
       expect(mutation.safeParse({ proxy }).success).toBe(false);
     }
     for (const field of ['theme', 'language', 'router', 'password', 'hasPassword']) {
