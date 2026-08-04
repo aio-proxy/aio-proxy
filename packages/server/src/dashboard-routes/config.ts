@@ -8,6 +8,7 @@ import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
 import { createDashboardOAuthLoginRoutes } from './oauth-login';
 import { createDashboardOverviewRoute } from './overview';
+import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
@@ -32,6 +33,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))
+    .route('/', createDashboardProviderDraftRoutes(state))
     .route('/', createDashboardProviderWriteRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
