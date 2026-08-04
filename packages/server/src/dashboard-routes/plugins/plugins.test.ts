@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   AtomicConfigFile,
   createPluginRepository,
+  NpmLockError,
   npmPackageCacheDir,
   parseRuntimeConfig,
   Router,
@@ -1055,7 +1056,7 @@ describe.serial('Dashboard plugin control plane', () => {
         cacheRemoved = true;
         return true;
       };
-      return coordinate === undefined ? remove() : coordinate(remove);
+      return coordinate === undefined ? remove() : coordinate(remove, async () => {});
     };
     await withFixture(
       async ({ configPath, repository, routes }) => {
@@ -1116,7 +1117,7 @@ describe.serial('Dashboard plugin control plane', () => {
         return true;
       };
       try {
-        return coordinate === undefined ? remove() : coordinate(remove);
+        return coordinate === undefined ? remove() : coordinate(remove, async () => {});
       } finally {
         releaseExternalMutation();
       }
@@ -1144,6 +1145,53 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test('DELETE /plugins/uninstall preserves all state when npm ownership is lost before cleanup', async () => {
+    const packageName = '@scope/npm-ownership-loss-plugin';
+    let cacheRemoved = false;
+    type RemovalCoordinator = (
+      remove: () => Promise<boolean>,
+      assertPackageOwnership: () => Promise<void>,
+    ) => Promise<boolean>;
+    const removeNpmPackageCache = (async (...raw: unknown[]) => {
+      const coordinate = raw[2] as RemovalCoordinator;
+      let ownershipChecks = 0;
+      return coordinate(
+        async () => {
+          cacheRemoved = true;
+          return true;
+        },
+        async () => {
+          ownershipChecks += 1;
+          if (ownershipChecks === 2) throw new NpmLockError(packageName);
+        },
+      );
+    }) as NonNullable<NonNullable<ServerStateTestHooks['pluginControlPlane']>['removeNpmPackageCache']>;
+
+    await withFixture(
+      async ({ configPath, repository, routes }) => {
+        writeCachedPackage(packageName);
+        const before = await Bun.file(configPath).text();
+
+        const response = await uninstallPlugin(routes, { packageName });
+
+        expect(response.status).toBe(423);
+        expect(await Bun.file(configPath).text()).toBe(before);
+        expect(repository.readPluginSecret(packageName)?.value).toEqual({ token: 'preserved-secret' });
+        expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
+        expect(cacheRemoved).toBe(false);
+      },
+      {
+        config: { plugins: [packageName], providers: {} },
+        descriptors: new Map([[packageName, emptyDescriptor()]]),
+        prepare: (repository) => {
+          repository.writePluginSecret(packageName, null, { token: 'preserved-secret' });
+        },
+        providerInstances: [],
+        testHooks: { pluginControlPlane: { removeNpmPackageCache } },
+      },
+    );
+  });
+
   test('DELETE /plugins/uninstall rejects a Provider dependency committed after its removal snapshot', async () => {
     const packageName = '@scope/provider-commit-race-plugin';
     let removalSnapshotTaken!: () => void;
@@ -1164,7 +1212,7 @@ describe.serial('Dashboard plugin control plane', () => {
         rmSync(npmPackageCacheDir(candidate), { force: true, recursive: true });
         return true;
       };
-      return coordinate === undefined ? remove() : coordinate(remove);
+      return coordinate === undefined ? remove() : coordinate(remove, async () => {});
     }) as NonNullable<NonNullable<ServerStateTestHooks['pluginControlPlane']>['removeNpmPackageCache']>;
 
     await withFixture(
@@ -1231,7 +1279,7 @@ describe.serial('Dashboard plugin control plane', () => {
         rmSync(npmPackageCacheDir(candidate), { force: true, recursive: true });
         return true;
       };
-      return coordinate === undefined ? remove() : coordinate(remove);
+      return coordinate === undefined ? remove() : coordinate(remove, async () => {});
     }) as NonNullable<NonNullable<ServerStateTestHooks['pluginControlPlane']>['removeNpmPackageCache']>;
 
     await withFixture(
@@ -1343,6 +1391,55 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test('OAuth rejects its final Provider commit when an independent config writer removed the Plugin', async () => {
+    const packageName = '@scope/oauth-external-uninstall-plugin';
+    const endpoint = 'https://oauth-external-uninstall.example.test';
+    let deviceCodePresented!: () => void;
+    const deviceCodeReady = new Promise<void>((resolve) => (deviceCodePresented = resolve));
+    let releaseLogin!: () => void;
+    const loginReleased = new Promise<void>((resolve) => (releaseLogin = resolve));
+    const descriptor = oauthRaceDescriptor(deviceCodePresented, loginReleased);
+
+    await withFixture(
+      async ({ configPath, repository, routes }) => {
+        const started = await routes.request('/oauth/sessions', {
+          body: JSON.stringify({
+            capability: { plugin: packageName, capability: 'default' },
+            publicValues: {},
+            secrets: {},
+            clearSecrets: [],
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        });
+        expect(started.status).toBe(202);
+        const { session } = (await started.json()) as { session: { id: string } };
+        await deviceCodeReady;
+
+        await new AtomicConfigFile(configPath).replace((current) => ({ ...current, plugins: [] }));
+        releaseLogin();
+        const completed = await waitForOAuthSession(
+          routes,
+          session.id,
+          ({ status }) => status === 'failed' || status === 'succeeded',
+        );
+
+        expect(completed).toEqual({
+          id: session.id,
+          status: 'failed',
+          code: 'OAUTH_CAPABILITY_UNAVAILABLE',
+        });
+        expect(JSON.parse(await Bun.file(configPath).text())).toMatchObject({ plugins: [], providers: {} });
+        expect(repository.readAccount('person')).toBeNull();
+      },
+      {
+        config: { plugins: [[packageName, { endpoint }]], providers: {} },
+        descriptors: new Map([[packageName, descriptor]]),
+        prepare: () => void writeCachedPackage(packageName),
+      },
+    );
+  });
+
   test('install and uninstall serialize the package generation across classification, commit, and removal', async () => {
     const packageName = '@scope/install-uninstall-race';
     const lifecycle = serializedLifecycle();
@@ -1369,7 +1466,7 @@ describe.serial('Dashboard plugin control plane', () => {
           cacheRemoved = true;
           return true;
         };
-        return coordinate === undefined ? remove() : coordinate(remove);
+        return coordinate === undefined ? remove() : coordinate(remove, async () => {});
       });
     await withFixture(
       async ({ configPath, routes }) => {

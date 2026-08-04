@@ -19,6 +19,7 @@ import type { FifoQueue } from '../fifo-queue';
 import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
+import { findPluginEntry } from '../plugin-control-plane/plugin-config';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
@@ -237,6 +238,15 @@ export function startLoginSessions(
         }
         return commit();
       }),
+    validateProviderCommit: (capability, current) => {
+      const registry = (manager.current() as Snapshot).plugins.registry;
+      if (
+        findPluginEntry(current, capability.plugin) === undefined ||
+        registry.resolveOAuth(capability.plugin, capability.capability) === undefined
+      ) {
+        throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
+      }
+    },
     reload,
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),

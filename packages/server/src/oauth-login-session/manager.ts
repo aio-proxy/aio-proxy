@@ -16,6 +16,7 @@ import { OAuthCallbackError } from './callback';
 
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
 type ProviderCommitCoordinator = NonNullable<LoginOAuthAccountOptions['coordinateProviderCommit']>;
+type ProviderCommitValidator = NonNullable<LoginOAuthAccountOptions['validateProviderCommit']>;
 type InternalSession = {
   snapshot: DashboardOAuthSession;
   readonly controller: AbortController;
@@ -30,6 +31,7 @@ type LoginSessionDeps = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
+  readonly validateProviderCommit: ProviderCommitValidator;
   readonly reload: () => Promise<unknown>;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
 };
@@ -83,6 +85,7 @@ const runLoginSession = async (
       diagnostics: deps.diagnostics,
       logger: deps.logger,
       coordinateProviderCommit: deps.coordinateProviderCommit,
+      validateProviderCommit: deps.validateProviderCommit,
       onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
       signal: session.controller.signal,
     });
@@ -120,6 +123,7 @@ export const createOAuthLoginSessionManager = (options: {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit: ProviderCommitCoordinator;
+  readonly validateProviderCommit: ProviderCommitValidator;
   readonly reload: () => Promise<unknown>;
   readonly now?: () => number;
   readonly terminalSessionTtlMs?: number;
@@ -172,6 +176,7 @@ export const createOAuthLoginSessionManager = (options: {
         diagnostics: options.diagnostics,
         logger: options.logger,
         coordinateProviderCommit: options.coordinateProviderCommit,
+        validateProviderCommit: options.validateProviderCommit,
         reload: options.reload,
         publish,
       },

@@ -57,6 +57,10 @@ export type LoginOAuthAccountOptions = {
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
+  readonly validateProviderCommit?: (
+    capability: OAuthCapabilityReference,
+    current: Readonly<Record<string, unknown>>,
+  ) => Promise<void> | void;
   readonly progress?: (message: LocalizedText) => void;
   readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
@@ -113,27 +117,27 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     try {
       const commit = () =>
         options.config.transaction(
-          (current) =>
-            Promise.resolve(
-              stageAccountWrite(
-                current,
-                {
-                  options,
-                  initial,
-                  adapter,
-                  discovered,
-                  publicValues: rendered.publicValues,
-                  secrets: rendered.secrets,
-                  currentCredential: credentials.current,
-                  fingerprint: validated.fingerprint,
-                  suggestedKey: validated.suggestedKey,
-                  metadata,
-                  diagnostics: options.diagnostics,
-                  signal: deadline.signal,
-                },
-                state,
-              ),
-            ),
+          async (current) => {
+            await options.validateProviderCommit?.(initial.capability, current);
+            return stageAccountWrite(
+              current,
+              {
+                options,
+                initial,
+                adapter,
+                discovered,
+                publicValues: rendered.publicValues,
+                secrets: rendered.secrets,
+                currentCredential: credentials.current,
+                fingerprint: validated.fingerprint,
+                suggestedKey: validated.suggestedKey,
+                metadata,
+                diagnostics: options.diagnostics,
+                signal: deadline.signal,
+              },
+              state,
+            );
+          },
           { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
         );
       staged = await (options.coordinateProviderCommit === undefined

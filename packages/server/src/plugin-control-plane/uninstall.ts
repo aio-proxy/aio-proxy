@@ -64,12 +64,17 @@ export async function uninstallPlugin(
     const removed = await options.removeNpmPackageCache(
       packageName,
       async () => !configUsesPackage(await options.configStore.file!.read(), packageName),
-      (remove) =>
+      (remove, assertPackageOwnership) =>
         options.configStore.mutateConfigWithProviderMutation(
-          (current) => {
+          async (current) => {
+            await assertPackageOwnership();
             const dependencies = dependentProviderIds(current, packageName);
             if (dependencies.length > 0) throw new PluginDependenciesError(dependencies);
             return removePlugin(current, packageName);
+          },
+          async (assertConfigOwnership) => {
+            await assertConfigOwnership();
+            await assertPackageOwnership();
           },
           async () => {
             const secret = options.repository.readPluginSecret(packageName);

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 import { AtomicConfigFile } from '.';
 import { ageLockWithUnavailableIdentity, fixture } from './test-support';
@@ -126,5 +127,33 @@ describe('AtomicConfigFile', () => {
       resumeAfterCommit();
       await Promise.allSettled([first, replacement]);
     }
+  });
+});
+
+describe('AtomicConfigFile cleanup fencing', () => {
+  test('a lost recovery fence before cleanup rolls back the verified candidate and skips side effects', async () => {
+    const { dir, path } = fixture('{}\n');
+    let cleanupApplied = false;
+    const verified: unknown[] = [];
+    const update = new AtomicConfigFile(path).replace((current) => ({ ...current, candidate: true }), {
+      verify: async (candidate) => {
+        verified.push(candidate);
+      },
+      beforeCommit: async (_candidate, assertOwnership) => {
+        const prefix = `${basename(path)}.lock.recovery.`;
+        const marker = readdirSync(dir).find((name) => name.startsWith(prefix));
+        if (marker === undefined) throw new Error('recovery fence marker missing');
+        unlinkSync(join(dir, marker));
+        await assertOwnership();
+      },
+      afterCommit: async () => {
+        cleanupApplied = true;
+      },
+    });
+
+    await expect(update).rejects.toThrow('Lock recovery ownership lost');
+    expect(cleanupApplied).toBe(false);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({});
+    expect(verified).toEqual([{ candidate: true }, {}]);
   });
 });

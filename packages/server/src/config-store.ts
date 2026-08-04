@@ -44,6 +44,7 @@ export type ConfigStore = {
   ) => Promise<void>;
   readonly mutateConfigWithProviderMutation: <T>(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    beforeOperation: (assertConfigOwnership: () => Promise<void>) => Promise<void>,
     operation: () => Promise<T>,
   ) => Promise<T>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
@@ -121,6 +122,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
 
   async function mutateConfigWithProviderMutationNow<T>(
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    beforeOperation: (assertConfigOwnership: () => Promise<void>) => Promise<void>,
     operation: () => Promise<T>,
   ): Promise<T> {
     if (file === undefined) throw new ConfigPathMissingError();
@@ -128,6 +130,9 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     await file.replace(fn, {
       validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
       verify: async (candidate) => void (await verifyCandidate(candidate)),
+      beforeCommit: async (_candidate, assertConfigOwnership) => {
+        await beforeOperation(assertConfigOwnership);
+      },
       afterCommit: async () => {
         operationResult = { value: await operation() };
       },
@@ -148,8 +153,8 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
     file,
     mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
-    mutateConfigWithProviderMutation: (fn, operation) =>
-      enqueueProviderMutation(() => mutateConfigWithProviderMutationNow(fn, operation)),
+    mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
+      enqueueProviderMutation(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)),
     mutateProviders: (fn) => enqueueProviderMutation(() => mutateProvidersNow(fn)),
   };
 }
