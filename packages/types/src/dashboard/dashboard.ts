@@ -1,16 +1,16 @@
 import { z } from 'zod';
 
-import { providerLoginCommand } from './commands';
-import { IdSchema } from './common';
-import { type DiagnosticCode, ProviderStateSchema } from './plugin';
-import { ProviderKind } from './provider';
+import { providerLoginCommand } from '../commands';
+import { IdSchema } from '../common';
+import { type DiagnosticCode, ProviderStateSchema } from '../plugin';
+import { ProviderKind } from '../provider';
 import {
   DashboardOverviewRangeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
   UsageRowSchema,
-} from './usage';
+} from '../usage';
 
 export const DashboardProviderProbeSchema = z.enum(['OK', 'FAIL']);
 

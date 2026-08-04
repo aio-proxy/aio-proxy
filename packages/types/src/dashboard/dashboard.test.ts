@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
 import { DashboardOverviewResponseSchema } from './dashboard';
-import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from './usage';
 
 test('accepts an overview with a 90-day window and a complete yearly activity series', () => {
   const value = DashboardOverviewResponseSchema.parse({
