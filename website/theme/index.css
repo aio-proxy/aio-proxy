@@ -1,0 +1,100 @@
+@import '@aio-proxy/ui/styles.css';
+
+@source "../docs";
+
+/* Example brand color overrides for the custom theme scaffold. */
+/* For more CSS variables, see https://rspress.rs/ui/vars. */
+:root {
+  --rp-c-brand: var(--color-teal-700);
+  --rp-c-brand-dark: var(--color-teal-800);
+  --rp-c-brand-darker: var(--color-teal-950);
+  --rp-c-brand-light: var(--color-teal-500);
+  --rp-c-brand-lighter: var(--color-teal-500);
+  --rp-c-bg-mute: var(--color-olive-100);
+
+  --rp-home-hero-secondary-color: var(--color-teal-700);
+
+  --rp-code-block-bg: var(--color-muted);
+  --rp-code-title-bg: var(--color-muted);
+  --rp-code-block-border: 1px solid var(--color-border);
+
+  --rp-font-family-base: var(--font-sans);
+  --rp-font-family-mono: var(--font-mono);
+}
+
+html:not(.dark) {
+  --rp-home-background-bg:
+    radial-gradient(
+      42.12% 56.13% at 100% 0%,
+      color-mix(in oklab, var(--color-teal-400) 10%, transparent) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      42.01% 79.63% at 52.86% 0%,
+      color-mix(in oklab, var(--color-teal-500) 20%, transparent) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      79.67% 58.09% at 0% 0%,
+      color-mix(in oklab, var(--color-olive-300) 20%, transparent) 0%,
+      transparent 100%
+    ),
+    var(--color-olive-50);
+
+  --rp-c-bg: var(--color-olive-50);
+  --rp-c-brand-tint: var(--color-olive-100);
+  --rp-c-bg-soft: var(--color-olive-50);
+
+  --rp-c-divider: var(--color-olive-200);
+
+  --rp-c-text-0: var(--color-olive-950);
+  --rp-c-text-1: var(--color-olive-950);
+}
+
+html.dark {
+  --rp-home-background-bg:
+    radial-gradient(42.12% 56.13% at 100% 0%, var(--color-teal-950) 0%, transparent 100%),
+    radial-gradient(55.81% 87.78% at 48.37% 0%, var(--color-olive-950) 0%, transparent 89.55%),
+    radial-gradient(122.65% 88.24% at 0% 0%, var(--color-teal-900) 0%, transparent 100%), var(--color-olive-950);
+
+  --rp-c-bg: var(--color-olive-950);
+  --rp-c-brand-tint: var(--color-olive-800);
+  --rp-c-bg-soft: var(--color-olive-700);
+
+  --rp-c-divider: oklch(1 0 0 / 10%);
+
+  --rp-c-text-0: var(--color-olive-50);
+  --rp-c-text-1: var(--color-olive-50);
+}
+
+.rp-home-hero__title-brand {
+  @apply hidden;
+}
+
+.rp-home-hero__subtitle {
+  @apply bg-linear-to-r from-teal-400 to-teal-800 bg-clip-text font-heading text-5xl! text-transparent!;
+  @apply dark:from-teal-300 dark:to-teal-500;
+}
+
+.rp-home-hero__container {
+  @apply text-start! items-start! max-w-2xl;
+}
+.rp-home-hero__actions {
+  @apply max-lg:w-full!;
+}
+
+.rp-doc-layout__doc {
+  @apply container!;
+}
+.rp-doc-layout__doc-container {
+  @apply bg-background rounded-4xl m-2 shadow-sm;
+}
+.rp-doc-layout__sidebar {
+  @apply border-r-0!;
+}
+.rp-outline {
+  @apply border-l-0!;
+}
+.rp-nav {
+  @apply border-b-0!;
+}
