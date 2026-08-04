@@ -9,19 +9,23 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { ConfigReloadRejectedError, type ConfigStore } from '../config-store';
 import { PluginControlPlaneError, PluginDependenciesError } from './errors';
-import { findPluginEntry, pluginEntries } from './plugin-config';
+import { findPluginEntry, normalizedPackageName, pluginEntries } from './plugin-config';
+
+const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
 
 function dependentProviderIds(config: Readonly<Record<string, unknown>>, packageName: string): readonly string[] {
   const providers = resolveConfigTemplates(config['providers']);
   if (!isPlainObject(providers)) return [];
+  const target = normalizedPackageName(packageName);
+  if (target === undefined) return [];
+  const referencesTarget = (value: unknown) => normalizedPackageName(value) === target;
   return Object.entries(providers)
     .flatMap(([providerId, provider]) => {
       if (!isPlainObject(provider)) return [];
-      if (provider['kind'] === 'oauth' && provider['plugin'] === packageName) return [providerId];
+      if (provider['kind'] === 'oauth' && referencesTarget(provider['plugin'])) return [providerId];
       if (
         provider['kind'] === 'ai-sdk' &&
-        ((provider['packageName'] ?? '@ai-sdk/openai-compatible') === packageName ||
-          provider['package'] === packageName)
+        (referencesTarget(provider['packageName'] ?? DEFAULT_AI_SDK_PACKAGE) || referencesTarget(provider['package']))
       ) {
         return [providerId];
       }

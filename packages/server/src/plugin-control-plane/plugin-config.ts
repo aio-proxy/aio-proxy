@@ -1,6 +1,6 @@
 import { digestProviderEntry, resolveConfigTemplates, validateConfigSpec } from '@aio-proxy/core';
 import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
-import type { DashboardPluginOptionsMutation } from '@aio-proxy/types';
+import { type DashboardPluginOptionsMutation, PluginPackageNameSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { PluginControlPlaneError } from './errors';
@@ -17,6 +17,11 @@ export function packageNameOf(entry: unknown): string | undefined {
       : undefined;
 }
 
+export function normalizedPackageName(value: unknown): string | undefined {
+  const parsed = PluginPackageNameSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export function publicOptionsOf(entry: unknown): Readonly<Record<string, unknown>> {
   return Array.isArray(entry) && isPlainObject(entry[1]) ? entry[1] : {};
 }
@@ -28,7 +33,9 @@ export function findPluginEntry(
   const entries = pluginEntries(config);
   const resolved = resolveConfigTemplates(entries);
   if (!Array.isArray(resolved)) return undefined;
-  const index = resolved.findIndex((entry) => packageNameOf(entry) === packageName);
+  const target = normalizedPackageName(packageName);
+  if (target === undefined) return undefined;
+  const index = resolved.findIndex((entry) => normalizedPackageName(packageNameOf(entry)) === target);
   return index < 0 ? undefined : { entry: entries[index], index };
 }
 

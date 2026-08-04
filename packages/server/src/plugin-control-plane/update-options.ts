@@ -41,7 +41,8 @@ export async function updatePluginOptions(
           packageName: mutation.packageName,
           version,
           descriptor,
-          ...candidate,
+          publicValues: structuredClone(candidate.publicValues),
+          secrets: structuredClone(candidate.secrets),
           diagnostics: options.diagnostics,
           logger: () => {},
         });

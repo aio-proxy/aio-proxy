@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines, eslint/max-lines-per-function -- one cohesive lifecycle fixture exercises cross-operation races */
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -394,6 +394,92 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test('PUT /plugins/options isolates descriptor setup mutations from committed public and secret values', async () => {
+    const packageName = configurablePackage;
+    const sentinel = 'dashboard-setup-secret-sentinel';
+    const setupMutation = 'dashboard-setup-mutated-secret';
+    let setupCompleted = false;
+    const descriptors = new Map<string, PluginDescriptor<unknown>>([[packageName, configurableDescriptor()]]);
+    const descriptor = definePlugin(
+      (_api, value) => {
+        const options = value as {
+          settings: { nested: { value: string } } | string;
+          token: { value: string };
+        };
+        if (typeof options.settings === 'string' || options.settings.nested.value !== 'safe-public') return;
+        const capturedSecret = options.token.value;
+        options.settings.nested.value = capturedSecret;
+        Object.defineProperty(options.settings, 'toJSON', { value: () => capturedSecret });
+        options.token.value = setupMutation;
+        setupCompleted = true;
+      },
+      {
+        options: {
+          schema: {
+            safeParse() {},
+            async safeParseAsync(value: unknown) {
+              const options = value as {
+                settings: { nested: { value: string } } | string;
+                token: string | { value: string };
+              };
+              return {
+                success: true,
+                data: {
+                  settings: options.settings,
+                  token: typeof options.token === 'string' ? { value: options.token } : options.token,
+                },
+              };
+            },
+          } as never,
+          form: [
+            { type: 'json', key: 'settings', label: 'Settings' },
+            { type: 'secret', key: 'token', label: 'Token' },
+          ],
+        },
+      },
+    );
+    await withFixture(
+      async ({ configPath, repository, routes }) => {
+        descriptors.set(packageName, descriptor);
+        const originalSecret = repository.readPluginSecret(packageName)!;
+        repository.writePluginSecret(packageName, originalSecret.revision, { token: { value: sentinel } });
+        const current = (await (
+          await routes.request(`/plugins/edit-view?packageName=${encodeURIComponent(packageName)}`)
+        ).json()) as { revision: string };
+        const response = await updateOptions(routes, {
+          packageName,
+          revision: current.revision,
+          publicValues: { settings: { nested: { value: 'safe-public' } } },
+          secretValues: {},
+          clearSecretKeys: [],
+        });
+        const responseText = await response.text();
+        const configText = await Bun.file(configPath).text();
+
+        expect(response.status).toBe(200);
+        expect(setupCompleted).toBe(true);
+        expect(responseText).not.toContain(sentinel);
+        expect(responseText).not.toContain(setupMutation);
+        expect(configText).not.toContain(sentinel);
+        expect(configText).not.toContain(setupMutation);
+        expect(JSON.parse(configText).plugins).toEqual([
+          [packageName, { settings: { nested: { value: 'safe-public' } } }],
+        ]);
+        expect(repository.readPluginSecret(packageName)?.value).toEqual({ token: { value: sentinel } });
+      },
+      {
+        config: {
+          plugins: [[packageName, { endpoint: 'https://public.example' }]],
+          providers: {},
+        },
+        descriptors,
+        prepare: (repository) => {
+          repository.writePluginSecret(packageName, null, { token: sentinel });
+        },
+      },
+    );
+  });
+
   test('PUT /plugins/options rejects unknown fields and stale revisions without changing the winner', async () => {
     await withFixture(
       async ({ configPath, repository, routes }) => {
@@ -646,6 +732,41 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test.each([
+    ['direct', ` ${configurablePackage} `],
+    ['template', '{{env.WHITESPACE_PLUGIN_PACKAGE}}'],
+  ] as const)(
+    'DELETE /plugins/uninstall removes a %s whitespace-authored Plugin enablement',
+    async (source, authoredPackage) => {
+      const previous = process.env['WHITESPACE_PLUGIN_PACKAGE'];
+      process.env['WHITESPACE_PLUGIN_PACKAGE'] = ` ${configurablePackage} `;
+      try {
+        await withFixture(
+          async ({ configPath, repository, routes }) => {
+            const response = await uninstallPlugin(routes, { packageName: configurablePackage });
+
+            expect(response.status).toBe(200);
+            expect(JSON.parse(await Bun.file(configPath).text()).plugins).toEqual([]);
+            expect(repository.readPluginSecret(configurablePackage)).toBeNull();
+            expect(existsSync(npmPackageCacheDir(configurablePackage))).toBe(false);
+          },
+          {
+            config: {
+              plugins: [[authoredPackage, { endpoint: 'https://public.example' }]],
+              providers: {},
+            },
+            prepare: (repository) => {
+              repository.writePluginSecret(configurablePackage, null, { token: `${source}-secret` });
+            },
+          },
+        );
+      } finally {
+        if (previous === undefined) delete process.env['WHITESPACE_PLUGIN_PACKAGE'];
+        else process.env['WHITESPACE_PLUGIN_PACKAGE'] = previous;
+      }
+    },
+  );
+
   test('DELETE /plugins/uninstall resolves OAuth and AI SDK package templates and returns dependent Provider IDs', async () => {
     const packageName = '@scope/dependency-plugin';
     const previousDependency = process.env['PLUGIN_DEPENDENCY_PACKAGE'];
@@ -687,11 +808,66 @@ describe.serial('Dashboard plugin control plane', () => {
     }
   });
 
+  test('DELETE /plugins/uninstall normalizes direct and template Provider package dependencies', async () => {
+    const packageName = '@scope/whitespace-dependency-plugin';
+    const variable = 'WHITESPACE_PROVIDER_PACKAGE';
+    const previous = process.env[variable];
+    process.env[variable] = ` ${packageName} `;
+    try {
+      await withFixture(
+        async ({ configPath, repository, routes }) => {
+          writeCachedPackage(packageName);
+          const before = await Bun.file(configPath).text();
+          const response = await uninstallPlugin(routes, { packageName });
+
+          expect(response.status).toBe(409);
+          expect(await response.json()).toEqual({
+            ok: false,
+            error: {
+              code: 'dependent_providers',
+              providerIds: ['oauth-direct', 'oauth-template', 'sdk-direct', 'sdk-template'],
+            },
+          });
+          expect(await Bun.file(configPath).text()).toBe(before);
+          expect(repository.readPluginSecret(packageName)?.value).toEqual({ token: 'preserved-secret' });
+          expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
+        },
+        {
+          config: {
+            plugins: [packageName],
+            providers: {
+              'oauth-direct': {
+                kind: 'oauth',
+                plugin: ` ${packageName} `,
+                capability: 'login',
+              },
+              'oauth-template': {
+                kind: 'oauth',
+                plugin: `{{env.${variable}}}`,
+                capability: 'login',
+              },
+              'sdk-direct': { kind: 'ai-sdk', packageName: ` ${packageName} ` },
+              'sdk-template': { kind: 'ai-sdk', packageName: `{{env.${variable}}}` },
+            },
+          },
+          prepare: (repository) => {
+            repository.writePluginSecret(packageName, null, { token: 'preserved-secret' });
+          },
+          providerInstances: [],
+        },
+      );
+    } finally {
+      if (previous === undefined) delete process.env[variable];
+      else process.env[variable] = previous;
+    }
+  });
+
   test('DELETE /plugins/uninstall protects the implicit OpenAI-compatible AI SDK package', async () => {
     const packageName = '@ai-sdk/openai-compatible';
     await withFixture(
-      async ({ routes }) => {
+      async ({ configPath, repository, routes }) => {
         writeCachedPackage(packageName);
+        const before = await Bun.file(configPath).text();
         const response = await uninstallPlugin(routes, { packageName });
 
         expect(response.status).toBe(409);
@@ -699,6 +875,9 @@ describe.serial('Dashboard plugin control plane', () => {
           ok: false,
           error: { code: 'dependent_providers', providerIds: ['implicit-sdk'] },
         });
+        expect(await Bun.file(configPath).text()).toBe(before);
+        expect(repository.readPluginSecret(packageName)?.value).toEqual({ token: 'preserved-secret' });
+        expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
       },
       {
         config: {
@@ -706,15 +885,69 @@ describe.serial('Dashboard plugin control plane', () => {
           providers: {
             'implicit-sdk': {
               kind: 'ai-sdk',
-              package: '@ai-sdk/anthropic',
+              package: ' @ai-sdk/anthropic ',
               options: { baseURL: 'https://api.example.test/v1', name: 'compatible' },
               models: ['model'],
             },
           },
         },
+        prepare: (repository) => {
+          repository.writePluginSecret(packageName, null, { token: 'preserved-secret' });
+        },
         providerInstances: [],
       },
     );
+  });
+
+  test('DELETE /plugins/uninstall protects direct and template whitespace-authored legacy AI SDK packages', async () => {
+    const packageName = '@ai-sdk/anthropic';
+    const variable = 'WHITESPACE_LEGACY_PACKAGE';
+    const previous = process.env[variable];
+    process.env[variable] = ` ${packageName} `;
+    try {
+      await withFixture(
+        async ({ configPath, repository, routes }) => {
+          writeCachedPackage(packageName);
+          const before = await Bun.file(configPath).text();
+          const response = await uninstallPlugin(routes, { packageName });
+
+          expect(response.status).toBe(409);
+          expect(await response.json()).toEqual({
+            ok: false,
+            error: { code: 'dependent_providers', providerIds: ['legacy-direct', 'legacy-template'] },
+          });
+          expect(await Bun.file(configPath).text()).toBe(before);
+          expect(repository.readPluginSecret(packageName)?.value).toEqual({ token: 'preserved-secret' });
+          expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
+        },
+        {
+          config: {
+            plugins: [],
+            providers: {
+              'legacy-direct': {
+                kind: 'ai-sdk',
+                package: ` ${packageName} `,
+                options: { baseURL: 'https://api.example.test/v1', name: 'compatible' },
+                models: ['model'],
+              },
+              'legacy-template': {
+                kind: 'ai-sdk',
+                package: `{{env.${variable}}}`,
+                options: { baseURL: 'https://api.example.test/v1', name: 'compatible' },
+                models: ['model'],
+              },
+            },
+          },
+          prepare: (repository) => {
+            repository.writePluginSecret(packageName, null, { token: 'preserved-secret' });
+          },
+          providerInstances: [],
+        },
+      );
+    } finally {
+      if (previous === undefined) delete process.env[variable];
+      else process.env[variable] = previous;
+    }
   });
 
   test('DELETE /plugins/uninstall keeps the npm cache when a Provider dependency appears under the cache lock', async () => {
@@ -728,7 +961,7 @@ describe.serial('Dashboard plugin control plane', () => {
         ...current,
         providers: {
           ...(current['providers'] as Record<string, unknown>),
-          'late-sdk': { kind: 'ai-sdk', packageName },
+          'late-sdk': { kind: 'ai-sdk', packageName: ` ${packageName} ` },
         },
       }));
       cacheRemoved = (await canRemove?.()) ?? true;
