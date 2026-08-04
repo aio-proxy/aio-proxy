@@ -479,7 +479,10 @@
           "type_null": "Null",
           "type_object": "객체",
           "type_array": "배열",
-          "boolean_true": "True"
+          "boolean_true": "True",
+          "invalid_number": "유효한 숫자를 입력하세요",
+          "invalid_object": "유효한 JSON 객체를 입력하세요",
+          "invalid_array": "유효한 JSON 배열을 입력하세요"
         },
         "condition": {
           "editor_title": "요청 조건 편집기",

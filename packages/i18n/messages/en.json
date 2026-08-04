@@ -477,7 +477,10 @@
           "type_null": "Null",
           "type_object": "Object",
           "type_array": "Array",
-          "boolean_true": "True"
+          "boolean_true": "True",
+          "invalid_number": "Enter a valid number",
+          "invalid_object": "Enter a valid JSON object",
+          "invalid_array": "Enter a valid JSON array"
         },
         "condition": {
           "editor_title": "Request condition editor",

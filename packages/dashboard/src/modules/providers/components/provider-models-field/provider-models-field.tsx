@@ -1,9 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import {
-  type DashboardProviderDraftCatalogResponse,
-  DashboardProviderDraftSchema,
-  type ModelMetadata,
-} from '@aio-proxy/types';
+import type { ModelMetadata } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
@@ -13,8 +9,8 @@ import { useState } from 'react';
 import { TagsInput } from '@/components/tags-input';
 
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../constants';
-import { normalizeProviderFormValue, type ProviderForm } from '../../hooks/use-provider-form';
-import { fetchProviderDraftCatalog } from '../../services/provider-draft';
+import { useProviderCatalogMutation } from '../../hooks/use-provider-catalog-mutation';
+import type { ProviderForm } from '../../hooks/use-provider-form';
 import { ProviderModelMetadataDrawer } from './provider-model-metadata-drawer';
 
 interface ProviderModelsFieldProps {
@@ -22,37 +18,10 @@ interface ProviderModelsFieldProps {
   readonly persistedProviderId?: string;
 }
 
-const catalogFailure = (): DashboardProviderDraftCatalogResponse => ({
-  ok: false,
-  error: { code: 'catalog_unavailable', recoverable: true },
-});
-
-const requestProviderCatalog = async (
-  form: ProviderForm,
-  persistedProviderId: string | undefined,
-): Promise<DashboardProviderDraftCatalogResponse> => {
-  const draft = DashboardProviderDraftSchema.safeParse(normalizeProviderFormValue(form.state.values));
-  if (!draft.success) return { ok: false, error: { code: 'invalid_draft', recoverable: true } };
-  try {
-    return await fetchProviderDraftCatalog({
-      draft: draft.data,
-      ...(persistedProviderId === undefined ? {} : { persistedProviderId }),
-    });
-  } catch {
-    return catalogFailure();
-  }
-};
-
 export const ProviderModelsField: React.FC<ProviderModelsFieldProps> = ({ form, persistedProviderId }) => {
-  const [catalogResult, setCatalogResult] = useState<DashboardProviderDraftCatalogResponse | null>(null);
-  const [catalogPending, setCatalogPending] = useState(false);
   const [metadataModel, setMetadataModel] = useState<string | null>(null);
-
-  const loadCatalog = async () => {
-    setCatalogPending(true);
-    setCatalogResult(await requestProviderCatalog(form, persistedProviderId));
-    setCatalogPending(false);
-  };
+  const catalogMutation = useProviderCatalogMutation(form, persistedProviderId);
+  const catalogResult = catalogMutation.data;
 
   return (
     <form.Field name="models">
@@ -71,14 +40,23 @@ export const ProviderModelsField: React.FC<ProviderModelsFieldProps> = ({ form, 
                     <FieldLabel>{m['dashboard.providers.form.label_models']()}</FieldLabel>
                     <FieldDescription>{m['dashboard.providers.form.catalog_description']()}</FieldDescription>
                   </div>
-                  <Button type="button" variant="outline" disabled={catalogPending} onClick={() => void loadCatalog()}>
-                    {catalogPending
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={catalogMutation.isPending}
+                    onClick={() => catalogMutation.mutate()}
+                  >
+                    {catalogMutation.isPending
                       ? m['dashboard.providers.form.catalog_loading']()
                       : m['dashboard.providers.form.catalog_load']()}
                   </Button>
                 </div>
 
-                {catalogResult?.ok ? (
+                {catalogMutation.isError ? (
+                  <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+                    {m['dashboard.providers.form.catalog_failed']({ code: 'catalog_unavailable' })}
+                  </p>
+                ) : catalogResult?.ok ? (
                   catalogResult.models.length === 0 ? (
                     <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
                       {m['dashboard.providers.form.catalog_empty']()}
@@ -99,7 +77,7 @@ export const ProviderModelsField: React.FC<ProviderModelsFieldProps> = ({ form, 
                       </div>
                     </Field>
                   )
-                ) : catalogResult === null ? null : (
+                ) : catalogResult === undefined ? null : (
                   <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
                     {m['dashboard.providers.form.catalog_failed']({ code: catalogResult.error.code })}
                   </p>

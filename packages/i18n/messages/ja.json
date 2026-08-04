@@ -479,7 +479,10 @@
           "type_null": "Null",
           "type_object": "オブジェクト",
           "type_array": "配列",
-          "boolean_true": "True"
+          "boolean_true": "True",
+          "invalid_number": "有効な数値を入力してください",
+          "invalid_object": "有効な JSON オブジェクトを入力してください",
+          "invalid_array": "有効な JSON 配列を入力してください"
         },
         "condition": {
           "editor_title": "リクエスト条件エディター",

@@ -1,21 +1,22 @@
 import { m } from '@aio-proxy/i18n';
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
-import { Checkbox } from '@aio-proxy/ui/components/checkbox';
-import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
-import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { useForm } from '@tanstack/react-form';
 import { isEqual } from 'es-toolkit/predicate';
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+
+import {
+  type InvalidStaticValueType,
+  RequestTransformStaticValueInput,
+  type StaticValueType,
+} from './request-transform-static-value-input';
 
 export interface RequestTransformStaticValueEditorProps {
   readonly value: JsonValue;
   readonly onChange: (value: JsonValue) => void;
   readonly onValidityChange: (valid: boolean) => void;
 }
-
-type StaticValueType = 'text' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 
 const valueType = (value: JsonValue): StaticValueType =>
   value === null
@@ -68,19 +69,41 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
   onChange,
   onValidityChange,
 }) => {
-  const [typeId, valueId] = [useId(), useId()];
+  const [typeId, valueId, errorId] = [useId(), useId(), useId()];
   const expectedValue = useRef(value);
+  const [draftError, setDraftError] = useState<InvalidStaticValueType | null>(null);
   const form = useForm({ defaultValues: { type: valueType(value), draft: valueDraft(value) } });
   useEffect(() => {
     if (isEqual(value, expectedValue.current)) return;
     expectedValue.current = value;
     form.reset({ type: valueType(value), draft: valueDraft(value) });
+    setDraftError(null);
     onValidityChange(true);
   }, [form, onValidityChange, value]);
   const emit = (nextValue: JsonValue) => {
     expectedValue.current = nextValue;
     onValidityChange(true);
     onChange(nextValue);
+  };
+  const commitDraft = (type: Exclude<StaticValueType, 'null'>, draft: string) => {
+    if (type === 'text') {
+      setDraftError(null);
+      emit(draft);
+      return;
+    }
+    if (type === 'boolean') {
+      setDraftError(null);
+      emit(draft === 'true');
+      return;
+    }
+    const parsed = type === 'number' ? Number(draft) : parseCompositeDraft(type, draft);
+    const valid = type === 'number' ? draft.trim() !== '' && Number.isFinite(parsed) : parsed !== undefined;
+    setDraftError(valid ? null : type);
+    if (!valid) {
+      onValidityChange(false);
+      return;
+    }
+    emit(parsed as JsonValue);
   };
   return (
     <div className="space-y-4">
@@ -97,6 +120,7 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
                 const nextValue = defaultValue(typed);
                 field.handleChange(typed);
                 form.setFieldValue('draft', valueDraft(nextValue));
+                setDraftError(null);
                 emit(nextValue);
               }}
             >
@@ -120,60 +144,18 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
           return (
             <form.Field name="draft">
               {(field) => {
-                if (type === 'boolean') {
-                  return (
-                    <Label className="w-fit">
-                      <Checkbox
-                        checked={field.state.value === 'true'}
-                        onCheckedChange={(checked) => {
-                          const next = Boolean(checked);
-                          field.handleChange(String(next));
-                          emit(next);
-                        }}
-                      />
-                      {m['dashboard.providers.transforms.value.boolean_true']()}
-                    </Label>
-                  );
-                }
-                if (type === 'object' || type === 'array') {
-                  return (
-                    <div className="space-y-2">
-                      <Label htmlFor={valueId}>{m['dashboard.providers.transforms.value.static_label']()}</Label>
-                      <Textarea
-                        id={valueId}
-                        className="min-h-28 font-mono"
-                        value={field.state.value}
-                        onChange={(event) => {
-                          const draft = event.target.value;
-                          field.handleChange(draft);
-                          const parsed = parseCompositeDraft(type, draft);
-                          onValidityChange(parsed !== undefined);
-                          if (parsed !== undefined) emit(parsed);
-                        }}
-                      />
-                    </div>
-                  );
-                }
                 return (
-                  <div className="space-y-2">
-                    <Label htmlFor={valueId}>{m['dashboard.providers.transforms.value.static_label']()}</Label>
-                    <Input
-                      id={valueId}
-                      type={type === 'number' ? 'number' : 'text'}
-                      value={field.state.value}
-                      onChange={(event) => {
-                        const draft = event.target.value;
-                        field.handleChange(draft);
-                        if (type === 'text') emit(draft);
-                        else {
-                          const number = Number(draft);
-                          const valid = draft.trim() !== '' && Number.isFinite(number);
-                          onValidityChange(valid);
-                          if (valid) emit(number);
-                        }
-                      }}
-                    />
-                  </div>
+                  <RequestTransformStaticValueInput
+                    type={type}
+                    draft={field.state.value}
+                    valueId={valueId}
+                    errorId={errorId}
+                    error={draftError}
+                    onChange={(draft) => {
+                      field.handleChange(draft);
+                      commitDraft(type, draft);
+                    }}
+                  />
                 );
               }}
             </form.Field>

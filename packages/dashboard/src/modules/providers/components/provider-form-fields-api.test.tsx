@@ -1,6 +1,8 @@
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 import { ProviderFormMode } from '../constants';
 import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
@@ -16,13 +18,20 @@ rs.mock('./provider-request-transforms/provider-request-transforms-editor', () =
   ProviderRequestTransformsEditor: () => null,
 }));
 
+const renderWithQueryClient = (element: ReactElement) => {
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const wrap = (child: ReactElement) => <QueryClientProvider client={queryClient}>{child}</QueryClientProvider>;
+  const view = render(wrap(element));
+  return { ...view, rerender: (nextElement: ReactElement) => view.rerender(wrap(nextElement)) };
+};
+
 describe('API provider form fields', () => {
   beforeEach(() => mocks.fetchCatalog.mockReset());
 
   test('shows a protocol placeholder and icons in the options and selected value', async () => {
     const { result } = renderHook(() => useProviderForm({ mode: ProviderFormMode.Create, kind: ProviderKind.Api }));
 
-    render(
+    renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Create}
@@ -66,7 +75,7 @@ describe('API provider form fields', () => {
       }),
     );
 
-    render(
+    renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Edit}
@@ -101,7 +110,7 @@ describe('API provider form fields', () => {
       }),
     );
 
-    render(
+    renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Edit}
@@ -167,7 +176,7 @@ describe('API provider form fields', () => {
       }),
     );
 
-    render(
+    renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Edit}
@@ -215,7 +224,7 @@ describe('API provider form fields', () => {
       }),
     );
 
-    render(
+    renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Create}
@@ -250,7 +259,7 @@ describe('API provider form fields', () => {
       }),
     );
 
-    const view = render(
+    const view = renderWithQueryClient(
       <ProviderFormFieldsApi
         form={result.current}
         mode={ProviderFormMode.Edit}

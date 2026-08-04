@@ -479,7 +479,10 @@
           "type_null": "空值",
           "type_object": "物件",
           "type_array": "陣列",
-          "boolean_true": "真"
+          "boolean_true": "真",
+          "invalid_number": "請輸入有效數字",
+          "invalid_object": "請輸入有效的 JSON 物件",
+          "invalid_array": "請輸入有效的 JSON 陣列"
         },
         "condition": {
           "editor_title": "請求條件編輯器",

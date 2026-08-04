@@ -125,6 +125,61 @@ test('directly adds one Set action and stores an explicitly selected null', asyn
   expect(within(stageCard(0)).queryByRole('textbox', { name: /Static value|静态值/u })).toBeNull();
 });
 
+test('shows and clears an accessible error for an invalid number literal', async () => {
+  const onChange = rs.fn();
+  const onValidityChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
+      onChange={onChange}
+      onValidityChange={onValidityChange}
+    />,
+  );
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Number|数字)$/u);
+  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Static value|静态值/u });
+  fireEvent.change(numberInput, { target: { value: '' } });
+
+  const error = within(stageCard(0)).getByRole('alert');
+  expect(error).toHaveTextContent(/valid number|有效数字/u);
+  expect(numberInput).toHaveAttribute('aria-invalid', 'true');
+  expect(numberInput).toHaveAttribute('aria-describedby', error.id);
+  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+
+  fireEvent.change(numberInput, { target: { value: '12.5' } });
+  await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': 12.5 } }));
+  expect(numberInput).toHaveAttribute('aria-invalid', 'false');
+  expect(numberInput).not.toHaveAttribute('aria-describedby');
+  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
+});
+
+test('shows the JSON array-specific error and clears it after recovery', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: [] } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const arrayInput = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
+  fireEvent.change(arrayInput, { target: { value: '{}' } });
+
+  const error = within(stageCard(0)).getByRole('alert');
+  expect(error).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
+  expect(arrayInput).toHaveAttribute('aria-invalid', 'true');
+  expect(arrayInput).toHaveAttribute('aria-describedby', error.id);
+
+  fireEvent.change(arrayInput, { target: { value: '[1]' } });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': { $literal: [1] } } }),
+  );
+  expect(arrayInput).toHaveAttribute('aria-invalid', 'false');
+  expect(arrayInput).not.toHaveAttribute('aria-describedby');
+  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
+});
+
 test('edits ordered Set and Remove actions losslessly across Visual and JSON modes', async () => {
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
@@ -303,6 +358,10 @@ test('keeps malformed static JSON visible and blocks switching modes until it is
   fireEvent.change(staticEditor, { target: { value: '{' } });
 
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
+  const error = within(stageCard(0)).getByRole('alert');
+  expect(error).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
+  expect(staticEditor).toHaveAttribute('aria-invalid', 'true');
+  expect(staticEditor).toHaveAttribute('aria-describedby', error.id);
   const jsonTab = screen.getByRole('tab', { name: /JSON/u });
   expect(jsonTab).toHaveAttribute('aria-disabled', 'true');
   fireEvent.click(jsonTab);
@@ -323,6 +382,9 @@ test('keeps malformed static JSON visible and blocks switching modes until it is
     }),
   );
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  expect(retainedDraft).toHaveAttribute('aria-invalid', 'false');
+  expect(retainedDraft).not.toHaveAttribute('aria-describedby');
+  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
   expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
 });
 
