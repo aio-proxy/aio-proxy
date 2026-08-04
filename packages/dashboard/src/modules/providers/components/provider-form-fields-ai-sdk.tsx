@@ -6,13 +6,12 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 
-import { TagsInput } from '@/components/tags-input';
-
-import { type ProviderFormMode, type ProviderFormStep, PROVIDER_MODELS_PLACEHOLDER } from '../constants';
+import { type ProviderFormMode, type ProviderFormStep } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
+import { ProviderModelsField } from './provider-models-field';
 import { ProviderOptionsEditor } from './provider-options-editor';
 import { ProviderProxyField } from './provider-proxy-field';
 import { ProviderRequestTransformsFormField } from './provider-request-transforms';
@@ -46,6 +45,7 @@ interface ProviderFormFieldsAiSdkProps {
 export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({
   form,
   mode,
+  providerId,
   activeStep = 0,
   aliasOpen,
   onAliasOpenChange,
@@ -138,23 +138,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
         <h2 id="provider-ai-sdk-models-heading" className="text-base font-semibold">
           {m['dashboard.providers.editor.step_models']()}
         </h2>
-        <div data-testid="provider-form-field-models">
-          <form.Field name="models">
-            {(field) => (
-              <Field>
-                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_models']()}</Label>
-                <TagsInput
-                  id={field.name}
-                  value={field.state.value ?? []}
-                  onValueChange={(next) => field.handleChange(next)}
-                  placeholder={PROVIDER_MODELS_PLACEHOLDER}
-                  removeLabel={(model) => m['dashboard.providers.form.remove_model']({ model })}
-                />
-                <p className="text-sm text-muted-foreground">{m['dashboard.providers.form.models_helper']()}</p>
-              </Field>
-            )}
-          </form.Field>
-        </div>
+        <ProviderModelsField form={form} {...(providerId === undefined ? {} : { persistedProviderId: providerId })} />
         <ProviderAliasFields form={form} mode={mode} open={aliasOpen} onOpenChange={onAliasOpenChange} />
       </section>
     );

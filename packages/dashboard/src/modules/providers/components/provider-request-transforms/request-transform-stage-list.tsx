@@ -69,15 +69,7 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
             emit([...stages, { kind: 'set', target: 'body', path: 'value', value: { kind: 'static', value: null } }])
           }
         >
-          {m['dashboard.providers.transforms.action.add_set']()}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={structureBlocked}
-          onClick={() => emit([...stages, { kind: 'remove', target: 'body', path: 'value' }])}
-        >
-          {m['dashboard.providers.transforms.action.add_remove']()}
+          {m['dashboard.providers.transforms.action.add']()}
         </Button>
       </div>
     </div>

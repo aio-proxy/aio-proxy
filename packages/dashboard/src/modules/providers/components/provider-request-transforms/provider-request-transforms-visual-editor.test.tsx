@@ -91,6 +91,40 @@ const latestValue = (onChange: ReturnType<typeof rs.fn>) =>
 const ruleCard = (index: number) => screen.getByTestId(`request-transform-rule-${index}`);
 const stageCard = (index: number) => within(ruleCard(0)).getByTestId(`request-transform-stage-${index}`);
 
+test('labels unnamed rules by index and renders Add rule after the rule list', () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $unset: 'request.body.value' }] }]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const rule = ruleCard(0);
+  expect(within(rule).getByText(/^Rule 1$|^规则 1$/u)).toBeInTheDocument();
+  const addRule = screen.getByRole('button', { name: /Add rule|添加规则/u });
+  expect(rule.compareDocumentPosition(addRule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('directly adds one Set action and stores an explicitly selected null', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Add action|添加操作/u }));
+  await waitFor(() => expect(latestValue(onChange)[0]?.update).toHaveLength(2));
+  expect(latestValue(onChange)[0]?.update[1]).toEqual({ $set: { 'request.body.value': null } });
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Null|空值)$/u);
+  await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': null } }));
+  expect(within(stageCard(0)).queryByRole('textbox', { name: /Static value|静态值/u })).toBeNull();
+});
+
 test('edits ordered Set and Remove actions losslessly across Visual and JSON modes', async () => {
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
@@ -105,7 +139,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   expect(within(stages[0]!).getByTestId('request-transform-target')).toHaveTextContent(/Body|请求体/u);
   expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
   expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Static|静态/u);
-  expect(within(stages[0]!).getByRole('textbox', { name: /Static value|静态值/u })).toHaveValue('"$seed"');
+  expect(within(stages[0]!).getByRole('textbox', { name: /Static value|静态值/u })).toHaveValue('$seed');
   expect(within(stages[1]!).getByTestId('request-transform-target')).toHaveTextContent(/Header|请求头/u);
   expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
   expect(within(stages[1]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Computed|计算/u);
@@ -132,8 +166,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   fireEvent.click(within(ruleCard(1)).getByRole('button', { name: /Remove rule 2|删除规则 2/u }));
   await waitFor(() => expect(screen.getAllByTestId(/request-transform-rule-/u)).toHaveLength(1));
 
-  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Add Set action|添加 Set 操作/u }));
-  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Add Remove action|添加 Remove 操作/u }));
+  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Add action|添加操作/u }));
+  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Add action|添加操作/u }));
   await waitFor(() => expect(latestValue(onChange)[0]?.update).toHaveLength(6));
   fireEvent.click(within(stageCard(5)).getByRole('button', { name: /Remove action 6|删除操作 6/u }));
   fireEvent.click(within(stageCard(4)).getByRole('button', { name: /Remove action 5|删除操作 5/u }));
@@ -201,8 +235,9 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Static|静态)$/u);
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Text|文本)$/u);
   const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  fireEvent.change(staticEditor, { target: { value: '"$literal"' } });
+  fireEvent.change(staticEditor, { target: { value: '$literal' } });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
       $set: { 'request.body.value': { $literal: '$literal' } },
@@ -255,10 +290,13 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
 });
 
 test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
+  const objectValue = [
+    { update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] },
+  ] satisfies readonly ProviderRequestTransformRule[];
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
   const { rerender } = render(
-    <RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
+    <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
 
   const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
@@ -273,7 +311,7 @@ test('keeps malformed static JSON visible and blocks switching modes until it is
   expect(onChange).not.toHaveBeenCalled();
 
   rerender(
-    <RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={onValidityChange} />,
+    <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
   const retainedDraft = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
   expect(retainedDraft).toHaveValue('{');

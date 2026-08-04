@@ -29,18 +29,6 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          disabled={!visualValid}
-          onClick={() => {
-            pendingFocusRule.current = value.length;
-            onChange([...value, { update: [{ $unset: 'request.body.value' }] }]);
-          }}
-        >
-          {m['dashboard.providers.transforms.rule.add']()}
-        </Button>
-      </div>
       {value.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -78,6 +66,18 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
           ))}
         </div>
       )}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          disabled={!visualValid}
+          onClick={() => {
+            pendingFocusRule.current = value.length;
+            onChange([...value, { update: [{ $set: { 'request.body.value': null } }] }]);
+          }}
+        >
+          {m['dashboard.providers.transforms.rule.add']()}
+        </Button>
+      </div>
     </div>
   );
 };

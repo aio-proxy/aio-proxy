@@ -1,6 +1,5 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
@@ -88,11 +87,9 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   };
 
   return (
-    <Card size="sm" data-testid={`request-transform-stage-${index}`}>
-      <CardHeader>
-        <CardTitle>{m['dashboard.providers.transforms.action.label']({ index: actionIndex })}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-4 rounded-lg border p-3" data-testid={`request-transform-stage-${index}`}>
+      <p className="text-sm font-medium">{m['dashboard.providers.transforms.action.label']({ index: actionIndex })}</p>
+      <div className="space-y-4">
         <RequestTransformStagePrimaryControls
           form={form}
           actionId={actionId}
@@ -114,8 +111,8 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
           onCommitContent={commitContent}
           onContentValidityChange={setContentValid}
         />
-      </CardContent>
-      <CardFooter className="flex flex-wrap gap-2">
+      </div>
+      <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           variant="destructive"
@@ -137,7 +134,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
         >
           {m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 };
