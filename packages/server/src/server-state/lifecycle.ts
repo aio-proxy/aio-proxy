@@ -239,10 +239,11 @@ export function startLoginSessions(
         return commit();
       }),
     validateProviderCommit: (capability, current) => {
-      const registry = (manager.current() as Snapshot).plugins.registry;
+      const plugins = (manager.current() as Snapshot).plugins;
+      const builtIn = plugins.plugins.get(capability.plugin)?.builtIn === true;
       if (
-        findPluginEntry(current, capability.plugin) === undefined ||
-        registry.resolveOAuth(capability.plugin, capability.capability) === undefined
+        (!builtIn && findPluginEntry(current, capability.plugin) === undefined) ||
+        plugins.registry.resolveOAuth(capability.plugin, capability.capability) === undefined
       ) {
         throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
       }
