@@ -61,3 +61,27 @@ The original amended brief was not modified.
 - Base Task 5 commit: `163834b58f48ee99a16a00ffedc6affdb5f1b9d7`.
 - The fix-round commit SHA is recorded in the handoff because embedding it in this report would change that SHA.
 - Concern: repository-wide preflight remains blocked only by the pre-existing Trace type errors above; the focused Plugin checks and Dashboard build pass.
+
+## Fix round 2
+
+### Structural finding addressed
+
+`plugin-install-drawer.tsx` now declares only `PluginInstallDrawer`. Its three presentation helpers moved to matching single-component files, each with a named `<ComponentName>Props` interface:
+
+- `plugin-install-input-field.tsx` — `PluginInstallInputField` / `PluginInstallInputFieldProps`
+- `plugin-install-submit-button.tsx` — `PluginInstallSubmitButton` / `PluginInstallSubmitButtonProps`
+- `plugin-trust-field.tsx` — `PluginTrustField` / `PluginTrustFieldProps`
+
+The install workflow, exact-request trust challenge, close/reset lifecycle, and all four round-1 fixes are unchanged. The amended brief was not modified.
+
+### Verification
+
+- Structural red proof before the split: the one-component gate reported `plugin-install-drawer.tsx React component declarations: 4` and exited 1.
+- Structural green proof after the split: the gate reported exactly one React component in each of the drawer/input/submit/trust TSX files and found all three correctly named props interfaces.
+- `bun run test:unit -- src/modules/plugins/templates/plugins-page/plugins-page.test.tsx src/modules/plugins/services/plugins-service/plugins-service.test.ts` — 12 passed, 0 failed before and after the structural refactor.
+- Scoped formatting, lint, type-aware checks, Dashboard build, and `git diff --check` are included in the final fix-round verification.
+
+### Commit and concerns
+
+- The fix-round commit SHA is recorded in the handoff because embedding it in this report would change that SHA.
+- Concern remains unchanged: repository-wide preflight is blocked by the unrelated pre-existing Trace errors recorded above.

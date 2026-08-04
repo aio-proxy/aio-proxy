@@ -1,7 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { PluginPackageNameSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import {
   Drawer,
   DrawerContent,
@@ -10,8 +9,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@aio-proxy/ui/components/drawer';
-import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
 import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
 import { useForm } from '@tanstack/react-form';
 import { forwardRef, useImperativeHandle, useState } from 'react';
@@ -19,6 +16,9 @@ import { z } from 'zod';
 
 import { usePluginInstallMutation } from '../hooks/use-plugin-mutations';
 import { PluginRequestError } from '../services/plugins-service';
+import { PluginInstallInputField } from './plugin-install-input-field';
+import { PluginInstallSubmitButton } from './plugin-install-submit-button';
+import { PluginTrustField } from './plugin-trust-field';
 
 const PluginInstallRequestFormSchema = z.object({
   packageName: PluginPackageNameSchema,
@@ -45,64 +45,6 @@ const installErrorMessage = (error: Error | null): string | undefined => {
   }
   return m['dashboard.plugins.install_failed']();
 };
-
-interface PluginInstallInputFieldProps {
-  readonly id: string;
-  readonly label: string;
-  readonly onBlur: () => void;
-  readonly onChange: (value: string) => void;
-  readonly placeholder?: string;
-  readonly type?: 'text' | 'url';
-  readonly value: string;
-}
-
-const PluginInstallInputField: React.FC<PluginInstallInputFieldProps> = ({
-  id,
-  label,
-  onBlur,
-  onChange,
-  placeholder,
-  type = 'text',
-  value,
-}) => (
-  <Field>
-    <FieldLabel htmlFor={id}>{label}</FieldLabel>
-    <Input
-      id={id}
-      type={type}
-      autoComplete="off"
-      value={value}
-      placeholder={placeholder}
-      onBlur={onBlur}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  </Field>
-);
-
-const PluginTrustField: React.FC<{
-  readonly checked: boolean;
-  readonly onChange: (checked: boolean) => void;
-}> = ({ checked, onChange }) => (
-  <Field>
-    <FieldLabel className="items-start">
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
-      {m['dashboard.plugins.trust_local_code']()}
-    </FieldLabel>
-    <FieldDescription>{m['dashboard.plugins.trust_local_code_description']()}</FieldDescription>
-  </Field>
-);
-
-const PluginInstallSubmitButton: React.FC<{
-  readonly confirmationRequired: boolean;
-  readonly isPending: boolean;
-  readonly isSubmitting: boolean;
-  readonly isValid: boolean;
-  readonly trustConfirmed: boolean;
-}> = ({ confirmationRequired, isPending, isSubmitting, isValid, trustConfirmed }) => (
-  <Button type="submit" disabled={!isValid || (confirmationRequired && !trustConfirmed) || isSubmitting || isPending}>
-    {m['dashboard.plugins.install_action']()}
-  </Button>
-);
 
 const usePluginInstallWorkflow = () => {
   const [open, setOpen] = useState(false);
