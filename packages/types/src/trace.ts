@@ -113,9 +113,35 @@ export const DashboardTracesResponseSchema = z.object({
   pageCount: z.number().int().min(0),
 });
 
+const DashboardTraceRequestDiagnosticsSchema = z
+  .object({
+    protocol: z.string().min(1),
+    method: z.string().min(1),
+    contentType: z.string().min(1).max(512).optional(),
+    contentLengthBytes: z.number().int().min(0).optional(),
+    userAgent: z.string().min(1).max(512).optional(),
+  })
+  .strict();
+
+const DashboardTraceResponseDiagnosticsSchema = z
+  .object({
+    statusCode: z.number().int().min(100).max(599),
+    contentType: z.string().min(1).max(512).optional(),
+    contentLengthBytes: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+export const DashboardTraceDiagnosticsSchema = z
+  .object({
+    request: DashboardTraceRequestDiagnosticsSchema.optional(),
+    response: DashboardTraceResponseDiagnosticsSchema.optional(),
+  })
+  .strict();
+
 export const DashboardTraceDetailSchema = z.object({
   trace: DashboardTraceSummarySchema,
   spans: z.array(DashboardTraceSpanSchema),
+  diagnostics: DashboardTraceDiagnosticsSchema.optional(),
 });
 
 export type OtelSpanStatusCode = z.output<typeof OtelSpanStatusCodeSchema>;
@@ -128,5 +154,7 @@ export type DashboardTraceSpanInput = z.input<typeof DashboardTraceSpanSchema>;
 export type DashboardTraceSpan = z.output<typeof DashboardTraceSpanSchema>;
 export type DashboardTracesResponseInput = z.input<typeof DashboardTracesResponseSchema>;
 export type DashboardTracesResponse = z.output<typeof DashboardTracesResponseSchema>;
+export type DashboardTraceDiagnosticsInput = z.input<typeof DashboardTraceDiagnosticsSchema>;
+export type DashboardTraceDiagnostics = z.output<typeof DashboardTraceDiagnosticsSchema>;
 export type DashboardTraceDetailInput = z.input<typeof DashboardTraceDetailSchema>;
 export type DashboardTraceDetail = z.output<typeof DashboardTraceDetailSchema>;

@@ -90,6 +90,7 @@ export async function attemptRawCount<TRequest, TContext>({
         finalProviderId: candidate.provider.id,
         finalModelId: candidate.modelId,
         finalHttpStatus: response.status,
+        clientResponse: response,
       });
       return { kind: 'return', response };
     }

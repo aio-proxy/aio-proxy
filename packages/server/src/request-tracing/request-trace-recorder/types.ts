@@ -14,6 +14,8 @@ type RequestTraceFinishBase = {
   readonly finalModelId?: string;
   readonly finalHttpStatus?: number;
   readonly ttftMs?: number;
+  /** Metadata source for response diagnostics: the final Response returned to the client. */
+  readonly clientResponse?: Response;
 };
 
 export type RequestTraceFinishInput =

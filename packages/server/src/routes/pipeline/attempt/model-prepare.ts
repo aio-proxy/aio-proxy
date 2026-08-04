@@ -30,7 +30,7 @@ export function emitReject<TRequest, TContext>(
   if (hasNext) {
     return { kind: 'fallback', lastFailure: response };
   }
-  ctx.session.finish(finalFailure(base, response.status, errorCode));
+  ctx.session.finish({ ...finalFailure(base, response.status, errorCode), clientResponse: response });
   return { kind: 'return', response };
 }
 
@@ -104,7 +104,7 @@ export function resolveInvocation<TRequest, TContext>(
         const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
         const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
         ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(mapped.status, errorCode));
-        session.finish(finalFailure(base, mapped.status, errorCode));
+        session.finish({ ...finalFailure(base, mapped.status, errorCode), clientResponse: mapped });
         logRequestRejected({
           source,
           requestId: session.requestId,

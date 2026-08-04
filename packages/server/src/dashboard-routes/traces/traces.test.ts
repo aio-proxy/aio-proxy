@@ -36,6 +36,14 @@ async function seededApp() {
     'aio_proxy.session.resolved_by': 'header-session',
     'aio_proxy.session.source': 'header-session',
     'gen_ai.request.model': 'gpt-5',
+    'aio_proxy.diagnostics.request.protocol': 'openai-response',
+    'aio_proxy.diagnostics.request.method': 'POST',
+    'aio_proxy.diagnostics.request.content_type': 'application/json',
+    'aio_proxy.diagnostics.request.content_length_bytes': 35,
+    'aio_proxy.diagnostics.request.user_agent': 'diagnostics-test/1.0',
+    'aio_proxy.diagnostics.response.status_code': 201,
+    'aio_proxy.diagnostics.response.content_type': 'application/json',
+    'aio_proxy.diagnostics.response.content_length_bytes': 24,
   };
   store.startRoot({
     traceId: TRACE_ID,
@@ -155,6 +163,20 @@ describe('Dashboard trace routes', () => {
     expect(detail.status).toBe(200);
     expect(detail.headers.get('cache-control')).toBe('no-store');
     expect(detailBody.spans.map((span) => span.spanId)).toEqual([ROOT_SPAN_ID, ATTEMPT_SPAN_ID, INFERENCE_SPAN_ID]);
+    expect(detailBody.diagnostics).toEqual({
+      request: {
+        protocol: 'openai-response',
+        method: 'POST',
+        contentType: 'application/json',
+        contentLengthBytes: 35,
+        userAgent: 'diagnostics-test/1.0',
+      },
+      response: {
+        statusCode: 201,
+        contentType: 'application/json',
+        contentLengthBytes: 24,
+      },
+    });
   });
 
   test('returns 404 for a valid missing trace id', async () => {

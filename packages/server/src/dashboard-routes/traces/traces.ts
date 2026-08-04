@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
 
+import { traceDiagnosticsFromAttributes } from '../../request-tracing/semantic';
 import type { ServerState } from '../../server-state';
 
 const TracesQuerySchema = z.object({
@@ -75,5 +76,8 @@ export const createDashboardTraceRoutes = (state: ServerState) =>
     .get('/:traceId', traceIdParamsValidator, (context) => {
       context.header('cache-control', 'no-store');
       const detail = state.traceStore.find(context.req.valid('param').traceId);
-      return detail === undefined ? context.json({ error: 'trace not found' }, 404) : context.json(detail);
+      if (detail === undefined) return context.json({ error: 'trace not found' }, 404);
+      const root = detail.spans.find((span) => span.spanId === detail.trace.rootSpanId);
+      const diagnostics = root === undefined ? undefined : traceDiagnosticsFromAttributes(root.attributes);
+      return context.json({ ...detail, ...(diagnostics === undefined ? {} : { diagnostics }) });
     });
