@@ -7,6 +7,7 @@ const TokenCountSchema = z.number().finite().int().min(0).max(Number.MAX_SAFE_IN
 
 export const RequestOutcomeSchema = z.enum(['success', 'failure', 'cancelled']);
 export const UsageOverviewRangeSchema = z.enum(['24h', '7d', '14d', '30d']);
+export const DashboardOverviewRangeSchema = z.enum(['24h', '7d', '30d', '90d']);
 export const UsageOverviewMetricSchema = z.enum(['cost', 'tokens', 'requests']);
 export const UsageOverviewGroupBySchema = z.enum(['model', 'provider']);
 
@@ -40,5 +41,6 @@ export type UsageRow = z.output<typeof UsageRowSchema>;
 export type PriceSource = z.output<typeof PriceSourceSchema>;
 export type RequestOutcome = z.output<typeof RequestOutcomeSchema>;
 export type UsageOverviewRange = z.output<typeof UsageOverviewRangeSchema>;
+export type DashboardOverviewRange = z.output<typeof DashboardOverviewRangeSchema>;
 export type UsageOverviewMetric = z.output<typeof UsageOverviewMetricSchema>;
 export type UsageOverviewGroupBy = z.output<typeof UsageOverviewGroupBySchema>;

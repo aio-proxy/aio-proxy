@@ -5,6 +5,7 @@ import { IdSchema } from './common';
 import { type DiagnosticCode, ProviderStateSchema } from './plugin';
 import { ProviderKind } from './provider';
 import {
+  DashboardOverviewRangeSchema,
   UsageOverviewGroupBySchema,
   UsageOverviewMetricSchema,
   UsageOverviewRangeSchema,
@@ -37,6 +38,8 @@ export const DashboardProvidersResponseSchema = z.object({
 });
 
 export const NonNegativeIntegerStringSchema = z.string().regex(/^(?:0|[1-9]\d*)$/u);
+// oxlint-disable-next-line typescript/no-deprecated -- Keep the finite boundary explicit in the public schema.
+const NonNegativeFiniteNumberSchema = z.number().finite().min(0);
 
 export const DashboardUsageSummarySchema = z.object({
   estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
@@ -75,6 +78,43 @@ export const DashboardUsageOverviewResponseSchema = z.object({
   summary: DashboardUsageSummarySchema,
   series: z.array(DashboardUsageSeriesSchema),
   buckets: z.array(DashboardUsageBucketSchema),
+});
+
+const DashboardOverviewTrendSchema = z.object({
+  buckets: z.array(DashboardUsageBucketSchema),
+  series: z.array(DashboardUsageSeriesSchema),
+});
+
+export const DashboardOverviewResponseSchema = z.object({
+  range: DashboardOverviewRangeSchema,
+  summary: z.object({
+    requestCount: NonNegativeIntegerStringSchema,
+    totalTokens: NonNegativeIntegerStringSchema,
+    cacheReadTokens: NonNegativeIntegerStringSchema,
+    cacheWriteTokens: NonNegativeIntegerStringSchema,
+    cacheHitRate: NonNegativeFiniteNumberSchema.max(1).nullable(),
+    estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
+    averageRpm: NonNegativeFiniteNumberSchema,
+    averageTpm: NonNegativeFiniteNumberSchema,
+    providerCount: NonNegativeFiniteNumberSchema.int(),
+  }),
+  modelTrendByMetric: z.object({
+    requests: DashboardOverviewTrendSchema,
+    tokens: DashboardOverviewTrendSchema,
+    cost: DashboardOverviewTrendSchema,
+  }),
+  providerHealth: z.array(
+    z.object({
+      providerId: IdSchema,
+      successRate: NonNegativeFiniteNumberSchema.max(1),
+      p95LatencyMs: NonNegativeFiniteNumberSchema,
+    }),
+  ),
+  topModelCosts: z.array(z.object({ modelId: IdSchema, estimatedCostNanoUsd: NonNegativeIntegerStringSchema })),
+  activity: z.object({
+    year: z.number().int(),
+    days: z.array(z.object({ date: z.iso.date(), requestCount: NonNegativeIntegerStringSchema })).readonly(),
+  }),
 });
 
 export const DashboardEventSchema = z.discriminatedUnion('event', [
@@ -156,5 +196,7 @@ export type DashboardUsageBucketInput = z.input<typeof DashboardUsageBucketSchem
 export type DashboardUsageBucket = z.output<typeof DashboardUsageBucketSchema>;
 export type DashboardUsageOverviewResponseInput = z.input<typeof DashboardUsageOverviewResponseSchema>;
 export type DashboardUsageOverviewResponse = z.output<typeof DashboardUsageOverviewResponseSchema>;
+export type DashboardOverviewResponseInput = z.input<typeof DashboardOverviewResponseSchema>;
+export type DashboardOverviewResponse = z.output<typeof DashboardOverviewResponseSchema>;
 export type DashboardEventInput = z.input<typeof DashboardEventSchema>;
 export type DashboardEvent = z.output<typeof DashboardEventSchema>;
