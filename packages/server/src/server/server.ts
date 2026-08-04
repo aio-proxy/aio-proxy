@@ -34,7 +34,7 @@ export const serverDefaults = {
 const dashboardOrigins = (port: number) =>
   new Set([`http://127.0.0.1:${port}`, `http://[::1]:${port}`, `http://localhost:${port}`]);
 
-const csrfMethods = new Set(['POST', 'PUT', 'DELETE']);
+const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Mount the loopback-only admin control plane. Unlike /dashboard/api/*, it is not
 // CSRF- or password-gated, so the CLI can call it directly. The loopback check

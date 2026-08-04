@@ -17,6 +17,7 @@ import { ZodError, z } from 'zod';
 import { ConfigReloadRejectedError } from '../config-store';
 import { isTrustedProviderPackage } from '../provider-package-trust';
 import type { ServerState } from '../server-state';
+import { createDashboardProviderEnableRoute } from './provider-enable';
 import {
   insertProvider,
   type ParsedProviderMutation,
@@ -108,6 +109,7 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
       }
       return context.json({ provider });
     })
+    .route('/', createDashboardProviderEnableRoute(state))
     .delete('/providers/:id', async (context) => {
       if (state.configPath === undefined) {
         return context.json({ error: 'config file path is not configured' }, 409);

@@ -6,6 +6,7 @@ export * from './config/index';
 export * from './dashboard/index';
 export * from './dashboard-localized-text';
 export * from './dashboard-oauth';
+export * from './dashboard-provider-mutation';
 export * from './plugin';
 export * from './model-metadata/index';
 export * from './provider';
