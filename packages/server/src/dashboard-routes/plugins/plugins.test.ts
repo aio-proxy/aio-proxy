@@ -992,6 +992,72 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test('DELETE /plugins/uninstall rejects a Provider dependency committed after its removal snapshot', async () => {
+    const packageName = '@scope/provider-commit-race-plugin';
+    let removalSnapshotTaken!: () => void;
+    const snapshotTaken = new Promise<void>((resolve) => (removalSnapshotTaken = resolve));
+    let providerCommitted!: () => void;
+    const committed = new Promise<void>((resolve) => (providerCommitted = resolve));
+    type RemovalCoordinator = (remove: () => Promise<boolean>) => Promise<boolean>;
+    const removeNpmPackageCache = (async (...raw: unknown[]) => {
+      const [candidate, canRemove, coordinate] = raw as [
+        string,
+        (() => Promise<boolean>) | undefined,
+        RemovalCoordinator | undefined,
+      ];
+      const staleDecision = (await canRemove?.()) ?? true;
+      removalSnapshotTaken();
+      await committed;
+      if (coordinate === undefined) {
+        if (!staleDecision) return false;
+        rmSync(npmPackageCacheDir(candidate), { force: true, recursive: true });
+        return true;
+      }
+      if (!staleDecision) return false;
+      return coordinate(async () => {
+        rmSync(npmPackageCacheDir(candidate), { force: true, recursive: true });
+        return true;
+      });
+    }) as NonNullable<NonNullable<ServerStateTestHooks['pluginControlPlane']>['removeNpmPackageCache']>;
+
+    await withFixture(
+      async ({ configPath, routes }) => {
+        writeCachedPackage(packageName);
+        const uninstalling = uninstallPlugin(routes, { packageName });
+        await snapshotTaken;
+        let provider!: Response;
+        try {
+          provider = await routes.request('/providers', {
+            body: JSON.stringify({ id: 'late-sdk', kind: 'ai-sdk', packageName }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          });
+        } finally {
+          providerCommitted();
+        }
+        const response = await uninstalling;
+
+        expect(provider.status).toBe(201);
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          ok: false,
+          error: { code: 'dependent_providers', providerIds: ['late-sdk'] },
+        });
+        expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
+        expect(JSON.parse(await Bun.file(configPath).text())).toMatchObject({
+          plugins: [],
+          providers: { 'late-sdk': { kind: 'ai-sdk', packageName } },
+        });
+      },
+      {
+        config: { plugins: [packageName], providers: {} },
+        descriptors: new Map([[packageName, emptyDescriptor()]]),
+        providerInstances: [],
+        testHooks: { pluginControlPlane: { removeNpmPackageCache } },
+      },
+    );
+  });
+
   test('install and uninstall serialize the package generation across classification, commit, and removal', async () => {
     const packageName = '@scope/install-uninstall-race';
     const lifecycle = serializedLifecycle();

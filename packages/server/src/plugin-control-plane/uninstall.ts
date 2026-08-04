@@ -83,9 +83,11 @@ export async function uninstallPlugin(
   }
 
   try {
+    const guard = await options.configStore.captureProviderMutationGuard();
     const removed = await options.removeNpmPackageCache(
       packageName,
       async () => !configUsesPackage(await options.configStore.file!.read(), packageName),
+      guard.runIfCurrent,
     );
     if (!removed) {
       const latest = await options.configStore.file.read();

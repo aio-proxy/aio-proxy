@@ -36,6 +36,9 @@ export type ConfigStoreOptions = {
 };
 
 export type ConfigStore = {
+  readonly captureProviderMutationGuard: () => Promise<{
+    readonly runIfCurrent: (operation: () => Promise<boolean>) => Promise<boolean>;
+  }>;
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
   readonly mutateConfig: (
@@ -50,6 +53,17 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const accountRemovals =
     options.accountRemovals ?? createAccountRemovalCoordinator({ file, repository: options.repository });
   const enqueue = options.enqueue ?? createFifoQueue();
+  let mutationGeneration = {};
+
+  function enqueueProviderMutation<T>(operation: () => Promise<T>): Promise<T> {
+    return enqueue(async () => {
+      try {
+        return await operation();
+      } finally {
+        mutationGeneration = {};
+      }
+    });
+  }
 
   async function verifyCandidate(
     candidate: Readonly<Record<string, unknown>>,
@@ -118,9 +132,16 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   }
 
   return {
-    deleteProvider: (providerId) => enqueue(() => deleteProviderNow(providerId)),
+    captureProviderMutationGuard: () =>
+      enqueue(async () => {
+        const generation = mutationGeneration;
+        return {
+          runIfCurrent: (operation) => enqueue(async () => (generation === mutationGeneration ? operation() : false)),
+        };
+      }),
+    deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
     file,
     mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
-    mutateProviders: (fn) => enqueue(() => mutateProvidersNow(fn)),
+    mutateProviders: (fn) => enqueueProviderMutation(() => mutateProvidersNow(fn)),
   };
 }
