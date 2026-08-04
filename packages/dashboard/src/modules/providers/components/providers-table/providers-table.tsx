@@ -1,21 +1,19 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { useForm } from '@tanstack/react-form';
 import { flexRender } from '@tanstack/react-table';
 import type React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef } from 'react';
 
 import { DataTablePagination } from '@/components/data-table-pagination';
+import { DataTableToolbar } from '@/components/data-table-toolbar';
 import { useDataTable } from '@/hooks/use-data-table';
 
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
-import { canEditProvider, createProviderColumns } from '../providers-table-columns';
+import { canEditProvider, createProviderColumns, providerColumnLabel } from '../providers-table-columns';
 import { groupProviderRows, providerTableRowId, type ProviderTableRow } from './provider-table-row';
 
 interface ProvidersTableProps {
@@ -40,10 +38,9 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   'use no memo';
 
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
-  const filterForm = useForm({ defaultValues: { providerFilter: '' } });
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
   const columns = useMemo(() => createProviderColumns(deleteDialogRef), []);
-  const { table } = useDataTable(rows, columns, {
+  const { table, columnVisibilityForm } = useDataTable(rows, columns, {
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
   });
@@ -70,49 +67,35 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
 
   return (
     <div className="flex flex-col gap-4">
-      <filterForm.Field name="providerFilter">
-        {(field) => (
-          <Field className="max-w-sm">
-            <FieldLabel htmlFor="providers-table-filter" className="sr-only">
-              {m['dashboard.providers.table.filter']()}
-            </FieldLabel>
-            <Input
-              id="providers-table-filter"
-              value={field.state.value}
-              placeholder={m['dashboard.providers.table.filter_placeholder']()}
-              onChange={(event) => {
-                const filter = event.target.value;
-                field.handleChange(filter);
-                table.setGlobalFilter(filter);
-                for (const row of rows) {
-                  if (
-                    row.rowType === 'oauth-group' &&
-                    row.accounts.some(({ provider }) => providerMatchesFilter(provider, filter))
-                  ) {
-                    table.getRow(providerTableRowId(row)).toggleExpanded(true);
-                  }
-                }
-              }}
-            />
-          </Field>
-        )}
-      </filterForm.Field>
+      <DataTableToolbar
+        table={{
+          getAllLeafColumns: table.getAllLeafColumns,
+          setGlobalFilter: (filter) => {
+            table.setGlobalFilter(filter);
+            for (const row of rows) {
+              if (
+                row.rowType === 'oauth-group' &&
+                row.accounts.some(({ provider }) => providerMatchesFilter(provider, filter))
+              ) {
+                table.getRow(providerTableRowId(row)).toggleExpanded(true);
+              }
+            }
+          },
+        }}
+        columnVisibilityForm={columnVisibilityForm}
+        filterId="providers-table-filter"
+        filterLabel={m['dashboard.providers.table.filter']()}
+        columnsLabel={m['dashboard.providers.table.columns']()}
+        columnLabel={providerColumnLabel}
+      />
       <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  className={cn(
-                    header.column.id === 'models' && 'w-20 text-right',
-                    header.column.id === 'weight' && 'w-20 text-right',
-                    header.column.id === 'enabled' && 'w-20 text-center',
-                    header.column.id === 'actions' && 'w-20 text-right',
-                  )}
-                >
+                <Fragment key={header.id}>
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
+                </Fragment>
               ))}
             </TableRow>
           ))}

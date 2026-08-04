@@ -47,6 +47,7 @@ describe('draft Provider catalog and test routes', () => {
             options: {
               apiKey: 'saved-sdk-secret',
               baseURL: 'http://saved-sdk.example/v1',
+              headers: { 'x-saved-sdk-secret': 'saved-sdk-header' },
               name: 'saved-sdk',
             },
             packageName: '@ai-sdk/openai-compatible',
@@ -204,7 +205,7 @@ describe('draft Provider catalog and test routes', () => {
     });
   });
 
-  test('restores only edit drafts that preserve the persisted proxy semantics', () => {
+  test('restores an unchanged proxy and materializes only explicit changed proxy semantics', () => {
     const baseDraft = {
       baseURL: 'https://saved.example/v1',
       id: 'saved-proxied',
@@ -228,9 +229,9 @@ describe('draft Provider catalog and test routes', () => {
 
     expect(preserved.ok && preserved.provider.proxy).toBe('https://saved-proxy.example:8443');
     expect(unchanged.ok && unchanged.provider.proxy).toBe('https://saved-proxy.example:8443');
-    expect(inherited).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
-    expect(disabled).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
-    expect(replaced).toEqual({ ok: false, code: 'persisted_provider_identity_mismatch' });
+    expect(inherited.ok && inherited.provider.proxy).toBeUndefined();
+    expect(disabled.ok && disabled.provider.proxy).toBe(false);
+    expect(replaced.ok && replaced.provider.proxy).toBe('https://replacement-proxy.example:9443');
   });
 
   test('restores omitted saved credentials in memory for an edit draft with the same identity', () => {
@@ -263,6 +264,7 @@ describe('draft Provider catalog and test routes', () => {
         options: {
           apiKey: '****',
           baseURL: 'http://saved-sdk.example/v1',
+          headers: { 'x-saved-sdk-secret': '****' },
           name: 'saved-sdk',
         },
         packageName: '@ai-sdk/openai-compatible',
@@ -277,12 +279,90 @@ describe('draft Provider catalog and test routes', () => {
         options: {
           apiKey: 'saved-sdk-secret',
           baseURL: 'http://saved-sdk.example/v1',
+          headers: { 'x-saved-sdk-secret': 'saved-sdk-header' },
         },
       },
     });
   });
 
-  test('does not restore API secrets or contact a changed persisted Provider destination', async () => {
+  test('omits embedded redacted AI SDK options from a changed target', () => {
+    const resolved = resolveProviderDraft(
+      state,
+      {
+        id: 'saved-sdk',
+        kind: 'ai-sdk',
+        options: {
+          apiKey: 'fresh-sdk-secret',
+          baseURL: 'http://changed-sdk.example/v1',
+          config: '{"apiKey":"****"}',
+          name: 'changed-sdk',
+        },
+        packageName: '@ai-sdk/openai-compatible',
+      },
+      'saved-sdk',
+    );
+
+    expect(resolved).toEqual({
+      ok: true,
+      provider: {
+        enabled: true,
+        id: 'saved-sdk',
+        kind: 'ai-sdk',
+        options: {
+          apiKey: 'fresh-sdk-secret',
+          baseURL: 'http://changed-sdk.example/v1',
+          name: 'changed-sdk',
+        },
+        packageName: '@ai-sdk/openai-compatible',
+      },
+    });
+  });
+
+  test('uses only fresh API credentials for a changed destination and proxy', async () => {
+    let authorization: string | null = null;
+    let freshHeader: string | null = null;
+    let savedHeader: string | null = null;
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        freshHeader = request.headers.get('x-fresh');
+        savedHeader = request.headers.get('x-saved-secret');
+        return Response.json({ data: [{ id: 'fresh-model' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            apiKey: 'fresh-secret',
+            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+            headers: { 'x-fresh': 'fresh-header', 'x-saved-secret': '****' },
+            id: 'saved',
+            kind: 'api',
+            protocol: ProviderProtocol.OpenAICompatible,
+            proxy: false,
+          },
+          persistedProviderId: 'saved',
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(text)).toEqual({ ok: true, models: ['fresh-model'] });
+      expect(authorization).toBe('Bearer fresh-secret');
+      expect(freshHeader).toBe('fresh-header');
+      expect(savedHeader).toBeNull();
+      expect(text).not.toMatch(/fresh-secret|saved-secret|saved-header/u);
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test('does not treat an unrelated API header as fresh credentials for a changed destination', async () => {
     let requests = 0;
     let authorization: string | null = null;
     let savedHeader: string | null = null;
@@ -303,6 +383,7 @@ describe('draft Provider catalog and test routes', () => {
         jsonRequest({
           draft: {
             baseURL: `http://127.0.0.1:${attacker.port}/v1`,
+            headers: { 'content-type': 'application/json' },
             id: 'saved',
             kind: 'api',
             protocol: ProviderProtocol.OpenAICompatible,
@@ -315,7 +396,7 @@ describe('draft Provider catalog and test routes', () => {
       expect(response.status).toBe(400);
       expect(JSON.parse(text)).toEqual({
         ok: false,
-        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+        error: { code: 'fresh_credentials_required', recoverable: true },
       });
       expect(requests).toBe(0);
       expect(authorization).toBeNull();
@@ -361,7 +442,7 @@ describe('draft Provider catalog and test routes', () => {
       expect(response.status).toBe(400);
       expect(JSON.parse(text)).toEqual({
         ok: false,
-        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+        error: { code: 'fresh_credentials_required', recoverable: true },
       });
       expect(requests).toBe(0);
       expect(authorization).toBeNull();
@@ -400,6 +481,7 @@ describe('draft Provider catalog and test routes', () => {
             options: {
               apiKey: '****',
               baseURL: `http://127.0.0.1:${attacker.port}/v1`,
+              headers: { 'x-saved-sdk-secret': '****' },
               name: 'saved-sdk',
             },
             packageName: '@ai-sdk/openai-compatible',
@@ -413,7 +495,7 @@ describe('draft Provider catalog and test routes', () => {
       expect(response.status).toBe(400);
       expect(JSON.parse(text)).toEqual({
         ok: false,
-        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+        error: { code: 'fresh_credentials_required', recoverable: true },
       });
       expect(requests).toBe(0);
       expect(authorization).toBeNull();
@@ -450,6 +532,7 @@ describe('draft Provider catalog and test routes', () => {
             options: {
               apiKey: '****',
               baseURL: 'http://saved-sdk.example/v1',
+              headers: { 'x-saved-sdk-secret': '****' },
               name: 'saved-sdk',
             },
             packageName: '@ai-sdk/openai-compatible',
@@ -464,13 +547,65 @@ describe('draft Provider catalog and test routes', () => {
       expect(response.status).toBe(400);
       expect(JSON.parse(text)).toEqual({
         ok: false,
-        error: { code: 'persisted_provider_identity_mismatch', recoverable: true },
+        error: { code: 'fresh_credentials_required', recoverable: true },
       });
       expect(requests).toBe(0);
       expect(authorization).toBeNull();
       expect(text).not.toContain('saved-sdk-secret');
     } finally {
       await attackerProxy.stop(true);
+    }
+  });
+
+  test('uses only fresh AI SDK options for a changed target', async () => {
+    let authorization: string | null = null;
+    let freshHeader: string | null = null;
+    let savedHeader: string | null = null;
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        authorization = request.headers.get('authorization');
+        freshHeader = request.headers.get('x-fresh-sdk');
+        savedHeader = request.headers.get('x-saved-sdk-secret');
+        return new Response(
+          'data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' + 'data: [DONE]\n\n',
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/test',
+        jsonRequest({
+          draft: {
+            id: 'saved-sdk',
+            kind: 'ai-sdk',
+            models: ['saved-sdk-model'],
+            options: {
+              apiKey: 'fresh-sdk-secret',
+              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+              headers: { 'x-fresh-sdk': 'fresh-sdk-header', 'x-saved-sdk-secret': '****' },
+              name: 'changed-sdk',
+            },
+            packageName: '@ai-sdk/openai-compatible',
+            proxy: false,
+          },
+          model: 'saved-sdk-model',
+          persistedProviderId: 'saved-sdk',
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(text)).toEqual({ ok: true });
+      expect(authorization).toBe('Bearer fresh-sdk-secret');
+      expect(freshHeader).toBe('fresh-sdk-header');
+      expect(savedHeader).toBeNull();
+      expect(text).not.toMatch(/fresh-sdk-secret|saved-sdk-secret|saved-sdk-header/u);
+    } finally {
+      await upstream.stop(true);
     }
   });
 

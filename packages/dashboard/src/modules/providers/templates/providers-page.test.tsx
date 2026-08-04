@@ -99,7 +99,7 @@ describe('providers page', () => {
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('1');
     expect(row.getByLabelText(/Edit provider carpool|编辑提供商 carpool/u)).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: /Details|详情/u })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Provider columns|提供商列/u })).toBeNull();
+    expect(screen.getByRole('button', { name: /Provider columns|提供商列/u })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Previous|上一页/u })).toBeNull();
   });
 

@@ -1,5 +1,6 @@
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type React from 'react';
 
@@ -67,9 +68,16 @@ const apiInitial = {
   models: ['model-a', 'model-b'],
 } as const;
 
+const renderEditor = (element: React.ReactElement) =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
+      {element}
+    </QueryClientProvider>,
+  );
+
 describe('Provider editor workflow', () => {
   test('renders one centered API editor with four horizontal steps and structured headers', () => {
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.Api}
@@ -110,7 +118,7 @@ describe('Provider editor workflow', () => {
 
   test('uses non-submitting step tabs without double-advancing or persisting from Validate', async () => {
     mocks.mutate.mockClear();
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.Api}
@@ -134,7 +142,7 @@ describe('Provider editor workflow', () => {
   });
 
   test('blocks forward navigation until only the current connection fields are valid', () => {
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Create}
         kind={ProviderKind.Api}
@@ -152,7 +160,7 @@ describe('Provider editor workflow', () => {
   });
 
   test('preserves redacted proxy presentation for API and AI SDK providers', () => {
-    const { unmount } = render(
+    const { unmount } = renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.Api}
@@ -166,7 +174,7 @@ describe('Provider editor workflow', () => {
     );
 
     unmount();
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.AiSdk}
@@ -189,7 +197,7 @@ describe('Provider editor workflow', () => {
 
   test('renders an absent API or AI SDK proxy override as inherited when editing', () => {
     const { proxy: _apiProxy, ...apiWithoutProxy } = apiInitial;
-    const { unmount } = render(
+    const { unmount } = renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.Api}
@@ -203,7 +211,7 @@ describe('Provider editor workflow', () => {
     );
 
     unmount();
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.AiSdk}
@@ -228,7 +236,7 @@ describe('Provider editor workflow', () => {
       ok: false,
       error: { code: 'test_request_failed', recoverable: true },
     });
-    render(
+    renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
         kind={ProviderKind.Api}
@@ -249,7 +257,7 @@ describe('Provider editor workflow', () => {
     const request = mocks.testDraft.mock.calls[0]?.[0];
     expect(request).toMatchObject({ model: 'model-a', persistedProviderId: 'api-provider' });
     expect(request.draft).not.toHaveProperty('proxy');
-    expect(await screen.findByRole('status')).toHaveTextContent(/test failed|测试失败|測試失敗|失敗|실패/u);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/test failed|测试失败|測試失敗|失敗|실패/u);
     expect(screen.getByTestId('provider-save')).toBeEnabled();
   });
 });

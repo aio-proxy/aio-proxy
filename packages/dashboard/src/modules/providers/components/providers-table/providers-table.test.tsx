@@ -161,6 +161,31 @@ describe('providers table', () => {
     expect(zero.getByText('0')).toBeTruthy();
     expect(zero.queryByText('N/A')).toBeNull();
   });
+
+  test('sorts Provider rows and hides a selected column', async () => {
+    render(
+      <ProvidersTable
+        providers={[
+          providerStub({ id: 'zulu', kind: 'api', protocol: 'openai-response' }),
+          providerStub({ id: 'alpha', kind: 'api', protocol: 'anthropic' }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Provider$|^提供商$/u }));
+    expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    expect(screen.getAllByTestId(/^provider-row-/u).map((row) => row.getAttribute('data-testid'))).toEqual([
+      'provider-row-alpha',
+      'provider-row-zulu',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: /Provider columns|提供商列/u }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^Protocol$|^协议$/u }));
+    expect(screen.queryByRole('columnheader', { name: /^Protocol$|^协议$/u })).toBeNull();
+  });
 });
 
 describe('invalid provider row', () => {
