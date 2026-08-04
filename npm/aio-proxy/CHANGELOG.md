@@ -1,5 +1,13 @@
 # aio-proxy
 
+## 0.6.1
+
+### Patch Changes
+
+- [#138](https://github.com/aio-proxy/aio-proxy/pull/138) [`0ac7bd1`](https://github.com/aio-proxy/aio-proxy/commit/0ac7bd11bdf3334aee3bb46576f4b61e2ac24ee7) Thanks [@baranwang](https://github.com/baranwang)! - Add the Rspress documentation site and its shared UI foundation.
+
+- [#143](https://github.com/aio-proxy/aio-proxy/pull/143) [`5ab65bf`](https://github.com/aio-proxy/aio-proxy/commit/5ab65bf7ef8dd5b74e2589df30b6da7342436cb6) Thanks [@baranwang](https://github.com/baranwang)! - Support OpenAI Responses instructions and hosted web search on cross-protocol model routes.
+
 ## 0.6.0
 
 ### Minor Changes
