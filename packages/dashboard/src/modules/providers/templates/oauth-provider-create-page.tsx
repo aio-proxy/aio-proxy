@@ -10,6 +10,8 @@ import { PageContainer } from '@/components/page-container';
 import { OAuthAccountFields } from '../components/oauth-account-fields';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';
 import { OAuthCapabilityCombobox } from '../components/oauth-capability-combobox';
+import { ProviderProxyField } from '../components/provider-proxy-field';
+import { ProviderFormMode } from '../constants';
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
 import { oauthAccountSubmission } from '../services/oauth-account-submission';
 import {
@@ -52,6 +54,10 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
       capability: { plugin: capability.plugin, capability: capability.capability },
       ...account,
       clearSecrets: [...account.clearSecrets],
+      providerPatch: {
+        enabled: true,
+        ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
+      },
     });
   });
   const session: DashboardOAuthSession | undefined =
@@ -109,6 +115,11 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
                       )}
                     </form.Field>
                     {selected === undefined ? null : <OAuthAccountFields fields={selected.form} form={form} />}
+                    {selected === undefined ? null : (
+                      <form.Field name="proxy">
+                        {(field) => <ProviderProxyField field={field} mode={ProviderFormMode.Create} />}
+                      </form.Field>
+                    )}
                     <Button type="submit" disabled={selected === undefined || startMutation.isPending}>
                       {m['dashboard.providers.oauth.continue']()}
                     </Button>

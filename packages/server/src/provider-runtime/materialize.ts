@@ -114,7 +114,7 @@ function isModelTransport(value: unknown): value is ModelTransport {
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */
-function effectiveProxy(
+export function effectiveProxy(
   globalProxy: string | undefined,
   providerProxy: string | false | undefined,
 ): string | undefined {

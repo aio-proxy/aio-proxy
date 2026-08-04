@@ -28,8 +28,8 @@ const modeLabel = (mode: ProxyMode) => {
   }
 };
 
-const selectedMode = (value: unknown, formMode: ProviderFormMode): ProxyMode => {
-  if (value === '****' || (formMode === ProviderFormMode.Edit && value === undefined)) return 'unchanged';
+const selectedMode = (value: unknown): ProxyMode => {
+  if (value === '****') return 'unchanged';
   if (value === false) return 'disabled';
   if (typeof value === 'string') return 'url';
   return 'inherit';
@@ -37,7 +37,7 @@ const selectedMode = (value: unknown, formMode: ProviderFormMode): ProxyMode => 
 
 export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, mode }) => {
   const initiallyRedacted = useRef(field.state.value === '****').current;
-  const proxyMode = selectedMode(field.state.value, mode);
+  const proxyMode = selectedMode(field.state.value);
   const modeId = `${field.name}-mode`;
   const urlId = `${field.name}-url`;
 
@@ -57,7 +57,7 @@ export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, m
             <SelectValue>{(value: ProxyMode | null) => modeLabel(value ?? proxyMode)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {mode === ProviderFormMode.Edit ? (
+            {mode === ProviderFormMode.Edit && initiallyRedacted ? (
               <SelectItem value="unchanged">{m['dashboard.providers.form.proxy_unchanged']()}</SelectItem>
             ) : null}
             <SelectItem value="inherit">{m['dashboard.providers.form.proxy_inherit']()}</SelectItem>

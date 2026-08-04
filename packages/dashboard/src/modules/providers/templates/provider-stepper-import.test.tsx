@@ -80,6 +80,11 @@ describe('Provider editor workflow', () => {
 
     const stepper = screen.getByRole('tablist');
     expect(stepper).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(
+      screen.getByRole('navigation', {
+        name: /^Edit Provider$|^编辑提供商$|^編輯提供者$|^プロバイダーを編集$|^공급자 편집$/u,
+      }),
+    ).toBeTruthy();
     expect(within(stepper).getAllByRole('tab')).toHaveLength(4);
     expect(within(stepper).getByRole('tab', { name: /^Connection$|^连接$|^連線$|^接続$|^연결$/u })).toBeTruthy();
     expect(within(stepper).getByRole('tab', { name: /^Models$|^模型$|^モデル$|^모델$/u })).toBeTruthy();
@@ -99,6 +104,31 @@ describe('Provider editor workflow', () => {
     expect(
       within(headers).getByRole('button', { name: /Add header|添加请求头|新增請求標頭|ヘッダーを追加|헤더 추가/u }),
     ).toBeTruthy();
+  });
+
+  test('uses non-submitting step tabs without double-advancing or persisting from Validate', async () => {
+    mocks.mutate.mockClear();
+    render(
+      <ProviderFormPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.Api}
+        initial={apiInitial}
+        providerId="api-provider"
+      />,
+    );
+
+    const tabs = screen.getAllByRole('tab');
+    for (const tab of tabs) expect(tab).toHaveAttribute('type', 'button');
+
+    const validate = screen.getByRole('tab', { name: /^Validate$|^验证$|^驗證$|^検証$|^검증$/u });
+    fireEvent.click(validate);
+
+    await waitFor(() => expect(validate).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByRole('tab', { name: /^Models$|^模型$|^モデル$|^모델$/u })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    expect(mocks.mutate).not.toHaveBeenCalled();
   });
 
   test('blocks forward navigation until only the current connection fields are valid', () => {
@@ -152,6 +182,42 @@ describe('Provider editor workflow', () => {
 
     expect(within(screen.getByTestId('provider-form-field-proxy')).getByRole('combobox')).toHaveTextContent(
       /Configured|已配置|已設定|設定済み|구성됨/u,
+    );
+  });
+
+  test('renders an absent API or AI SDK proxy override as inherited when editing', () => {
+    const { proxy: _apiProxy, ...apiWithoutProxy } = apiInitial;
+    const { unmount } = render(
+      <ProviderFormPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.Api}
+        initial={apiWithoutProxy}
+        providerId="api-provider"
+      />,
+    );
+
+    expect(within(screen.getByTestId('provider-form-field-proxy')).getByRole('combobox')).toHaveTextContent(
+      /Inherit global proxy|继承全局代理|繼承全域代理|グローバルプロキシを継承|전역 프록시 상속/u,
+    );
+
+    unmount();
+    render(
+      <ProviderFormPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.AiSdk}
+        initial={{
+          kind: ProviderKind.AiSdk,
+          id: 'sdk-provider',
+          enabled: true,
+          packageName: '@ai-sdk/openai-compatible',
+          models: ['model-a'],
+        }}
+        providerId="sdk-provider"
+      />,
+    );
+
+    expect(within(screen.getByTestId('provider-form-field-proxy')).getByRole('combobox')).toHaveTextContent(
+      /Inherit global proxy|继承全局代理|繼承全域代理|グローバルプロキシを継承|전역 프록시 상속/u,
     );
   });
 

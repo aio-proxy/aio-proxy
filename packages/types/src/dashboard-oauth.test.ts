@@ -66,11 +66,16 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
       enabled: false,
       weight: 7,
       alias: { chat: { model: 'model-1' } },
+      proxy: null,
     },
   };
 
   expect(schema.parse(request)).toMatchObject(request);
   expect(() =>
     schema.parse({ ...request, providerPatch: { ...request.providerPatch, plugin: '@example/other' } }),
+  ).toThrow();
+  expect(() => schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: '****' } })).toThrow();
+  expect(() =>
+    schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: 'socks5://localhost:1080' } }),
   ).toThrow();
 });

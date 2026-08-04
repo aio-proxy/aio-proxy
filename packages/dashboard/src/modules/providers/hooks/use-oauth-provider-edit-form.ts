@@ -1,4 +1,9 @@
-import { OAuthProviderMutationBodySchema, type ProviderAlias, type ProviderTransforms } from '@aio-proxy/types';
+import {
+  type OAuthProviderMutationBody,
+  OAuthProviderMutationBodySchema,
+  type ProviderAlias,
+  type ProviderTransforms,
+} from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
 export interface OAuthProviderCommonFormValues {
@@ -6,6 +11,7 @@ export interface OAuthProviderCommonFormValues {
   readonly name?: string | undefined;
   readonly enabled: boolean;
   readonly weight?: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: ProviderAlias | undefined;
   readonly transforms?: ProviderTransforms | undefined;
   readonly models: readonly string[];
@@ -30,16 +36,19 @@ export type OAuthProviderEditForm = ReactFormExtendedApi<
   any
 >;
 
-const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) =>
-  OAuthProviderMutationBodySchema.safeParse({
+const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) => {
+  const proxy = value.proxy === '****' ? undefined : value.proxy;
+  return OAuthProviderMutationBodySchema.safeParse({
     kind: 'oauth',
     id: value.id,
     name: value.name,
     enabled: value.enabled,
     weight: value.weight,
+    ...(proxy === undefined ? {} : { proxy }),
     alias: value.alias,
     transforms: value.transforms,
   });
+};
 
 export const useOAuthProviderEditForm = (
   initial: OAuthProviderCommonFormValues,
@@ -56,6 +65,6 @@ export const useOAuthProviderEditForm = (
     },
     onSubmit: ({ value }) => {
       const result = parseOAuthProviderEditValue(value);
-      if (result.success) onSubmit({ ...value, transforms: result.data.transforms });
+      if (result.success) onSubmit({ ...value, proxy: result.data.proxy, transforms: result.data.transforms });
     },
   }) as unknown as OAuthProviderEditForm;

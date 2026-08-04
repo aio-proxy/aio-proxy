@@ -210,6 +210,7 @@ export async function materializePluginProvider(
     pluginOptionsDigest: options.pluginOptionsDigest,
     accountOptionsDigest,
     requestTransformsDigest: digest(config.transforms?.request ?? []),
+    proxyDigest: digest(config.proxy ?? null),
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),
     catalogRefreshedAt: storedCatalog.refreshedAt,

@@ -1,5 +1,6 @@
 import {
   createEmbeddedBuiltIns,
+  createProxyFetch,
   type DiagnosticFactory,
   loadPluginRegistry,
   type PluginLogSink,
@@ -29,6 +30,7 @@ import { createProviderRequestTransformFetch } from '../provider-request-transfo
 import {
   materializeProviders,
   materializeRuntimeProvider,
+  effectiveProxy,
   type ProviderProbe,
   type ProviderRuntime,
   providerSummary,
@@ -65,7 +67,6 @@ export async function buildSnapshot(
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
-  const observedModelFetch = createObservedFetch(controlFetch);
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
     config,
     options,
@@ -89,6 +90,7 @@ export async function buildSnapshot(
       const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
       const pluginOptionInput = pluginOptionInputs.get(provider.plugin);
       if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
+      const providerFetch = createProxyFetch(effectiveProxy(configWithExtend.proxy, provider.proxy), controlFetch);
       return materializePluginProvider({
         config: provider,
         plugins,
@@ -98,8 +100,8 @@ export async function buildSnapshot(
         onDiagnosticChanged,
         pluginOptionsDigest,
         runtimeFetch: createRuntimeFetch({
-          control: controlFetch,
-          model: createProviderRequestTransformFetch(provider, observedModelFetch),
+          control: providerFetch,
+          model: createProviderRequestTransformFetch(provider, createObservedFetch(providerFetch)),
         }),
         ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}

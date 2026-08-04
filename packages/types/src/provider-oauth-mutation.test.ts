@@ -13,10 +13,16 @@ test('OAuth provider mutation accepts routing fields but rejects identity and ac
     name: 'Personal',
     enabled: false,
     weight: 4,
+    proxy: null,
     alias: { chat: { model: 'model-1', preserve: false } },
   };
 
   expect(schema.parse(body)).toEqual(body);
   expect(() => schema.parse({ ...body, plugin: '@example/other' })).toThrow();
   expect(() => schema.parse({ ...body, options: { tenant: 'other' } })).toThrow();
+  expect(schema.parse({ ...body, proxy: false })).toMatchObject({ proxy: false });
+  expect(schema.parse({ ...body, proxy: 'https://proxy.example:8443' })).toMatchObject({
+    proxy: 'https://proxy.example:8443',
+  });
+  expect(() => schema.parse({ ...body, proxy: '****' })).toThrow();
 });

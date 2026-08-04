@@ -1,5 +1,5 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from '@aio-proxy/plugin-sdk';
-import type { ProviderAlias } from '@aio-proxy/types';
+import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
 import { type DiagnosticFactory, type PluginLogSink } from '../diagnostic/index';
@@ -41,7 +41,9 @@ export type OAuthProviderPatch = {
   readonly name: string | undefined;
   readonly enabled: boolean;
   readonly weight: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;
+  readonly transforms?: ProviderTransforms | undefined;
 };
 export type LoginOAuthAccountOptions = {
   readonly targetProviderId?: string;

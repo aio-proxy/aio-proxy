@@ -12,6 +12,7 @@ export interface OAuthProviderEditValues {
   readonly name?: string | undefined;
   readonly enabled: boolean;
   readonly weight?: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: ProviderAlias | undefined;
   readonly transforms?: ProviderTransforms | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
@@ -32,6 +33,7 @@ export const oauthProviderEditAction = (
     ...(values.name === undefined ? {} : { name: values.name }),
     enabled: values.enabled,
     ...(values.weight === undefined ? {} : { weight: values.weight }),
+    ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
     ...(values.alias === undefined ? {} : { alias: values.alias }),
     ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
   };

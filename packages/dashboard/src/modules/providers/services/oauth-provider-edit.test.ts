@@ -75,3 +75,14 @@ test('OAuth reauthorization preserves request transforms in the provider patch',
     input: expect.objectContaining({ providerPatch: expect.objectContaining({ transforms }) }),
   });
 });
+
+test('OAuth proxy edits preserve explicit inheritance across update and reauthorization', () => {
+  expect(oauthProviderEditAction({ ...values, proxy: null }, { tenant: 'work' })).toEqual({
+    kind: 'update',
+    body: expect.objectContaining({ proxy: null }),
+  });
+  expect(oauthProviderEditAction({ ...values, proxy: null }, { tenant: 'work' }, true)).toEqual({
+    kind: 'reauthorize',
+    input: expect.objectContaining({ providerPatch: expect.objectContaining({ proxy: null }) }),
+  });
+});

@@ -64,6 +64,7 @@ export const useOAuthProviderEditPage = ({
       name: provider.name,
       enabled: provider.enabled,
       weight: provider.weight,
+      proxy: provider.proxy,
       alias: provider.alias,
       transforms: provider.transforms,
       models: oauth.models,

@@ -30,6 +30,7 @@ describe('ConfigSchema', () => {
         plugin: '@example/oauth',
         capability: 'default',
         name: 'My Copilot',
+        proxy: 'https://proxy.example:8443',
       }),
     ).toEqual({
       kind: 'oauth',
@@ -37,6 +38,7 @@ describe('ConfigSchema', () => {
       plugin: '@example/oauth',
       capability: 'default',
       name: 'My Copilot',
+      proxy: 'https://proxy.example:8443',
       enabled: true,
     });
     expect(AiSdkProviderSchema.parse({ kind: 'ai-sdk', id: 'y', name: 'My SDK' })).toEqual({

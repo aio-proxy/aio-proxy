@@ -81,6 +81,11 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
         publicValues: {},
         secrets: {},
         clearSecrets: [],
+        providerPatch: {
+          enabled: true,
+          proxy: 'https://proxy.example:8443',
+          transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
+        },
       }),
     });
     expect(started.status).toBe(202);
@@ -110,7 +115,14 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
     );
     expect(completed.session).toMatchObject({ status: 'succeeded', providerId: 'person' });
     expect(state.currentConfig().providers).toContainEqual(
-      expect.objectContaining({ id: 'person', kind: 'oauth', plugin: '@example/oauth', capability: 'default' }),
+      expect.objectContaining({
+        id: 'person',
+        kind: 'oauth',
+        plugin: '@example/oauth',
+        capability: 'default',
+        proxy: 'https://proxy.example:8443',
+        transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
+      }),
     );
     expect(JSON.stringify(completed)).not.toContain('hidden');
 
