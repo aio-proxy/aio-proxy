@@ -145,6 +145,15 @@ function uninstallPlugin(
   });
 }
 
+async function waitForProvider(configPath: string, providerId: string): Promise<unknown> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const config = JSON.parse(await Bun.file(configPath).text()) as { providers?: Record<string, unknown> };
+    if (config.providers?.[providerId] !== undefined) return config.providers[providerId];
+    await Bun.sleep(5);
+  }
+  throw new Error(`timed out waiting for Provider ${providerId}`);
+}
+
 function serializedLifecycle(): NonNullable<
   NonNullable<ServerStateTestHooks['pluginControlPlane']>['withNpmPackageLifecycle']
 > {
@@ -1053,6 +1062,106 @@ describe.serial('Dashboard plugin control plane', () => {
         config: { plugins: [packageName], providers: {} },
         descriptors: new Map([[packageName, emptyDescriptor()]]),
         providerInstances: [],
+        testHooks: { pluginControlPlane: { removeNpmPackageCache } },
+      },
+    );
+  });
+
+  test('DELETE /plugins/uninstall rejects an OAuth Provider committed after its removal snapshot', async () => {
+    const packageName = '@scope/oauth-cache-race-plugin';
+    let deviceCodePresented!: () => void;
+    const deviceCodeReady = new Promise<void>((resolve) => (deviceCodePresented = resolve));
+    let releaseLogin!: () => void;
+    const loginReleased = new Promise<void>((resolve) => (releaseLogin = resolve));
+    const descriptor = definePlugin((api) => {
+      api.oauth.register({
+        id: 'default',
+        label: 'Example OAuth',
+        account: { options: { schema: z.object({}), form: [] } },
+        credentials: z.object({ token: z.string() }),
+        async login({ authorization }) {
+          await authorization.presentDeviceCode({
+            url: 'https://example.test/device',
+            userCode: 'ABCD-EFGH',
+          });
+          deviceCodePresented();
+          await loginReleased;
+          return { fingerprint: 'person@example.test', suggestedKey: 'person', credentials: { token: 'secret' } };
+        },
+        catalog: {
+          policy: { kind: 'static' },
+          async discover() {
+            return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+          },
+        },
+        async createRuntime() {
+          return { models: {} };
+        },
+      });
+    });
+    let removalSnapshotTaken!: () => void;
+    const snapshotTaken = new Promise<void>((resolve) => (removalSnapshotTaken = resolve));
+    let providerCommitted!: () => void;
+    const committed = new Promise<void>((resolve) => (providerCommitted = resolve));
+    let staleDecision: boolean | undefined;
+    type RemovalCoordinator = (remove: () => Promise<boolean>) => Promise<boolean>;
+    const removeNpmPackageCache = (async (...raw: unknown[]) => {
+      const [candidate, canRemove, coordinate] = raw as [
+        string,
+        (() => Promise<boolean>) | undefined,
+        RemovalCoordinator | undefined,
+      ];
+      staleDecision = (await canRemove?.()) ?? true;
+      removalSnapshotTaken();
+      await committed;
+      if (!staleDecision) return false;
+      const remove = async () => {
+        rmSync(npmPackageCacheDir(candidate), { force: true, recursive: true });
+        return true;
+      };
+      return coordinate === undefined ? remove() : coordinate(remove);
+    }) as NonNullable<NonNullable<ServerStateTestHooks['pluginControlPlane']>['removeNpmPackageCache']>;
+
+    await withFixture(
+      async ({ configPath, routes }) => {
+        const started = await routes.request('/oauth/sessions', {
+          body: JSON.stringify({
+            capability: { plugin: packageName, capability: 'default' },
+            publicValues: {},
+            secrets: {},
+            clearSecrets: [],
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        });
+        expect(started.status).toBe(202);
+        await deviceCodeReady;
+
+        const uninstalling = uninstallPlugin(routes, { packageName });
+        await snapshotTaken;
+        expect(staleDecision).toBe(true);
+        releaseLogin();
+
+        let provider: unknown;
+        try {
+          provider = await waitForProvider(configPath, 'person');
+        } finally {
+          providerCommitted();
+        }
+        const response = await uninstalling;
+
+        expect(provider).toMatchObject({ kind: 'oauth', plugin: packageName });
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          ok: false,
+          error: { code: 'dependent_providers', providerIds: ['person'] },
+        });
+        expect(existsSync(npmPackageCacheDir(packageName))).toBe(true);
+      },
+      {
+        config: { plugins: [packageName], providers: {} },
+        descriptors: new Map([[packageName, descriptor]]),
+        prepare: () => void writeCachedPackage(packageName),
         testHooks: { pluginControlPlane: { removeNpmPackageCache } },
       },
     );

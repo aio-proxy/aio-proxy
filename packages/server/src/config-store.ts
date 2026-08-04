@@ -39,6 +39,7 @@ export type ConfigStore = {
   readonly captureProviderMutationGuard: () => Promise<{
     readonly runIfCurrent: (operation: () => Promise<boolean>) => Promise<boolean>;
   }>;
+  readonly coordinateProviderMutation: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
   readonly mutateConfig: (
@@ -139,6 +140,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
           runIfCurrent: (operation) => enqueue(async () => (generation === mutationGeneration ? operation() : false)),
         };
       }),
+    coordinateProviderMutation: enqueueProviderMutation,
     deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
     file,
     mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),

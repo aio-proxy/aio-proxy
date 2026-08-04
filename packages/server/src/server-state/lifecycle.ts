@@ -212,6 +212,7 @@ export async function startRecovery(
 
 export function startLoginSessions(
   runtime: ServerRuntime,
+  configStore: ConfigStore,
   reload: () => Promise<ConfigReloadResult>,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
@@ -228,6 +229,7 @@ export function startLoginSessions(
     },
     diagnostics,
     logger: pluginLogger,
+    coordinateProviderCommit: configStore.coordinateProviderMutation,
     reload,
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),

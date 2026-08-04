@@ -147,7 +147,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, reload);
+  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload);
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)

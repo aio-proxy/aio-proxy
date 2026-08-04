@@ -56,6 +56,7 @@ export type LoginOAuthAccountOptions = {
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly coordinateProviderCommit?: <T>(commit: () => Promise<T>) => Promise<T>;
   readonly progress?: (message: LocalizedText) => void;
   readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
@@ -110,30 +111,34 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     const state: StageState = {};
     let staged: PendingAccountOperation;
     try {
-      staged = await options.config.transaction(
-        (current) =>
-          Promise.resolve(
-            stageAccountWrite(
-              current,
-              {
-                options,
-                initial,
-                adapter,
-                discovered,
-                publicValues: rendered.publicValues,
-                secrets: rendered.secrets,
-                currentCredential: credentials.current,
-                fingerprint: validated.fingerprint,
-                suggestedKey: validated.suggestedKey,
-                metadata,
-                diagnostics: options.diagnostics,
-                signal: deadline.signal,
-              },
-              state,
+      const commit = () =>
+        options.config.transaction(
+          (current) =>
+            Promise.resolve(
+              stageAccountWrite(
+                current,
+                {
+                  options,
+                  initial,
+                  adapter,
+                  discovered,
+                  publicValues: rendered.publicValues,
+                  secrets: rendered.secrets,
+                  currentCredential: credentials.current,
+                  fingerprint: validated.fingerprint,
+                  suggestedKey: validated.suggestedKey,
+                  metadata,
+                  diagnostics: options.diagnostics,
+                  signal: deadline.signal,
+                },
+                state,
+              ),
             ),
-          ),
-        { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
-      );
+          { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
+        );
+      staged = await (options.coordinateProviderCommit === undefined
+        ? commit()
+        : options.coordinateProviderCommit(commit));
     } catch (error) {
       if (state.operation !== undefined && !(error instanceof AtomicConfigCommitUncertainError)) {
         const status = options.repository.compensateAccountOperation(state.operation.operationId);
