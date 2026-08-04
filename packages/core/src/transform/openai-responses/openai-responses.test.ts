@@ -55,6 +55,16 @@ test('prepends top-level instructions as a system message', () => {
   ]);
 });
 
+test('omits null top-level instructions on the model path', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    instructions: null,
+    input: 'hello',
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: 'user', content: 'hello' }]);
+});
+
 test('drops hosted web search on the model path', () => {
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const request = parseOpenAIResponses({

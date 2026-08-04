@@ -60,7 +60,7 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
   validateCustomHistory(input, tools);
   return {
     messages: [
-      ...(request.instructions === undefined ? [] : [{ role: 'system' as const, content: request.instructions }]),
+      ...(typeof request.instructions === 'string' ? [{ role: 'system' as const, content: request.instructions }] : []),
       ...messages,
     ],
     ...(tools === undefined ? {} : { tools }),
