@@ -33,6 +33,7 @@ describe('TracesFilterRail', () => {
     fireEvent.click(advancedFilter);
     expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Advanced filters|高级筛选/u })).toBeNull();
+    expect(screen.getByRole('button', { name: /Collapse filters|收起筛选/u })).toHaveFocus();
   });
 
   test('uses one header disclosure on narrow layouts', () => {

@@ -42,18 +42,29 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
   const narrow = useIsNarrow();
   const [collapsed, setCollapsed] = useState(narrow);
   const advancedFilterRef = useRef<HTMLButtonElement>(null);
+  const collapseRef = useRef<HTMLButtonElement>(null);
+  const focusTargetRef = useRef<'advanced' | 'collapse'>();
 
   useEffect(() => {
     if (narrow) setCollapsed(true);
   }, [narrow]);
 
   useEffect(() => {
-    if (!narrow && collapsed) advancedFilterRef.current?.focus();
+    if (narrow) return;
+    if (focusTargetRef.current === 'advanced' && collapsed) advancedFilterRef.current?.focus();
+    if (focusTargetRef.current === 'collapse' && !collapsed) collapseRef.current?.focus();
+    focusTargetRef.current = undefined;
   }, [collapsed, narrow]);
 
   const railOpen = !collapsed;
-  const collapse = () => setCollapsed(true);
-  const expand = () => setCollapsed(false);
+  const collapse = () => {
+    focusTargetRef.current = 'advanced';
+    setCollapsed(true);
+  };
+  const expand = () => {
+    focusTargetRef.current = 'collapse';
+    setCollapsed(false);
+  };
 
   return (
     <>
@@ -68,7 +79,7 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
         <aside className="traces-filter-rail" data-testid="traces-filter-rail">
           {!narrow && (
             <div className="flex justify-end">
-              <Button type="button" variant="ghost" size="sm" onClick={collapse}>
+              <Button ref={collapseRef} type="button" variant="ghost" size="sm" onClick={collapse}>
                 <PanelLeftClose />
                 {m['dashboard.traces.collapse_filters']()}
               </Button>
