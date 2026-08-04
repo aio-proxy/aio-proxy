@@ -35,17 +35,12 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run --filter @aio-proxy/website build
 
-      - name: Require root-pages token
-        env:
-          ROOT_PAGES_TOKEN: ${{ secrets.ROOT_PAGES_TOKEN }}
-        run: test -n "$ROOT_PAGES_TOKEN"
-
       - uses: actions/checkout@v7
         with:
           repository: aio-proxy/aio-proxy.github.io
           ref: main
           path: root-site
-          token: ${{ secrets.ROOT_PAGES_TOKEN }}
+          ssh-key: ${{ secrets.ROOT_PAGES_DEPLOY_KEY }}
 
       - name: Publish website
         working-directory: root-site
