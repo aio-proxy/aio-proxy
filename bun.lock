@@ -379,7 +379,7 @@
         "react-dom": "^19.2.8",
       },
     },
-    "packages/website": {
+    "website": {
       "name": "@aio-proxy/website",
       "version": "0.5.2",
       "dependencies": {
@@ -506,7 +506,7 @@
 
     "@aio-proxy/ui": ["@aio-proxy/ui@workspace:packages/ui"],
 
-    "@aio-proxy/website": ["@aio-proxy/website@workspace:packages/website"],
+    "@aio-proxy/website": ["@aio-proxy/website@workspace:website"],
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
