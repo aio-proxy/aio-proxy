@@ -1,12 +1,26 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
 import { PanelLeftClose } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import type { TraceSearch } from '../../trace-search';
 import { TracesFilters } from '../traces-filters';
 import { TracesSearchBar } from '../traces-search-bar';
+
+const desktopBreakpoint = 1024;
+
+const useIsNarrow = () => {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < desktopBreakpoint);
+
+  useEffect(() => {
+    const updateNarrow = () => setNarrow(window.innerWidth < desktopBreakpoint);
+    window.addEventListener('resize', updateNarrow);
+    updateNarrow();
+    return () => window.removeEventListener('resize', updateNarrow);
+  }, []);
+
+  return narrow;
+};
 
 interface TracesFilterRailProps {
   readonly search: TraceSearch;
@@ -25,17 +39,17 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
   onAutoRefresh,
   onRefresh,
 }) => {
-  const mobile = useIsMobile();
-  const [collapsed, setCollapsed] = useState(mobile);
+  const narrow = useIsNarrow();
+  const [collapsed, setCollapsed] = useState(narrow);
   const advancedFilterRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (mobile) setCollapsed(true);
-  }, [mobile]);
+    if (narrow) setCollapsed(true);
+  }, [narrow]);
 
   useEffect(() => {
-    if (!mobile && collapsed) advancedFilterRef.current?.focus();
-  }, [collapsed, mobile]);
+    if (!narrow && collapsed) advancedFilterRef.current?.focus();
+  }, [collapsed, narrow]);
 
   const railOpen = !collapsed;
   const collapse = () => setCollapsed(true);
@@ -45,14 +59,14 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
     <>
       <TracesSearchBar
         collapsed={collapsed}
-        mobile={mobile}
+        mobile={narrow}
         onExpand={expand}
         onToggleMobile={() => setCollapsed((value) => !value)}
         advancedFilterRef={advancedFilterRef}
       />
       {railOpen && (
         <aside className="traces-filter-rail" data-testid="traces-filter-rail">
-          {!mobile && (
+          {!narrow && (
             <div className="flex justify-end">
               <Button type="button" variant="ghost" size="sm" onClick={collapse}>
                 <PanelLeftClose />

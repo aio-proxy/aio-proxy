@@ -4,14 +4,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { createDefaultTraceSearch } from '../../trace-search';
 import { TracesFilterRail } from './traces-filter-rail';
 
-const viewport = rs.hoisted(() => ({ mobile: false }));
-
-rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
-  useIsMobile: () => viewport.mobile,
-}));
+const setViewportWidth = (width: number) => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+};
 
 afterEach(() => {
-  viewport.mobile = false;
+  setViewportWidth(1024);
 });
 
 const renderRail = () => {
@@ -38,7 +36,7 @@ describe('TracesFilterRail', () => {
   });
 
   test('uses one header disclosure on narrow layouts', () => {
-    viewport.mobile = true;
+    setViewportWidth(767);
     renderRail();
 
     const disclosure = screen.getByRole('button', { name: /Filters|筛选/u });
@@ -46,5 +44,14 @@ describe('TracesFilterRail', () => {
     fireEvent.click(disclosure);
     expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /Filters|筛选/u })).toHaveLength(1);
+  });
+
+  test('uses the narrow disclosure at tablet widths below the desktop grid breakpoint', () => {
+    setViewportWidth(900);
+    renderRail();
+
+    expect(screen.getByRole('button', { name: /Filters|筛选/u })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Collapse filters|收起筛选/u })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Advanced filters|高级筛选/u })).toBeNull();
   });
 });
