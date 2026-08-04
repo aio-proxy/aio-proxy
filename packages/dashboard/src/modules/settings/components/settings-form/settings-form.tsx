@@ -1,5 +1,5 @@
 import { type DashboardSettingsMutationInput, DashboardSettingsMutationSchema } from '@aio-proxy/types';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useSettingsMutation } from '../../hooks/use-settings-mutation';
 import { SettingsAccessConfirmationDialog } from './settings-access-confirmation-dialog';
@@ -7,12 +7,28 @@ import type { PendingAccessChange, SettingsFormProps } from './settings-form-con
 import { SettingsLogsGroup } from './settings-logs-group';
 import { SettingsMutationStatus } from './settings-mutation-status';
 import { SettingsServiceGroup } from './settings-service-group';
-import { useSettingsForm } from './use-settings-form';
+import { settingsFormValues, useSettingsForm } from './use-settings-form';
 
 export const SettingsForm: React.FC<SettingsFormProps> = ({ settings }) => {
   const mutation = useSettingsMutation();
   const [pendingAccess, setPendingAccess] = useState<PendingAccessChange>();
   const form = useSettingsForm(settings);
+
+  useEffect(() => {
+    form.reset(settingsFormValues(settings));
+  }, [form, settings]);
+
+  useEffect(() => {
+    if (mutation.data !== undefined) {
+      form.reset(settingsFormValues(mutation.data.settings));
+    }
+  }, [form, mutation.data]);
+
+  useEffect(() => {
+    if (mutation.isError) {
+      form.reset(settingsFormValues(settings));
+    }
+  }, [form, mutation.isError, settings]);
 
   const save = (input: DashboardSettingsMutationInput) => {
     const parsed = DashboardSettingsMutationSchema.safeParse(input);
