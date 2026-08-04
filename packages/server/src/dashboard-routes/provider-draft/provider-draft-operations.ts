@@ -7,18 +7,24 @@ import {
   ProviderProtocol,
   ProviderSchema,
 } from '@aio-proxy/types';
+import { isEqual } from 'es-toolkit/predicate';
 
 import { materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
 import { replaceProvider } from '../provider-mutation';
+import { redactSecrets } from '../provider-secrets';
 
 type DraftResolution =
   | { readonly ok: true; readonly provider: Exclude<Provider, { kind: ProviderKind.OAuth }> }
   | {
       readonly ok: false;
-      readonly code: 'redacted_proxy_unsupported' | 'persisted_provider_not_found' | 'persisted_provider_mismatch';
+      readonly code:
+        | 'redacted_proxy_unsupported'
+        | 'persisted_provider_not_found'
+        | 'persisted_provider_mismatch'
+        | 'persisted_provider_identity_mismatch';
     };
 
 const failure = <Code extends string>(code: Code) => ({
@@ -44,6 +50,9 @@ export function resolveProviderDraft(
     if (previous.kind !== draft.kind) {
       return { ok: false, code: 'persisted_provider_mismatch' };
     }
+    if (!hasSameProviderIdentity(previous, draft)) {
+      return { ok: false, code: 'persisted_provider_identity_mismatch' };
+    }
     const { id: _previousId, ...previousBody } = previous;
     const { id: _draftId, ...draftBody } = normalizedDraft;
     const restored = replaceProvider({ [persistedProviderId]: previousBody }, persistedProviderId, draftBody)[
@@ -60,6 +69,19 @@ export function resolveProviderDraft(
     return { ok: false, code: 'persisted_provider_mismatch' };
   }
   return { ok: true, provider: parsed.data };
+}
+
+function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDraft): boolean {
+  if (previous.kind === ProviderKind.Api && draft.kind === ProviderKind.Api) {
+    return previous.protocol === draft.protocol && previous.baseURL === draft.baseURL;
+  }
+
+  if (previous.kind === ProviderKind.AiSdk && draft.kind === ProviderKind.AiSdk) {
+    const packageName = draft.packageName ?? '@ai-sdk/openai-compatible';
+    return previous.packageName === packageName && isEqual(draft.options, redactSecrets(previous.options));
+  }
+
+  return false;
 }
 
 export async function loadProviderDraftCatalog(

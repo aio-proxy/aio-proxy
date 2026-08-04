@@ -5,8 +5,8 @@ import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, HttpPro
 const DraftProxySchema = z.union([HttpProxyUrlSchema, z.literal(false), z.null(), z.literal('****')]).optional();
 
 export const DashboardProviderDraftSchema = z.discriminatedUnion('kind', [
-  ApiProviderMutationBodySchema.extend({ proxy: DraftProxySchema }),
-  AiSdkProviderMutationBodySchema.extend({ proxy: DraftProxySchema }),
+  ApiProviderMutationBodySchema.extend({ proxy: DraftProxySchema }).strict(),
+  AiSdkProviderMutationBodySchema.extend({ proxy: DraftProxySchema }).strict(),
 ]);
 
 const DashboardProviderDraftRequestFields = {
@@ -31,6 +31,7 @@ export const DashboardProviderDraftCatalogResponseSchema = z.discriminatedUnion(
         'redacted_proxy_unsupported',
         'persisted_provider_not_found',
         'persisted_provider_mismatch',
+        'persisted_provider_identity_mismatch',
         'catalog_unsupported',
         'catalog_unavailable',
       ]),
@@ -49,6 +50,7 @@ export const DashboardProviderDraftTestResponseSchema = z.discriminatedUnion('ok
         'redacted_proxy_unsupported',
         'persisted_provider_not_found',
         'persisted_provider_mismatch',
+        'persisted_provider_identity_mismatch',
         'model_not_enabled',
         'test_request_failed',
       ]),
