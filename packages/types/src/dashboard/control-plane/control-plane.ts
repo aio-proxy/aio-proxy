@@ -7,9 +7,52 @@ import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
 
 const required = <T extends z.ZodType>(schema: z.ZodDefault<T>): T => schema.unwrap();
 
-const DashboardHttpProxyTemplateSchema = ConfigTemplateStringSchema.refine(
-  (value) => HttpProxyUrlSchema.safeParse(value.replace(/\{\{[\s\S]*?\}\}/gu, 'template.invalid')).success,
-  'Proxy template must have a valid http: or https: URL shape',
+const CONFIG_TEMPLATE_EXPRESSION = /(?<!\{)\{\{[\t\n\r ]*env\.[A-Za-z_][A-Za-z0-9_]*[\t\n\r ]*\}\}(?!\})/gu;
+
+function hasOnlySupportedConfigTemplates(value: string): boolean {
+  let expressions = 0;
+  const literal = value.replace(CONFIG_TEMPLATE_EXPRESSION, () => {
+    expressions += 1;
+    return '';
+  });
+  return expressions > 0 && !literal.includes('{{');
+}
+
+function materializeProxyTemplate(value: string): string {
+  const authorityStart = value.indexOf('://') + 3;
+  const authorityEndOffset = value.slice(authorityStart).search(/[/?#]/u);
+  const authorityEnd = authorityEndOffset < 0 ? value.length : authorityStart + authorityEndOffset;
+  const hostStart = Math.max(authorityStart, value.lastIndexOf('@', authorityEnd - 1) + 1);
+  const bracketed = value[hostStart] === '[';
+  const bracketEnd = bracketed ? value.indexOf(']', hostStart + 1) : -1;
+  const portSeparator = bracketed
+    ? bracketEnd >= 0 && value[bracketEnd + 1] === ':'
+      ? bracketEnd + 1
+      : -1
+    : value.lastIndexOf(':', authorityEnd - 1);
+  const hostValueStart = bracketed ? hostStart + 1 : hostStart;
+  const hostEnd = bracketed && bracketEnd >= 0 ? bracketEnd : portSeparator > hostStart ? portSeparator : authorityEnd;
+
+  return value.replace(CONFIG_TEMPLATE_EXPRESSION, (_expression, offset: number) => {
+    if (offset >= hostValueStart && offset < hostEnd) return bracketed ? '2001:db8::1' : 'proxy.example';
+    if (portSeparator >= 0 && offset > portSeparator && offset < authorityEnd) return '8080';
+    return 'value';
+  });
+}
+
+const DashboardHttpProxyTemplateSchema = ConfigTemplateStringSchema.pipe(
+  z
+    .string()
+    .refine(hasOnlySupportedConfigTemplates, 'Unsupported config template')
+    .refine(
+      (value) => HttpProxyUrlSchema.safeParse(materializeProxyTemplate(value)).success,
+      'Proxy template must have a valid http: or https: URL shape',
+    ),
+);
+
+const DashboardHttpProxyUrlSchema = HttpProxyUrlSchema.refine(
+  (value) => !value.includes('{{'),
+  'Proxy URLs containing templates must use supported config template expressions',
 );
 
 const DashboardSettingsProxySchema = z.union([
@@ -43,7 +86,7 @@ export const DashboardSettingsViewSchema = z.strictObject({
 export const DashboardSettingsMutationSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host).optional(),
   port: required(ServerConfigSchema.shape.port).optional(),
-  proxy: z.union([HttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
+  proxy: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
   logging: z
     .strictObject({
       enabled: required(ServerLoggingSchema.shape.enabled).optional(),

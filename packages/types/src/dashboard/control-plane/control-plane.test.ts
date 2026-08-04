@@ -28,6 +28,15 @@ describe('dashboard settings control-plane contracts', () => {
     expect(mutation.parse({ proxy: 'https://{{env.PROXY_HOST}}:8080' })).toEqual({
       proxy: 'https://{{env.PROXY_HOST}}:8080',
     });
+    expect(mutation.parse({ proxy: 'http://proxy.example:{{env.PROXY_PORT}}' })).toEqual({
+      proxy: 'http://proxy.example:{{env.PROXY_PORT}}',
+    });
+    expect(mutation.parse({ proxy: 'http://[{{env.PROXY_IPV6}}]:{{env.PROXY_PORT}}' })).toEqual({
+      proxy: 'http://[{{env.PROXY_IPV6}}]:{{env.PROXY_PORT}}',
+    });
+    expect(mutation.parse({ proxy: 'https://{{ env.PROXY_HOST }}' })).toEqual({
+      proxy: 'https://{{ env.PROXY_HOST }}',
+    });
   });
 
   test('rejects unsupported proxies and server-unowned settings', () => {
@@ -38,6 +47,8 @@ describe('dashboard settings control-plane contracts', () => {
       'proxy.example',
       'socks5://{{env.HOST}}',
       'not-a-proxy {{env.X}}',
+      'https://{{! comment}}',
+      'https://{{foo}}',
     ]) {
       expect(mutation.safeParse({ proxy }).success).toBe(false);
     }
