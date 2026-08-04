@@ -42,6 +42,50 @@ test('converts a developer message to a system message', () => {
   }
 });
 
+test('prepends top-level instructions as a system message', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    instructions: 'Follow the repository guidance.',
+    input: 'hello',
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([
+    { role: 'system', content: 'Follow the repository guidance.' },
+    { role: 'user', content: 'hello' },
+  ]);
+});
+
+test('omits null top-level instructions on the model path', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    instructions: null,
+    input: 'hello',
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: 'user', content: 'hello' }]);
+});
+
+test('drops hosted web search on the model path', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: 'hello',
+    tools: [{ type: 'web_search' }],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).tools).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'web_search',
+      'tools.0.type',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('converts function-call history', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
