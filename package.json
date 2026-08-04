@@ -5,7 +5,8 @@
     "packages": [
       "packages/*",
       "packages/plugins/*",
-      "npm/*"
+      "npm/*",
+      "website"
     ],
     "catalog": {
       "ai": "7.0.8",
@@ -53,21 +54,21 @@
   "type": "module",
   "scripts": {
     "check": "bun run lint && bun run format:check",
-    "lint": "oxlint .",
-    "lint:types": "oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
-    "format": "oxfmt .",
-    "format:check": "oxfmt --check .",
-    "test:unit": "turbo run test:unit",
-    "test:artifact": "turbo run test:artifact",
+    "lint": "oxlint --ignore-pattern='website/**' .",
+    "lint:types": "oxlint --type-aware --type-check --ignore-pattern='website/**' --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
+    "format": "oxfmt . '!website/**'",
+    "format:check": "oxfmt --check . '!website/**'",
+    "test:unit": "turbo run test:unit --filter=!@aio-proxy/website",
+    "test:artifact": "turbo run test:artifact --filter=!@aio-proxy/website",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
-    "test": "turbo run test test:artifact",
-    "e2e": "turbo run e2e",
+    "test": "turbo run test test:artifact --filter=!@aio-proxy/website",
+    "e2e": "turbo run e2e --filter=!@aio-proxy/website",
     "build:migrations": "bun run --filter @aio-proxy/core build:migrations",
     "i18n:compile": "bun run --filter @aio-proxy/i18n build",
-    "build": "turbo run build",
+    "build": "turbo run build --filter=!@aio-proxy/website",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "dev:prepare": "turbo run build --filter=@aio-proxy/core",
-    "dev": "bun run dev:prepare && AIO_PROXY_PORT=22078 turbo run dev serve:dev --filter=!@aio-proxy/infra",
+    "dev": "bun run dev:prepare && AIO_PROXY_PORT=22078 turbo run dev serve:dev --filter=!@aio-proxy/infra --filter=!@aio-proxy/website",
     "preflight": "bun run lint:types && bun run format:check && bun run test"
   },
   "devDependencies": {
