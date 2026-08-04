@@ -12,14 +12,16 @@
   },
   "iconLibrary": "lucide",
   "rtl": false,
-  "aliases": {
-    "components": "#components",
-    "ui": "#components",
-    "hooks": "#hooks",
-    "lib": "#lib",
-    "utils": "#lib/utils"
-  },
   "menuColor": "default-translucent",
   "menuAccent": "subtle",
-  "registries": {}
+  "aliases": {
+    "components": "#components",
+    "utils": "#lib/utils",
+    "ui": "#components",
+    "lib": "#lib",
+    "hooks": "#hooks"
+  },
+  "registries": {
+    "@reui": "https://reui.io/r/{style}/{name}.json"
+  }
 }
