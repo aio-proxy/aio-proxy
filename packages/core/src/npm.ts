@@ -223,10 +223,10 @@ export async function removeNpmPackageCache(
   coordinate: (remove: () => Promise<boolean>) => Promise<boolean> = (remove) => remove(),
 ): Promise<boolean> {
   const cacheDir = npmPackageCacheDir(pkg);
-  if (!existsSync(cacheDir)) return false;
   return withNpmPackageLifecycle(pkg, async (assertOwnership) => {
-    if (canRemove !== undefined && !(await canRemove())) return false;
+    await assertOwnership();
     return coordinate(async () => {
+      if (canRemove !== undefined && !(await canRemove())) return false;
       if (!existsSync(cacheDir)) return false;
       await assertOwnership();
       await rm(cacheDir, { recursive: true, force: true });

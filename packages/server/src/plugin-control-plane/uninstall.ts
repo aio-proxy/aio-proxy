@@ -3,7 +3,6 @@ import {
   type PluginRepository,
   type removeNpmPackageCache,
   resolveConfigTemplates,
-  type withNpmPackageLifecycle,
 } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -53,7 +52,6 @@ export async function uninstallPlugin(
     readonly configStore: ConfigStore;
     readonly removeNpmPackageCache: typeof removeNpmPackageCache;
     readonly repository: PluginRepository;
-    readonly withNpmPackageLifecycle: typeof withNpmPackageLifecycle;
   },
 ): Promise<void> {
   if (options.configStore.file === undefined) throw new PluginControlPlaneError('config_unavailable', 409);
@@ -63,31 +61,24 @@ export async function uninstallPlugin(
   if (beforeDependencies.length > 0) throw new PluginDependenciesError(beforeDependencies);
 
   try {
-    await options.withNpmPackageLifecycle(packageName, async (assertOwnership) => {
-      await options.configStore.mutateConfig(async (current) => {
-        await assertOwnership();
-        const dependencies = dependentProviderIds(current, packageName);
-        if (dependencies.length > 0) throw new PluginDependenciesError(dependencies);
-        return removePlugin(current, packageName);
-      });
-      await assertOwnership();
-      const secret = options.repository.readPluginSecret(packageName);
-      if (secret !== null && !options.repository.deletePluginSecret(packageName, secret.revision)) {
-        throw new PluginControlPlaneError('concurrent_update', 409);
-      }
-    });
-  } catch (error) {
-    if (error instanceof ConfigReloadRejectedError) throw new PluginControlPlaneError('reload_failed', 422);
-    if (error instanceof NpmLockError) throw new PluginControlPlaneError('npm_lock_failed', 423);
-    throw error;
-  }
-
-  try {
-    const guard = await options.configStore.captureProviderMutationGuard();
     const removed = await options.removeNpmPackageCache(
       packageName,
       async () => !configUsesPackage(await options.configStore.file!.read(), packageName),
-      guard.runIfCurrent,
+      (remove) =>
+        options.configStore.mutateConfigWithProviderMutation(
+          (current) => {
+            const dependencies = dependentProviderIds(current, packageName);
+            if (dependencies.length > 0) throw new PluginDependenciesError(dependencies);
+            return removePlugin(current, packageName);
+          },
+          async () => {
+            const secret = options.repository.readPluginSecret(packageName);
+            if (secret !== null && !options.repository.deletePluginSecret(packageName, secret.revision)) {
+              throw new PluginControlPlaneError('concurrent_update', 409);
+            }
+            return remove();
+          },
+        ),
     );
     if (!removed) {
       const latest = await options.configStore.file.read();
@@ -96,6 +87,7 @@ export async function uninstallPlugin(
       if (configUsesPackage(latest, packageName)) throw new PluginControlPlaneError('concurrent_update', 409);
     }
   } catch (error) {
+    if (error instanceof ConfigReloadRejectedError) throw new PluginControlPlaneError('reload_failed', 422);
     if (error instanceof NpmLockError) throw new PluginControlPlaneError('npm_lock_failed', 423);
     throw error;
   }

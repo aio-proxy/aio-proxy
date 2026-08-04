@@ -12,6 +12,8 @@ export { digestProviderEntry } from './serialization';
 export type AtomicConfigTransactionOptions = {
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
   readonly verify?: (candidate: ConfigRecord) => Promise<void>;
+  /** Runs under the recovery fence after verification; failures do not roll back the verified config. */
+  readonly afterCommit?: (candidate: ConfigRecord) => Promise<void>;
   readonly signal?: AbortSignal;
 };
 
@@ -96,6 +98,7 @@ export class AtomicConfigFile {
           lock.withOwnershipFence,
         );
         let candidateCommitted = true;
+        let commitVerified = false;
         try {
           await assertOwnership();
           try {
@@ -120,9 +123,18 @@ export class AtomicConfigFile {
             throw verifyError;
           }
           await assertOwnership();
+          const afterCommit = options.afterCommit;
+          if (afterCommit === undefined) {
+            commitVerified = true;
+          } else {
+            await lock.withOwnershipFence(async () => {
+              commitVerified = true;
+              await afterCommit(next);
+            });
+          }
           return result;
         } catch (error) {
-          if (candidateCommitted && !(error instanceof AtomicConfigCommitUncertainError)) {
+          if (candidateCommitted && !commitVerified && !(error instanceof AtomicConfigCommitUncertainError)) {
             throw new AtomicConfigCommitUncertainError();
           }
           throw error;

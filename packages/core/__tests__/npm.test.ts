@@ -219,7 +219,7 @@ describe.serial('isolated npm cache lifecycle', () => {
     const removed = await removeNpmPackageCache(
       packageName,
       async () => {
-        expect(coordinated).toBe(false);
+        expect(coordinated).toBe(true);
         return true;
       },
       async (remove) => {

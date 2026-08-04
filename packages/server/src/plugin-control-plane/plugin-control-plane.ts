@@ -6,7 +6,7 @@ import {
   type PluginRepository,
   removeNpmPackageCache,
   withInstalledNpmPackage,
-  withNpmPackageLifecycle,
+  type withNpmPackageLifecycle,
 } from '@aio-proxy/core';
 import type { DashboardPluginEditView, DashboardPluginOptionsMutation, DashboardPluginSummary } from '@aio-proxy/types';
 
@@ -42,7 +42,6 @@ export type PluginControlPlaneOptions = {
 export function createPluginControlPlane(options: PluginControlPlaneOptions): PluginControlPlane {
   const access = createPluginControlPlaneAccess(options);
   const reads = createPluginReads({ access, configStore: options.configStore, repository: options.repository });
-  const lifecycle = options.withNpmPackageLifecycle ?? withNpmPackageLifecycle;
   return {
     editView: reads.editView,
     async install(input) {
@@ -61,7 +60,6 @@ export function createPluginControlPlane(options: PluginControlPlaneOptions): Pl
         configStore: options.configStore,
         removeNpmPackageCache: options.removeNpmPackageCache ?? removeNpmPackageCache,
         repository: options.repository,
-        withNpmPackageLifecycle: lifecycle,
       }),
     async updateOptions(mutation) {
       await updatePluginOptions(mutation, {

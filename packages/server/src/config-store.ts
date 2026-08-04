@@ -36,15 +36,16 @@ export type ConfigStoreOptions = {
 };
 
 export type ConfigStore = {
-  readonly captureProviderMutationGuard: () => Promise<{
-    readonly runIfCurrent: (operation: () => Promise<boolean>) => Promise<boolean>;
-  }>;
   readonly coordinateProviderMutation: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
   readonly mutateConfig: (
     fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
   ) => Promise<void>;
+  readonly mutateConfigWithProviderMutation: <T>(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
@@ -54,16 +55,9 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const accountRemovals =
     options.accountRemovals ?? createAccountRemovalCoordinator({ file, repository: options.repository });
   const enqueue = options.enqueue ?? createFifoQueue();
-  let mutationGeneration = {};
 
   function enqueueProviderMutation<T>(operation: () => Promise<T>): Promise<T> {
-    return enqueue(async () => {
-      try {
-        return await operation();
-      } finally {
-        mutationGeneration = {};
-      }
-    });
+    return enqueue(operation);
   }
 
   async function verifyCandidate(
@@ -125,6 +119,23 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     });
   }
 
+  async function mutateConfigWithProviderMutationNow<T>(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    let operationResult: { readonly value: T } | undefined;
+    await file.replace(fn, {
+      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+      verify: async (candidate) => void (await verifyCandidate(candidate)),
+      afterCommit: async () => {
+        operationResult = { value: await operation() };
+      },
+    });
+    if (operationResult === undefined) throw new Error('Provider mutation operation did not run');
+    return operationResult.value;
+  }
+
   async function deleteProviderNow(providerId: string): Promise<void> {
     await mutateProvidersNow((providers) => {
       const { [providerId]: _removed, ...remaining } = providers;
@@ -133,17 +144,12 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   }
 
   return {
-    captureProviderMutationGuard: () =>
-      enqueue(async () => {
-        const generation = mutationGeneration;
-        return {
-          runIfCurrent: (operation) => enqueue(async () => (generation === mutationGeneration ? operation() : false)),
-        };
-      }),
     coordinateProviderMutation: enqueueProviderMutation,
     deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
     file,
     mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
+    mutateConfigWithProviderMutation: (fn, operation) =>
+      enqueueProviderMutation(() => mutateConfigWithProviderMutationNow(fn, operation)),
     mutateProviders: (fn) => enqueueProviderMutation(() => mutateProvidersNow(fn)),
   };
 }

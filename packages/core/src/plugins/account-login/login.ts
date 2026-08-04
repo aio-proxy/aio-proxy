@@ -56,7 +56,7 @@ export type LoginOAuthAccountOptions = {
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
-  readonly coordinateProviderCommit?: <T>(commit: () => Promise<T>) => Promise<T>;
+  readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
   readonly progress?: (message: LocalizedText) => void;
   readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
@@ -138,7 +138,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
         );
       staged = await (options.coordinateProviderCommit === undefined
         ? commit()
-        : options.coordinateProviderCommit(commit));
+        : options.coordinateProviderCommit(initial.capability, commit));
     } catch (error) {
       if (state.operation !== undefined && !(error instanceof AtomicConfigCommitUncertainError)) {
         const status = options.repository.compensateAccountOperation(state.operation.operationId);

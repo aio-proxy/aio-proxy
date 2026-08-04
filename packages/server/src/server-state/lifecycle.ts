@@ -6,7 +6,7 @@ import type {
   PluginRepository,
   Router,
 } from '@aio-proxy/core';
-import { parseRuntimeConfig } from '@aio-proxy/core';
+import { OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
@@ -229,7 +229,14 @@ export function startLoginSessions(
     },
     diagnostics,
     logger: pluginLogger,
-    coordinateProviderCommit: configStore.coordinateProviderMutation,
+    coordinateProviderCommit: (capability, commit) =>
+      configStore.coordinateProviderMutation(() => {
+        const registry = (manager.current() as Snapshot).plugins.registry;
+        if (registry.resolveOAuth(capability.plugin, capability.capability) === undefined) {
+          throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
+        }
+        return commit();
+      }),
     reload,
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),

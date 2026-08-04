@@ -85,4 +85,46 @@ describe('AtomicConfigFile', () => {
     await secondResult;
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ second: true });
   });
+
+  test('a verified commit keeps its recovery fence through afterCommit side effects', async () => {
+    const { path } = fixture('{}\n');
+    let resumeAfterCommit!: () => void;
+    const afterCommitPaused = new Promise<void>((resolve) => (resumeAfterCommit = resolve));
+    let afterCommitEntered!: () => void;
+    const didEnterAfterCommit = new Promise<void>((resolve) => (afterCommitEntered = resolve));
+    let sideEffectApplied = false;
+    const first = new AtomicConfigFile(path).replace((current) => ({ ...current, first: true }), {
+      afterCommit: async () => {
+        afterCommitEntered();
+        await afterCommitPaused;
+        sideEffectApplied = true;
+      },
+    });
+    await didEnterAfterCommit;
+
+    const lockPath = `${path}.lock`;
+    ageLockWithUnavailableIdentity(lockPath);
+    let replacementEntered = false;
+    let replacementDidEnter!: () => void;
+    const didEnterReplacement = new Promise<void>((resolve) => (replacementDidEnter = resolve));
+    const replacement = new AtomicConfigFile(path).replace((current) => {
+      replacementEntered = true;
+      replacementDidEnter();
+      return { ...current, replacement: true };
+    });
+
+    try {
+      await Bun.sleep(100);
+      expect(replacementEntered).toBe(false);
+      resumeAfterCommit();
+      await first;
+      await didEnterReplacement;
+      expect(sideEffectApplied).toBe(true);
+      await replacement;
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ first: true, replacement: true });
+    } finally {
+      resumeAfterCommit();
+      await Promise.allSettled([first, replacement]);
+    }
+  });
 });

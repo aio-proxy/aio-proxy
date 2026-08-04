@@ -61,7 +61,7 @@ test('a cancelled OAuth session stays cancelled when a committed login finishes 
       occurredAt: new Date(0).toISOString(),
     }),
     logger: () => {},
-    coordinateProviderCommit: (commit) => commit(),
+    coordinateProviderCommit: (_capability, commit) => commit(),
     reload: async () => {
       reloadStarted();
       await reloadBlocked;
