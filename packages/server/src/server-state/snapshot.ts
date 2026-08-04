@@ -90,7 +90,8 @@ export async function buildSnapshot(
       const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
       const pluginOptionInput = pluginOptionInputs.get(provider.plugin);
       if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
-      const providerFetch = createProxyFetch(effectiveProxy(configWithExtend.proxy, provider.proxy), controlFetch);
+      const resolvedProxy = effectiveProxy(configWithExtend.proxy, provider.proxy);
+      const providerFetch = createProxyFetch(resolvedProxy, controlFetch);
       return materializePluginProvider({
         config: provider,
         plugins,
@@ -99,6 +100,7 @@ export async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
+        effectiveProxy: resolvedProxy ?? null,
         runtimeFetch: createRuntimeFetch({
           control: providerFetch,
           model: createProviderRequestTransformFetch(provider, createObservedFetch(providerFetch)),

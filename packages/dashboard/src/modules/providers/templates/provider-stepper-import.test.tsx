@@ -78,7 +78,9 @@ describe('Provider editor workflow', () => {
       />,
     );
 
-    const stepper = screen.getByRole('tablist');
+    const stepper = screen.getByRole('tablist', {
+      name: /^Edit Provider$|^编辑提供商$|^編輯提供者$|^プロバイダーを編集$|^공급자 편집$/u,
+    });
     expect(stepper).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
       screen.getByRole('navigation', {

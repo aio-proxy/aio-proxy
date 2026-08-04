@@ -61,6 +61,7 @@ export type MaterializePluginProviderOptions = {
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
   readonly pluginOptionsDigest: PluginOptionsIdentityDigest;
+  readonly effectiveProxy?: string | null;
   readonly runtimeFetch?: RuntimeFetch;
   readonly pluginSecrets?: unknown;
   readonly previous?: PluginRuntimeCacheEntry;

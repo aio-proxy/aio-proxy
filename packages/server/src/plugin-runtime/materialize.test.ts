@@ -159,6 +159,97 @@ test('the provider config key and proxy override reach the materialized OAuth ru
   }
 });
 
+test('a global proxy reload rebuilds an OAuth runtime that inherits the proxy', async () => {
+  const fixture = runtimeFixture({ kind: 'static' }, { providerId: 'configured-key' });
+  const serverHome = mkdtempSync(join(tmpdir(), 'aio-proxy-plugin-runtime-global-proxy-'));
+  const configPath = join(serverHome, 'config.json');
+  homes.push(serverHome);
+  const originalFetch = globalThis.fetch;
+  const proxies: (string | undefined)[] = [];
+  globalThis.fetch = Object.assign(
+    async (_input: RequestInfo | URL, init?: RequestInit & { proxy?: string }) => {
+      proxies.push(init?.proxy);
+      return new Response(null, { status: 204 });
+    },
+    { preconnect: originalFetch.preconnect },
+  ) as typeof globalThis.fetch;
+  const runtimeFetches: RuntimeFetch[] = [];
+  const descriptor = definePlugin<unknown>((api) => {
+    api.oauth.register({
+      id: 'default',
+      label: 'Example',
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        throw new Error('not called');
+      },
+      catalog: {
+        policy: { kind: 'static' },
+        async discover() {
+          throw new Error('stored catalog should be used');
+        },
+      },
+      async createRuntime(context) {
+        runtimeFetches.push(context.fetch);
+        return {
+          provider: {
+            specificationVersion: 'v4',
+            languageModel() {
+              throw new Error('not called');
+            },
+            imageModel() {
+              throw new Error('not called');
+            },
+            embeddingModel() {
+              throw new Error('not called');
+            },
+          },
+        } as never;
+      },
+    });
+  });
+  const configInput = (proxy: string) => ({
+    proxy,
+    providers: {
+      'configured-key': {
+        kind: 'oauth',
+        plugin: '@example/oauth',
+        capability: 'default',
+      },
+    },
+  });
+  const firstProxy = 'https://first-global-proxy.example:8443';
+  const secondProxy = 'https://second-global-proxy.example:8443';
+  writeFileSync(configPath, JSON.stringify(configInput(firstProxy)));
+  let state: Awaited<ReturnType<typeof createServerState>> | undefined;
+
+  try {
+    state = await createServerState({
+      config: ConfigSchema.parse(configInput(firstProxy)),
+      configPath,
+      dbHome: serverHome,
+      watchConfig: false,
+      pluginRepository: fixture.repository,
+      builtIns: [{ packageName: '@example/oauth', version: '1.0.0', descriptor }],
+      pluginLogger: () => {},
+    });
+    expect(runtimeFetches).toHaveLength(1);
+    proxies.length = 0;
+    await runtimeFetches[0]?.('https://oauth.example/models');
+    expect(proxies).toEqual([firstProxy]);
+
+    writeFileSync(configPath, JSON.stringify(configInput(secondProxy)));
+    expect((await state.reload()).ok).toBe(true);
+    expect(runtimeFetches).toHaveLength(2);
+    proxies.length = 0;
+    await runtimeFetches[1]?.('https://oauth.example/models');
+    expect(proxies).toEqual([secondProxy]);
+  } finally {
+    state?.close();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('a materialized OAuth provider obeys real Router self, rename, and preserve aliases', async () => {
   const fixture = runtimeFixture({ kind: 'static' });
   const base = {

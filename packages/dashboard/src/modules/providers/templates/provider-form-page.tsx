@@ -122,7 +122,7 @@ export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initia
             else submit();
           }}
         >
-          <Stepper value={activeStep} onValueChange={changeStep} orientation="horizontal">
+          <Stepper value={activeStep} onValueChange={changeStep} orientation="horizontal" aria-label={title}>
             <StepperNav aria-label={title}>
               {steps.map((label, step) => (
                 <StepperItem key={label} step={step}>
