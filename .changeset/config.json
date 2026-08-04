@@ -28,7 +28,6 @@
       "@aio-proxy/server",
       "@aio-proxy/types",
       "@aio-proxy/ui",
-      "@aio-proxy/website",
       "aio-proxy"
     ]
   ],
