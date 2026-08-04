@@ -11,6 +11,21 @@ const queryMocks = rs.hoisted(() => ({
   providers: { providers: [] as DashboardProviderSummary[] },
 }));
 
+const invalidProvider = (): DashboardProviderSummary =>
+  providerStub({
+    id: 'broken',
+    kind: 'api',
+    state: {
+      status: 'unavailable',
+      diagnostic: {
+        code: 'PROVIDER_CONFIG_INVALID',
+        summary: 'Invalid Provider configuration.',
+        retryable: false,
+        occurredAt: '2026-08-04T00:00:00.000Z',
+      },
+    },
+  });
+
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: () => ({
@@ -118,11 +133,12 @@ describe('providers page', () => {
   });
 
   test('keeps deletion available for a Provider without an edit route', () => {
-    queryMocks.providers.providers = [providerStub({ id: 'broken', kind: 'invalid' })];
+    queryMocks.providers.providers = [invalidProvider()];
     render(<ProvidersPage />);
 
     const row = within(screen.getByTestId('provider-row-broken'));
     expect(row.queryByRole('link')).toBeNull();
+    expect(row.queryByRole('checkbox')).toBeNull();
     expect(row.getByRole('button', { name: /Delete provider broken|删除提供商 broken/u })).toBeTruthy();
   });
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { providerLoginCommand } from '../commands';
 import { IdSchema } from '../common';
 import { type DiagnosticCode, ProviderStateSchema } from '../plugin';
-import { ProviderKind } from '../provider';
+import { ProviderKind, ProviderProtocolSchema } from '../provider';
 import {
   DashboardOverviewRangeSchema,
   UsageOverviewGroupBySchema,
@@ -23,6 +23,9 @@ export const DashboardProviderSummarySchema = z.object({
   last_latency: z.number().int().min(0).nullable(),
   probe: DashboardProviderProbeSchema.optional(),
   name: z.string().optional(),
+  weight: z.number().optional(),
+  protocol: ProviderProtocolSchema.optional(),
+  packageName: z.string().trim().min(1).optional(),
   clientModels: z.array(z.string()).readonly(),
   hasApiKey: z.boolean().optional(),
   state: ProviderStateSchema,

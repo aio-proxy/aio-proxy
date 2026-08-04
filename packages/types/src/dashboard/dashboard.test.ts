@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
 
+import { ProviderKind, ProviderProtocol } from '../provider';
 import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
 import {
   DashboardOverviewActivityResponseSchema,
   DashboardOverviewDiagnosticsResponseSchema,
   DashboardOverviewResponseSchema,
+  DashboardProviderSummarySchema,
 } from './dashboard';
 
 const overviewInput = {
@@ -33,6 +35,34 @@ const diagnosticsInput = {
 } as const;
 
 const activityInput = { year: 2026, days: [{ date: '2026-01-01', requestCount: '1' }] } as const;
+
+test('preserves configured API and AI SDK display fields in dashboard summaries', () => {
+  const base = {
+    enabled: true,
+    passthrough: false,
+    last_status: 'unknown',
+    last_latency: null,
+    clientModels: [],
+    state: { status: 'ready' },
+  } as const;
+  const api = {
+    ...base,
+    id: 'anthropic-api',
+    kind: ProviderKind.Api,
+    weight: 9,
+    protocol: ProviderProtocol.Anthropic,
+  } as const;
+  const aiSdk = {
+    ...base,
+    id: 'anthropic-sdk',
+    kind: ProviderKind.AiSdk,
+    packageName: '@ai-sdk/anthropic',
+  } as const;
+
+  expect(DashboardProviderSummarySchema.parse(api)).toEqual(api);
+  expect(DashboardProviderSummarySchema.parse(aiSdk)).toEqual(aiSdk);
+  expect(DashboardProviderSummarySchema.parse(aiSdk)).not.toHaveProperty('protocol');
+});
 
 test('accepts independent range, diagnostics, and activity overview contracts', () => {
   const value = DashboardOverviewResponseSchema.parse(overviewInput);

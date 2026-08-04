@@ -60,6 +60,7 @@ test('an initially disabled provider validates state without creating runtime or
       id: 'person',
       kind: ProviderKind.OAuth,
       enabled: false,
+      weight: 6,
       plugin: '@example/oauth',
       capability: 'default',
     },
@@ -74,4 +75,7 @@ test('an initially disabled provider validates state without creating runtime or
   expect(result.provider).toBeUndefined();
   expect(result.catalogJob).toBeUndefined();
   expect(result.state).toMatchObject({ status: 'ready', catalog: 'stale' });
+  expect(result.summary).toMatchObject({ weight: 6 });
+  expect(result.summary).not.toHaveProperty('protocol');
+  expect(result.summary).not.toHaveProperty('packageName');
 });
