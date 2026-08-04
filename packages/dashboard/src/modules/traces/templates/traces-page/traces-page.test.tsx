@@ -1,11 +1,25 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
-import { describe, expect, rs, test } from '@rstest/core';
+import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { createDefaultTraceSearch } from '../../trace-search';
 import { TracesPage } from './traces-page';
 
-const mocks = rs.hoisted(() => ({ refetch: rs.fn(), querySearch: rs.fn() }));
+const mocks = rs.hoisted(() => ({
+  refetch: rs.fn(),
+  querySearch: rs.fn(),
+  data: undefined as
+    | {
+        items: DashboardTraceSummary[];
+        page: number;
+        pageSize: 20;
+        total: number;
+        pageCount: number;
+      }
+    | undefined,
+  isFetching: false,
+  isPlaceholderData: false,
+}));
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
   rootSpanId: 'b'.repeat(16),
@@ -67,17 +81,31 @@ rs.mock('../../hooks/use-traces-query', () => ({
   useTracesQuery: (search: unknown, autoRefresh: boolean) => {
     mocks.querySearch(search, autoRefresh);
     return {
-      data: { items: [runningTrace, toolOnlyTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
+      data: mocks.data,
       isLoading: false,
       isError: false,
-      isFetching: false,
+      isFetching: mocks.isFetching,
+      isPlaceholderData: mocks.isPlaceholderData,
       refetch: mocks.refetch,
     };
   },
 }));
 
 describe('traces page', () => {
-  test('renders TTFT only when a streamed trace has a first content token', async () => {
+  beforeEach(() => {
+    mocks.data = {
+      items: [runningTrace, toolOnlyTrace, terminalTrace],
+      page: 2,
+      pageSize: 20,
+      total: 42,
+      pageCount: 3,
+    };
+    mocks.isFetching = false;
+    mocks.isPlaceholderData = false;
+    mocks.querySearch.mockClear();
+  });
+
+  test('renders aligned latency and token details without the Session column', () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
@@ -88,12 +116,8 @@ describe('traces page', () => {
 
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
     expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
-    expect(screen.queryByText(/Final|最终/u)).toBeNull();
-    const sessionId = screen.getByText('cache-a');
-    expect(screen.queryByText('openai-prompt-cache')).toBeNull();
-    fireEvent.focus(sessionId);
-    expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: /^(Provider|提供商)$/u })).toBeTruthy();
+    expect(screen.queryByText('cache-a')).toBeNull();
+    expect(screen.getByRole('columnheader', { name: /Final Provider ID|最终 Provider ID/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',
     )[4];
@@ -115,10 +139,10 @@ describe('traces page', () => {
     const toolOnlyDurationCell = within(
       screen.getByRole('button', { name: new RegExp(toolOnlyTrace.traceId, 'u') }),
     ).getAllByRole('cell')[7];
-    expect(toolOnlyDurationCell).not.toHaveTextContent('TTFT');
+    expect(toolOnlyDurationCell).toHaveTextContent('TTFT');
     expect(toolOnlyDurationCell).not.toHaveTextContent('N/A');
     expect(screen.getByText(/42 (ms|毫秒)/u)).toBeTruthy();
-    expect(screen.getAllByText(/TTFT/u)).toHaveLength(1);
+    expect(screen.getAllByText(/TTFT/u)).toHaveLength(2);
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 
@@ -132,7 +156,7 @@ describe('traces page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Next|下一页/u }));
+    fireEvent.click(screen.getByRole('button', { name: /older|更早/u }));
 
     expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, pageSize: 20 }));
   });
@@ -168,7 +192,6 @@ describe('traces page', () => {
     fireEvent.change(traceIdInput, { target: { value: 'abc' } });
 
     expect(onSearchChange).not.toHaveBeenCalled();
-    expect(mocks.querySearch).toHaveBeenCalledTimes(1);
     expect(mocks.querySearch).toHaveBeenLastCalledWith(initialSearch, true);
     expect(screen.getByRole('alert')).toHaveTextContent(/32-character lowercase hexadecimal|32 位小写十六进制/u);
 
@@ -194,5 +217,111 @@ describe('traces page', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }), { key: 'Enter' });
 
     expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
+  });
+
+  test('freezes page one across repeated polls and replaces it with the latest page on acceptance', () => {
+    const initial = [runningTrace, terminalTrace];
+    mocks.data = { items: initial, page: 1, pageSize: 20, total: 2, pageCount: 2 };
+    const view = render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const firstNew = { ...toolOnlyTrace, traceId: '1'.repeat(32) };
+    mocks.data = {
+      items: [firstNew, { ...runningTrace, endedAt: terminalTrace.endedAt }],
+      page: 1,
+      pageSize: 20,
+      total: 3,
+      pageCount: 2,
+    };
+    view.rerender(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(firstNew.traceId)).toBeNull();
+
+    const latestNew = { ...toolOnlyTrace, traceId: '2'.repeat(32) };
+    mocks.data = { items: [latestNew, firstNew], page: 1, pageSize: 20, total: 4, pageCount: 2 };
+    view.rerender(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const notice = screen.getByRole('button', { name: /new traces available:\s*2|新.*2|2.*新/iu });
+    expect(screen.queryByText(latestNew.traceId)).toBeNull();
+    fireEvent.click(notice);
+    expect(screen.getByText(latestNew.traceId)).toBeTruthy();
+    expect(screen.getByText(firstNew.traceId)).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+  });
+
+  test('applies same-ID updates immediately unless a new-item notice freezes the snapshot', () => {
+    mocks.data = { items: [runningTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    const search = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
+    const view = render(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    mocks.data = {
+      items: [{ ...runningTrace, endedAt: terminalTrace.endedAt }],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      pageCount: 1,
+    };
+    view.rerender(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.queryByText(/Running|运行中/u)).toBeNull();
+    expect(screen.getByText(/Success|成功/u)).toBeTruthy();
+  });
+
+  test('resets buffering for filters and page-size changes and never buffers later pages', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
+    mocks.data = { items: [runningTrace], page: 1, pageSize: 20, total: 1, pageCount: 2 };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    const filtered = { ...initialSearch, requestedModelId: 'new-filter' };
+    mocks.data = { items: [terminalTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    view.rerender(<TracesPage search={filtered} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+
+    const resized = { ...filtered, pageSize: 50 as const };
+    mocks.data = { items: [toolOnlyTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    view.rerender(<TracesPage search={resized} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(toolOnlyTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+
+    const pageTwo = { ...resized, page: 2 };
+    const pageTwoTrace = { ...runningTrace, traceId: '3'.repeat(32) };
+    mocks.data = { items: [pageTwoTrace], page: 2, pageSize: 20, total: 2, pageCount: 3 };
+    view.rerender(<TracesPage search={pageTwo} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(pageTwoTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+  });
+
+  test('disables older loading while fetching placeholder data', () => {
+    mocks.isPlaceholderData = true;
+    const onSearchChange = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /older|更早/u });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onSearchChange).not.toHaveBeenCalled();
   });
 });

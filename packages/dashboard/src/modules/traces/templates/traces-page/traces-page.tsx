@@ -3,7 +3,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -11,6 +11,8 @@ import { TracesFilterRail } from '../../components/traces-filter-rail';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch } from '../../trace-search';
+
+type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
 
 interface TracesPageProps {
   readonly search: TraceSearch;
@@ -20,7 +22,44 @@ interface TracesPageProps {
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [renderedData, setRenderedData] = useState<TracesData>();
+  const [newItemsCount, setNewItemsCount] = useState(0);
+  const renderedDataRef = useRef<TracesData | undefined>(undefined);
+  const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
+  const searchKey = JSON.stringify(search);
+  const settledSearchKeyRef = useRef(searchKey);
   const query = useTracesQuery(search, autoRefresh);
+
+  useEffect(() => {
+    if (query.data === undefined) return;
+
+    if (query.isPlaceholderData) {
+      setNewItemsCount(0);
+      return;
+    }
+
+    if (search.page !== 1 || settledSearchKeyRef.current !== searchKey) {
+      settledSearchKeyRef.current = searchKey;
+      renderedDataRef.current = query.data;
+      latestFirstPageRef.current = search.page === 1 ? query.data : undefined;
+      setRenderedData(query.data);
+      setNewItemsCount(0);
+      return;
+    }
+
+    const current = renderedDataRef.current ?? query.data;
+    const renderedIds = new Set(current.items.map((item) => item.traceId));
+    const unseenCount = query.data.items.filter((item) => !renderedIds.has(item.traceId)).length;
+    latestFirstPageRef.current = query.data;
+    setNewItemsCount(unseenCount);
+
+    if (unseenCount === 0) {
+      renderedDataRef.current = query.data;
+      setRenderedData(query.data);
+    }
+  }, [query.data, query.isPlaceholderData, search.page, searchKey]);
+
+  const visibleData = renderedData ?? query.data;
 
   return (
     <PageContainer title={m['dashboard.traces.title']()}>
@@ -55,8 +94,28 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                   {m['dashboard.traces.reset']()}
                 </Button>
               </Empty>
-            ) : query.data ? (
-              <TracesTable data={query.data} search={search} onSearchChange={onSearchChange} onSelect={onTraceSelect} />
+            ) : visibleData ? (
+              <TracesTable
+                data={visibleData}
+                search={search}
+                isFetching={query.isFetching}
+                isPlaceholderData={query.isPlaceholderData}
+                newItemsCount={search.page === 1 ? newItemsCount : 0}
+                onAcceptNewItems={() => {
+                  const latest = latestFirstPageRef.current;
+                  if (latest === undefined) return;
+                  renderedDataRef.current = latest;
+                  setRenderedData(latest);
+                  setNewItemsCount(0);
+                }}
+                onLoadOlder={() => {
+                  if (query.isFetching || query.isPlaceholderData || search.page >= visibleData.pageCount) {
+                    return;
+                  }
+                  onSearchChange({ ...search, page: search.page + 1 });
+                }}
+                onSelect={onTraceSelect}
+              />
             ) : (
               <Empty />
             )}
