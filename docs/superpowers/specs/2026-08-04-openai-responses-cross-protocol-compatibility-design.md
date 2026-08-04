@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the OpenAI Responses model path accept Codex's top-level `instructions`
+Make the OpenAI Responses model path accept a top-level `instructions` field
 and hosted `web_search` tool when routing across protocols.
 
 ## Decision
@@ -15,7 +15,7 @@ and hosted `web_search` tool when routing across protocols.
   omit it from the generic model ToolSet. It is not recast as a function tool
   and no proxy-side search is executed.
 - Other unsupported hosted tools remain unsupported. This change is narrowly
-  scoped to the Codex request shape captured in trace
+  scoped to the request shape captured in trace
   `ae7dcdc76ef2c05f9b384c397ceb97f4`.
 
 ## Data Flow
@@ -29,9 +29,9 @@ and hosted `web_search` tool when routing across protocols.
 
 ## Non-goals
 
-- Do not disable Codex web search globally or change the `/v1/models` response.
-- Do not claim that Kimi executed a web search.
-- Do not add a proxy-owned search backend, a Kimi-specific search adapter, or
+- Do not disable hosted web search globally or change the `/v1/models` response.
+- Do not represent an omitted hosted tool as a successful proxy-side search.
+- Do not add a proxy-owned search backend, a provider-specific search adapter, or
   conversion for other hosted tools.
 - Do not alter raw same-protocol forwarding or Responses state semantics.
 

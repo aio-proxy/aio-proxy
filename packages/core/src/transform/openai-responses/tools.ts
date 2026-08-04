@@ -40,6 +40,10 @@ export function normalizeOpenAIResponsesTools(
     for (const [toolIndex, tool] of (source.tools ?? []).entries()) {
       const path = source.source === 'request' ? `tools.${toolIndex}` : `input.${source.inputIndex}.tools.${toolIndex}`;
       if (tool.type === '__aio_proxy_unsupported_tool__') rejectOpenAIResponsesFeature(tool.wireType, `${path}.type`);
+      if (tool.type === 'web_search') {
+        warnOpenAIResponsesDegradation('web_search', `${path}.type`, 'dropped');
+        continue;
+      }
       if (tool.type === 'namespace') {
         for (const [childIndex, child] of tool.tools.entries()) {
           add(normalizeTool(child, source, `${path}.tools.${childIndex}`, tool), `${path}.tools.${childIndex}.name`);
