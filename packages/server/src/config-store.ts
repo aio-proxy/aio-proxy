@@ -1,6 +1,7 @@
 import {
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
+  parseRuntimeConfig,
   type PendingAccountOperation,
   type PluginRepository,
 } from '@aio-proxy/core';
@@ -37,6 +38,7 @@ export type ConfigStoreOptions = {
 export type ConfigStore = {
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
+  readonly mutateConfig: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
@@ -96,6 +98,14 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
   }
 
+  async function mutateConfigNow(fn: (record: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    await file.replace(fn, {
+      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+      verify: async (candidate) => void (await verifyCandidate(candidate)),
+    });
+  }
+
   async function deleteProviderNow(providerId: string): Promise<void> {
     await mutateProvidersNow((providers) => {
       const { [providerId]: _removed, ...remaining } = providers;
@@ -106,6 +116,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   return {
     deleteProvider: (providerId) => enqueue(() => deleteProviderNow(providerId)),
     file,
+    mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
     mutateProviders: (fn) => enqueue(() => mutateProvidersNow(fn)),
   };
 }

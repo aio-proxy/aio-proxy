@@ -12,6 +12,7 @@ import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
+import { createDashboardSettingsRoute } from './settings';
 import { createDashboardTraceRoutes } from './traces';
 
 export { redactSecrets } from './provider-secrets';
@@ -40,6 +41,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
       return context.json(state.traceStore.overview(query));
     })
     .route('/overview', createDashboardOverviewRoute(state))
+    .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {
