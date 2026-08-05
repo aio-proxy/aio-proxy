@@ -178,7 +178,7 @@ describe('traces page', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
-    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     fireEvent.change(await screen.findByRole('textbox', { name: /Session ID|会话 ID/u }), {
       target: { value: 'cache-exact' },
     });
@@ -195,7 +195,7 @@ describe('traces page', () => {
     const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
-    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     const traceIdInput = await screen.findByRole('textbox', { name: /Trace ID|追踪 ID/u });
     fireEvent.change(traceIdInput, { target: { value: 'abc' } });
 

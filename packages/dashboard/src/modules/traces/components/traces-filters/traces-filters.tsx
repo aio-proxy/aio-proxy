@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderProtocol, type OtelSpanStatusCode } from '@aio-proxy/types';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@aio-proxy/ui/components/accordion';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
@@ -20,7 +21,8 @@ import {
   type TraceSearch,
   withTraceFilters,
 } from '../../lib/trace-search';
-import { TracesAdvancedFilters } from '../traces-advanced-filters';
+import { TracesRequestFilters } from '../traces-request-filters';
+import { TracesResultFilters } from '../traces-result-filters';
 import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from './date-range';
 
 interface TracesFiltersProps {
@@ -72,92 +74,119 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
 
   return (
     <div className="flex min-h-full flex-col gap-4">
-      <form.Field name="dateRange">
-        {(field) => (
-          <Field className="w-full min-w-0">
-            <FieldLabel>{m['dashboard.traces.range']()}</FieldLabel>
-            <DateTimeRangePicker
-              value={field.state.value}
-              presets={createTraceDateTimeRangePresets()}
-              min={retentionStart}
-              max={endOfDay(now)}
-              onChange={(value) => {
-                field.handleChange(value);
-                patch(toQueryRange(value));
-              }}
-            />
-          </Field>
-        )}
-      </form.Field>
-      <form.Field name="requestedModelId">
-        {(field) => (
-          <Field className="w-full">
-            <FieldLabel htmlFor="traces-requested-model">{m['dashboard.traces.requested_model']()}</FieldLabel>
-            <Input
-              id="traces-requested-model"
-              value={field.state.value}
-              onChange={(event) => {
-                field.handleChange(event.target.value);
-                patch({ requestedModelId: event.target.value || undefined });
-              }}
-            />
-          </Field>
-        )}
-      </form.Field>
-      <form.Field name="otelStatusCode">
-        {(field) => (
-          <Field className="w-full">
-            <FieldLabel>{m['dashboard.traces.otel_status']()}</FieldLabel>
-            <Select
-              value={field.state.value}
-              onValueChange={(value) => {
-                const next = value ?? '';
-                field.handleChange(next);
-                patch({ otelStatusCode: (next || undefined) as OtelSpanStatusCode | undefined });
-              }}
-            >
-              <SelectTrigger className="w-full" aria-label={m['dashboard.traces.otel_status']()}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
-                <SelectItem value="UNSET">UNSET</SelectItem>
-                <SelectItem value="OK">OK</SelectItem>
-                <SelectItem value="ERROR">ERROR</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
-      </form.Field>
-      <form.Field name="inboundProtocol">
-        {(field) => (
-          <Field className="w-full">
-            <FieldLabel>{m['dashboard.traces.protocol']()}</FieldLabel>
-            <Select
-              value={field.state.value}
-              onValueChange={(value) => {
-                const next = value ?? '';
-                field.handleChange(next);
-                patch({ inboundProtocol: next || undefined });
-              }}
-            >
-              <SelectTrigger className="w-full" aria-label={m['dashboard.traces.protocol']()}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
-                {Object.values(ProviderProtocol).map((protocol) => (
-                  <SelectItem key={protocol} value={protocol}>
-                    <ProtocolLabel protocol={protocol} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
-      </form.Field>
+      <Accordion multiple defaultValue={['range']} className="rounded-xl bg-background">
+        <AccordionItem value="range">
+          <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
+            {m['dashboard.traces.range']()}
+          </AccordionTrigger>
+          <AccordionContent className="pb-3">
+            <form.Field name="dateRange">
+              {(field) => (
+                <Field className="w-full min-w-0">
+                  <DateTimeRangePicker
+                    value={field.state.value}
+                    presets={createTraceDateTimeRangePresets()}
+                    min={retentionStart}
+                    max={endOfDay(now)}
+                    onChange={(value) => {
+                      field.handleChange(value);
+                      patch(toQueryRange(value));
+                    }}
+                  />
+                </Field>
+              )}
+            </form.Field>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="request">
+          <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
+            {m['dashboard.traces.request_tab']()}
+          </AccordionTrigger>
+          <AccordionContent className="pb-3">
+            <div className="grid gap-3">
+              <form.Field name="requestedModelId">
+                {(field) => (
+                  <Field className="w-full">
+                    <FieldLabel htmlFor="traces-requested-model">{m['dashboard.traces.requested_model']()}</FieldLabel>
+                    <Input
+                      id="traces-requested-model"
+                      value={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value);
+                        patch({ requestedModelId: event.target.value || undefined });
+                      }}
+                    />
+                  </Field>
+                )}
+              </form.Field>
+              <form.Field name="inboundProtocol">
+                {(field) => (
+                  <Field className="w-full">
+                    <FieldLabel>{m['dashboard.traces.protocol']()}</FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(value) => {
+                        const next = value ?? '';
+                        field.handleChange(next);
+                        patch({ inboundProtocol: next || undefined });
+                      }}
+                    >
+                      <SelectTrigger className="w-full" aria-label={m['dashboard.traces.protocol']()}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
+                        {Object.values(ProviderProtocol).map((protocol) => (
+                          <SelectItem key={protocol} value={protocol}>
+                            <ProtocolLabel protocol={protocol} />
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
+              </form.Field>
+              <TracesRequestFilters search={search} onChange={patch} />
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="result">
+          <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
+            {m['dashboard.traces.result_details']()}
+          </AccordionTrigger>
+          <AccordionContent className="pb-3">
+            <div className="grid gap-3">
+              <form.Field name="otelStatusCode">
+                {(field) => (
+                  <Field className="w-full">
+                    <FieldLabel>{m['dashboard.traces.otel_status']()}</FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(value) => {
+                        const next = value ?? '';
+                        field.handleChange(next);
+                        patch({ otelStatusCode: (next || undefined) as OtelSpanStatusCode | undefined });
+                      }}
+                    >
+                      <SelectTrigger className="w-full" aria-label={m['dashboard.traces.otel_status']()}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
+                        <SelectItem value="UNSET">UNSET</SelectItem>
+                        <SelectItem value="OK">OK</SelectItem>
+                        <SelectItem value="ERROR">ERROR</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
+              </form.Field>
+              <TracesResultFilters search={search} onChange={patch} />
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-3">
-        <TracesAdvancedFilters search={search} onChange={patch} />
         {search.page === 1 && (
           <form.Field name="autoRefresh">
             {(field) => (
