@@ -479,7 +479,9 @@ describe('traces page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /reset|重置|リセット|초기화/iu }));
 
-    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }));
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }), {
+      replace: true,
+    });
     expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
   });
 });

@@ -143,7 +143,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     <Button
                       onClick={() => {
                         const { pageToken: _pageToken, ...latestSearch } = search;
-                        onSearchChange(latestSearch);
+                        onSearchChange(latestSearch, { replace: true });
                       }}
                     >
                       {m['dashboard.traces.reset']()}

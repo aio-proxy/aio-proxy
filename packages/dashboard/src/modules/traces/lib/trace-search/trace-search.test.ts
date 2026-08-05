@@ -56,6 +56,21 @@ describe('trace search', () => {
     });
   });
 
+  test('normalizes offset URL dates before using them as trace search bounds', () => {
+    expect(
+      resolveTraceSearch(
+        traceSearchSchema.parse({
+          startedAfter: '2026-07-12T08:00:00+08:00',
+          startedBefore: '2026-07-12T09:00:00+08:00',
+        }),
+        now,
+      ),
+    ).toMatchObject({
+      startedAfter: '2026-07-12T00:00:00.000Z',
+      startedBefore: '2026-07-12T01:00:00.000Z',
+    });
+  });
+
   test('preserves explicit date bounds when serializing URL state', () => {
     const defaults = createDefaultTraceSearch();
 

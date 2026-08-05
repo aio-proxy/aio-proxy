@@ -47,8 +47,8 @@ export const resolveTraceSearch = (search: TraceUrlSearch, now = new Date()): Tr
   return {
     ...search,
     pageSize: search.pageSize as DashboardTracePageSize,
-    startedAfter: search.startedAfter ?? defaults.startedAfter,
-    startedBefore: search.startedBefore ?? defaults.startedBefore,
+    startedAfter: new Date(search.startedAfter ?? defaults.startedAfter).toISOString(),
+    startedBefore: new Date(search.startedBefore ?? defaults.startedBefore).toISOString(),
   };
 };
 
