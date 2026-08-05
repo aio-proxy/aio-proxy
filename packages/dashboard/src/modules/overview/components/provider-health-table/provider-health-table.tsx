@@ -6,8 +6,8 @@ import { flexRender } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
 import { DataTableHeaderCell } from '@/components/data-table-header-cell';
-import { DataTablePagination } from '@/components/data-table-pagination';
 import { DataTableToolbar } from '@/components/data-table-toolbar';
+import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
@@ -127,7 +127,14 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
             )}
           </TableBody>
         </Table>
-        {table.getPageCount() > 1 ? <DataTablePagination table={table} /> : null}
+        {table.getPageCount() > 1 ? (
+          <PaginationControls
+            canPrevious={table.getCanPreviousPage()}
+            canNext={table.getCanNextPage()}
+            onPrevious={table.previousPage}
+            onNext={table.nextPage}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

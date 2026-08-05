@@ -9,7 +9,7 @@ import type React from 'react';
 import { Fragment, useMemo, useRef } from 'react';
 
 import { DataTableHeaderCell } from '@/components/data-table-header-cell';
-import { DataTablePagination } from '@/components/data-table-pagination';
+import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
 import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
@@ -143,7 +143,14 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
           ))}
         </TableBody>
       </Table>
-      {table.getPageCount() > 1 ? <DataTablePagination table={table} /> : null}
+      {table.getPageCount() > 1 ? (
+        <PaginationControls
+          canPrevious={table.getCanPreviousPage()}
+          canNext={table.getCanNextPage()}
+          onPrevious={table.previousPage}
+          onNext={table.nextPage}
+        />
+      ) : null}
       <PluginOptionsDrawer ref={optionsRef} />
       <PluginUninstallDialog ref={uninstallRef} />
     </div>

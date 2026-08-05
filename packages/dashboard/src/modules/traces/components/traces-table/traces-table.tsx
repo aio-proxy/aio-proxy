@@ -1,9 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
-import { Button } from '@aio-proxy/ui/components/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
+
+import { PaginationControls } from '@/components/pagination-controls';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
@@ -159,23 +160,13 @@ export const TracesTable: React.FC<TracesTableProps> = ({
           ))}
         </TableBody>
       </Table>
-      <div className="flex justify-end gap-2 border-t pt-3">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={isFetching || data.prevPageToken === undefined}
-          onClick={() => data.prevPageToken !== undefined && onPrevious(data.prevPageToken)}
-        >
-          {m['dashboard.pagination.previous']()}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={isFetching || data.nextPageToken === undefined}
-          onClick={() => data.nextPageToken !== undefined && onNext(data.nextPageToken)}
-        >
-          {m['dashboard.pagination.next']()}
-        </Button>
+      <div className="border-t pt-3">
+        <PaginationControls
+          canPrevious={!isFetching && data.prevPageToken !== undefined}
+          canNext={!isFetching && data.nextPageToken !== undefined}
+          onPrevious={() => data.prevPageToken !== undefined && onPrevious(data.prevPageToken)}
+          onNext={() => data.nextPageToken !== undefined && onNext(data.nextPageToken)}
+        />
       </div>
     </div>
   );

@@ -125,8 +125,11 @@ describe('traces table', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).not.toHaveAttribute('aria-disabled');
 
     view.rerender(
       <TracesTable
@@ -140,8 +143,11 @@ describe('traces table', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toHaveAttribute('aria-disabled', 'true');
   });
 
   test('keeps TanStack Table data stable across unrelated parent rerenders', () => {

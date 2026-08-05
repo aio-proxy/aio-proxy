@@ -413,7 +413,7 @@ describe('traces page', () => {
     );
 
     expect(screen.getByText(runningTrace.traceId)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toHaveAttribute('aria-disabled', 'true');
   });
 
   test('canonicalizes a successful newest response to the token-free URL with replacement', () => {
