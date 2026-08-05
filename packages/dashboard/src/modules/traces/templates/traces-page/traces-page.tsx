@@ -21,7 +21,7 @@ type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
 
 interface TracesPageProps {
   readonly search: TraceSearch;
-  readonly onSearchChange: (search: TraceSearch) => void;
+  readonly onSearchChange: (search: TraceSearch, options?: { readonly replace?: boolean }) => void;
   readonly onTraceSelect: (traceId: string) => void;
 }
 
@@ -33,6 +33,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   const searchKey = JSON.stringify(search);
   const [bufferSearchKey, setBufferSearchKey] = useState(searchKey);
   const activeSearchKeyRef = useRef(searchKey);
+  const canonicalizedSearchKeyRef = useRef<string | undefined>(undefined);
   const renderedDataRef = useRef<TracesData | undefined>(undefined);
   const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
   const query = useTracesQuery(search, autoRefresh);
@@ -45,13 +46,24 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   }
 
   useEffect(() => {
-    if (query.data === undefined) return;
+    if (query.data === undefined || query.isError) return;
 
     setBufferSearchKey(searchKey);
 
     if (query.isPlaceholderData) {
       setRenderedData(undefined);
       setNewItemsCount(0);
+      return;
+    }
+
+    if (
+      search.pageToken !== undefined &&
+      query.data.prevPageToken === undefined &&
+      canonicalizedSearchKeyRef.current !== searchKey
+    ) {
+      canonicalizedSearchKeyRef.current = searchKey;
+      const { pageToken: _pageToken, ...latestSearch } = search;
+      onSearchChange(latestSearch, { replace: true });
       return;
     }
 
@@ -73,7 +85,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
       renderedDataRef.current = query.data;
       setRenderedData(query.data);
     }
-  }, [query.data, query.isPlaceholderData, search.pageToken, searchKey]);
+  }, [onSearchChange, query.data, query.isError, query.isPlaceholderData, search, search.pageToken, searchKey]);
 
   const bufferIsActive = bufferSearchKey === searchKey;
   const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;

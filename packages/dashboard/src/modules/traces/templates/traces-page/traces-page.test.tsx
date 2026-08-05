@@ -416,6 +416,41 @@ describe('traces page', () => {
     expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
   });
 
+  test('canonicalizes a successful newest response to the token-free URL with replacement', () => {
+    const onSearchChange = rs.fn();
+    const search = {
+      ...createDefaultTraceSearch(),
+      pageToken: 'newer-token',
+      requestedModelId: 'gpt-5',
+    };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+
+    render(<TracesPage search={search} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }), {
+      replace: true,
+    });
+    expect(onSearchChange).toHaveBeenCalledTimes(1);
+    expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
+  });
+
+  test.each(['placeholder', 'failed'] as const)('does not canonicalize a %s token response', (state) => {
+    const onSearchChange = rs.fn();
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+    mocks.isPlaceholderData = state === 'placeholder';
+    mocks.error = state === 'failed' ? new DashboardTracesRequestError(503) : null;
+
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'newer-token' }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(onSearchChange).not.toHaveBeenCalled();
+  });
+
   test('clears an invalid page token while preserving filters', () => {
     const onSearchChange = rs.fn();
     mocks.error = new DashboardTracesRequestError(400);

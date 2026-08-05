@@ -12,7 +12,9 @@ const TracesRoute: React.FC<TracesRouteProps> = () => {
   return (
     <TracesPage
       search={search}
-      onSearchChange={(next) => void navigate({ search: () => toTraceUrlSearch(next) })}
+      onSearchChange={(next, options) =>
+        void navigate({ search: () => toTraceUrlSearch(next), replace: options?.replace ?? false })
+      }
       onTraceSelect={(traceId) => void navigate({ to: '/traces/$traceId', params: { traceId } })}
     />
   );
