@@ -105,13 +105,13 @@ export const DashboardTraceSpanSchema = z.object({
   ),
 });
 
-export const DashboardTracesResponseSchema = z.object({
-  items: z.array(DashboardTraceSummarySchema),
-  page: z.number().int().min(1),
-  pageSize: DashboardTracePageSizeSchema,
-  total: z.number().int().min(0),
-  pageCount: z.number().int().min(0),
-});
+export const DashboardTracesResponseSchema = z
+  .object({
+    items: z.array(DashboardTraceSummarySchema),
+    nextPageToken: z.string().min(1).optional(),
+    prevPageToken: z.string().min(1).optional(),
+  })
+  .strict();
 
 const DashboardTraceRequestDiagnosticsSchema = z
   .object({
