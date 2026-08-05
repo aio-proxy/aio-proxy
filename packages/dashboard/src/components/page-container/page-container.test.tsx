@@ -1,4 +1,4 @@
-import { afterEach, expect, rs, test } from '@rstest/core';
+import { expect, rs, test } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
 import { within } from '@testing-library/react';
 
@@ -10,23 +10,6 @@ rs.mock('@tanstack/react-router', () => ({
   ),
 }));
 
-afterEach(() => {
-  rs.restoreAllMocks();
-});
-
-test('renders back navigation as a link without native-button warnings', () => {
-  const consoleError = rs.spyOn(console, 'error').mockImplementation(() => undefined);
-
-  render(
-    <PageContainer title="Edit Provider" backTo="/providers">
-      Content
-    </PageContainer>,
-  );
-
-  expect(screen.getByRole('link', { name: /Back|返回/u })).toHaveAttribute('href', '/providers');
-  expect(consoleError.mock.calls.flat().join(' ')).not.toContain('expected a native <button>');
-});
-
 test('renders an optional subtitle directly with the page heading', () => {
   render(<PageContainer title="Edit Provider" subtitle="carpool · API" />);
 
@@ -36,7 +19,7 @@ test('renders an optional subtitle directly with the page heading', () => {
 
 test('renders breadcrumbs before the page title', () => {
   render(
-    <PageContainer title="Dashboard" breadcrumbs={[{ label: '观测' }, { label: 'Dashboard' }]}>
+    <PageContainer title="Dashboard" breadcrumbs={[{ label: '观测', to: '/overview' }, { label: 'Dashboard' }]}>
       Content
     </PageContainer>,
   );
@@ -44,6 +27,8 @@ test('renders breadcrumbs before the page title', () => {
   const breadcrumb = screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$/u });
   expect(within(breadcrumb).getByText('观测')).toBeInTheDocument();
   expect(within(breadcrumb).getByText('Dashboard')).toBeInTheDocument();
+  expect(within(breadcrumb).getByRole('link', { name: '观测' })).toHaveAttribute('href', '/overview');
+  expect(screen.queryByLabelText(/^Back$|^返回$/u)).toBeNull();
   expect(
     breadcrumb.compareDocumentPosition(screen.getByRole('heading', { level: 1, name: 'Dashboard' })) &
       Node.DOCUMENT_POSITION_FOLLOWING,

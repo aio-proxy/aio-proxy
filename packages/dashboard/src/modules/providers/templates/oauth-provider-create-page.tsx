@@ -84,7 +84,13 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
   }, [navigate, queryClient, session]);
 
   return (
-    <PageContainer title={m['dashboard.providers.new_title']()} backTo="/providers">
+    <PageContainer
+      title={m['dashboard.providers.new_title']()}
+      breadcrumbs={[
+        { label: m['dashboard.providers.list_title'](), to: '/providers' },
+        { label: m['dashboard.providers.new_title']() },
+      ]}
+    >
       <div className="max-w-lg space-y-6 p-4">
         {sessionId === undefined ? (
           <form

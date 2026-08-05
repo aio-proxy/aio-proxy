@@ -57,6 +57,10 @@ afterEach(() => {
 test('OAuth create page selects a capability and renders its account fields before authorization', async () => {
   render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
+  expect(
+    screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$|^パンくずリスト$|^브레드크럼$/u }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/^Back$|^返回$|^戻る$|^뒤로$/u)).toBeNull();
   expect(screen.queryByRole('tablist')).toBeNull();
 
   const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });

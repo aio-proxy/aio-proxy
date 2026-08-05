@@ -46,7 +46,10 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
     <PageContainer
       title={m['dashboard.providers.edit_title']()}
       subtitle={`${provider.id} · ${PROVIDER_KIND_LABEL.oauth}`}
-      backTo="/providers"
+      breadcrumbs={[
+        { label: m['dashboard.providers.list_title'](), to: '/providers' },
+        { label: m['dashboard.providers.edit_title']() },
+      ]}
     >
       <div className="mx-auto max-w-4xl space-y-6 px-1 pb-4 sm:p-4">
         {sessionId === undefined ? (

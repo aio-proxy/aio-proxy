@@ -57,6 +57,10 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
   const connection = screen.getByRole('region', { name: /Connection|连接/u });
+  expect(
+    screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$|^パンくずリスト$|^브레드크럼$/u }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/^Back$|^返回$|^戻る$|^뒤로$/u)).toBeNull();
   const actions = screen.getByTestId('provider-form-actions');
   const actionButtons = within(actions).getAllByRole('button');
   const save = within(actions).getByRole('button', { name: /Save|保存/u });
