@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useEffect, useMemo, useRef } from 'react';
 
 import type { OverviewActivityData } from '../../services/overview-service';
@@ -36,10 +37,7 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
       <CardContent className="grid gap-3">
         <div ref={scrollContainer} className="overflow-x-auto pb-2">
           <div className="grid w-max gap-1">
-            <div
-              className="grid h-5 gap-1 text-xs text-muted-foreground"
-              style={{ gridTemplateColumns: 'repeat(52, 0.75rem)' }}
-            >
+            <div className="grid h-5 grid-cols-[repeat(52,--spacing(3))] gap-1 text-xs text-muted-foreground">
               {monthMarkers.map((marker) => (
                 <span
                   key={`${marker.index}-${marker.label}`}
@@ -52,9 +50,8 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
             </div>
             <div
               aria-label={m['dashboard.overview.activity_title']()}
-              className="grid grid-flow-col grid-rows-7 gap-1"
+              className="grid auto-cols-3 grid-flow-col grid-rows-7 gap-1"
               role="group"
-              style={{ gridAutoColumns: '0.75rem' }}
             >
               {weeks.flatMap((week, weekIndex) =>
                 week.map((cell, dayIndex) => {
@@ -79,7 +76,7 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
             <span
               key={className}
               aria-label={m['dashboard.overview.activity_level']({ level })}
-              className={`size-3 rounded-[2px] ${className}`}
+              className={cn('size-3 rounded-[2px]', className)}
             />
           ))}
           <span>{m['dashboard.overview.activity_legend_more']()}</span>
