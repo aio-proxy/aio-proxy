@@ -6,7 +6,7 @@ import type {
   DashboardOverviewResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
-  DashboardTracesResponse,
+  DashboardTraceSummary,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
   TraceTerminationReason,
@@ -92,9 +92,15 @@ export type TraceCompletion = {
   };
 };
 
+export type TraceCursor = {
+  readonly direction: 'older' | 'newer';
+  readonly startedAt: Date;
+  readonly traceId: string;
+};
+
 export type TracesQuery = {
-  readonly page: number;
   readonly pageSize: DashboardTracePageSize;
+  readonly cursor?: TraceCursor;
   readonly startedAfter?: Date;
   readonly startedBefore?: Date;
   readonly traceId?: string;
@@ -108,6 +114,12 @@ export type TracesQuery = {
   readonly finalProviderId?: string;
   readonly finalModelId?: string;
   readonly finalHttpStatus?: number;
+};
+
+export type TracesPage = {
+  readonly items: DashboardTraceSummary[];
+  readonly nextCursor?: TraceCursor;
+  readonly previousCursor?: TraceCursor;
 };
 
 export type UsageOverviewQuery = {
@@ -125,7 +137,7 @@ export type DashboardOverviewQuery = {
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
-  readonly list: (query: TracesQuery) => DashboardTracesResponse;
+  readonly list: (query: TracesQuery) => TracesPage;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
