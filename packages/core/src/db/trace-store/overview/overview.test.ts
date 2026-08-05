@@ -229,7 +229,7 @@ test('counts failed and cancelled roots in the request trend by requested model'
   });
 });
 
-test('returns Provider health and top model costs across all retained spans', () => {
+test('returns Provider health and all-time top model costs', () => {
   withStore((store) => {
     seedTrace(store, {
       id: 1,
@@ -281,6 +281,63 @@ test('derives Provider health from failed and successful attempt child spans', (
   });
 });
 
+test('keeps yearly activity after trace pruning', () => {
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 1,
+      endedAt: new Date(2025, 0, 15, 12),
+      modelId: 'retained-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { estimatedCostUsd: 5 },
+    });
+
+    store.prune(new Date(2025, 0, 16), new Date(2025, 0, 16));
+
+    expect(store.find('00000000000000000000000000000001')).toBeUndefined();
+    expect(store.overviewDashboardActivity(2025).days.find(({ date }) => date === '2025-01-15')).toEqual({
+      date: '2025-01-15',
+      requestCount: '1',
+    });
+  } finally {
+    handle.close();
+  }
+});
+
+test('keeps all-time model costs after trace pruning', () => {
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 1,
+      endedAt: new Date(2025, 0, 15, 12),
+      modelId: 'retained-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { estimatedCostUsd: 5 },
+    });
+    seedTrace(store, {
+      id: 2,
+      endedAt: new Date(2025, 0, 14, 12),
+      modelId: 'retained-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { estimatedCostUsd: 5 },
+    });
+    handle.sqlite.query('update usage_daily set estimated_cost_nano_usd = ?').run(5_000_000_000_000_000_000n);
+
+    store.prune(new Date(2025, 0, 16), new Date(2025, 0, 16));
+
+    expect(store.find('00000000000000000000000000000001')).toBeUndefined();
+    expect(store.find('00000000000000000000000000000002')).toBeUndefined();
+    expect(store.overviewDashboardDiagnostics()).toEqual({
+      providerHealth: [],
+      topModelCosts: [{ modelId: 'retained-model', estimatedCostNanoUsd: '10000000000000000000' }],
+    });
+  } finally {
+    handle.close();
+  }
+});
+
 test('preserves totals above Number.MAX_SAFE_INTEGER', () => {
   withStore((store) => {
     for (const [index, totalTokens] of [4_503_599_627_370_496, 4_503_599_627_370_497].entries()) {
@@ -295,7 +352,7 @@ test('preserves totals above Number.MAX_SAFE_INTEGER', () => {
   });
 });
 
-test('preserves range and all-time totals above the signed SQLite integer limit', () => {
+test('preserves range totals above the signed SQLite integer limit', () => {
   const handle = openTestDb();
   try {
     const store = createTraceStore(handle.db);
@@ -335,9 +392,6 @@ test('preserves range and all-time totals above the signed SQLite integer limit'
       key: '2026-07-11T07:00:00.000Z',
       values: { 'large-model': '10000000000000000000' },
     });
-    expect(store.overviewDashboardDiagnostics().topModelCosts).toEqual([
-      { modelId: 'large-model', estimatedCostNanoUsd: '10000000000000000000' },
-    ]);
   } finally {
     handle.close();
   }

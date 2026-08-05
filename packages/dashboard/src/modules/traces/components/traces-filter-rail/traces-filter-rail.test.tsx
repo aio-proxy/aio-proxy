@@ -18,7 +18,7 @@ const renderRail = () => {
 };
 
 describe('TracesFilterRail', () => {
-  test('moves the rail into the search bar and returns focus when collapsed', () => {
+  test('focuses Advanced filters after collapsing the desktop rail', () => {
     renderRail();
 
     const collapse = screen.getByRole('button', { name: /Collapse filters|收起筛选/u });
@@ -29,6 +29,13 @@ describe('TracesFilterRail', () => {
     const advancedFilter = screen.getByRole('button', { name: /Advanced filters|高级筛选/u });
     expect(advancedFilter).toHaveFocus();
     expect(screen.getAllByRole('button', { name: /Advanced filters|高级筛选/u })).toHaveLength(1);
+  });
+
+  test('focuses Collapse filters after Advanced filters reopens the desktop rail', () => {
+    renderRail();
+
+    fireEvent.click(screen.getByRole('button', { name: /Collapse filters|收起筛选/u }));
+    const advancedFilter = screen.getByRole('button', { name: /Advanced filters|高级筛选/u });
 
     fireEvent.click(advancedFilter);
     expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();

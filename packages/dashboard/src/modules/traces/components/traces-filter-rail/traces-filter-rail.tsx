@@ -43,7 +43,7 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
   const [collapsed, setCollapsed] = useState(narrow);
   const advancedFilterRef = useRef<HTMLButtonElement>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
-  const focusTargetRef = useRef<'advanced' | 'collapse'>();
+  const focusTargetRef = useRef<'advanced' | 'collapse' | undefined>(undefined);
 
   useEffect(() => {
     if (narrow) setCollapsed(true);

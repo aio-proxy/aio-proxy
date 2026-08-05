@@ -47,9 +47,9 @@ function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsRespo
   const totals = new Map<string, bigint>();
   const rows = iterate<RawCostRow>(
     db,
-    `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
+    `select model_dimension as modelId,
       cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
-    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null`,
+    from usage_daily where priced_request_count != '0'`,
     [],
   );
   for (const row of rows) {
