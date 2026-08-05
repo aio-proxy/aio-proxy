@@ -58,12 +58,7 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
                   if (cell === null) return <div key={`${weekIndex}-${dayIndex}`} className="size-3" />;
                   const level = intensityByDate.get(cell.date) ?? 0;
                   return (
-                    <TokenActivityDayCell
-                      key={cell.date}
-                      cell={cell}
-                      intensityClassName={intensityClasses[level]!}
-                      level={level}
-                    />
+                    <TokenActivityDayCell key={cell.date} cell={cell} intensityClassName={intensityClasses[level]!} />
                   );
                 }),
               )}
@@ -72,12 +67,8 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{m['dashboard.overview.activity_legend_less']()}</span>
-          {intensityClasses.map((className, level) => (
-            <span
-              key={className}
-              aria-label={m['dashboard.overview.activity_level']({ level })}
-              className={cn('size-3 rounded-[2px]', className)}
-            />
+          {intensityClasses.map((className) => (
+            <span key={className} aria-hidden="true" className={cn('size-3 rounded-[2px]', className)} />
           ))}
           <span>{m['dashboard.overview.activity_legend_more']()}</span>
         </div>

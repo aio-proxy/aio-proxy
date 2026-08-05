@@ -894,7 +894,6 @@
       "activity_title": "Token activity",
       "activity_legend_less": "Less",
       "activity_legend_more": "More",
-      "activity_level": "Level {level}",
       "activity_model_breakdown": "Model breakdown"
     },
     "traces": {
