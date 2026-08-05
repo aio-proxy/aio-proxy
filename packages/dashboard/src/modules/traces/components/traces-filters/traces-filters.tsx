@@ -187,7 +187,7 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
         </AccordionItem>
       </Accordion>
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-3">
-        {search.page === 1 && (
+        {search.pageToken === undefined && (
           <form.Field name="autoRefresh">
             {(field) => (
               <Field orientation="horizontal" className="h-9 w-auto px-1">

@@ -4,10 +4,9 @@ import { render, screen } from '@testing-library/react';
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesFilterRail } from './traces-filter-rail';
 
-const renderRail = () => {
-  const filters = { autoRefresh: true, refreshing: false, onAutoRefresh: rs.fn(), onRefresh: rs.fn() };
-  return render(<TracesFilterRail search={createDefaultTraceSearch()} onSearchChange={rs.fn()} {...filters} />);
-};
+const filters = { autoRefresh: true, refreshing: false, onAutoRefresh: rs.fn(), onRefresh: rs.fn() };
+const renderRail = (search = createDefaultTraceSearch()) =>
+  render(<TracesFilterRail search={search} onSearchChange={rs.fn()} {...filters} />);
 
 describe('TracesFilterRail', () => {
   test('organizes filters into semantic accordion groups without a more-filters control', () => {
@@ -20,5 +19,17 @@ describe('TracesFilterRail', () => {
     expect(screen.getByRole('button', { name: /Result details|结果详情/u })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /More filters|更多筛选/u })).toBeNull();
     expect(screen.getByRole('button', { name: /Refresh|刷新/u })).toBeTruthy();
+  });
+
+  test('shows auto-refresh only for the token-free latest page', () => {
+    const latestSearch = createDefaultTraceSearch();
+    const view = renderRail(latestSearch);
+
+    expect(screen.getByRole('switch', { name: /Auto refresh|自动刷新/u })).toBeTruthy();
+
+    view.rerender(
+      <TracesFilterRail search={{ ...latestSearch, pageToken: 'older-token' }} onSearchChange={rs.fn()} {...filters} />,
+    );
+    expect(screen.queryByRole('switch', { name: /Auto refresh|自动刷新/u })).toBeNull();
   });
 });
