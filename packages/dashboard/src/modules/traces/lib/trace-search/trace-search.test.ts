@@ -56,16 +56,20 @@ describe('trace search', () => {
     });
   });
 
-  test('removes current-day date defaults when serializing URL state', () => {
+  test('preserves explicit date bounds when serializing URL state', () => {
+    const defaults = createDefaultTraceSearch();
+
     expect(
-      toTraceUrlSearch(
-        {
-          ...createDefaultTraceSearch(now),
-          requestId: 'request-a',
-        },
-        now,
-      ),
-    ).toEqual({ pageSize: 50, requestId: 'request-a' });
+      toTraceUrlSearch({
+        ...defaults,
+        requestId: 'request-a',
+      }),
+    ).toEqual({
+      pageSize: 50,
+      startedAfter: defaults.startedAfter,
+      startedBefore: defaults.startedBefore,
+      requestId: 'request-a',
+    });
   });
 
   test('removes the page token and cleared values whenever filters change', () => {
@@ -83,6 +87,21 @@ describe('trace search', () => {
       ...createDefaultTraceSearch(now),
       sessionId: 'session-a',
       finalProviderId: 'provider-a',
+    });
+  });
+
+  test('removes the page token when page size changes', () => {
+    expect(
+      withTraceFilters(
+        {
+          ...createDefaultTraceSearch(now),
+          pageToken: 'next-page-token',
+        },
+        { pageSize: 20 },
+      ),
+    ).toEqual({
+      ...createDefaultTraceSearch(now),
+      pageSize: 20,
     });
   });
 });

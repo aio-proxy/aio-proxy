@@ -52,15 +52,7 @@ export const resolveTraceSearch = (search: TraceUrlSearch, now = new Date()): Tr
   };
 };
 
-export const toTraceUrlSearch = (search: TraceSearch, now = new Date()): TraceUrlSearch => {
-  const defaults = createDefaultTraceSearch(now);
-  const { startedAfter, startedBefore, ...rest } = search;
-  return {
-    ...rest,
-    ...(startedAfter === defaults.startedAfter ? {} : { startedAfter }),
-    ...(startedBefore === defaults.startedBefore ? {} : { startedBefore }),
-  };
-};
+export const toTraceUrlSearch = (search: TraceSearch): TraceUrlSearch => search;
 
 export const withTraceFilters = (search: TraceSearch, patch: TraceFilterPatch): TraceSearch => {
   const next = { ...search, ...patch } as Record<string, unknown>;
