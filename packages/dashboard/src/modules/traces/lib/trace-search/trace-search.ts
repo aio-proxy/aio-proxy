@@ -1,103 +1,70 @@
-import type { DashboardTracePageSize, OtelSpanStatusCode, TraceTerminationReason } from '@aio-proxy/types';
+import type { DashboardTracePageSize } from '@aio-proxy/types';
 import { endOfDay, startOfDay } from 'date-fns';
+import { z } from 'zod';
 
-export type TraceSearch = {
-  readonly page: number;
-  readonly pageSize: DashboardTracePageSize;
+const pageSize = z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]);
+const optionalString = z.string().trim().min(1).optional().catch(undefined);
+const traceId = z
+  .string()
+  .regex(/^[0-9a-f]{32}$/u)
+  .optional()
+  .catch(undefined);
+
+export const traceSearchSchema = z.object({
+  pageSize: z.coerce.number().pipe(pageSize).catch(50),
+  pageToken: optionalString,
+  startedAfter: z.iso.datetime({ offset: true }).optional().catch(undefined),
+  startedBefore: z.iso.datetime({ offset: true }).optional().catch(undefined),
+  traceId,
+  requestId: optionalString,
+  sessionSource: optionalString,
+  sessionId: optionalString,
+  otelStatusCode: z.enum(['UNSET', 'OK', 'ERROR']).optional().catch(undefined),
+  terminationReason: z.enum(['failure', 'cancelled', 'interrupted']).optional().catch(undefined),
+  inboundProtocol: optionalString,
+  requestedModelId: optionalString,
+  finalProviderId: optionalString,
+  finalModelId: optionalString,
+  finalHttpStatus: z.coerce.number().int().min(100).max(599).optional().catch(undefined),
+});
+
+export type TraceUrlSearch = z.infer<typeof traceSearchSchema>;
+export type TraceSearch = Omit<TraceUrlSearch, 'startedAfter' | 'startedBefore'> & {
   readonly startedAfter: string;
   readonly startedBefore: string;
-  readonly traceId?: string;
-  readonly requestId?: string;
-  readonly sessionSource?: string;
-  readonly sessionId?: string;
-  readonly otelStatusCode?: OtelSpanStatusCode;
-  readonly terminationReason?: TraceTerminationReason;
-  readonly inboundProtocol?: string;
-  readonly requestedModelId?: string;
-  readonly finalProviderId?: string;
-  readonly finalModelId?: string;
-  readonly finalHttpStatus?: number;
 };
 
-export type TraceFilterPatch = { [Key in keyof Omit<TraceSearch, 'page'>]?: TraceSearch[Key] | undefined };
-type RawTraceSearch = Record<string, unknown> & Partial<Record<keyof TraceSearch, unknown>>;
-
-const pageSizes = new Set([10, 20, 50, 100]);
-const otelStatusCodes = new Set(['UNSET', 'OK', 'ERROR']);
-const terminationReasons = new Set(['failure', 'cancelled', 'interrupted']);
-const traceIdPattern = /^[0-9a-f]{32}$/u;
+export type TraceFilterPatch = { [Key in keyof Omit<TraceSearch, 'pageToken'>]?: TraceSearch[Key] | undefined };
 
 export const createDefaultTraceSearch = (now = new Date()): TraceSearch => ({
-  page: 1,
   pageSize: 50,
   startedAfter: startOfDay(now).toISOString(),
   startedBefore: endOfDay(now).toISOString(),
 });
 
-export const parseTraceSearch = (raw: RawTraceSearch, now = new Date()): TraceSearch => {
+export const resolveTraceSearch = (search: TraceUrlSearch, now = new Date()): TraceSearch => {
   const defaults = createDefaultTraceSearch(now);
-  const startedAfter = isoString(raw.startedAfter);
-  const startedBefore = isoString(raw.startedBefore);
-  const page = integer(raw.page);
-  const pageSize = integer(raw.pageSize);
-  const finalHttpStatus = integer(raw.finalHttpStatus);
-  const otelStatusCode = string(raw.otelStatusCode);
-  const terminationReason = string(raw.terminationReason);
-  const traceId = typeof raw.traceId === 'string' && traceIdPattern.test(raw.traceId) ? raw.traceId : undefined;
-  if (
-    (raw.startedAfter !== undefined && startedAfter === undefined) ||
-    (raw.startedBefore !== undefined && startedBefore === undefined) ||
-    (raw.page !== undefined && (page === undefined || page < 1)) ||
-    (raw.pageSize !== undefined && (pageSize === undefined || !pageSizes.has(pageSize))) ||
-    (raw.finalHttpStatus !== undefined &&
-      (finalHttpStatus === undefined || finalHttpStatus < 100 || finalHttpStatus > 599)) ||
-    (raw.otelStatusCode !== undefined && (otelStatusCode === undefined || !otelStatusCodes.has(otelStatusCode))) ||
-    (raw.terminationReason !== undefined &&
-      (terminationReason === undefined || !terminationReasons.has(terminationReason))) ||
-    (raw.traceId !== undefined && traceId === undefined)
-  ) {
-    return defaults;
-  }
-
   return {
-    page: page ?? defaults.page,
-    pageSize: (pageSize ?? defaults.pageSize) as DashboardTracePageSize,
-    startedAfter: startedAfter ?? defaults.startedAfter,
-    startedBefore: startedBefore ?? defaults.startedBefore,
-    ...(traceId === undefined ? {} : { traceId }),
-    ...optionalString('requestId', raw.requestId),
-    ...optionalString('sessionSource', raw.sessionSource),
-    ...optionalString('sessionId', raw.sessionId),
-    ...(otelStatusCode === undefined ? {} : { otelStatusCode: otelStatusCode as OtelSpanStatusCode }),
-    ...(terminationReason === undefined ? {} : { terminationReason: terminationReason as TraceTerminationReason }),
-    ...optionalString('inboundProtocol', raw.inboundProtocol),
-    ...optionalString('requestedModelId', raw.requestedModelId),
-    ...optionalString('finalProviderId', raw.finalProviderId),
-    ...optionalString('finalModelId', raw.finalModelId),
-    ...(finalHttpStatus === undefined ? {} : { finalHttpStatus }),
+    ...search,
+    pageSize: search.pageSize as DashboardTracePageSize,
+    startedAfter: search.startedAfter ?? defaults.startedAfter,
+    startedBefore: search.startedBefore ?? defaults.startedBefore,
+  };
+};
+
+export const toTraceUrlSearch = (search: TraceSearch, now = new Date()): TraceUrlSearch => {
+  const defaults = createDefaultTraceSearch(now);
+  const { startedAfter, startedBefore, ...rest } = search;
+  return {
+    ...rest,
+    ...(startedAfter === defaults.startedAfter ? {} : { startedAfter }),
+    ...(startedBefore === defaults.startedBefore ? {} : { startedBefore }),
   };
 };
 
 export const withTraceFilters = (search: TraceSearch, patch: TraceFilterPatch): TraceSearch => {
-  const next = { ...search, ...patch, page: 1 } as Record<string, unknown>;
+  const next = { ...search, ...patch } as Record<string, unknown>;
+  delete next['pageToken'];
   for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
   return next as TraceSearch;
-};
-
-const integer = (value: unknown) => {
-  const parsed =
-    typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : undefined;
-  return parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined;
-};
-
-const string = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined);
-
-const isoString = (value: unknown) => {
-  const parsed = string(value);
-  return parsed !== undefined && !Number.isNaN(Date.parse(parsed)) ? new Date(parsed).toISOString() : undefined;
-};
-
-const optionalString = <Key extends string>(key: Key, value: unknown): Partial<Record<Key, string>> => {
-  const parsed = string(value);
-  return parsed === undefined ? {} : ({ [key]: parsed } as Partial<Record<Key, string>>);
 };

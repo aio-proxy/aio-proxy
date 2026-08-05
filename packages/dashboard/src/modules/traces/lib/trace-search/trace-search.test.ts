@@ -1,27 +1,30 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { createDefaultTraceSearch, parseTraceSearch, withTraceFilters } from './trace-search';
+import {
+  createDefaultTraceSearch,
+  resolveTraceSearch,
+  toTraceUrlSearch,
+  traceSearchSchema,
+  withTraceFilters,
+} from './trace-search';
 
 const now = new Date('2026-07-12T12:00:00.000Z');
 
 describe('trace search', () => {
-  test('parses trace-specific URL filters into typed search state', () => {
+  test('validates cursor pagination and trace filters into typed URL state', () => {
     expect(
-      parseTraceSearch(
-        {
-          page: '2',
-          pageSize: '20',
-          otelStatusCode: 'ERROR',
-          terminationReason: 'cancelled',
-          sessionSource: 'openai-prompt-cache',
-          sessionId: 'cache-a',
-          finalHttpStatus: '503',
-        },
-        now,
-      ),
-    ).toMatchObject({
-      page: 2,
+      traceSearchSchema.parse({
+        pageSize: '20',
+        pageToken: 'next-page-token',
+        otelStatusCode: 'ERROR',
+        terminationReason: 'cancelled',
+        sessionSource: 'openai-prompt-cache',
+        sessionId: 'cache-a',
+        finalHttpStatus: '503',
+      }),
+    ).toEqual({
       pageSize: 20,
+      pageToken: 'next-page-token',
       otelStatusCode: 'ERROR',
       terminationReason: 'cancelled',
       sessionSource: 'openai-prompt-cache',
@@ -31,26 +34,46 @@ describe('trace search', () => {
   });
 
   test.each([
-    { startedAfter: 'not-a-date' },
-    { startedBefore: 'not-a-date' },
-    { page: '0' },
-    { pageSize: '25' },
-    { otelStatusCode: 'BAD' },
-    { terminationReason: 'success' },
-    { finalHttpStatus: '99' },
-    { finalHttpStatus: '600' },
-    { traceId: 'abc' },
-    { traceId: 'ABCDEF0123456789ABCDEF0123456789' },
-  ])('resets malformed search values to the current-day defaults: %j', (raw) => {
-    expect(parseTraceSearch(raw, now)).toEqual(createDefaultTraceSearch(now));
+    ['startedAfter', { startedAfter: 'not-a-date' }, undefined],
+    ['startedBefore', { startedBefore: 'not-a-date' }, undefined],
+    ['pageSize', { pageSize: '25' }, 50],
+    ['pageToken', { pageToken: '' }, undefined],
+    ['otelStatusCode', { otelStatusCode: 'BAD' }, undefined],
+    ['terminationReason', { terminationReason: 'success' }, undefined],
+    ['finalHttpStatus', { finalHttpStatus: '99' }, undefined],
+    ['traceId', { traceId: 'ABCDEF0123456789ABCDEF0123456789' }, undefined],
+  ])('falls back only the malformed %s URL field', (field, raw, fallback) => {
+    const parsed = traceSearchSchema.parse({ requestId: 'request-a', ...raw });
+
+    expect(parsed).toMatchObject({ pageSize: 50, requestId: 'request-a' });
+    expect(parsed[field as keyof typeof parsed]).toBe(fallback);
   });
 
-  test('resets pagination and removes cleared filters', () => {
+  test('resolves omitted URL dates at request time', () => {
+    expect(resolveTraceSearch(traceSearchSchema.parse({ requestId: 'request-a' }), now)).toEqual({
+      ...createDefaultTraceSearch(now),
+      requestId: 'request-a',
+    });
+  });
+
+  test('removes current-day date defaults when serializing URL state', () => {
+    expect(
+      toTraceUrlSearch(
+        {
+          ...createDefaultTraceSearch(now),
+          requestId: 'request-a',
+        },
+        now,
+      ),
+    ).toEqual({ pageSize: 50, requestId: 'request-a' });
+  });
+
+  test('removes the page token and cleared values whenever filters change', () => {
     expect(
       withTraceFilters(
         {
           ...createDefaultTraceSearch(now),
-          page: 3,
+          pageToken: 'next-page-token',
           requestId: 'request-a',
           sessionId: 'session-a',
         },
@@ -58,7 +81,6 @@ describe('trace search', () => {
       ),
     ).toEqual({
       ...createDefaultTraceSearch(now),
-      page: 1,
       sessionId: 'session-a',
       finalProviderId: 'provider-a',
     });

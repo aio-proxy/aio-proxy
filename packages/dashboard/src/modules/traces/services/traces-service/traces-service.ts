@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
@@ -19,9 +19,9 @@ export const tracesQueryOptions = (search: TraceSearch, autoRefresh: boolean) =>
   queryOptions({
     queryKey: ['dashboard', 'traces', search],
     queryFn: () => getTraces(search),
-    refetchInterval: autoRefresh && search.page === 1 ? 5_000 : false,
+    refetchInterval: autoRefresh && search.pageToken === undefined ? 5_000 : false,
     refetchIntervalInBackground: false,
-    placeholderData: (previous) => previous,
+    placeholderData: keepPreviousData,
   });
 
 export const traceQueryOptions = (traceId: string) =>
@@ -33,8 +33,8 @@ export const traceQueryOptions = (traceId: string) =>
 export const getTraces = async (search: TraceSearch): Promise<DashboardTracesResponse> => {
   const response = await dashboardClient.dashboard.api.traces.$get({
     query: {
-      page: String(search.page),
       pageSize: String(search.pageSize),
+      ...(search.pageToken === undefined ? {} : { pageToken: search.pageToken }),
       // Hono exposes the validator's transformed Date type, but its HTTP client must send the ISO input.
       startedAfter: search.startedAfter as unknown as Date,
       startedBefore: search.startedBefore as unknown as Date,
