@@ -891,30 +891,11 @@
       "no_provider_activity": "No Provider attempts recorded",
       "top_models_title": "Top model costs",
       "no_model_costs": "No model costs recorded",
-      "activity_title": "Request activity",
-      "activity_year": "Activity year",
-      "previous_year": "Previous year",
-      "next_year": "Next year",
-      "activity_day_label": [
-        {
-          "declarations": ["input date", "input count", "input formattedCount", "local countPlural = count: plural"],
-          "selectors": ["countPlural"],
-          "match": {
-            "countPlural=one": "{date}: {formattedCount} request",
-            "countPlural=other": "{date}: {formattedCount} requests"
-          }
-        }
-      ],
-      "activity_count": [
-        {
-          "declarations": ["input count", "input formattedCount", "local countPlural = count: plural"],
-          "selectors": ["countPlural"],
-          "match": {
-            "countPlural=one": "{formattedCount} request",
-            "countPlural=other": "{formattedCount} requests"
-          }
-        }
-      ]
+      "activity_title": "Token activity",
+      "activity_legend_less": "Less",
+      "activity_legend_more": "More",
+      "activity_level": "Level {level}",
+      "activity_model_breakdown": "Model breakdown"
     },
     "traces": {
       "title": "Traces",

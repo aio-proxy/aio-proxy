@@ -11,7 +11,7 @@ import { ModelUsageTrend } from '../../components/model-usage-trend';
 import { OverviewKpiGrid } from '../../components/overview-kpi-grid';
 import { getOverviewRangeLabel, OverviewTimeWindow } from '../../components/overview-time-window';
 import { ProviderHealthTable } from '../../components/provider-health-table';
-import { RequestActivityHeatmap } from '../../components/request-activity-heatmap';
+import { TokenActivityHeatmap } from '../../components/token-activity-heatmap';
 import { TopModelCosts } from '../../components/top-model-costs';
 import {
   useOverviewActivityQuery,
@@ -109,7 +109,7 @@ export const OverviewPage: React.FC = () => {
           <ProviderHealthTable rows={diagnostics.data.providerHealth} />
           <TopModelCosts models={diagnostics.data.topModelCosts} />
         </div>
-        <RequestActivityHeatmap activity={activity.data} />
+        <TokenActivityHeatmap activity={activity.data} />
       </>
     );
   }

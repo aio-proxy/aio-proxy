@@ -893,12 +893,11 @@
       "no_provider_activity": "기록된 프로바이더 시도가 없음",
       "top_models_title": "상위 모델 비용",
       "no_model_costs": "기록된 모델 비용이 없음",
-      "activity_title": "요청 활동",
-      "activity_year": "활동 연도",
-      "previous_year": "이전 연도",
-      "next_year": "다음 연도",
-      "activity_day_label": "{date}: 요청 {formattedCount}건",
-      "activity_count": "요청 {formattedCount}건"
+      "activity_title": "토큰 활동",
+      "activity_legend_less": "적음",
+      "activity_legend_more": "많음",
+      "activity_level": "레벨 {level}",
+      "activity_model_breakdown": "모델별 분석"
     },
     "traces": {
       "title": "트레이스",
