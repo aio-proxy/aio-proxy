@@ -1,5 +1,6 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
+import * as ReactTable from '@tanstack/react-table';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { TracesTable } from './traces-table';
@@ -141,5 +142,26 @@ describe('traces table', () => {
 
     expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toBeDisabled();
     expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
+  });
+
+  test('keeps TanStack Table data stable across unrelated parent rerenders', () => {
+    const data = { items: [trace] };
+    const useReactTable = rs.spyOn(ReactTable, 'useReactTable');
+    const props = {
+      data,
+      isFetching: false,
+      newItemsCount: 0,
+      onAcceptNewItems: rs.fn(),
+      onPrevious: rs.fn(),
+      onNext: rs.fn(),
+      onSelect: rs.fn(),
+    };
+    const view = render(<TracesTable {...props} />);
+    const firstTableData = useReactTable.mock.calls.at(-1)?.[0].data;
+
+    view.rerender(<TracesTable {...props} />);
+
+    expect(useReactTable.mock.calls.at(-1)?.[0].data).toBe(firstTableData);
+    useReactTable.mockRestore();
   });
 });

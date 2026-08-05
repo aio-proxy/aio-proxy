@@ -3,6 +3,7 @@ import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
+import { useMemo } from 'react';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
@@ -110,8 +111,9 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   onNext,
   onSelect,
 }) => {
+  const tableData = useMemo(() => [...data.items], [data.items]);
   const table = useReactTable({
-    data: [...data.items],
+    data: tableData,
     columns,
     getRowId: (row) => row.traceId,
     getCoreRowModel: getCoreRowModel(),
