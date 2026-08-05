@@ -67,7 +67,7 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
             <div
               aria-label={m['dashboard.overview.activity_title']()}
               className="grid grid-flow-col grid-rows-7 gap-1"
-              role="grid"
+              role="group"
               style={{ gridAutoColumns: '0.75rem' }}
             >
               {weeks.flatMap((week, weekIndex) =>
@@ -80,7 +80,6 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
                       key={cell.date}
                       aria-label={label}
                       className={`size-3 rounded-[2px] ${intensityClasses[level]}`}
-                      role="gridcell"
                       tabIndex={0}
                       onBlur={() => setHoveredActivity(undefined)}
                       onFocus={(event) =>
