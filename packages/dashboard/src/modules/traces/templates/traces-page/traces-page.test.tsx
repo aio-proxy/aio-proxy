@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
+import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TracesPage } from './traces-page';
 
 const mocks = rs.hoisted(() => ({
@@ -12,12 +13,11 @@ const mocks = rs.hoisted(() => ({
   data: undefined as
     | {
         items: DashboardTraceSummary[];
-        page: number;
-        pageSize: 20;
-        total: number;
-        pageCount: number;
+        nextPageToken?: string;
+        prevPageToken?: string;
       }
     | undefined,
+  error: null as Error | null,
   isFetching: false,
   isPlaceholderData: false,
   mobile: false,
@@ -94,7 +94,8 @@ rs.mock('../../hooks/use-traces-query', () => ({
     return {
       data: mocks.data,
       isLoading: false,
-      isError: false,
+      isError: mocks.error !== null,
+      error: mocks.error,
       isFetching: mocks.isFetching,
       isPlaceholderData: mocks.isPlaceholderData,
       refetch: mocks.refetch,
@@ -106,11 +107,10 @@ describe('traces page', () => {
   beforeEach(() => {
     mocks.data = {
       items: [runningTrace, toolOnlyTrace, terminalTrace],
-      page: 2,
-      pageSize: 20,
-      total: 42,
-      pageCount: 3,
+      prevPageToken: 'newer-token',
+      nextPageToken: 'older-token',
     };
+    mocks.error = null;
     mocks.isFetching = false;
     mocks.isPlaceholderData = false;
     mocks.mobile = false;
@@ -120,7 +120,7 @@ describe('traces page', () => {
   test('renders aligned latency and token details without the Session column', () => {
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -158,26 +158,33 @@ describe('traces page', () => {
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 
-  test('drives server pagination through URL search state', () => {
+  test('drives previous and next token navigation through URL search state', () => {
     const onSearchChange = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={onSearchChange}
         onTraceSelect={rs.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /older|更早/u }));
+    fireEvent.click(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu }));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: 'newer-token', pageSize: 20 }),
+    );
 
-    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, pageSize: 20 }));
+    fireEvent.click(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu }));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: 'older-token', pageSize: 20 }),
+    );
   });
 
   test('resets pagination when a trace filter changes', async () => {
     const onSearchChange = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 3, pageSize: 20, otelStatusCode: 'ERROR' }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'stale-token', pageSize: 20, otelStatusCode: 'ERROR' }}
         onSearchChange={onSearchChange}
         onTraceSelect={rs.fn()}
       />,
@@ -189,15 +196,15 @@ describe('traces page', () => {
       target: { value: 'cache-exact' },
     });
 
-    expect(onSearchChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ page: 1, sessionId: 'cache-exact', otelStatusCode: 'ERROR' }),
-    );
+    const nextSearch = onSearchChange.mock.calls.at(-1)?.[0];
+    expect(nextSearch).toEqual(expect.objectContaining({ sessionId: 'cache-exact', otelStatusCode: 'ERROR' }));
+    expect(nextSearch).not.toHaveProperty('pageToken');
   });
 
   test('keeps an incomplete Trace ID as a draft until it is valid', async () => {
     const onSearchChange = rs.fn();
     mocks.querySearch.mockClear();
-    const initialSearch = { ...createDefaultTraceSearch(), page: 3 };
+    const initialSearch = { ...createDefaultTraceSearch(), pageToken: 'stale-token' };
     const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
@@ -213,16 +220,17 @@ describe('traces page', () => {
     fireEvent.change(traceIdInput, { target: { value: traceId } });
 
     const validSearch = onSearchChange.mock.calls.at(-1)?.[0];
-    expect(validSearch).toEqual(expect.objectContaining({ page: 1, traceId }));
+    expect(validSearch).toEqual(expect.objectContaining({ traceId }));
+    expect(validSearch).not.toHaveProperty('pageToken');
     view.rerender(<TracesPage search={validSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
-    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, traceId }), true);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ traceId }), true);
   });
 
   test('navigates a keyboard-selected row to its trace detail', () => {
     const onTraceSelect = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={onTraceSelect}
       />,
@@ -236,7 +244,7 @@ describe('traces page', () => {
   test('mounts desktop filters only after the list trigger opens them', () => {
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -255,7 +263,7 @@ describe('traces page', () => {
     mocks.mobile = true;
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -267,12 +275,12 @@ describe('traces page', () => {
     expect(within(sheet).getByTestId('traces-filter-rail')).toBeTruthy();
   });
 
-  test('freezes page one across repeated polls and replaces it with the latest page on acceptance', () => {
+  test('freezes the latest page across repeated polls and replaces it with the latest response on acceptance', () => {
     const initial = [runningTrace, terminalTrace];
-    mocks.data = { items: initial, page: 1, pageSize: 20, total: 2, pageCount: 2 };
+    mocks.data = { items: initial, nextPageToken: 'older-initial' };
     const view = render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -281,14 +289,11 @@ describe('traces page', () => {
     const firstNew = { ...toolOnlyTrace, traceId: '1'.repeat(32) };
     mocks.data = {
       items: [firstNew, { ...runningTrace, endedAt: terminalTrace.endedAt }],
-      page: 1,
-      pageSize: 20,
-      total: 3,
-      pageCount: 2,
+      nextPageToken: 'older-first',
     };
     view.rerender(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -297,10 +302,10 @@ describe('traces page', () => {
     expect(screen.queryByText(firstNew.traceId)).toBeNull();
 
     const latestNew = { ...toolOnlyTrace, traceId: '2'.repeat(32) };
-    mocks.data = { items: [latestNew, firstNew], page: 1, pageSize: 20, total: 4, pageCount: 2 };
+    mocks.data = { items: [latestNew, firstNew], nextPageToken: 'older-latest' };
     view.rerender(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -315,54 +320,50 @@ describe('traces page', () => {
   });
 
   test('applies same-ID updates immediately unless a new-item notice freezes the snapshot', () => {
-    mocks.data = { items: [runningTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
-    const search = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
+    mocks.data = { items: [runningTrace] };
+    const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
     const view = render(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
 
     mocks.data = {
       items: [{ ...runningTrace, endedAt: terminalTrace.endedAt }],
-      page: 1,
-      pageSize: 20,
-      total: 1,
-      pageCount: 1,
     };
     view.rerender(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.queryByText(/Running|运行中/u)).toBeNull();
     expect(screen.getByText(/Success|成功/u)).toBeTruthy();
   });
 
-  test('resets buffering for filters and page-size changes and never buffers later pages', () => {
-    const initialSearch = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
-    mocks.data = { items: [runningTrace], page: 1, pageSize: 20, total: 1, pageCount: 2 };
+  test('resets buffering for filters and page-size changes and never buffers token pages', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
     const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
 
     const filtered = { ...initialSearch, requestedModelId: 'new-filter' };
-    mocks.data = { items: [terminalTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    mocks.data = { items: [terminalTrace] };
     view.rerender(<TracesPage search={filtered} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
 
     const resized = { ...filtered, pageSize: 50 as const };
-    mocks.data = { items: [toolOnlyTrace], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    mocks.data = { items: [toolOnlyTrace] };
     view.rerender(<TracesPage search={resized} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.getByText(toolOnlyTrace.traceId)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
 
-    const pageTwo = { ...resized, page: 2 };
+    const pageTwo = { ...resized, pageToken: 'older-token' };
     const pageTwoTrace = { ...runningTrace, traceId: '3'.repeat(32) };
-    mocks.data = { items: [pageTwoTrace], page: 2, pageSize: 20, total: 2, pageCount: 3 };
+    mocks.data = { items: [pageTwoTrace], prevPageToken: 'newer-token' };
     view.rerender(<TracesPage search={pageTwo} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.getByText(pageTwoTrace.traceId)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
   });
 
-  test('isolates a frozen page-one buffer immediately during placeholder search transitions', () => {
-    const initialSearch = { ...createDefaultTraceSearch(), page: 1, pageSize: 20 as const };
-    mocks.data = { items: [runningTrace, terminalTrace], page: 1, pageSize: 20, total: 2, pageCount: 2 };
+  test('isolates a frozen latest-page buffer immediately during placeholder search transitions', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [runningTrace, terminalTrace], nextPageToken: 'older-token' };
     const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
 
     const newTrace = { ...toolOnlyTrace, traceId: '4'.repeat(32) };
-    mocks.data = { items: [newTrace, runningTrace], page: 1, pageSize: 20, total: 3, pageCount: 2 };
+    mocks.data = { items: [newTrace, runningTrace], nextPageToken: 'older-updated' };
     view.rerender(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.getByRole('button', { name: /new traces available|新 Trace/iu })).toBeTruthy();
     expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
@@ -376,7 +377,7 @@ describe('traces page', () => {
     expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
 
     const resizedPlaceholder = { ...toolOnlyTrace, traceId: '5'.repeat(32) };
-    mocks.data = { items: [resizedPlaceholder], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    mocks.data = { items: [resizedPlaceholder] };
     view.rerender(
       <TracesPage search={{ ...filteredSearch, pageSize: 50 }} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />,
     );
@@ -384,10 +385,10 @@ describe('traces page', () => {
     expect(screen.queryByText(newTrace.traceId)).toBeNull();
 
     const pagePlaceholder = { ...runningTrace, traceId: '6'.repeat(32) };
-    mocks.data = { items: [pagePlaceholder], page: 1, pageSize: 20, total: 1, pageCount: 1 };
+    mocks.data = { items: [pagePlaceholder], prevPageToken: 'newer-token' };
     view.rerender(
       <TracesPage
-        search={{ ...filteredSearch, page: 2, pageSize: 50 }}
+        search={{ ...filteredSearch, pageToken: 'older-token', pageSize: 50 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -396,20 +397,39 @@ describe('traces page', () => {
     expect(screen.queryByText(resizedPlaceholder.traceId)).toBeNull();
   });
 
-  test('disables older loading while fetching placeholder data', () => {
+  test('retains the previous response while an adjacent token page is placeholder data', () => {
+    const previousPage = { items: [runningTrace], nextPageToken: 'older-token' };
+    mocks.data = previousPage;
+    const latestSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    const view = render(<TracesPage search={latestSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
     mocks.isPlaceholderData = true;
+    view.rerender(
+      <TracesPage
+        search={{ ...latestSearch, pageToken: 'older-token' }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByText(runningTrace.traceId)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
+  });
+
+  test('clears an invalid page token while preserving filters', () => {
     const onSearchChange = rs.fn();
+    mocks.error = new DashboardTracesRequestError(400);
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 1, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'invalid-token', requestedModelId: 'gpt-5' }}
         onSearchChange={onSearchChange}
         onTraceSelect={rs.fn()}
       />,
     );
 
-    const button = screen.getByRole('button', { name: /older|更早/u });
-    expect(button).toBeDisabled();
-    fireEvent.click(button);
-    expect(onSearchChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /reset|重置|リセット|초기화/iu }));
+
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }));
+    expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
   });
 });

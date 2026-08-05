@@ -15,6 +15,7 @@ import { TracesFilterRail } from '../../components/traces-filter-rail';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch } from '../../lib/trace-search';
+import { DashboardTracesRequestError } from '../../services/traces-service';
 
 type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
 
@@ -54,7 +55,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
       return;
     }
 
-    if (search.page !== 1) {
+    if (search.pageToken !== undefined) {
       renderedDataRef.current = query.data;
       latestFirstPageRef.current = undefined;
       setRenderedData(query.data);
@@ -72,7 +73,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
       renderedDataRef.current = query.data;
       setRenderedData(query.data);
     }
-  }, [query.data, query.isPlaceholderData, search.page, searchKey]);
+  }, [query.data, query.isPlaceholderData, search.pageToken, searchKey]);
 
   const bufferIsActive = bufferSearchKey === searchKey;
   const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
@@ -123,7 +124,20 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 <Empty>
                   <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
                   <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
-                  <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+                  {search.pageToken !== undefined &&
+                  query.error instanceof DashboardTracesRequestError &&
+                  query.error.status === 400 ? (
+                    <Button
+                      onClick={() => {
+                        const { pageToken: _pageToken, ...latestSearch } = search;
+                        onSearchChange(latestSearch);
+                      }}
+                    >
+                      {m['dashboard.traces.reset']()}
+                    </Button>
+                  ) : (
+                    <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+                  )}
                 </Empty>
               ) : query.data?.items.length === 0 ? (
                 <Empty>
@@ -136,10 +150,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
               ) : visibleData ? (
                 <TracesTable
                   data={visibleData}
-                  search={search}
-                  isFetching={query.isFetching}
-                  isPlaceholderData={query.isPlaceholderData}
-                  newItemsCount={search.page === 1 && bufferIsActive ? newItemsCount : 0}
+                  isFetching={query.isFetching || query.isPlaceholderData}
+                  newItemsCount={search.pageToken === undefined && bufferIsActive ? newItemsCount : 0}
                   onAcceptNewItems={() => {
                     const latest = latestFirstPageRef.current;
                     if (latest === undefined) return;
@@ -147,12 +159,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     setRenderedData(latest);
                     setNewItemsCount(0);
                   }}
-                  onLoadOlder={() => {
-                    if (query.isFetching || query.isPlaceholderData || search.page >= visibleData.pageCount) {
-                      return;
-                    }
-                    onSearchChange({ ...search, page: search.page + 1 });
-                  }}
+                  onPrevious={(pageToken) => onSearchChange({ ...search, pageToken })}
+                  onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
                   onSelect={onTraceSelect}
                 />
               ) : (

@@ -1,8 +1,7 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
-import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesTable } from './traces-table';
 
 const trace: DashboardTraceSummary = {
@@ -25,13 +24,12 @@ const trace: DashboardTraceSummary = {
 const renderTable = (item = trace) =>
   render(
     <TracesTable
-      data={{ items: [item], pageCount: 3 }}
-      search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+      data={{ items: [item], prevPageToken: 'newer-token', nextPageToken: 'older-token' }}
       isFetching={false}
-      isPlaceholderData={false}
       newItemsCount={0}
       onAcceptNewItems={rs.fn()}
-      onLoadOlder={rs.fn()}
+      onPrevious={rs.fn()}
+      onNext={rs.fn()}
       onSelect={rs.fn()}
     />,
   );
@@ -74,13 +72,12 @@ describe('traces table', () => {
 
     view.rerender(
       <TracesTable
-        data={{ items: [{ ...trace, finalModelId: trace.requestedModelId }], pageCount: 1 }}
-        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+        data={{ items: [{ ...trace, finalModelId: trace.requestedModelId }] }}
         isFetching={false}
-        isPlaceholderData={false}
         newItemsCount={0}
         onAcceptNewItems={rs.fn()}
-        onLoadOlder={rs.fn()}
+        onPrevious={rs.fn()}
+        onNext={rs.fn()}
         onSelect={rs.fn()}
       />,
     );
@@ -89,5 +86,60 @@ describe('traces table', () => {
     )[4];
     expect(sameModelCell.children).toHaveLength(1);
     expect(sameModelCell).toHaveTextContent('requested-model');
+  });
+
+  test('navigates only with response-provided previous and next tokens', () => {
+    const onPrevious = rs.fn();
+    const onNext = rs.fn();
+    render(
+      <TracesTable
+        data={{ items: [trace], prevPageToken: 'newer-token', nextPageToken: 'older-token' }}
+        isFetching={false}
+        newItemsCount={0}
+        onAcceptNewItems={rs.fn()}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        onSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu }));
+    fireEvent.click(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu }));
+
+    expect(onPrevious).toHaveBeenCalledWith('newer-token');
+    expect(onNext).toHaveBeenCalledWith('older-token');
+    expect(screen.queryByText(/page\s+\d|第\s*\d\s*页/iu)).toBeNull();
+  });
+
+  test('disables unavailable token directions and all navigation while loading', () => {
+    const view = render(
+      <TracesTable
+        data={{ items: [trace], nextPageToken: 'older-token' }}
+        isFetching={false}
+        newItemsCount={0}
+        onAcceptNewItems={rs.fn()}
+        onPrevious={rs.fn()}
+        onNext={rs.fn()}
+        onSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeEnabled();
+
+    view.rerender(
+      <TracesTable
+        data={{ items: [trace], prevPageToken: 'newer-token', nextPageToken: 'older-token' }}
+        isFetching
+        newItemsCount={0}
+        onAcceptNewItems={rs.fn()}
+        onPrevious={rs.fn()}
+        onNext={rs.fn()}
+        onSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toBeDisabled();
   });
 });

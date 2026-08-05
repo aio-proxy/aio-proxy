@@ -1,13 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
-import type { TraceSearch } from '../../lib/trace-search';
 import { TraceLatencyCell } from '../trace-latency-cell';
-import { TraceLoadOlderRow } from '../trace-load-older-row';
 import { TraceNewItemsRow } from '../trace-new-items-row';
 import { TraceStatus } from '../trace-status';
 import { TraceTokenCell } from '../trace-token-cell';
@@ -15,14 +14,14 @@ import { TraceTokenCell } from '../trace-token-cell';
 interface TracesTableProps {
   readonly data: {
     readonly items: readonly DashboardTraceSummary[];
-    readonly pageCount: number;
+    readonly nextPageToken?: string | undefined;
+    readonly prevPageToken?: string | undefined;
   };
-  readonly search: TraceSearch;
   readonly isFetching: boolean;
-  readonly isPlaceholderData: boolean;
   readonly newItemsCount: number;
   readonly onAcceptNewItems: () => void;
-  readonly onLoadOlder: () => void;
+  readonly onPrevious: (pageToken: string) => void;
+  readonly onNext: (pageToken: string) => void;
   readonly onSelect: (traceId: string) => void;
 }
 
@@ -104,70 +103,78 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
 
 export const TracesTable: React.FC<TracesTableProps> = ({
   data,
-  search,
   isFetching,
-  isPlaceholderData,
   newItemsCount,
   onAcceptNewItems,
-  onLoadOlder,
+  onPrevious,
+  onNext,
   onSelect,
 }) => {
   const table = useReactTable({
     data: [...data.items],
     columns,
-    state: { pagination: { pageIndex: search.page - 1, pageSize: search.pageSize } },
-    manualPagination: true,
-    pageCount: data.pageCount,
     getRowId: (row) => row.traceId,
     getCoreRowModel: getCoreRowModel(),
   });
 
   return (
-    <Table>
-      <TableHeader>
-        {table.getHeaderGroups().map((group) => (
-          <TableRow key={group.id}>
-            {group.headers.map((header) => (
-              <TableHead key={header.id}>
-                {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-              </TableHead>
-            ))}
-          </TableRow>
-        ))}
-      </TableHeader>
-      <TableBody>
-        {newItemsCount > 0 ? (
-          <TraceNewItemsRow columnCount={columns.length} count={newItemsCount} onAccept={onAcceptNewItems} />
-        ) : null}
-        {table.getRowModel().rows.map((row) => (
-          <TableRow
-            key={row.id}
-            tabIndex={0}
-            role="button"
-            aria-label={`${m['dashboard.traces.details']()}: ${row.original.traceId}`}
-            className="cursor-pointer"
-            onClick={() => onSelect(row.original.traceId)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onSelect(row.original.traceId);
-              }
-            }}
-          >
-            {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-            ))}
-          </TableRow>
-        ))}
-        <TraceLoadOlderRow
-          columnCount={columns.length}
-          page={search.page}
-          pageCount={data.pageCount}
-          isFetching={isFetching}
-          isPlaceholderData={isPlaceholderData}
-          onLoadOlder={onLoadOlder}
-        />
-      </TableBody>
-    </Table>
+    <div>
+      <Table>
+        <TableHeader>
+          {table.getHeaderGroups().map((group) => (
+            <TableRow key={group.id}>
+              {group.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {newItemsCount > 0 ? (
+            <TraceNewItemsRow columnCount={columns.length} count={newItemsCount} onAccept={onAcceptNewItems} />
+          ) : null}
+          {table.getRowModel().rows.map((row) => (
+            <TableRow
+              key={row.id}
+              tabIndex={0}
+              role="button"
+              aria-label={`${m['dashboard.traces.details']()}: ${row.original.traceId}`}
+              className="cursor-pointer"
+              onClick={() => onSelect(row.original.traceId)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect(row.original.traceId);
+                }
+              }}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <div className="flex justify-end gap-2 border-t pt-3">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isFetching || data.prevPageToken === undefined}
+          onClick={() => data.prevPageToken !== undefined && onPrevious(data.prevPageToken)}
+        >
+          {m['dashboard.pagination.previous']()}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isFetching || data.nextPageToken === undefined}
+          onClick={() => data.nextPageToken !== undefined && onNext(data.nextPageToken)}
+        >
+          {m['dashboard.pagination.next']()}
+        </Button>
+      </div>
+    </div>
   );
 };
