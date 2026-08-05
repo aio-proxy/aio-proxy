@@ -145,8 +145,10 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
       </Table>
       {table.getPageCount() > 1 ? (
         <PaginationControls
+          pageSize={table.getState().pagination.pageSize}
           canPrevious={table.getCanPreviousPage()}
           canNext={table.getCanNextPage()}
+          onShowSizeChange={table.setPageSize}
           onPrevious={table.previousPage}
           onNext={table.nextPage}
         />

@@ -20,8 +20,10 @@ interface TracesTableProps {
     readonly prevPageToken?: string | undefined;
   };
   readonly isFetching: boolean;
+  readonly pageSize: number;
   readonly newItemsCount: number;
   readonly onAcceptNewItems: () => void;
+  readonly onShowSizeChange: (pageSize: number) => void;
   readonly onPrevious: (pageToken: string) => void;
   readonly onNext: (pageToken: string) => void;
   readonly onSelect: (traceId: string) => void;
@@ -106,8 +108,10 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
 export const TracesTable: React.FC<TracesTableProps> = ({
   data,
   isFetching,
+  pageSize,
   newItemsCount,
   onAcceptNewItems,
+  onShowSizeChange,
   onPrevious,
   onNext,
   onSelect,
@@ -162,8 +166,11 @@ export const TracesTable: React.FC<TracesTableProps> = ({
       </Table>
       <div className="border-t pt-3">
         <PaginationControls
+          pageSize={pageSize}
+          pageSizeOptions={[10, 20, 50, 100]}
           canPrevious={!isFetching && data.prevPageToken !== undefined}
           canNext={!isFetching && data.nextPageToken !== undefined}
+          onShowSizeChange={onShowSizeChange}
           onPrevious={() => data.prevPageToken !== undefined && onPrevious(data.prevPageToken)}
           onNext={() => data.nextPageToken !== undefined && onNext(data.nextPageToken)}
         />

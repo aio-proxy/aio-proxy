@@ -129,8 +129,10 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
         </Table>
         {table.getPageCount() > 1 ? (
           <PaginationControls
+            pageSize={table.getState().pagination.pageSize}
             canPrevious={table.getCanPreviousPage()}
             canNext={table.getCanNextPage()}
+            onShowSizeChange={table.setPageSize}
             onPrevious={table.previousPage}
             onNext={table.nextPage}
           />

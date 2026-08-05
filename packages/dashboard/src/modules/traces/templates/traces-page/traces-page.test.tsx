@@ -180,6 +180,28 @@ describe('traces page', () => {
     );
   });
 
+  test('changes the page size through URL search state and clears the current page token', async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const pageSize = screen.getByRole('combobox', { name: /Rows per page|每页行数/u });
+    expect(pageSize).toHaveTextContent('20');
+
+    fireEvent.click(pageSize);
+    const option = await screen.findByRole('option', { name: '50' });
+    fireEvent.pointerDown(option, { pointerType: 'mouse' });
+    fireEvent.click(option);
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 50 }));
+    expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty('pageToken');
+  });
+
   test('resets pagination when a trace filter changes', async () => {
     const onSearchChange = rs.fn();
     render(

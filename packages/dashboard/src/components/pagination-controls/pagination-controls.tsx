@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import {
   Pagination,
   PaginationContent,
@@ -6,52 +7,94 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@aio-proxy/ui/components/pagination';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@aio-proxy/ui/components/select';
+import { useForm } from '@tanstack/react-form';
 
 interface PaginationControlsProps {
+  readonly pageSize: number;
+  readonly pageSizeOptions?: readonly number[];
   readonly canPrevious: boolean;
   readonly canNext: boolean;
+  readonly onShowSizeChange: (pageSize: number) => void;
   readonly onPrevious: () => void;
   readonly onNext: () => void;
 }
 
-export const PaginationControls: React.FC<PaginationControlsProps> = ({ canPrevious, canNext, onPrevious, onNext }) => {
+export const PaginationControls: React.FC<PaginationControlsProps> = ({
+  pageSize,
+  pageSizeOptions = [10, 25, 50, 100],
+  canPrevious,
+  canNext,
+  onShowSizeChange,
+  onPrevious,
+  onNext,
+}) => {
+  const form = useForm({ defaultValues: { pageSize } });
   const previousLabel = m['dashboard.pagination.previous']();
   const nextLabel = m['dashboard.pagination.next']();
 
   return (
-    <Pagination className="mx-0 w-auto justify-end">
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationPrevious
-            href="#"
-            size="icon"
-            text={previousLabel}
-            aria-label={previousLabel}
-            aria-disabled={!canPrevious || undefined}
-            tabIndex={canPrevious ? undefined : -1}
-            className="p-0! [&_span]:hidden"
-            onClick={(event) => {
-              event.preventDefault();
-              if (canPrevious) onPrevious();
-            }}
-          />
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationNext
-            href="#"
-            size="icon"
-            text={nextLabel}
-            aria-label={nextLabel}
-            aria-disabled={!canNext || undefined}
-            tabIndex={canNext ? undefined : -1}
-            className="p-0! [&_span]:hidden"
-            onClick={(event) => {
-              event.preventDefault();
-              if (canNext) onNext();
-            }}
-          />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
+    <div className="flex items-center justify-between gap-4">
+      <Field orientation="horizontal" className="w-fit">
+        <FieldLabel htmlFor="select-rows-per-page">{m['dashboard.pagination.page_size']()}</FieldLabel>
+        <form.Field name="pageSize">
+          {(field) => (
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => {
+                if (value === null) return;
+                const nextPageSize = Number(value);
+                field.handleChange(nextPageSize);
+                onShowSizeChange(nextPageSize);
+              }}
+            >
+              <SelectTrigger className="w-20" id="select-rows-per-page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectGroup>
+                  {pageSizeOptions.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
+        </form.Field>
+      </Field>
+      <Pagination className="mx-0 w-auto">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              disabled={!canPrevious}
+              text={previousLabel}
+              aria-label={previousLabel}
+              onClick={() => {
+                if (canPrevious) onPrevious();
+              }}
+            />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext
+              disabled={!canNext}
+              text={nextLabel}
+              aria-label={nextLabel}
+              onClick={() => {
+                if (canNext) onNext();
+              }}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    </div>
   );
 };

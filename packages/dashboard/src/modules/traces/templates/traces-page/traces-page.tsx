@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
@@ -14,7 +15,7 @@ import { PageContainer } from '@/components/page-container';
 import { TracesFilterRail } from '../../components/traces-filter-rail';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
-import { createDefaultTraceSearch, type TraceSearch } from '../../lib/trace-search';
+import { createDefaultTraceSearch, type TraceSearch, withTraceFilters } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
 
 type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
@@ -164,6 +165,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 <TracesTable
                   data={visibleData}
                   isFetching={query.isFetching || query.isPlaceholderData}
+                  pageSize={search.pageSize}
                   newItemsCount={search.pageToken === undefined && bufferIsActive ? newItemsCount : 0}
                   onAcceptNewItems={() => {
                     const latest = latestFirstPageRef.current;
@@ -172,6 +174,9 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     setRenderedData(latest);
                     setNewItemsCount(0);
                   }}
+                  onShowSizeChange={(pageSize) =>
+                    onSearchChange(withTraceFilters(search, { pageSize: DashboardTracePageSizeSchema.parse(pageSize) }))
+                  }
                   onPrevious={(pageToken) => onSearchChange({ ...search, pageToken })}
                   onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
                   onSelect={onTraceSelect}
