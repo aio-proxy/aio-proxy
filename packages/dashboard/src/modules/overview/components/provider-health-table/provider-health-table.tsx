@@ -6,7 +6,6 @@ import { flexRender } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
 import { DataTableHeaderCell } from '@/components/data-table-header-cell';
-import { DataTableToolbar } from '@/components/data-table-toolbar';
 import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -20,13 +19,6 @@ type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
 
 const withSortingHandler = (handler: ((event: unknown) => void) | undefined) =>
   handler === undefined ? {} : { onToggleSorting: handler };
-
-const providerHealthColumnLabel = (columnId: string): string => {
-  if (columnId === 'providerId') return m['dashboard.overview.provider_id']();
-  if (columnId === 'successRate') return m['dashboard.overview.success_rate']();
-  if (columnId === 'p95LatencyMs') return m['dashboard.overview.p95_latency']();
-  throw new Error(`Unknown Provider health column: ${columnId}`);
-};
 
 export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }) => {
   'use no memo';
@@ -76,7 +68,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
       },
     ];
   }, [locale]);
-  const { table, columnVisibilityForm } = useDataTable(rows, columns);
+  const { table } = useDataTable(rows, columns);
 
   return (
     <Card>
@@ -86,14 +78,6 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-col gap-3">
-        <DataTableToolbar
-          table={table}
-          columnVisibilityForm={columnVisibilityForm}
-          filterId="provider-health-filter"
-          filterLabel={m['dashboard.overview.provider_filter']()}
-          columnsLabel={m['dashboard.overview.columns']()}
-          columnLabel={providerHealthColumnLabel}
-        />
         <Table aria-label={m['dashboard.overview.provider_health_title']()}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
