@@ -17,6 +17,7 @@ export const PluginsPage: React.FC = () => {
   return (
     <PageContainer
       title={m['dashboard.plugins.title']()}
+      breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.plugins.title']() }]}
       extra={
         <Button type="button" onClick={() => installDrawerRef.current?.open()}>
           {m['dashboard.plugins.add']()}

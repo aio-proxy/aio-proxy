@@ -17,6 +17,7 @@ const EditProviderPage: React.FC = () => {
   const navigate = useNavigate({ from: '/providers/$id/edit' });
   const { data, isLoading } = useQuery(providerEditViewQueryOptions(id));
   const breadcrumbs = [
+    { label: m['dashboard.menus.configuration']() },
     { label: m['dashboard.providers.list_title'](), to: '/providers' },
     { label: m['dashboard.providers.edit_title']() },
   ] as const;

@@ -110,7 +110,11 @@ export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initia
     <PageContainer
       title={title}
       {...(subtitle === undefined ? {} : { subtitle })}
-      breadcrumbs={[{ label: m['dashboard.providers.list_title'](), to: '/providers' }, { label: title }]}
+      breadcrumbs={[
+        { label: m['dashboard.menus.configuration']() },
+        { label: m['dashboard.providers.list_title'](), to: '/providers' },
+        { label: title },
+      ]}
     >
       <div id="provider-editor" data-testid="provider-editor" className="mx-auto max-w-2xl px-1 pb-4 sm:p-4">
         <form

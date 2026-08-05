@@ -47,6 +47,7 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
       title={m['dashboard.providers.edit_title']()}
       subtitle={`${provider.id} · ${PROVIDER_KIND_LABEL.oauth}`}
       breadcrumbs={[
+        { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.providers.list_title'](), to: '/providers' },
         { label: m['dashboard.providers.edit_title']() },
       ]}

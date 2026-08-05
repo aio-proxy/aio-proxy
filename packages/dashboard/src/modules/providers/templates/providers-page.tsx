@@ -30,6 +30,7 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
   return (
     <PageContainer
       title={m['dashboard.providers.list_title']()}
+      breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button data-testid="new-provider-button" />}>

@@ -72,7 +72,10 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
 
   return (
-    <PageContainer title={m['dashboard.traces.title']()}>
+    <PageContainer
+      title={m['dashboard.traces.title']()}
+      breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
+    >
       <div className="traces-filter-workbench">
         <TracesFilterRail
           search={search}

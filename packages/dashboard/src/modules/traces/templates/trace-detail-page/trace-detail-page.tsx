@@ -46,7 +46,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const breadcrumbs = [
     { label: m['dashboard.menus.observability']() },
     { label: m['dashboard.menus.traces'](), to: '/traces' as const },
-  ];
+  ] as const;
 
   if (query.isLoading) {
     return (

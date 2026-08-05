@@ -11,7 +11,7 @@ rs.mock('@tanstack/react-router', () => ({
 }));
 
 test('renders an optional subtitle directly with the page heading', () => {
-  render(<PageContainer title="Edit Provider" subtitle="carpool · API" />);
+  render(<PageContainer title="Edit Provider" subtitle="carpool · API" breadcrumbs={[{ label: 'Providers' }]} />);
 
   expect(screen.getByRole('heading', { level: 1, name: 'Edit Provider' })).toBeInTheDocument();
   expect(screen.getByText('carpool · API')).toBeInTheDocument();

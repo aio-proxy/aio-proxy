@@ -87,6 +87,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
     <PageContainer
       title={m['dashboard.providers.new_title']()}
       breadcrumbs={[
+        { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.providers.list_title'](), to: '/providers' },
         { label: m['dashboard.providers.new_title']() },
       ]}

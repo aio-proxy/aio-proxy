@@ -10,7 +10,11 @@ export const SettingsPage: React.FC = () => {
   const settingsQuery = useSettingsQuery();
 
   return (
-    <PageContainer title={m['dashboard.settings.title']()} subtitle={m['dashboard.settings.description']()}>
+    <PageContainer
+      title={m['dashboard.settings.title']()}
+      subtitle={m['dashboard.settings.description']()}
+      breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.settings.title']() }]}
+    >
       <div className="mx-auto w-full max-w-3xl">
         {settingsQuery.isLoading ? (
           <div className="space-y-6" aria-label={m['dashboard.settings.title']()}>
