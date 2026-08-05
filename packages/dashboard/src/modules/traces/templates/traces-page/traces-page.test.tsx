@@ -1,7 +1,6 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import type { PropsWithChildren } from 'react';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
@@ -25,11 +24,6 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
   useIsMobile: () => mocks.mobile,
-}));
-rs.mock('@aio-proxy/ui/components/sidebar', () => ({
-  Sidebar: ({ children }: PropsWithChildren) => <aside data-slot="sidebar">{children}</aside>,
-  SidebarHeader: ({ children }: PropsWithChildren) => <div data-slot="sidebar-header">{children}</div>,
-  SidebarContent: ({ children }: PropsWithChildren) => <div data-slot="sidebar-content">{children}</div>,
 }));
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
@@ -263,7 +257,7 @@ describe('traces page', () => {
     expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
   });
 
-  test('mounts desktop filters only after the list trigger opens them', () => {
+  test('uses the shared sidebar trigger to expand desktop filters', () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
@@ -272,13 +266,19 @@ describe('traces page', () => {
       />,
     );
 
-    expect(screen.queryByTestId('traces-filter-rail')).toBeNull();
-    expect(document.querySelector('main main main')).toBeNull();
+    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toHaveAttribute(
+      'data-state',
+      'collapsed',
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+    const trigger = screen.getByRole('button', { name: /Filters|筛选/u });
+    expect(trigger).toHaveAttribute('data-sidebar', 'trigger');
+    fireEvent.click(trigger);
 
-    expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();
-    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toBeTruthy();
+    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toHaveAttribute(
+      'data-state',
+      'expanded',
+    );
   });
 
   test('opens the same filters in a mobile Sheet', () => {
@@ -499,7 +499,7 @@ describe('traces page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /reset|重置|リセット|초기화/iu }));
+    fireEvent.click(screen.getByText(/^(Reset|重置|リセット|초기화)$/u).closest('button')!);
 
     expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }), {
       replace: true,

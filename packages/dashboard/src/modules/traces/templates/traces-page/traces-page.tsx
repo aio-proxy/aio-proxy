@@ -3,11 +3,8 @@ import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@aio-proxy/ui/components/sheet';
-import { Sidebar } from '@aio-proxy/ui/components/sidebar';
+import { Sidebar, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
-import { SlidersHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
@@ -28,7 +25,6 @@ interface TracesPageProps {
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [renderedData, setRenderedData] = useState<TracesData>();
   const [newItemsCount, setNewItemsCount] = useState(0);
   const searchKey = JSON.stringify(search);
@@ -38,7 +34,6 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   const renderedDataRef = useRef<TracesData | undefined>(undefined);
   const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
   const query = useTracesQuery(search, autoRefresh);
-  const mobile = useIsMobile();
 
   if (activeSearchKeyRef.current !== searchKey) {
     activeSearchKeyRef.current = searchKey;
@@ -91,16 +86,6 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
 
   const bufferIsActive = bufferSearchKey === searchKey;
   const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
-  const filters = (
-    <TracesFilterRail
-      search={search}
-      autoRefresh={autoRefresh}
-      refreshing={query.isFetching}
-      onSearchChange={onSearchChange}
-      onAutoRefresh={setAutoRefresh}
-      onRefresh={() => void query.refetch()}
-    />
-  );
 
   return (
     <PageContainer
@@ -108,24 +93,20 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
     >
       <Card size="sm" className="py-0">
-        <div className="flex min-h-[36rem] lg:min-h-[calc(100dvh-10rem)]">
-          {!mobile && filtersOpen ? (
-            <Sidebar collapsible="none" className="shrink-0 border-r" aria-label={m['dashboard.traces.filters']()}>
-              {filters}
-            </Sidebar>
-          ) : null}
+        <SidebarProvider defaultOpen={false} className="relative min-h-144 lg:min-h-[calc(100dvh-10rem)]">
+          <Sidebar className="absolute! inset-y-0! h-full! border-r" aria-label={m['dashboard.traces.filters']()}>
+            <TracesFilterRail
+              search={search}
+              autoRefresh={autoRefresh}
+              refreshing={query.isFetching}
+              onSearchChange={onSearchChange}
+              onAutoRefresh={setAutoRefresh}
+              onRefresh={() => void query.refetch()}
+            />
+          </Sidebar>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-12 items-center border-b px-3">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={m['dashboard.traces.filters']()}
-                aria-expanded={filtersOpen}
-                onClick={() => setFiltersOpen((open) => !open)}
-              >
-                <SlidersHorizontal />
-              </Button>
+              <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
             </div>
             <div className="min-w-0 flex-1 overflow-auto px-3 pb-3 sm:px-4 sm:pb-4">
               {query.isLoading ? (
@@ -186,17 +167,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
               )}
             </div>
           </div>
-        </div>
-        {mobile ? (
-          <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <SheetContent side="left" className="p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>{m['dashboard.traces.filters']()}</SheetTitle>
-              </SheetHeader>
-              {filters}
-            </SheetContent>
-          </Sheet>
-        ) : null}
+        </SidebarProvider>
       </Card>
     </PageContainer>
   );
