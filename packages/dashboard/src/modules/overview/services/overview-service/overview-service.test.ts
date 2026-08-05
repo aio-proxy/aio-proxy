@@ -34,7 +34,11 @@ const wireDiagnostics = {
   topModelCosts: [{ modelId: 'model-a', estimatedCostNanoUsd: '600' }],
 };
 
-const wireActivity = { year: 2026, days: [{ date: '2026-01-01', requestCount: '7' }] };
+const wireActivity = {
+  from: '2025-08-10',
+  to: '2026-08-05',
+  items: [{ date: '2026-01-01', totalTokens: '7', models: [{ modelId: 'model-a', totalTokens: '7' }] }],
+};
 
 describe('overview service', () => {
   test('decodes integer strings from every overview source to bigint', () => {
@@ -53,7 +57,10 @@ describe('overview service', () => {
     expect(overview.modelTrendByMetric.tokens.buckets[0]?.values).toEqual({ a: 2n });
     expect(overview.modelTrendByMetric.cost.buckets[0]?.values).toEqual({ a: 3n });
     expect(diagnostics.topModelCosts[0]?.estimatedCostNanoUsd).toBe(600n);
-    expect(activity.days[0]?.requestCount).toBe(7n);
+    expect(activity.items[0]).toMatchObject({
+      totalTokens: 7n,
+      models: [{ modelId: 'model-a', totalTokens: 7n }],
+    });
   });
 
   test('polls only range data while diagnostics and activity use independent cached keys', () => {
@@ -70,18 +77,18 @@ describe('overview service', () => {
       refetchInterval: false,
       staleTime: 60_000,
     });
-    expect(overviewActivityQueryOptions({ year: 2026 })).toMatchObject({
-      queryKey: ['dashboard', 'overview', 'activity', 2026],
+    expect(overviewActivityQueryOptions()).toMatchObject({
+      queryKey: ['dashboard', 'overview', 'activity'],
       refetchInterval: false,
       staleTime: 60_000,
     });
   });
 
-  test('retains only the previous source while its range or year is loading', () => {
+  test('retains only the previous source while range data is loading', () => {
     const previous = decodeOverview(wireOverview);
     const previousActivity = decodeOverviewActivity(wireActivity);
     const rangePlaceholder = overviewQueryOptions({ range: '7d' }).placeholderData;
-    const activityPlaceholder = overviewActivityQueryOptions({ year: 2025 }).placeholderData;
+    const activityPlaceholder = overviewActivityQueryOptions().placeholderData;
 
     expect(typeof rangePlaceholder).toBe('function');
     expect(typeof activityPlaceholder).toBe('function');
