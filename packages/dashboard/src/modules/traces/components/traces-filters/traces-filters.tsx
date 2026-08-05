@@ -71,10 +71,10 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
   }, [form, startedAfter, startedBefore, requestedModelId, otelStatusCode, inboundProtocol]);
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="flex min-h-full flex-col gap-4">
       <form.Field name="dateRange">
         {(field) => (
-          <Field className="w-auto min-w-60 flex-1">
+          <Field className="w-full min-w-0">
             <FieldLabel>{m['dashboard.traces.range']()}</FieldLabel>
             <DateTimeRangePicker
               value={field.state.value}
@@ -91,7 +91,7 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
       </form.Field>
       <form.Field name="requestedModelId">
         {(field) => (
-          <Field className="w-auto min-w-48 flex-1">
+          <Field className="w-full">
             <FieldLabel htmlFor="traces-requested-model">{m['dashboard.traces.requested_model']()}</FieldLabel>
             <Input
               id="traces-requested-model"
@@ -106,7 +106,7 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
       </form.Field>
       <form.Field name="otelStatusCode">
         {(field) => (
-          <Field className="w-36">
+          <Field className="w-full">
             <FieldLabel>{m['dashboard.traces.otel_status']()}</FieldLabel>
             <Select
               value={field.state.value}
@@ -131,7 +131,7 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
       </form.Field>
       <form.Field name="inboundProtocol">
         {(field) => (
-          <Field className="w-44">
+          <Field className="w-full">
             <FieldLabel>{m['dashboard.traces.protocol']()}</FieldLabel>
             <Select
               value={field.state.value}
@@ -156,42 +156,44 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
           </Field>
         )}
       </form.Field>
-      <TracesAdvancedFilters search={search} onChange={patch} />
-      {search.page === 1 && (
-        <form.Field name="autoRefresh">
-          {(field) => (
-            <Field orientation="horizontal" className="h-9 w-auto px-1">
-              <Switch
-                id="traces-auto-refresh"
-                checked={field.state.value}
-                onCheckedChange={(value) => {
-                  field.handleChange(value);
-                  onAutoRefresh(value);
-                }}
-              />
-              <FieldLabel htmlFor="traces-auto-refresh">{m['dashboard.traces.auto_refresh']()}</FieldLabel>
-            </Field>
-          )}
-        </form.Field>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        aria-label={m['dashboard.traces.reset']()}
-        onClick={() => onChange(createDefaultTraceSearch())}
-      >
-        <RotateCcw />
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        aria-label={m['dashboard.traces.refresh']()}
-        onClick={onRefresh}
-      >
-        <RefreshCw className={refreshing ? 'animate-spin' : ''} />
-      </Button>
+      <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-3">
+        <TracesAdvancedFilters search={search} onChange={patch} />
+        {search.page === 1 && (
+          <form.Field name="autoRefresh">
+            {(field) => (
+              <Field orientation="horizontal" className="h-9 w-auto px-1">
+                <Switch
+                  id="traces-auto-refresh"
+                  checked={field.state.value}
+                  onCheckedChange={(value) => {
+                    field.handleChange(value);
+                    onAutoRefresh(value);
+                  }}
+                />
+                <FieldLabel htmlFor="traces-auto-refresh">{m['dashboard.traces.auto_refresh']()}</FieldLabel>
+              </Field>
+            )}
+          </form.Field>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label={m['dashboard.traces.reset']()}
+          onClick={() => onChange(createDefaultTraceSearch())}
+        >
+          <RotateCcw />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label={m['dashboard.traces.refresh']()}
+          onClick={onRefresh}
+        >
+          <RefreshCw className={refreshing ? 'animate-spin' : ''} />
+        </Button>
+      </div>
     </div>
   );
 };

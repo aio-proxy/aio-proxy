@@ -12,19 +12,6 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.traces-filter-workbench {
-  display: grid;
-  gap: 1rem;
-}
-
-.traces-filter-rail {
-  min-width: 0;
-}
-
-.traces-filter-results {
-  min-width: 0;
-}
-
 @media (min-width: 721px) {
   .overview-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -34,15 +21,6 @@
 @media (min-width: 1024px) {
   .overview-lower-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .traces-filter-workbench {
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .traces-filter-rail {
-    grid-row: 1 / span 2;
   }
 }
 

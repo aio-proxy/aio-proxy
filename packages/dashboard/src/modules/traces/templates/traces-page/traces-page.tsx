@@ -1,8 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent } from '@aio-proxy/ui/components/card';
+import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@aio-proxy/ui/components/sheet';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
+import { SlidersHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
@@ -22,6 +25,7 @@ interface TracesPageProps {
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [renderedData, setRenderedData] = useState<TracesData>();
   const [newItemsCount, setNewItemsCount] = useState(0);
   const searchKey = JSON.stringify(search);
@@ -30,6 +34,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   const renderedDataRef = useRef<TracesData | undefined>(undefined);
   const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
   const query = useTracesQuery(search, autoRefresh);
+  const mobile = useIsMobile();
 
   if (activeSearchKeyRef.current !== searchKey) {
     activeSearchKeyRef.current = searchKey;
@@ -70,71 +75,98 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
 
   const bufferIsActive = bufferSearchKey === searchKey;
   const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
+  const filters = (
+    <TracesFilterRail
+      search={search}
+      autoRefresh={autoRefresh}
+      refreshing={query.isFetching}
+      onSearchChange={onSearchChange}
+      onAutoRefresh={setAutoRefresh}
+      onRefresh={() => void query.refetch()}
+    />
+  );
 
   return (
     <PageContainer
       title={m['dashboard.traces.title']()}
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
     >
-      <div className="traces-filter-workbench">
-        <TracesFilterRail
-          search={search}
-          autoRefresh={autoRefresh}
-          refreshing={query.isFetching}
-          onSearchChange={onSearchChange}
-          onAutoRefresh={setAutoRefresh}
-          onRefresh={() => void query.refetch()}
-        />
-        <Card className="traces-filter-results">
-          <CardContent>
-            {query.isLoading ? (
-              <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
-                {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
-                  <Skeleton className="h-12 w-full" key={key} />
-                ))}
-              </div>
-            ) : query.isError ? (
-              <Empty>
-                <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
-                <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
-                <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
-              </Empty>
-            ) : query.data?.items.length === 0 ? (
-              <Empty>
-                <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
-                <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
-                <Button onClick={() => onSearchChange(createDefaultTraceSearch())}>
-                  {m['dashboard.traces.reset']()}
-                </Button>
-              </Empty>
-            ) : visibleData ? (
-              <TracesTable
-                data={visibleData}
-                search={search}
-                isFetching={query.isFetching}
-                isPlaceholderData={query.isPlaceholderData}
-                newItemsCount={search.page === 1 && bufferIsActive ? newItemsCount : 0}
-                onAcceptNewItems={() => {
-                  const latest = latestFirstPageRef.current;
-                  if (latest === undefined) return;
-                  renderedDataRef.current = latest;
-                  setRenderedData(latest);
-                  setNewItemsCount(0);
-                }}
-                onLoadOlder={() => {
-                  if (query.isFetching || query.isPlaceholderData || search.page >= visibleData.pageCount) {
-                    return;
-                  }
-                  onSearchChange({ ...search, page: search.page + 1 });
-                }}
-                onSelect={onTraceSelect}
-              />
-            ) : (
-              <Empty />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card size="sm" className="py-0">
+        <div className="flex min-h-[36rem] lg:min-h-[calc(100dvh-10rem)]">
+          {!mobile && filtersOpen ? <aside className="w-64 shrink-0 bg-muted">{filters}</aside> : null}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-12 items-center border-b px-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={m['dashboard.traces.filters']()}
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <SlidersHorizontal />
+              </Button>
+            </div>
+            <div className="min-w-0 flex-1 overflow-auto px-3 pb-3 sm:px-4 sm:pb-4">
+              {query.isLoading ? (
+                <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
+                  {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
+                    <Skeleton className="h-12 w-full" key={key} />
+                  ))}
+                </div>
+              ) : query.isError ? (
+                <Empty>
+                  <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
+                  <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
+                  <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+                </Empty>
+              ) : query.data?.items.length === 0 ? (
+                <Empty>
+                  <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
+                  <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
+                  <Button onClick={() => onSearchChange(createDefaultTraceSearch())}>
+                    {m['dashboard.traces.reset']()}
+                  </Button>
+                </Empty>
+              ) : visibleData ? (
+                <TracesTable
+                  data={visibleData}
+                  search={search}
+                  isFetching={query.isFetching}
+                  isPlaceholderData={query.isPlaceholderData}
+                  newItemsCount={search.page === 1 && bufferIsActive ? newItemsCount : 0}
+                  onAcceptNewItems={() => {
+                    const latest = latestFirstPageRef.current;
+                    if (latest === undefined) return;
+                    renderedDataRef.current = latest;
+                    setRenderedData(latest);
+                    setNewItemsCount(0);
+                  }}
+                  onLoadOlder={() => {
+                    if (query.isFetching || query.isPlaceholderData || search.page >= visibleData.pageCount) {
+                      return;
+                    }
+                    onSearchChange({ ...search, page: search.page + 1 });
+                  }}
+                  onSelect={onTraceSelect}
+                />
+              ) : (
+                <Empty />
+              )}
+            </div>
+          </div>
+        </div>
+        {mobile ? (
+          <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <SheetContent side="left" className="p-0">
+              <SheetHeader className="sr-only">
+                <SheetTitle>{m['dashboard.traces.filters']()}</SheetTitle>
+              </SheetHeader>
+              {filters}
+            </SheetContent>
+          </Sheet>
+        ) : null}
+      </Card>
     </PageContainer>
   );
 };

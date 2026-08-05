@@ -19,6 +19,11 @@ const mocks = rs.hoisted(() => ({
     | undefined,
   isFetching: false,
   isPlaceholderData: false,
+  mobile: false,
+}));
+
+rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
+  useIsMobile: () => mocks.mobile,
 }));
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
@@ -102,6 +107,7 @@ describe('traces page', () => {
     };
     mocks.isFetching = false;
     mocks.isPlaceholderData = false;
+    mocks.mobile = false;
     mocks.querySearch.mockClear();
   });
 
@@ -171,6 +177,7 @@ describe('traces page', () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
     fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
     fireEvent.change(await screen.findByRole('textbox', { name: /Session ID|会话 ID/u }), {
       target: { value: 'cache-exact' },
@@ -187,6 +194,7 @@ describe('traces page', () => {
     const initialSearch = { ...createDefaultTraceSearch(), page: 3 };
     const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
     fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
     const traceIdInput = await screen.findByRole('textbox', { name: /Trace ID|追踪 ID/u });
     fireEvent.change(traceIdInput, { target: { value: 'abc' } });
@@ -217,6 +225,39 @@ describe('traces page', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }), { key: 'Enter' });
 
     expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
+  });
+
+  test('mounts desktop filters only after the list trigger opens them', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('traces-filter-rail')).toBeNull();
+    expect(document.querySelector('main main main')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+
+    expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();
+  });
+
+  test('opens the same filters in a mobile Sheet', () => {
+    mocks.mobile = true;
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByTestId('traces-filter-rail')).toBeTruthy();
   });
 
   test('freezes page one across repeated polls and replaces it with the latest page on acceptance', () => {
