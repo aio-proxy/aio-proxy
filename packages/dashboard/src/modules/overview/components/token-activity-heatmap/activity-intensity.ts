@@ -4,9 +4,8 @@ const quantile = (values: readonly bigint[], percentile: number) => {
 };
 
 export const activityIntensityLevels = (totals: readonly bigint[]) => {
-  const positives = totals
-    .filter((total) => total > 0n)
-    .toSorted((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const positives = totals.filter((total) => total > 0n);
+  positives.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
   if (positives.length === 0) return totals.map(() => 0);
 
   const p50 = quantile(positives, 0.5);
