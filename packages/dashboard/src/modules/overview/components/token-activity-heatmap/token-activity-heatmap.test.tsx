@@ -8,7 +8,14 @@ const activity = {
   to: '2026-08-05',
   items: [
     { date: '2025-08-10', totalTokens: 500n, models: [] },
-    { date: '2025-08-11', totalTokens: 2_000n, models: [{ modelId: 'gpt-5', totalTokens: 2_000n }] },
+    {
+      date: '2025-08-11',
+      totalTokens: 2_000n,
+      models: [
+        { modelId: 'gpt-5', totalTokens: 1_500n },
+        { modelId: 'claude-opus-4', totalTokens: 500n },
+      ],
+    },
   ],
 };
 
@@ -28,6 +35,7 @@ describe('TokenActivityHeatmap', () => {
 
     expect(screen.getByText('2K TOKEN')).toBeInTheDocument();
     expect(screen.getByText('gpt-5')).toBeInTheDocument();
+    expect(screen.getByText('1.5K')).toBeInTheDocument();
   });
 
   test('shows a daily total without model breakdown when no models are present', () => {

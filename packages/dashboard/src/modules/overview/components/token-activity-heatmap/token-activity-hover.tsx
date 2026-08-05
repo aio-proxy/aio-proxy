@@ -40,13 +40,18 @@ export const TokenActivityHover: React.FC<TokenActivityHoverProps> = ({ cell, le
           <h3 className="text-xs font-medium text-muted-foreground">
             {m['dashboard.overview.activity_model_breakdown']()}
           </h3>
-          <ul className="mt-2 grid gap-2">
+          <ul className="mt-2 grid max-h-37.5 gap-2 overflow-y-auto">
             {cell.models.map((model) => {
-              const percent = Number((model.totalTokens * 10_000n) / cell.totalTokens) / 100;
+              const percent = Math.round((Number(model.totalTokens) / Number(cell.totalTokens)) * 100);
               return (
                 <li key={model.modelId} className="grid gap-1">
                   <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="truncate">{model.modelId}</span>
+                    <span className="flex min-w-0 gap-1">
+                      <span className="truncate">{model.modelId}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {formatCompactTokenCount(model.totalTokens)}
+                      </span>
+                    </span>
                     <span>{formatPercent(percent)}%</span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-muted">
