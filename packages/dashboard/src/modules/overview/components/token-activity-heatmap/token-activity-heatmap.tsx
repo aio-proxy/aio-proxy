@@ -1,30 +1,20 @@
 import { m } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { useEffect, useMemo, useRef, useState } from 'react';
-
-import { formatCompactTokenCount } from '@/components/token-count';
+import { useEffect, useMemo, useRef } from 'react';
 
 import type { OverviewActivityData } from '../../services/overview-service';
-import { formatActivityDate } from './activity-date';
 import { activityIntensityLevels } from './activity-intensity';
-import { buildHeatmapWeeks, type ActivityCell } from './heatmap-layout';
-import { TokenActivityHover } from './token-activity-hover';
+import { buildHeatmapWeeks } from './heatmap-layout';
+import { TokenActivityDayCell } from './token-activity-day-cell';
 
 interface TokenActivityHeatmapProps {
   readonly activity: OverviewActivityData;
-}
-
-interface HoveredActivity {
-  readonly cell: ActivityCell;
-  readonly level: number;
-  readonly position: { readonly x: number; readonly y: number };
 }
 
 const intensityClasses = ['bg-muted/70', 'bg-primary/15', 'bg-primary/35', 'bg-primary/60', 'bg-primary'] as const;
 
 export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ activity }) => {
   const scrollContainer = useRef<HTMLDivElement>(null);
-  const [hoveredActivity, setHoveredActivity] = useState<HoveredActivity>();
   const { weeks, monthMarkers } = useMemo(() => buildHeatmapWeeks(activity), [activity]);
   const intensityByDate = useMemo(() => {
     const levels = activityIntensityLevels(activity.items.map(({ totalTokens }) => totalTokens));
@@ -70,28 +60,12 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
                 week.map((cell, dayIndex) => {
                   if (cell === null) return <div key={`${weekIndex}-${dayIndex}`} className="size-3" />;
                   const level = intensityByDate.get(cell.date) ?? 0;
-                  const label = `${formatActivityDate(cell.date)}, ${formatCompactTokenCount(cell.totalTokens)} TOKEN, ${m['dashboard.overview.activity_level']({ level })}`;
                   return (
-                    <div
+                    <TokenActivityDayCell
                       key={cell.date}
-                      aria-label={label}
-                      className={`size-3 rounded-[2px] ${intensityClasses[level]}`}
-                      tabIndex={0}
-                      onBlur={() => setHoveredActivity(undefined)}
-                      onFocus={(event) =>
-                        setHoveredActivity({
-                          cell,
-                          level,
-                          position: {
-                            x: event.currentTarget.getBoundingClientRect().left,
-                            y: event.currentTarget.getBoundingClientRect().bottom,
-                          },
-                        })
-                      }
-                      onMouseEnter={(event) =>
-                        setHoveredActivity({ cell, level, position: { x: event.clientX, y: event.clientY } })
-                      }
-                      onMouseLeave={() => setHoveredActivity(undefined)}
+                      cell={cell}
+                      intensityClassName={intensityClasses[level]!}
+                      level={level}
                     />
                   );
                 }),
@@ -111,7 +85,6 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
           <span>{m['dashboard.overview.activity_legend_more']()}</span>
         </div>
       </CardContent>
-      {hoveredActivity === undefined ? null : <TokenActivityHover {...hoveredActivity} />}
     </Card>
   );
 };
