@@ -2,7 +2,7 @@ import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
 import { render, screen, within } from '@testing-library/react';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesTable } from './traces-table';
 
 const trace: DashboardTraceSummary = {

@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceDiagnostics } from '@aio-proxy/types';
 
-import { TRACE_PLACEHOLDER } from '../../trace-display-constants';
+import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 
 interface TraceHttpDiagnosticsProps {
   readonly side: 'request' | 'response';

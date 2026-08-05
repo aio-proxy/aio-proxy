@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import {
   DashboardTracesRequestError,
   getTrace,

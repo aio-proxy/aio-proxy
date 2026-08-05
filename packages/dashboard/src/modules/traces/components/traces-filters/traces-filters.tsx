@@ -14,9 +14,14 @@ import { z } from 'zod';
 import { DateTimeRangePicker } from '@/components/date-time-range-picker';
 import { ProtocolLabel } from '@/components/protocol-label';
 
-import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from '../trace-date-range';
-import { createDefaultTraceSearch, type TraceFilterPatch, type TraceSearch, withTraceFilters } from '../trace-search';
-import { TracesAdvancedFilters } from './traces-advanced-filters';
+import {
+  createDefaultTraceSearch,
+  type TraceFilterPatch,
+  type TraceSearch,
+  withTraceFilters,
+} from '../../lib/trace-search';
+import { TracesAdvancedFilters } from '../traces-advanced-filters';
+import { createTraceDateTimeRangePresets, toPickerRange, toQueryRange } from './date-range';
 
 interface TracesFiltersProps {
   readonly search: TraceSearch;

@@ -3,8 +3,8 @@ import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
-import { TRACE_PLACEHOLDER } from '../../trace-display-constants';
-import { formatTraceDuration, formatTraceResultDetails } from '../../trace-formatters';
+import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
+import { formatTraceDuration, formatTraceResultDetails } from '../../lib/trace-formatters';
 import { TraceStatus } from '../trace-status';
 
 interface SpanDetailPanelProps {

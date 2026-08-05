@@ -3,7 +3,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { PanelLeftClose } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import type { TraceSearch } from '../../trace-search';
+import type { TraceSearch } from '../../lib/trace-search';
 import { TracesFilters } from '../traces-filters';
 import { TracesSearchBar } from '../traces-search-bar';
 

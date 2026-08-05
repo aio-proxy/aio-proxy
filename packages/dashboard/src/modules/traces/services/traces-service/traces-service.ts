@@ -3,7 +3,7 @@ import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
 
-import type { TraceSearch } from '../../trace-search';
+import type { TraceSearch } from '../../lib/trace-search';
 
 type DashboardTracesResponse = InferResponseType<typeof dashboardClient.dashboard.api.traces.$get, 200>;
 type DashboardTraceResponse = InferResponseType<(typeof dashboardClient.dashboard.api.traces)[':traceId']['$get'], 200>;

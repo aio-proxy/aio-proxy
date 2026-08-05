@@ -2,7 +2,7 @@ import type { UsageRow } from '@aio-proxy/types';
 
 import { TokenCount } from '@/components/token-count';
 
-import { TRACE_CACHE_READ_SHORT, TRACE_CACHE_WRITE_SHORT, TRACE_PLACEHOLDER } from '../../trace-display-constants';
+import { TRACE_CACHE_READ_SHORT, TRACE_CACHE_WRITE_SHORT, TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 
 interface TraceTokenCellProps {
   readonly usage?: Pick<UsageRow, 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'> | undefined;

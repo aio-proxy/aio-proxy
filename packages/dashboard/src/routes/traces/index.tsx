@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 
+import { parseTraceSearch } from '@/modules/traces/lib/trace-search';
 import { TracesPage } from '@/modules/traces/templates/traces-page';
-import { parseTraceSearch } from '@/modules/traces/trace-search';
 
 interface TracesRouteProps extends Record<string, never> {}
 

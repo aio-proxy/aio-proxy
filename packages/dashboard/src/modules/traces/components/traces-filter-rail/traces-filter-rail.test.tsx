@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesFilterRail } from './traces-filter-rail';
 
 const setViewportWidth = (width: number) => {

@@ -2,8 +2,8 @@ import { m } from '@aio-proxy/i18n';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { Zap } from 'lucide-react';
 
-import { TRACE_PLACEHOLDER, TRACE_TTFT_LABEL } from '../../trace-display-constants';
-import { formatTraceDuration } from '../../trace-formatters';
+import { TRACE_PLACEHOLDER, TRACE_TTFT_LABEL } from '../../lib/trace-display-constants';
+import { formatTraceDuration } from '../../lib/trace-formatters';
 
 interface TraceLatencyCellProps {
   readonly durationMs: number;

@@ -2,7 +2,7 @@ import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesPage } from './traces-page';
 
 const mocks = rs.hoisted(() => ({

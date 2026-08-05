@@ -7,13 +7,13 @@ import type { ReactNode } from 'react';
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
 
-import { TRACE_PLACEHOLDER } from '../trace-display-constants';
+import { TRACE_PLACEHOLDER } from '../lib/trace-display-constants';
 import {
   displayTotalTokens,
   formatTraceCost,
   formatTraceDuration,
   formatTraceResultDetails,
-} from '../trace-formatters';
+} from '../lib/trace-formatters';
 import { TraceStatus } from './trace-status';
 
 interface TraceSummaryProps {

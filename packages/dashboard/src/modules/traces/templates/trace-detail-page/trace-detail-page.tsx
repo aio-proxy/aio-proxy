@@ -13,8 +13,8 @@ import { TraceContextRail } from '../../components/trace-context-rail';
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
 import { useTraceQuery } from '../../hooks/use-trace-query';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
-import { createDefaultTraceSearch } from '../../trace-search';
 
 interface TraceDetailPageProps {
   readonly traceId: string;

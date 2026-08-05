@@ -11,7 +11,7 @@ import { ListFilter } from 'lucide-react';
 import { useEffect } from 'react';
 import { z } from 'zod';
 
-import type { TraceFilterPatch, TraceSearch } from '../trace-search';
+import type { TraceFilterPatch, TraceSearch } from '../lib/trace-search';
 
 interface TracesAdvancedFiltersProps {
   readonly search: TraceSearch;

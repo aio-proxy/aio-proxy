@@ -3,9 +3,9 @@ import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 
-import { TRACE_PLACEHOLDER } from '../../trace-display-constants';
-import { formatTraceCost } from '../../trace-formatters';
-import type { TraceSearch } from '../../trace-search';
+import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
+import { formatTraceCost } from '../../lib/trace-formatters';
+import type { TraceSearch } from '../../lib/trace-search';
 import { TraceLatencyCell } from '../trace-latency-cell';
 import { TraceLoadOlderRow } from '../trace-load-older-row';
 import { TraceNewItemsRow } from '../trace-new-items-row';

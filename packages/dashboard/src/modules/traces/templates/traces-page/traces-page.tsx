@@ -10,7 +10,7 @@ import { PageContainer } from '@/components/page-container';
 import { TracesFilterRail } from '../../components/traces-filter-rail';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
-import { createDefaultTraceSearch, type TraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch, type TraceSearch } from '../../lib/trace-search';
 
 type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
 
