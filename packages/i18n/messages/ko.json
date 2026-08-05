@@ -896,7 +896,6 @@
       "activity_title": "토큰 활동",
       "activity_legend_less": "적음",
       "activity_legend_more": "많음",
-      "activity_level": "레벨 {level}",
       "activity_model_breakdown": "모델별 분석"
     },
     "traces": {

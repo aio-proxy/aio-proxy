@@ -31,9 +31,9 @@ describe('TokenActivityHeatmap', () => {
   test('shows compact tokens and model breakdown when hovering an active day', () => {
     render(<TokenActivityHeatmap activity={activity} />);
 
-    fireEvent.mouseEnter(screen.getByLabelText(/2K TOKEN/u));
+    fireEvent.mouseEnter(screen.getByLabelText(/2K Token/u));
 
-    expect(screen.getByText('2K TOKEN')).toBeInTheDocument();
+    expect(screen.getByText('2K Token')).toBeInTheDocument();
     expect(screen.getByText('gpt-5')).toBeInTheDocument();
     expect(screen.getByText('1.5K')).toBeInTheDocument();
   });
@@ -41,9 +41,9 @@ describe('TokenActivityHeatmap', () => {
   test('shows a daily total without model breakdown when no models are present', () => {
     render(<TokenActivityHeatmap activity={activity} />);
 
-    fireEvent.mouseEnter(screen.getByLabelText(/500 TOKEN/u));
+    fireEvent.mouseEnter(screen.getByLabelText(/500 Token/u));
 
-    expect(screen.getByText('500 TOKEN')).toBeInTheDocument();
+    expect(screen.getByText('500 Token')).toBeInTheDocument();
     expect(screen.queryByText('Model breakdown')).not.toBeInTheDocument();
   });
 });

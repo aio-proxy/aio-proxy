@@ -1,5 +1,4 @@
 import { getLocale, m } from '@aio-proxy/i18n';
-import { Badge } from '@aio-proxy/ui/components/badge';
 
 import { formatCompactTokenCount } from '@/components/token-count';
 
@@ -8,20 +7,16 @@ import type { ActivityCell } from './heatmap-layout';
 
 interface TokenActivityHoverProps {
   readonly cell: ActivityCell;
-  readonly level: number;
 }
 
 const formatPercent = (value: number) => new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(value);
 
-export const TokenActivityHover: React.FC<TokenActivityHoverProps> = ({ cell, level }) => (
+export const TokenActivityHover: React.FC<TokenActivityHoverProps> = ({ cell }) => (
   <>
-    <div className="flex items-center justify-between gap-2">
-      <time className="text-sm font-medium" dateTime={cell.date}>
-        {formatActivityDate(cell.date)}
-      </time>
-      <Badge variant="secondary">{m['dashboard.overview.activity_level']({ level })}</Badge>
-    </div>
-    <p className="mt-2 text-sm">{formatCompactTokenCount(cell.totalTokens)} TOKEN</p>
+    <time className="text-sm font-medium" dateTime={cell.date}>
+      {formatActivityDate(cell.date)}
+    </time>
+    <p className="mt-2 text-sm">{formatCompactTokenCount(cell.totalTokens)} Token</p>
     {cell.models.length === 0 ? null : (
       <section className="mt-3 border-t pt-3">
         <h3 className="text-xs font-medium text-muted-foreground">

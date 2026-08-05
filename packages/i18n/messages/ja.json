@@ -896,7 +896,6 @@
       "activity_title": "トークンアクティビティ",
       "activity_legend_less": "少ない",
       "activity_legend_more": "多い",
-      "activity_level": "レベル {level}",
       "activity_model_breakdown": "モデル別内訳"
     },
     "traces": {

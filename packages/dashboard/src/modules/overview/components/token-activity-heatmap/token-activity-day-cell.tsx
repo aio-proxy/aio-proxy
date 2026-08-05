@@ -1,4 +1,3 @@
-import { m } from '@aio-proxy/i18n';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@aio-proxy/ui/components/hover-card';
 import { cn } from '@aio-proxy/ui/lib/utils';
 
@@ -10,12 +9,11 @@ import { TokenActivityHover } from './token-activity-hover';
 
 interface TokenActivityDayCellProps {
   readonly cell: ActivityCell;
-  readonly level: number;
   readonly intensityClassName: string;
 }
 
-export const TokenActivityDayCell: React.FC<TokenActivityDayCellProps> = ({ cell, level, intensityClassName }) => {
-  const label = `${formatActivityDate(cell.date)}, ${formatCompactTokenCount(cell.totalTokens)} TOKEN, ${m['dashboard.overview.activity_level']({ level })}`;
+export const TokenActivityDayCell: React.FC<TokenActivityDayCellProps> = ({ cell, intensityClassName }) => {
+  const label = `${formatActivityDate(cell.date)}, ${formatCompactTokenCount(cell.totalTokens)} Token`;
 
   return (
     <HoverCard>
@@ -25,7 +23,7 @@ export const TokenActivityDayCell: React.FC<TokenActivityDayCellProps> = ({ cell
         render={<div aria-label={label} className={cn('size-3 rounded-[2px]', intensityClassName)} tabIndex={0} />}
       />
       <HoverCardContent align="start" className="rounded-lg p-3" side="top" sideOffset={8}>
-        <TokenActivityHover cell={cell} level={level} />
+        <TokenActivityHover cell={cell} />
       </HoverCardContent>
     </HoverCard>
   );

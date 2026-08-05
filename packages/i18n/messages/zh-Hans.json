@@ -894,7 +894,6 @@
       "activity_title": "Token 活跃度",
       "activity_legend_less": "更少",
       "activity_legend_more": "更多",
-      "activity_level": "级别 {level}",
       "activity_model_breakdown": "模型明细"
     },
     "traces": {
