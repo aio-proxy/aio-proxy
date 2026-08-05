@@ -1,4 +1,5 @@
 import { describe, expect, test } from '@rstest/core';
+import { addDays, format, parse } from 'date-fns';
 
 import type { OverviewActivityData } from '../../services/overview-service';
 import { buildHeatmapWeeks } from './heatmap-layout';
@@ -6,12 +7,12 @@ import { buildHeatmapWeeks } from './heatmap-layout';
 const activity = (from: string, to: string): OverviewActivityData => {
   const items = [];
   for (
-    let value = new Date(`${from}T00:00:00Z`);
-    value <= new Date(`${to}T00:00:00Z`);
-    value.setUTCDate(value.getUTCDate() + 1)
+    let value = parse(from, 'yyyy-MM-dd', new Date());
+    value <= parse(to, 'yyyy-MM-dd', new Date());
+    value = addDays(value, 1)
   ) {
     items.push({
-      date: value.toISOString().slice(0, 10),
+      date: format(value, 'yyyy-MM-dd'),
       totalTokens: 0n,
       models: [],
     });

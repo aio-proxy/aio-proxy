@@ -1,10 +1,11 @@
-import { getLocale, m } from '@aio-proxy/i18n';
+import { m } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { formatCompactTokenCount } from '@/components/token-count';
 
 import type { OverviewActivityData } from '../../services/overview-service';
+import { formatActivityDate } from './activity-date';
 import { activityIntensityLevels } from './activity-intensity';
 import { buildHeatmapWeeks, type ActivityCell } from './heatmap-layout';
 import { TokenActivityHover } from './token-activity-hover';
@@ -20,11 +21,6 @@ interface HoveredActivity {
 }
 
 const intensityClasses = ['bg-muted/70', 'bg-primary/15', 'bg-primary/35', 'bg-primary/60', 'bg-primary'] as const;
-
-const formatDate = (date: string) =>
-  new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long', timeZone: 'UTC' }).format(
-    new Date(`${date}T00:00:00.000Z`),
-  );
 
 export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ activity }) => {
   const scrollContainer = useRef<HTMLDivElement>(null);
@@ -74,7 +70,7 @@ export const TokenActivityHeatmap: React.FC<TokenActivityHeatmapProps> = ({ acti
                 week.map((cell, dayIndex) => {
                   if (cell === null) return <div key={`${weekIndex}-${dayIndex}`} className="size-3" />;
                   const level = intensityByDate.get(cell.date) ?? 0;
-                  const label = `${formatDate(cell.date)}, ${formatCompactTokenCount(cell.totalTokens)} TOKEN, ${m['dashboard.overview.activity_level']({ level })}`;
+                  const label = `${formatActivityDate(cell.date)}, ${formatCompactTokenCount(cell.totalTokens)} TOKEN, ${m['dashboard.overview.activity_level']({ level })}`;
                   return (
                     <div
                       key={cell.date}

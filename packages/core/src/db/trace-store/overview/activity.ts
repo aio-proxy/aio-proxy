@@ -1,6 +1,7 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
 
 import type { DashboardOverviewActivityResponse } from '@aio-proxy/types';
+import { addDays, format, parse, startOfWeek } from 'date-fns';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
@@ -25,7 +26,7 @@ export function overviewDashboardActivity(
     tokensByDate.set(row.date, tokensByModel);
   }
   const items = [];
-  for (let day = new Date(`${from}T00:00:00`); localDate(day) <= to; day = addLocalDays(day, 1)) {
+  for (let day = parseLocalDay(from); localDate(day) <= to; day = addDays(day, 1)) {
     const date = localDate(day);
     const models = [...(tokensByDate.get(date) ?? new Map<string, bigint>())]
       .filter(([, totalTokens]) => totalTokens !== 0n)
@@ -45,23 +46,15 @@ function all<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBin
 
 function activityRange(now: Date): { from: string; to: string } {
   return {
-    from: localDate(addLocalDays(startOfSundayWeek(now), -51 * 7)),
+    from: localDate(addDays(startOfWeek(now, { weekStartsOn: 0 }), -51 * 7)),
     to: localDate(now),
   };
 }
 
-function startOfSundayWeek(date: Date): Date {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return addLocalDays(start, -start.getDay());
-}
-
-function addLocalDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
+function parseLocalDay(date: string): Date {
+  return parse(date, 'yyyy-MM-dd', new Date());
 }
 
 function localDate(value: Date): string {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  return format(value, 'yyyy-MM-dd');
 }

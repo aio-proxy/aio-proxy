@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { formatCompactTokenCount } from '@/components/token-count';
 
+import { formatActivityDate } from './activity-date';
 import type { ActivityCell } from './heatmap-layout';
 
 interface TokenActivityHoverProps {
@@ -11,11 +12,6 @@ interface TokenActivityHoverProps {
   readonly level: number;
   readonly position: { readonly x: number; readonly y: number };
 }
-
-const formatDate = (date: string) =>
-  new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long', timeZone: 'UTC' }).format(
-    new Date(`${date}T00:00:00.000Z`),
-  );
 
 const formatPercent = (value: number) => new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(value);
 
@@ -30,7 +26,7 @@ export const TokenActivityHover: React.FC<TokenActivityHoverProps> = ({ cell, le
     >
       <div className="flex items-center justify-between gap-2">
         <time className="text-sm font-medium" dateTime={cell.date}>
-          {formatDate(cell.date)}
+          {formatActivityDate(cell.date)}
         </time>
         <Badge variant="secondary">{m['dashboard.overview.activity_level']({ level })}</Badge>
       </div>

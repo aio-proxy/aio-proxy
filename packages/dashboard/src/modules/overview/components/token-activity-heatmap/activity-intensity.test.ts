@@ -7,9 +7,9 @@ describe('activityIntensityLevels', () => {
     expect(activityIntensityLevels([0n, 0n, 0n])).toEqual([0, 0, 0]);
   });
 
-  test('uses positive-value quantiles to distinguish skewed token activity', () => {
+  test('uses positive-value percentiles to distinguish skewed token activity', () => {
     expect(activityIntensityLevels([0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 100n])).toEqual([
-      0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 4,
+      0, 1, 1, 1, 1, 2, 2, 2, 3, 4, 4,
     ]);
   });
 });
