@@ -434,6 +434,21 @@ describe('traces page', () => {
     expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
   });
 
+  test('canonicalizes the same token again after returning to the token-free search', () => {
+    const onSearchChange = rs.fn();
+    const latestSearch = { ...createDefaultTraceSearch(), requestedModelId: 'gpt-5' };
+    const tokenSearch = { ...latestSearch, pageToken: 'revisited-token' };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+    const view = render(<TracesPage search={tokenSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    view.rerender(<TracesPage search={latestSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+    view.rerender(<TracesPage search={tokenSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    expect(onSearchChange).toHaveBeenCalledTimes(2);
+    expect(onSearchChange).toHaveBeenNthCalledWith(1, latestSearch, { replace: true });
+    expect(onSearchChange).toHaveBeenNthCalledWith(2, latestSearch, { replace: true });
+  });
+
   test.each(['placeholder', 'failed'] as const)('does not canonicalize a %s token response', (state) => {
     const onSearchChange = rs.fn();
     mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };

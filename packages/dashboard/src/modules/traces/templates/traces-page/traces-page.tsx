@@ -41,6 +41,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
 
   if (activeSearchKeyRef.current !== searchKey) {
     activeSearchKeyRef.current = searchKey;
+    canonicalizedSearchKeyRef.current = undefined;
     renderedDataRef.current = undefined;
     latestFirstPageRef.current = undefined;
   }
