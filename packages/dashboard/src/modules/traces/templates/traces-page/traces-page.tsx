@@ -3,13 +3,14 @@ import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { Sidebar, SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useEffect, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { TracesFilterRail } from '../../components/traces-filter-rail';
+import { TracesFilters } from '../../components/traces-filters';
 import { TracesTable } from '../../components/traces-table';
 import { useTracesQuery } from '../../hooks/use-traces-query';
 import { createDefaultTraceSearch, type TraceSearch, withTraceFilters } from '../../lib/trace-search';
@@ -92,22 +93,20 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
       title={m['dashboard.traces.title']()}
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
       classNames={{
-        root: 'flex flex-col overflow-hidden',
-        main: 'min-h-0 flex-1 overflow-hidden',
+        root: cn('flex flex-col overflow-hidden'),
+        main: cn('min-h-0 flex-1 overflow-hidden'),
       }}
     >
       <Card size="sm" className="h-full w-full py-0">
         <SidebarProvider defaultOpen={false} className="relative h-full min-h-0 w-full overflow-hidden">
-          <Sidebar className="absolute! inset-y-0! h-full! border-r" aria-label={m['dashboard.traces.filters']()}>
-            <TracesFilterRail
-              search={search}
-              autoRefresh={autoRefresh}
-              refreshing={query.isFetching}
-              onSearchChange={onSearchChange}
-              onAutoRefresh={setAutoRefresh}
-              onRefresh={() => void query.refetch()}
-            />
-          </Sidebar>
+          <TracesFilters
+            search={search}
+            autoRefresh={autoRefresh}
+            refreshing={query.isFetching}
+            onChange={onSearchChange}
+            onAutoRefresh={setAutoRefresh}
+            onRefresh={() => void query.refetch()}
+          />
           <SidebarInset className="min-h-0 min-w-0">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="flex h-12 shrink-0 items-center border-b px-3">

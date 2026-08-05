@@ -11,7 +11,7 @@ import { Link } from '@tanstack/react-router';
 import { Fragment } from 'react';
 
 export interface BreadcrumbItem {
-  readonly label: string;
+  readonly label: React.ReactNode;
   readonly to?: React.ComponentProps<typeof Link>['to'];
 }
 

@@ -40,5 +40,21 @@ export default defineConfig({
     'typescript/consistent-type-imports': 'error',
     ...logtape.configs.recommended.rules,
   },
+  overrides: [
+    {
+      files: ['**/*.tsx'],
+      rules: {
+        'max-lines-per-function': [
+          'warn',
+          {
+            max: 300,
+            IIFEs: true,
+            skipBlankLines: true,
+            skipComments: false,
+          },
+        ],
+      },
+    },
+  ],
   ignorePatterns,
 });

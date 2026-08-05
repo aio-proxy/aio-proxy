@@ -243,12 +243,14 @@ describe('trace detail page', () => {
     },
   );
 
-  test('puts the Trace ID, status, and copy action in the page header', async () => {
+  test('puts the Trace ID and status in the final breadcrumb with the copy action in the page header', async () => {
     render(<TraceDetailPage traceId={traceId} />);
 
     const header = screen.getByRole('banner');
-    expect(within(header).getByRole('heading', { level: 1, name: traceId })).toBeInTheDocument();
-    expect(within(header).getByText(/Failure|失败/u)).toBeInTheDocument();
+    const currentBreadcrumb = within(header).getByRole('link', { name: new RegExp(traceId, 'u') });
+    expect(currentBreadcrumb).toHaveAttribute('aria-current', 'page');
+    expect(currentBreadcrumb).toHaveTextContent(traceId);
+    expect(currentBreadcrumb).toHaveTextContent(/Failure|失败/u);
 
     fireEvent.click(within(header).getByRole('button', { name: /Copy Trace ID|复制追踪 ID/u }));
     await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith(traceId));

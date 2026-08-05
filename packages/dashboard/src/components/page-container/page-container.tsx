@@ -5,7 +5,7 @@ import { Breadcrumbs, type BreadcrumbItem } from '@/components/breadcrumbs';
 type BreadcrumbItems = readonly [BreadcrumbItem, ...BreadcrumbItem[]];
 
 interface PageContainerProps {
-  readonly title: string;
+  readonly title?: React.ReactNode;
   readonly subtitle?: React.ReactNode;
   readonly extra?: React.ReactNode;
   readonly breadcrumbs: BreadcrumbItems;
@@ -31,8 +31,8 @@ export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>
           <Breadcrumbs items={breadcrumbs} />
           <div className="flex w-full items-start justify-between gap-1">
             <div className="min-w-0">
-              <h1 className="truncate font-heading text-2xl font-semibold">{title}</h1>
-              {subtitle === undefined ? null : <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>}
+              {!!title && <h1 className="truncate font-heading text-2xl font-semibold">{title}</h1>}
+              {!!subtitle && <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>}
             </div>
             {extra && <div className="w-full sm:ml-2 sm:w-auto">{extra}</div>}
           </div>

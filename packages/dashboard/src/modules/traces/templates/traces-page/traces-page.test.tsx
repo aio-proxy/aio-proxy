@@ -293,19 +293,14 @@ describe('traces page', () => {
       />,
     );
 
-    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toHaveAttribute(
-      'data-state',
-      'collapsed',
-    );
+    const sidebar = screen.getByRole('heading', { level: 2, name: /Filters|筛选/u }).closest('[data-slot="sidebar"]');
+    expect(sidebar).toHaveAttribute('data-state', 'collapsed');
 
     const trigger = screen.getByRole('button', { name: /Filters|筛选/u });
     expect(trigger).toHaveAttribute('data-sidebar', 'trigger');
     fireEvent.click(trigger);
 
-    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toHaveAttribute(
-      'data-state',
-      'expanded',
-    );
+    expect(sidebar).toHaveAttribute('data-state', 'expanded');
   });
 
   test('opens the same filters in a mobile Sheet', () => {
@@ -321,7 +316,7 @@ describe('traces page', () => {
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
 
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).getByTestId('traces-filter-rail')).toBeTruthy();
+    expect(within(sheet).getByRole('heading', { level: 2, name: /Filters|筛选/u })).toBeTruthy();
   });
 
   test('freezes the latest page across repeated polls and replaces it with the latest response on acceptance', () => {

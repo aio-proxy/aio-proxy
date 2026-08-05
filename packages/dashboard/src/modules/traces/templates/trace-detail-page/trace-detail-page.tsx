@@ -46,11 +46,18 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   const breadcrumbs = [
     { label: m['dashboard.menus.observability']() },
     { label: m['dashboard.menus.traces'](), to: '/traces' as const },
+    {
+      label: (
+        <span className="flex flex-wrap gap-1">
+          {traceId} {!!query.data?.trace && <TraceStatus item={query.data?.trace} />}
+        </span>
+      ),
+    },
   ] as const;
 
   if (query.isLoading) {
     return (
-      <PageContainer title={traceId} extra={refresh} breadcrumbs={breadcrumbs}>
+      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
         <div className="space-y-3" role="status" aria-label={m['dashboard.traces.detail_loading']()}>
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -62,7 +69,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   if (query.isError || query.data === undefined) {
     const notFound = query.error instanceof DashboardTracesRequestError && query.error.status === 404;
     return (
-      <PageContainer title={traceId} extra={refresh} breadcrumbs={breadcrumbs}>
+      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
         <Empty>
           <EmptyTitle>
             {notFound ? m['dashboard.traces.not_found_title']() : m['dashboard.traces.detail_error_title']()}
@@ -90,8 +97,6 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
 
   return (
     <PageContainer
-      title={trace.traceId}
-      subtitle={<TraceStatus item={trace} />}
       breadcrumbs={breadcrumbs}
       extra={
         <div className="flex flex-wrap gap-2">
