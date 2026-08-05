@@ -108,14 +108,14 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
               onRefresh={() => void query.refetch()}
             />
           </Sidebar>
-          <SidebarInset className="min-h-0">
+          <SidebarInset className="min-h-0 min-w-0">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="flex h-12 shrink-0 items-center border-b px-3">
                 <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
               </div>
-              <div className="min-h-0 min-w-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
+              <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
                 {query.isLoading ? (
-                  <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
+                  <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
                     {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
                       <Skeleton className="h-12 w-full" key={key} />
                     ))}

@@ -152,7 +152,7 @@ describe('traces page', () => {
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 
-  test('scrolls the table inside ScrollArea while keeping pagination outside', () => {
+  test('keeps table gutters inside ScrollArea while pagination stays outside', () => {
     render(
       <TracesPage
         search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
@@ -161,10 +161,16 @@ describe('traces page', () => {
       />,
     );
 
-    expect(screen.getByRole('table').closest('[data-slot="scroll-area-viewport"]')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu }).closest('[data-slot="scroll-area-viewport"]'),
-    ).toBeNull();
+    const table = screen.getByRole('table');
+    const viewport = table.closest('[data-slot="scroll-area-viewport"]');
+    const tableContent = table.closest('[data-slot="traces-table-scroll-content"]');
+    const previousButton = screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu });
+
+    expect(viewport).toBeTruthy();
+    expect(tableContent?.parentElement).toBe(viewport);
+    expect(previousButton.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
+    expect(previousButton.closest('[data-slot="traces-table-pagination"]')).toBeTruthy();
+    expect(table.closest('[data-slot="sidebar-inset"]')).toHaveClass('min-w-0');
   });
 
   test('drives previous and next token navigation through URL search state', () => {
