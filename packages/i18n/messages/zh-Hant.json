@@ -893,12 +893,11 @@
       "no_provider_activity": "尚無已記錄的提供商嘗試",
       "top_models_title": "模型費用排行",
       "no_model_costs": "尚無已記錄的模型費用",
-      "activity_title": "請求活躍度",
-      "activity_year": "活躍年份",
-      "previous_year": "上一年",
-      "next_year": "下一年",
-      "activity_day_label": "{date}：{formattedCount} 個請求",
-      "activity_count": "{formattedCount} 個請求"
+      "activity_title": "Token 活躍度",
+      "activity_legend_less": "更少",
+      "activity_legend_more": "更多",
+      "activity_level": "級別 {level}",
+      "activity_model_breakdown": "模型明細"
     },
     "traces": {
       "title": "追蹤",

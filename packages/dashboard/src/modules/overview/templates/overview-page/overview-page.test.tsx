@@ -13,7 +13,7 @@ const mocks = rs.hoisted(() => ({
 }));
 
 rs.mock('../../hooks/use-overview-query', () => ({
-  useOverviewActivityQuery: (input: unknown) => mocks.useOverviewActivityQuery(input),
+  useOverviewActivityQuery: () => mocks.useOverviewActivityQuery(),
   useOverviewDiagnosticsQuery: () => mocks.useOverviewDiagnosticsQuery(),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
@@ -59,11 +59,12 @@ const createDiagnosticsData = () => ({
 });
 
 const createActivityData = () => ({
-  year: 2026,
-  days: [
-    { date: '2026-01-03', requestCount: 1n },
-    { date: '2026-01-01', requestCount: 7n },
-    { date: '2026-01-02', requestCount: 0n },
+  from: '2025-08-10',
+  to: '2026-08-05',
+  items: [
+    { date: '2026-01-03', totalTokens: 1n, models: [] },
+    { date: '2026-01-01', totalTokens: 7n, models: [] },
+    { date: '2026-01-02', totalTokens: 0n, models: [] },
   ],
 });
 
@@ -162,7 +163,7 @@ describe('overview page', () => {
     chartBounds.mockRestore();
   });
 
-  test('changes only range and year query input and keeps refresh immediately before the range tabs', () => {
+  test('changes only range query input and keeps refresh immediately before the range tabs', () => {
     render(<OverviewPage />);
 
     const refresh = screen.getByRole('button', { name: /Refresh overview|刷新概览/u });
@@ -173,24 +174,12 @@ describe('overview page', () => {
     expect(mocks.diagnosticsRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.activityRefetch).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u }));
-    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith({ year: 2025 });
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith();
     expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h' });
 
     fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
     expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d' });
-    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith({ year: 2025 });
-  });
-
-  test('shows only the selected activity date and count after clicking a day', () => {
-    render(<OverviewPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: /7 requests|7 个请求|7 件のリクエスト|요청 7건/u }));
-
-    const selectedDay = screen.getByRole('status');
-    expect(selectedDay.childElementCount).toBe(2);
-    expect(within(selectedDay).getByText(/January 1, 2026|2026/u)).toBeInTheDocument();
-    expect(within(selectedDay).getByText(/7 requests|7 个请求|7 件のリクエスト|요청 7건/u)).toBeInTheDocument();
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith();
   });
 
   test('keeps unwindowed diagnostics visible when the selected range has no requests', () => {
@@ -201,31 +190,6 @@ describe('overview page', () => {
     expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Top model costs|模型成本排行/u })).toBeInTheDocument();
-  });
-
-  test('uses singular English request copy for a one-request activity day', () => {
-    render(<OverviewPage />);
-
-    const day = screen.getByRole('button', { name: /1 request$/u });
-    expect(day).not.toHaveAccessibleName(/1 requests/u);
-    fireEvent.click(day);
-    expect(within(screen.getByRole('status')).getByText(/^1 request$/u)).toBeInTheDocument();
-  });
-
-  test('keeps loaded sections visible while only a changed activity year is pending', () => {
-    mocks.useOverviewActivityQuery.mockImplementation((input: { year: number }) => ({
-      data: activityData,
-      isError: false,
-      isFetching: input.year !== activityData.year,
-      isLoading: false,
-      refetch: mocks.activityRefetch,
-    }));
-    render(<OverviewPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u }));
-
-    expect(screen.getByRole('heading', { name: /Provider health|提供商健康状态/u })).toBeInTheDocument();
-    expect(screen.getByText(/Loading overview|正在加载概览/u)).toBeInTheDocument();
   });
 
   test('formats a retained trend with the range that produced the loaded buckets', () => {
@@ -253,18 +217,6 @@ describe('overview page', () => {
 
     expect(screen.getByText(/\d{2}:\d{2}\s?(?:AM|PM)/u)).toBeInTheDocument();
     chartBounds.mockRestore();
-  });
-
-  test('disables activity navigation at the supported year boundaries', () => {
-    activityData.year = 2000;
-    const first = render(<OverviewPage />);
-    expect(screen.getByRole('button', { name: /Previous year|上一年|前年|이전 연도/u })).toBeDisabled();
-
-    first.unmount();
-    overviewData = createOverviewData();
-    activityData.year = 2100;
-    render(<OverviewPage />);
-    expect(screen.getByRole('button', { name: /Next year|下一年|翌年|다음 연도/u })).toBeDisabled();
   });
 
   test('distinguishes no configured Provider from an empty selected range', () => {

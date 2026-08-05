@@ -54,6 +54,7 @@
     "@opencode-ai/models": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "ai": "catalog:",
+    "date-fns": "catalog:",
     "drizzle-orm": "catalog:",
     "es-toolkit": "catalog:",
     "lru-cache": "catalog:",

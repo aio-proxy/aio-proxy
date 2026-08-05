@@ -891,12 +891,11 @@
       "no_provider_activity": "暂无已记录的提供商尝试",
       "top_models_title": "模型费用排行",
       "no_model_costs": "暂无已记录的模型费用",
-      "activity_title": "请求活跃度",
-      "activity_year": "活跃年份",
-      "previous_year": "上一年",
-      "next_year": "下一年",
-      "activity_day_label": "{date}：{formattedCount} 个请求",
-      "activity_count": "{formattedCount} 个请求"
+      "activity_title": "Token 活跃度",
+      "activity_legend_less": "更少",
+      "activity_legend_more": "更多",
+      "activity_level": "级别 {level}",
+      "activity_model_breakdown": "模型明细"
     },
     "traces": {
       "title": "追踪",

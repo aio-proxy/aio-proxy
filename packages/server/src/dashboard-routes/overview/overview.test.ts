@@ -75,15 +75,29 @@ describe('GET /overview', () => {
     }
   });
 
-  test('returns yearly activity from an independent endpoint', async () => {
+  test('returns rolling activity from an independent endpoint', async () => {
+    const { routes, state } = await overviewRoutes();
+    try {
+      const response = await routes.request('/overview/activity');
+      const body = DashboardOverviewActivityResponseSchema.parse(await response.json());
+
+      expect(response.status).toBe(200);
+      expect(body.items).toBeDefined();
+      expect(body).not.toHaveProperty('year');
+      expect(body).not.toHaveProperty('days');
+    } finally {
+      state.close();
+    }
+  });
+
+  test('ignores unknown query params on activity endpoint', async () => {
     const { routes, state } = await overviewRoutes();
     try {
       const response = await routes.request('/overview/activity?year=2026');
       const body = DashboardOverviewActivityResponseSchema.parse(await response.json());
 
       expect(response.status).toBe(200);
-      expect(body.year).toBe(2026);
-      expect(body.days).toHaveLength(365);
+      expect(body.items).toBeDefined();
     } finally {
       state.close();
     }
@@ -93,15 +107,6 @@ describe('GET /overview', () => {
     const { routes, state } = await overviewRoutes();
     try {
       expect((await routes.request('/overview?range=14d')).status).toBe(400);
-    } finally {
-      state.close();
-    }
-  });
-
-  test.each(['1999', '2101', '2026.5', 'not-a-year'])('rejects invalid year %s', async (year) => {
-    const { routes, state } = await overviewRoutes();
-    try {
-      expect((await routes.request(`/overview/activity?year=${year}`)).status).toBe(400);
     } finally {
       state.close();
     }

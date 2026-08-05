@@ -33,7 +33,7 @@
     "class-variance-authority": "catalog:",
     "culori": "^4.0.2",
     "date-fns": "catalog:",
-    "es-toolkit": "^1.49.0",
+    "es-toolkit": "catalog:",
     "hono": "catalog:",
     "jotai": "^2.20.1",
     "lucide-react": "catalog:",

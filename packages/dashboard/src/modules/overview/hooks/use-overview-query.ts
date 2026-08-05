@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
 import {
-  type OverviewActivityQueryInput,
   type OverviewQueryInput,
   overviewActivityQueryOptions,
   overviewDiagnosticsQueryOptions,
@@ -10,5 +9,4 @@ import {
 
 export const useOverviewQuery = (input: OverviewQueryInput) => useQuery(overviewQueryOptions(input));
 export const useOverviewDiagnosticsQuery = () => useQuery(overviewDiagnosticsQueryOptions());
-export const useOverviewActivityQuery = (input: OverviewActivityQueryInput) =>
-  useQuery(overviewActivityQueryOptions(input));
+export const useOverviewActivityQuery = () => useQuery(overviewActivityQueryOptions());

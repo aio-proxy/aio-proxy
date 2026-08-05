@@ -281,7 +281,7 @@ test('derives Provider health from failed and successful attempt child spans', (
   });
 });
 
-test('keeps yearly activity after trace pruning', () => {
+test('keeps rolling token activity after trace pruning', () => {
   const handle = openTestDb();
   try {
     const store = createTraceStore(handle.db);
@@ -290,15 +290,20 @@ test('keeps yearly activity after trace pruning', () => {
       endedAt: new Date(2025, 0, 15, 12),
       modelId: 'retained-model',
       attempts: [{ providerId: 'provider', durationMs: 10 }],
-      usage: { estimatedCostUsd: 5 },
+      usage: { totalTokens: 123 },
     });
 
     store.prune(new Date(2025, 0, 16), new Date(2025, 0, 16));
 
     expect(store.find('00000000000000000000000000000001')).toBeUndefined();
-    expect(store.overviewDashboardActivity(2025).days.find(({ date }) => date === '2025-01-15')).toEqual({
+    expect(
+      store
+        .overviewDashboardActivity({ now: new Date(2025, 0, 15, 12) })
+        .items.find(({ date }) => date === '2025-01-15'),
+    ).toEqual({
       date: '2025-01-15',
-      requestCount: '1',
+      totalTokens: '123',
+      models: [{ modelId: 'retained-model', totalTokens: '123' }],
     });
   } finally {
     handle.close();
@@ -397,27 +402,68 @@ test('preserves range totals above the signed SQLite integer limit', () => {
   }
 });
 
-test('materializes empty common years and every leap-year boundary date', () => {
+test('returns a Sunday-aligned rolling 52-week window with empty days', () => {
   withStore((store) => {
-    const empty = store.overviewDashboardActivity(2025);
-    expect(empty.days).toHaveLength(365);
-    expect(empty.days[0]).toEqual({ date: '2025-01-01', requestCount: '0' });
-    expect(empty.days.at(-1)).toEqual({ date: '2025-12-31', requestCount: '0' });
+    const activity = store.overviewDashboardActivity({ now: new Date(2026, 7, 5) });
 
+    expect(activity.from).toBe('2025-08-10');
+    expect(activity.to).toBe('2026-08-05');
+    expect(activity.items).toHaveLength(361);
+    expect(activity.items[0]).toEqual({ date: '2025-08-10', totalTokens: '0', models: [] });
+    expect(activity.items.at(-1)).toEqual({ date: '2026-08-05', totalTokens: '0', models: [] });
+  });
+});
+
+test('groups daily token activity by model and materializes missing days', () => {
+  withStore((store) => {
     seedTrace(store, {
       id: 1,
-      endedAt: new Date(2024, 0, 1, 12),
+      endedAt: new Date(2025, 7, 10, 12),
+      modelId: 'small-model',
       attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 100 },
     });
     seedTrace(store, {
       id: 2,
-      endedAt: new Date(2024, 11, 31, 12),
+      endedAt: new Date(2025, 7, 10, 12),
+      modelId: 'large-model',
       attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 250 },
     });
-    const leap = store.overviewDashboardActivity(2024);
+    seedTrace(store, {
+      id: 3,
+      endedAt: new Date(2025, 7, 10, 12),
+      modelId: 'zero-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 0 },
+    });
+    seedTrace(store, {
+      id: 4,
+      endedAt: new Date(2025, 7, 12, 12),
+      modelId: 'other-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 50 },
+    });
 
-    expect(leap.days).toHaveLength(366);
-    expect(leap.days[0]).toEqual({ date: '2024-01-01', requestCount: '1' });
-    expect(leap.days.at(-1)).toEqual({ date: '2024-12-31', requestCount: '1' });
+    const activity = store.overviewDashboardActivity({ now: new Date(2026, 7, 5) });
+
+    expect(activity.items.find(({ date }) => date === '2025-08-10')).toEqual({
+      date: '2025-08-10',
+      totalTokens: '350',
+      models: [
+        { modelId: 'large-model', totalTokens: '250' },
+        { modelId: 'small-model', totalTokens: '100' },
+      ],
+    });
+    expect(activity.items.find(({ date }) => date === '2025-08-11')).toEqual({
+      date: '2025-08-11',
+      totalTokens: '0',
+      models: [],
+    });
+    expect(activity.items.find(({ date }) => date === '2025-08-12')).toEqual({
+      date: '2025-08-12',
+      totalTokens: '50',
+      models: [{ modelId: 'other-model', totalTokens: '50' }],
+    });
   });
 });

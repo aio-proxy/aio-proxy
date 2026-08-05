@@ -16,7 +16,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     overview: (query) => overview(db, query),
     overviewDashboard: (query) => overviewDashboard(db, query),
     overviewDashboardDiagnostics: () => overviewDashboardDiagnostics(db),
-    overviewDashboardActivity: (year) => overviewDashboardActivity(db, year),
+    overviewDashboardActivity: (options) => overviewDashboardActivity(db, options),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),
     markResponseAmbiguous: (responseId, now) => markResponseAmbiguous(db, responseId, now),
     findAffinity: (identity, requestedModelId, now) => findAffinity(db, identity, requestedModelId, now),

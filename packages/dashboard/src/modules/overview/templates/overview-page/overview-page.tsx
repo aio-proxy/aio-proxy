@@ -11,7 +11,7 @@ import { ModelUsageTrend } from '../../components/model-usage-trend';
 import { OverviewKpiGrid } from '../../components/overview-kpi-grid';
 import { getOverviewRangeLabel, OverviewTimeWindow } from '../../components/overview-time-window';
 import { ProviderHealthTable } from '../../components/provider-health-table';
-import { RequestActivityHeatmap } from '../../components/request-activity-heatmap';
+import { TokenActivityHeatmap } from '../../components/token-activity-heatmap';
 import { TopModelCosts } from '../../components/top-model-costs';
 import {
   useOverviewActivityQuery,
@@ -23,11 +23,10 @@ const loadingKpis = ['requests', 'tokens', 'cache', 'cost', 'rpm', 'tpm'] as con
 
 export const OverviewPage: React.FC = () => {
   const [range, setRange] = useState<DashboardOverviewRange>('24h');
-  const [year, setYear] = useState(new Date().getFullYear());
   const [metric, setMetric] = useState<UsageOverviewMetric>('requests');
   const overview = useOverviewQuery({ range });
   const diagnostics = useOverviewDiagnosticsQuery();
-  const activity = useOverviewActivityQuery({ year });
+  const activity = useOverviewActivityQuery();
   let content: React.ReactNode;
 
   if (overview.isLoading || diagnostics.isLoading || activity.isLoading) {
@@ -81,7 +80,6 @@ export const OverviewPage: React.FC = () => {
       </Empty>
     );
   } else {
-    const isActivityPending = activity.isFetching && activity.data.year !== year;
     content = (
       <>
         {overview.data.summary.requestCount === 0n ? (
@@ -111,14 +109,7 @@ export const OverviewPage: React.FC = () => {
           <ProviderHealthTable rows={diagnostics.data.providerHealth} />
           <TopModelCosts models={diagnostics.data.topModelCosts} />
         </div>
-        {isActivityPending ? (
-          <div role="status">
-            <span className="sr-only">{m['dashboard.overview.loading']()}</span>
-            <Skeleton className="h-64 rounded-4xl" />
-          </div>
-        ) : (
-          <RequestActivityHeatmap activity={activity.data} onYearChange={setYear} />
-        )}
+        <TokenActivityHeatmap activity={activity.data} />
       </>
     );
   }

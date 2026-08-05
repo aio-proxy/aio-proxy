@@ -893,12 +893,11 @@
       "no_provider_activity": "記録されたプロバイダー試行はありません",
       "top_models_title": "モデル別コスト上位",
       "no_model_costs": "記録されたモデルコストはありません",
-      "activity_title": "リクエストアクティビティ",
-      "activity_year": "アクティビティの年",
-      "previous_year": "前年",
-      "next_year": "翌年",
-      "activity_day_label": "{date}: {formattedCount} 件のリクエスト",
-      "activity_count": "{formattedCount} 件のリクエスト"
+      "activity_title": "トークンアクティビティ",
+      "activity_legend_less": "少ない",
+      "activity_legend_more": "多い",
+      "activity_level": "レベル {level}",
+      "activity_model_breakdown": "モデル別内訳"
     },
     "traces": {
       "title": "トレース",

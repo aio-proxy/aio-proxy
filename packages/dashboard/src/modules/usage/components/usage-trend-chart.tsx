@@ -1,4 +1,4 @@
-import { getLocale, m } from '@aio-proxy/i18n';
+import { dateFnsLocale, getLocale, m } from '@aio-proxy/i18n';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import {
   type ChartConfig,
@@ -9,7 +9,6 @@ import {
   ChartTooltipContent,
 } from '@aio-proxy/ui/components/chart';
 import { format, parseISO } from 'date-fns';
-import { enUS, zhCN } from 'date-fns/locale';
 import { useAtomValue } from 'jotai';
 import { useId } from 'react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
@@ -48,7 +47,7 @@ export const UsageTrendChart: React.FC<UsageTrendChartProps> = ({ data }) => {
   const chartTitleId = useId();
   const chartDescriptionId = useId();
   const uiLocale = getLocale();
-  const dateLocale = uiLocale.startsWith('zh') ? zhCN : enUS;
+  const dateLocale = dateFnsLocale(uiLocale);
   const formatValue = createUsageValueFormatter(metric, uiLocale);
   const formatTooltipValue =
     metric === 'tokens' ? (value: number) => formatExactTokenCount(value, uiLocale) : formatValue;

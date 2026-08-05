@@ -50,7 +50,11 @@ export const decodeOverviewDiagnostics = (wire: DashboardOverviewDiagnosticsWire
 
 export const decodeOverviewActivity = (wire: DashboardOverviewActivityWireResponse) => ({
   ...wire,
-  days: wire.days.map((day) => ({ ...day, requestCount: BigInt(day.requestCount) })),
+  items: wire.items.map((item) => ({
+    ...item,
+    totalTokens: BigInt(item.totalTokens),
+    models: item.models.map((model) => ({ ...model, totalTokens: BigInt(model.totalTokens) })),
+  })),
 });
 
 export type OverviewData = ReturnType<typeof decodeOverview>;
@@ -66,10 +70,6 @@ export class DashboardOverviewRequestError extends Error {
 
 export type OverviewQueryInput = {
   readonly range: DashboardOverviewRange;
-};
-
-export type OverviewActivityQueryInput = {
-  readonly year: number;
 };
 
 export const overviewQueryOptions = (input: OverviewQueryInput) =>
@@ -89,10 +89,10 @@ export const overviewDiagnosticsQueryOptions = () =>
     staleTime: 60_000,
   });
 
-export const overviewActivityQueryOptions = (input: OverviewActivityQueryInput) =>
+export const overviewActivityQueryOptions = () =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'activity', input.year],
-    queryFn: () => getOverviewActivity(input),
+    queryKey: ['dashboard', 'overview', 'activity'],
+    queryFn: getOverviewActivity,
     placeholderData: keepPreviousData,
     refetchInterval: false,
     staleTime: 60_000,
@@ -112,10 +112,8 @@ export const getOverviewDiagnostics = async (): Promise<OverviewDiagnosticsData>
   return decodeOverviewDiagnostics(await response.json());
 };
 
-export const getOverviewActivity = async (input: OverviewActivityQueryInput): Promise<OverviewActivityData> => {
-  const response = await dashboardClient.dashboard.api.overview.activity.$get({
-    query: { year: String(input.year) },
-  });
+export const getOverviewActivity = async (): Promise<OverviewActivityData> => {
+  const response = await dashboardClient.dashboard.api.overview.activity.$get();
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverviewActivity(await response.json());
 };
