@@ -1,6 +1,7 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { PropsWithChildren } from 'react';
 
 import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { TracesPage } from './traces-page';
@@ -24,6 +25,11 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
   useIsMobile: () => mocks.mobile,
+}));
+rs.mock('@aio-proxy/ui/components/sidebar', () => ({
+  Sidebar: ({ children }: PropsWithChildren) => <aside data-slot="sidebar">{children}</aside>,
+  SidebarHeader: ({ children }: PropsWithChildren) => <div data-slot="sidebar-header">{children}</div>,
+  SidebarContent: ({ children }: PropsWithChildren) => <div data-slot="sidebar-content">{children}</div>,
 }));
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
@@ -242,6 +248,7 @@ describe('traces page', () => {
     fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
 
     expect(screen.getByTestId('traces-filter-rail')).toBeTruthy();
+    expect(screen.getByTestId('traces-filter-rail').closest('[data-slot="sidebar"]')).toBeTruthy();
   });
 
   test('opens the same filters in a mobile Sheet', () => {

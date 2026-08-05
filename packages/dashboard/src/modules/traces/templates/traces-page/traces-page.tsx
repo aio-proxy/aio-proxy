@@ -3,6 +3,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@aio-proxy/ui/components/sheet';
+import { Sidebar } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
 import { SlidersHorizontal } from 'lucide-react';
@@ -93,7 +94,11 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
     >
       <Card size="sm" className="py-0">
         <div className="flex min-h-[36rem] lg:min-h-[calc(100dvh-10rem)]">
-          {!mobile && filtersOpen ? <aside className="w-64 shrink-0 bg-muted">{filters}</aside> : null}
+          {!mobile && filtersOpen ? (
+            <Sidebar collapsible="none" className="shrink-0 border-r" aria-label={m['dashboard.traces.filters']()}>
+              {filters}
+            </Sidebar>
+          ) : null}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-12 items-center border-b px-3">
               <Button

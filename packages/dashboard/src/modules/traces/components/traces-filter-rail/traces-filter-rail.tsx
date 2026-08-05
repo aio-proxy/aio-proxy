@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { SidebarContent, SidebarHeader } from '@aio-proxy/ui/components/sidebar';
 
 import type { TraceSearch } from '../../lib/trace-search';
 import { TracesFilters } from '../traces-filters';
@@ -22,10 +23,11 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
 }) => {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="traces-filter-rail">
-      <div className="border-b px-4 py-3">
+      <SidebarHeader className="border-b px-4 py-3">
         <h2 className="font-heading text-base font-medium">{m['dashboard.traces.filters']()}</h2>
-      </div>
-      <div className="min-h-0 flex-1 p-4">
+      </SidebarHeader>
+
+      <SidebarContent className="p-4">
         <TracesFilters
           search={search}
           autoRefresh={autoRefresh}
@@ -34,7 +36,7 @@ export const TracesFilterRail: React.FC<TracesFilterRailProps> = ({
           onAutoRefresh={onAutoRefresh}
           onRefresh={onRefresh}
         />
-      </div>
+      </SidebarContent>
     </div>
   );
 };
