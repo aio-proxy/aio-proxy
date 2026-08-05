@@ -34,7 +34,19 @@ const diagnosticsInput = {
   topModelCosts: [{ modelId: 'gpt-4.1', estimatedCostNanoUsd: '4' }],
 } as const;
 
-const activityInput = { year: 2026, days: [{ date: '2026-01-01', requestCount: '1' }] } as const;
+const activityInput = {
+  from: '2026-01-01',
+  to: '2026-01-31',
+  items: [
+    {
+      date: '2026-01-01',
+      totalTokens: '100',
+      models: [{ modelId: 'gpt-4.1', totalTokens: '60' }],
+    },
+  ],
+} as const;
+
+const legacyActivityInput = { year: 2026, days: [{ date: '2026-01-01', requestCount: '1' }] } as const;
 
 test('preserves configured API and AI SDK display fields in dashboard summaries', () => {
   const base = {
@@ -70,6 +82,7 @@ test('accepts independent range, diagnostics, and activity overview contracts', 
   expect(value.range).toBe('90d');
   expect(DashboardOverviewDiagnosticsResponseSchema.parse(diagnosticsInput)).toEqual(diagnosticsInput);
   expect(DashboardOverviewActivityResponseSchema.parse(activityInput)).toEqual(activityInput);
+  expect(DashboardOverviewActivityResponseSchema.safeParse(legacyActivityInput).success).toBe(false);
 });
 
 test('rejects request outcome series from the model-only overview trend', () => {

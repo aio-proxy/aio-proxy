@@ -125,8 +125,24 @@ export const DashboardOverviewDiagnosticsResponseSchema = z.object({
 });
 
 export const DashboardOverviewActivityResponseSchema = z.object({
-  year: z.number().int(),
-  days: z.array(z.object({ date: z.iso.date(), requestCount: NonNegativeIntegerStringSchema })).readonly(),
+  from: z.iso.date(),
+  to: z.iso.date(),
+  items: z
+    .array(
+      z.object({
+        date: z.iso.date(),
+        totalTokens: NonNegativeIntegerStringSchema,
+        models: z
+          .array(
+            z.object({
+              modelId: IdSchema,
+              totalTokens: NonNegativeIntegerStringSchema,
+            }),
+          )
+          .readonly(),
+      }),
+    )
+    .readonly(),
 });
 
 export const DashboardEventSchema = z.discriminatedUnion('event', [
