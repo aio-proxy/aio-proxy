@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
@@ -125,46 +126,49 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   });
 
   return (
-    <div>
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((group) => (
-            <TableRow key={group.id}>
-              {group.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {newItemsCount > 0 ? (
-            <TraceNewItemsRow columnCount={columns.length} count={newItemsCount} onAccept={onAcceptNewItems} />
-          ) : null}
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              tabIndex={0}
-              role="button"
-              aria-label={`${m['dashboard.traces.details']()}: ${row.original.traceId}`}
-              className="cursor-pointer"
-              onClick={() => onSelect(row.original.traceId)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelect(row.original.traceId);
-                }
-              }}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <div className="border-t pt-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <ScrollArea className="min-h-0 flex-1 **:data-[slot=table-container]:overflow-visible">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((group) => (
+              <TableRow key={group.id}>
+                {group.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {newItemsCount > 0 ? (
+              <TraceNewItemsRow columnCount={columns.length} count={newItemsCount} onAccept={onAcceptNewItems} />
+            ) : null}
+            {table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`${m['dashboard.traces.details']()}: ${row.original.traceId}`}
+                className="cursor-pointer"
+                onClick={() => onSelect(row.original.traceId)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect(row.original.traceId);
+                  }
+                }}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+      <div className="shrink-0 border-t pt-3">
         <PaginationControls
           pageSize={pageSize}
           pageSizeOptions={[10, 20, 50, 100]}

@@ -30,9 +30,9 @@ export const RootLayoutContent: React.FC = () => {
     return session.data.reason === undefined ? <LoginPage /> : <LoginPage reason={session.data.reason} />;
 
   return (
-    <SidebarProvider className="bg-olive-50 dark:bg-olive-950">
+    <SidebarProvider className="overflow-x-hidden overflow-y-hidden bg-olive-50 dark:bg-olive-950">
       <SideMenu />
-      <SidebarInset className="h-dvh bg-transparent">
+      <SidebarInset className="h-dvh overflow-hidden bg-transparent">
         <Outlet />
       </SidebarInset>
       <Toaster />

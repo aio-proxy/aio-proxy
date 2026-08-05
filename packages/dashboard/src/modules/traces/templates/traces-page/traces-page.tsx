@@ -3,7 +3,7 @@ import { DashboardTracePageSizeSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card } from '@aio-proxy/ui/components/card';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { Sidebar, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
+import { Sidebar, SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useEffect, useRef, useState } from 'react';
 
@@ -91,9 +91,13 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
     <PageContainer
       title={m['dashboard.traces.title']()}
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
+      classNames={{
+        root: 'flex flex-col overflow-hidden',
+        main: 'min-h-0 flex-1 overflow-hidden',
+      }}
     >
-      <Card size="sm" className="py-0">
-        <SidebarProvider defaultOpen={false} className="relative min-h-144 lg:min-h-[calc(100dvh-10rem)]">
+      <Card size="sm" className="h-full w-full py-0">
+        <SidebarProvider defaultOpen={false} className="relative h-full min-h-0 w-full overflow-hidden">
           <Sidebar className="absolute! inset-y-0! h-full! border-r" aria-label={m['dashboard.traces.filters']()}>
             <TracesFilterRail
               search={search}
@@ -104,69 +108,73 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
               onRefresh={() => void query.refetch()}
             />
           </Sidebar>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex h-12 items-center border-b px-3">
-              <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
-            </div>
-            <div className="min-w-0 flex-1 overflow-auto px-3 pb-3 sm:px-4 sm:pb-4">
-              {query.isLoading ? (
-                <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
-                  {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
-                    <Skeleton className="h-12 w-full" key={key} />
-                  ))}
-                </div>
-              ) : query.isError ? (
-                <Empty>
-                  <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
-                  <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
-                  {search.pageToken !== undefined &&
-                  query.error instanceof DashboardTracesRequestError &&
-                  query.error.status === 400 ? (
-                    <Button
-                      onClick={() => {
-                        const { pageToken: _pageToken, ...latestSearch } = search;
-                        onSearchChange(latestSearch, { replace: true });
-                      }}
-                    >
+          <SidebarInset className="min-h-0">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="flex h-12 shrink-0 items-center border-b px-3">
+                <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
+              </div>
+              <div className="min-h-0 min-w-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
+                {query.isLoading ? (
+                  <div className="space-y-2" role="status" aria-label={m['dashboard.traces.loading']()}>
+                    {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
+                      <Skeleton className="h-12 w-full" key={key} />
+                    ))}
+                  </div>
+                ) : query.isError ? (
+                  <Empty>
+                    <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
+                    <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
+                    {search.pageToken !== undefined &&
+                    query.error instanceof DashboardTracesRequestError &&
+                    query.error.status === 400 ? (
+                      <Button
+                        onClick={() => {
+                          const { pageToken: _pageToken, ...latestSearch } = search;
+                          onSearchChange(latestSearch, { replace: true });
+                        }}
+                      >
+                        {m['dashboard.traces.reset']()}
+                      </Button>
+                    ) : (
+                      <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
+                    )}
+                  </Empty>
+                ) : query.data?.items.length === 0 ? (
+                  <Empty>
+                    <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
+                    <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
+                    <Button onClick={() => onSearchChange(createDefaultTraceSearch())}>
                       {m['dashboard.traces.reset']()}
                     </Button>
-                  ) : (
-                    <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
-                  )}
-                </Empty>
-              ) : query.data?.items.length === 0 ? (
-                <Empty>
-                  <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
-                  <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
-                  <Button onClick={() => onSearchChange(createDefaultTraceSearch())}>
-                    {m['dashboard.traces.reset']()}
-                  </Button>
-                </Empty>
-              ) : visibleData ? (
-                <TracesTable
-                  data={visibleData}
-                  isFetching={query.isFetching || query.isPlaceholderData}
-                  pageSize={search.pageSize}
-                  newItemsCount={search.pageToken === undefined && bufferIsActive ? newItemsCount : 0}
-                  onAcceptNewItems={() => {
-                    const latest = latestFirstPageRef.current;
-                    if (latest === undefined) return;
-                    renderedDataRef.current = latest;
-                    setRenderedData(latest);
-                    setNewItemsCount(0);
-                  }}
-                  onShowSizeChange={(pageSize) =>
-                    onSearchChange(withTraceFilters(search, { pageSize: DashboardTracePageSizeSchema.parse(pageSize) }))
-                  }
-                  onPrevious={(pageToken) => onSearchChange({ ...search, pageToken })}
-                  onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
-                  onSelect={onTraceSelect}
-                />
-              ) : (
-                <Empty />
-              )}
+                  </Empty>
+                ) : visibleData ? (
+                  <TracesTable
+                    data={visibleData}
+                    isFetching={query.isFetching || query.isPlaceholderData}
+                    pageSize={search.pageSize}
+                    newItemsCount={search.pageToken === undefined && bufferIsActive ? newItemsCount : 0}
+                    onAcceptNewItems={() => {
+                      const latest = latestFirstPageRef.current;
+                      if (latest === undefined) return;
+                      renderedDataRef.current = latest;
+                      setRenderedData(latest);
+                      setNewItemsCount(0);
+                    }}
+                    onShowSizeChange={(pageSize) =>
+                      onSearchChange(
+                        withTraceFilters(search, { pageSize: DashboardTracePageSizeSchema.parse(pageSize) }),
+                      )
+                    }
+                    onPrevious={(pageToken) => onSearchChange({ ...search, pageToken })}
+                    onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
+                    onSelect={onTraceSelect}
+                  />
+                ) : (
+                  <Empty />
+                )}
+              </div>
             </div>
-          </div>
+          </SidebarInset>
         </SidebarProvider>
       </Card>
     </PageContainer>

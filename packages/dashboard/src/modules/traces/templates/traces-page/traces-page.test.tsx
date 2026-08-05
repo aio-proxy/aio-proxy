@@ -152,6 +152,21 @@ describe('traces page', () => {
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 
+  test('scrolls the table inside ScrollArea while keeping pagination outside', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('table').closest('[data-slot="scroll-area-viewport"]')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu }).closest('[data-slot="scroll-area-viewport"]'),
+    ).toBeNull();
+  });
+
   test('drives previous and next token navigation through URL search state', () => {
     const onSearchChange = rs.fn();
     render(
