@@ -927,6 +927,7 @@
       "model": "모델",
       "upstream_model_value": "업스트림 모델: {model}",
       "provider": "프로바이더",
+      "provider_id": "프로바이더 ID",
       "http_status": "HTTP 상태",
       "final_provider": "최종 Provider ID",
       "final_model": "최종 모델",

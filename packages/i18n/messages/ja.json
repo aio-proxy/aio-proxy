@@ -927,6 +927,7 @@
       "model": "モデル",
       "upstream_model_value": "上流モデル: {model}",
       "provider": "プロバイダー",
+      "provider_id": "プロバイダー ID",
       "http_status": "HTTP ステータス",
       "final_provider": "最終 Provider ID",
       "final_model": "最終モデル",

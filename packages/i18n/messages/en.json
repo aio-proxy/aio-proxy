@@ -943,6 +943,7 @@
       "model": "Model",
       "upstream_model_value": "Upstream model: {model}",
       "provider": "Provider",
+      "provider_id": "Provider ID",
       "http_status": "HTTP status",
       "final_provider": "Final Provider ID",
       "final_model": "Final model",

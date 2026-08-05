@@ -47,7 +47,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   },
   {
     id: 'requestStatus',
-    header: () => m['dashboard.traces.request_status'](),
+    header: () => m['dashboard.traces.status'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => <TraceStatus item={row.original} />,
   },
   {
@@ -57,7 +57,7 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   },
   {
     accessorKey: 'requestedModelId',
-    header: () => m['dashboard.traces.requested_model'](),
+    header: () => m['dashboard.traces.model'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
       const { requestedModelId, finalModelId } = row.original;
       const primaryModel = requestedModelId ?? finalModelId;
@@ -74,12 +74,14 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   },
   {
     accessorKey: 'finalProviderId',
-    header: () => m['dashboard.traces.final_provider'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.finalProviderId ?? TRACE_PLACEHOLDER,
+    header: () => m['dashboard.traces.provider_id'](),
+    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+      <span className="block max-w-16 truncate">{row.original.finalProviderId ?? TRACE_PLACEHOLDER}</span>
+    ),
   },
   {
     accessorKey: 'finalHttpStatus',
-    header: () => m['dashboard.traces.final_http_status'](),
+    header: () => m['dashboard.traces.http_status'](),
     cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
   },
   {

@@ -25,6 +25,7 @@ const mocks = rs.hoisted(() => ({
 rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
   useIsMobile: () => mocks.mobile,
 }));
+const longProviderId = 'provider-with-an-excessively-long-identifier';
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
   rootSpanId: 'b'.repeat(16),
@@ -40,11 +41,11 @@ const terminalTrace: DashboardTraceSummary = {
   sessionResolvedBy: 'openai-prompt-cache',
   inboundProtocol: 'openai-response',
   requestedModelId: 'gpt-5',
-  finalProviderId: 'provider-a',
+  finalProviderId: longProviderId,
   finalModelId: 'gpt-5.1',
   finalHttpStatus: 503,
   usage: {
-    providerId: 'provider-a',
+    providerId: longProviderId,
     modelId: 'gpt-5.1',
     inputTokens: 26_600,
     outputTokens: 318,
@@ -123,7 +124,12 @@ describe('traces page', () => {
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
     expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
     expect(screen.queryByText('cache-a')).toBeNull();
-    expect(screen.getByRole('columnheader', { name: /Final Provider ID|最终 Provider ID/u })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /^(Status|状态|ステータス|상태)$/u })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /^(Model|模型|モデル|모델)$/u })).toBeTruthy();
+    expect(
+      screen.getByRole('columnheader', { name: /Provider ID|提供商 ID|プロバイダー ID|프로바이더 ID/u }),
+    ).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /HTTP/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',
     )[4];
@@ -132,7 +138,7 @@ describe('traces page', () => {
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');
-    expect(terminalCells[5]).toHaveTextContent('provider-a');
+    expect(within(terminalCells[5]).getByText(longProviderId)).toHaveClass('max-w-16', 'truncate');
     expect(terminalCells[8]).toHaveTextContent('26.6K');
     expect(terminalCells[8]).toHaveTextContent('318');
     expect(terminalCells[8]).toHaveTextContent('1K');

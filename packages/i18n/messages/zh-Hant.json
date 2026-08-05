@@ -927,6 +927,7 @@
       "model": "模型",
       "upstream_model_value": "上游模型：{model}",
       "provider": "提供商",
+      "provider_id": "提供商 ID",
       "http_status": "HTTP 狀態碼",
       "final_provider": "最終提供商 ID",
       "final_model": "最終模型",
