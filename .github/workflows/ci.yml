@@ -26,14 +26,6 @@ jobs:
             ${{ runner.os }}-bun-
 
       - run: bun install --frozen-lockfile
-
-      # The website must stay unversioned. Changesets skips a package when it has
-      # no `version` (@changesets/should-skip-package), and that is the only thing
-      # keeping its `workspace:*` dep on @aio-proxy/ui from rewriting
-      # website/package.json + CHANGELOG.md on every release — which would retrigger
-      # deploy-website.yml's `website/**` filter and redeploy an unchanged site.
-      - run: "! grep -q '\"version\"' website/package.json"
-
       - run: bun run check
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
       - run: bun run --filter @aio-proxy/core build:migrations
