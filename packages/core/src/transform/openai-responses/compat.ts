@@ -219,6 +219,7 @@ function appendToolResult(messages: ModelMessage[], previous: 'call' | 'result' 
 }
 
 function parseArguments(value: string, path: string): unknown {
+  if (value === '') return {};
   try {
     return JSON.parse(value);
   } catch (error) {

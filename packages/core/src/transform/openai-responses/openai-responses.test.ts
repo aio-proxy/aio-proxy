@@ -187,6 +187,20 @@ test('rejects invalid function arguments', () => {
   expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.arguments'));
 });
 
+test('converts empty function arguments to an empty object', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [{ type: 'function_call', call_id: 'call_1', name: 'get_goal', arguments: '' }],
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_goal', input: {} }],
+    },
+  ]);
+});
+
 test('groups consecutive parallel calls and outputs', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
