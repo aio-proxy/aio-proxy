@@ -1,5 +1,21 @@
 # @aio-proxy/core
 
+## 0.6.2
+
+### Patch Changes
+
+- [#150](https://github.com/aio-proxy/aio-proxy/pull/150) [`52cb5ce`](https://github.com/aio-proxy/aio-proxy/commit/52cb5cef04cd1532dac2a773ee61b4fefd72d54d) Thanks [@baranwang](https://github.com/baranwang)! - Allow OpenAI Responses requests with image detail hints to fall back across provider protocols.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.6.2
+  - @aio-proxy/logger@0.6.2
+  - @aio-proxy/plugin-github-copilot@0.6.2
+  - @aio-proxy/plugin-google-antigravity@0.6.2
+  - @aio-proxy/plugin-kimi-code@0.6.2
+  - @aio-proxy/plugin-openai-chatgpt@0.6.2
+  - @aio-proxy/plugin-sdk@0.6.2
+  - @aio-proxy/plugin-xai-grok@0.6.2
+  - @aio-proxy/types@0.6.2
+
 ## 0.6.1
 
 ### Patch Changes
