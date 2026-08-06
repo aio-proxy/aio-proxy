@@ -61,16 +61,16 @@ test('target materialization does not pollute a later fallback candidate', async
   });
 });
 
-test('image detail skips targets that cannot preserve it', async () => {
+test('image detail degrades for a non-Responses target', async () => {
   const anthropic = modelProvider({
     id: 'anthropic',
     targetProtocol: ProviderProtocol.Anthropic,
-    invoke: () => textStream('must not run'),
+    invoke: () => textStream('degraded response'),
   });
   const responses = modelProvider({
     id: 'responses',
     targetProtocol: ProviderProtocol.OpenAIResponse,
-    invoke: () => textStream('fallback response'),
+    invoke: () => textStream('must not run'),
   });
   const route = defineProviderRouteSource([anthropic, responses]);
   const rawRequest = new Request('https://proxy.test/v1/responses', {
@@ -96,19 +96,19 @@ test('image detail skips targets that cannot preserve it', async () => {
   await settleRecording(route.recording);
 
   expect(response.status).toBe(200);
-  expect(anthropic.calls.model).toHaveLength(0);
-  expect(responses.calls.model).toHaveLength(1);
-  expect(responses.calls.model[0]?.messages[0]).toMatchObject({
+  expect(anthropic.calls.model).toHaveLength(1);
+  expect(anthropic.calls.model[0]?.messages[0]).toMatchObject({
     role: 'user',
     content: [
       {
         type: 'file',
         mediaType: 'image/png',
         data: { type: 'data', data: 'AA==' },
-        providerOptions: { openai: { imageDetail: 'low' } },
+        providerOptions: { openai: {} },
       },
     ],
   });
+  expect(responses.calls.model).toHaveLength(0);
 });
 
 test('Gemini model-history images skip incompatible targets and preserve Gemini fileData', async () => {

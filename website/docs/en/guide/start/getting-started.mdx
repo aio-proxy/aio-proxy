@@ -1,0 +1,87 @@
+---
+description: Install and start AIO Proxy, add your first model provider, then send a first request.
+---
+
+import { CommandTabs } from '@rspress/core/theme';
+
+# Quick Start
+
+This guide starts AIO Proxy locally, adds an OpenAI Responses provider, and sends a first request through the local endpoint.
+
+## Install
+
+<CommandTabs
+  commands={{
+    brew: 'brew install aio-proxy/tap/aio-proxy',
+    bun: 'bun add -g aio-proxy',
+  }}
+/>
+
+## Start the server
+
+```sh
+aio-proxy run --open
+```
+
+On first run, AIO Proxy creates `~/.aio-proxy/config.jsonc` and opens the Dashboard. The default addresses are:
+
+- API: `http://127.0.0.1:9317`
+- Dashboard: `http://127.0.0.1:9317/dashboard`
+
+The initial configuration has no providers. Choose either method below to add your first one.
+
+## Option 1: Add it in the Dashboard
+
+Open the Dashboard's Providers page and add an API provider. Enter the upstream URL, credentials, and models. Model names must match the names requested by clients.
+
+Save the provider and use the page's test action to confirm it works. You can return to the Dashboard at any time to edit, test, or delete it.
+
+## Option 2: Edit the configuration file
+
+Set the API key in your terminal first:
+
+```sh
+export OPENAI_API_KEY='your-api-key'
+```
+
+Open the configuration file:
+
+```sh
+aio-proxy config edit
+```
+
+Add the following provider:
+
+```jsonc title="config.jsonc"
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "providers": {
+    "openai": {
+      "kind": "api",
+      "protocol": "openai-response",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "{{env.OPENAI_API_KEY}}",
+      "models": ["gpt-5"],
+    },
+  },
+}
+```
+
+Validate and reload the configuration:
+
+```sh
+aio-proxy config validate
+aio-proxy reload
+```
+
+`openai` is this provider's Provider ID; `gpt-5` is the model name it exposes to clients. You can add more providers for the same model later.
+
+## Send your first request
+
+```sh
+curl http://127.0.0.1:9317/v1/responses \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-5","input":"Introduce AIO Proxy in one sentence."}'
+```
+
+When the request succeeds, the configured provider returns the response. You can also find this call in the Dashboard's request records.

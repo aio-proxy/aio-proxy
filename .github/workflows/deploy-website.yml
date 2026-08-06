@@ -1,0 +1,53 @@
+name: Deploy website to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: root-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @aio-proxy/website build
+
+      - uses: actions/checkout@v7
+        with:
+          repository: aio-proxy/aio-proxy.github.io
+          ref: main
+          path: root-site
+          ssh-key: ${{ secrets.ROOT_PAGES_DEPLOY_KEY }}
+
+      - name: Publish website
+        working-directory: root-site
+        run: |
+          rsync -a --delete --exclude=.git ../website/dist/ ./
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add --all
+          git diff --cached --quiet || git commit -m 'docs: deploy website'
+          git push origin HEAD:main

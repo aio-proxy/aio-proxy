@@ -2,10 +2,12 @@ import { openai } from '@ai-sdk/openai';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
-import type { ModelMessage, ToolSet } from '../ai-sdk-bridge';
+import type { FilePart, ModelMessage, ToolSet } from '../ai-sdk-bridge';
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
+import { isImageMediaType, openAIImageDetail } from '../image-input';
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
+import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/tools';
 import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
@@ -50,7 +52,10 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   },
   modelInvocationForTarget(invocation, targetProtocol, supportedEfforts) {
     const clamped = clampSdkReasoning(invocation, supportedEfforts);
-    if (targetProtocol !== ProviderProtocol.OpenAIResponse) return clamped;
+    if (targetProtocol !== ProviderProtocol.OpenAIResponse) {
+      const messages = portableImageDetailMessages(clamped.messages);
+      return messages === clamped.messages ? clamped : { ...clamped, messages };
+    }
     const tools = responsesToolSet(clamped.tools);
     return {
       ...clamped,
@@ -62,6 +67,60 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
 });
+
+type ModelMessagePart = Exclude<ModelMessage['content'], string>[number];
+
+function portableImageDetailMessages(messages: readonly ModelMessage[]): readonly ModelMessage[] {
+  let changed = false;
+  const portable = messages.map((message, messageIndex) => {
+    if (typeof message.content === 'string') return message;
+    let messageChanged = false;
+    const content = message.content.map((part, partIndex) => {
+      const next = portableImageDetailPart(part, `messages.${messageIndex}.content.${partIndex}`);
+      if (next !== part) messageChanged = true;
+      return next;
+    });
+    if (!messageChanged) return message;
+    changed = true;
+    return { ...message, content } as ModelMessage;
+  });
+  return changed ? portable : messages;
+}
+
+function portableImageDetailPart(part: ModelMessagePart, path: string): ModelMessagePart {
+  if (isCurrentFilePart(part) && isImageMediaType(part.mediaType)) return withoutOpenAIImageDetail(part, path);
+  if (part.type !== 'tool-result' || part.output.type !== 'content') return part;
+
+  let changed = false;
+  const value = part.output.value.map((outputPart, outputIndex) => {
+    if (!isCurrentFilePart(outputPart) || !isImageMediaType(outputPart.mediaType)) return outputPart;
+    const next = withoutOpenAIImageDetail(outputPart, `${path}.output.value.${outputIndex}`);
+    if (next !== outputPart) changed = true;
+    return next;
+  });
+  return changed ? { ...part, output: { ...part.output, value } } : part;
+}
+
+function isCurrentFilePart<T>(part: T): part is Extract<T, { type: 'file' }> {
+  return typeof part === 'object' && part !== null && Reflect.get(part, 'type') === 'file';
+}
+
+function withoutOpenAIImageDetail<T extends FilePart>(part: T, path: string): T {
+  if (openAIImageDetail(part) === undefined) return part;
+  const openaiOptions = part.providerOptions?.['openai'];
+  if (typeof openaiOptions !== 'object' || openaiOptions === null || Array.isArray(openaiOptions)) return part;
+
+  warnOpenAIResponsesDegradation('image_detail', `${path}.providerOptions.openai.imageDetail`, 'dropped');
+  const remainingOpenAIOptions = { ...openaiOptions };
+  delete remainingOpenAIOptions['imageDetail'];
+  return {
+    ...part,
+    providerOptions: {
+      ...part.providerOptions,
+      openai: remainingOpenAIOptions,
+    },
+  } as T;
+}
 
 function responsesToolSet(tools: ToolSet | undefined): ToolSet | undefined {
   if (tools === undefined) return undefined;

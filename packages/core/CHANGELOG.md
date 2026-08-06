@@ -1,5 +1,37 @@
 # @aio-proxy/core
 
+## 0.6.2
+
+### Patch Changes
+
+- [#150](https://github.com/aio-proxy/aio-proxy/pull/150) [`52cb5ce`](https://github.com/aio-proxy/aio-proxy/commit/52cb5cef04cd1532dac2a773ee61b4fefd72d54d) Thanks [@baranwang](https://github.com/baranwang)! - Allow OpenAI Responses requests with image detail hints to fall back across provider protocols.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.6.2
+  - @aio-proxy/logger@0.6.2
+  - @aio-proxy/plugin-github-copilot@0.6.2
+  - @aio-proxy/plugin-google-antigravity@0.6.2
+  - @aio-proxy/plugin-kimi-code@0.6.2
+  - @aio-proxy/plugin-openai-chatgpt@0.6.2
+  - @aio-proxy/plugin-sdk@0.6.2
+  - @aio-proxy/plugin-xai-grok@0.6.2
+  - @aio-proxy/types@0.6.2
+
+## 0.6.1
+
+### Patch Changes
+
+- [#143](https://github.com/aio-proxy/aio-proxy/pull/143) [`5ab65bf`](https://github.com/aio-proxy/aio-proxy/commit/5ab65bf7ef8dd5b74e2589df30b6da7342436cb6) Thanks [@baranwang](https://github.com/baranwang)! - Support OpenAI Responses instructions and hosted web search on cross-protocol model routes.
+- Updated dependencies [[`0ac7bd1`](https://github.com/aio-proxy/aio-proxy/commit/0ac7bd11bdf3334aee3bb46576f4b61e2ac24ee7)]:
+  - @aio-proxy/i18n@0.6.1
+  - @aio-proxy/logger@0.6.1
+  - @aio-proxy/plugin-github-copilot@0.6.1
+  - @aio-proxy/plugin-google-antigravity@0.6.1
+  - @aio-proxy/plugin-kimi-code@0.6.1
+  - @aio-proxy/plugin-openai-chatgpt@0.6.1
+  - @aio-proxy/plugin-sdk@0.6.1
+  - @aio-proxy/plugin-xai-grok@0.6.1
+  - @aio-proxy/types@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes

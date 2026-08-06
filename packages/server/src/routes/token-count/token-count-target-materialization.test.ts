@@ -28,23 +28,23 @@ test('materializes custom tools for the token-count target protocol', async () =
   });
 });
 
-test('skips token counters that cannot preserve image detail', async () => {
-  let incompatibleCalls = 0;
+test('degrades image detail for a non-Responses token counter', async () => {
+  let responsesCalls = 0;
   let countedInvocation: TokenCountInput['invocation'] | undefined;
   const fixture = countFixture([
     provider({
       id: 'anthropic',
       targetProtocol: ProviderProtocol.Anthropic,
-      tokenCount: async () => {
-        incompatibleCalls += 1;
+      tokenCount: async ({ invocation }) => {
+        countedInvocation = invocation;
         return { inputTokens: 1 };
       },
     }),
     provider({
       id: 'responses',
       targetProtocol: ProviderProtocol.OpenAIResponse,
-      tokenCount: async ({ invocation }) => {
-        countedInvocation = invocation;
+      tokenCount: async () => {
+        responsesCalls += 1;
         return { inputTokens: 9 };
       },
     }),
@@ -62,11 +62,18 @@ test('skips token counters that cannot preserve image detail', async () => {
     }),
   );
 
-  expect(await response.json()).toEqual({ input_tokens: 9 });
-  expect(incompatibleCalls).toBe(0);
+  expect(await response.json()).toEqual({ input_tokens: 1 });
+  expect(responsesCalls).toBe(0);
   expect(countedInvocation?.messages[0]).toMatchObject({
     role: 'user',
-    content: [{ providerOptions: { openai: { imageDetail: 'low' } } }],
+    content: [
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'data', data: 'AA==' },
+        providerOptions: { openai: {} },
+      },
+    ],
   });
 });
 

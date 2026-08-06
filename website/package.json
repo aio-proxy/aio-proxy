@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/website",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,6 +18,7 @@
     "@rsbuild/plugin-tailwindcss": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "rspress-plugin-mermaid": "1.0.1",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"
   }
