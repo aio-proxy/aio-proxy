@@ -205,6 +205,54 @@ test('case A falls back to the bundled template when the row has neither base_in
   expect((caseA.base_instructions as string).includes('based on gpt-5.')).toBe(true);
 });
 
+test('case A leaves an absent instructions_template absent (client falls back to base_instructions)', async () => {
+  // A missing Option key deserializes to None, so the client falls back to
+  // base_instructions. We must not fabricate a template that would then be
+  // preferred over the real base prompt.
+  const rowWithoutMessages = { ...upstream, base_instructions: 'REAL BASE' };
+  const fetchImpl = (async () => Response.json({ models: [rowWithoutMessages] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  expect(caseA.base_instructions).toBe('REAL BASE');
+  expect('model_messages' in caseA).toBe(false);
+});
+
+test('case A rewrites an empty instructions_template so the client does not read an empty prompt', async () => {
+  // The client prefers instructions_template whenever the key is present, even
+  // when empty. A present-but-empty template must be replaced, and here there is
+  // no base_instructions, so both fields fall back to the bundled template.
+  const { base_instructions: _dropped, ...withoutBase } = upstream;
+  const rowWithEmptyTemplate = {
+    ...withoutBase,
+    model_messages: { instructions_template: '', instructions_variables: {}, approvals: null },
+  };
+  const fetchImpl = (async () => Response.json({ models: [rowWithEmptyTemplate] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  const rendered = caseA.base_instructions as string;
+  expect(rendered.includes('based on gpt-5.')).toBe(true);
+  expect((caseA.model_messages as { instructions_template: string }).instructions_template).toBe(rendered);
+});
+
+test('case A prefers a non-empty instructions_template over base_instructions for the required field', async () => {
+  // When the client will use the template at runtime, base_instructions must be
+  // seeded from that same template so the deserialization-required field matches
+  // the effective prompt.
+  const rowWithBoth = {
+    ...upstream,
+    base_instructions: 'STALE BASE',
+    model_messages: { instructions_template: 'LIVE TEMPLATE', instructions_variables: {}, approvals: null },
+  };
+  const fetchImpl = (async () => Response.json({ models: [rowWithBoth] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  expect(caseA.base_instructions).toBe('LIVE TEMPLATE');
+  expect((caseA.model_messages as { instructions_template: string }).instructions_template).toBe('LIVE TEMPLATE');
+});
+
 test('synthesized entries get deterministic priorities past the max template priority, ordered by display name', async () => {
   const multi = {
     id: 'p1',
