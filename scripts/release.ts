@@ -26,8 +26,13 @@
 //     npm/* (bun build --compile fills each npm/cli-*/bin before packing), and
 //   - the plugin SDK: @aio-proxy/plugin-sdk.
 // Every package (private ones too — their version is compiled into the CLI
-// binary and each plugin's *_PLUGIN_VERSION) shares the version; Changesets'
-// `fixed` group guarantees that and scripts/check-lockstep-fixed.ts guards it.
+// binary and each plugin's *_PLUGIN_VERSION) shares the version, via the `fixed`
+// group in .changeset/config.json. That group must enumerate every package by
+// name: changesets.dev documents `fixed` as supporting picomatch patterns, but
+// the implementation only globs `ignore` — a glob in `fixed` silently no-ops
+// (verified on @changesets/cli 3.0.0-next.11), leaving packages unbumped. So a
+// newly added package must be added to `fixed` by hand; the lockstep assertion
+// below is what catches it if nobody did.
 // Discovery is automatic; adding a non-private package needs no change here.
 
 import { appendFileSync, mkdtempSync } from 'node:fs';

@@ -27,9 +27,12 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Changesets guard: the `fixed` group must list every workspace package so
-      # the whole workspace stays on one lockstep version.
-      - run: bun run scripts/check-lockstep-fixed.ts
+      # The website must stay unversioned. Changesets skips a package when it has
+      # no `version` (@changesets/should-skip-package), and that is the only thing
+      # keeping its `workspace:*` dep on @aio-proxy/ui from rewriting
+      # website/package.json + CHANGELOG.md on every release — which would retrigger
+      # deploy-website.yml's `website/**` filter and redeploy an unchanged site.
+      - run: "! grep -q '\"version\"' website/package.json"
 
       - run: bun run check
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
