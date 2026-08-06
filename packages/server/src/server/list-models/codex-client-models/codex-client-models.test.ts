@@ -179,6 +179,32 @@ test('config metadata overrides (description) flow into the synthesized case B e
   expect(caseB.input_modalities).toEqual(['text', 'image']);
 });
 
+test('case A backfills base_instructions from model_messages.instructions_template when the row omits it', async () => {
+  // Codex client 0.146.0 requires ModelInfo.base_instructions; upstream gpt-5.6-*
+  // rows omit it and carry the prompt under model_messages.instructions_template.
+  // The emitted row must still expose a non-empty base_instructions or the client
+  // rejects the whole catalog and shows an empty picker.
+  const { base_instructions: _dropped, ...withoutBase } = upstream;
+  const rowWithTemplate = {
+    ...withoutBase,
+    model_messages: { instructions_template: 'TEMPLATE PROMPT', instructions_variables: {}, approvals: null },
+  };
+  const fetchImpl = (async () => Response.json({ models: [rowWithTemplate] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  expect(caseA.base_instructions).toBe('TEMPLATE PROMPT');
+});
+
+test('case A falls back to the bundled template when the row has neither base_instructions nor instructions_template', async () => {
+  const { base_instructions: _dropped, ...withoutBase } = upstream;
+  const fetchImpl = (async () => Response.json({ models: [withoutBase] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
+  expect((caseA.base_instructions as string).includes('based on gpt-5.')).toBe(true);
+});
+
 test('synthesized entries get deterministic priorities past the max template priority, ordered by display name', async () => {
   const multi = {
     id: 'p1',

@@ -1,9 +1,24 @@
 import type { ServerState } from '../../../server-state';
 import { resolveEnabledModels } from '../../model-resolution/index';
-import { assembleCodexModel } from './codex-assembly';
+import { assembleCodexModel, renderDefaultInstructions } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 
 type Options = { readonly fetchImpl?: typeof fetch; readonly signal?: AbortSignal };
+
+// Codex client 0.146.0 makes ModelInfo.base_instructions a required String with
+// no legacy backfill, so one row missing it fails the whole `Vec<ModelInfo>` and
+// empties the picker. Upstream gpt-5.6-* rows omit base_instructions and carry
+// the prompt under model_messages.instructions_template, so backfill from there,
+// then fall back to the bundled template.
+function ensureBaseInstructions(row: Record<string, unknown>, slug: string): string {
+  if (typeof row['base_instructions'] === 'string') return row['base_instructions'];
+  const messages = row['model_messages'];
+  const template =
+    typeof messages === 'object' && messages !== null
+      ? (messages as { instructions_template?: unknown })['instructions_template']
+      : undefined;
+  return typeof template === 'string' ? template : renderDefaultInstructions(slug);
+}
 
 export async function codexClientModels(
   state: ServerState,
@@ -30,7 +45,13 @@ export async function codexClientModels(
           ? {}
           : { context_window: model.contextWindow, max_context_window: model.contextWindow };
       templated.push({
-        entry: { ...row, ...contextOverride, slug: model.slug, id: model.slug },
+        entry: {
+          ...row,
+          base_instructions: ensureBaseInstructions(row, model.slug),
+          ...contextOverride,
+          slug: model.slug,
+          id: model.slug,
+        },
         priority: row.priority,
       });
       continue;
