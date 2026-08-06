@@ -1,5 +1,21 @@
 # @aio-proxy/core
 
+## 0.6.4
+
+### Patch Changes
+
+- [#160](https://github.com/aio-proxy/aio-proxy/pull/160) [`08a579c`](https://github.com/aio-proxy/aio-proxy/commit/08a579cad9b5192820cd42f2cbb6ba18e0bc9e18) Thanks [@baranwang](https://github.com/baranwang)! - Accept empty OpenAI Responses function-call arguments when converting requests across protocols.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.6.4
+  - @aio-proxy/logger@0.6.4
+  - @aio-proxy/plugin-github-copilot@0.6.4
+  - @aio-proxy/plugin-google-antigravity@0.6.4
+  - @aio-proxy/plugin-kimi-code@0.6.4
+  - @aio-proxy/plugin-openai-chatgpt@0.6.4
+  - @aio-proxy/plugin-sdk@0.6.4
+  - @aio-proxy/plugin-xai-grok@0.6.4
+  - @aio-proxy/types@0.6.4
+
 ## 0.6.3
 
 ### Patch Changes

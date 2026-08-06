@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.6.4
+
+### Patch Changes
+
+- [#160](https://github.com/aio-proxy/aio-proxy/pull/160) [`08a579c`](https://github.com/aio-proxy/aio-proxy/commit/08a579cad9b5192820cd42f2cbb6ba18e0bc9e18) Thanks [@baranwang](https://github.com/baranwang)! - Accept empty OpenAI Responses function-call arguments when converting requests across protocols.
+
 ## 0.6.3
 
 ### Patch Changes
