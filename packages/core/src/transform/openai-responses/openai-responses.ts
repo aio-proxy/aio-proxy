@@ -57,7 +57,6 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
       )
       .filter((source) => source !== undefined),
   ]);
-  validateCustomHistory(input, tools);
   return {
     messages: [
       ...(typeof request.instructions === 'string' ? [{ role: 'system' as const, content: request.instructions }] : []),
@@ -66,24 +65,6 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
     ...(tools === undefined ? {} : { tools }),
     settings: transformSettings(request, tools),
   };
-}
-
-function validateCustomHistory(
-  input: Exclude<OpenAIResponsesRequest['input'], string> | undefined,
-  tools: readonly OpenAIResponsesTransformTool[] | undefined,
-): void {
-  if (input === undefined) return;
-  const customNames = new Set(
-    (tools ?? []).flatMap((tool) => {
-      const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
-      return metadata?.wireToolType === 'custom' && metadata.wireToolName !== undefined ? [metadata.wireToolName] : [];
-    }),
-  );
-  for (const [index, item] of input.entries()) {
-    if (item.type === 'custom_tool_call' && !customNames.has(item.name)) {
-      rejectOpenAIResponsesFeature('custom_tool_call', `input.${index}.type`);
-    }
-  }
 }
 
 function validateModelCompatibility(request: OpenAIResponsesRequest): void {
