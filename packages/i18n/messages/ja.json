@@ -894,7 +894,12 @@
       "activity_title": "ヒートマップ",
       "activity_legend_less": "少ない",
       "activity_legend_more": "多い",
-      "activity_model_breakdown": "モデル別内訳"
+      "activity_model_breakdown": "モデル別内訳",
+      "summary_tokens_note": "入力 {input} · 出力 {output}",
+      "summary_cache_reused": "{tokens} トークンを再利用",
+      "summary_cost_note": "推定コスト",
+      "summary_peak": "ピーク {value}",
+      "summary_delta_period": "前期間比"
     },
     "traces": {
       "title": "トレース",

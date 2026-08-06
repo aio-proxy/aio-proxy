@@ -894,7 +894,12 @@
       "activity_title": "히트맵",
       "activity_legend_less": "적음",
       "activity_legend_more": "많음",
-      "activity_model_breakdown": "모델별 분석"
+      "activity_model_breakdown": "모델별 분석",
+      "summary_tokens_note": "입력 {input} · 출력 {output}",
+      "summary_cache_reused": "{tokens} 토큰 재사용",
+      "summary_cost_note": "예상 비용",
+      "summary_peak": "최고 {value}",
+      "summary_delta_period": "이전 기간 대비"
     },
     "traces": {
       "title": "트레이스",

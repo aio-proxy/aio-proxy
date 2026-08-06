@@ -23,15 +23,23 @@ const decodeTrend = (trend: DashboardOverviewWireTrend) => ({
   })),
 });
 
+const decodeSummaryTotals = <T extends Record<string, unknown>>(totals: T) => ({
+  ...totals,
+  requestCount: BigInt(totals.requestCount as string),
+  totalTokens: BigInt(totals.totalTokens as string),
+  inputTokens: BigInt(totals.inputTokens as string),
+  outputTokens: BigInt(totals.outputTokens as string),
+  cacheReadTokens: BigInt(totals.cacheReadTokens as string),
+  cacheWriteTokens: BigInt(totals.cacheWriteTokens as string),
+  estimatedCostNanoUsd: BigInt(totals.estimatedCostNanoUsd as string),
+});
+
 export const decodeOverview = (wire: DashboardOverviewWireResponse) => ({
   ...wire,
   summary: {
     ...wire.summary,
-    requestCount: BigInt(wire.summary.requestCount),
-    totalTokens: BigInt(wire.summary.totalTokens),
-    cacheReadTokens: BigInt(wire.summary.cacheReadTokens),
-    cacheWriteTokens: BigInt(wire.summary.cacheWriteTokens),
-    estimatedCostNanoUsd: BigInt(wire.summary.estimatedCostNanoUsd),
+    current: decodeSummaryTotals(wire.summary.current),
+    previous: decodeSummaryTotals(wire.summary.previous),
   },
   modelTrendByMetric: {
     requests: decodeTrend(wire.modelTrendByMetric.requests),

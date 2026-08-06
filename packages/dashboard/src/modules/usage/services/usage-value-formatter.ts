@@ -4,15 +4,17 @@ import { formatCompactTokenCount } from '@/components/token-count';
 
 const NANO_USD_SCALE = 1_000_000_000n;
 
-export const formatNanoUsd = (value: bigint, locale: string) => {
+export const formatNanoUsd = (value: bigint, locale: string, variant: 'exact' | 'compact' = 'exact') => {
   const whole = value / NANO_USD_SCALE;
   const fraction = (value % NANO_USD_SCALE).toString().padStart(9, '0').replace(/0+$/u, '');
   const decimal = fraction === '' ? whole.toString() : `${whole}.${fraction}`;
-  const formatter = new Intl.NumberFormat(locale, {
-    currency: 'USD',
-    maximumFractionDigits: 9,
-    style: 'currency',
-  });
+  const formatter = new Intl.NumberFormat(
+    locale,
+    variant === 'compact'
+      ? { currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2, style: 'currency' }
+      : { currency: 'USD', maximumFractionDigits: 9, style: 'currency' },
+  );
+  // Intl formats the exact decimal string, so compact rounding stays float-free.
   return (formatter.format as unknown as (value: string) => string)(decimal);
 };
 

@@ -45,24 +45,17 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
   );
   const tokens = aggregateRows(rows, 'tokens', chartBuckets, 4);
   const cost = aggregateRows(rows, 'cost', chartBuckets, 4);
-  const summary = requests.summary;
-  const cacheReadTokens = sum(rows, 'cacheReadTokens');
-  const cacheWriteTokens = sum(rows, 'cacheWriteTokens');
-  const normalizedCacheReadTokens = sum(rows, 'normalizedCacheReadTokens');
-  const normalizedPromptTokens = sum(rows, 'normalizedPromptTokens');
-  const elapsedMinutes = Math.max(1, (range.end.getTime() - range.start.getTime()) / 60_000);
+  const previousRange = shiftRangeBack(range);
+  const current = summarize(rows, range);
+  const previous = summarize(rootRows(db, previousRange), previousRange);
 
   return {
     range: query.range,
     summary: {
-      requestCount: summary.requestCount.toString(),
-      totalTokens: summary.totalTokens.toString(),
-      cacheReadTokens: cacheReadTokens.toString(),
-      cacheWriteTokens: cacheWriteTokens.toString(),
-      cacheHitRate: ratio(normalizedCacheReadTokens, normalizedPromptTokens),
-      estimatedCostNanoUsd: summary.estimatedCostNanoUsd.toString(),
-      averageRpm: Number(summary.requestCount) / elapsedMinutes,
-      averageTpm: Number(summary.totalTokens) / elapsedMinutes,
+      current: current.totals,
+      previous: previous.totals,
+      peakRpm: current.peakRpm,
+      peakTpm: current.peakTpm,
       providerCount: 0,
     },
     modelTrendByMetric: {
@@ -70,6 +63,72 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
       tokens: modelTrend(tokens),
       cost: modelTrend(cost),
     },
+  };
+}
+
+type SummaryTotals = {
+  readonly requestCount: string;
+  readonly totalTokens: string;
+  readonly inputTokens: string;
+  readonly outputTokens: string;
+  readonly cacheReadTokens: string;
+  readonly cacheWriteTokens: string;
+  readonly cacheHitRate: number | null;
+  readonly estimatedCostNanoUsd: string;
+  readonly averageRpm: number;
+  readonly averageTpm: number;
+};
+
+function summarize(
+  rows: readonly RootRow[],
+  range: ResolvedRange,
+): {
+  readonly totals: SummaryTotals;
+  readonly peakRpm: number;
+  readonly peakTpm: number;
+} {
+  const requestCount = BigInt(rows.length);
+  const totalTokens = sum(rows, 'totalTokens');
+  const elapsedMinutes = Math.max(1, (range.end.getTime() - range.start.getTime()) / 60_000);
+  const bucketMinutes = range.bucketUnit === 'hour' ? 60 : 1_440;
+  const peaks = bucketPeaks(rows);
+  return {
+    totals: {
+      requestCount: requestCount.toString(),
+      totalTokens: totalTokens.toString(),
+      inputTokens: sum(rows, 'inputTokens').toString(),
+      outputTokens: sum(rows, 'outputTokens').toString(),
+      cacheReadTokens: sum(rows, 'cacheReadTokens').toString(),
+      cacheWriteTokens: sum(rows, 'cacheWriteTokens').toString(),
+      cacheHitRate: ratio(sum(rows, 'normalizedCacheReadTokens'), sum(rows, 'normalizedPromptTokens')),
+      estimatedCostNanoUsd: sum(rows, 'estimatedCostNanoUsd').toString(),
+      averageRpm: Number(requestCount) / elapsedMinutes,
+      averageTpm: Number(totalTokens) / elapsedMinutes,
+    },
+    peakRpm: peaks.requests / bucketMinutes,
+    peakTpm: peaks.tokens / bucketMinutes,
+  };
+}
+
+function bucketPeaks(rows: readonly RootRow[]): { readonly requests: number; readonly tokens: number } {
+  const requestsByBucket = new Map<string | number, number>();
+  const tokensByBucket = new Map<string | number, number>();
+  for (const row of rows) {
+    requestsByBucket.set(row.bucket, (requestsByBucket.get(row.bucket) ?? 0) + 1);
+    tokensByBucket.set(row.bucket, (tokensByBucket.get(row.bucket) ?? 0) + Number(row.totalTokens));
+  }
+  return {
+    requests: Math.max(0, ...requestsByBucket.values()),
+    tokens: Math.max(0, ...tokensByBucket.values()),
+  };
+}
+
+function shiftRangeBack(range: ResolvedRange): ResolvedRange {
+  const span = range.end.getTime() - range.start.getTime();
+  return {
+    start: new Date(range.start.getTime() - span),
+    end: new Date(range.start.getTime()),
+    bucketUnit: range.bucketUnit,
   };
 }
 

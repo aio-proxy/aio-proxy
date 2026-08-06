@@ -82,7 +82,7 @@ export const OverviewPage: React.FC = () => {
   } else {
     content = (
       <>
-        {overview.data.summary.requestCount === 0n ? (
+        {overview.data.summary.current.requestCount === 0n ? (
           <Empty className="min-h-72 bg-card">
             <EmptyHeader>
               <EmptyMedia variant="icon">

@@ -21,14 +21,32 @@ rs.mock('../../hooks/use-overview-query', () => ({
 const createOverviewData = () => ({
   range: '24h' as const,
   summary: {
-    requestCount: 42n,
-    totalTokens: 8_192n,
-    cacheReadTokens: 2_048n,
-    cacheWriteTokens: 128n,
-    cacheHitRate: 0.25,
-    estimatedCostNanoUsd: 2_500_000_000n,
-    averageRpm: 4.2,
-    averageTpm: 819.2,
+    current: {
+      requestCount: 42n,
+      totalTokens: 8_192n,
+      inputTokens: 6_000n,
+      outputTokens: 2_192n,
+      cacheReadTokens: 2_048n,
+      cacheWriteTokens: 128n,
+      cacheHitRate: 0.25,
+      estimatedCostNanoUsd: 2_500_000_000n,
+      averageRpm: 4.2,
+      averageTpm: 819.2,
+    },
+    previous: {
+      requestCount: 30n,
+      totalTokens: 6_000n,
+      inputTokens: 4_500n,
+      outputTokens: 1_500n,
+      cacheReadTokens: 1_024n,
+      cacheWriteTokens: 64n,
+      cacheHitRate: 0.2,
+      estimatedCostNanoUsd: 2_000_000_000n,
+      averageRpm: 3,
+      averageTpm: 600,
+    },
+    peakRpm: 9,
+    peakTpm: 1_500,
     providerCount: 2,
   },
   modelTrendByMetric: {
@@ -183,7 +201,7 @@ describe('overview page', () => {
   });
 
   test('keeps unwindowed diagnostics visible when the selected range has no requests', () => {
-    overviewData.summary.requestCount = 0n;
+    overviewData.summary.current.requestCount = 0n;
 
     render(<OverviewPage />);
 
@@ -226,7 +244,7 @@ describe('overview page', () => {
 
     first.unmount();
     overviewData = createOverviewData();
-    overviewData.summary.requestCount = 0n;
+    overviewData.summary.current.requestCount = 0n;
     render(<OverviewPage />);
     expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
   });

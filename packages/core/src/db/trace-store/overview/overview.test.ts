@@ -137,9 +137,9 @@ test('normalizes inclusive and additive cache accounting by the successful captu
 
     const result = store.overviewDashboard({ range: '24h', now: NOW });
 
-    expect(result.summary.cacheReadTokens).toBe('90');
-    expect(result.summary.cacheWriteTokens).toBe('30');
-    expect(result.summary.cacheHitRate).toBe(0.3);
+    expect(result.summary.current.cacheReadTokens).toBe('90');
+    expect(result.summary.current.cacheWriteTokens).toBe('30');
+    expect(result.summary.current.cacheHitRate).toBe(0.3);
     expect(result.summary.providerCount).toBe(0);
   });
 });
@@ -148,7 +148,7 @@ test('returns null cache rate when no row establishes a positive prompt denomina
   withStore((store) => {
     seedTrace(store, { id: 1, attempts: [{ providerId: 'provider', durationMs: 10 }] });
 
-    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.cacheHitRate).toBeNull();
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.current.cacheHitRate).toBeNull();
   });
 });
 
@@ -218,7 +218,7 @@ test('counts failed and cancelled roots in the request trend by requested model'
       0n,
     );
 
-    expect(result.summary.requestCount).toBe('2');
+    expect(result.summary.current.requestCount).toBe('2');
     expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual([
       'cancelled-model',
       'failed-model',
@@ -353,7 +353,7 @@ test('preserves totals above Number.MAX_SAFE_INTEGER', () => {
       });
     }
 
-    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.totalTokens).toBe('9007199254740993');
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.current.totalTokens).toBe('9007199254740993');
   });
 });
 
@@ -384,11 +384,11 @@ test('preserves range totals above the signed SQLite integer limit', () => {
 
     const overview = store.overviewDashboard({ range: '24h', now: NOW });
 
-    expect(overview.summary.totalTokens).toBe('20000000000000000000');
-    expect(overview.summary.cacheReadTokens).toBe('10000000000000000000');
-    expect(overview.summary.cacheWriteTokens).toBe('10000000000000000000');
-    expect(overview.summary.estimatedCostNanoUsd).toBe('10000000000000000000');
-    expect(overview.summary.cacheHitRate).toBe(0.5);
+    expect(overview.summary.current.totalTokens).toBe('20000000000000000000');
+    expect(overview.summary.current.cacheReadTokens).toBe('10000000000000000000');
+    expect(overview.summary.current.cacheWriteTokens).toBe('10000000000000000000');
+    expect(overview.summary.current.estimatedCostNanoUsd).toBe('10000000000000000000');
+    expect(overview.summary.current.cacheHitRate).toBe(0.5);
     expect(overview.modelTrendByMetric.tokens.buckets.find(({ values }) => values['large-model'] !== '0')).toEqual({
       key: '2026-07-11T07:00:00.000Z',
       values: { 'large-model': '20000000000000000000' },
