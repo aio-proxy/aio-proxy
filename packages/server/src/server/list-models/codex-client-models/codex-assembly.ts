@@ -15,6 +15,13 @@ const REASONING_DESCRIPTIONS = {
 const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
+// Renders the bundled base prompt for a slug. Case B uses it as the synthesized
+// instructions; Case A uses it only as the last-resort fallback when an upstream
+// row carries neither base_instructions nor model_messages.instructions_template.
+export function renderDefaultInstructions(slug: string): string {
+  return instructions.replaceAll('{{model_name}}', slug);
+}
+
 // Codex's ModelInfo struct requires these fields (no serde default, non-Option);
 // a synthesized entry that omits any one makes the client reject the whole
 // `Vec<ModelInfo>` and show an empty picker. When a cached upstream template is
@@ -61,7 +68,7 @@ function reasoningLevelsFor(metadata: ModelMetadata | undefined): readonly Reaso
 }
 
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
-  const text = instructions.replaceAll('{{model_name}}', input.slug);
+  const text = renderDefaultInstructions(input.slug);
   // Config override wins over the catalog window, which wins over the static default.
   const contextWindow =
     input.contextWindow ?? input.metadata?.limit?.input ?? input.metadata?.limit?.context ?? DEFAULT_CONTEXT_WINDOW;

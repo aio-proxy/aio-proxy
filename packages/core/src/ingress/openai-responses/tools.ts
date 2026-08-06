@@ -26,7 +26,9 @@ export const namespaceToolSchema = z.object({
 });
 
 const executableToolSchema = z.union([functionToolSchema, customToolSchema, namespaceToolSchema]);
-const knownToolTypes = new Set(['function', 'custom', 'namespace']);
+const webSearchToolSchema = z.object({ type: z.literal('web_search') }).loose();
+const knownToolSchema = z.union([executableToolSchema, webSearchToolSchema]);
+const knownToolTypes = new Set(['function', 'custom', 'namespace', 'web_search']);
 
 const unsupportedToolSchema = z.object({
   type: z.literal('__aio_proxy_unsupported_tool__'),
@@ -34,7 +36,7 @@ const unsupportedToolSchema = z.object({
 });
 
 export const openAIResponsesToolSchema = z.unknown().transform((tool, context) => {
-  const parsed = executableToolSchema.safeParse(tool);
+  const parsed = knownToolSchema.safeParse(tool);
   if (parsed.success) return parsed.data;
 
   const wireType = safeToolType(tool);
@@ -49,12 +51,16 @@ export const openAIResponsesToolSchema = z.unknown().transform((tool, context) =
 export type OpenAIResponsesFunctionTool = z.output<typeof functionToolSchema>;
 export type OpenAIResponsesCustomTool = z.output<typeof customToolSchema>;
 export type OpenAIResponsesNamespaceTool = z.output<typeof namespaceToolSchema>;
+export type OpenAIResponsesWebSearchTool = z.output<typeof webSearchToolSchema>;
 export type OpenAIResponsesUnsupportedTool = z.output<typeof unsupportedToolSchema>;
 export type OpenAIResponsesExecutableTool =
   | OpenAIResponsesFunctionTool
   | OpenAIResponsesCustomTool
   | OpenAIResponsesNamespaceTool;
-export type OpenAIResponsesTool = OpenAIResponsesExecutableTool | OpenAIResponsesUnsupportedTool;
+export type OpenAIResponsesTool =
+  | OpenAIResponsesExecutableTool
+  | OpenAIResponsesWebSearchTool
+  | OpenAIResponsesUnsupportedTool;
 
 function safeToolType(value: unknown): string | undefined {
   return typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string'

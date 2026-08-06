@@ -114,7 +114,17 @@ describe('OpenAIResponsesRequestSchema', () => {
     });
   });
 
-  test.each(['web_search', 'web_search_preview', 'file_search', 'computer_use', 'computer-use', 'image_generation'])(
+  test('Given hosted web search tool When parsed Then it is retained as a known tool', () => {
+    const input = {
+      model: 'gpt-5-mini',
+      input: 'x',
+      tools: [{ type: 'web_search' }],
+    };
+
+    expect(parseOpenAIResponses(input)).toEqual(input);
+  });
+
+  test.each(['web_search_preview', 'file_search', 'computer_use', 'computer-use', 'image_generation'])(
     'Given raw-only %s tool When parsed Then it is retained',
     (toolType) => {
       const input = {
