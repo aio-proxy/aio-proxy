@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.6.2
+
 ## 0.6.1
 
 ### Patch Changes
