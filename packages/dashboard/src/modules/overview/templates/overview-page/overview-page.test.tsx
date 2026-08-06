@@ -129,8 +129,8 @@ describe('overview page', () => {
 
     const summary = screen.getByRole('list', { name: /Overview summary|概览摘要/u });
     const labels = within(summary)
-      .getAllByRole('heading', { level: 2 })
-      .map((heading) => heading.textContent);
+      .getAllByTestId('kpi-label')
+      .map((label) => label.textContent);
 
     expect(labels).toEqual(['Requests', 'Token', 'Cache hit rate', 'Cost', 'RPM', 'TPM']);
   });

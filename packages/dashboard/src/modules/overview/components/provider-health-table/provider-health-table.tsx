@@ -1,11 +1,12 @@
 import { getLocale, m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import type { ColumnDef } from '@tanstack/react-table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
 import { flexRender } from '@tanstack/react-table';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { Fragment, useMemo } from 'react';
 
-import { DataTableHeaderCell } from '@/components/data-table-header-cell';
 import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -17,8 +18,34 @@ interface ProviderHealthTableProps {
 
 type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
 
-const withSortingHandler = (handler: ((event: unknown) => void) | undefined) =>
-  handler === undefined ? {} : { onToggleSorting: handler };
+const sortableHeader =
+  (label: () => string) =>
+  ({ column }: HeaderContext<ProviderHealthRow, unknown>) => {
+    const canSort = column.getCanSort();
+    const sortDirection = column.getIsSorted();
+    return (
+      <TableHead
+        aria-sort={
+          canSort
+            ? sortDirection === 'asc'
+              ? 'ascending'
+              : sortDirection === 'desc'
+                ? 'descending'
+                : 'none'
+            : undefined
+        }
+      >
+        {canSort ? (
+          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
+            {label()}
+            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
+          </Button>
+        ) : (
+          label()
+        )}
+      </TableHead>
+    );
+  };
 
 export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }) => {
   'use no memo';
@@ -26,42 +53,20 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
   const locale = getLocale();
   const columns = useMemo<readonly ColumnDef<ProviderHealthRow>[]>(() => {
     const percentFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1, style: 'percent' });
-
     return [
       {
         accessorKey: 'providerId',
-        header: ({ column }) => (
-          <DataTableHeaderCell
-            label={m['dashboard.overview.provider_id']()}
-            canSort={column.getCanSort()}
-            sortDirection={column.getIsSorted()}
-            {...withSortingHandler(column.getToggleSortingHandler())}
-          />
-        ),
+        header: sortableHeader(() => m['dashboard.overview.provider_id']()),
         cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
       },
       {
         accessorKey: 'successRate',
-        header: ({ column }) => (
-          <DataTableHeaderCell
-            label={m['dashboard.overview.success_rate']()}
-            canSort={column.getCanSort()}
-            sortDirection={column.getIsSorted()}
-            {...withSortingHandler(column.getToggleSortingHandler())}
-          />
-        ),
+        header: sortableHeader(() => m['dashboard.overview.success_rate']()),
         cell: ({ getValue }) => <span className="tabular-nums">{percentFormatter.format(Number(getValue()))}</span>,
       },
       {
         accessorKey: 'p95LatencyMs',
-        header: ({ column }) => (
-          <DataTableHeaderCell
-            label={m['dashboard.overview.p95_latency']()}
-            canSort={column.getCanSort()}
-            sortDirection={column.getIsSorted()}
-            {...withSortingHandler(column.getToggleSortingHandler())}
-          />
-        ),
+        header: sortableHeader(() => m['dashboard.overview.p95_latency']()),
         cell: ({ getValue }) => (
           <span className="tabular-nums">{m['dashboard.traces.duration_ms']({ value: Number(getValue()) })}</span>
         ),

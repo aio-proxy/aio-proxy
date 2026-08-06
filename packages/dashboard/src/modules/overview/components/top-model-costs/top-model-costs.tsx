@@ -1,5 +1,6 @@
 import { getLocale, m } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Progress, ProgressLabel, ProgressValue } from '@aio-proxy/ui/components/progress';
 
 import { formatNanoUsd } from '@/modules/usage/services/usage-value-formatter';
 
@@ -29,24 +30,17 @@ export const TopModelCosts: React.FC<TopModelCostsProps> = ({ models }) => {
             {m['dashboard.overview.no_model_costs']()}
           </div>
         ) : (
-          <ol className="grid gap-4">
+          <div className="space-y-4">
             {models.map((model) => {
-              const width = maxCost === 0n ? 0 : Number((model.estimatedCostNanoUsd * 10_000n) / maxCost) / 100;
+              const value = maxCost === 0n ? 0 : Number((model.estimatedCostNanoUsd * 10_000n) / maxCost) / 100;
               return (
-                <li key={model.modelId} className="grid gap-2">
-                  <div className="flex min-w-0 items-center justify-between gap-4">
-                    <span className="truncate font-mono text-xs">{model.modelId}</span>
-                    <span className="shrink-0 font-medium tabular-nums">
-                      {formatNanoUsd(model.estimatedCostNanoUsd, locale)}
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
-                  </div>
-                </li>
+                <Progress key={model.modelId} value={value}>
+                  <ProgressLabel>{model.modelId}</ProgressLabel>
+                  <ProgressValue>{() => formatNanoUsd(model.estimatedCostNanoUsd, locale)}</ProgressValue>
+                </Progress>
               );
             })}
-          </ol>
+          </div>
         )}
       </CardContent>
     </Card>

@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>aio-proxy · Trace 筛选工作台</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --background: light-dark(oklch(100% 0 0), oklch(15.3% 0.006 107.1));
+        --foreground: light-dark(oklch(15.3% 0.006 107.1), oklch(98.8% 0.003 106.5));
+        --card: light-dark(oklch(100% 0 0), oklch(20.5% 0.009 107.1));
+        --sidebar: light-dark(oklch(98.8% 0.003 106.5), oklch(18.8% 0.009 107.1));
+        --muted: light-dark(oklch(96.6% 0.005 106.5), oklch(27% 0.012 107.1));
+        --muted-foreground: light-dark(oklch(46% 0.025 107.1), oklch(74% 0.018 107.1));
+        --border: light-dark(oklch(90% 0.008 106.5), oklch(100% 0 0 / 12%));
+        --input: light-dark(oklch(93% 0.007 106.5 / 55%), oklch(100% 0 0 / 8%));
+        --primary: light-dark(oklch(51.1% 0.096 186.391), oklch(63% 0.11 186.391));
+        --primary-foreground: oklch(98.4% 0.014 180.72);
+        --primary-soft: light-dark(oklch(93% 0.035 186.391), oklch(35% 0.05 186.391));
+        --warning: light-dark(oklch(54% 0.135 75), oklch(76% 0.12 75));
+        --destructive: light-dark(oklch(57.7% 0.245 27.325), oklch(70% 0.18 27.325));
+        --destructive-soft: light-dark(oklch(96% 0.025 27.325), oklch(32% 0.04 27.325));
+        --radius-nav: 0.63rem;
+        --radius-panel: 0.81rem;
+        --radius-field: 0.99rem;
+        --radius-control: 1.17rem;
+        font-family:
+          "SF Pro TC", "SF Pro SC", "SF Pro Text", "PingFang TC", "PingFang SC", "Helvetica Neue", Arial,
+          sans-serif;
+        font-size: 14px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        color: var(--foreground);
+        background: var(--background);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button,
+      a,
+      input,
+      select,
+      summary {
+        outline-color: var(--primary);
+        outline-offset: 2px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 15rem minmax(0, 1fr);
+        min-height: 100dvh;
+        background: var(--sidebar);
+      }
+
+      .global-sidebar {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 1rem 0.75rem;
+        border-right: 1px solid var(--border);
+        background: var(--sidebar);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        min-height: 2.6rem;
+        padding: 0 0.65rem;
+        font-family: "Lexend Variable", "Lexend", "SF Pro Text", sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 1.85rem;
+        height: 1.85rem;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 0.65rem;
+        color: var(--primary-foreground);
+        background: var(--primary);
+        font-weight: 600;
+      }
+
+      .nav-section {
+        margin-top: 1.35rem;
+      }
+
+      .nav-label {
+        margin: 0 0.75rem 0.45rem;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        min-height: 2.4rem;
+        margin-top: 0.18rem;
+        padding: 0.55rem 0.75rem;
+        border-radius: var(--radius-nav);
+        color: var(--muted-foreground);
+        text-decoration: none;
+      }
+
+      .nav-icon {
+        display: grid;
+        width: 1.2rem;
+        height: 1.2rem;
+        flex: 0 0 auto;
+        place-items: center;
+      }
+
+      .nav-item.active {
+        color: var(--foreground);
+        background: var(--muted);
+        font-weight: 500;
+      }
+
+      .nav-item:hover {
+        color: var(--foreground);
+        background: var(--muted);
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+      }
+
+      .content-shell {
+        min-width: 0;
+        padding: 0.55rem 0.55rem 0.55rem 0;
+        background: var(--sidebar);
+      }
+
+      .content-inset {
+        min-height: calc(100dvh - 1.1rem);
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 1.05rem;
+        background: var(--background);
+        box-shadow: 0 1px 3px rgb(0 0 0 / 9%);
+      }
+
+      .mobile-header {
+        display: none;
+      }
+
+      .page-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-height: 5.4rem;
+        padding: 1.1rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .page-title h1 {
+        margin: 0;
+        font-family: "Lexend Variable", "Lexend", "SF Pro Text", sans-serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.4;
+      }
+
+      .page-title p {
+        margin: 0.25rem 0 0;
+        color: var(--muted-foreground);
+      }
+
+      .live-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+      }
+
+      .last-update {
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+
+      .button,
+      .icon-button {
+        display: inline-flex;
+        min-height: 2.25rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-control);
+        color: var(--foreground);
+        background: var(--card);
+        padding: 0.5rem 0.78rem;
+        font-weight: 500;
+      }
+
+      .button:hover,
+      .icon-button:hover {
+        background: var(--muted);
+      }
+
+      .button:active,
+      .icon-button:active {
+        transform: translateY(1px);
+      }
+
+      .button:disabled,
+      .icon-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .icon-button {
+        width: 2.25rem;
+        padding: 0;
+      }
+
+      .button.primary {
+        border-color: transparent;
+        color: var(--primary-foreground);
+        background: var(--primary);
+      }
+
+      .button.ghost {
+        border-color: transparent;
+        background: transparent;
+      }
+
+      .live-toggle[aria-pressed="true"] {
+        border-color: color-mix(in oklch, var(--primary) 35%, transparent);
+        background: var(--primary-soft);
+      }
+
+      .live-dot {
+        width: 0.55rem;
+        height: 0.55rem;
+        border-radius: 50%;
+        background: var(--primary);
+        box-shadow: 0 0 0 0.2rem var(--primary-soft);
+      }
+
+      .live-toggle[aria-pressed="false"] .live-dot {
+        background: var(--muted-foreground);
+        box-shadow: none;
+      }
+
+      .workbench {
+        display: grid;
+        grid-template-columns: 19rem minmax(0, 1fr);
+        min-height: calc(100dvh - 6.5rem);
+      }
+
+      .filter-panel {
+        position: relative;
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        background: var(--sidebar);
+        transition: width 180ms ease-out;
+      }
+
+      .filter-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        min-height: 3.8rem;
+        padding: 0.8rem 0.85rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .filter-heading {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-family: "Lexend Variable", "Lexend", "SF Pro Text", sans-serif;
+        font-size: 1rem;
+        font-weight: 500;
+      }
+
+      .filter-count {
+        display: inline-grid;
+        min-width: 1.35rem;
+        height: 1.35rem;
+        place-items: center;
+        border-radius: 999px;
+        color: var(--foreground);
+        background: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .filter-content {
+        display: grid;
+        gap: 0.6rem;
+        padding: 0.75rem;
+      }
+
+      .filter-group {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .filter-group:last-of-type {
+        border-bottom: 0;
+      }
+
+      .filter-group summary {
+        display: flex;
+        min-height: 2.6rem;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        list-style: none;
+        cursor: pointer;
+        font-weight: 500;
+      }
+
+      .filter-group summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .filter-group summary::after {
+        content: "⌄";
+        color: var(--muted-foreground);
+        transition: transform 160ms ease-out;
+      }
+
+      .filter-group:not([open]) summary::after {
+        transform: rotate(-90deg);
+      }
+
+      .fields {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.35rem 0 1rem;
+      }
+
+      .field {
+        display: grid;
+        gap: 0.32rem;
+      }
+
+      .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+      }
+
+      .filter-pair {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .field label {
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .field input,
+      .field select,
+      .field .field-button {
+        width: 100%;
+        min-height: 2.25rem;
+        border: 1px solid transparent;
+        border-radius: var(--radius-field);
+        color: var(--foreground);
+        background: var(--input);
+        padding: 0.46rem 0.7rem;
+      }
+
+      .field .field-button {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .field input::placeholder {
+        color: var(--muted-foreground);
+        opacity: 1;
+      }
+
+      .field input:focus,
+      .field select:focus,
+      .field .field-button:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 24%, transparent);
+      }
+
+      .filter-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-top: auto;
+        padding: 0.75rem;
+        border-top: 1px solid var(--border);
+      }
+
+      .filter-close-mobile,
+      .mobile-filter-trigger,
+      .filter-rail {
+        display: none;
+      }
+
+      .results-panel {
+        min-width: 0;
+        padding: 0.9rem 1rem 1rem;
+      }
+
+      .results-heading {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem;
+        min-height: 2.5rem;
+        margin-bottom: 0.55rem;
+      }
+
+      .results-title {
+        display: flex;
+        align-items: baseline;
+        gap: 0.55rem;
+        font-weight: 500;
+      }
+
+      .results-count {
+        color: var(--muted-foreground);
+        font-weight: 400;
+      }
+
+      .result-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .table-viewport {
+        overflow-x: auto;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      }
+
+      table {
+        width: 100%;
+        min-width: 76rem;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+
+      th,
+      td {
+        min-height: 3.25rem;
+        padding: 0.68rem 0.7rem;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+
+      th {
+        color: var(--muted-foreground);
+        background: var(--card);
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      tbody tr {
+        cursor: pointer;
+      }
+
+      tbody tr:hover td {
+        background: var(--muted);
+      }
+
+      th:first-child,
+      td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--card);
+      }
+
+      tbody tr:hover td:first-child {
+        background: var(--muted);
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .table-control-row td {
+        height: 2.5rem;
+        padding: 0;
+        background: color-mix(in oklch, var(--muted) 48%, var(--card));
+        text-align: center;
+      }
+
+      .load-more-row td {
+        border-top: 1px solid var(--border);
+        border-bottom: 0;
+      }
+
+      .table-load {
+        width: 100%;
+        height: 2.5rem;
+        border: 0;
+        background: transparent;
+        color: var(--muted-foreground);
+        font: inherit;
+        font-size: 0.8125rem;
+        cursor: pointer;
+      }
+
+      .table-load:hover,
+      .table-load:focus-visible {
+        color: var(--foreground);
+        background: var(--muted);
+      }
+
+      .table-load strong {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+
+      .new-row {
+        display: none;
+      }
+
+      .new-row td {
+        background: var(--primary-soft);
+      }
+
+      .cell-stack {
+        display: grid;
+        gap: 0.18rem;
+      }
+
+      .cell-primary {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+
+      .cell-secondary {
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+      }
+
+      .latency-metric {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .latency-dot {
+        width: 0.4rem;
+        height: 0.4rem;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: var(--muted-foreground);
+      }
+
+      .latency-dot.fast {
+        background: var(--primary);
+      }
+
+      .latency-dot.medium {
+        background: var(--warning);
+      }
+
+      .latency-dot.slow {
+        background: var(--destructive);
+      }
+
+      .status {
+        display: inline-flex;
+        min-height: 1.4rem;
+        align-items: center;
+        gap: 0.3rem;
+        border-radius: 999px;
+        color: var(--foreground);
+        background: var(--muted);
+        padding: 0.16rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .status.error {
+        color: var(--destructive);
+        background: var(--destructive-soft);
+      }
+
+      .status-dot {
+        width: 0.38rem;
+        height: 0.38rem;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .protocol {
+        display: inline-flex;
+        min-height: 1.45rem;
+        align-items: center;
+        border-radius: 999px;
+        color: var(--muted-foreground);
+        background: var(--muted);
+        padding: 0.15rem 0.48rem;
+        font-size: 0.75rem;
+      }
+
+      .row-action {
+        display: inline-grid;
+        width: 1.8rem;
+        height: 1.8rem;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        color: var(--muted-foreground);
+        background: transparent;
+      }
+
+      .row-action:hover {
+        color: var(--foreground);
+        background: var(--muted);
+      }
+
+      .filter-backdrop {
+        display: none;
+      }
+
+      .toast {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 20;
+        max-width: min(24rem, calc(100vw - 2rem));
+        border: 1px solid var(--border);
+        border-radius: var(--radius-panel);
+        color: var(--foreground);
+        background: var(--card);
+        padding: 0.75rem 0.9rem;
+        box-shadow: 0 12px 32px rgb(0 0 0 / 14%);
+        opacity: 0;
+        transform: translateY(0.5rem);
+        transition:
+          opacity 160ms ease-out,
+          transform 160ms ease-out;
+        pointer-events: none;
+      }
+
+      .toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .app.filters-collapsed .workbench {
+        grid-template-columns: 3.4rem minmax(0, 1fr);
+      }
+
+      .app.filters-collapsed .filter-header,
+      .app.filters-collapsed .filter-content,
+      .app.filters-collapsed .filter-actions {
+        display: none;
+      }
+
+      .app.filters-collapsed .filter-rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+        padding-top: 0.75rem;
+      }
+
+      .app.buffer-merged .buffer-row {
+        display: none;
+      }
+
+      .app.buffer-merged .new-row {
+        display: table-row;
+      }
+
+      @media (max-width: 940px) {
+        .app {
+          display: block;
+        }
+
+        .global-sidebar {
+          display: none;
+        }
+
+        .content-shell {
+          padding: 0;
+        }
+
+        .content-inset {
+          min-height: 100dvh;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .mobile-header {
+          display: flex;
+          min-height: 3.5rem;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          padding: 0.55rem 0.75rem;
+          border-bottom: 1px solid var(--border);
+          background: var(--sidebar);
+          font-weight: 500;
+        }
+
+        .mobile-brand {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .page-header {
+          min-height: auto;
+          padding: 0.85rem 0.8rem;
+        }
+
+        .page-title p,
+        .last-update {
+          display: none;
+        }
+
+        .workbench,
+        .app.filters-collapsed .workbench {
+          display: block;
+          min-height: auto;
+        }
+
+        .filter-panel {
+          position: fixed;
+          z-index: 30;
+          inset: 0 0 0 auto;
+          width: min(24rem, 92vw);
+          border-right: 0;
+          border-left: 1px solid var(--border);
+          background: var(--sidebar);
+          box-shadow: -18px 0 42px rgb(0 0 0 / 20%);
+          transform: translateX(105%);
+          transition: transform 180ms ease-out;
+        }
+
+        .app.mobile-filters-open .filter-panel {
+          transform: translateX(0);
+        }
+
+        .filter-header,
+        .app.filters-collapsed .filter-header {
+          display: flex;
+        }
+
+        .filter-content,
+        .app.filters-collapsed .filter-content {
+          display: grid;
+          overflow-y: auto;
+        }
+
+        .filter-actions,
+        .app.filters-collapsed .filter-actions {
+          display: flex;
+        }
+
+        .filter-rail {
+          display: none !important;
+        }
+
+        .collapse-filter {
+          display: none;
+        }
+
+        .filter-close-mobile,
+        .mobile-filter-trigger {
+          display: inline-flex;
+        }
+
+        .filter-backdrop {
+          position: fixed;
+          z-index: 25;
+          inset: 0;
+          background: rgb(0 0 0 / 38%);
+        }
+
+        .app.mobile-filters-open .filter-backdrop {
+          display: block;
+        }
+
+        .results-panel {
+          padding: 0.75rem;
+        }
+
+        .results-heading {
+          align-items: center;
+        }
+
+        table {
+          min-width: 68rem;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .page-header {
+          align-items: flex-start;
+        }
+
+        .live-controls {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .results-heading {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .result-actions {
+          width: 100%;
+        }
+
+        .mobile-filter-trigger {
+          flex: 1;
+        }
+
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="trace-prototype">
+      <aside class="global-sidebar" aria-label="主导航">
+        <div class="brand"><span class="brand-mark">a</span><span>aio-proxy</span></div>
+        <nav>
+          <section class="nav-section">
+            <div class="nav-label">概览</div>
+            <a class="nav-item" href="#"><span class="nav-icon">⌁</span><span>Dashboard</span></a>
+            <a class="nav-item active" href="#"><span class="nav-icon">⑂</span><span>Traces</span></a>
+          </section>
+          <section class="nav-section">
+            <div class="nav-label">配置</div>
+            <a class="nav-item" href="#"><span class="nav-icon">◇</span><span>Providers</span></a>
+          </section>
+        </nav>
+        <div class="sidebar-footer">
+          <a class="nav-item" href="#"><span class="nav-icon">◐</span><span>外观与语言</span></a>
+          <a class="nav-item" href="#"><span class="nav-icon">↪</span><span>退出登录</span></a>
+        </div>
+      </aside>
+
+      <div class="content-shell">
+        <div class="content-inset">
+          <header class="mobile-header">
+            <button class="icon-button" type="button" aria-label="打开主导航">☰</button>
+            <div class="mobile-brand"><span class="brand-mark">a</span><span>aio-proxy</span></div>
+            <span>Traces</span>
+          </header>
+
+          <header class="page-header">
+            <div class="page-title">
+              <h1>Traces</h1>
+              <p>实时观察通过 aio-proxy 的模型请求</p>
+            </div>
+            <div class="live-controls">
+              <span class="last-update" id="last-update">5 秒前更新</span>
+              <button class="button live-toggle" type="button" aria-pressed="true" id="live-toggle">
+                <span class="live-dot"></span><span id="live-label">实时更新</span>
+              </button>
+              <button class="icon-button" type="button" aria-label="立即刷新" id="refresh-button">↻</button>
+            </div>
+          </header>
+
+          <div class="workbench">
+            <aside class="filter-panel" aria-label="Trace 筛选">
+              <div class="filter-header">
+                <div class="filter-heading"><span>筛选条件</span><span class="filter-count" aria-label="2 个活动筛选">2</span></div>
+                <div>
+                  <button class="icon-button collapse-filter" type="button" aria-label="收起筛选栏" id="collapse-filter">‹</button>
+                  <button class="icon-button filter-close-mobile" type="button" aria-label="关闭筛选" id="close-mobile-filter">×</button>
+                </div>
+              </div>
+
+              <div class="filter-rail">
+                <button class="icon-button" type="button" aria-label="展开筛选栏" id="expand-filter">☷</button>
+                <span class="filter-count" aria-label="2 个活动筛选">2</span>
+              </div>
+
+              <div class="filter-content">
+                <details class="filter-group" open>
+                  <summary>监控范围</summary>
+                  <div class="fields">
+                    <div class="field">
+                      <label for="date-range">时间范围</label>
+                      <button class="field-button" id="date-range" type="button"><span>今天 00:00 — 现在</span><span>▾</span></button>
+                    </div>
+                    <div class="field">
+                      <label for="requested-model">请求模型</label>
+                      <input id="requested-model" value="gpt" placeholder="例如 gpt-5.4" />
+                    </div>
+                    <div class="filter-pair">
+                      <div class="field">
+                        <label for="otel-status">状态</label>
+                        <select id="otel-status"><option>全部</option><option>UNSET</option><option>OK</option><option>ERROR</option></select>
+                      </div>
+                      <div class="field">
+                        <label for="protocol">协议</label>
+                        <select id="protocol"><option>全部</option><option>OpenAI Responses</option><option>Anthropic</option><option>OpenAI Chat</option></select>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="filter-group">
+                  <summary>请求标识</summary>
+                  <div class="fields">
+                    <div class="field"><label for="trace-id">Trace ID</label><input id="trace-id" placeholder="32 位十六进制 ID" /></div>
+                    <div class="field"><label for="request-id">Request ID</label><input id="request-id" /></div>
+                    <div class="filter-pair session-fields">
+                      <div class="field"><label for="session-source">Session 来源</label><input id="session-source" /></div>
+                      <div class="field"><label for="session-id">Session ID</label><input id="session-id" /></div>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="filter-group">
+                  <summary>路由结果</summary>
+                  <div class="fields">
+                    <div class="field">
+                      <label for="termination">结束原因</label>
+                      <select id="termination"><option>全部</option><option>失败</option><option>取消</option><option>中断</option></select>
+                    </div>
+                    <div class="field"><label for="provider-id">Provider ID</label><input id="provider-id" value="openai-main" /></div>
+                    <div class="field"><label for="final-model">最终模型</label><input id="final-model" /></div>
+                    <div class="field"><label for="http-status">HTTP 状态</label><input id="http-status" type="number" min="100" max="599" /></div>
+                  </div>
+                </details>
+              </div>
+
+              <div class="filter-actions">
+                <button class="button ghost" type="button" id="clear-filters">清除全部</button>
+                <button class="button" type="button">复制筛选链接</button>
+              </div>
+            </aside>
+
+            <main class="results-panel">
+              <div class="results-heading">
+                <div class="results-title"><span>最新请求</span><span class="results-count">已加载 50 条</span></div>
+                <div class="result-actions">
+                  <button class="button mobile-filter-trigger" type="button" id="open-mobile-filter">筛选条件 <span class="filter-count">2</span></button>
+                </div>
+              </div>
+
+              <div class="table-viewport" aria-label="Trace 结果表格，可横向滚动">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>开始时间</th><th>状态</th><th>Session</th><th>协议</th><th>模型</th><th>Provider</th><th>HTTP</th><th>耗时</th><th>Token</th><th>成本</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="trace-rows">
+                    <tr class="buffer-row table-control-row"><td colspan="11"><button class="table-load" type="button" id="merge-button">有 3 条新 Trace，<strong>立即加载</strong></button></td></tr>
+                    <tr class="new-row" data-trace="77d1"><td><div class="cell-stack"><span class="cell-primary">10:42:23</span><span class="cell-secondary">刚刚</span></div></td><td><span class="status"><span class="status-dot"></span>OK</span></td><td>chat_9c21</td><td><span class="protocol">OpenAI Responses</span></td><td>gpt-5.4</td><td>openai-main</td><td>200</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：中等，1.24 秒" title="总耗时：中等"><span class="latency-dot medium" aria-hidden="true"></span>1.24 s</span><span class="cell-secondary latency-metric" aria-label="TTFT：中等，318 毫秒" title="TTFT：中等"><span class="latency-dot medium" aria-hidden="true"></span>TTFT 318 ms</span></div></td><td>4.8k</td><td>$0.018</td><td><button class="row-action" type="button" aria-label="打开 Trace 77d1">›</button></td></tr>
+                    <tr class="new-row" data-trace="7ac2"><td><div class="cell-stack"><span class="cell-primary">10:42:22</span><span class="cell-secondary">1 秒前</span></div></td><td><span class="status"><span class="status-dot"></span>OK</span></td><td>agent_c320</td><td><span class="protocol">Google</span></td><td>gemini-2.5-pro</td><td>google-ai</td><td>200</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：中等，2.03 秒" title="总耗时：中等"><span class="latency-dot medium" aria-hidden="true"></span>2.03 s</span><span class="cell-secondary latency-metric" aria-label="TTFT：中等，447 毫秒" title="TTFT：中等"><span class="latency-dot medium" aria-hidden="true"></span>TTFT 447 ms</span></div></td><td>5.1k</td><td>$0.019</td><td><button class="row-action" type="button" aria-label="打开 Trace 7ac2">›</button></td></tr>
+                    <tr class="new-row" data-trace="812f"><td><div class="cell-stack"><span class="cell-primary">10:42:21</span><span class="cell-secondary">2 秒前</span></div></td><td><span class="status error"><span class="status-dot"></span>ERROR</span></td><td>chat_0d14</td><td><span class="protocol">OpenAI Chat</span></td><td>gpt-4.1</td><td>azure-east</td><td>502</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：快速，490 毫秒" title="总耗时：快速"><span class="latency-dot fast" aria-hidden="true"></span>490 ms</span><span class="cell-secondary">无 TTFT</span></div></td><td>—</td><td>—</td><td><button class="row-action" type="button" aria-label="打开 Trace 812f">›</button></td></tr>
+                    <tr data-trace="6bf8"><td><div class="cell-stack"><span class="cell-primary">10:42:18</span><span class="cell-secondary">5 秒前</span></div></td><td><span class="status"><span class="status-dot"></span>OK</span></td><td>chat_8f72</td><td><span class="protocol">OpenAI Responses</span></td><td>gpt-5.4</td><td>openai-main</td><td>200</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：中等，1.82 秒" title="总耗时：中等"><span class="latency-dot medium" aria-hidden="true"></span>1.82 s</span><span class="cell-secondary latency-metric" aria-label="TTFT：中等，402 毫秒" title="TTFT：中等"><span class="latency-dot medium" aria-hidden="true"></span>TTFT 402 ms</span></div></td><td>4.2k</td><td>$0.016</td><td><button class="row-action" type="button" aria-label="打开 Trace 6bf8">›</button></td></tr>
+                    <tr data-trace="08ce"><td><div class="cell-stack"><span class="cell-primary">10:42:16</span><span class="cell-secondary">7 秒前</span></div></td><td><span class="status error"><span class="status-dot"></span>ERROR</span></td><td>—</td><td><span class="protocol">Anthropic</span></td><td>claude-sonnet-4</td><td>anthropic</td><td>429</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：快速，680 毫秒" title="总耗时：快速"><span class="latency-dot fast" aria-hidden="true"></span>680 ms</span><span class="cell-secondary">无 TTFT</span></div></td><td>—</td><td>—</td><td><button class="row-action" type="button" aria-label="打开 Trace 08ce">›</button></td></tr>
+                    <tr data-trace="4a12"><td><div class="cell-stack"><span class="cell-primary">10:42:11</span><span class="cell-secondary">12 秒前</span></div></td><td><span class="status"><span class="status-dot"></span>OK</span></td><td>agent_a142</td><td><span class="protocol">OpenAI Chat</span></td><td>gpt-4.1</td><td>azure-east</td><td>200</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：慢速，3.41 秒" title="总耗时：慢速"><span class="latency-dot slow" aria-hidden="true"></span>3.41 s</span><span class="cell-secondary latency-metric" aria-label="TTFT：慢速，721 毫秒" title="TTFT：慢速"><span class="latency-dot slow" aria-hidden="true"></span>TTFT 721 ms</span></div></td><td>8.1k</td><td>$0.028</td><td><button class="row-action" type="button" aria-label="打开 Trace 4a12">›</button></td></tr>
+                    <tr data-trace="9de4"><td><div class="cell-stack"><span class="cell-primary">10:42:04</span><span class="cell-secondary">19 秒前</span></div></td><td><span class="status"><span class="status-dot"></span>OK</span></td><td>agent_a142</td><td><span class="protocol">Google</span></td><td>gemini-2.5-pro</td><td>google-ai</td><td>200</td><td><div class="cell-stack"><span class="cell-primary latency-metric" aria-label="总耗时：中等，2.76 秒" title="总耗时：中等"><span class="latency-dot medium" aria-hidden="true"></span>2.76 s</span><span class="cell-secondary latency-metric" aria-label="TTFT：中等，510 毫秒" title="TTFT：中等"><span class="latency-dot medium" aria-hidden="true"></span>TTFT 510 ms</span></div></td><td>6.6k</td><td>$0.021</td><td><button class="row-action" type="button" aria-label="打开 Trace 9de4">›</button></td></tr>
+                  </tbody>
+                  <tfoot>
+                    <tr class="load-more-row table-control-row"><td colspan="11"><button class="table-load" type="button" id="load-more-button">已加载 50 条，<strong>加载更早的 Trace</strong></button></td></tr>
+                  </tfoot>
+                </table>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <button class="filter-backdrop" type="button" aria-label="关闭筛选" id="filter-backdrop"></button>
+      <div class="toast" role="status" id="toast">将进入独立 Trace 详情页</div>
+    </div>
+
+    <script>
+      (() => {
+        const app = document.getElementById('trace-prototype');
+        const liveToggle = document.getElementById('live-toggle');
+        const liveLabel = document.getElementById('live-label');
+        const lastUpdate = document.getElementById('last-update');
+        const toast = document.getElementById('toast');
+        let toastTimer;
+
+        document.getElementById('collapse-filter').addEventListener('click', () => app.classList.add('filters-collapsed'));
+        document.getElementById('expand-filter').addEventListener('click', () => app.classList.remove('filters-collapsed'));
+        document.getElementById('open-mobile-filter').addEventListener('click', () => app.classList.add('mobile-filters-open'));
+        document.getElementById('close-mobile-filter').addEventListener('click', () => app.classList.remove('mobile-filters-open'));
+        document.getElementById('filter-backdrop').addEventListener('click', () => app.classList.remove('mobile-filters-open'));
+        document.getElementById('merge-button').addEventListener('click', () => app.classList.add('buffer-merged'));
+        document.getElementById('load-more-button').addEventListener('click', () => showToast('正在加载更早的 Trace…'));
+
+        liveToggle.addEventListener('click', () => {
+          const next = liveToggle.getAttribute('aria-pressed') !== 'true';
+          liveToggle.setAttribute('aria-pressed', String(next));
+          liveLabel.textContent = next ? '实时更新' : '已暂停';
+          lastUpdate.textContent = next ? '刚刚恢复' : '暂停自动刷新';
+        });
+
+        document.getElementById('refresh-button').addEventListener('click', () => {
+          lastUpdate.textContent = '刚刚更新';
+        });
+
+        document.getElementById('clear-filters').addEventListener('click', () => {
+          document.querySelectorAll('.filter-panel input').forEach((input) => (input.value = ''));
+          document.querySelectorAll('.filter-panel select').forEach((select) => (select.selectedIndex = 0));
+          showToast('已清除全部筛选条件');
+        });
+
+        document.querySelectorAll('tbody tr').forEach((row) => {
+          row.addEventListener('click', (event) => {
+            if (event.target.closest('button')) return;
+            showToast(`将进入 Trace ${row.dataset.trace} 的独立详情页`);
+          });
+        });
+
+        document.querySelectorAll('.row-action').forEach((button) => {
+          button.addEventListener('click', () => showToast('将进入独立 Trace 详情页'));
+        });
+
+        function showToast(message) {
+          toast.textContent = message;
+          toast.classList.add('visible');
+          window.clearTimeout(toastTimer);
+          toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 1800);
+        }
+      })();
+    </script>
+  </body>
+</html>

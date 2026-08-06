@@ -6,6 +6,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { parseSqliteInteger } from '../../../usage-numbers';
 import type { DashboardOverviewQuery } from '../types';
 import { aggregateRows, type ChartBucket, type OverviewRow } from '../usage-overview/aggregation';
+import { type ResolvedRange, resolveRange } from './range';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
@@ -210,19 +211,6 @@ function rootRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow
             : 0n,
     };
   });
-}
-
-type ResolvedRange = ReturnType<typeof resolveRange>;
-
-function resolveRange(range: DashboardOverviewRange, now: Date) {
-  if (range === '24h') {
-    return { start: new Date(now.getTime() - 24 * 60 * 60 * 1000), end: now, bucketUnit: 'hour' as const };
-  }
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  return { start, end: now, bucketUnit: 'day' as const };
 }
 
 function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): readonly ChartBucket[] {

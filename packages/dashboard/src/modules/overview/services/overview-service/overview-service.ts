@@ -89,10 +89,11 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
     refetchIntervalInBackground: false,
   });
 
-export const overviewDiagnosticsQueryOptions = () =>
+export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'diagnostics'],
-    queryFn: getOverviewDiagnostics,
+    queryKey: ['dashboard', 'overview', 'diagnostics', input.range],
+    queryFn: () => getOverviewDiagnostics(input),
+    placeholderData: keepPreviousData,
     refetchInterval: false,
     staleTime: 60_000,
   });
@@ -114,8 +115,10 @@ export const getOverview = async (input: OverviewQueryInput): Promise<OverviewDa
   return decodeOverview(await response.json());
 };
 
-export const getOverviewDiagnostics = async (): Promise<OverviewDiagnosticsData> => {
-  const response = await dashboardClient.dashboard.api.overview.diagnostics.$get();
+export const getOverviewDiagnostics = async (input: OverviewQueryInput): Promise<OverviewDiagnosticsData> => {
+  const response = await dashboardClient.dashboard.api.overview.diagnostics.$get({
+    query: { range: input.range },
+  });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverviewDiagnostics(await response.json());
 };

@@ -23,5 +23,7 @@ export const createDashboardOverviewRoute = (state: ServerState) =>
         summary: { ...overview.summary, providerCount: state.currentConfig().providers.length },
       });
     })
-    .get('/diagnostics', (context) => context.json(state.traceStore.overviewDashboardDiagnostics()))
+    .get('/diagnostics', overviewValidator, (context) =>
+      context.json(state.traceStore.overviewDashboardDiagnostics(context.req.valid('query'))),
+    )
     .get('/activity', (context) => context.json(state.traceStore.overviewDashboardActivity()));
