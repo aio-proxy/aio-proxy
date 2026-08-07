@@ -16,6 +16,9 @@ export async function rewriteAnthropicRawEffort(
   // integers and drop the client's exact byte representation).
   const bodyText = await readRequestText(raw);
   const body = bodySchema.parse(JSON.parse(bodyText));
+  const thinking = body['thinking'];
+  const thinkingDisabled =
+    typeof thinking === 'object' && thinking !== null && (thinking as { readonly type?: unknown }).type === 'disabled';
   const outputConfig = body['output_config'];
   const currentEffort =
     typeof outputConfig === 'object' &&
@@ -23,11 +26,17 @@ export async function rewriteAnthropicRawEffort(
     typeof (outputConfig as { effort?: unknown }).effort === 'string'
       ? (outputConfig as { effort: string }).effort
       : undefined;
-  const nextEffort = currentEffort === undefined ? undefined : normalizeEffort(currentEffort, supportedEfforts);
-  const nextOutputConfig =
-    nextEffort === undefined || nextEffort === currentEffort
-      ? outputConfig
-      : { ...(outputConfig as object), effort: nextEffort };
+  let nextOutputConfig = outputConfig;
+  if (thinkingDisabled && currentEffort !== undefined) {
+    const sanitized = { ...(outputConfig as Record<string, unknown>) };
+    delete sanitized['effort'];
+    nextOutputConfig = Object.keys(sanitized).length === 0 ? undefined : sanitized;
+  } else if (currentEffort !== undefined) {
+    const nextEffort = normalizeEffort(currentEffort, supportedEfforts);
+    if (nextEffort !== currentEffort) {
+      nextOutputConfig = { ...(outputConfig as object), effort: nextEffort };
+    }
+  }
 
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
@@ -43,7 +52,7 @@ export async function rewriteAnthropicRawEffort(
       : JSON.stringify({
           ...body,
           model: resolvedModel,
-          ...(nextOutputConfig === undefined ? {} : { output_config: nextOutputConfig }),
+          output_config: nextOutputConfig,
         });
   return new Request(raw, {
     method: raw.method,
