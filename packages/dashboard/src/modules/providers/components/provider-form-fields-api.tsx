@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { ProtocolLabel } from '@/components/protocol-label';
 
-import { ProviderFormMode, type ProviderFormStep } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
+import { ProviderFormMode, type ProviderFormStep } from '../lib/constants';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderHeadersField } from './provider-headers-field';

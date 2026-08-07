@@ -4,7 +4,7 @@ import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-p
 import { PlusIcon, WaypointsIcon } from 'lucide-react';
 import type { FC } from 'react';
 
-import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../alias-editor';
+import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
 import { ProviderAliasCard } from './provider-alias-card';
 import { ProviderAliasDraft } from './provider-alias-draft';
 

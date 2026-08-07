@@ -16,12 +16,10 @@ import { type FC, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { aliasEditorIssues, aliasIssueControlId } from '../alias-editor';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
 import { ProviderFormFieldsAiSdk } from '../components/provider-form-fields-ai-sdk';
 import { ProviderFormFieldsApi } from '../components/provider-form-fields-api';
 import { ProviderValidateStep } from '../components/provider-validate-step';
-import { ProviderFormMode, type ProviderFormStep, PROVIDER_KIND_LABEL } from '../constants';
 import {
   type ProviderEditorKind,
   type ProviderFormInitial,
@@ -29,6 +27,8 @@ import {
   useProviderForm,
 } from '../hooks/use-provider-form';
 import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
+import { aliasEditorIssues, aliasIssueControlId } from '../lib/alias-editor';
+import { ProviderFormMode, type ProviderFormStep, PROVIDER_KIND_LABEL } from '../lib/constants';
 
 interface ProviderFormPageProps {
   mode: ProviderFormMode;

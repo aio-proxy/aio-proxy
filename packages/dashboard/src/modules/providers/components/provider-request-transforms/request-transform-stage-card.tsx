@@ -4,7 +4,7 @@ import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
 
-import type { RequestTransformStageDraft } from '../../request-transforms';
+import type { RequestTransformStageDraft } from '../../lib/request-transforms';
 import {
   buildRequestTransformStageDraft,
   requestTransformStageControlValues,

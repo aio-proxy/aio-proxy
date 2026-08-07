@@ -9,7 +9,6 @@ import { useSettingsMutation } from '.';
 const mocks = rs.hoisted(() => ({ update: rs.fn() }));
 
 rs.mock('../../services/settings-service', () => ({
-  settingsQueryKey: ['settings'],
   updateSettingsMutationFn: mocks.update,
 }));
 

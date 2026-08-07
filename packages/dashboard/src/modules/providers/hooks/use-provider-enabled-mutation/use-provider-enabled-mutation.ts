@@ -1,16 +1,18 @@
 import type { DashboardProvidersResponse } from '@aio-proxy/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { providersQueryKey, updateProviderEnabledMutationFn } from '../../services/providers-service';
+import { queryKeys } from '@/lib/query-keys';
+
+import { updateProviderEnabledMutationFn } from '../../services/providers-service';
 
 export const useProviderEnabledMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateProviderEnabledMutationFn,
     onMutate: async ({ id, enabled }) => {
-      await queryClient.cancelQueries({ queryKey: providersQueryKey });
-      const previous = queryClient.getQueryData<DashboardProvidersResponse>(providersQueryKey);
-      queryClient.setQueryData<DashboardProvidersResponse>(providersQueryKey, (current) =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.providers });
+      const previous = queryClient.getQueryData<DashboardProvidersResponse>(queryKeys.providers);
+      queryClient.setQueryData<DashboardProvidersResponse>(queryKeys.providers, (current) =>
         current === undefined
           ? current
           : {
@@ -23,9 +25,9 @@ export const useProviderEnabledMutation = () => {
     },
     onError: (_error, _variables, context) => {
       if (context?.previous !== undefined) {
-        queryClient.setQueryData(providersQueryKey, context.previous);
+        queryClient.setQueryData(queryKeys.providers, context.previous);
       }
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: providersQueryKey }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.providers }),
   });
 };

@@ -3,6 +3,7 @@ import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 type DashboardOverviewWireResponse = InferResponseType<typeof dashboardClient.dashboard.api.overview.$get, 200>;
 type DashboardOverviewDiagnosticsWireResponse = InferResponseType<
@@ -84,7 +85,7 @@ export type OverviewQueryInput = {
 
 export const overviewQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'range', input.range],
+    queryKey: queryKeys.overviewRange(input.range),
     queryFn: () => getOverview(input),
     placeholderData: keepPreviousData,
     refetchInterval: input.range === '24h' ? 5_000 : false,
@@ -93,7 +94,7 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
 
 export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'diagnostics', input.range],
+    queryKey: queryKeys.overviewDiagnostics(input.range),
     queryFn: () => getOverviewDiagnostics(input),
     placeholderData: keepPreviousData,
     refetchInterval: false,
@@ -102,7 +103,7 @@ export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
 
 export const overviewActivityQueryOptions = () =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'activity'],
+    queryKey: queryKeys.overviewActivity,
     queryFn: getOverviewActivity,
     placeholderData: keepPreviousData,
     refetchInterval: false,

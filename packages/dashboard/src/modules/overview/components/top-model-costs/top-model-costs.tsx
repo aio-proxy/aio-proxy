@@ -2,7 +2,7 @@ import { getLocale, m } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Progress, ProgressLabel, ProgressValue } from '@aio-proxy/ui/components/progress';
 
-import { formatNanoUsd } from '@/modules/usage/services/usage-value-formatter';
+import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
 

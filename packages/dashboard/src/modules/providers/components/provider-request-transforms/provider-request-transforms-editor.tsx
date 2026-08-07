@@ -3,7 +3,7 @@ import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useEffect, useMemo, useState } from 'react';
 
-import { parseRequestTransformCondition, parseRequestTransformStages } from '../../request-transforms';
+import { parseRequestTransformCondition, parseRequestTransformStages } from '../../lib/request-transforms';
 import { ProviderRequestTransformsJsonEditor } from './provider-request-transforms-json-editor';
 import { ProviderRequestTransformsVisualEditor } from './provider-request-transforms-visual-editor';
 

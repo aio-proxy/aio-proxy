@@ -9,7 +9,6 @@ import { useProviderEnabledMutation } from '.';
 const mocks = rs.hoisted(() => ({ update: rs.fn() }));
 
 rs.mock('../../services/providers-service', () => ({
-  providersQueryKey: ['providers'],
   updateProviderEnabledMutationFn: mocks.update,
 }));
 

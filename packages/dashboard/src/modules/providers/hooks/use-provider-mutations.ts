@@ -2,6 +2,8 @@ import { m } from '@aio-proxy/i18n';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { queryKeys } from '@/lib/query-keys';
+
 import {
   createProviderMutationFn,
   deleteProviderMutationFn,
@@ -13,7 +15,7 @@ export function useProviderCreate() {
   return useMutation({
     mutationFn: createProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       toast.add({ type: 'success', title: m['dashboard.providers.toast.created']() });
     },
     onError: () => {
@@ -27,7 +29,7 @@ export function useProviderUpdate() {
   return useMutation({
     mutationFn: updateProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       toast.add({ type: 'success', title: m['dashboard.providers.toast.updated']() });
     },
     onError: () => {
@@ -41,7 +43,7 @@ export function useProviderDelete() {
   return useMutation({
     mutationFn: deleteProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       toast.add({ type: 'success', title: m['dashboard.providers.toast.deleted']() });
     },
     onError: () => {

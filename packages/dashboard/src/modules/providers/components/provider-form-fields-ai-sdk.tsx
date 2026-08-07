@@ -6,9 +6,9 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 
-import { type ProviderFormMode, type ProviderFormStep } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
+import { type ProviderFormMode, type ProviderFormStep } from '../lib/constants';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderModelsField } from './provider-models-field';

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 
-import { ProviderFormMode } from '../../constants';
+import { ProviderFormMode } from '../../lib/constants';
 import { useProviderForm } from '../use-provider-form';
 import { useProviderCatalogMutation } from './use-provider-catalog-mutation';
 

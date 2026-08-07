@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@rstest/core';
 
+import { aliasSummaryMessage } from '../alias-editor-copy';
 import { aliasEditorIssues, aliasIssueControlId, aliasSummary, preserveReferenceCount } from './alias-editor';
-import { aliasSummaryMessage } from './alias-editor-copy';
 import { alias } from './alias-editor.test-support';
 
 describe('provider alias editor summary and issues', () => {

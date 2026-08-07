@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useId } from 'react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
-import { createUsageValueFormatter } from '@/modules/usage/services/usage-value-formatter';
+import { createUsageValueFormatter } from '@/lib/nano-usd';
 
 import type { OverviewData } from '../../services/overview-service';
 

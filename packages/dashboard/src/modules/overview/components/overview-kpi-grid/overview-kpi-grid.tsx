@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { COMPACT_TOKEN_LOCALE, formatCompactTokenCount, formatExactTokenCount } from '@/components/token-count';
-import { formatNanoUsd, nanoUsdFormatOptions, nanoUsdToDecimal } from '@/modules/usage/services/usage-value-formatter';
+import { formatNanoUsd, nanoUsdFormatOptions, nanoUsdToDecimal } from '@/lib/nano-usd';
 
 import type { OverviewData } from '../../services/overview-service';
 import { KpiNumber } from './kpi-number';

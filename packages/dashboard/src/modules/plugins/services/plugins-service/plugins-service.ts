@@ -7,6 +7,7 @@ import { queryOptions } from '@tanstack/react-query';
 import type { InferRequestType } from 'hono/client';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const pluginsClient = createDashboardClient().dashboard.api.plugins;
 
@@ -36,12 +37,9 @@ const throwPluginRequestError = async (response: {
   throw new PluginRequestError(result.error.code, response.status, result.error.providerIds);
 };
 
-export const pluginsQueryKey = ['plugins'] as const;
-export const pluginEditViewQueryKey = (packageName: string) => ['plugins', packageName, 'edit-view'] as const;
-
 export const pluginsQueryOptions = () =>
   queryOptions({
-    queryKey: pluginsQueryKey,
+    queryKey: queryKeys.plugins,
     queryFn: async (): Promise<{ plugins: readonly DashboardPluginSummary[] }> => {
       const response = await pluginsClient.$get();
       if (!response.ok) return throwPluginRequestError(response);
@@ -53,7 +51,7 @@ export const pluginsQueryOptions = () =>
 
 export const pluginEditViewQueryOptions = (packageName: string) =>
   queryOptions({
-    queryKey: pluginEditViewQueryKey(packageName),
+    queryKey: queryKeys.pluginEditView(packageName),
     queryFn: async (): Promise<DashboardPluginEditView> => {
       const response = await pluginsClient['edit-view'].$get({ query: { packageName } });
       if (!response.ok) return throwPluginRequestError(response);

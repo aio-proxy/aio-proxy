@@ -6,14 +6,13 @@ import type {
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
-export const providersQueryKey = ['providers'] as const;
-
 export const providersQueryOptions = () =>
   queryOptions({
-    queryKey: providersQueryKey,
+    queryKey: queryKeys.providers,
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers.$get();
       return response.json();
@@ -22,7 +21,7 @@ export const providersQueryOptions = () =>
 
 export const providerEditViewQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: ['providers', id, 'edit-view'],
+    queryKey: queryKeys.providerEditView(id),
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers[':id']['edit-view'].$get({
         param: { id },
@@ -81,7 +80,7 @@ export const updateProviderEnabledMutationFn = async ({
 
 export const probeProviderQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: ['providers', id, 'probe'],
+    queryKey: queryKeys.providerProbe(id),
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers[':id'].$get({
         param: { id },

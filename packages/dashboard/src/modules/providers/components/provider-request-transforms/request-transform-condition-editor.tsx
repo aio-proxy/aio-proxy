@@ -14,7 +14,7 @@ import {
 
 import 'react-querybuilder/dist/query-builder.css';
 
-import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../request-transforms';
+import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../lib/request-transforms';
 import { QueryBuilderShadcn } from './query-builder';
 import {
   allowRequestTransformFunctionsOnLhs,

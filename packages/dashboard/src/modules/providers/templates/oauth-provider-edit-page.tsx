@@ -8,7 +8,7 @@ import { PageContainer } from '@/components/page-container';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';
 import { OAuthProviderEditFields } from '../components/oauth-provider-edit-fields';
-import { PROVIDER_KIND_LABEL } from '../constants';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { useOAuthProviderEditPage } from './use-oauth-provider-edit-page';
 
 interface OAuthProviderEditPageProps {

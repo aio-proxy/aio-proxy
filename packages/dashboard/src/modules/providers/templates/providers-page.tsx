@@ -15,7 +15,7 @@ import type React from 'react';
 import { PageContainer } from '@/components/page-container';
 
 import { ProvidersTable } from '../components/providers-table';
-import { PROVIDER_KIND_LABEL } from '../constants';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {

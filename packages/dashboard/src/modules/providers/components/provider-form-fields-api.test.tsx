@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
-import { ProviderFormMode } from '../constants';
 import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
+import { ProviderFormMode } from '../lib/constants';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn() }));

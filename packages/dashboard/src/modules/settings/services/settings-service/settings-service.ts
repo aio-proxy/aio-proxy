@@ -6,14 +6,13 @@ import type {
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
-export const settingsQueryKey = ['settings'] as const;
-
 export const settingsQueryOptions = () =>
   queryOptions({
-    queryKey: settingsQueryKey,
+    queryKey: queryKeys.settings,
     queryFn: async (): Promise<DashboardSettingsView> => {
       const response = await dashboardClient.dashboard.api.settings.$get();
       if (!response.ok) throw new Error(`load settings failed: ${response.status}`);

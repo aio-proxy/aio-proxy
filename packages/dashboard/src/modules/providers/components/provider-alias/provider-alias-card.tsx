@@ -5,7 +5,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Trash2Icon } from 'lucide-react';
 import { type FC, useState } from 'react';
 
-import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../alias-editor';
+import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
 import { ProviderAliasConfigFields } from './provider-alias-config-fields';
 import { ProviderAliasDeleteDialog } from './provider-alias-delete-dialog';
 import { ProviderAliasVariants } from './provider-alias-variants';

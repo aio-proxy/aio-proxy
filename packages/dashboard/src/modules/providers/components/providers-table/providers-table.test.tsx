@@ -3,7 +3,7 @@ import { afterEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { ProvidersTable } from '.';
-import { providerStub } from '../../provider-fixtures';
+import { providerStub } from '../../lib/provider-fixtures';
 
 const mocks = rs.hoisted(() => ({
   toggle: rs.fn(),

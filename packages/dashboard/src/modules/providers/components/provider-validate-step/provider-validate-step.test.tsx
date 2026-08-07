@@ -5,8 +5,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type React from 'react';
 import type { ReactNode } from 'react';
 
-import { ProviderFormMode } from '../../constants';
 import { type ProviderForm, useProviderForm } from '../../hooks/use-provider-form';
+import { ProviderFormMode } from '../../lib/constants';
 import { ProviderValidateStep } from './provider-validate-step';
 
 const mocks = rs.hoisted(() => ({ testDraft: rs.fn() }));

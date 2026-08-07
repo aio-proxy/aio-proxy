@@ -8,12 +8,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
-import { aliasEditorIssues, aliasIssueControlId } from '../alias-editor';
+import { queryKeys } from '@/lib/query-keys';
+
 import { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
 import { useProviderUpdate } from '../hooks/use-provider-mutations';
-import { oauthAccountSubmission } from '../services/oauth-account-submission';
-import { oauthProviderEditAction } from '../services/oauth-provider-edit';
+import { aliasEditorIssues, aliasIssueControlId } from '../lib/alias-editor';
+import { oauthAccountSubmission } from '../lib/oauth-account-submission';
+import { oauthProviderEditAction } from '../lib/oauth-provider-edit';
 import {
   cancelOAuthSession,
   oauthSessionQueryOptions,
@@ -107,7 +109,7 @@ export const useOAuthProviderEditPage = ({
       popup.current = null;
     }
     if (session?.status === 'succeeded') {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void navigate({
         to: '/providers',
         search: {

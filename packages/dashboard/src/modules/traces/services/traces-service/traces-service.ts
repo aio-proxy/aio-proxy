@@ -2,6 +2,7 @@ import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 import type { TraceSearch } from '../../lib/trace-search';
 
@@ -17,7 +18,7 @@ export class DashboardTracesRequestError extends Error {
 
 export const tracesQueryOptions = (search: TraceSearch, autoRefresh: boolean) =>
   queryOptions({
-    queryKey: ['dashboard', 'traces', search],
+    queryKey: queryKeys.traces(search),
     queryFn: () => getTraces(search),
     refetchInterval: autoRefresh && search.pageToken === undefined ? 5_000 : false,
     refetchIntervalInBackground: false,
@@ -26,7 +27,7 @@ export const tracesQueryOptions = (search: TraceSearch, autoRefresh: boolean) =>
 
 export const traceQueryOptions = (traceId: string) =>
   queryOptions({
-    queryKey: ['dashboard', 'traces', traceId],
+    queryKey: queryKeys.trace(traceId),
     queryFn: () => getTrace(traceId),
   });
 

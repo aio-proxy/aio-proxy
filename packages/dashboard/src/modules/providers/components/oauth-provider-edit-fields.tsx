@@ -7,9 +7,9 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 
-import { ProviderFormMode } from '../constants';
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { ProviderFormMode } from '../lib/constants';
 import { OAuthAccountFields } from './oauth-account-fields';
 import { OAuthProviderAliasFields } from './oauth-provider-alias-fields';
 import { ProviderProxyField } from './provider-proxy-field';

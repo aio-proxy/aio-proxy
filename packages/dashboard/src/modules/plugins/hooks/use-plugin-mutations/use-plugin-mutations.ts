@@ -1,19 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { providersQueryKey } from '@/modules/providers/services/providers-service';
+import { queryKeys } from '@/lib/query-keys';
 
 import {
   installPluginMutationFn,
-  pluginEditViewQueryKey,
-  pluginsQueryKey,
   uninstallPluginMutationFn,
   updatePluginOptionsMutationFn,
 } from '../../services/plugins-service';
 
 const invalidateControlPlane = async (queryClient: ReturnType<typeof useQueryClient>) => {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: pluginsQueryKey }),
-    queryClient.invalidateQueries({ queryKey: providersQueryKey }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.plugins }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.providers }),
   ]);
 };
 
@@ -30,7 +28,7 @@ export const usePluginOptionsMutation = () => {
   return useMutation({
     mutationFn: updatePluginOptionsMutationFn,
     onSuccess: async (result) => {
-      queryClient.setQueryData(pluginEditViewQueryKey(result.plugin.packageName), result.plugin);
+      queryClient.setQueryData(queryKeys.pluginEditView(result.plugin.packageName), result.plugin);
       await invalidateControlPlane(queryClient);
     },
   });
