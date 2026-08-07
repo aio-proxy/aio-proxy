@@ -129,7 +129,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScrollArea className="min-h-0 flex-1 **:data-[slot=table-container]:overflow-visible">
+      <ScrollArea className="min-h-0 min-w-0 flex-1 **:data-[slot=table-container]:overflow-visible">
         <div data-slot="traces-table-scroll-content" className="px-3 sm:px-4">
           <Table>
             <TableHeader>
@@ -170,7 +170,10 @@ export const TracesTable: React.FC<TracesTableProps> = ({
             </TableBody>
           </Table>
         </div>
-        <ScrollBar orientation="horizontal" />
+        <ScrollBar
+          className="opacity-0 transition-opacity data-hovering:opacity-100 data-scrolling:opacity-100"
+          orientation="horizontal"
+        />
       </ScrollArea>
       <div data-slot="traces-table-pagination" className="shrink-0 border-t px-3 pt-3 sm:px-4">
         <PaginationControls

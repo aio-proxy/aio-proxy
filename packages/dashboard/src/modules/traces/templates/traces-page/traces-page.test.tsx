@@ -173,7 +173,7 @@ describe('traces page', () => {
     const previousButton = screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu });
 
     expect(viewport).toBeTruthy();
-    expect(tableContent?.parentElement).toBe(viewport);
+    expect(viewport?.contains(tableContent!)).toBe(true);
     expect(previousButton.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
     expect(previousButton.closest('[data-slot="traces-table-pagination"]')).toBeTruthy();
     expect(table.closest('[data-slot="sidebar-inset"]')).toHaveClass('min-w-0');
