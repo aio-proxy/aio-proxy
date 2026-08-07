@@ -99,20 +99,7 @@ describe('providers page', () => {
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('1');
     expect(row.getByLabelText(/Edit provider carpool|编辑提供商 carpool/u)).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: /Details|详情/u })).toBeNull();
-    expect(screen.getByRole('button', { name: /Provider columns|提供商列/u })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Previous|上一页/u })).toBeNull();
-  });
-
-  test('filters providers from the table filter control', () => {
-    queryMocks.providers.providers = [providerStub({ id: 'keep-provider' }), providerStub({ id: 'hide-provider' })];
-    render(<ProvidersPage />);
-
-    fireEvent.change(screen.getByRole('textbox', { name: /Filter providers|筛选提供商/u }), {
-      target: { value: 'keep' },
-    });
-
-    expect(screen.getByTestId('provider-row-keep-provider')).toBeTruthy();
-    expect(screen.queryByTestId('provider-row-hide-provider')).toBeNull();
   });
 
   test('keeps an invalid Provider diagnostic and non-actionable', () => {

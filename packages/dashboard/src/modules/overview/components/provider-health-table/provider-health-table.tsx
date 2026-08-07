@@ -3,12 +3,11 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
-import { flexRender } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { Fragment, useMemo } from 'react';
 
 import { PaginationControls } from '@/components/pagination-controls';
-import { useDataTable } from '@/hooks/use-data-table';
+import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
 
@@ -20,7 +19,7 @@ type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
 
 const sortableHeader =
   (label: () => string) =>
-  ({ column }: HeaderContext<ProviderHealthRow, unknown>) => {
+  ({ column }: HeaderContext<DataTableFeatures, ProviderHealthRow, unknown>) => {
     const canSort = column.getCanSort();
     const sortDirection = column.getIsSorted();
     return (
@@ -51,7 +50,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
   'use no memo';
 
   const locale = getLocale();
-  const columns = useMemo<readonly ColumnDef<ProviderHealthRow>[]>(() => {
+  const columns = useMemo<readonly ColumnDef<DataTableFeatures, ProviderHealthRow>[]>(() => {
     const percentFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1, style: 'percent' });
     return [
       {
@@ -89,7 +88,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <Fragment key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                   </Fragment>
                 ))}
               </TableRow>
@@ -99,7 +98,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={table.getVisibleLeafColumns().length}
+                  colSpan={table.getAllLeafColumns().length}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {m['dashboard.overview.no_provider_activity']()}
@@ -108,8 +107,10 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
             ) : (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                  {row.getAllCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -118,7 +119,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
         </Table>
         {table.getPageCount() > 1 ? (
           <PaginationControls
-            pageSize={table.getState().pagination.pageSize}
+            pageSize={table.state.pagination.pageSize}
             canPrevious={table.getCanPreviousPage()}
             canNext={table.getCanNextPage()}
             onShowSizeChange={table.setPageSize}

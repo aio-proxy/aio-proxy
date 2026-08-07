@@ -5,11 +5,13 @@ import type { Row } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
 
+import type { DataTableFeatures } from '@/hooks/use-data-table';
+
 import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {
-  readonly row: Row<ProviderTableRow>;
+  readonly row: Row<DataTableFeatures, ProviderTableRow>;
   readonly columnCount: number;
 }
 

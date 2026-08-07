@@ -4,13 +4,13 @@ import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import { flexRender, type ColumnDef, type HeaderContext } from '@tanstack/react-table';
+import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 import { Fragment, useMemo, useRef } from 'react';
 
 import { PaginationControls } from '@/components/pagination-controls';
-import { useDataTable } from '@/hooks/use-data-table';
+import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
 import { PluginUninstallDialog, type PluginUninstallDialogRef } from './plugin-uninstall-dialog';
@@ -21,7 +21,7 @@ interface PluginsTableProps {
 
 const sortableHeader =
   (label: () => string) =>
-  ({ column }: HeaderContext<DashboardPluginSummary, unknown>) => {
+  ({ column }: HeaderContext<DataTableFeatures, DashboardPluginSummary, unknown>) => {
     const canSort = column.getCanSort();
     const sortDirection = column.getIsSorted();
     return (
@@ -51,7 +51,7 @@ const sortableHeader =
 const createPluginColumns = (
   optionsRef: React.RefObject<PluginOptionsDrawerRef | null>,
   uninstallRef: React.RefObject<PluginUninstallDialogRef | null>,
-): ColumnDef<DashboardPluginSummary>[] => [
+): ColumnDef<DataTableFeatures, DashboardPluginSummary>[] => [
   {
     id: 'packageName',
     accessorKey: 'packageName',
@@ -140,7 +140,7 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
                 <Fragment key={header.id}>
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                 </Fragment>
               ))}
             </TableRow>
@@ -149,9 +149,9 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
         <TableBody>
           {table.getRowModel().rows.map((row) => (
             <TableRow key={row.id} data-testid={`plugin-row-${row.original.packageName}`}>
-              {row.getVisibleCells().map((cell) => (
+              {row.getAllCells().map((cell) => (
                 <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'text-right' : undefined}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  <table.FlexRender cell={cell} />
                 </TableCell>
               ))}
             </TableRow>
@@ -160,7 +160,7 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
       </Table>
       {table.getPageCount() > 1 ? (
         <PaginationControls
-          pageSize={table.getState().pagination.pageSize}
+          pageSize={table.state.pagination.pageSize}
           canPrevious={table.getCanPreviousPage()}
           canNext={table.getCanNextPage()}
           onShowSizeChange={table.setPageSize}

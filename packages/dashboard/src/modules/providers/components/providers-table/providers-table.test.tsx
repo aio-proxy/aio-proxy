@@ -136,16 +136,6 @@ describe('providers table', () => {
     expect(screen.queryByTestId('provider-row-api-0')).toBeNull();
   });
 
-  test('expands an OAuth group when its child Provider ID matches the filter', () => {
-    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
-
-    fireEvent.change(screen.getByRole('textbox', { name: /Filter providers|筛选提供商/u }), {
-      target: { value: 'copilot-two' },
-    });
-
-    expect(screen.getByTestId('provider-row-copilot-two')).toBeTruthy();
-  });
-
   test('distinguishes an unavailable Provider weight from an explicit zero', () => {
     render(
       <ProvidersTable
@@ -162,7 +152,7 @@ describe('providers table', () => {
     expect(zero.queryByText('N/A')).toBeNull();
   });
 
-  test('sorts Provider rows and hides a selected column', async () => {
+  test('sorts Provider rows without rendering table toolbar controls', () => {
     render(
       <ProvidersTable
         providers={[
@@ -181,10 +171,8 @@ describe('providers table', () => {
       'provider-row-alpha',
       'provider-row-zulu',
     ]);
-
-    fireEvent.click(screen.getByRole('button', { name: /Provider columns|提供商列/u }));
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^Protocol$|^协议$/u }));
-    expect(screen.queryByRole('columnheader', { name: /^Protocol$|^协议$/u })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /Filter providers|筛选提供商/u })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Provider columns|提供商列/u })).toBeNull();
   });
 });
 

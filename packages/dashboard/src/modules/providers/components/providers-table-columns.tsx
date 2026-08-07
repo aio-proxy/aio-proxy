@@ -8,6 +8,8 @@ import { startCase } from 'es-toolkit/string';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 
+import type { DataTableFeatures } from '@/hooks/use-data-table';
+
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
 import { ProviderEnabledSwitch } from './provider-enabled-switch';
@@ -30,7 +32,7 @@ const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | und
 
 const sortableHeader =
   (label: () => string) =>
-  ({ column }: HeaderContext<ProviderTableRow, unknown>) => {
+  ({ column }: HeaderContext<DataTableFeatures, ProviderTableRow, unknown>) => {
     const canSort = column.getCanSort();
     const sortDirection = column.getIsSorted();
     return (
@@ -57,19 +59,7 @@ const sortableHeader =
     );
   };
 
-export const providerColumnLabel = (columnId: string): string => {
-  if (columnId === 'provider') return m['dashboard.providers.table.col_provider']();
-  if (columnId === 'type') return m['dashboard.providers.table.col_type']();
-  if (columnId === 'protocol') return m['dashboard.providers.table.col_protocol']();
-  if (columnId === 'models') return m['dashboard.providers.table.col_models']();
-  if (columnId === 'weight') return m['dashboard.providers.table.col_weight']();
-  if (columnId === 'state') return m['dashboard.providers.table.col_state']();
-  if (columnId === 'enabled') return m['dashboard.providers.table.col_enabled']();
-  if (columnId === 'actions') return m['dashboard.providers.table.col_actions']();
-  throw new Error(`Unknown Provider column: ${columnId}`);
-};
-
-const providerColumn: ColumnDef<ProviderTableRow> = {
+const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'provider',
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
@@ -101,7 +91,7 @@ const providerColumn: ColumnDef<ProviderTableRow> = {
   },
 };
 
-const typeColumn: ColumnDef<ProviderTableRow> = {
+const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
@@ -121,7 +111,7 @@ const typeColumn: ColumnDef<ProviderTableRow> = {
   },
 };
 
-const protocolColumn: ColumnDef<ProviderTableRow> = {
+const protocolColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'protocol',
   accessorFn: (row) => (row.rowType === 'provider' && row.provider.kind === 'api' ? (row.provider.protocol ?? '') : ''),
   header: sortableHeader(() => m['dashboard.providers.table.col_protocol']()),
@@ -131,7 +121,7 @@ const protocolColumn: ColumnDef<ProviderTableRow> = {
   },
 };
 
-const modelsColumn: ColumnDef<ProviderTableRow> = {
+const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
@@ -144,7 +134,7 @@ const modelsColumn: ColumnDef<ProviderTableRow> = {
   },
 };
 
-const weightColumn: ColumnDef<ProviderTableRow> = {
+const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
   accessorFn: (row) => concreteProvider(row)?.weight,
   header: sortableHeader(() => m['dashboard.providers.table.col_weight']()),
@@ -154,7 +144,7 @@ const weightColumn: ColumnDef<ProviderTableRow> = {
   },
 };
 
-const stateColumn: ColumnDef<ProviderTableRow> = {
+const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
   accessorFn: (row) => {
     const provider = concreteProvider(row);
@@ -171,7 +161,7 @@ const stateColumn: ColumnDef<ProviderTableRow> = {
 
 export const createProviderColumns = (
   deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
-): ColumnDef<ProviderTableRow>[] => [
+): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
   providerColumn,
   typeColumn,
   protocolColumn,
