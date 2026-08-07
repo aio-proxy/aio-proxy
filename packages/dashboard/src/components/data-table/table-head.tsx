@@ -25,7 +25,7 @@ export const TableHead: React.FC<TableHeadProps> = ({ column, label, sortDirecti
       }
     >
       {canSort ? (
-        <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
+        <Button className="-ml-3" variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
           {label}
           {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
         </Button>
