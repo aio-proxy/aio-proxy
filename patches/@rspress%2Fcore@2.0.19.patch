@@ -1,0 +1,11 @@
+diff --git a/dist/theme/components/DocContent/index.js b/dist/theme/components/DocContent/index.js
+--- a/dist/theme/components/DocContent/index.js
++++ b/dist/theme/components/DocContent/index.js
+@@ -2,7 +2,6 @@ import { jsx, jsxs } from "react/jsx-runtime";
+ import { MDXProvider } from "@mdx-js/react";
+ import { Content, usePage, useSite } from "@rspress/core/runtime";
+ import { Callout, FallbackHeading, getCustomMDXComponent, useScrollAfterNav } from "@rspress/core/theme";
+-import "./doc.css";
+ function FallbackTitle() {
+     const { site } = useSite();
+     const { page } = usePage();

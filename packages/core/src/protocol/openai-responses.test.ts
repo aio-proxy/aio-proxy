@@ -56,6 +56,20 @@ test('forwards the original body bytes verbatim when model, background, and effo
   expect(await forwarded.text()).toBe(bodyText);
 });
 
+test('accepts null instructions before raw forwarding', async () => {
+  const bodyText = '{"model":"upstream-model","input":"hi","instructions":null}';
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), {});
+
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
 test('reports a safe diagnostic when background mode is downgraded', async () => {
   const raw = new Request('https://proxy.test/v1/responses', {
     method: 'POST',

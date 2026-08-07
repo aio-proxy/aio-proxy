@@ -1,5 +1,28 @@
 # @aio-proxy/dashboard
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [[`04ed2df`](https://github.com/aio-proxy/aio-proxy/commit/04ed2dff458272169af2bf04c36cfc09372f6557)]:
+  - @aio-proxy/server@0.6.2
+  - @aio-proxy/i18n@0.6.2
+  - @aio-proxy/plugin-sdk@0.6.2
+  - @aio-proxy/types@0.6.2
+  - @aio-proxy/ui@0.6.2
+
+## 0.6.1
+
+### Patch Changes
+
+- [#138](https://github.com/aio-proxy/aio-proxy/pull/138) [`0ac7bd1`](https://github.com/aio-proxy/aio-proxy/commit/0ac7bd11bdf3334aee3bb46576f4b61e2ac24ee7) Thanks [@baranwang](https://github.com/baranwang)! - Add the Rspress documentation site and its shared UI foundation.
+- Updated dependencies [[`0ac7bd1`](https://github.com/aio-proxy/aio-proxy/commit/0ac7bd11bdf3334aee3bb46576f4b61e2ac24ee7)]:
+  - @aio-proxy/i18n@0.6.1
+  - @aio-proxy/ui@0.6.1
+  - @aio-proxy/server@0.6.1
+  - @aio-proxy/plugin-sdk@0.6.1
+  - @aio-proxy/types@0.6.1
+
 ## 0.6.0
 
 ### Patch Changes

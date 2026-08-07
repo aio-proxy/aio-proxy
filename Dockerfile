@@ -29,7 +29,7 @@ COPY --from=prune /src/out/json/ ./
 RUN bun install --frozen-lockfile
 # Now the source; a source edit invalidates from here, not the install above.
 COPY --from=prune /src/out/full/ ./
-RUN bun run build
+RUN bunx turbo run build
 RUN case "$TARGETARCH" in \
       amd64) SUFFIX=linux-x64-musl ;; \
       arm64) SUFFIX=linux-arm64-musl ;; \

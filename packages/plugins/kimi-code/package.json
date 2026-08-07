@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-kimi-code",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "private": true,
   "files": [
     "dist"

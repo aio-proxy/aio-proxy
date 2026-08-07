@@ -18,7 +18,7 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}

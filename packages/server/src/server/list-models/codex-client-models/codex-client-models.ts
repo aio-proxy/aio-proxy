@@ -1,9 +1,40 @@
 import type { ServerState } from '../../../server-state';
 import { resolveEnabledModels } from '../../model-resolution/index';
-import { assembleCodexModel } from './codex-assembly';
+import { assembleCodexModel, renderDefaultInstructions } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 
 type Options = { readonly fetchImpl?: typeof fetch; readonly signal?: AbortSignal };
+
+const nonEmpty = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value : undefined;
+
+// Codex client 0.146.0 imposes two constraints on each /v1/models row:
+//   1. base_instructions is a required String; a row missing it fails the whole
+//      `Vec<ModelInfo>` deserialization and empties the picker.
+//   2. At runtime the client prefers model_messages.instructions_template
+//      whenever the key is present (even when empty), and only falls back to
+//      base_instructions when the template is absent. A missing Option key
+//      deserializes to None, so an absent template is fine, but a present empty
+//      one would be used verbatim and yield an empty prompt.
+// Upstream gpt-5.6-* rows omit base_instructions and carry the prompt under
+// instructions_template. Resolve one non-empty text (existing template, else
+// base_instructions, else the bundled default) and write it back so both the
+// required field and the runtime-preferred field are non-empty. model_messages
+// is cloned before edit so the shared cache object is never mutated.
+function normalizeInstructions(row: Record<string, unknown>, slug: string): Record<string, unknown> {
+  const messages = row['model_messages'];
+  const hasMessages = typeof messages === 'object' && messages !== null;
+  const template = hasMessages ? (messages as { instructions_template?: unknown })['instructions_template'] : undefined;
+  const resolved = nonEmpty(template) ?? nonEmpty(row['base_instructions']) ?? renderDefaultInstructions(slug);
+
+  const patch: Record<string, unknown> = { base_instructions: resolved };
+  // Only rewrite the template when the client would otherwise read an empty one;
+  // an absent template is left absent so the client keeps falling back to base.
+  if (hasMessages && 'instructions_template' in (messages as object) && nonEmpty(template) === undefined) {
+    patch['model_messages'] = { ...(messages as object), instructions_template: resolved };
+  }
+  return patch;
+}
 
 export async function codexClientModels(
   state: ServerState,
@@ -30,7 +61,13 @@ export async function codexClientModels(
           ? {}
           : { context_window: model.contextWindow, max_context_window: model.contextWindow };
       templated.push({
-        entry: { ...row, ...contextOverride, slug: model.slug, id: model.slug },
+        entry: {
+          ...row,
+          ...normalizeInstructions(row, model.slug),
+          ...contextOverride,
+          slug: model.slug,
+          id: model.slug,
+        },
         priority: row.priority,
       });
       continue;
