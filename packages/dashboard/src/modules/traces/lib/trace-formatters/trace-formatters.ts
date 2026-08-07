@@ -1,7 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { UsageRow } from '@aio-proxy/types';
 
-import { createUsageValueFormatter } from '../../../usage/services/usage-value-formatter';
+import { createUsageValueFormatter } from '@/lib/nano-usd';
+
 import { TRACE_PLACEHOLDER } from '../trace-display-constants';
 
 export const displayTotalTokens = (usage: UsageRow | undefined) =>

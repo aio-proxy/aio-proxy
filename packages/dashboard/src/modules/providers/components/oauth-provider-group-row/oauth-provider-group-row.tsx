@@ -5,7 +5,7 @@ import type { Row } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
 
-import { PROVIDER_KIND_LABEL } from '../../constants';
+import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {

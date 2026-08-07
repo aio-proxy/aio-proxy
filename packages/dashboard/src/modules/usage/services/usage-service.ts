@@ -3,6 +3,7 @@ import { queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 type DashboardUsageWireResponse = InferResponseType<typeof dashboardClient.dashboard.api.usage.$get, 200>;
 
@@ -47,7 +48,7 @@ export type UsageQueryInput = {
 
 export const usageQueryOptions = (input: UsageQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'usage', input.range, input.metric, input.groupBy],
+    queryKey: queryKeys.usage(input.range, input.metric, input.groupBy),
     queryFn: () => getUsage(input),
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,

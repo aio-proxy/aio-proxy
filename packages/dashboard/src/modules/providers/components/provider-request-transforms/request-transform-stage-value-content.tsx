@@ -3,7 +3,7 @@ import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
 import type React from 'react';
 import { QueryBuilderStateProvider } from 'react-querybuilder';
 
-import { requestTransformFunctionMeta, type RequestTransformStageDraft } from '../../request-transforms';
+import { requestTransformFunctionMeta, type RequestTransformStageDraft } from '../../lib/request-transforms';
 import { QueryBuilderShadcn } from './query-builder';
 import { RequestTransformExpressionEditor } from './request-transform-expression-editor';
 import { RequestTransformStaticValueEditor } from './request-transform-static-value-editor';

@@ -2,8 +2,8 @@ import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from '@aio-pr
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
-import { aliasEditorIssues } from '../alias-editor';
-import type { ProviderFormMode, ProviderFormStep } from '../constants';
+import { aliasEditorIssues } from '../lib/alias-editor';
+import type { ProviderFormMode, ProviderFormStep } from '../lib/constants';
 
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
 export type ProviderEditorKind = ProviderKind.Api | ProviderKind.AiSdk;

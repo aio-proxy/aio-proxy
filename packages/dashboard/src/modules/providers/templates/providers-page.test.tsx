@@ -2,8 +2,8 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-import { DeleteProviderDialogStub } from '../delete-provider-dialog-stub';
-import { providerStub } from '../provider-fixtures';
+import { providerStub } from '../lib/provider-fixtures';
+import { DeleteProviderDialogStub } from './delete-provider-dialog-stub';
 import { ProvidersPage } from './providers-page';
 
 const queryMocks = rs.hoisted(() => ({

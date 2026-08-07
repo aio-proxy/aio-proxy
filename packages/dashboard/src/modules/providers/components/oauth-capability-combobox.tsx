@@ -11,7 +11,7 @@ import {
 import { Field } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 
-import { resolveDashboardText } from '../localized-text';
+import { resolveDashboardText } from '@/lib/localized-text';
 
 interface OAuthCapabilityComboboxProps {
   readonly capabilities: readonly DashboardOAuthCapability[];

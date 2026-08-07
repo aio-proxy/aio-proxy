@@ -14,9 +14,9 @@ import { useId } from 'react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { formatExactTokenCount } from '@/components/token-count';
+import { createUsageValueFormatter } from '@/lib/nano-usd';
 
 import type { UsageOverviewData, UsageOverviewSeries } from '../services/usage-service';
-import { createUsageValueFormatter } from '../services/usage-value-formatter';
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
 import { UsageTrendTabs } from './usage-trend-tabs';
 

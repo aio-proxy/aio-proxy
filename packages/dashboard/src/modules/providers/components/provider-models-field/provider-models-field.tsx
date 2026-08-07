@@ -8,9 +8,9 @@ import { useState } from 'react';
 
 import { TagsInput } from '@/components/tags-input';
 
-import { PROVIDER_MODELS_PLACEHOLDER } from '../../constants';
 import { useProviderCatalogMutation } from '../../hooks/use-provider-catalog-mutation';
 import type { ProviderForm } from '../../hooks/use-provider-form';
+import { PROVIDER_MODELS_PLACEHOLDER } from '../../lib/constants';
 import { ProviderModelMetadataDrawer } from './provider-model-metadata-drawer';
 
 interface ProviderModelsFieldProps {

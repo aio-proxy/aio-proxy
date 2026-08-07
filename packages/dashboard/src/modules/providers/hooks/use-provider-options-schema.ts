@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
+import { resolveLocalProviderOptionsSchema } from '../lib/resolve-provider-options-schema';
 import {
   installProviderPackage,
   ProviderPackageRequestError,
   providerPackageStatusQueryOptions,
 } from '../services/provider-options-schema-service';
-import { resolveLocalProviderOptionsSchema } from '../services/resolve-provider-options-schema';
 
 export type ProviderOptionsSchemaPhase =
   | 'idle'

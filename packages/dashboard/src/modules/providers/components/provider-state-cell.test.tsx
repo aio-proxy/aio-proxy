@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
 
-import { providerStub } from '../provider-fixtures';
+import { providerStub } from '../lib/provider-fixtures';
 import { ProviderStateCell } from './provider-state-cell';
 
 describe('provider state cell', () => {

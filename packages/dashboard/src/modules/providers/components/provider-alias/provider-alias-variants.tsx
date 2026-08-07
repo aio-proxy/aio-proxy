@@ -14,7 +14,7 @@ import {
   commitVariantDraft,
   type ProviderAlias,
   renameVariant,
-} from '../../alias-editor';
+} from '../../lib/alias-editor';
 import { ProviderVariantDraft } from '../provider-variant-draft';
 import { ProviderVariantRow } from '../provider-variant-row';
 

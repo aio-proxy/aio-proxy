@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { AnyFieldApi } from '@tanstack/react-form';
 import { useRef } from 'react';
 
-import { ProviderFormMode } from '../../constants';
+import { ProviderFormMode } from '../../lib/constants';
 
 type ProxyMode = 'unchanged' | 'inherit' | 'disabled' | 'url';
 

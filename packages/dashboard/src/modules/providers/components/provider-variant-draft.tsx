@@ -16,8 +16,8 @@ import { useForm } from '@tanstack/react-form';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { type FC, useState } from 'react';
 
-import type { AliasDraft, AliasEditResult } from '../alias-editor';
-import { aliasEditErrorMessage, type VisibleEditError } from '../alias-editor-copy';
+import type { AliasDraft, AliasEditResult } from '../lib/alias-editor';
+import { aliasEditErrorMessage, type VisibleEditError } from '../lib/alias-editor-copy';
 
 type Props = {
   readonly id: string;

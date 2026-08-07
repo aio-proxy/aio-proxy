@@ -3,7 +3,7 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import type React from 'react';
 
-import type { RequestTransformStageDraft } from '../../request-transforms';
+import type { RequestTransformStageDraft } from '../../lib/request-transforms';
 import {
   buildRequestTransformStageDraft,
   type RequestTransformStageControlValues,

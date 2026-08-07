@@ -22,8 +22,8 @@ import {
   aliasControlId,
   type ProviderAlias,
   preserveReferenceCount,
-} from '../../alias-editor';
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../alias-editor-copy';
+} from '../../lib/alias-editor';
+import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../lib/alias-editor-copy';
 
 type Props = {
   readonly alias: ProviderAlias;

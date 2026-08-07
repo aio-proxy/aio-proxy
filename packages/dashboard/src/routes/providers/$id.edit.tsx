@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
 import { PageContainer } from '@/components/page-container';
-import { ProviderFormMode } from '@/modules/providers/constants';
 import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
+import { ProviderFormMode } from '@/modules/providers/lib/constants';
 import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';
 import { OAuthProviderEditPage } from '@/modules/providers/templates/oauth-provider-edit-page';
 import { ProviderFormPage } from '@/modules/providers/templates/provider-form-page';

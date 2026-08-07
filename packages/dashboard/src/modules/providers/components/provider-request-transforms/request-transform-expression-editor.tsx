@@ -8,7 +8,7 @@ import {
   parseRequestTransformStages,
   requestTransformFunctionMeta,
   serializeRequestTransformStages,
-} from '../../request-transforms';
+} from '../../lib/request-transforms';
 import { getRequestTransformFields } from './request-transform-condition-metadata';
 
 const emptyQuery: DefaultRuleGroupType = { combinator: 'and', rules: [] };

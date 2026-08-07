@@ -8,7 +8,7 @@ import { startCase } from 'es-toolkit/string';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 
-import { PROVIDER_KIND_LABEL } from '../constants';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
 import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';

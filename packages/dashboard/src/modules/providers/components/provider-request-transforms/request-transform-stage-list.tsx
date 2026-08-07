@@ -8,7 +8,7 @@ import {
   parseRequestTransformStages,
   serializeRequestTransformStages,
   type RequestTransformStageDraft,
-} from '../../request-transforms';
+} from '../../lib/request-transforms';
 import { RequestTransformStageCard } from './request-transform-stage-card';
 
 export interface RequestTransformStageListProps {

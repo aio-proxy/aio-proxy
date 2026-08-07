@@ -7,7 +7,7 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
-import { resolveDashboardText } from '@/modules/providers/localized-text';
+import { resolveDashboardText } from '@/lib/localized-text';
 
 import type { PluginOptionsForm } from '../hooks/use-plugin-options-form';
 import { PluginSecretOptionsField } from './plugin-secret-options-field';

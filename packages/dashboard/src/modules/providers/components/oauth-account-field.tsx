@@ -9,8 +9,9 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
+import { resolveDashboardText } from '@/lib/localized-text';
+
 import type { OAuthProviderForm, OAuthProviderFormValues } from '../hooks/use-oauth-provider-form';
-import { resolveDashboardText } from '../localized-text';
 
 export interface FieldApi<T> {
   readonly state: { readonly value: T };

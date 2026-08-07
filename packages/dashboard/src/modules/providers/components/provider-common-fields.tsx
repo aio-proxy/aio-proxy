@@ -6,8 +6,8 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { kebabCase } from 'es-toolkit/string';
 import type React from 'react';
 
-import { ProviderFormMode } from '../constants';
 import type { useProviderForm } from '../hooks/use-provider-form';
+import { ProviderFormMode } from '../lib/constants';
 
 interface ProviderCommonFieldsProps {
   form: ReturnType<typeof useProviderForm>;

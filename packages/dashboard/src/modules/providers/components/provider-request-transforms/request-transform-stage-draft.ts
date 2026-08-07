@@ -1,6 +1,6 @@
 import { ProviderRequestTransformRulesSchema } from '@aio-proxy/types';
 
-import { serializeRequestTransformStages, type RequestTransformStageDraft } from '../../request-transforms';
+import { serializeRequestTransformStages, type RequestTransformStageDraft } from '../../lib/request-transforms';
 
 export interface RequestTransformStageControlValues {
   readonly kind: 'set' | 'remove';

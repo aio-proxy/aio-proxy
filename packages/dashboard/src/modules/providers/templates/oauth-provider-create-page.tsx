@@ -6,14 +6,15 @@ import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { queryKeys } from '@/lib/query-keys';
 
 import { OAuthAccountFields } from '../components/oauth-account-fields';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';
 import { OAuthCapabilityCombobox } from '../components/oauth-capability-combobox';
 import { ProviderProxyField } from '../components/provider-proxy-field';
-import { ProviderFormMode } from '../constants';
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
-import { oauthAccountSubmission } from '../services/oauth-account-submission';
+import { ProviderFormMode } from '../lib/constants';
+import { oauthAccountSubmission } from '../lib/oauth-account-submission';
 import {
   cancelOAuthSession,
   oauthCapabilitiesQueryOptions,
@@ -72,7 +73,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
       popup.current = null;
     }
     if (session?.status === 'succeeded') {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void navigate({
         to: '/providers',
         search: {

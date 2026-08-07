@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type React from 'react';
 
-import { ProviderFormMode } from '../constants';
+import { ProviderFormMode } from '../lib/constants';
 import { ProviderFormPage } from './provider-form-page';
 
 const mocks = rs.hoisted(() => ({
