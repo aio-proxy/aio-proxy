@@ -55,6 +55,12 @@ export default defineConfig({
         ],
       },
     },
+    {
+      files: ['**/*.test.tsx'],
+      rules: {
+        'max-lines-per-function': 'off',
+      },
+    },
   ],
   ignorePatterns,
 });
