@@ -52,7 +52,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
         (document.getElementById(`provider-link-${focusProviderId}`) ?? row)?.focus();
       });
     });
-  }, [focusProviderId, rows, table]);
+  }, [focusProviderId, rows]);
 
   if (providers.length === 0) {
     return <Empty>{m['dashboard.providers.empty_state']()}</Empty>;

@@ -119,6 +119,21 @@ describe('providers table', () => {
     }
   });
 
+  test('collapses an expanded OAuth group', async () => {
+    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
+
+    const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    fireEvent.click(within(group).getByRole('button'));
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    });
+    fireEvent.click(within(group).getByRole('button'));
+
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
   test('auto-expands and pages to a focused OAuth account', async () => {
     const providers = [
       ...Array.from({ length: 10 }, (_, index) => providerStub({ id: `api-${index}`, kind: 'api' })),
@@ -134,6 +149,43 @@ describe('providers table', () => {
       within(screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default')).getByRole('button'),
     ).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByTestId('provider-row-api-0')).toBeNull();
+  });
+
+  test('keeps a user-selected page after focusing a Provider', async () => {
+    const providers = [
+      ...Array.from({ length: 10 }, (_, index) => providerStub({ id: `api-${index}`, kind: 'api' })),
+      oauthProvider('copilot-focused', 'Focused'),
+    ];
+
+    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('provider-row-copilot-focused')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Previous|上一页/u }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('provider-row-api-0')).toBeTruthy();
+    });
+  });
+
+  test('keeps a focused OAuth group collapsed after user interaction', async () => {
+    const providers = [
+      ...Array.from({ length: 10 }, (_, index) => providerStub({ id: `api-${index}`, kind: 'api' })),
+      oauthProvider('copilot-focused', 'Focused'),
+    ];
+
+    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+
+    const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    });
+    fireEvent.click(within(group).getByRole('button'));
+
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    });
   });
 
   test('distinguishes an unavailable Provider weight from an explicit zero', () => {
