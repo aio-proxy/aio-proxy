@@ -117,13 +117,29 @@ function bucketPeaks(rows: readonly RootRow[]): {
   };
 }
 
+/**
+ * Day ranges start at midnight but end partway through today, so shifting by the
+ * millisecond span would land the previous window mid-day and `dailyRows()` would
+ * round it back up to a whole day, double-counting the boundary. Step whole
+ * calendar days instead so the two windows are disjoint and equally sized.
+ */
 function shiftRangeBack(range: ResolvedRange): ResolvedRange {
-  const span = range.end.getTime() - range.start.getTime();
-  return {
-    start: new Date(range.start.getTime() - span),
-    end: new Date(range.start.getTime()),
-    bucketUnit: range.bucketUnit,
-  };
+  if (range.bucketUnit === 'hour') {
+    const span = range.end.getTime() - range.start.getTime();
+    return { start: new Date(range.start.getTime() - span), end: new Date(range.start.getTime()), bucketUnit: 'hour' };
+  }
+  const end = new Date(range.start);
+  end.setDate(end.getDate() - 1);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (dayCount(range) - 1));
+  return { start, end, bucketUnit: 'day' };
+}
+
+/** Inclusive calendar-day width of a day range, both endpoints normalized to midnight. */
+function dayCount(range: ResolvedRange): number {
+  const end = new Date(range.end);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - range.start.getTime()) / 86_400_000) + 1;
 }
 
 function modelTrend(overview: ReturnType<typeof aggregateRows>) {

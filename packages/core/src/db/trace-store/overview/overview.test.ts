@@ -229,6 +229,27 @@ test('normalizes the day rollup cache rate by the same capture paths as the hot 
   });
 });
 
+test('keeps the previous day window disjoint from the current one', () => {
+  withStore((store) => {
+    // NOW is mid-day, so the 7d window is 07-05..07-11 and its baseline must stop
+    // at 07-04. A millisecond-span shift would land mid-07-05 and round back up,
+    // counting this trace in both periods.
+    const firstDay = new Date(2026, 6, 5, 9, 0, 0);
+    seedTrace(store, {
+      id: 1,
+      endedAt: firstDay,
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 100 },
+    });
+
+    const { current, previous } = store.overviewDashboard({ range: '7d', now: NOW }).summary;
+
+    expect(current.requestCount).toBe('1');
+    expect(previous.requestCount).toBe('0');
+    expect(previous.totalTokens).toBe('0');
+  });
+});
+
 test('averages request rate over the buckets that carry data, not the nominal window', () => {
   withStore((store) => {
     for (const id of [1, 2, 3]) {
