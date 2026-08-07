@@ -4,7 +4,8 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import type { DashboardOverviewQuery } from '../types';
 import { aggregateRows, type ChartBucket } from '../usage-overview/aggregation';
 import { dailyRows } from './daily-rows';
-import { type ResolvedRange, type RootRow, spanRows } from './span-rows';
+import { type ResolvedRange, resolveRange } from './range';
+import { type RootRow, spanRows } from './span-rows';
 
 export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOverviewQuery): DashboardOverviewResponse {
   const now = query.now ?? new Date();
@@ -19,8 +20,8 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
   );
   const tokens = aggregateRows(rows, 'tokens', chartBuckets, 4);
   const cost = aggregateRows(rows, 'cost', chartBuckets, 4);
-  const current = summarize(rows, range);
   const previousRange = shiftRangeBack(range);
+  const current = summarize(rows, range);
   const previous = summarize(rangeRows(db, previousRange), previousRange);
 
   return {
@@ -155,17 +156,6 @@ function modelTrend(overview: ReturnType<typeof aggregateRows>) {
       values: Object.fromEntries(Object.entries(bucket.values).filter(([key]) => keys.has(key))),
     })),
   };
-}
-
-function resolveRange(range: DashboardOverviewRange, now: Date): ResolvedRange {
-  if (range === '24h') {
-    return { start: new Date(now.getTime() - 24 * 60 * 60 * 1000), end: now, bucketUnit: 'hour' };
-  }
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  return { start, end: now, bucketUnit: 'day' };
 }
 
 function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): readonly ChartBucket[] {

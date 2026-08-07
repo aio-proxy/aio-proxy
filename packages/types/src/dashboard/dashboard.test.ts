@@ -9,11 +9,11 @@ import {
   DashboardProviderSummarySchema,
 } from './dashboard';
 
-const summaryTotals = {
+const currentTotals = {
   requestCount: '1',
   totalTokens: '2',
-  inputTokens: '1',
-  outputTokens: '1',
+  inputTokens: '2',
+  outputTokens: '0',
   cacheReadTokens: '1',
   cacheWriteTokens: '0',
   cacheHitRate: 0.5,
@@ -22,12 +22,26 @@ const summaryTotals = {
   averageTpm: 2,
 } as const;
 
+// An empty comparison window must still parse: cacheHitRate is null without prompt traffic.
+const previousTotals = {
+  requestCount: '0',
+  totalTokens: '0',
+  inputTokens: '0',
+  outputTokens: '0',
+  cacheReadTokens: '0',
+  cacheWriteTokens: '0',
+  cacheHitRate: null,
+  estimatedCostNanoUsd: '0',
+  averageRpm: 0,
+  averageTpm: 0,
+} as const;
+
 const overviewInput = {
   range: '90d',
   summary: {
-    current: summaryTotals,
-    previous: summaryTotals,
-    peakRpm: 3,
+    current: currentTotals,
+    previous: previousTotals,
+    peakRpm: 2,
     peakTpm: 4,
     providerCount: 1,
   },

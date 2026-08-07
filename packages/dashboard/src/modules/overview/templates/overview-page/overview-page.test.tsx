@@ -14,7 +14,7 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('../../hooks/use-overview-query', () => ({
   useOverviewActivityQuery: () => mocks.useOverviewActivityQuery(),
-  useOverviewDiagnosticsQuery: () => mocks.useOverviewDiagnosticsQuery(),
+  useOverviewDiagnosticsQuery: (input: unknown) => mocks.useOverviewDiagnosticsQuery(input),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
 
@@ -129,8 +129,8 @@ describe('overview page', () => {
 
     const summary = screen.getByRole('list', { name: /Overview summary|概览摘要/u });
     const labels = within(summary)
-      .getAllByRole('heading', { level: 2 })
-      .map((heading) => heading.textContent);
+      .getAllByTestId('kpi-label')
+      .map((label) => label.textContent);
 
     expect(labels).toEqual(['Requests', 'Token', 'Cache hit rate', 'Cost', 'RPM', 'TPM']);
   });
@@ -148,9 +148,10 @@ describe('overview page', () => {
     expect(mocks.overviewRefetch).not.toHaveBeenCalled();
     expect(mocks.diagnosticsRefetch).not.toHaveBeenCalled();
     expect(mocks.activityRefetch).not.toHaveBeenCalled();
-    expect(mocks.useOverviewQuery.mock.calls.every(([input]) => JSON.stringify(input) === '{"range":"24h"}')).toBe(
-      true,
-    );
+    const receivedRange24h = (calls: readonly [unknown][]) =>
+      calls.every(([input]) => JSON.stringify(input) === '{"range":"24h"}');
+    expect(receivedRange24h(mocks.useOverviewQuery.mock.calls)).toBe(true);
+    expect(receivedRange24h(mocks.useOverviewDiagnosticsQuery.mock.calls)).toBe(true);
   });
 
   test('decodes model transport keys before presenting the chart legend', () => {

@@ -4,6 +4,8 @@ import type { DashboardOverviewDiagnosticsResponse } from '@aio-proxy/types';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
+import type { DashboardOverviewQuery } from '../types';
+import { type ResolvedRange, resolveRange } from './range';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
@@ -16,11 +18,18 @@ type RawHealthRow = {
 
 type RawCostRow = { readonly modelId: string; readonly estimatedCostNanoUsd: string };
 
-export function overviewDashboardDiagnostics(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResponse {
-  return { providerHealth: providerHealth(db), topModelCosts: topModelCosts(db) };
+export function overviewDashboardDiagnostics(
+  db: BunSQLiteDatabase,
+  query: DashboardOverviewQuery,
+): DashboardOverviewDiagnosticsResponse {
+  const range = resolveRange(query.range, query.now ?? new Date());
+  return { providerHealth: providerHealth(db, range), topModelCosts: topModelCosts(db, range) };
 }
 
-function providerHealth(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResponse['providerHealth'] {
+function providerHealth(
+  db: BunSQLiteDatabase,
+  range: ResolvedRange,
+): DashboardOverviewDiagnosticsResponse['providerHealth'] {
   const rows = all<RawHealthRow>(
     db,
     `select provider_id as providerId,
@@ -28,8 +37,9 @@ function providerHealth(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResp
       cast(count(*) as text) as attemptCount,
       json_group_array(max(0, ended_at - started_at)) as durations
     from trace_span where name = 'aio_proxy.provider.attempt' and provider_id is not null
+      and ended_at >= ? and ended_at <= ?
       group by provider_id order by provider_id`,
-    [],
+    [range.start.getTime(), range.end.getTime()],
   );
   return rows.map((row) => {
     const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
@@ -43,14 +53,18 @@ function providerHealth(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResp
   });
 }
 
-function topModelCosts(db: BunSQLiteDatabase): DashboardOverviewDiagnosticsResponse['topModelCosts'] {
+function topModelCosts(
+  db: BunSQLiteDatabase,
+  range: ResolvedRange,
+): DashboardOverviewDiagnosticsResponse['topModelCosts'] {
   const totals = new Map<string, bigint>();
   const rows = iterate<RawCostRow>(
     db,
-    `select model_dimension as modelId,
+    `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
       cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
-    from usage_daily where priced_request_count != '0'`,
-    [],
+    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
+      and ended_at >= ? and ended_at <= ?`,
+    [range.start.getTime(), range.end.getTime()],
   );
   for (const row of rows) {
     totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));

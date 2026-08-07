@@ -4,6 +4,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
 import type { OverviewRow } from '../usage-overview/aggregation';
+import type { ResolvedRange } from './range';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
@@ -13,12 +14,6 @@ export type RootRow = OverviewRow & {
   readonly cacheWriteTokens: bigint;
   readonly normalizedCacheReadTokens: bigint;
   readonly normalizedPromptTokens: bigint;
-};
-
-export type ResolvedRange = {
-  readonly start: Date;
-  readonly end: Date;
-  readonly bucketUnit: 'hour' | 'day';
 };
 
 type RawRootRow = {

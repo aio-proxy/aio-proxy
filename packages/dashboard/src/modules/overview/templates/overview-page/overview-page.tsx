@@ -25,7 +25,7 @@ export const OverviewPage: React.FC = () => {
   const [range, setRange] = useState<DashboardOverviewRange>('24h');
   const [metric, setMetric] = useState<UsageOverviewMetric>('requests');
   const overview = useOverviewQuery({ range });
-  const diagnostics = useOverviewDiagnosticsQuery();
+  const diagnostics = useOverviewDiagnosticsQuery({ range });
   const activity = useOverviewActivityQuery();
   let content: React.ReactNode;
 
@@ -35,13 +35,13 @@ export const OverviewPage: React.FC = () => {
         <span className="sr-only" role="status">
           {m['dashboard.overview.loading']()}
         </span>
-        <div className="overview-kpi-grid gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {loadingKpis.map((id) => (
             <Skeleton key={id} className="h-24 rounded-4xl" />
           ))}
         </div>
         <Skeleton className="h-80 rounded-4xl" />
-        <div className="overview-lower-grid gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Skeleton className="h-72 rounded-4xl" />
           <Skeleton className="h-72 rounded-4xl" />
         </div>
@@ -105,7 +105,7 @@ export const OverviewPage: React.FC = () => {
             />
           </>
         )}
-        <div className="overview-lower-grid gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <ProviderHealthTable rows={diagnostics.data.providerHealth} />
           <TopModelCosts models={diagnostics.data.topModelCosts} />
         </div>

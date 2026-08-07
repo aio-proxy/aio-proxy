@@ -82,7 +82,7 @@ describe('overview service', () => {
     });
   });
 
-  test('polls only range data while diagnostics and activity use independent cached keys', () => {
+  test('polls only range data while diagnostics follow the range and activity stays independent', () => {
     expect(overviewQueryOptions({ range: '24h' })).toMatchObject({
       queryKey: ['dashboard', 'overview', 'range', '24h'],
       refetchInterval: 5_000,
@@ -91,10 +91,13 @@ describe('overview service', () => {
       queryKey: ['dashboard', 'overview', 'range', '90d'],
       refetchInterval: false,
     });
-    expect(overviewDiagnosticsQueryOptions()).toMatchObject({
-      queryKey: ['dashboard', 'overview', 'diagnostics'],
+    expect(overviewDiagnosticsQueryOptions({ range: '24h' })).toMatchObject({
+      queryKey: ['dashboard', 'overview', 'diagnostics', '24h'],
       refetchInterval: false,
       staleTime: 60_000,
+    });
+    expect(overviewDiagnosticsQueryOptions({ range: '90d' })).toMatchObject({
+      queryKey: ['dashboard', 'overview', 'diagnostics', '90d'],
     });
     expect(overviewActivityQueryOptions()).toMatchObject({
       queryKey: ['dashboard', 'overview', 'activity'],

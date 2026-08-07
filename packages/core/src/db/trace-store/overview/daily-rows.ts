@@ -3,7 +3,8 @@ import type { Database, SQLQueryBindings } from 'bun:sqlite';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
-import type { ResolvedRange, RootRow } from './span-rows';
+import type { ResolvedRange } from './range';
+import type { RootRow } from './span-rows';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
