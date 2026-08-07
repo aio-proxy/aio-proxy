@@ -60,10 +60,10 @@ describe('GET /overview', () => {
     }
   });
 
-  test('returns all-time diagnostics from an independent endpoint', async () => {
+  test('returns range-scoped diagnostics from an independent endpoint', async () => {
     const { routes, state } = await overviewRoutes();
     try {
-      const response = await routes.request('/overview/diagnostics');
+      const response = await routes.request('/overview/diagnostics?range=90d');
 
       expect(response.status).toBe(200);
       expect(DashboardOverviewDiagnosticsResponseSchema.parse(await response.json())).toEqual({

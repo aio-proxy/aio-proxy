@@ -14,21 +14,39 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('../../hooks/use-overview-query', () => ({
   useOverviewActivityQuery: () => mocks.useOverviewActivityQuery(),
-  useOverviewDiagnosticsQuery: () => mocks.useOverviewDiagnosticsQuery(),
+  useOverviewDiagnosticsQuery: (input: unknown) => mocks.useOverviewDiagnosticsQuery(input),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
 
 const createOverviewData = () => ({
   range: '24h' as const,
   summary: {
-    requestCount: 42n,
-    totalTokens: 8_192n,
-    cacheReadTokens: 2_048n,
-    cacheWriteTokens: 128n,
-    cacheHitRate: 0.25,
-    estimatedCostNanoUsd: 2_500_000_000n,
-    averageRpm: 4.2,
-    averageTpm: 819.2,
+    current: {
+      requestCount: 42n,
+      totalTokens: 8_192n,
+      inputTokens: 6_000n,
+      outputTokens: 2_192n,
+      cacheReadTokens: 2_048n,
+      cacheWriteTokens: 128n,
+      cacheHitRate: 0.25,
+      estimatedCostNanoUsd: 2_500_000_000n,
+      averageRpm: 4.2,
+      averageTpm: 819.2,
+    },
+    previous: {
+      requestCount: 30n,
+      totalTokens: 6_000n,
+      inputTokens: 4_500n,
+      outputTokens: 1_500n,
+      cacheReadTokens: 1_024n,
+      cacheWriteTokens: 64n,
+      cacheHitRate: 0.2,
+      estimatedCostNanoUsd: 2_000_000_000n,
+      averageRpm: 3,
+      averageTpm: 600,
+    },
+    peakRpm: 9,
+    peakTpm: 1_500,
     providerCount: 2,
   },
   modelTrendByMetric: {
@@ -111,8 +129,8 @@ describe('overview page', () => {
 
     const summary = screen.getByRole('list', { name: /Overview summary|概览摘要/u });
     const labels = within(summary)
-      .getAllByRole('heading', { level: 2 })
-      .map((heading) => heading.textContent);
+      .getAllByTestId('kpi-label')
+      .map((label) => label.textContent);
 
     expect(labels).toEqual(['Requests', 'Token', 'Cache hit rate', 'Cost', 'RPM', 'TPM']);
   });
@@ -130,9 +148,10 @@ describe('overview page', () => {
     expect(mocks.overviewRefetch).not.toHaveBeenCalled();
     expect(mocks.diagnosticsRefetch).not.toHaveBeenCalled();
     expect(mocks.activityRefetch).not.toHaveBeenCalled();
-    expect(mocks.useOverviewQuery.mock.calls.every(([input]) => JSON.stringify(input) === '{"range":"24h"}')).toBe(
-      true,
-    );
+    const receivedRange24h = (calls: readonly [unknown][]) =>
+      calls.every(([input]) => JSON.stringify(input) === '{"range":"24h"}');
+    expect(receivedRange24h(mocks.useOverviewQuery.mock.calls)).toBe(true);
+    expect(receivedRange24h(mocks.useOverviewDiagnosticsQuery.mock.calls)).toBe(true);
   });
 
   test('decodes model transport keys before presenting the chart legend', () => {
@@ -183,7 +202,7 @@ describe('overview page', () => {
   });
 
   test('keeps unwindowed diagnostics visible when the selected range has no requests', () => {
-    overviewData.summary.requestCount = 0n;
+    overviewData.summary.current.requestCount = 0n;
 
     render(<OverviewPage />);
 
@@ -226,7 +245,7 @@ describe('overview page', () => {
 
     first.unmount();
     overviewData = createOverviewData();
-    overviewData.summary.requestCount = 0n;
+    overviewData.summary.current.requestCount = 0n;
     render(<OverviewPage />);
     expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
   });

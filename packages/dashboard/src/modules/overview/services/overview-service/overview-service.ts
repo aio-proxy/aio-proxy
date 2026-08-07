@@ -23,15 +23,23 @@ const decodeTrend = (trend: DashboardOverviewWireTrend) => ({
   })),
 });
 
+const decodeSummaryTotals = <T extends Record<string, unknown>>(totals: T) => ({
+  ...totals,
+  requestCount: BigInt(totals.requestCount as string),
+  totalTokens: BigInt(totals.totalTokens as string),
+  inputTokens: BigInt(totals.inputTokens as string),
+  outputTokens: BigInt(totals.outputTokens as string),
+  cacheReadTokens: BigInt(totals.cacheReadTokens as string),
+  cacheWriteTokens: BigInt(totals.cacheWriteTokens as string),
+  estimatedCostNanoUsd: BigInt(totals.estimatedCostNanoUsd as string),
+});
+
 export const decodeOverview = (wire: DashboardOverviewWireResponse) => ({
   ...wire,
   summary: {
     ...wire.summary,
-    requestCount: BigInt(wire.summary.requestCount),
-    totalTokens: BigInt(wire.summary.totalTokens),
-    cacheReadTokens: BigInt(wire.summary.cacheReadTokens),
-    cacheWriteTokens: BigInt(wire.summary.cacheWriteTokens),
-    estimatedCostNanoUsd: BigInt(wire.summary.estimatedCostNanoUsd),
+    current: decodeSummaryTotals(wire.summary.current),
+    previous: decodeSummaryTotals(wire.summary.previous),
   },
   modelTrendByMetric: {
     requests: decodeTrend(wire.modelTrendByMetric.requests),
@@ -81,10 +89,11 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
     refetchIntervalInBackground: false,
   });
 
-export const overviewDiagnosticsQueryOptions = () =>
+export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: ['dashboard', 'overview', 'diagnostics'],
-    queryFn: getOverviewDiagnostics,
+    queryKey: ['dashboard', 'overview', 'diagnostics', input.range],
+    queryFn: () => getOverviewDiagnostics(input),
+    placeholderData: keepPreviousData,
     refetchInterval: false,
     staleTime: 60_000,
   });
@@ -106,8 +115,10 @@ export const getOverview = async (input: OverviewQueryInput): Promise<OverviewDa
   return decodeOverview(await response.json());
 };
 
-export const getOverviewDiagnostics = async (): Promise<OverviewDiagnosticsData> => {
-  const response = await dashboardClient.dashboard.api.overview.diagnostics.$get();
+export const getOverviewDiagnostics = async (input: OverviewQueryInput): Promise<OverviewDiagnosticsData> => {
+  const response = await dashboardClient.dashboard.api.overview.diagnostics.$get({
+    query: { range: input.range },
+  });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverviewDiagnostics(await response.json());
 };

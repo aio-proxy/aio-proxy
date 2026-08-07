@@ -8,5 +8,6 @@ import {
 } from '../services/overview-service';
 
 export const useOverviewQuery = (input: OverviewQueryInput) => useQuery(overviewQueryOptions(input));
-export const useOverviewDiagnosticsQuery = () => useQuery(overviewDiagnosticsQueryOptions());
+export const useOverviewDiagnosticsQuery = (input: OverviewQueryInput) =>
+  useQuery(overviewDiagnosticsQueryOptions(input));
 export const useOverviewActivityQuery = () => useQuery(overviewActivityQueryOptions());

@@ -1,11 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { TableHead } from '@aio-proxy/ui/components/table';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
-
-import { DataTableHeaderCell } from '@/components/data-table-header-cell';
 
 import { PROVIDER_KIND_LABEL } from '../constants';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
@@ -27,19 +28,34 @@ const displayName = (provider: DashboardProviderSummary): string =>
 const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | undefined =>
   row.rowType === 'provider' ? row.provider : undefined;
 
-const withSortingHandler = (handler: ((event: unknown) => void) | undefined) =>
-  handler === undefined ? {} : { onToggleSorting: handler };
-
 const sortableHeader =
   (label: () => string) =>
-  ({ column }: HeaderContext<ProviderTableRow, unknown>) => (
-    <DataTableHeaderCell
-      label={label()}
-      canSort={column.getCanSort()}
-      sortDirection={column.getIsSorted()}
-      {...withSortingHandler(column.getToggleSortingHandler())}
-    />
-  );
+  ({ column }: HeaderContext<ProviderTableRow, unknown>) => {
+    const canSort = column.getCanSort();
+    const sortDirection = column.getIsSorted();
+    return (
+      <TableHead
+        aria-sort={
+          canSort
+            ? sortDirection === 'asc'
+              ? 'ascending'
+              : sortDirection === 'desc'
+                ? 'descending'
+                : 'none'
+            : undefined
+        }
+      >
+        {canSort ? (
+          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
+            {label()}
+            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
+          </Button>
+        ) : (
+          label()
+        )}
+      </TableHead>
+    );
+  };
 
 export const providerColumnLabel = (columnId: string): string => {
   if (columnId === 'provider') return m['dashboard.providers.table.col_provider']();

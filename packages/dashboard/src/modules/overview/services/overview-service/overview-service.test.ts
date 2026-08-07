@@ -12,14 +12,32 @@ import {
 const wireOverview = {
   range: '24h' as const,
   summary: {
-    requestCount: '11',
-    totalTokens: '22',
-    cacheReadTokens: '3',
-    cacheWriteTokens: '4',
-    cacheHitRate: 0.5,
-    estimatedCostNanoUsd: '500',
-    averageRpm: 1.5,
-    averageTpm: 2.5,
+    current: {
+      requestCount: '11',
+      totalTokens: '22',
+      inputTokens: '15',
+      outputTokens: '7',
+      cacheReadTokens: '3',
+      cacheWriteTokens: '4',
+      cacheHitRate: 0.5,
+      estimatedCostNanoUsd: '500',
+      averageRpm: 1.5,
+      averageTpm: 2.5,
+    },
+    previous: {
+      requestCount: '8',
+      totalTokens: '16',
+      inputTokens: '10',
+      outputTokens: '6',
+      cacheReadTokens: '2',
+      cacheWriteTokens: '2',
+      cacheHitRate: 0.4,
+      estimatedCostNanoUsd: '400',
+      averageRpm: 1,
+      averageTpm: 2,
+    },
+    peakRpm: 3,
+    peakTpm: 5,
     providerCount: 2,
   },
   modelTrendByMetric: {
@@ -46,13 +64,14 @@ describe('overview service', () => {
     const diagnostics = decodeOverviewDiagnostics(wireDiagnostics);
     const activity = decodeOverviewActivity(wireActivity);
 
-    expect(overview.summary).toMatchObject({
+    expect(overview.summary.current).toMatchObject({
       requestCount: 11n,
       totalTokens: 22n,
       cacheReadTokens: 3n,
       cacheWriteTokens: 4n,
       estimatedCostNanoUsd: 500n,
     });
+    expect(overview.summary.previous).toMatchObject({ requestCount: 8n, totalTokens: 16n });
     expect(overview.modelTrendByMetric.requests.buckets[0]?.values).toEqual({ a: 1n });
     expect(overview.modelTrendByMetric.tokens.buckets[0]?.values).toEqual({ a: 2n });
     expect(overview.modelTrendByMetric.cost.buckets[0]?.values).toEqual({ a: 3n });
@@ -63,7 +82,7 @@ describe('overview service', () => {
     });
   });
 
-  test('polls only range data while diagnostics and activity use independent cached keys', () => {
+  test('polls only range data while diagnostics follow the range and activity stays independent', () => {
     expect(overviewQueryOptions({ range: '24h' })).toMatchObject({
       queryKey: ['dashboard', 'overview', 'range', '24h'],
       refetchInterval: 5_000,
@@ -72,10 +91,13 @@ describe('overview service', () => {
       queryKey: ['dashboard', 'overview', 'range', '90d'],
       refetchInterval: false,
     });
-    expect(overviewDiagnosticsQueryOptions()).toMatchObject({
-      queryKey: ['dashboard', 'overview', 'diagnostics'],
+    expect(overviewDiagnosticsQueryOptions({ range: '24h' })).toMatchObject({
+      queryKey: ['dashboard', 'overview', 'diagnostics', '24h'],
       refetchInterval: false,
       staleTime: 60_000,
+    });
+    expect(overviewDiagnosticsQueryOptions({ range: '90d' })).toMatchObject({
+      queryKey: ['dashboard', 'overview', 'diagnostics', '90d'],
     });
     expect(overviewActivityQueryOptions()).toMatchObject({
       queryKey: ['dashboard', 'overview', 'activity'],

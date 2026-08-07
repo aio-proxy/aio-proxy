@@ -72,7 +72,7 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
         </CardTitle>
         <CardAction>
           <Tabs value={metric} onValueChange={(value) => onMetricChange(value as UsageOverviewMetric)}>
-            <TabsList variant="line" aria-label={m['dashboard.usage.metric_label']()}>
+            <TabsList aria-label={m['dashboard.usage.metric_label']()}>
               {metrics.map((value) => (
                 <TabsTrigger key={value} value={value}>
                   {labels[value]}

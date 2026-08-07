@@ -93,17 +93,28 @@ const DashboardOverviewTrendSchema = z.object({
   ),
 });
 
+const DashboardOverviewSummaryTotalsSchema = z.object({
+  requestCount: NonNegativeIntegerStringSchema,
+  totalTokens: NonNegativeIntegerStringSchema,
+  inputTokens: NonNegativeIntegerStringSchema,
+  outputTokens: NonNegativeIntegerStringSchema,
+  cacheReadTokens: NonNegativeIntegerStringSchema,
+  cacheWriteTokens: NonNegativeIntegerStringSchema,
+  cacheHitRate: NonNegativeFiniteNumberSchema.max(1).nullable(),
+  estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
+  averageRpm: NonNegativeFiniteNumberSchema,
+  averageTpm: NonNegativeFiniteNumberSchema,
+});
+
 export const DashboardOverviewResponseSchema = z.object({
   range: DashboardOverviewRangeSchema,
   summary: z.object({
-    requestCount: NonNegativeIntegerStringSchema,
-    totalTokens: NonNegativeIntegerStringSchema,
-    cacheReadTokens: NonNegativeIntegerStringSchema,
-    cacheWriteTokens: NonNegativeIntegerStringSchema,
-    cacheHitRate: NonNegativeFiniteNumberSchema.max(1).nullable(),
-    estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
-    averageRpm: NonNegativeFiniteNumberSchema,
-    averageTpm: NonNegativeFiniteNumberSchema,
+    // Comparable totals for the selected window and the equal-length window shifted back by one span.
+    current: DashboardOverviewSummaryTotalsSchema,
+    previous: DashboardOverviewSummaryTotalsSchema,
+    // Current-window / config metadata that has no previous-period counterpart.
+    peakRpm: NonNegativeFiniteNumberSchema,
+    peakTpm: NonNegativeFiniteNumberSchema,
     providerCount: NonNegativeFiniteNumberSchema.int(),
   }),
   modelTrendByMetric: z.object({

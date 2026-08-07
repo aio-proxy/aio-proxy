@@ -894,7 +894,12 @@
       "activity_title": "熱力圖",
       "activity_legend_less": "更少",
       "activity_legend_more": "更多",
-      "activity_model_breakdown": "模型明細"
+      "activity_model_breakdown": "模型明細",
+      "summary_tokens_note": "輸入 {input} · 輸出 {output}",
+      "summary_cache_reused": "{tokens} Token 已複用",
+      "summary_cost_note": "預估費用",
+      "summary_peak": "峰值 {value}",
+      "summary_delta_period": "較上一週期"
     },
     "traces": {
       "title": "追蹤",

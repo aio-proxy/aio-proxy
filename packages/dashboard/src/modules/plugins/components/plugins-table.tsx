@@ -3,12 +3,12 @@ import type { DashboardPluginSummary } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { flexRender, type ColumnDef, type HeaderContext } from '@tanstack/react-table';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 import { Fragment, useMemo, useRef } from 'react';
 
-import { DataTableHeaderCell } from '@/components/data-table-header-cell';
 import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -22,14 +22,29 @@ interface PluginsTableProps {
 const sortableHeader =
   (label: () => string) =>
   ({ column }: HeaderContext<DashboardPluginSummary, unknown>) => {
-    const onToggleSorting = column.getToggleSortingHandler();
+    const canSort = column.getCanSort();
+    const sortDirection = column.getIsSorted();
     return (
-      <DataTableHeaderCell
-        label={label()}
-        canSort={column.getCanSort()}
-        sortDirection={column.getIsSorted()}
-        {...(onToggleSorting === undefined ? {} : { onToggleSorting })}
-      />
+      <TableHead
+        aria-sort={
+          canSort
+            ? sortDirection === 'asc'
+              ? 'ascending'
+              : sortDirection === 'desc'
+                ? 'descending'
+                : 'none'
+            : undefined
+        }
+      >
+        {canSort ? (
+          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
+            {label()}
+            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
+          </Button>
+        ) : (
+          label()
+        )}
+      </TableHead>
     );
   };
 

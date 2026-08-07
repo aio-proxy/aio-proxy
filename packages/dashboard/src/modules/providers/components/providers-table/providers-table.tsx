@@ -1,13 +1,22 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@aio-proxy/ui/components/dropdown-menu';
 import { Empty } from '@aio-proxy/ui/components/empty';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { cn } from '@aio-proxy/ui/lib/utils';
+import { useForm } from '@tanstack/react-form';
 import { flexRender } from '@tanstack/react-table';
 import type React from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 
-import { DataTableToolbar } from '@/components/data-table-toolbar';
 import { PaginationControls } from '@/components/pagination-controls';
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -44,6 +53,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
   });
+  const filterForm = useForm({ defaultValues: { tableFilter: '' } });
 
   useEffect(() => {
     if (focusProviderId === undefined) return;
@@ -67,27 +77,52 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
 
   return (
     <div className="flex flex-col gap-4">
-      <DataTableToolbar
-        table={{
-          getAllLeafColumns: table.getAllLeafColumns,
-          setGlobalFilter: (filter) => {
-            table.setGlobalFilter(filter);
-            for (const row of rows) {
-              if (
-                row.rowType === 'oauth-group' &&
-                row.accounts.some(({ provider }) => providerMatchesFilter(provider, filter))
-              ) {
-                table.getRow(providerTableRowId(row)).toggleExpanded(true);
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <filterForm.Field name="tableFilter">
+          {(field) => (
+            <Field className="max-w-xs">
+              <FieldLabel htmlFor="providers-table-filter">{m['dashboard.providers.table.filter']()}</FieldLabel>
+              <Input
+                id="providers-table-filter"
+                value={field.state.value}
+                onChange={(event) => {
+                  const filter = event.target.value;
+                  field.handleChange(filter);
+                  table.setGlobalFilter(filter);
+                  for (const row of rows) {
+                    if (
+                      row.rowType === 'oauth-group' &&
+                      row.accounts.some(({ provider }) => providerMatchesFilter(provider, filter))
+                    ) {
+                      table.getRow(providerTableRowId(row)).toggleExpanded(true);
+                    }
+                  }
+                }}
+              />
+            </Field>
+          )}
+        </filterForm.Field>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" />}>
+            {m['dashboard.providers.table.columns']()}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <columnVisibilityForm.Field name="columnVisibility">
+              {(field) =>
+                table.getAllLeafColumns().map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={field.state.value[column.id] !== false}
+                    onCheckedChange={(checked) => field.handleChange({ ...field.state.value, [column.id]: checked })}
+                  >
+                    {providerColumnLabel(column.id)}
+                  </DropdownMenuCheckboxItem>
+                ))
               }
-            }
-          },
-        }}
-        columnVisibilityForm={columnVisibilityForm}
-        filterId="providers-table-filter"
-        filterLabel={m['dashboard.providers.table.filter']()}
-        columnsLabel={m['dashboard.providers.table.columns']()}
-        columnLabel={providerColumnLabel}
-      />
+            </columnVisibilityForm.Field>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (

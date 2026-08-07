@@ -892,7 +892,12 @@
       "activity_title": "Heatmap",
       "activity_legend_less": "Less",
       "activity_legend_more": "More",
-      "activity_model_breakdown": "Model breakdown"
+      "activity_model_breakdown": "Model breakdown",
+      "summary_tokens_note": "Input {input} · Output {output}",
+      "summary_cache_reused": "{tokens} tokens reused",
+      "summary_cost_note": "Estimated cost",
+      "summary_peak": "Peak {value}",
+      "summary_delta_period": "vs previous period"
     },
     "traces": {
       "title": "Traces",

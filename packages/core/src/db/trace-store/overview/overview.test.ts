@@ -137,9 +137,9 @@ test('normalizes inclusive and additive cache accounting by the successful captu
 
     const result = store.overviewDashboard({ range: '24h', now: NOW });
 
-    expect(result.summary.cacheReadTokens).toBe('90');
-    expect(result.summary.cacheWriteTokens).toBe('30');
-    expect(result.summary.cacheHitRate).toBe(0.3);
+    expect(result.summary.current.cacheReadTokens).toBe('90');
+    expect(result.summary.current.cacheWriteTokens).toBe('30');
+    expect(result.summary.current.cacheHitRate).toBe(0.3);
     expect(result.summary.providerCount).toBe(0);
   });
 });
@@ -148,7 +148,7 @@ test('returns null cache rate when no row establishes a positive prompt denomina
   withStore((store) => {
     seedTrace(store, { id: 1, attempts: [{ providerId: 'provider', durationMs: 10 }] });
 
-    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.cacheHitRate).toBeNull();
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.current.cacheHitRate).toBeNull();
   });
 });
 
@@ -187,7 +187,7 @@ test('ranks Top 4 plus Other independently for requests, tokens, and cost', () =
     expect(result.modelTrendByMetric.requests.buckets.every(({ values }) => !('__cancelled__' in values))).toBe(true);
     expect(result.modelTrendByMetric.tokens.series.map(({ key }) => key)).toEqual(['e', 'd', 'c', 'b', '__other__']);
     expect(result.modelTrendByMetric.cost.series.map(({ key }) => key)).toEqual(['a', 'b', 'e', 'd', '__other__']);
-    expect(store.overviewDashboardDiagnostics().topModelCosts).toEqual([
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).topModelCosts).toEqual([
       { modelId: 'a', estimatedCostNanoUsd: '50' },
       { modelId: 'b', estimatedCostNanoUsd: '40' },
       { modelId: 'e', estimatedCostNanoUsd: '30' },
@@ -218,7 +218,7 @@ test('counts failed and cancelled roots in the request trend by requested model'
       0n,
     );
 
-    expect(result.summary.requestCount).toBe('2');
+    expect(result.summary.current.requestCount).toBe('2');
     expect(result.modelTrendByMetric.requests.series.map(({ key }) => key)).toEqual([
       'cancelled-model',
       'failed-model',
@@ -229,11 +229,11 @@ test('counts failed and cancelled roots in the request trend by requested model'
   });
 });
 
-test('returns Provider health and all-time top model costs', () => {
+test('scopes Provider health and top model costs to the selected range', () => {
   withStore((store) => {
     seedTrace(store, {
       id: 1,
-      endedAt: new Date('2025-01-15T08:00:00.000Z'),
+      endedAt: new Date(NOW.getTime() - 40 * 24 * 60 * 60 * 1000),
       modelId: 'old-model',
       attempts: [{ providerId: 'old-provider', durationMs: 700 }],
       usage: { estimatedCostUsd: 5 },
@@ -245,18 +245,19 @@ test('returns Provider health and all-time top model costs', () => {
       usage: { estimatedCostUsd: 2 },
     });
 
-    const diagnostics = store.overviewDashboardDiagnostics();
+    const recent = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
+    expect(recent.providerHealth).toEqual([{ providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 }]);
+    expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
 
-    const expectedHealth = [
+    const quarter = store.overviewDashboardDiagnostics({ range: '90d', now: NOW });
+    expect(quarter.providerHealth).toEqual([
       { providerId: 'old-provider', successRate: 1, p95LatencyMs: 700 },
       { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 },
-    ];
-    const expectedCosts = [
+    ]);
+    expect(quarter.topModelCosts).toEqual([
       { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
       { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
-    ];
-    expect(diagnostics.providerHealth).toEqual(expectedHealth);
-    expect(diagnostics.topModelCosts).toEqual(expectedCosts);
+    ]);
   });
 });
 
@@ -273,7 +274,7 @@ test('derives Provider health from failed and successful attempt child spans', (
       seedTrace(store, { id: durationMs + 1, attempts: [{ providerId: 'c', durationMs }] });
     }
 
-    expect(store.overviewDashboardDiagnostics().providerHealth).toEqual([
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
       { providerId: 'a', successRate: 0, p95LatencyMs: 300 },
       { providerId: 'b', successRate: 1, p95LatencyMs: 900 },
       { providerId: 'c', successRate: 1, p95LatencyMs: 19 },
@@ -310,33 +311,27 @@ test('keeps rolling token activity after trace pruning', () => {
   }
 });
 
-test('keeps all-time model costs after trace pruning', () => {
+// Diagnostics read pruned trace spans so they stay consistent with the range KPIs,
+// which are derived from the same spans.
+test('drops model costs for pruned traces', () => {
   const handle = openTestDb();
+  const now = new Date(2025, 0, 15, 12);
   try {
     const store = createTraceStore(handle.db);
     seedTrace(store, {
       id: 1,
-      endedAt: new Date(2025, 0, 15, 12),
-      modelId: 'retained-model',
+      endedAt: now,
+      modelId: 'pruned-model',
       attempts: [{ providerId: 'provider', durationMs: 10 }],
       usage: { estimatedCostUsd: 5 },
     });
-    seedTrace(store, {
-      id: 2,
-      endedAt: new Date(2025, 0, 14, 12),
-      modelId: 'retained-model',
-      attempts: [{ providerId: 'provider', durationMs: 10 }],
-      usage: { estimatedCostUsd: 5 },
-    });
-    handle.sqlite.query('update usage_daily set estimated_cost_nano_usd = ?').run(5_000_000_000_000_000_000n);
 
     store.prune(new Date(2025, 0, 16), new Date(2025, 0, 16));
 
     expect(store.find('00000000000000000000000000000001')).toBeUndefined();
-    expect(store.find('00000000000000000000000000000002')).toBeUndefined();
-    expect(store.overviewDashboardDiagnostics()).toEqual({
+    expect(store.overviewDashboardDiagnostics({ range: '90d', now })).toEqual({
       providerHealth: [],
-      topModelCosts: [{ modelId: 'retained-model', estimatedCostNanoUsd: '10000000000000000000' }],
+      topModelCosts: [],
     });
   } finally {
     handle.close();
@@ -353,7 +348,7 @@ test('preserves totals above Number.MAX_SAFE_INTEGER', () => {
       });
     }
 
-    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.totalTokens).toBe('9007199254740993');
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.current.totalTokens).toBe('9007199254740993');
   });
 });
 
@@ -384,11 +379,11 @@ test('preserves range totals above the signed SQLite integer limit', () => {
 
     const overview = store.overviewDashboard({ range: '24h', now: NOW });
 
-    expect(overview.summary.totalTokens).toBe('20000000000000000000');
-    expect(overview.summary.cacheReadTokens).toBe('10000000000000000000');
-    expect(overview.summary.cacheWriteTokens).toBe('10000000000000000000');
-    expect(overview.summary.estimatedCostNanoUsd).toBe('10000000000000000000');
-    expect(overview.summary.cacheHitRate).toBe(0.5);
+    expect(overview.summary.current.totalTokens).toBe('20000000000000000000');
+    expect(overview.summary.current.cacheReadTokens).toBe('10000000000000000000');
+    expect(overview.summary.current.cacheWriteTokens).toBe('10000000000000000000');
+    expect(overview.summary.current.estimatedCostNanoUsd).toBe('10000000000000000000');
+    expect(overview.summary.current.cacheHitRate).toBe(0.5);
     expect(overview.modelTrendByMetric.tokens.buckets.find(({ values }) => values['large-model'] !== '0')).toEqual({
       key: '2026-07-11T07:00:00.000Z',
       values: { 'large-model': '20000000000000000000' },
