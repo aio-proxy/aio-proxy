@@ -1,12 +1,11 @@
 import { getLocale, m } from '@aio-proxy/i18n';
-import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
 import { PaginationControls } from '@/components/pagination-controls';
+import { sortableTableHeader } from '@/components/sortable-table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
@@ -17,35 +16,6 @@ interface ProviderHealthTableProps {
 
 type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
 
-const sortableHeader =
-  (label: () => string) =>
-  ({ column }: HeaderContext<DataTableFeatures, ProviderHealthRow, unknown>) => {
-    const canSort = column.getCanSort();
-    const sortDirection = column.getIsSorted();
-    return (
-      <TableHead
-        aria-sort={
-          canSort
-            ? sortDirection === 'asc'
-              ? 'ascending'
-              : sortDirection === 'desc'
-                ? 'descending'
-                : 'none'
-            : undefined
-        }
-      >
-        {canSort ? (
-          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
-            {label()}
-            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
-          </Button>
-        ) : (
-          label()
-        )}
-      </TableHead>
-    );
-  };
-
 export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }) => {
   'use no memo';
 
@@ -55,17 +25,17 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
     return [
       {
         accessorKey: 'providerId',
-        header: sortableHeader(() => m['dashboard.overview.provider_id']()),
+        header: sortableTableHeader(() => m['dashboard.overview.provider_id']()),
         cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
       },
       {
         accessorKey: 'successRate',
-        header: sortableHeader(() => m['dashboard.overview.success_rate']()),
+        header: sortableTableHeader(() => m['dashboard.overview.success_rate']()),
         cell: ({ getValue }) => <span className="tabular-nums">{percentFormatter.format(Number(getValue()))}</span>,
       },
       {
         accessorKey: 'p95LatencyMs',
-        header: sortableHeader(() => m['dashboard.overview.p95_latency']()),
+        header: sortableTableHeader(() => m['dashboard.overview.p95_latency']()),
         cell: ({ getValue }) => (
           <span className="tabular-nums">{m['dashboard.traces.duration_ms']({ value: Number(getValue()) })}</span>
         ),
