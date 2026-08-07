@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import { type CellContext, type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
+import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
 import { PaginationControls } from '@/components/pagination-controls';
@@ -36,34 +36,29 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <time dateTime={row.original.startedAt}>{new Date(row.original.startedAt).toLocaleString()}</time>
     ),
   },
   {
     accessorKey: 'traceId',
     header: () => m['dashboard.traces.trace_id'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
-      <span className="font-mono text-xs">{row.original.traceId}</span>
-    ),
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.traceId}</span>,
   },
   {
     id: 'requestStatus',
     header: () => m['dashboard.traces.status'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
-      <TraceStatus item={row.original} />
-    ),
+    cell: ({ row }) => <TraceStatus item={row.original} />,
   },
   {
     accessorKey: 'inboundProtocol',
     header: () => m['dashboard.traces.protocol'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) =>
-      row.original.inboundProtocol,
+    cell: ({ row }) => row.original.inboundProtocol,
   },
   {
     accessorKey: 'requestedModelId',
     header: () => m['dashboard.traces.model'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => {
+    cell: ({ row }) => {
       const { requestedModelId, finalModelId } = row.original;
       const primaryModel = requestedModelId ?? finalModelId;
       if (primaryModel === undefined) return TRACE_PLACEHOLDER;
@@ -80,20 +75,19 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
   {
     accessorKey: 'finalProviderId',
     header: () => m['dashboard.traces.provider_id'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <span className="block max-w-16 truncate">{row.original.finalProviderId ?? TRACE_PLACEHOLDER}</span>
     ),
   },
   {
     accessorKey: 'finalHttpStatus',
     header: () => m['dashboard.traces.http_status'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) =>
-      row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
+    cell: ({ row }) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
   },
   {
     id: 'latency',
     header: () => m['dashboard.traces.latency'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <TraceLatencyCell
         durationMs={row.original.durationMs}
         stream={row.original.stream}
@@ -104,15 +98,12 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
   {
     id: 'tokens',
     header: () => m['dashboard.traces.tokens'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) => (
-      <TraceTokenCell usage={row.original.usage} />
-    ),
+    cell: ({ row }) => <TraceTokenCell usage={row.original.usage} />,
   },
   {
     id: 'cost',
     header: () => m['dashboard.traces.cost'](),
-    cell: ({ row }: CellContext<typeof tracesTableFeatures, DashboardTraceSummary, unknown>) =>
-      formatTraceCost(row.original.usage?.estimatedCostUsd),
+    cell: ({ row }) => formatTraceCost(row.original.usage?.estimatedCostUsd),
   },
 ];
 
