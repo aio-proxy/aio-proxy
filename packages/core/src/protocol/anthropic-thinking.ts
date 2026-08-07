@@ -18,7 +18,6 @@ export function anthropicThinkingOption(
 
   switch (thinking.type) {
     case 'disabled':
-      if (effort !== undefined) invalid('output_config.effort');
       return { mode: 'disabled' };
     case 'enabled':
       if (
