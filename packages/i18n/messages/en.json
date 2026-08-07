@@ -897,7 +897,8 @@
       "summary_cache_reused": "{tokens} tokens reused",
       "summary_cost_note": "Estimated cost",
       "summary_peak": "Peak {value}",
-      "summary_delta_period": "vs previous period"
+      "summary_delta_period": "vs previous period",
+      "summary_delta_no_baseline": "No prior data"
     },
     "traces": {
       "title": "Traces",

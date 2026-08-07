@@ -899,7 +899,8 @@
       "summary_cache_reused": "{tokens} Token 已複用",
       "summary_cost_note": "預估費用",
       "summary_peak": "峰值 {value}",
-      "summary_delta_period": "較上一週期"
+      "summary_delta_period": "較上一週期",
+      "summary_delta_no_baseline": "無歷史資料"
     },
     "traces": {
       "title": "追蹤",

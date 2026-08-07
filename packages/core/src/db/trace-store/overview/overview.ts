@@ -1,42 +1,16 @@
-import type { Database, SQLQueryBindings } from 'bun:sqlite';
-
 import type { DashboardOverviewRange, DashboardOverviewResponse } from '@aio-proxy/types';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
-import { parseSqliteInteger } from '../../../usage-numbers';
 import type { DashboardOverviewQuery } from '../types';
-import { aggregateRows, type ChartBucket, type OverviewRow } from '../usage-overview/aggregation';
+import { aggregateRows, type ChartBucket } from '../usage-overview/aggregation';
+import { dailyRows } from './daily-rows';
 import { type ResolvedRange, resolveRange } from './range';
-
-type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
-
-type RawRootRow = {
-  readonly bucket: string | number;
-  readonly dimension: string;
-  readonly terminationReason: string | null;
-  readonly transport: string | null;
-  readonly targetProtocol: string | null;
-  readonly hasUsage: number;
-  readonly priced: number;
-  readonly estimatedCostNanoUsd: string;
-  readonly inputTokens: string;
-  readonly outputTokens: string;
-  readonly totalTokens: string | null;
-  readonly cacheReadTokens: string;
-  readonly cacheWriteTokens: string;
-};
-
-type RootRow = OverviewRow & {
-  readonly cacheReadTokens: bigint;
-  readonly cacheWriteTokens: bigint;
-  readonly normalizedCacheReadTokens: bigint;
-  readonly normalizedPromptTokens: bigint;
-};
+import { type RootRow, spanRows } from './span-rows';
 
 export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOverviewQuery): DashboardOverviewResponse {
   const now = query.now ?? new Date();
   const range = resolveRange(query.range, now);
-  const rows = rootRows(db, range);
+  const rows = rangeRows(db, range);
   const chartBuckets = bucketKeys(query.range, range.start, range.end);
   const requests = aggregateRows(
     rows.map((row) => ({ ...row, terminationReason: null })),
@@ -48,7 +22,7 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
   const cost = aggregateRows(rows, 'cost', chartBuckets, 4);
   const previousRange = shiftRangeBack(range);
   const current = summarize(rows, range);
-  const previous = summarize(rootRows(db, previousRange), previousRange);
+  const previous = summarize(rangeRows(db, previousRange), previousRange);
 
   return {
     range: query.range,
@@ -65,6 +39,15 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
       cost: modelTrend(cost),
     },
   };
+}
+
+/**
+ * `trace_span` is pruned to a rolling retention window, so only the hour-bucketed
+ * range can read it. Day ranges come from the `usage_daily` rollup, which is never
+ * pruned and is the only source that reaches the longest range.
+ */
+function rangeRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
+  return range.bucketUnit === 'hour' ? spanRows(db, range) : dailyRows(db, range);
 }
 
 type SummaryTotals = {
@@ -88,11 +71,14 @@ function summarize(
   readonly peakRpm: number;
   readonly peakTpm: number;
 } {
-  const requestCount = BigInt(rows.length);
+  const requestCount = sum(rows, 'requestCount');
   const totalTokens = sum(rows, 'totalTokens');
-  const elapsedMinutes = Math.max(1, (range.end.getTime() - range.start.getTime()) / 60_000);
   const bucketMinutes = range.bucketUnit === 'hour' ? 60 : 1_440;
   const peaks = bucketPeaks(rows);
+  // Rate over the time that actually has data, not the nominal window: an empty
+  // tail (a range longer than the retained history) would otherwise deflate both
+  // averages by the ratio of the two.
+  const elapsedMinutes = Math.max(1, peaks.bucketCount * bucketMinutes);
   return {
     totals: {
       requestCount: requestCount.toString(),
@@ -111,26 +97,50 @@ function summarize(
   };
 }
 
-function bucketPeaks(rows: readonly RootRow[]): { readonly requests: number; readonly tokens: number } {
+// ponytail: day-range peaks are within-day averages, so a spiky day reads low.
+// A real peak needs hourly rollups; add them if the peak note starts misleading.
+function bucketPeaks(rows: readonly RootRow[]): {
+  readonly requests: number;
+  readonly tokens: number;
+  readonly bucketCount: number;
+} {
   const requestsByBucket = new Map<string | number, number>();
   const tokensByBucket = new Map<string | number, number>();
   for (const row of rows) {
-    requestsByBucket.set(row.bucket, (requestsByBucket.get(row.bucket) ?? 0) + 1);
+    const requestCount = Number(row.requestCount ?? 1n);
+    requestsByBucket.set(row.bucket, (requestsByBucket.get(row.bucket) ?? 0) + requestCount);
     tokensByBucket.set(row.bucket, (tokensByBucket.get(row.bucket) ?? 0) + Number(row.totalTokens));
   }
   return {
     requests: Math.max(0, ...requestsByBucket.values()),
     tokens: Math.max(0, ...tokensByBucket.values()),
+    bucketCount: requestsByBucket.size,
   };
 }
 
+/**
+ * Day ranges start at midnight but end partway through today, so shifting by the
+ * millisecond span would land the previous window mid-day and `dailyRows()` would
+ * round it back up to a whole day, double-counting the boundary. Step whole
+ * calendar days instead so the two windows are disjoint and equally sized.
+ */
 function shiftRangeBack(range: ResolvedRange): ResolvedRange {
-  const span = range.end.getTime() - range.start.getTime();
-  return {
-    start: new Date(range.start.getTime() - span),
-    end: new Date(range.start.getTime()),
-    bucketUnit: range.bucketUnit,
-  };
+  if (range.bucketUnit === 'hour') {
+    const span = range.end.getTime() - range.start.getTime();
+    return { start: new Date(range.start.getTime() - span), end: new Date(range.start.getTime()), bucketUnit: 'hour' };
+  }
+  const end = new Date(range.start);
+  end.setDate(end.getDate() - 1);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (dayCount(range) - 1));
+  return { start, end, bucketUnit: 'day' };
+}
+
+/** Inclusive calendar-day width of a day range, both endpoints normalized to midnight. */
+function dayCount(range: ResolvedRange): number {
+  const end = new Date(range.end);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - range.start.getTime()) / 86_400_000) + 1;
 }
 
 function modelTrend(overview: ReturnType<typeof aggregateRows>) {
@@ -148,71 +158,6 @@ function modelTrend(overview: ReturnType<typeof aggregateRows>) {
   };
 }
 
-function rootRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
-  const bucket =
-    range.bucketUnit === 'hour'
-      ? `min(23, cast((root.ended_at - ?) / 3600000 as integer))`
-      : `strftime('%Y-%m-%d', root.ended_at / 1000, 'unixepoch', 'localtime')`;
-  const sql = `
-    select ${bucket} as bucket,
-      coalesce(root.final_model_id, root.requested_model_id, 'unknown') as dimension,
-      root.termination_reason as terminationReason,
-      attempt.transport as transport,
-      attempt.target_protocol as targetProtocol,
-      case when root.input_tokens is not null or root.output_tokens is not null
-        or root.total_tokens is not null or root.cache_read_tokens is not null
-        or root.cache_write_tokens is not null or root.reasoning_tokens is not null
-        or root.estimated_cost_nano_usd is not null then 1 else 0 end as hasUsage,
-      case when root.estimated_cost_nano_usd is not null then 1 else 0 end as priced,
-      cast(coalesce(root.estimated_cost_nano_usd, 0) as text) as estimatedCostNanoUsd,
-      cast(coalesce(root.input_tokens, 0) as text) as inputTokens,
-      cast(coalesce(root.output_tokens, 0) as text) as outputTokens,
-      cast(root.total_tokens as text) as totalTokens,
-      cast(coalesce(root.cache_read_tokens, 0) as text) as cacheReadTokens,
-      cast(coalesce(root.cache_write_tokens, 0) as text) as cacheWriteTokens
-    from trace_span root
-    left join trace_span attempt on attempt.trace_id = root.trace_id
-      and attempt.parent_span_id = root.span_id
-      and attempt.name = 'aio_proxy.provider.attempt' and attempt.termination_reason is null
-    where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?`;
-  const params = [
-    ...(range.bucketUnit === 'hour' ? [range.start.getTime()] : []),
-    range.start.getTime(),
-    range.end.getTime(),
-  ];
-  return all<RawRootRow>(db, sql, params).map((row) => {
-    const inputTokens = parseSqliteInteger(row.inputTokens);
-    const outputTokens = parseSqliteInteger(row.outputTokens);
-    const cacheReadTokens = parseSqliteInteger(row.cacheReadTokens);
-    const cacheWriteTokens = parseSqliteInteger(row.cacheWriteTokens);
-    const capturesCache = row.transport === 'raw' || row.transport === 'ai_sdk';
-    const cachedTokens = cacheReadTokens + cacheWriteTokens;
-    return {
-      bucket: row.bucket,
-      dimension: row.dimension,
-      terminationReason: row.terminationReason,
-      requestCount: 1n,
-      hasUsage: row.hasUsage,
-      priced: row.priced,
-      estimatedCostNanoUsd: parseSqliteInteger(row.estimatedCostNanoUsd),
-      inputTokens,
-      outputTokens,
-      totalTokens: row.totalTokens === null ? inputTokens + outputTokens : parseSqliteInteger(row.totalTokens),
-      cacheReadTokens,
-      cacheWriteTokens,
-      normalizedCacheReadTokens: capturesCache ? cacheReadTokens : 0n,
-      normalizedPromptTokens:
-        row.transport === 'raw' && row.targetProtocol === 'anthropic'
-          ? inputTokens + cachedTokens
-          : capturesCache
-            ? inputTokens > cachedTokens
-              ? inputTokens
-              : cachedTokens
-            : 0n,
-    };
-  });
-}
-
 function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
   if (range === '24h') {
     return Array.from({ length: 24 }, (_, index) => ({
@@ -227,17 +172,15 @@ function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): read
   return keys;
 }
 
-function all<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQueryBindings[]): T[] {
-  return (db as IterableDatabase).$client.query<T, SQLQueryBindings[]>(sql).all(...params);
-}
-
 function sum(rows: readonly RootRow[], key: keyof RootRow): bigint {
-  return rows.reduce((total, row) => total + (row[key] as bigint), 0n);
+  return rows.reduce((total, row) => total + ((row[key] ?? 0n) as bigint), 0n);
 }
 
 function localDate(value: Date): string {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
+
+const pad = (value: number) => String(value).padStart(2, '0');
 
 const ratio = (numerator: bigint, denominator: bigint) =>
   denominator === 0n ? null : Number(numerator) / Number(denominator);

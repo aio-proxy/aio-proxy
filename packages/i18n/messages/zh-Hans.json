@@ -897,7 +897,8 @@
       "summary_cache_reused": "{tokens} Token 被复用",
       "summary_cost_note": "预估成本",
       "summary_peak": "峰值 {value}",
-      "summary_delta_period": "较上一周期"
+      "summary_delta_period": "较上一周期",
+      "summary_delta_no_baseline": "无历史数据"
     },
     "traces": {
       "title": "追踪",
