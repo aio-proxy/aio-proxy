@@ -22,13 +22,26 @@ test('returns no option when thinking and effort are absent', () => {
   expect(anthropicThinkingOption({ max_tokens: 8192 } as never)).toBeUndefined();
 });
 
+test('keeps thinking disabled when Claude Code also sends effort', () => {
+  const request = parseAnthropicMessages({
+    model: 'claude-opus-5',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 8192,
+    thinking: { type: 'disabled' },
+    output_config: { effort: 'high' },
+  });
+
+  expect(anthropicMessagesToModelMessages(request).settings.providerOptions).toEqual({
+    aioProxy: { thinking: { mode: 'disabled' } },
+  });
+});
+
 test.each([
   [{ type: 'enabled', budget_tokens: 1023 }, 8192, undefined],
   [{ type: 'enabled', budget_tokens: 8192 }, 8192, undefined],
   [{ type: 'enabled' }, 8192, undefined],
   [{ type: 'enabled', budget_tokens: 2048 }, undefined, undefined],
   [{ type: 'adaptive' }, 8192, undefined],
-  [{ type: 'disabled' }, 8192, 'high'],
   [undefined, 8192, 'high'],
 ])('rejects invalid fixed/adaptive settings %#', (thinking, maxTokens, effort) => {
   expect(() =>
