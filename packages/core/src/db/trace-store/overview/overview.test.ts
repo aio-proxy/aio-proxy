@@ -152,6 +152,100 @@ test('returns null cache rate when no row establishes a positive prompt denomina
   });
 });
 
+test('reports identical summary totals from per-request spans and the day rollup', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'ai', durationMs: 10, transport: 'ai_sdk' }],
+      usage: { inputTokens: 100, totalTokens: 180, cacheReadTokens: 40, cacheWriteTokens: 10 },
+    });
+    seedTrace(store, {
+      id: 2,
+      attempts: [{ providerId: 'anthropic', durationMs: 10, transport: 'raw', targetProtocol: 'anthropic' }],
+      usage: { inputTokens: 50, totalTokens: 90, cacheReadTokens: 30, cacheWriteTokens: 20, estimatedCostUsd: 3 },
+    });
+    seedTrace(store, { id: 3, attempts: [{ providerId: 'ai', durationMs: 10, outcome: 'failure' }] });
+    seedTrace(store, { id: 4, attempts: [], terminationReason: 'cancelled' });
+
+    const hot = store.overviewDashboard({ range: '24h', now: NOW }).summary.current;
+    const rollup = store.overviewDashboard({ range: '7d', now: NOW }).summary.current;
+
+    expect(rollup.requestCount).toBe(hot.requestCount);
+    expect(rollup.totalTokens).toBe(hot.totalTokens);
+    expect(rollup.inputTokens).toBe(hot.inputTokens);
+    expect(rollup.outputTokens).toBe(hot.outputTokens);
+    expect(rollup.cacheReadTokens).toBe(hot.cacheReadTokens);
+    expect(rollup.cacheWriteTokens).toBe(hot.cacheWriteTokens);
+    expect(rollup.estimatedCostNanoUsd).toBe(hot.estimatedCostNanoUsd);
+    expect(rollup.cacheHitRate).toBe(hot.cacheHitRate);
+    expect(hot.requestCount).toBe('4');
+  });
+});
+
+test('keeps the longest range populated after trace pruning drops the underlying spans', () => {
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    const endedAt = new Date(NOW.getTime() - 50 * 24 * 60 * 60 * 1000);
+    seedTrace(store, {
+      id: 1,
+      endedAt,
+      modelId: 'retained-model',
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { totalTokens: 400, estimatedCostUsd: 2 },
+    });
+
+    store.prune(new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000), NOW);
+
+    const longRange = store.overviewDashboard({ range: '90d', now: NOW }).summary.current;
+    expect(longRange.requestCount).toBe('1');
+    expect(longRange.totalTokens).toBe('400');
+    expect(longRange.estimatedCostNanoUsd).toBe('2000000000');
+    expect(store.overviewDashboard({ range: '24h', now: NOW }).summary.current.requestCount).toBe('0');
+  } finally {
+    handle.close();
+  }
+});
+
+test('normalizes the day rollup cache rate by the same capture paths as the hot range', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'ai', durationMs: 10, transport: 'ai_sdk' }],
+      usage: { inputTokens: 100, cacheReadTokens: 40, cacheWriteTokens: 10 },
+    });
+    seedTrace(store, {
+      id: 2,
+      attempts: [{ providerId: 'anthropic', durationMs: 10, transport: 'raw', targetProtocol: 'anthropic' }],
+      usage: { inputTokens: 50, cacheReadTokens: 30, cacheWriteTokens: 20 },
+    });
+    seedTrace(store, {
+      id: 3,
+      attempts: [{ providerId: 'openai', durationMs: 10, transport: 'raw', targetProtocol: 'openai-compatible' }],
+      usage: { inputTokens: 100, cacheReadTokens: 20 },
+    });
+
+    expect(store.overviewDashboard({ range: '7d', now: NOW }).summary.current.cacheHitRate).toBe(0.3);
+  });
+});
+
+test('averages request rate over the buckets that carry data, not the nominal window', () => {
+  withStore((store) => {
+    for (const id of [1, 2, 3]) {
+      seedTrace(store, {
+        id,
+        attempts: [{ providerId: 'provider', durationMs: 10 }],
+        usage: { totalTokens: 480 },
+      });
+    }
+
+    const summary = store.overviewDashboard({ range: '30d', now: NOW }).summary.current;
+
+    expect(summary.averageRpm).toBe(3 / 1_440);
+    expect(summary.averageTpm).toBe(1_440 / 1_440);
+  });
+});
+
 test('keeps the hot range aggregation free of all-time and yearly sections', () => {
   withStore((store) => {
     const result = store.overviewDashboard({ range: '24h', now: NOW });

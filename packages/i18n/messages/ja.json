@@ -899,7 +899,8 @@
       "summary_cache_reused": "{tokens} トークンを再利用",
       "summary_cost_note": "推定コスト",
       "summary_peak": "ピーク {value}",
-      "summary_delta_period": "前期間比"
+      "summary_delta_period": "前期間比",
+      "summary_delta_no_baseline": "比較データなし"
     },
     "traces": {
       "title": "トレース",

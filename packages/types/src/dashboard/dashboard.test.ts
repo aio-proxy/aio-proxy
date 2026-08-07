@@ -9,17 +9,26 @@ import {
   DashboardProviderSummarySchema,
 } from './dashboard';
 
+const summaryTotals = {
+  requestCount: '1',
+  totalTokens: '2',
+  inputTokens: '1',
+  outputTokens: '1',
+  cacheReadTokens: '1',
+  cacheWriteTokens: '0',
+  cacheHitRate: 0.5,
+  estimatedCostNanoUsd: '0',
+  averageRpm: 1,
+  averageTpm: 2,
+} as const;
+
 const overviewInput = {
   range: '90d',
   summary: {
-    requestCount: '1',
-    totalTokens: '2',
-    cacheReadTokens: '1',
-    cacheWriteTokens: '0',
-    cacheHitRate: 0.5,
-    estimatedCostNanoUsd: '0',
-    averageRpm: 1,
-    averageTpm: 2,
+    current: summaryTotals,
+    previous: summaryTotals,
+    peakRpm: 3,
+    peakTpm: 4,
     providerCount: 1,
   },
   modelTrendByMetric: {

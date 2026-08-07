@@ -13,18 +13,24 @@ interface OverviewKpiGridProps {
   readonly summary: OverviewData['summary'];
 }
 
+/**
+ * A missing baseline and a flat period are different facts, so they render
+ * differently instead of collapsing into one hidden badge.
+ */
+type KpiDelta = { readonly ratio: number } | { readonly reason: 'no-baseline' };
+
 interface OverviewKpi {
   readonly label: string;
   readonly value: ReactNode;
-  readonly delta: number | null;
+  readonly delta: KpiDelta;
   readonly note: ReactNode;
 }
 
-const deltaRatio = (current: bigint | number, previous: bigint | number): number | null => {
+const deltaRatio = (current: bigint | number, previous: bigint | number): KpiDelta => {
   const now = Number(current);
   const before = Number(previous);
-  if (before === 0) return now === 0 ? 0 : null;
-  return (now - before) / before;
+  if (before === 0) return now === 0 ? { ratio: 0 } : { reason: 'no-baseline' };
+  return { ratio: (now - before) / before };
 };
 
 export const OverviewKpiGrid: React.FC<OverviewKpiGridProps> = ({ summary }) => {
@@ -60,8 +66,8 @@ export const OverviewKpiGrid: React.FC<OverviewKpiGridProps> = ({ summary }) => 
       value: current.cacheHitRate === null ? 'N/A' : percentFormatter.format(current.cacheHitRate),
       delta:
         current.cacheHitRate === null || previous.cacheHitRate === null
-          ? null
-          : current.cacheHitRate - previous.cacheHitRate,
+          ? { reason: 'no-baseline' }
+          : { ratio: current.cacheHitRate - previous.cacheHitRate },
       note: m['dashboard.overview.summary_cache_reused']({ tokens: formatCompactTokenCount(current.cacheReadTokens) }),
     },
     {
@@ -92,20 +98,24 @@ export const OverviewKpiGrid: React.FC<OverviewKpiGridProps> = ({ summary }) => 
             <CardTitle role="heading" aria-level={2} className="text-sm font-normal text-muted-foreground">
               {kpi.label}
             </CardTitle>
-            {kpi.delta !== null && (
-              <CardAction>
+            <CardAction>
+              {'reason' in kpi.delta ? (
+                <span className="text-xs font-medium text-muted-foreground">
+                  {m['dashboard.overview.summary_delta_no_baseline']()}
+                </span>
+              ) : (
                 <span
                   className={cn(
                     'inline-flex items-center gap-0.5 text-xs font-medium tabular-nums',
-                    kpi.delta < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400',
+                    kpi.delta.ratio < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400',
                   )}
                   aria-label={m['dashboard.overview.summary_delta_period']()}
                 >
-                  {kpi.delta < 0 ? <ArrowDownRight className="size-3" /> : <ArrowUpRight className="size-3" />}
-                  {signedPercent.format(kpi.delta)}
+                  {kpi.delta.ratio < 0 ? <ArrowDownRight className="size-3" /> : <ArrowUpRight className="size-3" />}
+                  {signedPercent.format(kpi.delta.ratio)}
                 </span>
-              </CardAction>
-            )}
+              )}
+            </CardAction>
             <CardDescription className="truncate text-xs">{kpi.note}</CardDescription>
           </CardHeader>
           <CardContent>

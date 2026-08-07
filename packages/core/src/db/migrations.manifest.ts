@@ -2,6 +2,7 @@
 import migration0Sql from "./migrations/0000_busy_hedge_knight.sql?raw";
 import migration1Sql from "./migrations/0001_easy_logan.sql?raw";
 import migration2Sql from "./migrations/0002_orange_leper_queen.sql?raw";
+import migration3Sql from "./migrations/0003_charming_maginty.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -26,6 +27,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0002_orange_leper_queen.sql",
         sha256: "346f578dff1bdae80a96b8404bf77edb3c4537f657bf723b5ccc3924da531ade",
         sql: migration2Sql
+    },
+    {
+        version: 4,
+        file: "0003_charming_maginty.sql",
+        sha256: "1537817c61f34c66b820390060d9b772a6b29da52c9333dd4ddce8501489ad75",
+        sql: migration3Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

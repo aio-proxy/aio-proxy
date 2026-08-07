@@ -899,7 +899,8 @@
       "summary_cache_reused": "{tokens} 토큰 재사용",
       "summary_cost_note": "예상 비용",
       "summary_peak": "최고 {value}",
-      "summary_delta_period": "이전 기간 대비"
+      "summary_delta_period": "이전 기간 대비",
+      "summary_delta_no_baseline": "비교 데이터 없음"
     },
     "traces": {
       "title": "트레이스",
