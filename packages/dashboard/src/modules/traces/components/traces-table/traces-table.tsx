@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
+import { Pagination } from '@/components/data-table/pagination';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
@@ -177,7 +177,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
         />
       </ScrollArea>
       <div data-slot="traces-table-pagination" className="shrink-0 border-t px-3 pt-3 sm:px-4">
-        <PaginationControls
+        <Pagination
           pageSize={pageSize}
           pageSizeOptions={[10, 20, 50, 100]}
           canPrevious={!isFetching && data.prevPageToken !== undefined}

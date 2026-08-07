@@ -4,8 +4,8 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/u
 import type { ColumnDef } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
-import { sortableTableHeader } from '@/components/sortable-table-head';
+import { Pagination } from '@/components/data-table/pagination';
+import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
@@ -25,17 +25,17 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
     return [
       {
         accessorKey: 'providerId',
-        header: sortableTableHeader(() => m['dashboard.overview.provider_id']()),
+        header: tableHead(() => m['dashboard.overview.provider_id']()),
         cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
       },
       {
         accessorKey: 'successRate',
-        header: sortableTableHeader(() => m['dashboard.overview.success_rate']()),
+        header: tableHead(() => m['dashboard.overview.success_rate']()),
         cell: ({ getValue }) => <span className="tabular-nums">{percentFormatter.format(Number(getValue()))}</span>,
       },
       {
         accessorKey: 'p95LatencyMs',
-        header: sortableTableHeader(() => m['dashboard.overview.p95_latency']()),
+        header: tableHead(() => m['dashboard.overview.p95_latency']()),
         cell: ({ getValue }) => (
           <span className="tabular-nums">{m['dashboard.traces.duration_ms']({ value: Number(getValue()) })}</span>
         ),
@@ -88,7 +88,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
           </TableBody>
         </Table>
         {table.getPageCount() > 1 ? (
-          <PaginationControls
+          <Pagination
             pageSize={table.state.pagination.pageSize}
             canPrevious={table.getCanPreviousPage()}
             canNext={table.getCanNextPage()}

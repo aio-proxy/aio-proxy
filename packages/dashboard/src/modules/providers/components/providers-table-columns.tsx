@@ -5,7 +5,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
 import type React from 'react';
 
-import { sortableTableHeader } from '@/components/sortable-table-head';
+import { tableHead } from '@/components/data-table/table-head';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
@@ -34,7 +34,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     row.rowType === 'oauth-group'
       ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
       : `${displayName(row.provider)} ${row.provider.id}`,
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_provider']()),
+  header: tableHead(() => m['dashboard.providers.table.col_provider']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
@@ -70,7 +70,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
         ? m['dashboard.providers.kind_label.invalid']()
         : PROVIDER_KIND_LABEL[row.provider.kind];
   },
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_type']()),
+  header: tableHead(() => m['dashboard.providers.table.col_type']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
@@ -83,7 +83,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const protocolColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'protocol',
   accessorFn: (row) => (row.rowType === 'provider' && row.provider.kind === 'api' ? (row.provider.protocol ?? '') : ''),
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_protocol']()),
+  header: tableHead(() => m['dashboard.providers.table.col_protocol']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider?.kind === 'api' ? (provider.protocol ?? 'N/A') : 'N/A';
@@ -96,7 +96,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
       : row.provider.clientModels.join(' '),
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_models']()),
+  header: tableHead(() => m['dashboard.providers.table.col_models']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : <ProviderModelsCell models={provider.clientModels} />;
@@ -106,7 +106,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
   accessorFn: (row) => concreteProvider(row)?.weight,
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_weight']()),
+  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : (provider.weight ?? 'N/A');
@@ -121,7 +121,7 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
       ? ''
       : `${provider.state.status} ${provider.state.diagnostic?.summary ?? ''} ${provider.state.diagnostic?.code ?? ''}`;
   },
-  header: sortableTableHeader(() => m['dashboard.providers.table.col_state']()),
+  header: tableHead(() => m['dashboard.providers.table.col_state']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : <ProviderStateCell provider={provider} />;
@@ -140,7 +140,7 @@ export const createProviderColumns = (
   {
     id: 'enabled',
     accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
-    header: sortableTableHeader(() => m['dashboard.providers.table.col_enabled']()),
+    header: tableHead(() => m['dashboard.providers.table.col_enabled']()),
     cell: ({ row }) => {
       const provider = concreteProvider(row.original);
       return provider === undefined || !canEditProvider(provider) ? null : (
@@ -151,7 +151,7 @@ export const createProviderColumns = (
   {
     id: 'actions',
     enableSorting: false,
-    header: sortableTableHeader(() => m['dashboard.providers.table.col_actions']()),
+    header: tableHead(() => m['dashboard.providers.table.col_actions']()),
     cell: ({ row }) => {
       const provider = concreteProvider(row.original);
       return provider === undefined || !canEditProvider(provider) ? null : (

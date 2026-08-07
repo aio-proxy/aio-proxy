@@ -8,8 +8,8 @@ import type { ColumnDef } from '@tanstack/react-table';
 import type React from 'react';
 import { Fragment, useMemo, useRef } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
-import { sortableTableHeader } from '@/components/sortable-table-head';
+import { Pagination } from '@/components/data-table/pagination';
+import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
@@ -26,7 +26,7 @@ const createPluginColumns = (
   {
     id: 'packageName',
     accessorKey: 'packageName',
-    header: sortableTableHeader(() => m['dashboard.plugins.table_package']()),
+    header: tableHead(() => m['dashboard.plugins.table_package']()),
     cell: ({ row }) => (
       <div className="flex min-w-52 items-center gap-2">
         <span className="font-mono text-xs">{row.original.packageName}</span>
@@ -37,13 +37,13 @@ const createPluginColumns = (
   {
     id: 'version',
     accessorFn: (plugin) => plugin.version ?? '',
-    header: sortableTableHeader(() => m['dashboard.plugins.table_version']()),
+    header: tableHead(() => m['dashboard.plugins.table_version']()),
     cell: ({ row }) => row.original.version ?? 'N/A',
   },
   {
     id: 'status',
     accessorFn: (plugin) => plugin.state.status,
-    header: sortableTableHeader(() => m['dashboard.plugins.table_status']()),
+    header: tableHead(() => m['dashboard.plugins.table_status']()),
     cell: ({ row }) => (
       <div className="space-y-1">
         <Badge variant={row.original.state.status === 'failed' ? 'destructive' : 'outline'}>
@@ -60,7 +60,7 @@ const createPluginColumns = (
   {
     id: 'enabled',
     accessorFn: (plugin) => String(plugin.enabled),
-    header: sortableTableHeader(() => m['dashboard.plugins.table_enabled']()),
+    header: tableHead(() => m['dashboard.plugins.table_enabled']()),
     cell: ({ row }) => (
       <Badge variant="secondary">
         {row.original.enabled ? m['dashboard.plugins.enabled']() : m['dashboard.plugins.disabled']()}
@@ -70,7 +70,7 @@ const createPluginColumns = (
   {
     id: 'actions',
     enableSorting: false,
-    header: sortableTableHeader(() => m['dashboard.plugins.table_actions']()),
+    header: tableHead(() => m['dashboard.plugins.table_actions']()),
     cell: ({ row }) => (
       <div className="flex justify-end gap-2">
         {row.original.hasOptions ? (
@@ -130,7 +130,7 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
         </TableBody>
       </Table>
       {table.getPageCount() > 1 ? (
-        <PaginationControls
+        <Pagination
           pageSize={table.state.pagination.pageSize}
           canPrevious={table.getCanPreviousPage()}
           canNext={table.getCanNextPage()}

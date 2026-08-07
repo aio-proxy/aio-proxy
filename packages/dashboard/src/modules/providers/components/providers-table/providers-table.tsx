@@ -6,7 +6,7 @@ import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
+import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
@@ -110,7 +110,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
         </TableBody>
       </Table>
       {table.getPageCount() > 1 ? (
-        <PaginationControls
+        <Pagination
           pageSize={table.state.pagination.pageSize}
           canPrevious={table.getCanPreviousPage()}
           canNext={table.getCanNextPage()}
