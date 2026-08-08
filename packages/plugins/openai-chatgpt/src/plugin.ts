@@ -92,7 +92,7 @@ export function createOpenAIChatGPTPlugin(
     {
       displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
       description: presentationText.pluginDescription ?? 'Use a ChatGPT Plus or Pro account to access models',
-      icon: 'codex-color',
+      icon: 'openai',
     },
   );
 }
